@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log/slog"
+
+	"github.com/grodier/rss/internal/server"
 )
 
 type Application struct {
@@ -16,6 +18,14 @@ func NewApplication(logger *slog.Logger) *Application {
 }
 
 func (app *Application) Run(ctx context.Context, args []string) error {
-	app.logger.Info("Application started", "version", version)
+	srv := server.NewServer(app.logger)
+	srv.Port = 4000
+	srv.Env = "development"
+	srv.Version = version
+
+	if err := srv.Serve(); err != nil {
+		return err
+	}
+
 	return nil
 }

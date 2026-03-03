@@ -10,7 +10,7 @@ type envelope map[string]any
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data envelope, headers http.Header) error {
 	js, err := json.Marshal(data)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	js = append(js, '\n')
@@ -52,6 +52,6 @@ func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status in
 
 func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
-	message := "ther server encountered a problem and could not process your request"
+	message := "the server encountered a problem and could not process your request"
 	s.errorResponse(w, r, http.StatusInternalServerError, message)
 }

@@ -38,7 +38,7 @@ func TestHealthcheckHandler(t *testing.T) {
 		env:     env,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/healtcheck", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/healthcheck", nil)
 	rr := httptest.NewRecorder()
 
 	s.healthcheckHandler(rr, req)

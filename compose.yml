@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: rss-postgres
+    environment:
+      POSTGRES_USER: rssapp
+      POSTGRES_PASSWORD: dev-password
+      POSTGRES_DB: rssapp_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - rss-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  rss-postgres-data:

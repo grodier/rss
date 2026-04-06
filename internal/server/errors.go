@@ -22,6 +22,14 @@ func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status in
 	}
 }
 
+func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusNotFound, "NOT_FOUND", "the requested resource could not be found", nil)
+}
+
+func (s *Server) methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "the request method is not supported for this resource", nil)
+}
+
 func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
 	s.errorResponse(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "the server encountered a problem and could not process your request", nil)

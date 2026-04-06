@@ -42,6 +42,23 @@ func TestRoutes_HealthcheckMethodNotAllowed(t *testing.T) {
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status code: got %d, want %d", rr.Code, http.StatusMethodNotAllowed)
 	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response body: %v", err)
+	}
+
+	if got["error_code"] != "METHOD_NOT_ALLOWED" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "METHOD_NOT_ALLOWED")
+	}
+
+	if got["message"] == nil || got["message"] == "" {
+		t.Error("expected non-empty message")
+	}
+
+	if _, ok := got["details"].(map[string]any); !ok {
+		t.Fatalf("details: expected map, got %T", got["details"])
+	}
 }
 
 func TestRoutes_NotFound(t *testing.T) {
@@ -55,5 +72,22 @@ func TestRoutes_NotFound(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("status code: got %d, want %d", rr.Code, http.StatusNotFound)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response body: %v", err)
+	}
+
+	if got["error_code"] != "NOT_FOUND" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "NOT_FOUND")
+	}
+
+	if got["message"] == nil || got["message"] == "" {
+		t.Error("expected non-empty message")
+	}
+
+	if _, ok := got["details"].(map[string]any); !ok {
+		t.Fatalf("details: expected map, got %T", got["details"])
 	}
 }

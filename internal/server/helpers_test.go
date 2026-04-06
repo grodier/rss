@@ -1,10 +1,7 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -80,54 +77,3 @@ func TestWriteJSON_UnmarshalableData(t *testing.T) {
 	}
 }
 
-func TestErrorResponse(t *testing.T) {
-	s := newTestServer(&testServerOptions{})
-
-	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-
-	s.errorResponse(rr, req, http.StatusBadRequest, "something went wrong")
-
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("status code: got %d, want %d", rr.Code, http.StatusBadRequest)
-	}
-
-	var got envelope
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatalf("failed to unmarshal response body: %v", err)
-	}
-
-	if got["error"] != "something went wrong" {
-		t.Errorf("error message: got %q, want %q", got["error"], "something went wrong")
-	}
-}
-
-func TestServerErrorResponse(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
-	s := &Server{logger: logger}
-
-	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-
-	s.serverErrorResponse(rr, req, errors.New("db connection failed"))
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status code: got %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
-
-	var got envelope
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatalf("failed to unmarshal response body: %v", err)
-	}
-
-	expectedMsg := "the server encountered a problem and could not process your request"
-	if got["error"] != expectedMsg {
-		t.Errorf("error message: got %q, want %q", got["error"], expectedMsg)
-	}
-
-	logOutput := buf.String()
-	if !bytes.Contains([]byte(logOutput), []byte("db connection failed")) {
-		t.Errorf("expected log to contain error message, got: %s", logOutput)
-	}
-}

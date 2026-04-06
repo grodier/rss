@@ -10,20 +10,6 @@ import (
 	"testing"
 )
 
-func TestAPIError_Error(t *testing.T) {
-	err := &APIError{
-		ErrorCode:  "NOT_FOUND",
-		Message:    "resource not found",
-		StatusCode: http.StatusNotFound,
-	}
-
-	got := err.Error()
-	want := "NOT_FOUND: resource not found"
-	if got != want {
-		t.Errorf("Error(): got %q, want %q", got, want)
-	}
-}
-
 func TestErrorResponse(t *testing.T) {
 	s := newTestServer(&testServerOptions{})
 

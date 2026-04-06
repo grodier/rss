@@ -1,20 +1,8 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
 )
-
-type APIError struct {
-	ErrorCode  string `json:"error_code"`
-	Message    string `json:"message"`
-	Details    any    `json:"details"`
-	StatusCode int    `json:"-"`
-}
-
-func (e *APIError) Error() string {
-	return fmt.Sprintf("%s: %s", e.ErrorCode, e.Message)
-}
 
 func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status int, errorCode string, message string, details any) {
 	if details == nil {

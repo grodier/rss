@@ -13,7 +13,7 @@ CREATE TABLE sessions (
     revoked_at       timestamptz
 );
 
-CREATE INDEX sessions_token_hash ON sessions(token_hash) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX sessions_token_hash ON sessions(token_hash) WHERE revoked_at IS NULL;
 CREATE INDEX sessions_user_id ON sessions(user_id) WHERE revoked_at IS NULL;
 
 -- +goose Down

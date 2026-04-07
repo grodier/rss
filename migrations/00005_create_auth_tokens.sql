@@ -10,5 +10,7 @@ CREATE TABLE auth_tokens (
     used_at      timestamptz
 );
 
+CREATE UNIQUE INDEX auth_tokens_token_hash ON auth_tokens(token_hash) WHERE used_at IS NULL;
+
 -- +goose Down
 DROP TABLE auth_tokens;

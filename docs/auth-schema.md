@@ -75,6 +75,10 @@ Short-lived, single-use tokens for out-of-band flows: email verification, passwo
 | `expires_at` | Absolute expiry; token is invalid after this time |
 | `used_at` | Set on first use; prevents replay |
 
+### Indexes
+
+- **`auth_tokens_token_hash`** — unique partial index for token lookup, filtered to unconsumed (`used_at IS NULL`) tokens; enforces one unconsumed token per hash
+
 ## `sessions`
 
 API-owned session records. Each row represents an active (or revoked) login session, scoped to a specific user + account pair. The API validates sessions via `Bearer` token on every request.
@@ -95,5 +99,5 @@ API-owned session records. Each row represents an active (or revoked) login sess
 
 ### Indexes
 
-- **`sessions_token_hash`** — fast token lookup, filtered to active (non-revoked) sessions
+- **`sessions_token_hash`** — unique partial index for token lookup, filtered to active (non-revoked) sessions; enforces one active session per token hash
 - **`sessions_user_id`** — list active sessions for a user (e.g. "manage sessions" UI)

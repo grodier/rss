@@ -34,3 +34,27 @@ func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err
 	s.logError(r, err)
 	s.errorResponse(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "the server encountered a problem and could not process your request", nil)
 }
+
+func (s *Server) badRequestResponse(w http.ResponseWriter, r *http.Request, err error) {
+	s.errorResponse(w, r, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
+}
+
+func (s *Server) unauthorizedResponse(w http.ResponseWriter, r *http.Request, message string) {
+	s.errorResponse(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", message, nil)
+}
+
+func (s *Server) forbiddenResponse(w http.ResponseWriter, r *http.Request, errorCode string, message string) {
+	s.errorResponse(w, r, http.StatusForbidden, errorCode, message, nil)
+}
+
+func (s *Server) rateLimitedResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "you have exceeded the rate limit, please try again later", nil)
+}
+
+func (s *Server) conflictResponse(w http.ResponseWriter, r *http.Request, errorCode string, message string) {
+	s.errorResponse(w, r, http.StatusConflict, errorCode, message, nil)
+}
+
+func (s *Server) validationErrorResponse(w http.ResponseWriter, r *http.Request, details any) {
+	s.errorResponse(w, r, http.StatusBadRequest, "INVALID_INPUT", "the request failed validation", details)
+}

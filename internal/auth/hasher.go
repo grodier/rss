@@ -68,6 +68,9 @@ func (h *Argon2Hasher) Compare(password, encodedHash string) (bool, error) {
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
 		return false, fmt.Errorf("parsing version: %w", err)
 	}
+	if version != argon2.Version {
+		return false, fmt.Errorf("unsupported argon2 version: %d", version)
+	}
 
 	var memory uint32
 	var iterations uint32

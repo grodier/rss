@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -30,9 +31,16 @@ type InMemoryRateLimiter struct {
 	stopOnce sync.Once
 }
 
-// NewInMemoryRateLimiter starts a background cleanup goroutine. Call Stop to
-// release resources.
+// NewInMemoryRateLimiter creates a rate limiter. When cleanupInterval is
+// positive a background goroutine evicts expired entries; call Stop to release
+// resources. Panics if limit or window are not positive.
 func NewInMemoryRateLimiter(limit int, window, cleanupInterval time.Duration) *InMemoryRateLimiter {
+	if limit <= 0 {
+		panic("ratelimit: limit must be positive")
+	}
+	if window <= 0 {
+		panic("ratelimit: window must be positive")
+	}
 	rl := &InMemoryRateLimiter{
 		limit:   limit,
 		window:  window,
@@ -40,7 +48,9 @@ func NewInMemoryRateLimiter(limit int, window, cleanupInterval time.Duration) *I
 		now:     time.Now,
 		done:    make(chan struct{}),
 	}
-	go rl.cleanup(cleanupInterval)
+	if cleanupInterval > 0 {
+		go rl.cleanup(cleanupInterval)
+	}
 	return rl
 }
 
@@ -103,14 +113,18 @@ func (rl *InMemoryRateLimiter) cleanup(interval time.Duration) {
 		case <-rl.done:
 			return
 		case <-ticker.C:
-			rl.mu.Lock()
-			now := rl.now()
-			for key, entry := range rl.entries {
-				if now.Sub(entry.currStart) >= 2*rl.window {
-					delete(rl.entries, key)
-				}
-			}
-			rl.mu.Unlock()
+			rl.performCleanup()
+		}
+	}
+}
+
+func (rl *InMemoryRateLimiter) performCleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := rl.now()
+	for key, entry := range rl.entries {
+		if now.Sub(entry.currStart) >= 2*rl.window {
+			delete(rl.entries, key)
 		}
 	}
 }
@@ -127,7 +141,11 @@ func (s *Server) RateLimit(limiter RateLimiter) func(http.Handler) http.Handler 
 			}
 
 			if !allowed {
-				w.Header().Set("Retry-After", strconv.Itoa(int(limiter.Window().Seconds())))
+				secs := int(math.Ceil(limiter.Window().Seconds()))
+				if secs < 1 {
+					secs = 1
+				}
+				w.Header().Set("Retry-After", strconv.Itoa(secs))
 				s.rateLimitedResponse(w, r)
 				return
 			}

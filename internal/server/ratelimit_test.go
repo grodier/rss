@@ -259,6 +259,60 @@ func TestRateLimitMiddleware_Denied(t *testing.T) {
 	}
 }
 
+func TestNewInMemoryRateLimiter_PanicsOnInvalidLimit(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for limit <= 0")
+		}
+	}()
+	NewInMemoryRateLimiter(0, time.Minute, 0)
+}
+
+func TestNewInMemoryRateLimiter_PanicsOnInvalidWindow(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for window <= 0")
+		}
+	}()
+	NewInMemoryRateLimiter(5, 0, 0)
+}
+
+func TestNewInMemoryRateLimiter_NoCleanupGoroutineWhenIntervalZero(t *testing.T) {
+	// Should not panic when cleanupInterval <= 0.
+	rl := NewInMemoryRateLimiter(5, time.Minute, 0)
+	rl.Stop() // Stop should be safe even without a cleanup goroutine.
+}
+
+func TestStop_IdempotentSafeToCallMultipleTimes(t *testing.T) {
+	rl := NewInMemoryRateLimiter(5, time.Minute, time.Second)
+	// Calling Stop multiple times must not panic.
+	rl.Stop()
+	rl.Stop()
+	rl.Stop()
+}
+
+func TestCleanup_EvictsExpiredEntries(t *testing.T) {
+	base := time.Now()
+	rl := newTestRateLimiter(5, time.Minute)
+	rl.now = func() time.Time { return base }
+
+	// Create an entry.
+	rl.Allow("key")
+
+	// Advance time past two full windows so the entry is considered expired.
+	base = base.Add(2*time.Minute + time.Second)
+
+	rl.performCleanup()
+
+	rl.mu.Lock()
+	_, exists := rl.entries["key"]
+	rl.mu.Unlock()
+
+	if exists {
+		t.Error("expired entry was not evicted by cleanup")
+	}
+}
+
 func TestClientIP(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -287,7 +287,7 @@ func TestAuthenticate_TokenNotFoundInDB(t *testing.T) {
 
 	repo := &mockAuthRepo{
 		getSessionByTokenHashFn: func(ctx context.Context, db auth.DBTX, tokenHash string) (auth.Session, error) {
-			return auth.Session{}, errors.New("session not found")
+			return auth.Session{}, auth.ErrSessionNotFound
 		},
 	}
 
@@ -303,6 +303,96 @@ func TestAuthenticate_TokenNotFoundInDB(t *testing.T) {
 
 	if called {
 		t.Error("next handler should not be called when token is not found")
+	}
+	assertUnauthorized(t, rr)
+}
+
+func TestAuthenticate_UnexpectedDBError(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+
+	repo := &mockAuthRepo{
+		getSessionByTokenHashFn: func(ctx context.Context, db auth.DBTX, tokenHash string) (auth.Session, error) {
+			return auth.Session{}, errors.New("connection refused")
+		},
+	}
+
+	called := false
+	handler := s.Authenticate(repo)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called on DB error")
+	}
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["error_code"] != "INTERNAL_ERROR" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "INTERNAL_ERROR")
+	}
+}
+
+func TestAuthenticate_ExactExpiryBoundary(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	now := time.Now()
+	session := validSession()
+	session.ExpiresAt = now
+
+	repo := &mockAuthRepo{
+		getSessionByTokenHashFn: func(ctx context.Context, db auth.DBTX, tokenHash string) (auth.Session, error) {
+			return session, nil
+		},
+	}
+
+	called := false
+	handler := s.Authenticate(repo)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called when now == expiresAt")
+	}
+	assertUnauthorized(t, rr)
+}
+
+func TestAuthenticate_ExactIdleBoundary(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	session := validSession()
+	session.LastActivityAt = time.Now().Add(-30 * 24 * time.Hour)
+
+	repo := &mockAuthRepo{
+		getSessionByTokenHashFn: func(ctx context.Context, db auth.DBTX, tokenHash string) (auth.Session, error) {
+			return session, nil
+		},
+	}
+
+	called := false
+	handler := s.Authenticate(repo)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called when idle time is exactly 30 days")
 	}
 	assertUnauthorized(t, rr)
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -21,7 +22,11 @@ func (s *Server) Authenticate(repo auth.Repository) func(http.Handler) http.Hand
 
 			session, err := repo.GetSessionByTokenHash(r.Context(), s.DB, hash)
 			if err != nil {
-				s.unauthorizedResponse(w, r, "invalid or expired token")
+				if errors.Is(err, auth.ErrSessionNotFound) {
+					s.unauthorizedResponse(w, r, "invalid or expired token")
+					return
+				}
+				s.serverErrorResponse(w, r, err)
 				return
 			}
 
@@ -32,12 +37,12 @@ func (s *Server) Authenticate(repo auth.Repository) func(http.Handler) http.Hand
 
 			now := time.Now()
 
-			if now.After(session.ExpiresAt) {
+			if !now.Before(session.ExpiresAt) {
 				s.unauthorizedResponse(w, r, "invalid or expired token")
 				return
 			}
 
-			if now.Sub(session.LastActivityAt) > 30*24*time.Hour {
+			if now.Sub(session.LastActivityAt) >= 30*24*time.Hour {
 				s.unauthorizedResponse(w, r, "invalid or expired token")
 				return
 			}

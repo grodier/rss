@@ -133,10 +133,14 @@ func (s *Server) RateLimit(limiter RateLimiter, retryAfter time.Duration) func(h
 
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		raw := xff
 		if ip, _, ok := strings.Cut(xff, ","); ok {
-			return strings.TrimSpace(ip)
+			raw = ip
 		}
-		return strings.TrimSpace(xff)
+		raw = strings.TrimSpace(raw)
+		if parsed := net.ParseIP(raw); parsed != nil {
+			return parsed.String()
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

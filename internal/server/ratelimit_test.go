@@ -272,6 +272,9 @@ func TestClientIP(t *testing.T) {
 		{"xff single ip", "10.0.0.1:1234", "203.0.113.50", "203.0.113.50"},
 		{"xff multiple ips", "10.0.0.1:1234", "203.0.113.50, 70.41.3.18, 150.172.238.178", "203.0.113.50"},
 		{"xff with spaces", "10.0.0.1:1234", " 203.0.113.50 , 70.41.3.18", "203.0.113.50"},
+		{"xff ipv6", "10.0.0.1:1234", "2001:db8::1", "2001:db8::1"},
+		{"xff invalid falls back to remote addr", "10.0.0.1:1234", "not-an-ip", "10.0.0.1"},
+		{"xff garbage first ip falls back to remote addr", "10.0.0.1:1234", "garbage, 203.0.113.50", "10.0.0.1"},
 	}
 
 	for _, tt := range tests {

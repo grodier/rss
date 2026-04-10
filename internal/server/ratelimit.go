@@ -11,6 +11,7 @@ import (
 
 type RateLimiter interface {
 	Allow(key string) (bool, error)
+	Window() time.Duration
 }
 
 type slidingWindow struct {
@@ -20,12 +21,13 @@ type slidingWindow struct {
 }
 
 type InMemoryRateLimiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	entries map[string]*slidingWindow
-	now     func() time.Time
-	done    chan struct{}
+	mu       sync.Mutex
+	limit    int
+	window   time.Duration
+	entries  map[string]*slidingWindow
+	now      func() time.Time
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // NewInMemoryRateLimiter starts a background cleanup goroutine. Call Stop to
@@ -43,7 +45,11 @@ func NewInMemoryRateLimiter(limit int, window, cleanupInterval time.Duration) *I
 }
 
 func (rl *InMemoryRateLimiter) Stop() {
-	close(rl.done)
+	rl.stopOnce.Do(func() { close(rl.done) })
+}
+
+func (rl *InMemoryRateLimiter) Window() time.Duration {
+	return rl.window
 }
 
 func (rl *InMemoryRateLimiter) Allow(key string) (bool, error) {
@@ -109,7 +115,7 @@ func (rl *InMemoryRateLimiter) cleanup(interval time.Duration) {
 	}
 }
 
-func (s *Server) RateLimit(limiter RateLimiter, retryAfter time.Duration) func(http.Handler) http.Handler {
+func (s *Server) RateLimit(limiter RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := clientIP(r)
@@ -121,7 +127,7 @@ func (s *Server) RateLimit(limiter RateLimiter, retryAfter time.Duration) func(h
 			}
 
 			if !allowed {
-				w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
+				w.Header().Set("Retry-After", strconv.Itoa(int(limiter.Window().Seconds())))
 				s.rateLimitedResponse(w, r)
 				return
 			}

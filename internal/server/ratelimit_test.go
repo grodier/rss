@@ -186,7 +186,7 @@ func TestRateLimitMiddleware_Allowed(t *testing.T) {
 	rl := newTestRateLimiter(5, time.Minute)
 
 	called := false
-	handler := s.RateLimit(rl, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := s.RateLimit(rl)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -210,7 +210,7 @@ func TestRateLimitMiddleware_Denied(t *testing.T) {
 	s := newTestServer(&testServerOptions{})
 	rl := newTestRateLimiter(2, time.Minute)
 
-	handler := s.RateLimit(rl, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := s.RateLimit(rl)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

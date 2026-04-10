@@ -18,19 +18,22 @@ See `plans/auth-implementation.md` for the full plan.
 
 ```go
 type RateLimiter interface {
-    Allow(key string, limit int, window time.Duration) (bool, error)
+    Allow(key string) (bool, error)
+    Window() time.Duration
 }
 ```
 
-- `InMemoryRateLimiter` using a map of key -> sliding window counters
+- `InMemoryRateLimiter` configured with `limit` and `window` at construction time (per-instance policy prevents sliding window state corruption when the same key is used across endpoints with different limits)
 - Thread-safe (mutex-protected)
-- Automatic cleanup of expired entries (background goroutine or lazy cleanup)
+- Automatic cleanup of expired entries (background goroutine)
+- `Stop()` is idempotent via `sync.Once`
 
-**`RateLimit(limiter RateLimiter, limit int, window time.Duration) func(http.Handler) http.Handler`**
-- Extracts client IP from request (consider `X-Forwarded-For` for proxied setups)
-- Calls `limiter.Allow(ip, limit, window)`
-- If denied: return 429 `RATE_LIMITED` structured error
+**`RateLimit(limiter RateLimiter) func(http.Handler) http.Handler`**
+- Extracts client IP from request (`X-Forwarded-For` with `net.ParseIP` validation, falls back to `RemoteAddr`)
+- Calls `limiter.Allow(ip)`
+- If denied: sets `Retry-After` header derived from `limiter.Window()`, returns 429 `RATE_LIMITED` structured error
 - If allowed: call next handler
+- Per-endpoint policies use separate limiter instances (e.g., login vs register)
 
 ## Files Changed
 

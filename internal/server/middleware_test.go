@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/grodier/rss/internal/auth"
 )
@@ -393,6 +394,276 @@ func TestAuthenticate_ExactIdleBoundary(t *testing.T) {
 
 	if called {
 		t.Error("next handler should not be called when idle time is exactly 30 days")
+	}
+	assertUnauthorized(t, rr)
+}
+
+// RequireAuth tests
+
+func TestRequireAuth_UserInContext(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+
+	called := false
+	handler := s.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = contextSetUserID(req, uuid.New())
+	handler.ServeHTTP(rr, req)
+
+	if !called {
+		t.Error("next handler was not called")
+	}
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusOK)
+	}
+}
+
+func TestRequireAuth_NoUserInContext(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+
+	called := false
+	handler := s.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called without user in context")
+	}
+	assertUnauthorized(t, rr)
+}
+
+// RequireUserMatch tests
+
+func requireUserMatchWithChi(s *Server, handler http.Handler, userIDParam string) http.Handler {
+	r := chi.NewRouter()
+	r.Route("/users/{userID}", func(r chi.Router) {
+		r.Use(s.RequireUserMatch)
+		r.Get("/", handler.ServeHTTP)
+	})
+	return r
+}
+
+func TestRequireUserMatch_Matches(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	userID := uuid.New()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	router := requireUserMatchWithChi(s, inner, userID.String())
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.String(), nil)
+	req = contextSetUserID(req, userID)
+	router.ServeHTTP(rr, req)
+
+	if !called {
+		t.Error("next handler was not called")
+	}
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusOK)
+	}
+}
+
+func TestRequireUserMatch_Mismatch(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	ctxUserID := uuid.New()
+	paramUserID := uuid.New()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+
+	router := requireUserMatchWithChi(s, inner, paramUserID.String())
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/users/"+paramUserID.String(), nil)
+	req = contextSetUserID(req, ctxUserID)
+	router.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called on user mismatch")
+	}
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusForbidden)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["error_code"] != "FORBIDDEN" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "FORBIDDEN")
+	}
+}
+
+func TestRequireUserMatch_InvalidUUID(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+
+	router := requireUserMatchWithChi(s, inner, "not-a-uuid")
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/users/not-a-uuid", nil)
+	req = contextSetUserID(req, uuid.New())
+	router.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called with invalid UUID")
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["error_code"] != "BAD_REQUEST" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "BAD_REQUEST")
+	}
+}
+
+func TestRequireUserMatch_NoUserInContext(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	paramUserID := uuid.New()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+
+	router := requireUserMatchWithChi(s, inner, paramUserID.String())
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/users/"+paramUserID.String(), nil)
+	router.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called without user in context")
+	}
+	assertUnauthorized(t, rr)
+}
+
+// RequireStepUp tests
+
+func TestRequireStepUp_ValidStepUp(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	stepUpAt := time.Now().Add(-5 * time.Minute)
+	session := validSession()
+	session.LastStepUpAt = &stepUpAt
+
+	called := false
+	handler := s.RequireStepUp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req = contextSetSession(req, &session)
+	handler.ServeHTTP(rr, req)
+
+	if !called {
+		t.Error("next handler was not called")
+	}
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusOK)
+	}
+}
+
+func TestRequireStepUp_Expired(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	stepUpAt := time.Now().Add(-20 * time.Minute)
+	session := validSession()
+	session.LastStepUpAt = &stepUpAt
+
+	called := false
+	handler := s.RequireStepUp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req = contextSetSession(req, &session)
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called with expired step-up")
+	}
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusForbidden)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["error_code"] != "STEP_UP_REQUIRED" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "STEP_UP_REQUIRED")
+	}
+}
+
+func TestRequireStepUp_NullLastStepUpAt(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+	session := validSession()
+
+	called := false
+	handler := s.RequireStepUp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req = contextSetSession(req, &session)
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called with null last_step_up_at")
+	}
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusForbidden)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["error_code"] != "STEP_UP_REQUIRED" {
+		t.Errorf("error_code: got %q, want %q", got["error_code"], "STEP_UP_REQUIRED")
+	}
+}
+
+func TestRequireStepUp_NoSessionInContext(t *testing.T) {
+	s := newTestServer(&testServerOptions{})
+
+	called := false
+	handler := s.RequireStepUp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("next handler should not be called without session in context")
 	}
 	assertUnauthorized(t, rr)
 }

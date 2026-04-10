@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/grodier/rss/internal/auth"
 )
 
@@ -58,4 +60,57 @@ func (s *Server) Authenticate(repo auth.Repository) func(http.Handler) http.Hand
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (s *Server) RequireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := contextGetUserID(r); !ok {
+			s.unauthorizedResponse(w, r, "authentication required")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) RequireUserMatch(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxUserID, ok := contextGetUserID(r)
+		if !ok {
+			s.unauthorizedResponse(w, r, "authentication required")
+			return
+		}
+
+		paramUserID, err := uuid.Parse(chi.URLParam(r, "userID"))
+		if err != nil {
+			s.badRequestResponse(w, r, errors.New("invalid user ID in URL"))
+			return
+		}
+
+		if ctxUserID != paramUserID {
+			s.forbiddenResponse(w, r, "FORBIDDEN", "you do not have permission to access this resource")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) RequireStepUp(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, ok := contextGetSession(r)
+		if !ok {
+			s.unauthorizedResponse(w, r, "authentication required")
+			return
+		}
+
+		now := time.Now()
+
+		if session.LastStepUpAt == nil || session.LastStepUpAt.After(now) || now.Sub(*session.LastStepUpAt) > 15*time.Minute {
+			s.forbiddenResponse(w, r, "STEP_UP_REQUIRED", "step-up authentication required")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

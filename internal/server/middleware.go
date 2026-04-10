@@ -104,7 +104,9 @@ func (s *Server) RequireStepUp(next http.Handler) http.Handler {
 			return
 		}
 
-		if session.LastStepUpAt == nil || time.Since(*session.LastStepUpAt) > 15*time.Minute {
+		now := time.Now()
+
+		if session.LastStepUpAt == nil || session.LastStepUpAt.After(now) || now.Sub(*session.LastStepUpAt) > 15*time.Minute {
 			s.forbiddenResponse(w, r, "STEP_UP_REQUIRED", "step-up authentication required")
 			return
 		}

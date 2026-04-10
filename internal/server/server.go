@@ -10,12 +10,18 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/grodier/rss/internal/auth"
 )
 
 type Server struct {
 	Port    int
 	Env     string
 	Version string
+
+	AuthService *auth.Service
+	RateLimiter RateLimiter
+	DB          auth.DBTX
 
 	server *http.Server
 	logger *slog.Logger

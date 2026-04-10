@@ -442,13 +442,14 @@ func TestRequireAuth_NoUserInContext(t *testing.T) {
 
 // RequireUserMatch tests
 
-func requireUserMatchWithChi(s *Server, handler http.Handler, userIDParam string) http.Handler {
+func requireUserMatchWithChi(s *Server, handler http.Handler, userIDParam string) (*http.Request, http.Handler) {
 	r := chi.NewRouter()
 	r.Route("/users/{userID}", func(r chi.Router) {
 		r.Use(s.RequireUserMatch)
 		r.Get("/", handler.ServeHTTP)
 	})
-	return r
+	req := httptest.NewRequest(http.MethodGet, "/users/"+userIDParam, nil)
+	return req, r
 }
 
 func TestRequireUserMatch_Matches(t *testing.T) {
@@ -461,10 +462,9 @@ func TestRequireUserMatch_Matches(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	router := requireUserMatchWithChi(s, inner, userID.String())
+	req, router := requireUserMatchWithChi(s, inner, userID.String())
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.String(), nil)
 	req = contextSetUserID(req, userID)
 	router.ServeHTTP(rr, req)
 
@@ -486,10 +486,9 @@ func TestRequireUserMatch_Mismatch(t *testing.T) {
 		called = true
 	})
 
-	router := requireUserMatchWithChi(s, inner, paramUserID.String())
+	req, router := requireUserMatchWithChi(s, inner, paramUserID.String())
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/"+paramUserID.String(), nil)
 	req = contextSetUserID(req, ctxUserID)
 	router.ServeHTTP(rr, req)
 
@@ -517,10 +516,9 @@ func TestRequireUserMatch_InvalidUUID(t *testing.T) {
 		called = true
 	})
 
-	router := requireUserMatchWithChi(s, inner, "not-a-uuid")
+	req, router := requireUserMatchWithChi(s, inner, "not-a-uuid")
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/not-a-uuid", nil)
 	req = contextSetUserID(req, uuid.New())
 	router.ServeHTTP(rr, req)
 
@@ -549,10 +547,9 @@ func TestRequireUserMatch_NoUserInContext(t *testing.T) {
 		called = true
 	})
 
-	router := requireUserMatchWithChi(s, inner, paramUserID.String())
+	req, router := requireUserMatchWithChi(s, inner, paramUserID.String())
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/"+paramUserID.String(), nil)
 	router.ServeHTTP(rr, req)
 
 	if called {

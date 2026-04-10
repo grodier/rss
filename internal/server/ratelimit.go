@@ -10,18 +10,19 @@ import (
 )
 
 type RateLimiter interface {
-	Allow(key string, limit int, window time.Duration) (bool, error)
+	Allow(key string) (bool, error)
 }
 
 type slidingWindow struct {
 	prevCount int
 	currCount int
 	currStart time.Time
-	window    time.Duration
 }
 
 type InMemoryRateLimiter struct {
 	mu      sync.Mutex
+	limit   int
+	window  time.Duration
 	entries map[string]*slidingWindow
 	now     func() time.Time
 	done    chan struct{}
@@ -29,8 +30,10 @@ type InMemoryRateLimiter struct {
 
 // NewInMemoryRateLimiter starts a background cleanup goroutine. Call Stop to
 // release resources.
-func NewInMemoryRateLimiter(cleanupInterval time.Duration) *InMemoryRateLimiter {
+func NewInMemoryRateLimiter(limit int, window, cleanupInterval time.Duration) *InMemoryRateLimiter {
 	rl := &InMemoryRateLimiter{
+		limit:   limit,
+		window:  window,
 		entries: make(map[string]*slidingWindow),
 		now:     time.Now,
 		done:    make(chan struct{}),
@@ -43,7 +46,7 @@ func (rl *InMemoryRateLimiter) Stop() {
 	close(rl.done)
 }
 
-func (rl *InMemoryRateLimiter) Allow(key string, limit int, window time.Duration) (bool, error) {
+func (rl *InMemoryRateLimiter) Allow(key string) (bool, error) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -54,33 +57,30 @@ func (rl *InMemoryRateLimiter) Allow(key string, limit int, window time.Duration
 		rl.entries[key] = &slidingWindow{
 			currCount: 1,
 			currStart: now,
-			window:    window,
 		}
 		return true, nil
 	}
 
 	elapsed := now.Sub(entry.currStart)
 
-	if elapsed >= 2*window {
+	if elapsed >= 2*rl.window {
 		entry.prevCount = 0
 		entry.currCount = 1
 		entry.currStart = now
-		entry.window = window
 		return true, nil
 	}
 
-	if elapsed >= window {
+	if elapsed >= rl.window {
 		entry.prevCount = entry.currCount
 		entry.currCount = 0
-		entry.currStart = entry.currStart.Add(window)
-		entry.window = window
+		entry.currStart = entry.currStart.Add(rl.window)
 		elapsed = now.Sub(entry.currStart)
 	}
 
-	weight := float64(window-elapsed) / float64(window)
+	weight := float64(rl.window-elapsed) / float64(rl.window)
 	estimated := float64(entry.prevCount)*weight + float64(entry.currCount)
 
-	if estimated >= float64(limit) {
+	if estimated >= float64(rl.limit) {
 		return false, nil
 	}
 
@@ -100,7 +100,7 @@ func (rl *InMemoryRateLimiter) cleanup(interval time.Duration) {
 			rl.mu.Lock()
 			now := rl.now()
 			for key, entry := range rl.entries {
-				if now.Sub(entry.currStart) >= 2*entry.window {
+				if now.Sub(entry.currStart) >= 2*rl.window {
 					delete(rl.entries, key)
 				}
 			}
@@ -109,19 +109,19 @@ func (rl *InMemoryRateLimiter) cleanup(interval time.Duration) {
 	}
 }
 
-func (s *Server) RateLimit(limiter RateLimiter, limit int, window time.Duration) func(http.Handler) http.Handler {
+func (s *Server) RateLimit(limiter RateLimiter, retryAfter time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := clientIP(r)
 
-			allowed, err := limiter.Allow(ip, limit, window)
+			allowed, err := limiter.Allow(ip)
 			if err != nil {
 				s.serverErrorResponse(w, r, err)
 				return
 			}
 
 			if !allowed {
-				w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
+				w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 				s.rateLimitedResponse(w, r)
 				return
 			}

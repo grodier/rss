@@ -10,8 +10,10 @@ import (
 	"time"
 )
 
-func newTestRateLimiter() *InMemoryRateLimiter {
+func newTestRateLimiter(limit int, window time.Duration) *InMemoryRateLimiter {
 	return &InMemoryRateLimiter{
+		limit:   limit,
+		window:  window,
 		entries: make(map[string]*slidingWindow),
 		now:     time.Now,
 		done:    make(chan struct{}),
@@ -19,10 +21,10 @@ func newTestRateLimiter() *InMemoryRateLimiter {
 }
 
 func TestAllow_UnderLimit(t *testing.T) {
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(5, time.Minute)
 
 	for i := range 5 {
-		allowed, err := rl.Allow("key", 5, time.Minute)
+		allowed, err := rl.Allow("key")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -33,13 +35,13 @@ func TestAllow_UnderLimit(t *testing.T) {
 }
 
 func TestAllow_AtLimit(t *testing.T) {
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(5, time.Minute)
 
 	for range 5 {
-		rl.Allow("key", 5, time.Minute)
+		rl.Allow("key")
 	}
 
-	allowed, err := rl.Allow("key", 5, time.Minute)
+	allowed, err := rl.Allow("key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,17 +52,17 @@ func TestAllow_AtLimit(t *testing.T) {
 
 func TestAllow_AfterWindowExpires(t *testing.T) {
 	now := time.Now()
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(5, time.Minute)
 	rl.now = func() time.Time { return now }
 
 	for range 5 {
-		rl.Allow("key", 5, time.Minute)
+		rl.Allow("key")
 	}
 
 	// Advance past two full windows so both prev and curr expire.
 	now = now.Add(2*time.Minute + time.Second)
 
-	allowed, err := rl.Allow("key", 5, time.Minute)
+	allowed, err := rl.Allow("key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,18 +72,18 @@ func TestAllow_AfterWindowExpires(t *testing.T) {
 }
 
 func TestAllow_DifferentKeysAreIndependent(t *testing.T) {
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(5, time.Minute)
 
 	for range 5 {
-		rl.Allow("key-a", 5, time.Minute)
+		rl.Allow("key-a")
 	}
 
-	allowed, _ := rl.Allow("key-a", 5, time.Minute)
+	allowed, _ := rl.Allow("key-a")
 	if allowed {
 		t.Fatal("key-a should be denied")
 	}
 
-	allowed, err := rl.Allow("key-b", 5, time.Minute)
+	allowed, err := rl.Allow("key-b")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,19 +93,19 @@ func TestAllow_DifferentKeysAreIndependent(t *testing.T) {
 }
 
 func TestAllow_ConcurrentAccess(t *testing.T) {
-	rl := newTestRateLimiter()
+	limit := 10
+	rl := newTestRateLimiter(limit, time.Minute)
 
 	var wg sync.WaitGroup
 	var allowed atomic.Int64
 
-	limit := 10
 	goroutines := 50
 
 	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ok, err := rl.Allow("key", limit, time.Minute)
+			ok, err := rl.Allow("key")
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 				return
@@ -124,12 +126,12 @@ func TestAllow_ConcurrentAccess(t *testing.T) {
 
 func TestAllow_SlidingWindowWeighting(t *testing.T) {
 	now := time.Now()
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(10, time.Minute)
 	rl.now = func() time.Time { return now }
 
 	// Fill 8 requests in the first window (limit 10).
 	for range 8 {
-		rl.Allow("key", 10, time.Minute)
+		rl.Allow("key")
 	}
 
 	// Advance 30s into the next window.
@@ -137,7 +139,7 @@ func TestAllow_SlidingWindowWeighting(t *testing.T) {
 	// Estimated count: 8 * 0.5 + 0 = 4, which is under limit 10.
 	now = now.Add(time.Minute + 30*time.Second)
 
-	allowed, err := rl.Allow("key", 10, time.Minute)
+	allowed, err := rl.Allow("key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,12 +150,12 @@ func TestAllow_SlidingWindowWeighting(t *testing.T) {
 
 func TestAllow_SlidingWindowDeniesWhenWeightedCountExceedsLimit(t *testing.T) {
 	now := time.Now()
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(10, time.Minute)
 	rl.now = func() time.Time { return now }
 
 	// Fill 10 requests in the first window (limit 10).
 	for range 10 {
-		rl.Allow("key", 10, time.Minute)
+		rl.Allow("key")
 	}
 
 	// Advance only 6s into the next window.
@@ -161,7 +163,7 @@ func TestAllow_SlidingWindowDeniesWhenWeightedCountExceedsLimit(t *testing.T) {
 	// Estimated count: 10 * 0.9 + 0 = 9, which is under 10 — allowed.
 	now = now.Add(time.Minute + 6*time.Second)
 
-	allowed, err := rl.Allow("key", 10, time.Minute)
+	allowed, err := rl.Allow("key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,7 +172,7 @@ func TestAllow_SlidingWindowDeniesWhenWeightedCountExceedsLimit(t *testing.T) {
 	}
 
 	// Now currCount = 1, estimated = 10*0.9 + 1 = 10 — at limit, denied.
-	allowed, err = rl.Allow("key", 10, time.Minute)
+	allowed, err = rl.Allow("key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,10 +183,10 @@ func TestAllow_SlidingWindowDeniesWhenWeightedCountExceedsLimit(t *testing.T) {
 
 func TestRateLimitMiddleware_Allowed(t *testing.T) {
 	s := newTestServer(&testServerOptions{})
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(5, time.Minute)
 
 	called := false
-	handler := s.RateLimit(rl, 5, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := s.RateLimit(rl, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -206,9 +208,9 @@ func TestRateLimitMiddleware_Allowed(t *testing.T) {
 
 func TestRateLimitMiddleware_Denied(t *testing.T) {
 	s := newTestServer(&testServerOptions{})
-	rl := newTestRateLimiter()
+	rl := newTestRateLimiter(2, time.Minute)
 
-	handler := s.RateLimit(rl, 2, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := s.RateLimit(rl, time.Minute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

@@ -8,46 +8,23 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type DB struct {
-	dsn string
-	db  *sql.DB
-
-	MaxOpenConnections int
-	MaxIdleConnections int
-	MaxIdleTime        time.Duration
-}
-
-func NewDB(dsn string) *DB {
-	return &DB{dsn: dsn}
-}
-
-func (pg *DB) Open() error {
-	db, err := sql.Open("postgres", pg.dsn)
+func OpenDB(dsn string, maxOpen, maxIdle int, maxIdleTime time.Duration) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	pg.db = db
 
-	pg.db.SetMaxOpenConns(pg.MaxOpenConnections)
-	pg.db.SetMaxIdleConns(pg.MaxIdleConnections)
-	pg.db.SetConnMaxIdleTime(pg.MaxIdleTime)
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxIdleTime(maxIdleTime)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err = pg.db.PingContext(ctx)
-	if err != nil {
-		pg.db.Close()
-		return err
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, err
 	}
 
-	return nil
-}
-
-func (pg *DB) Close() error {
-	if pg.db != nil {
-		return pg.db.Close()
-	}
-
-	return nil
+	return db, nil
 }

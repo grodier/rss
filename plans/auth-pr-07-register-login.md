@@ -94,8 +94,8 @@ r.Route("/v1", func(r chi.Router) {
 
 ```go
 // In Run():
-db := pgsql.NewDB(...)
-authRepo := pgsql.NewAuthRepository(db.SqlDB())
+db, err := pgsql.OpenDB(...)
+authRepo := pgsql.NewAuthRepository(db)
 hasher := auth.NewArgon2Hasher()
 emailSender := auth.NewLoggingEmailSender(logger)
 authService := auth.NewService(authRepo, hasher, emailSender, logger)

@@ -12,6 +12,7 @@ var (
 	ErrIdentityNotFound         = errors.New("identity not found")
 	ErrTokenInvalidOrExpired    = errors.New("token is invalid or has expired")
 	ErrUserNotFound             = errors.New("user not found")
+	ErrAccountNotFound          = errors.New("account not found")
 	ErrCannotRemoveLastEmail    = errors.New("cannot remove the last email address")
 	ErrCannotRemovePrimaryEmail = errors.New("cannot remove the primary email address")
 	ErrPasswordTooShort         = errors.New("password must be at least 8 characters")

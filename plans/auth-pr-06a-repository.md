@@ -2,7 +2,7 @@
 
 ## Context
 
-This PR sets up the `AuthRepository` struct and the `SqlDB()` accessor needed for transaction support. It's pure infrastructure — no query methods yet.
+This PR sets up the `AuthRepository` struct and refactors `pgsql.go` to replace the `DB` wrapper struct with a conventional `OpenDB` function that returns `*sql.DB` directly. It's pure infrastructure — no query methods yet.
 
 See `plans/auth-pr-06-repository.md` for the full PR 6 index.
 
@@ -13,24 +13,30 @@ See `plans/auth-pr-06-repository.md` for the full PR 6 index.
 
 ## Scope
 
-### Modify `internal/pgsql/pgsql.go`
+### Refactor `internal/pgsql/pgsql.go`
 
-- Add `SqlDB() *sql.DB` accessor method on the `DB` struct so callers (including the repository) can access the underlying `*sql.DB` for transactions
+- Replace the `DB` wrapper struct with a single `OpenDB(dsn string, maxOpen, maxIdle int, maxIdleTime time.Duration) (*sql.DB, error)` function
+- This is more idiomatic Go — `*sql.DB` is already a connection pool, concurrency-safe, and has its own `Close()` and `BeginTx()` methods
+- Callers pass `*sql.DB` directly to repositories; no accessor needed
 
 ### Create `internal/pgsql/auth_repository.go`
 
 - Define `AuthRepository` struct holding a `*sql.DB`
 - Constructor: `NewAuthRepository(db *sql.DB) *AuthRepository`
-- Compile-time interface check: `var _ auth.Repository = (*AuthRepository)(nil)`
-  - This will not compile until all methods are implemented (PR 6b–6e). For now, comment it out or use a build tag — the important thing is that the struct and constructor exist.
+- The compile-time interface check (`var _ auth.Repository = (*AuthRepository)(nil)`) is deferred to PR 6e, after all methods are implemented
+
+### Update `cmd/api/application.go`
+
+- Replace the `DB` struct usage with a call to `pgsql.OpenDB(...)`, passing `*sql.DB` directly
 
 ## Files Changed
 
-- Modify `internal/pgsql/pgsql.go`
+- Refactor `internal/pgsql/pgsql.go`
 - Create `internal/pgsql/auth_repository.go`
+- Update `cmd/api/application.go`
 
 ## Verification
 
 - `make test` — all existing tests still pass
 - `AuthRepository` struct exists and is exported
-- `SqlDB()` returns the underlying `*sql.DB`
+- `OpenDB` returns a configured, pinged `*sql.DB`

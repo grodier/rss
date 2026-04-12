@@ -175,7 +175,7 @@ HTTP handlers map these to the appropriate status code + error_code.
 
 ### Wiring — `cmd/api/application.go`
 ```
-pgsql.DB.Open()
+pgsql.OpenDB(dsn, ...)
   -> pgsql.NewAuthRepository(db)
   -> auth.NewLoggingEmailSender(logger)
   -> auth.NewArgon2Hasher()
@@ -257,7 +257,7 @@ internal/
     validation_test.go
     email_test.go
   pgsql/
-    pgsql.go          (+ SqlDB accessor)
+    pgsql.go          (OpenDB function)
     auth_repository.go
     auth_repository_test.go
   server/

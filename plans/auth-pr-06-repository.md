@@ -6,7 +6,7 @@ Parent plan: `plans/auth-implementation.md`
 
 | Sub-PR | Title | Description |
 |--------|-------|-------------|
-| [06a](auth-pr-06a-repository.md) | Repository scaffold | `SqlDB()` accessor, `AuthRepository` struct + constructor |
+| [06a](auth-pr-06a-repository.md) | Repository scaffold | Refactor `pgsql.go` to `OpenDB` function, `AuthRepository` struct + constructor |
 | [06b](auth-pr-06b-repository.md) | Users, Accounts, Memberships | 7 methods — straightforward entity CRUD |
 | [06c](auth-pr-06c-repository.md) | Email Identities + Password | 9 methods — complex constraints, case-insensitive lookup |
 | [06d](auth-pr-06d-repository.md) | Auth Tokens + Sessions | 9 methods — token lifecycle + session management |

@@ -58,11 +58,8 @@ func defaultConfig() config {
 func (app *Application) Run(ctx context.Context, args []string) error {
 	app.config = app.ParseConfigs(args)
 
-	db := pgsql.NewDB(app.config.db.dsn)
-	db.MaxOpenConnections = app.config.db.maxOpenConnections
-	db.MaxIdleConnections = app.config.db.maxIdleConnections
-	db.MaxIdleTime = app.config.db.maxIdleTime
-	if err := db.Open(); err != nil {
+	db, err := pgsql.OpenDB(app.config.db.dsn, app.config.db.maxOpenConnections, app.config.db.maxIdleConnections, app.config.db.maxIdleTime)
+	if err != nil {
 		return err
 	}
 	defer db.Close()

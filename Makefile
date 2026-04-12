@@ -32,6 +32,10 @@ build:
 test:
 	go test -v ./...
 
+.PHONY: test/integration
+test/integration: db/check
+	go test -v -tags integration ./...
+
 .PHONY: test/cover
 test/cover:
 	go test -coverprofile=/tmp/coverage.out ./...

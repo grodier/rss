@@ -310,40 +310,74 @@ func TestUpdateMembershipLastUsedAt(t *testing.T) {
 	db := testDB(t)
 	repo := NewAuthRepository(db)
 	ctx := context.Background()
+
+	t.Run("updates timestamp", func(t *testing.T) {
+		tx := testTx(t, db)
+		f := createFixture(t, tx)
+
+		_, err := tx.Exec(
+			`UPDATE memberships SET last_used_at = now() - interval '1 hour'
+			WHERE user_id = $1 AND account_id = $2`,
+			f.user.ID, f.account.ID,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var before domain.Membership
+		err = tx.QueryRow(
+			`SELECT last_used_at FROM memberships WHERE user_id = $1 AND account_id = $2`,
+			f.user.ID, f.account.ID,
+		).Scan(&before.LastUsedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := repo.UpdateMembershipLastUsedAt(ctx, tx, f.user.ID, f.account.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		var after domain.Membership
+		err = tx.QueryRow(
+			`SELECT last_used_at FROM memberships WHERE user_id = $1 AND account_id = $2`,
+			f.user.ID, f.account.ID,
+		).Scan(&after.LastUsedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !after.LastUsedAt.After(before.LastUsedAt) {
+			t.Errorf("last_used_at should be updated: before=%v, after=%v", before.LastUsedAt, after.LastUsedAt)
+		}
+	})
+
+	t.Run("excluded when account soft-deleted", func(t *testing.T) {
+		tx := testTx(t, db)
+		f := createFixture(t, tx)
+
+		if err := repo.SoftDeleteAccount(ctx, tx, f.account.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		err := repo.UpdateMembershipLastUsedAt(ctx, tx, f.user.ID, f.account.ID)
+		if !errors.Is(err, auth.ErrNotAMember) {
+			t.Errorf("got err %v, want %v", err, auth.ErrNotAMember)
+		}
+	})
+}
+
+func TestGetPrimaryMembership_ExcludesSoftDeletedAccounts(t *testing.T) {
+	db := testDB(t)
+	repo := NewAuthRepository(db)
+	ctx := context.Background()
 	tx := testTx(t, db)
 	f := createFixture(t, tx)
 
-	_, err := tx.Exec(
-		`UPDATE memberships SET last_used_at = now() - interval '1 hour'
-		WHERE user_id = $1 AND account_id = $2`,
-		f.user.ID, f.account.ID,
-	)
-	if err != nil {
+	if err := repo.SoftDeleteAccount(ctx, tx, f.account.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	var before domain.Membership
-	err = tx.QueryRow(
-		`SELECT last_used_at FROM memberships WHERE user_id = $1 AND account_id = $2`,
-		f.user.ID, f.account.ID,
-	).Scan(&before.LastUsedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := repo.UpdateMembershipLastUsedAt(ctx, tx, f.user.ID, f.account.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	var after domain.Membership
-	err = tx.QueryRow(
-		`SELECT last_used_at FROM memberships WHERE user_id = $1 AND account_id = $2`,
-		f.user.ID, f.account.ID,
-	).Scan(&after.LastUsedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !after.LastUsedAt.After(before.LastUsedAt) {
-		t.Errorf("last_used_at should be updated: before=%v, after=%v", before.LastUsedAt, after.LastUsedAt)
+	_, err := repo.GetPrimaryMembership(ctx, tx, f.user.ID)
+	if !errors.Is(err, auth.ErrNotAMember) {
+		t.Errorf("got err %v, want %v", err, auth.ErrNotAMember)
 	}
 }

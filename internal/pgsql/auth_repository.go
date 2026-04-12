@@ -120,8 +120,13 @@ func (r *AuthRepository) GetPrimaryMembership(ctx context.Context, db auth.DBTX,
 
 func (r *AuthRepository) UpdateMembershipLastUsedAt(ctx context.Context, db auth.DBTX, userID uuid.UUID, accountID uuid.UUID) error {
 	result, err := db.ExecContext(ctx,
-		`UPDATE memberships SET last_used_at = now()
-		WHERE user_id = $1 AND account_id = $2`, userID, accountID,
+		`UPDATE memberships m
+		SET last_used_at = now()
+		FROM accounts a
+		WHERE m.user_id = $1
+		AND m.account_id = $2
+		AND a.id = m.account_id
+		AND a.deleted_at IS NULL`, userID, accountID,
 	)
 	if err != nil {
 		return err

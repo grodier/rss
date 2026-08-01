@@ -1,7 +1,13 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"os"
+)
 
 func main() {
-	fmt.Println("Hello, World!")
+	ctx := context.Background()
+	if err := NewApplication().Run(ctx); err != nil {
+		os.Exit(1)
+	}
 }

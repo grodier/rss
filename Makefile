@@ -1,10 +1,10 @@
 .PHONY: run
 run:
-	go run cmd/www/main.go
+	go run ./cmd/www
 
 .PHONY: build
 build:
-	go build -o bin/www cmd/www/main.go
+	go build -o bin/www ./cmd/www
 
 .PHONY: test
 test:

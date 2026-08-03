@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 )
 
 func main() {
 	ctx := context.Background()
-	if err := NewApplication().Run(ctx); err != nil {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	if err := NewApplication(logger).Run(ctx); err != nil {
 		os.Exit(1)
 	}
 }

@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 )
 
 type Application struct {
 	config config
+	logger *slog.Logger
 }
 
 type config struct {
@@ -27,14 +28,15 @@ func defaultConfig() config {
 	}
 }
 
-func NewApplication() *Application {
+func NewApplication(logger *slog.Logger) *Application {
 	return &Application{
 		config: defaultConfig(),
+		logger: logger,
 	}
 }
 
 func (app *Application) Run(_ctx context.Context) error {
-	fmt.Println("Application is running...")
+	app.logger.Info("Application is running...")
 
 	return nil
 }

@@ -18,8 +18,19 @@ type serverConfig struct {
 	port int
 }
 
+func defaultConfig() config {
+	return config{
+		env: "development",
+		server: serverConfig{
+			port: 8080,
+		},
+	}
+}
+
 func NewApplication() *Application {
-	return &Application{}
+	return &Application{
+		config: defaultConfig(),
+	}
 }
 
 func (app *Application) Run(_ctx context.Context) error {

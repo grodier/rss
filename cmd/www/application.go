@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 )
 
@@ -10,37 +11,38 @@ type Application struct {
 	logger *slog.Logger
 }
 
-type config struct {
-	env    string
-	server serverConfig
-}
-
-type serverConfig struct {
-	port int
-}
-
-func defaultConfig() config {
-	return config{
-		env: "development",
-		server: serverConfig{
-			port: 8080,
-		},
-	}
-}
-
 func NewApplication(logger *slog.Logger) *Application {
 	return &Application{
-		config: defaultConfig(),
 		logger: logger,
 	}
 }
 
-func (app *Application) Run(_ctx context.Context) error {
+func (app *Application) Run(_ctx context.Context, args []string) error {
+	cfg, err := app.ParseConfigs(args)
+	if err != nil {
+		return err
+	}
+	app.config = cfg
 	app.logger.Info("Application is running...")
 
 	return nil
 }
 
-func (app *Application) ParseConfigs(args []string) config {
-	return config{}
+func (app *Application) ParseConfigs(args []string) (config, error) {
+	cfg := defaultConfig()
+
+	fs := flag.NewFlagSet("rss-www", flag.ContinueOnError)
+
+	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
+	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
+
+	if err := fs.Parse(args); err != nil {
+		return config{}, err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return config{}, err
+	}
+
+	return cfg, nil
 }

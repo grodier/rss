@@ -19,7 +19,7 @@ func NewApplication(logger *slog.Logger) *Application {
 	}
 }
 
-func (app *Application) Run(_ctx context.Context, args []string) error {
+func (app *Application) Run(ctx context.Context, args []string) error {
 	cfg, err := app.ParseConfigs(args)
 	if err != nil {
 		return err

@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+
+	"github.com/grodier/rss/internal/server"
 )
 
 type Application struct {
@@ -23,9 +25,13 @@ func (app *Application) Run(_ctx context.Context, args []string) error {
 		return err
 	}
 	app.config = cfg
-	app.logger.Info("Application is running...")
 
-	return nil
+	srv := server.NewServer(app.logger, server.Config{
+		Port: app.config.server.port,
+		Env:  app.config.env,
+	})
+
+	return srv.Serve()
 }
 
 func (app *Application) ParseConfigs(args []string) (config, error) {

@@ -26,10 +26,13 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 	}
 	app.config = cfg
 
-	srv := server.NewServer(app.logger, server.Config{
+	srv, err := server.NewServer(app.logger, server.Config{
 		Port: app.config.server.port,
 		Env:  app.config.env,
 	})
+	if err != nil {
+		return err
+	}
 
 	return srv.Serve()
 }

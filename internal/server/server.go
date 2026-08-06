@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,15 +19,22 @@ type Config struct {
 }
 
 type Server struct {
-	config Config
-	server *http.Server
-	logger *slog.Logger
+	config    Config
+	server    *http.Server
+	logger    *slog.Logger
+	templates map[string]*template.Template
 }
 
-func NewServer(logger *slog.Logger, cfg Config) *Server {
+func NewServer(logger *slog.Logger, cfg Config) (*Server, error) {
+	templates, err := parseTemplates()
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
-		logger: logger,
-		config: cfg,
+		logger:    logger,
+		config:    cfg,
+		templates: templates,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
@@ -36,7 +44,7 @@ func NewServer(logger *slog.Logger, cfg Config) *Server {
 		},
 	}
 	s.server.Handler = s.router()
-	return s
+	return s, nil
 }
 
 func (s *Server) Serve() error {

@@ -12,6 +12,6 @@ func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := s.writeJSON(w, http.StatusOK, data, nil)
 	if err != nil {
-		s.serverErrorResponse(w, r, err)
+		s.serverErrorJSON(w, r, err)
 	}
 }

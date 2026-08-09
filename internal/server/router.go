@@ -19,6 +19,7 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 
+	router.Post("/subscribe", s.subscribeFeedHandler)
 	router.Get("/feeds/{feedName}", s.feedHandler)
 	router.Get("/feeds", s.feedsHandler)
 	router.Get("/", s.homeHandler)

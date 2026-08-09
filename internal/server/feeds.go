@@ -28,3 +28,13 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 	}
 }
+
+func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
+	data := map[string]string{
+		"message": "Subscribed successfully",
+	}
+
+	if err := s.writeJSON(w, http.StatusOK, data, nil); err != nil {
+		s.serverErrorJSON(w, r, err)
+	}
+}

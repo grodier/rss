@@ -34,7 +34,7 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "Subscribed successfully",
 	}
 
-	if err := s.writeJSON(w, http.StatusOK, data, nil); err != nil {
+	if err := s.writeJSON(w, http.StatusCreated, data, nil); err != nil {
 		s.serverErrorJSON(w, r, err)
 	}
 }

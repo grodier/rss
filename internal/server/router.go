@@ -15,10 +15,12 @@ func (s *Server) router() http.Handler {
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
-	router.Get("/", s.homeHandler)
 	router.Handle("/static/*", http.FileServerFS(ui.Static))
 
 	router.Get("/healthcheck", s.healthcheckHandler)
+
+	router.Get("/feeds", s.feedsHandler)
+	router.Get("/", s.homeHandler)
 
 	return router
 }

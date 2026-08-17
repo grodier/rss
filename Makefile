@@ -11,7 +11,7 @@ confirm:
 
 .PHONY: run
 run:
-	go run ./cmd/www
+	go run ./cmd/www -db-dsn ${RSS_DB_DSN}
 
 .PHONY: build
 build:

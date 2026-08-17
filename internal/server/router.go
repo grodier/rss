@@ -15,6 +15,7 @@ func (s *Server) router() http.Handler {
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
+	//TODO: disable index routes
 	router.Handle("/static/*", http.FileServerFS(ui.Static))
 
 	router.Get("/healthcheck", s.healthcheckHandler)

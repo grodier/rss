@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/grodier/rss/internal/psql"
 )
 
 type Config struct {
@@ -18,14 +20,20 @@ type Config struct {
 	Env  string
 }
 
+type Services struct {
+	FeedService *psql.FeedRepository
+}
+
 type Server struct {
 	config    Config
 	server    *http.Server
 	logger    *slog.Logger
 	templates map[string]*template.Template
+
+	services Services
 }
 
-func NewServer(logger *slog.Logger, cfg Config) (*Server, error) {
+func NewServer(logger *slog.Logger, cfg Config, services Services) (*Server, error) {
 	templates, err := parseTemplates()
 	if err != nil {
 		return nil, err
@@ -35,6 +43,7 @@ func NewServer(logger *slog.Logger, cfg Config) (*Server, error) {
 		logger:    logger,
 		config:    cfg,
 		templates: templates,
+		services:  services,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

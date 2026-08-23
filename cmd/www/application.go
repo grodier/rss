@@ -33,10 +33,16 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 	}
 	defer db.Close()
 
-	srv, err := server.NewServer(app.logger, server.Config{
+	services := server.Services{
+		FeedService: psql.NewFeedRepository(db),
+	}
+
+	srvConfig := server.Config{
 		Port: app.config.server.port,
 		Env:  app.config.env,
-	})
+	}
+
+	srv, err := server.NewServer(app.logger, srvConfig, services)
 	if err != nil {
 		return err
 	}

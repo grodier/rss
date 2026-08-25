@@ -10,7 +10,17 @@ import (
 )
 
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
-	if err := s.renderHTML(w, http.StatusOK, "feeds.html", nil); err != nil {
+	feeds, err := s.services.FeedService.GetLatest()
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	data := struct {
+		Feeds []psql.Feed
+	}{Feeds: feeds}
+
+	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }

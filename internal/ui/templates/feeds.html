@@ -10,6 +10,16 @@
 
 <body>
   <h1>Feeds</h1>
+  <ul>
+    {{range .Feeds}}
+    <li>
+      <h2>{{.Title}}</h2>
+      <p>{{.Description}}</p>
+      <p><a href="{{.Url}}">Feed URL</a></p>
+      <p><a href="{{.SiteUrl}}">Site URL</a></p>
+    </li>
+    {{end}}
+  </ul>
   <script src="/static/js/main.js"></script>
 </body>
 

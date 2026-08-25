@@ -54,6 +54,33 @@ func (r *FeedRepository) GetByID(id string) (Feed, error) {
 	return feed, nil
 }
 
-func (r *FeedRepository) GetAll() ([]Feed, error) {
-	return nil, nil
+func (r *FeedRepository) GetLatest() ([]Feed, error) {
+	stmt := `SELECT id, url, site_url, title, description, created_at
+		FROM feeds
+		ORDER BY created_at DESC
+		LIMIT 10`
+
+	rows, err := r.DB.Query(stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feeds []Feed
+
+	for rows.Next() {
+		var feed Feed
+		err = rows.Scan(&feed.ID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		feeds = append(feeds, feed)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return feeds, nil
 }

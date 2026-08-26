@@ -11,6 +11,7 @@ func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
 
 	router.Use(s.recoverPanic)
+	router.Use(s.commonHeaders)
 
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)

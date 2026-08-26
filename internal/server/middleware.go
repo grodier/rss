@@ -29,3 +29,17 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+func (s *Server) logRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var (
+			ip     = r.RemoteAddr
+			proto  = r.Proto
+			method = r.Method
+			uri    = r.RequestURI
+		)
+
+		s.logger.Info("Request received", "ip", ip, "proto", proto, "method", method, "uri", uri)
+		next.ServeHTTP(w, r)
+	})
+}

@@ -63,11 +63,26 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	url := r.FormValue("url")
+
+	// feed := psql.Feed{
+	// 	Url:         "https://georgerodier.com/rss.xml",
+	// 	SiteUrl:     "https://georgerodier.com",
+	// 	Title:       "George Rodier",
+	// 	Description: "George Rodier's personal blog",
+	// }
+
 	feed := psql.Feed{
-		Url:         "https://georgerodier.com/rss.xml",
-		SiteUrl:     "https://georgerodier.com",
-		Title:       "George Rodier",
-		Description: "George Rodier's personal blog",
+		Url:         url,
+		SiteUrl:     "",
+		Title:       "",
+		Description: "",
 	}
 
 	id, err := s.services.FeedService.Create(feed)

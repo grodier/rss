@@ -28,6 +28,7 @@ func (s *Server) router() http.Handler {
 	router.Get("/discover", s.discoverHandler)
 	router.Get("/", s.homeHandler)
 
+	//needs to move to discover??
 	router.Post("/feeds", s.createFeedHandler)
 
 	return router

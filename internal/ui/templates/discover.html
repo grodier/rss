@@ -25,7 +25,10 @@
     <section>
       <form action="/feeds" method="post">
         <label for="url">Feed URL:</label>
-        <input type="text" id="url" name="url" required />
+        {{with .Form.FieldErrors.url}}
+        <span class="error">{{.}}</span>
+        {{end}}
+        <input type="text" id="url" name="url" value="{{.Form.Url}}" />
         <button type="submit">Add Feed</button>
       </form>
     </section>

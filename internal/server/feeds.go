@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/psql"
@@ -62,6 +63,12 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type feedCreateForm struct {
+	Url         string
+	FieldErrors map[string]string
+}
+
+// TODO: move to discover, let discover call happen with zero value data
 func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
@@ -69,7 +76,26 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := r.FormValue("url")
+	parsedForm := feedCreateForm{
+		Url:         r.FormValue("url"),
+		FieldErrors: map[string]string{},
+	}
+
+	if strings.TrimSpace(parsedForm.Url) == "" {
+		parsedForm.FieldErrors["url"] = "URL is required"
+	}
+
+	if len(parsedForm.FieldErrors) > 0 {
+		data := struct {
+			Form any
+		}{Form: parsedForm}
+
+		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		return
+	}
 
 	// feed := psql.Feed{
 	// 	Url:         "https://georgerodier.com/rss.xml",
@@ -79,7 +105,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	feed := psql.Feed{
-		Url:         url,
+		Url:         parsedForm.Url,
 		SiteUrl:     "",
 		Title:       "",
 		Description: "",

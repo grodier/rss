@@ -70,14 +70,8 @@ type feedCreateForm struct {
 
 // TODO: move to discover, let discover call happen with zero value data
 func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
-	}
-
 	var form feedCreateForm
-	err = s.formDecoder.Decode(&form, r.PostForm)
+	err := s.decodePostForm(r, &form)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return

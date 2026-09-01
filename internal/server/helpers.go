@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/go-playground/form"
 )
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data any, headers http.Header) error {
@@ -94,4 +96,22 @@ func (s *Server) logError(r *http.Request, err error) {
 	)
 
 	s.logger.Error(err.Error(), "method", method, "uri", uri)
+}
+
+func (s *Server) decodePostForm(r *http.Request, dst any) error {
+	err := r.ParseForm()
+	if err != nil {
+		return err
+	}
+
+	err = s.formDecoder.Decode(dst, r.PostForm)
+	if err != nil {
+		if _, ok := errors.AsType[*form.InvalidDecoderError](err); ok {
+			panic(err)
+		}
+
+		return err
+	}
+
+	return nil
 }

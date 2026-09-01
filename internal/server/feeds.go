@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/validator"
 )
 
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,8 +64,8 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type feedCreateForm struct {
-	Url         string
-	FieldErrors map[string]string
+	Url string
+	validator.Validator
 }
 
 // TODO: move to discover, let discover call happen with zero value data
@@ -77,15 +77,12 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parsedForm := feedCreateForm{
-		Url:         r.FormValue("url"),
-		FieldErrors: map[string]string{},
+		Url: r.FormValue("url"),
 	}
 
-	if strings.TrimSpace(parsedForm.Url) == "" {
-		parsedForm.FieldErrors["url"] = "URL is required"
-	}
+	parsedForm.CheckField(validator.NotBlank(parsedForm.Url), "url", "URL cannot be blank")
 
-	if len(parsedForm.FieldErrors) > 0 {
+	if !parsedForm.Valid() {
 		data := struct {
 			Form any
 		}{Form: parsedForm}

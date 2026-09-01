@@ -64,8 +64,8 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type feedCreateForm struct {
-	Url string
-	validator.Validator
+	Url                 string `form:"url"`
+	validator.Validator `form:"-"`
 }
 
 // TODO: move to discover, let discover call happen with zero value data
@@ -76,16 +76,19 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedForm := feedCreateForm{
-		Url: r.FormValue("url"),
+	var form feedCreateForm
+	err = s.formDecoder.Decode(&form, r.PostForm)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
 	}
 
-	parsedForm.CheckField(validator.NotBlank(parsedForm.Url), "url", "URL cannot be blank")
+	form.CheckField(validator.NotBlank(form.Url), "url", "URL cannot be blank")
 
-	if !parsedForm.Valid() {
+	if !form.Valid() {
 		data := struct {
 			Form any
-		}{Form: parsedForm}
+		}{Form: form}
 
 		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
 			s.serverErrorHTML(w, r, err)
@@ -102,7 +105,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	feed := psql.Feed{
-		Url:         parsedForm.Url,
+		Url:         form.Url,
 		SiteUrl:     "",
 		Title:       "",
 		Description: "",

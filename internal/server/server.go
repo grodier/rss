@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/psql"
 )
 
@@ -25,10 +26,11 @@ type Services struct {
 }
 
 type Server struct {
-	config    Config
-	server    *http.Server
-	logger    *slog.Logger
-	templates map[string]*template.Template
+	config      Config
+	server      *http.Server
+	logger      *slog.Logger
+	templates   map[string]*template.Template
+	formDecoder *form.Decoder
 
 	services Services
 }
@@ -40,10 +42,11 @@ func NewServer(logger *slog.Logger, cfg Config, services Services) (*Server, err
 	}
 
 	s := &Server{
-		logger:    logger,
-		config:    cfg,
-		templates: templates,
-		services:  services,
+		logger:      logger,
+		config:      cfg,
+		templates:   templates,
+		formDecoder: form.NewDecoder(),
+		services:    services,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

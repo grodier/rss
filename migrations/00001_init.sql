@@ -54,8 +54,17 @@ CREATE TABLE subscriptions (
     PRIMARY KEY (user_id, feed_id)
 );
 
+CREATE TABLE sessions (
+  token TEXT PRIMARY KEY,
+  data BYTEA NOT NULL,
+  expiry TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX sessions_expiry_idx ON sessions (expiry);
+
 -- +goose Down
-DROP TABLE users;
-DROP TABLE feeds;
-DROP TABLE articles;
 DROP TABLE subscriptions;
+DROP TABLE articles;
+DROP TABLE feeds;
+DROP TABLE users;
+DROP TABLE sessions;

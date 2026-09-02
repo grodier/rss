@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/psql"
 )
@@ -32,21 +33,23 @@ type Server struct {
 	templates   map[string]*template.Template
 	formDecoder *form.Decoder
 
-	services Services
+	sessionManager *scs.SessionManager
+	services       Services
 }
 
-func NewServer(logger *slog.Logger, cfg Config, services Services) (*Server, error) {
+func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
 	templates, err := parseTemplates()
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		logger:      logger,
-		config:      cfg,
-		templates:   templates,
-		formDecoder: form.NewDecoder(),
-		services:    services,
+		logger:         logger,
+		config:         cfg,
+		templates:      templates,
+		formDecoder:    form.NewDecoder(),
+		services:       services,
+		sessionManager: sessionManager,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

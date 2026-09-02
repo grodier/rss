@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-playground/form"
+	"github.com/go-playground/form/v4"
 )
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data any, headers http.Header) error {

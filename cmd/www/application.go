@@ -4,7 +4,10 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"time"
 
+	"github.com/alexedwards/scs/postgresstore"
+	"github.com/alexedwards/scs/v2"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/server"
 )
@@ -42,7 +45,12 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 		Env:  app.config.env,
 	}
 
-	srv, err := server.NewServer(app.logger, srvConfig, services)
+	// TODO: consider abstracting to manage chosen impl
+	sessionManager := scs.New()
+	sessionManager.Store = postgresstore.New(db)
+	sessionManager.Lifetime = 12 * time.Hour
+
+	srv, err := server.NewServer(app.logger, srvConfig, services, sessionManager)
 	if err != nil {
 		return err
 	}

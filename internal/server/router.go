@@ -22,14 +22,18 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 
-	router.Post("/subscribe", s.subscribeFeedHandler)
-	router.Get("/feeds/{id}", s.feedHandler)
-	router.Get("/feeds", s.feedsHandler)
-	router.Get("/discover", s.discoverHandler)
-	router.Get("/", s.homeHandler)
+	router.Group(func(r chi.Router) {
+		r.Use(s.sessionManager.LoadAndSave)
 
-	//needs to move to discover??
-	router.Post("/feeds", s.createFeedHandler)
+		r.Post("/subscribe", s.subscribeFeedHandler)
+		r.Get("/feeds/{id}", s.feedHandler)
+		r.Get("/feeds", s.feedsHandler)
+		r.Get("/discover", s.discoverHandler)
+		r.Get("/", s.homeHandler)
+
+		//needs to move to discover??
+		r.Post("/feeds", s.createFeedHandler)
+	})
 
 	return router
 }

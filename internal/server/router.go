@@ -25,6 +25,12 @@ func (s *Server) router() http.Handler {
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
 
+		r.Get("/signup", s.signupHandler)
+		r.Post("/signup", s.signupFormHandler)
+		r.Get("/login", s.loginHandler)
+		r.Post("/login", s.loginFormHandler)
+		r.Get("/logout", s.logoutHandler)
+
 		r.Post("/subscribe", s.subscribeFeedHandler)
 		r.Get("/feeds/{id}", s.feedHandler)
 		r.Get("/feeds", s.feedsHandler)

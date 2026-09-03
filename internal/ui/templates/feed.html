@@ -10,6 +10,9 @@
 
 <body>
   <main>
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
     <h1>Feed {{.Name}}</h1>
 
     <section>

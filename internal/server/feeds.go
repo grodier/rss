@@ -44,9 +44,15 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	flash := s.sessionManager.PopString(r.Context(), "flash")
+
 	data := struct {
-		Name string
-	}{Name: feed.Title}
+		Name  string
+		Flash string
+	}{
+		Name:  feed.Title,
+		Flash: flash,
+	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -110,6 +116,8 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+
+	s.sessionManager.Put(r.Context(), "flash", "Feed created successfully!")
 
 	http.Redirect(w, r, fmt.Sprintf("/feeds/%s", id), http.StatusSeeOther)
 }

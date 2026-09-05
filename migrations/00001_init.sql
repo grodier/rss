@@ -1,4 +1,6 @@
 -- +goose Up
+CREATE EXTENSION IF NOT EXISTS citext;
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -68,3 +70,5 @@ DROP TABLE articles;
 DROP TABLE feeds;
 DROP TABLE users;
 DROP TABLE sessions;
+
+DROP EXTENSION IF EXISTS citext;

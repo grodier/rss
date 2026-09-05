@@ -6,7 +6,9 @@ import (
 )
 
 func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Display a form for signing up a new user...")
+	if err := s.renderHTML(w, http.StatusOK, "signup.html", nil); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {

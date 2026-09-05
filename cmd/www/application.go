@@ -38,6 +38,7 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 
 	services := server.Services{
 		FeedService: psql.NewFeedRepository(db),
+		UserService: psql.NewUserRepository(db),
 	}
 
 	srvConfig := server.Config{

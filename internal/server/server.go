@@ -24,6 +24,7 @@ type Config struct {
 
 type Services struct {
 	FeedService *psql.FeedRepository
+	UserService *psql.UserRepository
 }
 
 type Server struct {

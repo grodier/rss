@@ -2,9 +2,9 @@
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    hashed_password TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    email citext NOT NULL UNIQUE,
+    hashed_password bytea NOT NULL,
+    created_at timestamp(0) with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE feeds (

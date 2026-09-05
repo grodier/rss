@@ -1,9 +1,12 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -47,7 +50,26 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintln(w, "Create a new user account...")
+	id, createdAt, err := s.services.UserService.Create(form.Name, form.Email, form.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, psql.ErrDuplicateEmail):
+			form.AddFieldError("email", "Email is already in use")
+			data := struct {
+				Form any
+			}{Form: form}
+			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "signup.html", data); err != nil {
+				s.serverErrorHTML(w, r, err)
+			}
+		default:
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	s.sessionManager.Put(r.Context(), "flash", fmt.Sprintf("User account %s created successfully at %s", id, createdAt.Format(time.RFC1123)))
+
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {

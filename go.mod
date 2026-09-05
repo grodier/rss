@@ -9,3 +9,5 @@ require (
 	github.com/go-playground/form/v4 v4.3.0
 	github.com/lib/pq v1.12.3
 )
+
+require golang.org/x/crypto v0.56.0

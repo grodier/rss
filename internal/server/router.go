@@ -25,20 +25,25 @@ func (s *Server) router() http.Handler {
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
 
-		r.Get("/signup", s.signupHandler)
-		r.Post("/signup", s.signupFormHandler)
-		r.Get("/login", s.loginHandler)
-		r.Post("/login", s.loginFormHandler)
-		r.Get("/logout", s.logoutHandler)
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuthentication)
+			r.Post("/subscribe", s.subscribeFeedHandler)
+			r.Get("/feeds/{id}", s.feedHandler)
+			r.Get("/feeds", s.feedsHandler)
+			r.Get("/discover", s.discoverHandler)
+			//needs to move to discover??
+			r.Post("/feeds", s.createFeedHandler)
+		})
 
-		r.Post("/subscribe", s.subscribeFeedHandler)
-		r.Get("/feeds/{id}", s.feedHandler)
-		r.Get("/feeds", s.feedsHandler)
-		r.Get("/discover", s.discoverHandler)
-		r.Get("/", s.homeHandler)
+		r.Group(func(r chi.Router) {
+			r.Get("/signup", s.signupHandler)
+			r.Post("/signup", s.signupFormHandler)
+			r.Get("/login", s.loginHandler)
+			r.Post("/login", s.loginFormHandler)
+			r.Get("/logout", s.logoutHandler)
 
-		//needs to move to discover??
-		r.Post("/feeds", s.createFeedHandler)
+			r.Get("/", s.homeHandler)
+		})
 	})
 
 	return router

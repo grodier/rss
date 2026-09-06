@@ -50,7 +50,32 @@ func (r *UserRepository) Create(name, email, password string) (string, time.Time
 }
 
 func (r *UserRepository) Authenticate(email, password string) (string, error) {
-	return "", nil
+	var id string
+	var hashedPassword []byte
+
+	stmt := `SELECT id, hashed_password FROM users WHERE email = $1`
+
+	err := r.DB.QueryRow(stmt, email).Scan(&id, &hashedPassword)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return "", ErrInvalidCredentials
+		default:
+			return "", err
+		}
+	}
+
+	err = bcrypt.CompareHashAndPassword(hashedPassword, []byte(password))
+	if err != nil {
+		switch {
+		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+			return "", ErrInvalidCredentials
+		default:
+			return "", err
+		}
+	}
+
+	return id, nil
 }
 
 func (r *UserRepository) Exists(email string) (bool, error) {

@@ -45,7 +45,6 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 
 		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "signup.html", data); err != nil {
 			s.serverErrorHTML(w, r, err)
-			return
 		}
 		return
 	}
@@ -78,8 +77,63 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type loginForm struct {
+	Email               string `form:"email"`
+	Password            string `form:"password"`
+	validator.Validator `form:"-"`
+}
+
 func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Authenticate and login the user...")
+	var form loginForm
+	err := s.decodePostForm(r, &form)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
+	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
+	form.CheckField(validator.NotBlank(form.Password), "password", "Password is required")
+	form.CheckField(validator.MaxBytes(form.Password, 72), "password", "Password must not be more than 72 bytes long")
+
+	if !form.Valid() {
+		data := struct {
+			Form any
+		}{Form: form}
+
+		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	id, err := s.services.UserService.Authenticate(form.Email, form.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, psql.ErrInvalidCredentials):
+			form.AddNonFieldError("Email or password is incorrect")
+			data := struct {
+				Form any
+			}{Form: form}
+
+			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
+				s.serverErrorHTML(w, r, err)
+			}
+		default:
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	err = s.sessionManager.RenewToken(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	s.sessionManager.Put(r.Context(), "authenticatedUserID", id)
+
+	http.Redirect(w, r, "/feeds", http.StatusSeeOther)
 }
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {

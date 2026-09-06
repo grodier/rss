@@ -72,7 +72,16 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
-	if err := s.renderHTML(w, http.StatusOK, "login.html", nil); err != nil {
+	flash := s.sessionManager.PopString(r.Context(), "flash")
+	data := struct {
+		Form  any
+		Flash string
+	}{
+		Flash: flash,
+		Form:  loginForm{},
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "login.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
@@ -98,7 +107,8 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !form.Valid() {
 		data := struct {
-			Form any
+			Flash string
+			Form  any
 		}{Form: form}
 
 		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
@@ -113,7 +123,8 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, psql.ErrInvalidCredentials):
 			form.AddNonFieldError("Email or password is incorrect")
 			data := struct {
-				Form any
+				Flash string
+				Form  any
 			}{Form: form}
 
 			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
@@ -137,5 +148,14 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Logout the user...")
+	err := s.sessionManager.RenewToken(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	s.sessionManager.Remove(r.Context(), "authenticatedUserID")
+	s.sessionManager.Put(r.Context(), "flash", "You've been logged out successfully!")
+
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

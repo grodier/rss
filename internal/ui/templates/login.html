@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>rss - signup</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+
+<body>
+  <main>
+    <h1>Login</h1>
+
+    <section>
+      <nav>
+        <div>
+          <a href="/">Home</a>
+          <a href="/feeds">Feeds</a>
+          <a href="/discover">Discover</a>
+        </div>
+        <div>
+          <a href="/signup">Sign Up</a>
+          <a href="/login">Login</a>
+          <form action="/logout" method="get">
+            <button type="submit">Logout</button>
+          </form>
+        </div>
+      </nav>
+    </section>
+
+    <section>
+      <form action="/login" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error">{{.}}</div>
+        {{end}}
+        <div>
+          <label for="email">Email:</label>
+          {{with .Form.FieldErrors.email}}
+          <span class="error">{{.}}</span>
+          {{end}}
+          <input type="email" id="email" name="email" value="{{.Form.Email}}" />
+        </div>
+        <div>
+          <label for="password">Password:</label>
+          {{with .Form.FieldErrors.password}}
+          <span class="error">{{.}}</span>
+          {{end}}
+          <input type="password" id="password" name="password" value="{{.Form.Password}}" />
+        </div>
+        <div>
+          <button type="submit">Login</button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <script src="/static/js/main.js"></script>
+</body>
+
+</html>

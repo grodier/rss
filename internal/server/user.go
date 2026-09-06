@@ -73,7 +73,9 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Display a form for logging in a user...")
+	if err := s.renderHTML(w, http.StatusOK, "login.html", nil); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {

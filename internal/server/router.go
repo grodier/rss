@@ -24,6 +24,7 @@ func (s *Server) router() http.Handler {
 
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
+		r.Use(s.authenticate)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuthentication)

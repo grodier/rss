@@ -117,6 +117,10 @@ func (s *Server) decodePostForm(r *http.Request, dst any) error {
 }
 
 func (s *Server) isAuthenticated(r *http.Request) bool {
-	// TODO: can we pull that var into a constant?
-	return s.sessionManager.Exists(r.Context(), "authenticatedUserID")
+	isAuthenticated, ok := r.Context().Value(isAuthenticatedContextKey).(bool)
+	if !ok {
+		return false
+	}
+
+	return isAuthenticated
 }

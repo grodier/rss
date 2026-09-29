@@ -5,7 +5,8 @@ Work that has been identified but does **not** yet have a GitHub issue. Items ma
 first and split them into issues. When an item gets an issue, replace it here with a link
 or delete it.
 
-Already tracked as issues: #1–#13 (bug fixes, security hardening, README).
+Already tracked as issues: #1–#13 (bug fixes, security hardening, README), #15 (test
+helpers), #16 (CI workflow), #17 (`CLAUDE.md`).
 
 ## Feed ingestion (needs planning)
 
@@ -47,25 +48,16 @@ The core missing feature: feeds are stored by URL only and never fetched.
 
 - [ ] Rate-limit login and signup.
 
-## Testing and tooling
-
-- [ ] **CI.** GitHub Actions workflow running `go vet`, `go test` and `staticcheck`, with a
-  Postgres service so database tests run in CI. Add "require status checks" to the `main`
-  ruleset once it exists.
-- [ ] **Shared database test helper** and a documented way to run migrations before tests
-  (#7 and #8 will each start one; consolidate).
-- [ ] **`CLAUDE.md`** with project conventions and commands so agent sessions behave
-  consistently: never push to `main`, one branch per issue named `fix/<slug>`, run
-  `go vet ./... && go test ./...` before pushing, PR body includes `Closes #N`.
-
 ## Repository and workflow setup (manual, on GitHub)
 
 - [ ] Add a ruleset on `main`: require a pull request before merging, block force pushes
   and branch deletion, empty bypass list, 0 required approvals (sole maintainer).
+- [ ] After #16 merges, add `test` as a required status check in that ruleset.
 
 ## Suggested order
 
-1. **Foundation, merged first:** `CLAUDE.md`, shared test helper, CI, and README (#3).
+1. **Foundation, merged first:** #15 (test helpers) and #16 (CI) in parallel, then #17
+   (`CLAUDE.md`) and #3 (README).
 2. **Wave 1 (parallel, mostly separate files):** #1, #2, #6, #9, #12.
 3. **Wave 2 (in order, shared files):** #4 then #5; #10 then #13; #7 then #8; #11.
 4. **Then plan** feed ingestion and subscriptions in their own sessions, and turn them

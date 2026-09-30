@@ -17,9 +17,15 @@ run:
 build:
 	go build -o bin/www ./cmd/www
 
+## test: run tests (database tests are skipped unless RSS_TEST_DB_DSN is set)
 .PHONY: test
 test:
 	go test ./...
+
+## test/db: run all tests, including database tests, against the local database
+.PHONY: test/db
+test/db: db/check
+	RSS_TEST_DB_DSN=${RSS_DB_DSN} go test -count=1 ./...
 
 .PHONY: clean
 clean:

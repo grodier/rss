@@ -13,6 +13,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/psql/psqltest"
 )
 
 func TestSignupFormHandlerPasswordTooManyBytes(t *testing.T) {
@@ -39,7 +40,7 @@ func TestSignupFormHandlerPasswordTooManyBytes(t *testing.T) {
 }
 
 func TestSignupFormHandlerSuccessFlash(t *testing.T) {
-	db := newTestDB(t)
+	db := psqltest.NewDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s, err := NewServer(logger, Config{Port: 4000, Env: "development"},
 		Services{UserService: psql.NewUserRepository(db)}, scs.New())

@@ -74,3 +74,38 @@ func TestTemplatesLogoutFormUsesPost(t *testing.T) {
 		}
 	}
 }
+
+func TestCrossOriginProtection(t *testing.T) {
+	h := newTestServer(t).router()
+
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		headers map[string]string
+		want    int // 0 means "anything but 403"
+	}{
+		{"cross-site POST", http.MethodPost, "/login", map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
+		{"cross-origin via Origin", http.MethodPost, "/login", map[string]string{"Origin": "https://evil.example"}, http.StatusForbidden},
+		{"same-origin POST", http.MethodPost, "/login", map[string]string{"Sec-Fetch-Site": "same-origin"}, http.StatusUnprocessableEntity},
+		{"non-browser POST", http.MethodPost, "/login", nil, http.StatusUnprocessableEntity},
+		{"cross-site GET", http.MethodGet, "/login", map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "http://example.com"+tt.path, nil)
+			if tt.method == http.MethodPost {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			if rr.Code != tt.want {
+				t.Errorf("status = %d, want %d", rr.Code, tt.want)
+			}
+		})
+	}
+}

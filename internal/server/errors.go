@@ -29,6 +29,10 @@ func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {
 	s.errorResponse(w, r, http.StatusNotFound, "NOT_FOUND", "the requested resource could not be found", nil)
 }
 
+func (s *Server) forbiddenResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorResponse(w, r, http.StatusForbidden, "FORBIDDEN", "cross-origin request rejected", nil)
+}
+
 func (s *Server) methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
 	s.errorResponse(w, r, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "the request method is not supported for this resource", nil)
 }

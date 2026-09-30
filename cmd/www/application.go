@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/alexedwards/scs/postgresstore"
@@ -51,6 +52,8 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 	sessionManager := scs.New()
 	sessionManager.Store = postgresstore.New(db)
 	sessionManager.Lifetime = 12 * time.Hour
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = app.config.env == "production"
 
 	srv, err := server.NewServer(app.logger, srvConfig, services, sessionManager)
 	if err != nil {

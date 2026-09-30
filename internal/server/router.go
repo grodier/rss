@@ -12,6 +12,12 @@ func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
 
 	router.Use(s.recoverPanic)
+
+	// Rejects cross-origin, non-safe browser requests using Sec-Fetch-Site/Origin.
+	cop := http.NewCrossOriginProtection()
+	cop.SetDenyHandler(http.HandlerFunc(s.forbiddenResponse))
+	router.Use(cop.Handler)
+
 	router.Use(s.logRequest)
 	router.Use(s.commonHeaders)
 

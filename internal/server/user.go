@@ -36,7 +36,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
 	form.CheckField(validator.NotBlank(form.Password), "password", "Password is required")
 	form.CheckField(validator.MinChars(form.Password, 8), "password", "Password must be at least 8 characters long")
-	form.CheckField(validator.MaxChars(form.Password, 72), "password", "Password must not be more than 72 characters long")
+	form.CheckField(validator.MaxBytes(form.Password, 72), "password", "Password must not be more than 72 bytes long")
 
 	if !form.Valid() {
 		data := struct {

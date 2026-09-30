@@ -1,10 +1,13 @@
 package server
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/grodier/rss/internal/ui"
 )
 
 func TestStaticRoutes(t *testing.T) {
@@ -34,5 +37,40 @@ func TestStaticRoutes(t *testing.T) {
 				t.Errorf("Content-Type = %q, want it to contain %q", ct, tt.wantContent)
 			}
 		})
+	}
+}
+
+func TestLogoutRequiresPost(t *testing.T) {
+	h := newTestServer(t).router()
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/logout", nil))
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET /logout status = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/logout", nil))
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("POST /logout status = %d, want %d", rr.Code, http.StatusSeeOther)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/login" {
+		t.Errorf("POST /logout Location = %q, want /login", loc)
+	}
+}
+
+func TestTemplatesLogoutFormUsesPost(t *testing.T) {
+	files, err := fs.Glob(ui.Templates, "templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := fs.ReadFile(ui.Templates, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `action="/logout" method="get"`) {
+			t.Errorf("%s: logout form must use method=\"post\"", f)
+		}
 	}
 }

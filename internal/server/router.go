@@ -49,7 +49,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/signup", s.signupFormHandler)
 			r.Get("/login", s.loginHandler)
 			r.Post("/login", s.loginFormHandler)
-			r.Get("/logout", s.logoutHandler)
+			r.Post("/logout", s.logoutHandler)
 
 			r.Get("/", s.homeHandler)
 		})

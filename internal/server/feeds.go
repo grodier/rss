@@ -112,6 +112,16 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, err := s.services.FeedService.Create(feed)
 	if err != nil {
+		if errors.Is(err, psql.ErrDuplicateFeed) {
+			form.AddFieldError("url", "This feed has already been added")
+			data := struct {
+				Form any
+			}{Form: form}
+			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
+				s.serverErrorHTML(w, r, err)
+			}
+			return
+		}
 		s.serverErrorHTML(w, r, err)
 		return
 	}

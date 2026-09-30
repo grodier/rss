@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type Feed struct {
@@ -31,6 +33,10 @@ func (r *FeedRepository) Create(feed Feed) (string, error) {
 
 	var id string
 	if err := r.DB.QueryRow(stmt, feed.Url, feed.SiteUrl, feed.Title, feed.Description).Scan(&id); err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return "", ErrDuplicateFeed
+		}
 		return "", err
 	}
 

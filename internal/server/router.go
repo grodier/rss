@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ui"
@@ -17,8 +18,15 @@ func (s *Server) router() http.Handler {
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
-	//TODO: disable index routes
-	router.Handle("/static/*", http.FileServerFS(ui.Static))
+	// Directory requests would otherwise get an auto-generated file listing.
+	fileServer := http.FileServerFS(ui.Static)
+	router.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			s.notFoundResponse(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 

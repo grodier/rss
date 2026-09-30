@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -32,7 +33,7 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 
 	db, err := psql.OpenDB(app.config.db.dsn, app.config.db.maxOpenConns, app.config.db.maxIdleConns, app.config.db.maxIdleTime)
 	if err != nil {
-		return nil
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 

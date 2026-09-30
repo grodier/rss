@@ -2,9 +2,7 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/validator"
@@ -49,7 +47,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, createdAt, err := s.services.UserService.Create(form.Name, form.Email, form.Password)
+	_, _, err = s.services.UserService.Create(form.Name, form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, psql.ErrDuplicateEmail):
@@ -66,7 +64,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.sessionManager.Put(r.Context(), "flash", fmt.Sprintf("User account %s created successfully at %s", id, createdAt.Format(time.RFC1123)))
+	s.sessionManager.Put(r.Context(), "flash", "Your signup was successful. Please log in.")
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

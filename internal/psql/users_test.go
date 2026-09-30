@@ -6,10 +6,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/grodier/rss/internal/psql/psqltest"
 )
 
 func TestUserRepository(t *testing.T) {
-	db := newTestDB(t)
+	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)
 
 	email := fmt.Sprintf("test-%d@example.com", time.Now().UnixNano())

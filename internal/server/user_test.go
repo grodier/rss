@@ -1,11 +1,18 @@
 package server
 
 import (
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alexedwards/scs/v2"
+	"github.com/grodier/rss/internal/psql"
 )
 
 func TestSignupFormHandlerPasswordTooManyBytes(t *testing.T) {
@@ -28,5 +35,57 @@ func TestSignupFormHandlerPasswordTooManyBytes(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Password is too long") {
 		t.Errorf("body does not contain %q", "Password is too long")
+	}
+}
+
+func TestSignupFormHandlerSuccessFlash(t *testing.T) {
+	db := newTestDB(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s, err := NewServer(logger, Config{Port: 4000, Env: "development"},
+		Services{UserService: psql.NewUserRepository(db)}, scs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	email := fmt.Sprintf("signup-%d@example.com", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+			t.Errorf("cleanup user: %v", err)
+		}
+	})
+
+	var flash string
+	h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.signupFormHandler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	}))
+
+	form := url.Values{
+		"name":     {"Test User"},
+		"email":    {email},
+		"password": {"correct-horse-battery"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/signup", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/login" {
+		t.Errorf("Location = %q, want /login", loc)
+	}
+	const want = "Your signup was successful. Please log in."
+	if flash != want {
+		t.Errorf("flash = %q, want %q", flash, want)
+	}
+
+	var id string
+	if err := db.QueryRow(`SELECT id FROM users WHERE email = $1`, email).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(flash, id) {
+		t.Errorf("flash %q contains user ID %s", flash, id)
 	}
 }

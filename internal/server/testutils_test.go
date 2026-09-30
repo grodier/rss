@@ -1,11 +1,15 @@
 package server
 
 import (
+	"database/sql"
 	"io"
 	"log/slog"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/grodier/rss/internal/psql"
 )
 
 // newTestServer returns a Server wired with no database. Services{} holds nil
@@ -19,4 +23,23 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// newTestDB connects to the database named by RSS_TEST_DB_DSN, which must
+// already be migrated. Without it the test is skipped locally, but fails in CI.
+func newTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	dsn := os.Getenv("RSS_TEST_DB_DSN")
+	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("RSS_TEST_DB_DSN must be set in CI")
+		}
+		t.Skip("RSS_TEST_DB_DSN not set; skipping database test")
+	}
+	db, err := psql.OpenDB(dsn, 5, 5, time.Minute)
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
 }

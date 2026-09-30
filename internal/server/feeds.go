@@ -28,9 +28,8 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	feedID := chi.URLParam(r, "id")
-	if feedID == "" {
-		// TODO: Fix this
-		s.badRequestResponse(w, r, &MalformedRequest{Msg: "id is required"})
+	if !validator.Matches(feedID, validator.UUIDRX) {
+		http.NotFound(w, r)
 		return
 	}
 

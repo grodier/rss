@@ -45,7 +45,3 @@ func (s *Server) serverErrorHTML(w http.ResponseWriter, r *http.Request, err err
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }
-
-func (s *Server) badRequestResponse(w http.ResponseWriter, r *http.Request, err *MalformedRequest) {
-	s.errorResponse(w, r, http.StatusBadRequest, "BAD_REQUEST", err.Msg, nil)
-}

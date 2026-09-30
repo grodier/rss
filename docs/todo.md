@@ -41,8 +41,8 @@ The core missing feature: feeds are stored by URL only and never fetched.
   every page.
 - [ ] Return HTML instead of JSON for 404 and 405 responses (deliberately left out of #9).
 - [ ] Clean-up: the commented-out feed in `createFeedHandler`, the placeholder
-  `internal/ui/static/js/main.js`, the unused `readJSON` helper, the unused `ctx`
-  parameter in `Application.Run`, and leftover TODO comments.
+  `internal/ui/static/js/main.js`, the unused `ctx` parameter in `Application.Run`, and
+  leftover TODO comments.
 
 ## Security
 

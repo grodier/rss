@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# PRs: a new push to the same PR cancels the older run. Pushes to main: every
+# commit gets its own group (run_id is unique), so no main run is ever cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test # this is the required-status-check name; don't rename casually
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17 # matches compose.yml
+        env:
+          POSTGRES_USER: rssapp
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: rssapp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rssapp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RSS_TEST_DB_DSN: postgres://rssapp:ci-password@localhost:5432/rssapp_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod # single source of truth for the Go version; caches modules by default
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go mod tidy
+        run: go mod tidy -diff
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: go tool staticcheck ./...
+
+      - name: migrate
+        run: go run github.com/pressly/goose/v3/cmd/goose@v3.28.0 -dir ./migrations postgres "$RSS_TEST_DB_DSN" up
+
+      - name: test
+        run: go test -race -count=1 ./...

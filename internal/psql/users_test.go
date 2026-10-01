@@ -44,6 +44,17 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("Stored hash is Argon2id", func(t *testing.T) {
+		var stored []byte
+		err := db.QueryRow(`SELECT hashed_password FROM users WHERE id = $1`, id).Scan(&stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(string(stored), "$argon2id$") {
+			t.Errorf("stored hash = %q; want $argon2id$ prefix", stored)
+		}
+	})
+
 	t.Run("Authenticate with correct password", func(t *testing.T) {
 		got, err := repo.Authenticate(email, password)
 		if err != nil {

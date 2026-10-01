@@ -16,20 +16,40 @@ import (
 	"github.com/grodier/rss/internal/psql/psqltest"
 )
 
-func TestSignupFormHandlerPasswordTooManyBytes(t *testing.T) {
+func TestSignupFormHandlerPasswordTooLong(t *testing.T) {
 	s := newTestServer(t)
 
-	// 30 characters but 120 bytes: over bcrypt's 72-byte limit.
 	form := url.Values{
 		"name":     {"a"},
 		"email":    {"a@b.co"},
-		"password": {strings.Repeat("😀", 30)},
+		"password": {strings.Repeat("a", 257)},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/signup", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
 	s.signupFormHandler(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+	if !strings.Contains(rr.Body.String(), "256 characters") {
+		t.Errorf("body does not contain %q", "256 characters")
+	}
+}
+
+func TestLoginFormHandlerPasswordTooLong(t *testing.T) {
+	s := newTestServer(t)
+
+	form := url.Values{
+		"email":    {"a@b.co"},
+		"password": {strings.Repeat("a", 257)},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	s.loginFormHandler(rr, req)
 
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)

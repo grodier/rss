@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/grodier/rss/internal/password"
 	"github.com/lib/pq"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
@@ -25,8 +25,8 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
 
-func (r *UserRepository) Create(name, email, password string) (string, time.Time, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+func (r *UserRepository) Create(name, email, pw string) (string, time.Time, error) {
+	hashedPassword, err := password.Hash(pw)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -37,7 +37,7 @@ func (r *UserRepository) Create(name, email, password string) (string, time.Time
 
 	var id string
 	var createdAt time.Time
-	err = r.DB.QueryRow(stmt, name, email, hashedPassword).Scan(&id, &createdAt)
+	err = r.DB.QueryRow(stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -49,7 +49,7 @@ func (r *UserRepository) Create(name, email, password string) (string, time.Time
 	return id, createdAt, nil
 }
 
-func (r *UserRepository) Authenticate(email, password string) (string, error) {
+func (r *UserRepository) Authenticate(email, pw string) (string, error) {
 	var id string
 	var hashedPassword []byte
 
@@ -65,14 +65,12 @@ func (r *UserRepository) Authenticate(email, password string) (string, error) {
 		}
 	}
 
-	err = bcrypt.CompareHashAndPassword(hashedPassword, []byte(password))
+	match, err := password.Verify(pw, string(hashedPassword))
 	if err != nil {
-		switch {
-		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
-			return "", ErrInvalidCredentials
-		default:
-			return "", err
-		}
+		return "", err
+	}
+	if !match {
+		return "", ErrInvalidCredentials
 	}
 
 	return id, nil

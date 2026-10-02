@@ -13,10 +13,10 @@ CREATE TABLE feeds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     url TEXT NOT NULL UNIQUE,
-    site_url TEXT,
+    site_url TEXT NOT NULL DEFAULT '',
 
     title TEXT NOT NULL,
-    description TEXT,
+    description TEXT NOT NULL DEFAULT '',
 
     last_fetched_at TIMESTAMPTZ,
 

@@ -27,6 +27,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `cmd/www`: config flags and wiring
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/psql`: repositories and sentinel errors
+- `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
 - `migrations`: goose SQL migrations

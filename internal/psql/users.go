@@ -3,6 +3,7 @@ package psql
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/grodier/rss/internal/password"
@@ -67,7 +68,7 @@ func (r *UserRepository) Authenticate(email, pw string) (string, error) {
 
 	match, err := password.Verify(pw, string(hashedPassword))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("verify password for user %s: %w", id, err)
 	}
 	if !match {
 		return "", ErrInvalidCredentials

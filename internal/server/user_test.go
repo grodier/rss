@@ -86,7 +86,7 @@ func TestSignupFormHandlerSuccessFlash(t *testing.T) {
 		"email":    {email},
 		"password": {"correct-horse-battery"},
 	}
-	req := httptest.NewRequest(http.MethodPost, "/signup", strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signup", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

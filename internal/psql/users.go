@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -26,7 +27,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
 
-func (r *UserRepository) Create(name, email, pw string) (string, time.Time, error) {
+func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (string, time.Time, error) {
 	hashedPassword, err := password.Hash(pw)
 	if err != nil {
 		return "", time.Time{}, err
@@ -38,7 +39,7 @@ func (r *UserRepository) Create(name, email, pw string) (string, time.Time, erro
 
 	var id string
 	var createdAt time.Time
-	err = r.DB.QueryRow(stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
+	err = r.DB.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -50,13 +51,13 @@ func (r *UserRepository) Create(name, email, pw string) (string, time.Time, erro
 	return id, createdAt, nil
 }
 
-func (r *UserRepository) Authenticate(email, pw string) (string, error) {
+func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (string, error) {
 	var id string
 	var hashedPassword []byte
 
 	stmt := `SELECT id, hashed_password FROM users WHERE email = $1`
 
-	err := r.DB.QueryRow(stmt, email).Scan(&id, &hashedPassword)
+	err := r.DB.QueryRowContext(ctx, stmt, email).Scan(&id, &hashedPassword)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -77,11 +78,11 @@ func (r *UserRepository) Authenticate(email, pw string) (string, error) {
 	return id, nil
 }
 
-func (r *UserRepository) Exists(id string) (bool, error) {
+func (r *UserRepository) Exists(ctx context.Context, id string) (bool, error) {
 	stmt := `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`
 
 	var exists bool
-	err := r.DB.QueryRow(stmt, id).Scan(&exists)
+	err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&exists)
 
 	return exists, err
 }

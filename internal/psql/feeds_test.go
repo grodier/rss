@@ -21,11 +21,11 @@ func TestFeedRepositoryCreateDuplicate(t *testing.T) {
 		}
 	})
 
-	if _, err := repo.Create(Feed{Url: url}); err != nil {
+	if _, err := repo.Create(t.Context(), Feed{Url: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := repo.Create(Feed{Url: url})
+	_, err := repo.Create(t.Context(), Feed{Url: url})
 	if !errors.Is(err, ErrDuplicateFeed) {
 		t.Fatalf("got %v, want ErrDuplicateFeed", err)
 	}
@@ -48,7 +48,7 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 		t.Fatalf("insert feed: %v", err)
 	}
 
-	feed, err := repo.GetByID(id)
+	feed, err := repo.GetByID(t.Context(), id)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 		t.Errorf("got site_url %q, description %q; want empty strings", feed.SiteUrl, feed.Description)
 	}
 
-	if _, err := repo.GetLatest(); err != nil {
+	if _, err := repo.GetLatest(t.Context()); err != nil {
 		t.Fatalf("GetLatest: %v", err)
 	}
 }

@@ -23,7 +23,7 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
-	id, createdAt, err := repo.Create("Test User", email, password)
+	id, createdAt, err := repo.Create(t.Context(), "Test User", email, password)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestUserRepository(t *testing.T) {
 	})
 
 	t.Run("Create with duplicate email in different case", func(t *testing.T) {
-		_, _, err := repo.Create("Other User", strings.ToUpper(email), password)
+		_, _, err := repo.Create(t.Context(), "Other User", strings.ToUpper(email), password)
 		if !errors.Is(err, ErrDuplicateEmail) {
 			t.Errorf("err = %v; want %v", err, ErrDuplicateEmail)
 		}
@@ -56,7 +56,7 @@ func TestUserRepository(t *testing.T) {
 	})
 
 	t.Run("Authenticate with correct password", func(t *testing.T) {
-		got, err := repo.Authenticate(email, password)
+		got, err := repo.Authenticate(t.Context(), email, password)
 		if err != nil {
 			t.Fatalf("Authenticate: %v", err)
 		}
@@ -66,21 +66,21 @@ func TestUserRepository(t *testing.T) {
 	})
 
 	t.Run("Authenticate with wrong password", func(t *testing.T) {
-		_, err := repo.Authenticate(email, "wrong-password")
+		_, err := repo.Authenticate(t.Context(), email, "wrong-password")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("err = %v; want %v", err, ErrInvalidCredentials)
 		}
 	})
 
 	t.Run("Authenticate with unknown email", func(t *testing.T) {
-		_, err := repo.Authenticate("unknown-"+email, password)
+		_, err := repo.Authenticate(t.Context(), "unknown-"+email, password)
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("err = %v; want %v", err, ErrInvalidCredentials)
 		}
 	})
 
 	t.Run("Exists", func(t *testing.T) {
-		exists, err := repo.Exists(id)
+		exists, err := repo.Exists(t.Context(), id)
 		if err != nil {
 			t.Fatalf("Exists: %v", err)
 		}

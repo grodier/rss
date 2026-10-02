@@ -47,7 +47,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, err = s.services.UserService.Create(form.Name, form.Email, form.Password)
+	_, _, err = s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, psql.ErrDuplicateEmail):
@@ -115,7 +115,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.services.UserService.Authenticate(form.Email, form.Password)
+	id, err := s.services.UserService.Authenticate(r.Context(), form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, psql.ErrInvalidCredentials):

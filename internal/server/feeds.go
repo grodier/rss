@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
-	feeds, err := s.services.FeedService.GetLatest()
+	feeds, err := s.services.FeedService.GetLatest(r.Context())
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
@@ -33,7 +33,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	feed, err := s.services.FeedService.GetByID(feedID)
+	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
 	if err != nil {
 		if errors.Is(err, psql.ErrNoRecord) {
 			http.NotFound(w, r)
@@ -110,7 +110,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		Description: "",
 	}
 
-	id, err := s.services.FeedService.Create(feed)
+	id, err := s.services.FeedService.Create(r.Context(), feed)
 	if err != nil {
 		if errors.Is(err, psql.ErrDuplicateFeed) {
 			form.AddFieldError("url", "This feed has already been added")

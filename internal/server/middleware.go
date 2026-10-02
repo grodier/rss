@@ -66,7 +66,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		exists, err := s.services.UserService.Exists(id)
+		exists, err := s.services.UserService.Exists(r.Context(), id)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return

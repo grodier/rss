@@ -59,11 +59,14 @@ func (s *Server) decodePostForm(r *http.Request, dst any) error {
 	return nil
 }
 
-func (s *Server) isAuthenticated(r *http.Request) bool {
-	isAuthenticated, ok := r.Context().Value(isAuthenticatedContextKey).(bool)
-	if !ok {
-		return false
-	}
+// authenticatedUserID returns the ID of the logged-in user, set by the
+// authenticate middleware. ok is false for anonymous requests.
+func (s *Server) authenticatedUserID(r *http.Request) (id string, ok bool) {
+	id, ok = r.Context().Value(authenticatedUserIDContextKey).(string)
+	return id, ok && id != ""
+}
 
-	return isAuthenticated
+func (s *Server) isAuthenticated(r *http.Request) bool {
+	_, ok := s.authenticatedUserID(r)
+	return ok
 }

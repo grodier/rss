@@ -73,7 +73,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		}
 
 		if exists {
-			ctx := context.WithValue(r.Context(), isAuthenticatedContextKey, true)
+			ctx := context.WithValue(r.Context(), authenticatedUserIDContextKey, id)
 			r = r.WithContext(ctx)
 		}
 

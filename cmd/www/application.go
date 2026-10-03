@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -25,7 +24,7 @@ func NewApplication(logger *slog.Logger) *Application {
 	}
 }
 
-func (app *Application) Run(ctx context.Context, args []string) error {
+func (app *Application) Run(args []string) error {
 	cfg, err := app.ParseConfigs(args)
 	if err != nil {
 		return err
@@ -48,7 +47,6 @@ func (app *Application) Run(ctx context.Context, args []string) error {
 		Env:  app.config.env,
 	}
 
-	// TODO: consider abstracting to manage chosen impl
 	sessionManager := scs.New()
 	sessionManager.Store = postgresstore.New(db)
 	sessionManager.Lifetime = 12 * time.Hour

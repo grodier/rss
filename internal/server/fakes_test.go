@@ -1,0 +1,44 @@
+package server
+
+import (
+	"context"
+	"time"
+
+	"github.com/grodier/rss/internal/psql"
+)
+
+type fakeFeedStore struct {
+	createFn    func(ctx context.Context, f psql.Feed) (string, error)
+	getByIDFn   func(ctx context.Context, id string) (psql.Feed, error)
+	getLatestFn func(ctx context.Context) ([]psql.Feed, error)
+}
+
+func (f *fakeFeedStore) Create(ctx context.Context, feed psql.Feed) (string, error) {
+	return f.createFn(ctx, feed)
+}
+
+func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (psql.Feed, error) {
+	return f.getByIDFn(ctx, id)
+}
+
+func (f *fakeFeedStore) GetLatest(ctx context.Context) ([]psql.Feed, error) {
+	return f.getLatestFn(ctx)
+}
+
+type fakeUserStore struct {
+	createFn       func(ctx context.Context, name, email, password string) (string, time.Time, error)
+	authenticateFn func(ctx context.Context, email, password string) (string, error)
+	existsFn       func(ctx context.Context, id string) (bool, error)
+}
+
+func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
+	return f.createFn(ctx, name, email, password)
+}
+
+func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string) (string, error) {
+	return f.authenticateFn(ctx, email, password)
+}
+
+func (f *fakeUserStore) Exists(ctx context.Context, id string) (bool, error) {
+	return f.existsFn(ctx, id)
+}

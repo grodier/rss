@@ -22,9 +22,28 @@ type Config struct {
 	Env  string
 }
 
+// FeedStore is the feed persistence the server depends on.
+type FeedStore interface {
+	Create(ctx context.Context, feed psql.Feed) (string, error)
+	GetByID(ctx context.Context, id string) (psql.Feed, error)
+	GetLatest(ctx context.Context) ([]psql.Feed, error)
+}
+
+// UserStore is the user persistence the server depends on.
+type UserStore interface {
+	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
+	Authenticate(ctx context.Context, email, password string) (string, error)
+	Exists(ctx context.Context, id string) (bool, error)
+}
+
+var (
+	_ FeedStore = (*psql.FeedRepository)(nil)
+	_ UserStore = (*psql.UserRepository)(nil)
+)
+
 type Services struct {
-	FeedService *psql.FeedRepository
-	UserService *psql.UserRepository
+	FeedService FeedStore
+	UserService UserStore
 }
 
 type Server struct {

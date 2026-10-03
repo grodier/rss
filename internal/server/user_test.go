@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -108,5 +109,26 @@ func TestSignupFormHandlerSuccessFlash(t *testing.T) {
 	}
 	if strings.Contains(flash, id) {
 		t.Errorf("flash %q contains user ID %s", flash, id)
+	}
+}
+
+func TestLoginFormHandlerInvalidCredentials(t *testing.T) {
+	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
+			return "", psql.ErrInvalidCredentials
+		},
+	}})
+
+	form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+	if !strings.Contains(rr.Body.String(), "Email or password is incorrect") {
+		t.Errorf("body does not contain credentials error: %s", rr.Body.String())
 	}
 }

@@ -53,7 +53,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
   rctx.URLParams.Add("id", "abc")
   req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
   ```
-- `Services` holds concrete `*psql` types, so no-DB handler tests can only cover paths that return before a repository call. Use DB tests for the rest.
+- `Services` holds the `FeedStore` / `UserStore` interfaces. For handler tests that need store results, build a server with `newTestServerWith(t, Services{...})` and the function-field fakes in `internal/server/fakes_test.go`. Keep DB tests for repository code in `internal/psql`.
 - DB tests: `psqltest.NewDB(t)` (`internal/psql/psqltest`). They skip locally without `RSS_TEST_DB_DSN` and fail in CI without it. Create uniquely-named rows, delete them in `t.Cleanup`, never truncate.
 - Bug fixes come with a test that fails before the fix, where feasible.
 - Standard library only for tests (no testify).

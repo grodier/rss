@@ -29,14 +29,14 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	feedID := chi.URLParam(r, "id")
 	if !validator.Matches(feedID, validator.UUIDRX) {
-		http.NotFound(w, r)
+		s.notFoundResponse(w, r)
 		return
 	}
 
 	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
 	if err != nil {
 		if errors.Is(err, psql.ErrNoRecord) {
-			http.NotFound(w, r)
+			s.notFoundResponse(w, r)
 		} else {
 			s.serverErrorHTML(w, r, err)
 		}

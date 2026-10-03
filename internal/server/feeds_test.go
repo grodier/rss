@@ -13,6 +13,19 @@ import (
 	"github.com/grodier/rss/internal/psql"
 )
 
+func assertNotFoundHTML(t *testing.T, rr *httptest.ResponseRecorder) {
+	t.Helper()
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(rr.Body.String(), "Page not found") {
+		t.Errorf("body does not contain %q: %s", "Page not found", rr.Body.String())
+	}
+}
+
 func TestFeedHandlerMalformedID(t *testing.T) {
 	s := newTestServer(t)
 
@@ -25,9 +38,7 @@ func TestFeedHandlerMalformedID(t *testing.T) {
 
 		s.feedHandler(rr, req)
 
-		if rr.Code != http.StatusNotFound {
-			t.Errorf("id %q: got status %d, want %d", id, rr.Code, http.StatusNotFound)
-		}
+		t.Run(id, func(t *testing.T) { assertNotFoundHTML(t, rr) })
 	}
 }
 
@@ -70,9 +81,7 @@ func TestFeedHandlerNotFound(t *testing.T) {
 
 	rr := serveFeed(t, s, testFeedID)
 
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
-	}
+	assertNotFoundHTML(t, rr)
 }
 
 func postCreateFeed(s *Server) *httptest.ResponseRecorder {

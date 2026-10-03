@@ -25,16 +25,30 @@ func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status in
 	}
 }
 
+type errorPageData struct {
+	Status  int
+	Title   string
+	Message string
+}
+
+func (s *Server) errorHTML(w http.ResponseWriter, r *http.Request, status int, title, message string) {
+	data := errorPageData{Status: status, Title: title, Message: message}
+	if err := s.renderHTML(w, status, "error.html", data); err != nil {
+		s.logError(r, err)
+		http.Error(w, http.StatusText(status), status)
+	}
+}
+
 func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {
-	s.errorResponse(w, r, http.StatusNotFound, "NOT_FOUND", "the requested resource could not be found", nil)
+	s.errorHTML(w, r, http.StatusNotFound, "Page not found", "The page you're looking for doesn't exist.")
 }
 
 func (s *Server) forbiddenResponse(w http.ResponseWriter, r *http.Request) {
-	s.errorResponse(w, r, http.StatusForbidden, "FORBIDDEN", "cross-origin request rejected", nil)
+	s.errorHTML(w, r, http.StatusForbidden, "Request blocked", "This form was submitted from another site, so it was rejected for your security.")
 }
 
 func (s *Server) methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
-	s.errorResponse(w, r, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "the request method is not supported for this resource", nil)
+	s.errorHTML(w, r, http.StatusMethodNotAllowed, "Method not allowed", "That action isn't supported for this page.")
 }
 
 func (s *Server) serverErrorJSON(w http.ResponseWriter, r *http.Request, err error) {
@@ -44,8 +58,5 @@ func (s *Server) serverErrorJSON(w http.ResponseWriter, r *http.Request, err err
 
 func (s *Server) serverErrorHTML(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
-	if renderErr := s.renderHTML(w, http.StatusInternalServerError, "error.html", nil); renderErr != nil {
-		s.logError(r, renderErr)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+	s.errorHTML(w, r, http.StatusInternalServerError, "Something went wrong", "The server encountered a problem and could not process your request.")
 }

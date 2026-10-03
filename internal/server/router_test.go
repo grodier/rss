@@ -19,8 +19,8 @@ func TestStaticRoutes(t *testing.T) {
 		wantStatus  int
 		wantContent string
 	}{
-		{"/static/", http.StatusNotFound, ""},
-		{"/static/css/", http.StatusNotFound, ""},
+		{"/static/", http.StatusNotFound, "text/html"},
+		{"/static/css/", http.StatusNotFound, "text/html"},
 		{"/static/css/main.css", http.StatusOK, "text/css"},
 		{"/static/js/main.js", http.StatusOK, ""},
 	}
@@ -40,6 +40,23 @@ func TestStaticRoutes(t *testing.T) {
 	}
 }
 
+func TestNotFoundRendersHTML(t *testing.T) {
+	h := newTestServer(t).router()
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(rr.Body.String(), "Page not found") {
+		t.Errorf("body does not contain %q: %s", "Page not found", rr.Body.String())
+	}
+}
+
 func TestLogoutRequiresPost(t *testing.T) {
 	h := newTestServer(t).router()
 
@@ -47,6 +64,12 @@ func TestLogoutRequiresPost(t *testing.T) {
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/logout", nil))
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /logout status = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("GET /logout Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(rr.Body.String(), "Method not allowed") {
+		t.Errorf("GET /logout body does not contain %q: %s", "Method not allowed", rr.Body.String())
 	}
 
 	rr = httptest.NewRecorder()
@@ -105,6 +128,14 @@ func TestCrossOriginProtection(t *testing.T) {
 			h.ServeHTTP(rr, req)
 			if rr.Code != tt.want {
 				t.Errorf("status = %d, want %d", rr.Code, tt.want)
+			}
+			if tt.want == http.StatusForbidden {
+				if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+					t.Errorf("Content-Type = %q, want text/html", ct)
+				}
+				if !strings.Contains(rr.Body.String(), "Request blocked") {
+					t.Errorf("body does not contain %q: %s", "Request blocked", rr.Body.String())
+				}
 			}
 		})
 	}

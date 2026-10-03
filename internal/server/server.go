@@ -15,6 +15,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/rss"
 )
 
 type Config struct {
@@ -24,9 +25,9 @@ type Config struct {
 
 // FeedStore is the feed persistence the server depends on.
 type FeedStore interface {
-	Create(ctx context.Context, feed psql.Feed) (string, error)
-	GetByID(ctx context.Context, id string) (psql.Feed, error)
-	GetLatest(ctx context.Context) ([]psql.Feed, error)
+	Create(ctx context.Context, feed rss.Feed) (string, error)
+	GetByID(ctx context.Context, id string) (rss.Feed, error)
+	GetLatest(ctx context.Context) ([]rss.Feed, error)
 }
 
 // UserStore is the user persistence the server depends on.

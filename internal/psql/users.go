@@ -5,19 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/grodier/rss/internal/rss"
 	"time"
 
 	"github.com/grodier/rss/internal/password"
 	"github.com/lib/pq"
 )
-
-type User struct {
-	ID             string
-	Name           string
-	Email          string
-	HashedPassword []byte
-	CreatedAt      time.Time
-}
 
 type UserRepository struct {
 	DB *sql.DB
@@ -43,7 +36,7 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return "", time.Time{}, ErrDuplicateEmail
+			return "", time.Time{}, rss.ErrDuplicateEmail
 		}
 		return "", time.Time{}, err
 	}
@@ -61,7 +54,7 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return "", ErrInvalidCredentials
+			return "", rss.ErrInvalidCredentials
 		default:
 			return "", err
 		}
@@ -72,7 +65,7 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 		return "", fmt.Errorf("verify password for user %s: %w", id, err)
 	}
 	if !match {
-		return "", ErrInvalidCredentials
+		return "", rss.ErrInvalidCredentials
 	}
 
 	return id, nil

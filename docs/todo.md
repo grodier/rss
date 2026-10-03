@@ -59,8 +59,6 @@ Tracked as issues:
 - #42 HTML instead of JSON / plain text for 404, 405 and 403
 - #43 Clean-up: dead code, placeholder `main.js`, unused `Run` ctx, stale TODOs
 
-- #51 Move domain types and sentinel errors out of `internal/psql` (first step of #50)
-
 ## Small fixes
 
 - [ ] `signup.html`: the submit button says "Add Feed" and the name field's label has

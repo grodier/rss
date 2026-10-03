@@ -3,6 +3,7 @@ package psql
 import (
 	"errors"
 	"fmt"
+	"github.com/grodier/rss/internal/rss"
 	"strings"
 	"testing"
 	"time"
@@ -39,8 +40,8 @@ func TestUserRepository(t *testing.T) {
 
 	t.Run("Create with duplicate email in different case", func(t *testing.T) {
 		_, _, err := repo.Create(t.Context(), "Other User", strings.ToUpper(email), password)
-		if !errors.Is(err, ErrDuplicateEmail) {
-			t.Errorf("err = %v; want %v", err, ErrDuplicateEmail)
+		if !errors.Is(err, rss.ErrDuplicateEmail) {
+			t.Errorf("err = %v; want %v", err, rss.ErrDuplicateEmail)
 		}
 	})
 
@@ -67,15 +68,15 @@ func TestUserRepository(t *testing.T) {
 
 	t.Run("Authenticate with wrong password", func(t *testing.T) {
 		_, err := repo.Authenticate(t.Context(), email, "wrong-password")
-		if !errors.Is(err, ErrInvalidCredentials) {
-			t.Errorf("err = %v; want %v", err, ErrInvalidCredentials)
+		if !errors.Is(err, rss.ErrInvalidCredentials) {
+			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
 		}
 	})
 
 	t.Run("Authenticate with unknown email", func(t *testing.T) {
 		_, err := repo.Authenticate(t.Context(), "unknown-"+email, password)
-		if !errors.Is(err, ErrInvalidCredentials) {
-			t.Errorf("err = %v; want %v", err, ErrInvalidCredentials)
+		if !errors.Is(err, rss.ErrInvalidCredentials) {
+			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
 		}
 	})
 

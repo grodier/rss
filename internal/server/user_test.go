@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/grodier/rss/internal/rss"
 	"io"
 	"log/slog"
 	"net/http"
@@ -115,7 +116,7 @@ func TestSignupFormHandlerSuccessFlash(t *testing.T) {
 func TestLoginFormHandlerInvalidCredentials(t *testing.T) {
 	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
 		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
-			return "", psql.ErrInvalidCredentials
+			return "", rss.ErrInvalidCredentials
 		},
 	}})
 

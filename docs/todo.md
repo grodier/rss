@@ -39,6 +39,15 @@ Tracked as issues:
 - #42 HTML instead of JSON / plain text for 404, 405 and 403
 - #43 Clean-up: dead code, placeholder `main.js`, unused `Run` ctx, stale TODOs
 
+Not yet an issue:
+
+- [ ] **Move domain types out of `internal/psql`.** Move `Feed`, `User` and the sentinel
+  errors into a domain package (e.g. `internal/rss`) that `psql`, `server` and future
+  consumers all import. Right now the `server` store interfaces (#39) still use
+  `psql.Feed` and `psql.Err…`, so the storage layer owns the app's core types. Do this
+  before or alongside feed fetching, when a second consumer (the fetcher) would otherwise
+  have to import `psql` too.
+
 ## Small fixes
 
 - [ ] `signup.html`: the submit button says "Add Feed" and the name field's label has

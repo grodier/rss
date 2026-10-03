@@ -46,7 +46,6 @@ func (s *Server) router() http.Handler {
 			r.Get("/feeds/{id}", s.feedHandler)
 			r.Get("/feeds", s.feedsHandler)
 			r.Get("/discover", s.discoverHandler)
-			//needs to move to discover??
 			r.Post("/feeds", s.createFeedHandler)
 		})
 

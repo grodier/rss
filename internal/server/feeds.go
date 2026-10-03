@@ -73,7 +73,6 @@ type feedCreateForm struct {
 	validator.Validator `form:"-"`
 }
 
-// TODO: move to discover, let discover call happen with zero value data
 func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	var form feedCreateForm
 	err := s.decodePostForm(r, &form)
@@ -96,19 +95,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// feed := psql.Feed{
-	// 	Url:         "https://georgerodier.com/rss.xml",
-	// 	SiteUrl:     "https://georgerodier.com",
-	// 	Title:       "George Rodier",
-	// 	Description: "George Rodier's personal blog",
-	// }
-
-	feed := psql.Feed{
-		Url:         form.Url,
-		SiteUrl:     "",
-		Title:       "",
-		Description: "",
-	}
+	feed := psql.Feed{Url: form.Url}
 
 	id, err := s.services.FeedService.Create(r.Context(), feed)
 	if err != nil {

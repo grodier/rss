@@ -7,24 +7,44 @@ or delete it.
 
 ## Feed ingestion (needs planning)
 
-The core missing feature: feeds are stored by URL only and never fetched.
+The core missing feature: feeds are never fetched for their articles.
 
-- [ ] **Fetch and parse feeds.** When a feed is added, fetch and parse it (e.g. with
-  `gofeed`), fill in title, site URL and description, and save its articles. The
-  `articles` table needs a unique `(feed_id, external_id)` so re-fetching doesn't create
-  duplicates.
+- [ ] **Fetch and save articles.** Feed discovery (#50) creates feeds with their title,
+  site URL and description, but no articles. Fetch each feed and save its items, reusing
+  `internal/fetch` (#52) and the parser chosen in #54. The `articles` table needs a unique
+  `(feed_id, external_id)` so re-fetching doesn't create duplicates.
 - [ ] **Background refresh.** Re-fetch feeds on a schedule using `last_fetched_at`, skip
-  unchanged feeds via ETag / Last-Modified, and back off on errors.
-- [ ] **Safe fetching.** The server will fetch user-supplied URLs, so: block private and
-  internal addresses (SSRF), set timeouts, cap response size and redirects, and allow only
-  http/https.
+  unchanged feeds via ETag / Last-Modified, and back off on errors. The lookup worker loop
+  (#64) is a model for running this inside `www`.
+- Safe fetching: #52.
+
+## Feed discovery
+
+Planned and split into issues: #50 tracks #51–#67 (search, site pages, background
+lookups). Later improvements, not issues yet:
+
+- [ ] **Progressive enhancement for lookups.** Replace the status page's
+  `<meta http-equiv="refresh">` with JavaScript polling, server-sent events or websockets
+  (after #65).
+- [ ] **Logged-out access.** Let logged-out visitors search and view site and feed pages, to
+  help people find the app. Keep lookups login-only.
+- [ ] **Name → website suggestions.** For free-text queries ("the verge"), suggest likely
+  websites ("Try theverge.com?") the user can click to look up. Don't fetch them
+  automatically.
+- [ ] **Platform-specific discovery rules.** YouTube channels, Reddit, Substack, Medium,
+  GitHub releases, etc. Includes sites that share a host and are identified by path
+  (`medium.com/@user`), which the host-based site key can't tell apart.
+- [ ] **`<a href>` heuristics.** When a page has no `<link rel="alternate">`, look for links
+  whose URL or text mentions RSS/Atom/feed before probing common paths.
+- [ ] **Search autosuggest** showing matching sites and their related feeds as you type.
+- [ ] **Better search ranking.** `pg_trgm` or full-text search instead of `ILIKE`
+  substring matching, with an index.
 
 ## Subscriptions and reading (needs planning)
 
 - [ ] **Subscriptions.** Replace the placeholder `POST /subscribe`, show each user only
-  their own feeds, and support unsubscribing. Adding a feed that already exists should
-  subscribe the user to it (follow-on to #7). Needs the user ID in the request context
-  (#40).
+  their own feeds, and support unsubscribing. Subscribe/unsubscribe lives on the feed page
+  that discovery (#50) leads to.
 - [ ] **Reading experience.** List articles on the feed page, add an "all my feeds"
   timeline, and track read/unread per user (needs a new table).
 
@@ -39,14 +59,7 @@ Tracked as issues:
 - #42 HTML instead of JSON / plain text for 404, 405 and 403
 - #43 Clean-up: dead code, placeholder `main.js`, unused `Run` ctx, stale TODOs
 
-Not yet an issue:
-
-- [ ] **Move domain types out of `internal/psql`.** Move `Feed`, `User` and the sentinel
-  errors into a domain package (e.g. `internal/rss`) that `psql`, `server` and future
-  consumers all import. Right now the `server` store interfaces (#39) still use
-  `psql.Feed` and `psql.Err…`, so the storage layer owns the app's core types. Do this
-  before or alongside feed fetching, when a second consumer (the fetcher) would otherwise
-  have to import `psql` too.
+- #51 Move domain types and sentinel errors out of `internal/psql` (first step of #50)
 
 ## Small fixes
 
@@ -57,14 +70,15 @@ Not yet an issue:
 
 ## Security
 
-- [ ] Rate-limit login and signup.
+- [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.
 
 ## Suggested order
 
 1. **Code structure:** #38 then #39; #40 after #39 (so it can test `authenticate` with a
    fake). In parallel with those, the template issues in order, since they touch the
    same files: #43, then #41, then #42.
-2. **Then plan** feed ingestion and subscriptions in their own sessions, and turn them
+2. **Feed discovery:** work through #50 in the order listed there.
+3. **Then plan** article ingestion and subscriptions in their own sessions, and turn them
    into issues.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

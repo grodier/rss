@@ -13,6 +13,7 @@ require (
 require (
 	github.com/mmcdole/gofeed v1.5.0
 	golang.org/x/crypto v0.56.0
+	golang.org/x/net v0.58.0
 )
 
 require (
@@ -20,7 +21,6 @@ require (
 	github.com/mmcdole/goxpp/v2 v2.0.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <link rel="self" href="https://example.net/atom.xml"/>
+  <title type="html">Tom &amp;amp; Jerry&#39;s   &lt;b&gt;Blog&lt;/b&gt;</title>
+  <link href="https://example.net/"/>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af7</id>
+  <updated>2026-10-01T18:30:02Z</updated>
+</feed>

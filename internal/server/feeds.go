@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -18,7 +18,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Feeds []psql.Feed
+		Feeds []rss.Feed
 	}{Feeds: feeds}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {
@@ -35,7 +35,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 
 	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
 	if err != nil {
-		if errors.Is(err, psql.ErrNoRecord) {
+		if errors.Is(err, rss.ErrNoRecord) {
 			s.notFoundResponse(w, r)
 		} else {
 			s.serverErrorHTML(w, r, err)
@@ -95,11 +95,11 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	feed := psql.Feed{Url: form.Url}
+	feed := rss.Feed{Url: form.Url}
 
 	id, err := s.services.FeedService.Create(r.Context(), feed)
 	if err != nil {
-		if errors.Is(err, psql.ErrDuplicateFeed) {
+		if errors.Is(err, rss.ErrDuplicateFeed) {
 			form.AddFieldError("url", "This feed has already been added")
 			data := struct {
 				Form any

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -50,7 +50,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	_, _, err = s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
 	if err != nil {
 		switch {
-		case errors.Is(err, psql.ErrDuplicateEmail):
+		case errors.Is(err, rss.ErrDuplicateEmail):
 			form.AddFieldError("email", "Email is already in use")
 			data := struct {
 				Form any
@@ -118,7 +118,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := s.services.UserService.Authenticate(r.Context(), form.Email, form.Password)
 	if err != nil {
 		switch {
-		case errors.Is(err, psql.ErrInvalidCredentials):
+		case errors.Is(err, rss.ErrInvalidCredentials):
 			form.AddNonFieldError("Email or password is incorrect")
 			data := struct {
 				Flash string

@@ -26,7 +26,8 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 
 - `cmd/www`: config flags and wiring
 - `internal/server`: router, middleware, handlers, rendering, error responses
-- `internal/psql`: repositories and sentinel errors
+- `internal/rss`: domain types (Feed, User, …) and sentinel errors
+- `internal/psql`: repositories
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
@@ -39,7 +40,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - HTML pages: `s.renderHTML(w, status, "page.html", data)`; on error, `s.serverErrorHTML(w, r, err)`. Error pages (403/404/405/500) are HTML via `s.errorHTML`; use `s.notFoundResponse(w, r)` for missing records, never `http.NotFound`. JSON (`writeJSON`) is only for `/healthcheck` (and its `serverErrorJSON` error path); future JSON endpoints go under their own subrouter with JSON error handlers.
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm`, validated with `CheckField`, re-rendered with **422** when invalid.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
-- Database: repositories in `internal/psql` use plain SQL with `$n` placeholders. Map driver errors to sentinel errors in `internal/psql/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`). Handlers check them with `errors.Is`.
+- Database: repositories in `internal/psql` use plain SQL with `$n` placeholders. Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`). Handlers check them with `errors.Is`.
 - Schema changes only through a **new** goose migration; never edit a migration that is already on `main`.
 - Templates are standalone full pages (no shared layout yet). A nav change must be applied to every template.
 - Log with `s.logger` (slog); log request errors with `s.logError`.

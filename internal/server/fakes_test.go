@@ -4,24 +4,24 @@ import (
 	"context"
 	"time"
 
-	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/rss"
 )
 
 type fakeFeedStore struct {
-	createFn    func(ctx context.Context, f psql.Feed) (string, error)
-	getByIDFn   func(ctx context.Context, id string) (psql.Feed, error)
-	getLatestFn func(ctx context.Context) ([]psql.Feed, error)
+	createFn    func(ctx context.Context, f rss.Feed) (string, error)
+	getByIDFn   func(ctx context.Context, id string) (rss.Feed, error)
+	getLatestFn func(ctx context.Context) ([]rss.Feed, error)
 }
 
-func (f *fakeFeedStore) Create(ctx context.Context, feed psql.Feed) (string, error) {
+func (f *fakeFeedStore) Create(ctx context.Context, feed rss.Feed) (string, error) {
 	return f.createFn(ctx, feed)
 }
 
-func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (psql.Feed, error) {
+func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error) {
 	return f.getByIDFn(ctx, id)
 }
 
-func (f *fakeFeedStore) GetLatest(ctx context.Context) ([]psql.Feed, error) {
+func (f *fakeFeedStore) GetLatest(ctx context.Context) ([]rss.Feed, error) {
 	return f.getLatestFn(ctx)
 }
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func assertNotFoundHTML(t *testing.T, rr *httptest.ResponseRecorder) {
@@ -57,8 +57,8 @@ func serveFeed(t *testing.T, s *Server, id string) *httptest.ResponseRecorder {
 
 func TestFeedHandlerSuccess(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		getByIDFn: func(ctx context.Context, id string) (psql.Feed, error) {
-			return psql.Feed{Title: "Example Feed Title"}, nil
+		getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			return rss.Feed{Title: "Example Feed Title"}, nil
 		},
 	}})
 
@@ -74,8 +74,8 @@ func TestFeedHandlerSuccess(t *testing.T) {
 
 func TestFeedHandlerNotFound(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		getByIDFn: func(ctx context.Context, id string) (psql.Feed, error) {
-			return psql.Feed{}, psql.ErrNoRecord
+		getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			return rss.Feed{}, rss.ErrNoRecord
 		},
 	}})
 
@@ -95,8 +95,8 @@ func postCreateFeed(s *Server) *httptest.ResponseRecorder {
 
 func TestCreateFeedHandlerDuplicate(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f psql.Feed) (string, error) {
-			return "", psql.ErrDuplicateFeed
+		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
+			return "", rss.ErrDuplicateFeed
 		},
 	}})
 
@@ -112,7 +112,7 @@ func TestCreateFeedHandlerDuplicate(t *testing.T) {
 
 func TestCreateFeedHandlerSuccess(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f psql.Feed) (string, error) {
+		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
 			if f.Url != "https://example.com/rss.xml" {
 				t.Errorf("Url = %q", f.Url)
 			}
@@ -132,7 +132,7 @@ func TestCreateFeedHandlerSuccess(t *testing.T) {
 
 func TestCreateFeedHandlerStoreError(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f psql.Feed) (string, error) {
+		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
 			return "", errors.New("db down")
 		},
 	}})

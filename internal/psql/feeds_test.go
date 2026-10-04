@@ -3,6 +3,7 @@ package psql
 import (
 	"errors"
 	"fmt"
+	"github.com/grodier/rss/internal/rss"
 	"testing"
 	"time"
 
@@ -21,13 +22,13 @@ func TestFeedRepositoryCreateDuplicate(t *testing.T) {
 		}
 	})
 
-	if _, err := repo.Create(t.Context(), Feed{Url: url}); err != nil {
+	if _, err := repo.Create(t.Context(), rss.Feed{Url: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := repo.Create(t.Context(), Feed{Url: url})
-	if !errors.Is(err, ErrDuplicateFeed) {
-		t.Fatalf("got %v, want ErrDuplicateFeed", err)
+	_, err := repo.Create(t.Context(), rss.Feed{Url: url})
+	if !errors.Is(err, rss.ErrDuplicateFeed) {
+		t.Fatalf("got %v, want rss.ErrDuplicateFeed", err)
 	}
 }
 

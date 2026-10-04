@@ -4,20 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
+	"github.com/grodier/rss/internal/rss"
 
 	"github.com/lib/pq"
 )
-
-type Feed struct {
-	ID          string
-	Url         string
-	SiteUrl     string
-	Title       string
-	Description string
-	LastFetched time.Time
-	CreatedAt   time.Time
-}
 
 type FeedRepository struct {
 	DB *sql.DB
@@ -27,7 +17,7 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 	return &FeedRepository{DB: db}
 }
 
-func (r *FeedRepository) Create(ctx context.Context, feed Feed) (string, error) {
+func (r *FeedRepository) Create(ctx context.Context, feed rss.Feed) (string, error) {
 	stmt := `INSERT INTO feeds (url, site_url, title, description)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id`
@@ -36,7 +26,7 @@ func (r *FeedRepository) Create(ctx context.Context, feed Feed) (string, error) 
 	if err := r.DB.QueryRowContext(ctx, stmt, feed.Url, feed.SiteUrl, feed.Title, feed.Description).Scan(&id); err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return "", ErrDuplicateFeed
+			return "", rss.ErrDuplicateFeed
 		}
 		return "", err
 	}
@@ -44,24 +34,24 @@ func (r *FeedRepository) Create(ctx context.Context, feed Feed) (string, error) 
 	return id, nil
 }
 
-func (r *FeedRepository) GetByID(ctx context.Context, id string) (Feed, error) {
+func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, error) {
 	stmt := `SELECT id, url, site_url, title, description, created_at
 		FROM feeds
 		WHERE id = $1`
 
-	var feed Feed
+	var feed rss.Feed
 	if err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&feed.ID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Feed{}, ErrNoRecord
+			return rss.Feed{}, rss.ErrNoRecord
 		} else {
-			return Feed{}, err
+			return rss.Feed{}, err
 		}
 	}
 
 	return feed, nil
 }
 
-func (r *FeedRepository) GetLatest(ctx context.Context) ([]Feed, error) {
+func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
 	stmt := `SELECT id, url, site_url, title, description, created_at
 		FROM feeds
 		ORDER BY created_at DESC
@@ -73,10 +63,10 @@ func (r *FeedRepository) GetLatest(ctx context.Context) ([]Feed, error) {
 	}
 	defer rows.Close()
 
-	var feeds []Feed
+	var feeds []rss.Feed
 
 	for rows.Next() {
-		var feed Feed
+		var feed rss.Feed
 		err = rows.Scan(&feed.ID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt)
 		if err != nil {
 			return nil, err

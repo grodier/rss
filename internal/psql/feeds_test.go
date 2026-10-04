@@ -56,6 +56,9 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 	if feed.SiteUrl != "" || feed.Description != "" {
 		t.Errorf("got site_url %q, description %q; want empty strings", feed.SiteUrl, feed.Description)
 	}
+	if feed.SiteID != "" {
+		t.Errorf("got site_id %q; want empty string for NULL", feed.SiteID)
+	}
 
 	if _, err := repo.GetLatest(t.Context()); err != nil {
 		t.Fatalf("GetLatest: %v", err)

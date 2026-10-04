@@ -35,24 +35,26 @@ func (r *FeedRepository) Create(ctx context.Context, feed rss.Feed) (string, err
 }
 
 func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, error) {
-	stmt := `SELECT id, url, site_url, title, description, created_at
+	stmt := `SELECT id, site_id, url, site_url, title, description, created_at
 		FROM feeds
 		WHERE id = $1`
 
 	var feed rss.Feed
-	if err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&feed.ID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt); err != nil {
+	var siteID sql.NullString
+	if err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&feed.ID, &siteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Feed{}, rss.ErrNoRecord
 		} else {
 			return rss.Feed{}, err
 		}
 	}
+	feed.SiteID = siteID.String
 
 	return feed, nil
 }
 
 func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
-	stmt := `SELECT id, url, site_url, title, description, created_at
+	stmt := `SELECT id, site_id, url, site_url, title, description, created_at
 		FROM feeds
 		ORDER BY created_at DESC
 		LIMIT 10`
@@ -67,10 +69,12 @@ func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
 
 	for rows.Next() {
 		var feed rss.Feed
-		err = rows.Scan(&feed.ID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt)
+		var siteID sql.NullString
+		err = rows.Scan(&feed.ID, &siteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
+		feed.SiteID = siteID.String
 
 		feeds = append(feeds, feed)
 	}

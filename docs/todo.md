@@ -16,7 +16,6 @@ The core missing feature: feeds are never fetched for their articles.
 - [ ] **Background refresh.** Re-fetch feeds on a schedule using `last_fetched_at`, skip
   unchanged feeds via ETag / Last-Modified, and back off on errors. The lookup worker loop
   (#64) is a model for running this inside `www`.
-- Safe fetching: #52.
 
 ## Feed discovery
 

@@ -9,8 +9,22 @@ CREATE TABLE users (
     created_at timestamp(0) with time zone NOT NULL DEFAULT now()
 );
 
+CREATE TABLE sites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    host TEXT NOT NULL UNIQUE,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE feeds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    site_id UUID
+        REFERENCES sites(id)
+        ON DELETE SET NULL,
 
     url TEXT NOT NULL UNIQUE,
     site_url TEXT NOT NULL DEFAULT '',
@@ -22,6 +36,8 @@ CREATE TABLE feeds (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX feeds_site_id_idx ON feeds (site_id);
 
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -68,6 +84,7 @@ CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 DROP TABLE subscriptions;
 DROP TABLE articles;
 DROP TABLE feeds;
+DROP TABLE sites;
 DROP TABLE users;
 DROP TABLE sessions;
 

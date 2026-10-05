@@ -50,8 +50,6 @@ yet:
 
 - [ ] `signup.html`: the submit button says "Add Feed" and the name field's label has
   `for="url"` instead of `for="name"`.
-- [ ] 405 responses don't include an `Allow` header (chi doesn't set it when a custom
-  `MethodNotAllowed` handler is installed).
 
 ## Security
 

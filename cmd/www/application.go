@@ -38,8 +38,9 @@ func (app *Application) Run(args []string) error {
 	defer db.Close()
 
 	services := server.Services{
-		FeedService: psql.NewFeedRepository(db),
-		UserService: psql.NewUserRepository(db),
+		FeedService:   psql.NewFeedRepository(db),
+		UserService:   psql.NewUserRepository(db),
+		SearchService: psql.NewSearchRepository(db),
 	}
 
 	srvConfig := server.Config{

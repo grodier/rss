@@ -37,14 +37,21 @@ type UserStore interface {
 	Exists(ctx context.Context, id string) (bool, error)
 }
 
+// SearchStore searches sites and feeds already in the database.
+type SearchStore interface {
+	Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error)
+}
+
 var (
-	_ FeedStore = (*psql.FeedRepository)(nil)
-	_ UserStore = (*psql.UserRepository)(nil)
+	_ FeedStore   = (*psql.FeedRepository)(nil)
+	_ UserStore   = (*psql.UserRepository)(nil)
+	_ SearchStore = (*psql.SearchRepository)(nil)
 )
 
 type Services struct {
-	FeedService FeedStore
-	UserService UserStore
+	FeedService   FeedStore
+	UserService   UserStore
+	SearchService SearchStore
 }
 
 type Server struct {

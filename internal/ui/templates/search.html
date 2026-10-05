@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>rss - search</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+
+<body>
+  <main>
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>Search</h1>
+
+    <section>
+      <nav>
+        <div>
+          <a href="/">Home</a>
+          <a href="/feeds">Feeds</a>
+          <a href="/search">Search</a>
+          <a href="/discover">Discover</a>
+        </div>
+        <div>
+          <form action="/logout" method="post">
+            <button type="submit">Logout</button>
+          </form>
+        </div>
+      </nav>
+    </section>
+
+    <section>
+      <form action="/search" method="get">
+        <label for="q">Search:</label>
+        {{with .Form.FieldErrors.q}}
+        <span class="error">{{.}}</span>
+        {{end}}
+        <input type="search" id="q" name="q" value="{{.Form.Q}}" />
+        <button type="submit">Search</button>
+      </form>
+    </section>
+
+    {{if .Searched}}
+    <section>
+      {{range .Sites}}
+      <div>
+        <h2><a href="/sites/{{.Site.ID}}">{{if .Site.Title}}{{.Site.Title}}{{else}}{{.Site.Host}}{{end}}</a></h2>
+        <p>{{.Site.Host}}</p>
+        <ul>
+          {{range .Feeds}}
+          <li><a href="/feeds/{{.ID}}">{{.Title}}</a></li>
+          {{end}}
+        </ul>
+      </div>
+      {{else}}
+      <p>No sites or feeds match “{{.Form.Q}}”.</p>
+      {{end}}
+    </section>
+    {{end}}
+  </main>
+</body>
+
+</html>

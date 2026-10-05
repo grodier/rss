@@ -31,8 +31,8 @@
       <ul>
         {{range .Feeds}}
         <li>
-          <h2>{{.Title}}</h2>
-          <p>{{.Description}}</p>
+          <h2><a href="/feeds/{{.ID}}">{{or .Title .Url}}</a></h2>
+          {{with .Description}}<p>{{.}}</p>{{end}}
           <p><a href="{{.Url}}">Feed URL</a></p>
           <p><a href="{{.SiteUrl}}">Site URL</a></p>
         </li>

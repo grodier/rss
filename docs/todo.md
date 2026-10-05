@@ -46,11 +46,6 @@ yet:
 - [ ] **Reading experience.** List articles on the feed page, add an "all my feeds"
   timeline, and track read/unread per user (needs a new table).
 
-## Small fixes
-
-- [ ] `signup.html`: the submit button says "Add Feed" and the name field's label has
-  `for="url"` instead of `for="name"`.
-
 ## Security
 
 - [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.

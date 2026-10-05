@@ -1,11 +1,36 @@
 package server
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/grodier/rss/internal/ui"
 )
+
+var labelForRe = regexp.MustCompile(`<label[^>]*\sfor="([^"]+)"`)
+
+func TestTemplateLabelsMatchInputs(t *testing.T) {
+	files, err := fs.Glob(ui.Templates, "templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := fs.ReadFile(ui.Templates, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		for _, m := range labelForRe.FindAllStringSubmatch(src, -1) {
+			if !strings.Contains(src, `id="`+m[1]+`"`) {
+				t.Errorf("%s: label for=%q has no element with that id", f, m[1])
+			}
+		}
+	}
+}
 
 func TestPasswordNotEchoed(t *testing.T) {
 	const sentinel = "sentinel-pw-123"

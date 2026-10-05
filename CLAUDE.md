@@ -2,7 +2,7 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts and adding feed URLs work; fetching feeds and subscriptions are not built yet.
+A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; fetching articles and subscriptions are not built yet.
 
 ## Prototype stage
 
@@ -32,7 +32,11 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `cmd/www`: config flags and wiring
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/rss`: domain types (Feed, User, …) and sentinel errors
-- `internal/psql`: repositories
+- `internal/psql`: repositories (feeds, users, sites, lookups, search, discovery)
+- `internal/discovery`: finds the feeds a website publishes
+- `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
+- `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
+- `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation

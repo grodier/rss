@@ -83,6 +83,9 @@ type Server struct {
 	// lookupWait is how long POST /lookups waits for a lookup to finish
 	// before redirecting to its status page. Keep it well under WriteTimeout.
 	lookupWait time.Duration
+
+	// lookupLimiter caps distinct lookups per user (keyed by user ID).
+	lookupLimiter *rateLimiter
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -99,6 +102,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		services:       services,
 		sessionManager: sessionManager,
 		lookupWait:     3 * time.Second,
+		lookupLimiter:  newRateLimiter(10, 10*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

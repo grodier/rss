@@ -51,6 +51,10 @@ func (s *Server) methodNotAllowedResponse(w http.ResponseWriter, r *http.Request
 	s.errorHTML(w, r, http.StatusMethodNotAllowed, "Method not allowed", "That action isn't supported for this page.")
 }
 
+func (s *Server) tooManyRequestsResponse(w http.ResponseWriter, r *http.Request) {
+	s.errorHTML(w, r, http.StatusTooManyRequests, "Too many requests", "You've looked up a lot of sites recently. Please wait a few minutes and try again.")
+}
+
 func (s *Server) serverErrorJSON(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
 	s.errorResponse(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "the server encountered a problem and could not process your request", nil)

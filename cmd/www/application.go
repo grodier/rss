@@ -1,14 +1,21 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
+	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/lookup"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/server"
 )
@@ -60,7 +67,37 @@ func (app *Application) Run(args []string) error {
 		return err
 	}
 
-	return srv.Serve()
+	// The server has its own signal handling; this context stops the lookup
+	// workers on the same signals.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	runnerDone := make(chan struct{})
+	if app.config.lookup.workers > 0 {
+		runner := &lookup.Runner{
+			Store:      psql.NewLookupRepository(db),
+			Saver:      psql.NewDiscoveryRepository(db),
+			Discoverer: &discovery.Discoverer{Fetcher: fetch.New(fetch.Options{})},
+			Logger:     app.logger,
+			Workers:    app.config.lookup.workers,
+		}
+		go func() {
+			defer close(runnerDone)
+			if err := runner.Run(ctx); err != nil {
+				app.logger.Error("lookup runner", "error", err)
+			}
+		}()
+	} else {
+		close(runnerDone)
+	}
+
+	err = srv.Serve()
+
+	// Stop the workers and wait for them before the deferred db.Close.
+	stop()
+	<-runnerDone
+
+	return err
 }
 
 func (app *Application) ParseConfigs(args []string) (config, error) {
@@ -75,6 +112,8 @@ func (app *Application) ParseConfigs(args []string) (config, error) {
 	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections")
 	fs.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", cfg.db.maxIdleConns, "PostgreSQL max idle connections")
 	fs.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", cfg.db.maxIdleTime, "PostgreSQL max idle time")
+
+	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
 
 	if err := fs.Parse(args); err != nil {
 		return config{}, err

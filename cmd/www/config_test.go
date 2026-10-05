@@ -13,6 +13,10 @@ func TestConfigValidate(t *testing.T) {
 		{"port zero", func(c *config) { c.server.port = 0 }, true},
 		{"port too high", func(c *config) { c.server.port = 70000 }, true},
 		{"empty dsn", func(c *config) { c.db.dsn = "" }, true},
+		{"lookup workers zero", func(c *config) { c.lookup.workers = 0 }, false},
+		{"lookup workers max", func(c *config) { c.lookup.workers = 16 }, false},
+		{"lookup workers negative", func(c *config) { c.lookup.workers = -1 }, true},
+		{"lookup workers too high", func(c *config) { c.lookup.workers = 17 }, true},
 	}
 
 	for _, tt := range tests {

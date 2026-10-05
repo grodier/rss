@@ -46,14 +46,14 @@ func TestSearchRepository(t *testing.T) {
 			t.Fatalf("Upsert feed: %v", err)
 		}
 	}
-	siteHosts := func(res rss.SearchResults) []string {
+	siteHosts := func(res []rss.SiteWithFeeds) []string {
 		var hs []string
-		for _, s := range res.Sites {
+		for _, s := range res {
 			hs = append(hs, s.Site.Host)
 		}
 		return hs
 	}
-	search := func(q string, limit int) rss.SearchResults {
+	search := func(q string, limit int) []rss.SiteWithFeeds {
 		t.Helper()
 		res, err := repo.Search(ctx, q, limit)
 		if err != nil {
@@ -69,8 +69,6 @@ func TestSearchRepository(t *testing.T) {
 	addFeed(siteA, "https://"+hostA+"/feed.xml", "Main")
 	addFeed(siteA, "https://"+hostA+"/comments.xml", "Comments")
 	addFeed(siteB, "https://"+hostB+"/rss", "Podcast "+tok+"feed")
-	loose := "https://loose-" + tok + ".example.net/rss"
-	addFeed("", loose, "Loose")
 
 	t.Run("by site title", func(t *testing.T) {
 		res := search("Blog "+tok, 10)
@@ -91,16 +89,16 @@ func TestSearchRepository(t *testing.T) {
 		if got := siteHosts(res); len(got) != 1 || got[0] != hostB {
 			t.Fatalf("got sites %v; want [%s]", got, hostB)
 		}
-		if n := len(res.Sites[0].Feeds); n != 1 {
+		if n := len(res[0].Feeds); n != 1 {
 			t.Errorf("got %d feeds; want 1", n)
 		}
 
 		// Matches only the "Main" feed's URL; both feeds still come back, by title.
 		res = search(hostA+"/feed.xml", 10)
-		if len(res.Sites) != 1 || len(res.Sites[0].Feeds) != 2 {
-			t.Fatalf("got %+v; want one site with 2 feeds", res.Sites)
+		if len(res) != 1 || len(res[0].Feeds) != 2 {
+			t.Fatalf("got %+v; want one site with 2 feeds", res)
 		}
-		if f := res.Sites[0].Feeds; f[0].Title != "Comments" || f[1].Title != "Main" {
+		if f := res[0].Feeds; f[0].Title != "Comments" || f[1].Title != "Main" {
 			t.Errorf("got feed titles %q, %q; want Comments, Main", f[0].Title, f[1].Title)
 		}
 	})
@@ -108,7 +106,7 @@ func TestSearchRepository(t *testing.T) {
 	t.Run("by feed url", func(t *testing.T) {
 		res := search("/comments.xml", 100)
 		found := false
-		for _, s := range res.Sites {
+		for _, s := range res {
 			found = found || s.Site.ID == siteA
 		}
 		if !found {
@@ -145,32 +143,15 @@ func TestSearchRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("siteless feed", func(t *testing.T) {
-		res := search("loose-"+tok, 10)
-		if len(res.Sites) != 0 {
-			t.Errorf("got sites %v; want none", siteHosts(res))
-		}
-		if len(res.Feeds) != 1 || res.Feeds[0].Url != loose {
-			t.Errorf("got feeds %+v; want [%s]", res.Feeds, loose)
-		}
-	})
-
 	t.Run("limit", func(t *testing.T) {
-		res := search(tok, 1)
-		if len(res.Sites) != 1 {
-			t.Errorf("got %d sites; want 1", len(res.Sites))
-		}
-		addFeed("", "https://loose2-"+tok+".example.net/rss", "Loose 2")
-		res = search("loose", 1)
-		if len(res.Feeds) != 1 {
-			t.Errorf("got %d feeds; want 1", len(res.Feeds))
+		if res := search(tok, 1); len(res) != 1 {
+			t.Errorf("got %d sites; want 1", len(res))
 		}
 	})
 
 	t.Run("empty query", func(t *testing.T) {
 		for _, q := range []string{"", "  \t"} {
-			res := search(q, 10)
-			if len(res.Sites) != 0 || len(res.Feeds) != 0 {
+			if res := search(q, 10); len(res) != 0 {
 				t.Errorf("Search(%q) = %+v; want empty", q, res)
 			}
 		}

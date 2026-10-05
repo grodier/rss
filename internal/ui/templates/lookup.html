@@ -13,12 +13,7 @@
 
 <body>
   <main>
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>Looking up {{.SiteKey}}</h1>
-
-    <section>
+    <header class="site-nav">
       <nav>
         <div>
           <a href="/">Home</a>
@@ -31,7 +26,12 @@
           </form>
         </div>
       </nav>
-    </section>
+    </header>
+
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>Looking up {{.SiteKey}}</h1>
 
     <section>
       {{if .InProgress}}

@@ -10,17 +10,7 @@
 
 <body>
   <main>
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>{{.Feed.Title}}</h1>
-    {{with .Feed.Description}}
-    <p>{{.}}</p>
-    {{end}}
-    <p>From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
-    <p>Feed URL: <code>{{.Feed.Url}}</code></p>
-
-    <section>
+    <header class="site-nav">
       <nav>
         <div>
           <a href="/">Home</a>
@@ -33,7 +23,17 @@
           </form>
         </div>
       </nav>
-    </section>
+    </header>
+
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>{{.Feed.Title}}</h1>
+    {{with .Feed.Description}}
+    <p>{{.}}</p>
+    {{end}}
+    <p>From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
+    <p>Feed URL: <code>{{.Feed.Url}}</code></p>
   </main>
 </body>
 

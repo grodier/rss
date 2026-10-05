@@ -10,6 +10,21 @@
 
 <body>
   <main>
+    <header class="site-nav">
+      <nav>
+        <div>
+          <a href="/">Home</a>
+          <a href="/feeds">Feeds</a>
+          <a href="/search">Search</a>
+        </div>
+        <div>
+          <form action="/logout" method="post">
+            <button type="submit">Logout</button>
+          </form>
+        </div>
+      </nav>
+    </header>
+
     {{with .Flash}}
     <div class="flash">{{.}}</div>
     {{end}}
@@ -30,21 +45,6 @@
       <button type="submit">Check for new feeds</button>
     </form>
     {{end}}
-
-    <section>
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">Feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </section>
 
     <section>
       <h2>Feeds</h2>

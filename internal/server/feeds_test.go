@@ -115,3 +115,37 @@ func TestFeedHandlerNotFound(t *testing.T) {
 
 	assertNotFoundHTML(t, rr)
 }
+
+func TestFeedsHandlerLinksToFeedPage(t *testing.T) {
+	const otherID = "22222222-2222-4222-8222-222222222222"
+	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
+		getLatestFn: func(ctx context.Context) ([]rss.Feed, error) {
+			return []rss.Feed{
+				{ID: testFeedID, Title: "Example Feed", Description: "About the feed", Url: "https://example.org/feed.xml"},
+				{ID: otherID, Url: "https://example.org/empty.xml"},
+			}, nil
+		},
+	}})
+	req := httptest.NewRequest(http.MethodGet, "/feeds", nil)
+	rr := httptest.NewRecorder()
+
+	s.feedsHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`href="/feeds/` + testFeedID + `"`,
+		"Example Feed",
+		`href="/feeds/` + otherID + `"`,
+		`>https://example.org/empty.xml</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "<p></p>") {
+		t.Errorf("body contains an empty paragraph: %s", body)
+	}
+}

@@ -19,12 +19,11 @@ The core missing feature: feeds are never fetched for their articles.
 
 ## Feed discovery
 
-Planned and split into issues: #50 tracks #51–#67 (search, site pages, background
-lookups). Later improvements, not issues yet:
+Done in #50 (search, site pages, background lookups). Later improvements, not issues
+yet:
 
 - [ ] **Progressive enhancement for lookups.** Replace the status page's
-  `<meta http-equiv="refresh">` with JavaScript polling, server-sent events or websockets
-  (after #65).
+  `<meta http-equiv="refresh">` with JavaScript polling, server-sent events or websockets.
 - [ ] **Logged-out access.** Let logged-out visitors search and view site and feed pages, to
   help people find the app. Keep lookups login-only.
 - [ ] **Name → website suggestions.** For free-text queries ("the verge"), suggest likely
@@ -47,17 +46,6 @@ lookups). Later improvements, not issues yet:
 - [ ] **Reading experience.** List articles on the feed page, add an "all my feeds"
   timeline, and track read/unread per user (needs a new table).
 
-## Code structure
-
-Tracked as issues:
-
-- #38 Pass request contexts through to database calls
-- #39 Repository interfaces so handlers can be tested without a database (after #38)
-- #40 Logged-in user's ID in the request context
-- #41 Shared base layout and nav partials for templates
-- #42 HTML instead of JSON / plain text for 404, 405 and 403
-- #43 Clean-up: dead code, placeholder `main.js`, unused `Run` ctx, stale TODOs
-
 ## Small fixes
 
 - [ ] `signup.html`: the submit button says "Add Feed" and the name field's label has
@@ -76,11 +64,9 @@ Tracked as issues:
 
 ## Suggested order
 
-1. **Code structure:** #38 then #39; #40 after #39 (so it can test `authenticate` with a
-   fake). In parallel with those, the template issues in order, since they touch the
-   same files: #43, then #41, then #42.
-2. **Feed discovery:** work through #50 in the order listed there.
-3. **Then plan** article ingestion and subscriptions in their own sessions, and turn them
-   into issues.
+1. #87: signal handling only in `cmd/www`, `server.Serve` takes a context.
+2. **Plan** feed ingestion, then subscriptions and reading, in their own sessions, and
+   turn them into issues. Ingestion's background refresh will run alongside the lookup
+   worker, so do #87 first so both use the same shutdown context.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

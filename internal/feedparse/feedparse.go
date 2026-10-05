@@ -4,8 +4,10 @@ package feedparse
 
 import (
 	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/url"
 	"regexp"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/mmcdole/gofeed"
 	"github.com/mmcdole/gofeed/atom"
+	"golang.org/x/net/html"
 )
 
 // ErrNotFeed is returned by Parse when the body is not a recognizable feed.
@@ -21,8 +24,8 @@ var ErrNotFeed = errors.New("feedparse: not a feed")
 // Meta is the feed-level metadata of a parsed feed.
 type Meta struct {
 	Format      string // "rss", "atom", "rdf" or "json"
-	Title       string // whitespace-trimmed and collapsed; may be ""
-	Description string // RSS <description>, Atom <subtitle>, JSON "description"; trimmed
+	Title       string // plain text, whitespace-trimmed and collapsed; may be ""
+	Description string // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
 	SiteURL     string // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
 }
 
@@ -86,17 +89,147 @@ func Parse(feedURL *url.URL, body []byte) (Meta, error) {
 		return Meta{}, fmt.Errorf("%w: %w", ErrNotFeed, err)
 	}
 
+	title, desc := collapseSpace(f.Title), collapseSpace(f.Description)
 	link := f.Link
-	if a, ok := f.OriginalFeed().(*atom.Feed); ok {
-		link = atomSiteLink(a.Links)
+	switch format {
+	case "rss", "rdf":
+		// RSS has no type attribute; channel descriptions are commonly
+		// entity-encoded HTML, so they are always treated as HTML. Titles
+		// are treated as text.
+		desc = htmlToText(f.Description)
+	case "atom":
+		if a, ok := f.OriginalFeed().(*atom.Feed); ok {
+			link = atomSiteLink(a.Links)
+		}
+		titleType, subtitleType := atomTextTypes(body)
+		if isHTMLType(titleType) {
+			title = htmlToText(f.Title)
+		}
+		if isHTMLType(subtitleType) {
+			desc = htmlToText(f.Description)
+		}
 	}
 
 	return Meta{
 		Format:      format,
-		Title:       collapseSpace(f.Title),
-		Description: collapseSpace(f.Description),
+		Title:       title,
+		Description: desc,
 		SiteURL:     resolveHTTP(feedURL, link),
 	}, nil
+}
+
+// atomTextTypes returns the type attributes of the feed-level <title> and
+// <subtitle> of an Atom document ("" if missing). gofeed doesn't expose
+// them, and by the time it returns the text, html and xhtml content has
+// been decoded differently.
+func atomTextTypes(body []byte) (titleType, subtitleType string) {
+	d := xml.NewDecoder(bytes.NewReader(body))
+	d.Strict = false
+	d.Entity = xml.HTMLEntity
+	// Only ASCII attribute values are needed, so pass any declared
+	// encoding through undecoded.
+	d.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil }
+
+	depth := 0
+	var seenTitle, seenSubtitle bool
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return titleType, subtitleType
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if depth == 1 {
+				switch t.Name.Local {
+				case "title":
+					if !seenTitle {
+						seenTitle = true
+						titleType = attr(t, "type")
+					}
+				case "subtitle":
+					if !seenSubtitle {
+						seenSubtitle = true
+						subtitleType = attr(t, "type")
+					}
+				}
+				if seenTitle && seenSubtitle {
+					return titleType, subtitleType
+				}
+				if err := d.Skip(); err != nil {
+					return titleType, subtitleType
+				}
+				continue
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+			if depth == 0 {
+				return titleType, subtitleType
+			}
+		}
+	}
+}
+
+// attr returns the value of the attribute local name of e, or "".
+func attr(e xml.StartElement, local string) string {
+	for _, a := range e.Attr {
+		if a.Name.Local == local && a.Name.Space == "" {
+			return a.Value
+		}
+	}
+	return ""
+}
+
+// isHTMLType reports whether an Atom text-construct type attribute marks
+// HTML or XHTML content: "html" and "xhtml" (Atom 1.0) or an HTML/XHTML
+// media type (Atom 0.3).
+func isHTMLType(t string) bool {
+	t = strings.ToLower(strings.TrimSpace(t))
+	return t == "html" || t == "text/html" || strings.Contains(t, "xhtml")
+}
+
+// blockElements are the HTML elements that separate words, so htmlToText
+// replaces their tags with a space.
+var blockElements = map[string]bool{
+	"address": true, "article": true, "aside": true, "blockquote": true,
+	"br": true, "dd": true, "div": true, "dl": true, "dt": true,
+	"figcaption": true, "figure": true, "footer": true, "h1": true,
+	"h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"header": true, "hr": true, "li": true, "main": true, "nav": true,
+	"ol": true, "p": true, "pre": true, "section": true, "table": true,
+	"td": true, "th": true, "tr": true, "ul": true,
+}
+
+// htmlToText converts an HTML fragment to plain text: tags are dropped
+// (block elements and <br> become a space), entities are decoded,
+// <script> and <style> content is dropped, and whitespace is trimmed and
+// collapsed.
+func htmlToText(s string) string {
+	var b strings.Builder
+	z := html.NewTokenizer(strings.NewReader(s))
+	skip := false // inside <script> or <style>
+	for {
+		switch tt := z.Next(); tt {
+		case html.ErrorToken:
+			return collapseSpace(b.String())
+		case html.TextToken:
+			if !skip {
+				b.Write(z.Text())
+			}
+		case html.StartTagToken, html.EndTagToken, html.SelfClosingTagToken:
+			name, _ := z.TagName()
+			// XHTML content may use a namespace prefix (<xhtml:br/>).
+			if i := bytes.IndexByte(name, ':'); i >= 0 {
+				name = name[i+1:]
+			}
+			switch n := string(name); {
+			case n == "script" || n == "style":
+				skip = tt == html.StartTagToken
+			case blockElements[n]:
+				b.WriteByte(' ')
+			}
+		}
+	}
 }
 
 // atomSiteLink returns the href of the first rel="alternate" link, or else

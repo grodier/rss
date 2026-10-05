@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,9 +19,15 @@ const testLookupID = "33333333-3333-4333-8333-333333333333"
 
 func postLookup(t *testing.T, s *Server, q string) *httptest.ResponseRecorder {
 	t.Helper()
+	return postLookupAs(t, s, "user-1", q)
+}
+
+func postLookupAs(t *testing.T, s *Server, userID, q string) *httptest.ResponseRecorder {
+	t.Helper()
 	form := url.Values{"q": {q}}
 	req := httptest.NewRequest(http.MethodPost, "/lookups", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, userID))
 	rr := httptest.NewRecorder()
 	s.sessionManager.LoadAndSave(http.HandlerFunc(s.lookupCreateHandler)).ServeHTTP(rr, req)
 	return rr
@@ -308,5 +315,37 @@ func TestLookupCrossOriginPost(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", rr.Code)
+	}
+}
+
+func TestLookupCreateRateLimited(t *testing.T) {
+	calls := 0
+	store := &fakeLookupStore{
+		requestFn: func(context.Context, string, string, time.Duration, time.Duration) (rss.Lookup, error) {
+			calls++
+			return rss.Lookup{ID: testLookupID, Status: rss.LookupDone, SiteID: "site-1"}, nil
+		},
+	}
+	s := lookupServer(t, store, 0)
+
+	for i := 1; i <= 10; i++ {
+		if rr := postLookupAs(t, s, "user-1", "example.com"); rr.Code != http.StatusSeeOther {
+			t.Fatalf("request %d: status = %d, want 303", i, rr.Code)
+		}
+	}
+	rr := postLookupAs(t, s, "user-1", "example.com")
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rr.Code)
+	}
+	secs, err := strconv.Atoi(rr.Header().Get("Retry-After"))
+	if err != nil || secs < 1 || secs > 600 {
+		t.Errorf("Retry-After = %q, want 1-600 seconds", rr.Header().Get("Retry-After"))
+	}
+	if calls != 10 {
+		t.Errorf("Request called %d times, want 10", calls)
+	}
+
+	if rr := postLookupAs(t, s, "user-2", "example.com"); rr.Code != http.StatusSeeOther {
+		t.Errorf("other user: status = %d, want 303", rr.Code)
 	}
 }

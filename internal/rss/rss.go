@@ -26,6 +26,19 @@ type Site struct {
 	UpdatedAt   time.Time
 }
 
+// SiteWithFeeds is a site and its feeds.
+type SiteWithFeeds struct {
+	Site  Site
+	Feeds []Feed
+}
+
+// SearchResults holds search matches grouped by site. Feeds are the matching
+// feeds that have no site.
+type SearchResults struct {
+	Sites []SiteWithFeeds
+	Feeds []Feed
+}
+
 type User struct {
 	ID             string
 	Name           string

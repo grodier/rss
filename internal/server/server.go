@@ -7,9 +7,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -115,36 +112,34 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 	return s, nil
 }
 
-func (s *Server) Serve() error {
-	shutdown := make(chan error)
-
-	go func() {
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		sig := <-quit
-
-		s.logger.Info("shutting down server", "signal", sig)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		err := s.server.Shutdown(ctx)
-		shutdown <- err
-	}()
-
+// Serve runs the HTTP server until ctx is canceled, then shuts it down
+// gracefully (waiting up to 30s for in-flight requests). It returns early
+// with the error if the server fails to start, e.g. the port is in use.
+func (s *Server) Serve(ctx context.Context) error {
 	s.logger.Info("starting server", "port", s.config.Port, "env", s.config.Env)
 
-	err := s.server.ListenAndServe()
-	if !errors.Is(err, http.ErrServerClosed) {
+	errc := make(chan error, 1)
+	go func() { errc <- s.server.ListenAndServe() }()
+
+	select {
+	case err := <-errc:
+		// Only Serve calls Shutdown, so this is a startup/listen failure.
 		return err
+	case <-ctx.Done():
 	}
 
-	err = <-shutdown
-	if err != nil {
+	s.logger.Info("shutting down server")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	// ListenAndServe returns ErrServerClosed as soon as Shutdown starts.
+	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 
 	s.logger.Info("server stopped gracefully")
-
 	return nil
 }

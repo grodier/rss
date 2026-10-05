@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -66,54 +65,4 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.writeJSON(w, http.StatusCreated, data, nil); err != nil {
 		s.serverErrorJSON(w, r, err)
 	}
-}
-
-type feedCreateForm struct {
-	Url                 string `form:"url"`
-	validator.Validator `form:"-"`
-}
-
-func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
-	var form feedCreateForm
-	err := s.decodePostForm(r, &form)
-	if err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
-	}
-
-	form.CheckField(validator.NotBlank(form.Url), "url", "URL cannot be blank")
-
-	if !form.Valid() {
-		data := struct {
-			Form any
-		}{Form: form}
-
-		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-			return
-		}
-		return
-	}
-
-	feed := rss.Feed{Url: form.Url}
-
-	id, err := s.services.FeedService.Create(r.Context(), feed)
-	if err != nil {
-		if errors.Is(err, rss.ErrDuplicateFeed) {
-			form.AddFieldError("url", "This feed has already been added")
-			data := struct {
-				Form any
-			}{Form: form}
-			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
-				s.serverErrorHTML(w, r, err)
-			}
-			return
-		}
-		s.serverErrorHTML(w, r, err)
-		return
-	}
-
-	s.sessionManager.Put(r.Context(), "flash", "Feed created successfully!")
-
-	http.Redirect(w, r, fmt.Sprintf("/feeds/%s", id), http.StatusSeeOther)
 }

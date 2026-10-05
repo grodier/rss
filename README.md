@@ -2,7 +2,7 @@
 
 A server-rendered RSS reader written in Go, using [chi](https://github.com/go-chi/chi), `html/template` (templates and static files are embedded in the binary), Postgres, and [scs](https://github.com/alexedwards/scs) sessions.
 
-> **Work in progress.** Accounts (sign up, log in, log out) and adding feed URLs work. Fetching and parsing feeds, and subscriptions, are not implemented yet.
+> **Work in progress.** Accounts (sign up, log in, log out) and search works. Fetching and parsing feeds, and subscriptions, are not implemented yet.
 
 ## Prerequisites
 
@@ -81,6 +81,4 @@ Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make t
 | `GET /logout` | No |
 | `GET /feeds` | Yes |
 | `GET /feeds/{id}` | Yes |
-| `POST /feeds` | Yes |
-| `GET /discover` | Yes |
 | `POST /subscribe` | Yes |

@@ -22,9 +22,9 @@ CREATE TABLE sites (
 CREATE TABLE feeds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    site_id UUID
+    site_id UUID NOT NULL
         REFERENCES sites(id)
-        ON DELETE SET NULL,
+        ON DELETE CASCADE,
 
     url TEXT NOT NULL UNIQUE,
     site_url TEXT NOT NULL DEFAULT '',

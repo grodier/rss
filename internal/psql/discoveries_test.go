@@ -65,7 +65,7 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 	})
 
 	t.Run("empty title keeps the old one", func(t *testing.T) {
-		f := rss.Feed{Url: prefix + "two", Title: "Keep", Description: "Desc"}
+		f := rss.Feed{Url: prefix + "two", Title: "Keep", Description: "Desc", SiteID: siteA}
 		id, err := feeds.Upsert(t.Context(), f)
 		if err != nil {
 			t.Fatalf("Upsert: %v", err)
@@ -79,7 +79,7 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 		}
 	})
 
-	t.Run("existing site is kept, NULL site is filled", func(t *testing.T) {
+	t.Run("existing site is kept", func(t *testing.T) {
 		attached := rss.Feed{Url: prefix + "attached", SiteID: siteA}
 		id, err := feeds.Upsert(t.Context(), attached)
 		if err != nil {
@@ -91,22 +91,6 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 		}
 		if got := get(t, id).SiteID; got != siteA {
 			t.Errorf("got site %q; want %q", got, siteA)
-		}
-
-		orphan := rss.Feed{Url: prefix + "orphan"}
-		id, err = feeds.Upsert(t.Context(), orphan)
-		if err != nil {
-			t.Fatalf("Upsert: %v", err)
-		}
-		if got := get(t, id).SiteID; got != "" {
-			t.Errorf("got site %q; want none", got)
-		}
-		orphan.SiteID = siteB
-		if _, err := feeds.Upsert(t.Context(), orphan); err != nil {
-			t.Fatalf("Upsert again: %v", err)
-		}
-		if got := get(t, id).SiteID; got != siteB {
-			t.Errorf("got site %q; want %q", got, siteB)
 		}
 	})
 

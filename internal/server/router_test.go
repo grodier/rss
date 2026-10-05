@@ -139,3 +139,22 @@ func TestCrossOriginProtection(t *testing.T) {
 		})
 	}
 }
+
+func TestRemovedAddFeedRoutes(t *testing.T) {
+	s := newTestServer(t)
+
+	for _, tc := range []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodGet, "/discover", http.StatusNotFound},
+		{http.MethodPost, "/feeds", http.StatusMethodNotAllowed},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, req)
+		if rr.Code != tc.want {
+			t.Errorf("%s %s = %d, want %d", tc.method, tc.path, rr.Code, tc.want)
+		}
+	}
+}

@@ -25,7 +25,6 @@ type Config struct {
 
 // FeedStore is the feed persistence the server depends on.
 type FeedStore interface {
-	Create(ctx context.Context, feed rss.Feed) (string, error)
 	GetByID(ctx context.Context, id string) (rss.Feed, error)
 	GetLatest(ctx context.Context) ([]rss.Feed, error)
 }

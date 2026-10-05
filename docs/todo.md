@@ -46,11 +46,6 @@ yet:
 - [ ] **Reading experience.** List articles on the feed page, add an "all my feeds"
   timeline, and track read/unread per user (needs a new table).
 
-## Small fixes
-
-- [ ] 405 responses don't include an `Allow` header (chi doesn't set it when a custom
-  `MethodNotAllowed` handler is installed).
-
 ## Security
 
 - [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.

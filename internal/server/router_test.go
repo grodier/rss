@@ -139,3 +139,28 @@ func TestCrossOriginProtection(t *testing.T) {
 		})
 	}
 }
+
+func TestMethodNotAllowedSetsAllow(t *testing.T) {
+	h := newTestServer(t).router()
+
+	tests := []struct {
+		method, path, want string
+	}{
+		{http.MethodGet, "/logout", "POST"},
+		{http.MethodPut, "/login", "GET, POST"},
+		{http.MethodDelete, "/healthcheck", "GET"},
+		{http.MethodPut, "/", "GET"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
+			if rr.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+			}
+			if got := rr.Header().Get("Allow"); got != tt.want {
+				t.Errorf("Allow = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

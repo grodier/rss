@@ -10,12 +10,7 @@
 
 <body>
   <main>
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>Search</h1>
-
-    <section>
+    <header class="site-nav">
       <nav>
         <div>
           <a href="/">Home</a>
@@ -28,16 +23,23 @@
           </form>
         </div>
       </nav>
-    </section>
+    </header>
+
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>Search</h1>
 
     <section>
-      <form action="/search" method="get">
+      <form class="search-form" action="/search" method="get">
         <label for="q">Search:</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
         {{end}}
-        <input type="search" id="q" name="q" value="{{.Form.Q}}" />
-        <button type="submit">Search</button>
+        <div class="row">
+          <input type="search" id="q" name="q" value="{{.Form.Q}}" />
+          <button type="submit">Search</button>
+        </div>
       </form>
     </section>
 

@@ -76,13 +76,12 @@ func TestParse(t *testing.T) {
 		},
 		{
 			// <title type="html"> and a <link> without rel. An HTML title
-			// is kept as HTML source (entities not decoded, tags not
-			// stripped); templates escape it.
+			// is converted to plain text.
 			file:    "atom-no-rel.xml",
 			feedURL: "https://example.net/atom.xml",
 			want: Meta{
 				Format:  "atom",
-				Title:   "Tom &amp; Jerry's <b>Blog</b>",
+				Title:   "Tom & Jerry's Blog",
 				SiteURL: "https://example.net/",
 			},
 		},
@@ -119,6 +118,104 @@ func TestParse(t *testing.T) {
 				t.Errorf("Parse:\n got %+v\nwant %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseText(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	const atomNS = `<feed xmlns="http://www.w3.org/2005/Atom">`
+	tests := []struct {
+		name                string
+		body                string
+		wantTitle, wantDesc string
+	}{
+		{
+			name:      "atom html",
+			body:      atomNS + `<link href="https://example.com/"></link><title type="html">Tom &amp;amp; Jerry&#39;s &lt;b&gt;Blog&lt;/b&gt;</title><subtitle type="html">Line&lt;br&gt;two</subtitle></feed>`,
+			wantTitle: "Tom & Jerry's Blog",
+			wantDesc:  "Line two",
+		},
+		{
+			name:      "atom html cdata",
+			body:      atomNS + `<title type="HTML"><![CDATA[A &amp; <i>B</i>]]></title></feed>`,
+			wantTitle: "A & B",
+		},
+		{
+			name:      "atom xhtml",
+			body:      atomNS + `<title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">A <em>B</em></div></title><subtitle type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>One</p><p>Two &amp; three</p></div></subtitle></feed>`,
+			wantTitle: "A B",
+			wantDesc:  "One Two & three",
+		},
+		{
+			// Text is not markup: escaped tags are kept literally.
+			name:      "atom text",
+			body:      atomNS + `<title type="text">A &lt;b&gt; tag</title><subtitle>x &lt; y &amp;amp; z</subtitle></feed>`,
+			wantTitle: "A <b> tag",
+			wantDesc:  "x < y &amp; z",
+		},
+		{
+			// Only the feed-level <title> type counts, not an entry's.
+			name:      "atom entry title type",
+			body:      atomNS + `<entry><title type="html">E</title></entry><title>&lt;b&gt;</title></feed>`,
+			wantTitle: "<b>",
+		},
+		{
+			// RSS descriptions are always HTML; titles are text.
+			name:      "rss description",
+			body:      `<rss version="2.0"><channel><title>A &lt;b&gt; tag</title><description>Tom &amp;amp; Jerry&lt;br/&gt;&lt;script&gt;x()&lt;/script&gt;&lt;em&gt;Blog&lt;/em&gt;</description></channel></rss>`,
+			wantTitle: "A <b> tag",
+			wantDesc:  "Tom & Jerry Blog",
+		},
+		{
+			name:      "rss cdata description",
+			body:      `<rss version="2.0"><channel><title>T</title><description><![CDATA[<p>Hello</p><p>world</p>]]></description></channel></rss>`,
+			wantTitle: "T",
+			wantDesc:  "Hello world",
+		},
+		{
+			name:      "rdf description",
+			body:      `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/"><channel rdf:about="https://example.org/"><title>T</title><description>&lt;b&gt;Bold&lt;/b&gt;</description></channel></rdf:RDF>`,
+			wantTitle: "T",
+			wantDesc:  "Bold",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if got.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", got.Title, tt.wantTitle)
+			}
+			if got.Description != tt.wantDesc {
+				t.Errorf("Description = %q, want %q", got.Description, tt.wantDesc)
+			}
+		})
+	}
+}
+
+func TestHTMLToText(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"plain", "plain"},
+		{"Tom &amp; Jerry&#39;s &eacute;", "Tom & Jerry's é"},
+		{"<p>A <b>bold <i>nested</i></b> word</p>", "A bold nested word"},
+		{"in<b>line</b>", "inline"},
+		{"one<br>two<br/>three", "one two three"},
+		{"<p>one</p><p>two</p><div>three</div><ul><li>a</li><li>b</li></ul>", "one two three a b"},
+		{"a<script>alert('<b>x</b>')</script>b<style>p{color:red}</style>c", "abc"},
+		{"<xhtml:p>one</xhtml:p><xhtml:p>two</xhtml:p>", "one two"},
+		{"x < y", "x < y"},
+		{"  lots \n\t of   space  ", "lots of space"},
+		{"a<!-- comment -->b", "ab"},
+	}
+	for _, tt := range tests {
+		if got := htmlToText(tt.in); got != tt.want {
+			t.Errorf("htmlToText(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 

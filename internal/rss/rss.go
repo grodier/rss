@@ -39,3 +39,28 @@ type User struct {
 	HashedPassword []byte
 	CreatedAt      time.Time
 }
+
+// LookupStatus is the state of a site lookup.
+type LookupStatus string
+
+const (
+	LookupPending LookupStatus = "pending"
+	LookupRunning LookupStatus = "running"
+	LookupDone    LookupStatus = "done"
+	LookupFailed  LookupStatus = "failed"
+)
+
+// Lookup is a background lookup of a site's feeds. It is both a job in the
+// lookup queue and the cached result for its site key.
+type Lookup struct {
+	ID          string
+	SiteKey     string
+	URL         string
+	Status      LookupStatus
+	SiteID      string // "" if none
+	Error       string // internal detail; never shown to users
+	Attempts    int
+	RequestedAt time.Time
+	StartedAt   time.Time // zero if never started
+	FinishedAt  time.Time // zero if not finished
+}

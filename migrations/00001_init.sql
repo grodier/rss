@@ -39,6 +39,25 @@ CREATE TABLE feeds (
 
 CREATE INDEX feeds_site_id_idx ON feeds (site_id);
 
+-- lookups is both the queue of site lookups that workers claim jobs from
+-- and the cache of their results: one row per site key.
+CREATE TABLE lookups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    site_key TEXT NOT NULL UNIQUE,   -- discovery.SiteKey of the input
+    url TEXT NOT NULL,               -- normalized input URL to fetch
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'running', 'done', 'failed')),
+    site_id UUID REFERENCES sites(id) ON DELETE SET NULL, -- set when done with >= 1 feed
+    error TEXT NOT NULL DEFAULT '',  -- internal detail for logs/debugging; never shown to users
+    attempts INT NOT NULL DEFAULT 0,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX lookups_pending_idx ON lookups (requested_at) WHERE status = 'pending';
+
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -83,6 +102,7 @@ CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 -- +goose Down
 DROP TABLE subscriptions;
 DROP TABLE articles;
+DROP TABLE lookups;
 DROP TABLE feeds;
 DROP TABLE sites;
 DROP TABLE users;

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -68,11 +69,17 @@ func (app *Application) Run(args []string) error {
 		return err
 	}
 
-	// The server has its own signal handling; this context stops the lookup
-	// workers on the same signals.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// After the first signal, restore default signal handling so a second
+	// Ctrl-C kills the process if graceful shutdown hangs.
+	context.AfterFunc(sigCtx, stop)
 
+	// ctx is also canceled when either component fails, stopping the other.
+	ctx, cancel := context.WithCancel(sigCtx)
+	defer cancel()
+
+	var runnerErr error
 	runnerDone := make(chan struct{})
 	if app.config.lookup.workers > 0 {
 		runner := &lookup.Runner{
@@ -85,20 +92,22 @@ func (app *Application) Run(args []string) error {
 		go func() {
 			defer close(runnerDone)
 			if err := runner.Run(ctx); err != nil {
-				app.logger.Error("lookup runner", "error", err)
+				runnerErr = fmt.Errorf("lookup runner: %w", err)
+				cancel()
 			}
 		}()
 	} else {
 		close(runnerDone)
 	}
 
-	err = srv.Serve()
+	err = srv.Serve(ctx)
 
-	// Stop the workers and wait for them before the deferred db.Close.
-	stop()
+	// Stop the workers (if Serve returned on its own) and wait for them
+	// before the deferred db.Close runs.
+	cancel()
 	<-runnerDone
 
-	return err
+	return errors.Join(err, runnerErr)
 }
 
 func (app *Application) ParseConfigs(args []string) (config, error) {

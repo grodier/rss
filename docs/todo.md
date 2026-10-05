@@ -68,6 +68,11 @@ Tracked as issues:
 ## Security
 
 - [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.
+- [ ] Evaluate whether the in-memory rate limiter (`internal/server/ratelimit.go`) is the
+  right approach long term. It resets on restart and isn't shared across instances. Before
+  running more than one instance, or if limits need to survive restarts, compare options
+  (e.g. Postgres-backed counters, a reverse-proxy/edge limit, Redis) and decide. No
+  decision yet.
 
 ## Suggested order
 

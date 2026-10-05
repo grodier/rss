@@ -8,13 +8,8 @@ import (
 )
 
 type fakeFeedStore struct {
-	createFn    func(ctx context.Context, f rss.Feed) (string, error)
 	getByIDFn   func(ctx context.Context, id string) (rss.Feed, error)
 	getLatestFn func(ctx context.Context) ([]rss.Feed, error)
-}
-
-func (f *fakeFeedStore) Create(ctx context.Context, feed rss.Feed) (string, error) {
-	return f.createFn(ctx, feed)
 }
 
 func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error) {

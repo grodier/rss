@@ -46,8 +46,6 @@ func (s *Server) router() http.Handler {
 			r.Get("/feeds/{id}", s.feedHandler)
 			r.Get("/feeds", s.feedsHandler)
 			r.Get("/search", s.searchHandler)
-			r.Get("/discover", s.discoverHandler)
-			r.Post("/feeds", s.createFeedHandler)
 		})
 
 		r.Group(func(r chi.Router) {

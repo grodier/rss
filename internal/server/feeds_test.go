@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -82,64 +80,4 @@ func TestFeedHandlerNotFound(t *testing.T) {
 	rr := serveFeed(t, s, testFeedID)
 
 	assertNotFoundHTML(t, rr)
-}
-
-func postCreateFeed(s *Server) *httptest.ResponseRecorder {
-	form := url.Values{"url": {"https://example.com/rss.xml"}}
-	req := httptest.NewRequest(http.MethodPost, "/feeds", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rr := httptest.NewRecorder()
-	s.sessionManager.LoadAndSave(http.HandlerFunc(s.createFeedHandler)).ServeHTTP(rr, req)
-	return rr
-}
-
-func TestCreateFeedHandlerDuplicate(t *testing.T) {
-	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
-			return "", rss.ErrDuplicateFeed
-		},
-	}})
-
-	rr := postCreateFeed(s)
-
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
-	}
-	if !strings.Contains(rr.Body.String(), "This feed has already been added") {
-		t.Errorf("body does not contain duplicate error: %s", rr.Body.String())
-	}
-}
-
-func TestCreateFeedHandlerSuccess(t *testing.T) {
-	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
-			if f.Url != "https://example.com/rss.xml" {
-				t.Errorf("Url = %q", f.Url)
-			}
-			return testFeedID, nil
-		},
-	}})
-
-	rr := postCreateFeed(s)
-
-	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
-	}
-	if loc := rr.Header().Get("Location"); loc != "/feeds/"+testFeedID {
-		t.Errorf("Location = %q, want /feeds/%s", loc, testFeedID)
-	}
-}
-
-func TestCreateFeedHandlerStoreError(t *testing.T) {
-	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		createFn: func(ctx context.Context, f rss.Feed) (string, error) {
-			return "", errors.New("db down")
-		},
-	}})
-
-	rr := postCreateFeed(s)
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
 }

@@ -5,7 +5,7 @@ import "time"
 
 type Feed struct {
 	ID          string
-	SiteID      string // empty when the feed has no site
+	SiteID      string
 	Url         string
 	SiteUrl     string
 	Title       string

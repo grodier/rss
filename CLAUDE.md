@@ -62,6 +62,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `Services` holds the `FeedStore` / `UserStore` interfaces. For handler tests that need store results, build a server with `newTestServerWith(t, Services{...})` and the function-field fakes in `internal/server/fakes_test.go`. Keep DB tests for repository code in `internal/psql`.
 - DB tests: `psqltest.NewDB(t)` (`internal/psql/psqltest`). They skip locally without `RSS_TEST_DB_DSN` and fail in CI without it. Create uniquely-named rows, delete them in `t.Cleanup`, never truncate.
 - Bug fixes come with a test that fails before the fix, where feasible.
+- Test behavior the app has, not behavior it no longer has. When code is removed, delete its tests; don't add tests asserting that a removed route, handler or function is gone (e.g. "`GET /old` returns 404"). They only re-test the router's or compiler's defaults and become dead weight. The same goes for issues and plans that ask for such tests; question them.
 - Standard library only for tests (no testify).
 
 ## Git and PR workflow

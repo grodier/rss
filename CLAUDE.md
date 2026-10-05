@@ -4,6 +4,10 @@
 
 A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts and adding feed URLs work; fetching feeds and subscriptions are not built yet.
 
+## Prototype stage
+
+The app is pre-alpha and not in production: there are no users or data to preserve. When new work replaces existing behavior, change or remove the old code instead of keeping it working alongside the new: no compatibility shims, fallbacks, or special cases for rows or flows the old code produced. This applies to issues and plans too; if one asks for legacy support, question it. Once backwards compatibility is actually needed (after we're in production and past alpha), every compatibility path needs a plan for when and how it gets removed.
+
 ## Commands
 
 `make` targets need a `.env` file (`include .env`) defining `RSS_DB_DSN`.
@@ -17,7 +21,8 @@ go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www -db-dsn "$RSS_DB_DSN"   # run the app (or: make run)
 goose -dir ./migrations postgres "$RSS_DB_DSN" up
-make db/migrations/new name=<name>       # new migration
+make db/reset                            # rebuild the local DB after editing 00001_init.sql
+make db/migrations/new name=<name>       # new migration (only once in production)
 ```
 
 Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres.
@@ -41,7 +46,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm`, validated with `CheckField`, re-rendered with **422** when invalid.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders. Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`). Handlers check them with `errors.Is`.
-- Schema changes only through a **new** goose migration; never edit a migration that is already on `main`.
+- Schema changes: while pre-alpha (see "Prototype stage"), edit `migrations/00001_init.sql` directly instead of adding a migration, and rebuild your local database with `make db/reset` afterwards (CI starts from an empty database). Once we're in production, schema changes only go through a **new** goose migration, and migrations already on `main` are never edited.
 - Templates are standalone full pages (no shared layout yet). A nav change must be applied to every template.
 - Log with `s.logger` (slog); log request errors with `s.logError`.
 - Prefer the standard library. Don't add a dependency without a one-line justification in the PR.

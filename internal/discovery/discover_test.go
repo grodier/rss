@@ -205,6 +205,29 @@ func TestDiscoverNoFeeds(t *testing.T) {
 	}
 }
 
+func TestDiscoverTruncatedPage(t *testing.T) {
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://example.com/": htmlResp(`<html><head><title>Cut Off</title>
+			<link rel="alternate" type="application/rss+xml" href="/posts.xml"><me`),
+		"https://example.com/posts.xml": rssResp("Posts", "https://example.com/"),
+	}}
+	d := &Discoverer{Fetcher: f}
+
+	res, err := d.Discover(context.Background(), mustURL(t, "https://example.com/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Site.Title != "Cut Off" {
+		t.Errorf("Site.Title = %q, want %q", res.Site.Title, "Cut Off")
+	}
+	assertURLs(t, res.Feeds, "https://example.com/posts.xml")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.gets) != 2 {
+		t.Errorf("fetched %v, want the page and its advertised feed only", f.gets)
+	}
+}
+
 func TestDiscoverInputIsFeed(t *testing.T) {
 	tests := []struct {
 		name     string

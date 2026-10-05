@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"net/url"
-	"strings"
 	"testing"
 )
 
@@ -144,14 +143,25 @@ func TestParsePage(t *testing.T) {
 			name: "empty document",
 			html: ``,
 		},
+		{
+			name:      "truncated mid-tag keeps what came before",
+			html:      `<html><head><title>Blog</title><meta name="description" content="Posts."><link rel="alternate" type="application/rss+xml" href="/feed"><li`,
+			wantTitle: "Blog",
+			wantDesc:  "Posts.",
+			wantFeeds: []feed{
+				{"https://example.com/feed", "", "application/rss+xml"},
+			},
+		},
+		{
+			name:      "truncated inside title",
+			html:      `<html><head><title>Half a ti`,
+			wantTitle: "Half a ti",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info, err := ParsePage(pageURL, strings.NewReader(tt.html))
-			if err != nil {
-				t.Fatalf("ParsePage: %v", err)
-			}
+			info := ParsePage(pageURL, []byte(tt.html))
 			if info.Title != tt.wantTitle {
 				t.Errorf("Title = %q, want %q", info.Title, tt.wantTitle)
 			}
@@ -174,10 +184,7 @@ func TestParsePage(t *testing.T) {
 
 func TestParsePageDoesNotModifyPageURL(t *testing.T) {
 	pageURL, _ := url.Parse("https://example.com/blog/")
-	_, err := ParsePage(pageURL, strings.NewReader(`<base href="https://other.example/"><link rel="alternate" type="application/rss+xml" href="f">`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	ParsePage(pageURL, []byte(`<base href="https://other.example/"><link rel="alternate" type="application/rss+xml" href="f">`))
 	if got := pageURL.String(); got != "https://example.com/blog/" {
 		t.Errorf("pageURL changed to %q", got)
 	}

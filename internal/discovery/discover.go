@@ -1,7 +1,6 @@
 package discovery
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -61,6 +60,11 @@ type Discoverer struct {
 
 // Discover fetches u (from ParseInput) and finds its feeds. The caller sets
 // the overall deadline on ctx.
+//
+// Failing to fetch u, or a non-2xx status, is an error. An HTML page is never
+// an error, however malformed or truncated: Discover uses whatever title,
+// description and feed links it could read, and when the page advertises no
+// feeds it tries CommonFeedPaths.
 func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	resp, err := d.Fetcher.Get(ctx, u.String())
 	if err != nil {
@@ -93,12 +97,8 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 		}
 	}
 
-	// An HTML page. A parse error only means the page couldn't be fully
-	// read; fall back to the common paths.
-	info, err := ParsePage(resp.URL, bytes.NewReader(resp.Body))
-	if err != nil {
-		info = PageInfo{}
-	}
+	// An HTML page.
+	info := ParsePage(resp.URL, resp.Body)
 	site := SiteInfo{
 		Key:         SiteKey(resp.URL),
 		URL:         origin(resp.URL),

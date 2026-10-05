@@ -47,11 +47,18 @@ type SearchStore interface {
 	Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error)
 }
 
+// LookupStore queues and reads site lookups.
+type LookupStore interface {
+	Request(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
+	GetByID(ctx context.Context, id string) (rss.Lookup, error)
+}
+
 var (
 	_ FeedStore   = (*psql.FeedRepository)(nil)
 	_ UserStore   = (*psql.UserRepository)(nil)
 	_ SearchStore = (*psql.SearchRepository)(nil)
 	_ SiteStore   = (*psql.SiteRepository)(nil)
+	_ LookupStore = (*psql.LookupRepository)(nil)
 )
 
 type Services struct {
@@ -59,6 +66,7 @@ type Services struct {
 	UserService   UserStore
 	SearchService SearchStore
 	SiteService   SiteStore
+	LookupService LookupStore
 }
 
 type Server struct {
@@ -70,6 +78,10 @@ type Server struct {
 
 	sessionManager *scs.SessionManager
 	services       Services
+
+	// lookupWait is how long POST /lookups waits for a lookup to finish
+	// before redirecting to its status page. Keep it well under WriteTimeout.
+	lookupWait time.Duration
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -85,6 +97,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		formDecoder:    form.NewDecoder(),
 		services:       services,
 		sessionManager: sessionManager,
+		lookupWait:     3 * time.Second,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

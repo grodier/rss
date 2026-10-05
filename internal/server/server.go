@@ -27,6 +27,12 @@ type Config struct {
 type FeedStore interface {
 	GetByID(ctx context.Context, id string) (rss.Feed, error)
 	GetLatest(ctx context.Context) ([]rss.Feed, error)
+	ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error)
+}
+
+// SiteStore is the site persistence the server depends on.
+type SiteStore interface {
+	GetByID(ctx context.Context, id string) (rss.Site, error)
 }
 
 // UserStore is the user persistence the server depends on.
@@ -45,12 +51,14 @@ var (
 	_ FeedStore   = (*psql.FeedRepository)(nil)
 	_ UserStore   = (*psql.UserRepository)(nil)
 	_ SearchStore = (*psql.SearchRepository)(nil)
+	_ SiteStore   = (*psql.SiteRepository)(nil)
 )
 
 type Services struct {
 	FeedService   FeedStore
 	UserService   UserStore
 	SearchService SearchStore
+	SiteService   SiteStore
 }
 
 type Server struct {

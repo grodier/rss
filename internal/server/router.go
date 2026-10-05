@@ -45,6 +45,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/subscribe", s.subscribeFeedHandler)
 			r.Get("/feeds/{id}", s.feedHandler)
 			r.Get("/feeds", s.feedsHandler)
+			r.Get("/sites/{id}", s.siteHandler)
 			r.Get("/search", s.searchHandler)
 		})
 

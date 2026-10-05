@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rss - {{.Feed.Title}}</title>
+  <title>rss - {{or .Site.Title .Site.Host}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
@@ -13,12 +13,11 @@
     {{with .Flash}}
     <div class="flash">{{.}}</div>
     {{end}}
-    <h1>{{.Feed.Title}}</h1>
-    {{with .Feed.Description}}
+    <h1>{{or .Site.Title .Site.Host}}</h1>
+    {{with .Site.Description}}
     <p>{{.}}</p>
     {{end}}
-    <p>From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
-    <p>Feed URL: <code>{{.Feed.Url}}</code></p>
+    <p><a href="{{.Site.URL}}" rel="noopener noreferrer">{{.Site.Host}}</a></p>
 
     <section>
       <nav>
@@ -33,6 +32,23 @@
           </form>
         </div>
       </nav>
+    </section>
+
+    <section>
+      <h2>Feeds</h2>
+      {{if .Feeds}}
+      <ul>
+        {{range .Feeds}}
+        <li>
+          <a href="/feeds/{{.ID}}">{{.Title}}</a>
+          {{with .Description}}<p>{{.}}</p>{{end}}
+          <p>{{.Url}}</p>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p>No feeds found for this site yet.</p>
+      {{end}}
     </section>
   </main>
 </body>

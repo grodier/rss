@@ -51,6 +51,7 @@ type SearchStore interface {
 type LookupStore interface {
 	Request(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
 	GetByID(ctx context.Context, id string) (rss.Lookup, error)
+	GetBySiteKey(ctx context.Context, siteKey string) (rss.Lookup, error)
 }
 
 var (
@@ -82,6 +83,9 @@ type Server struct {
 	// lookupWait is how long POST /lookups waits for a lookup to finish
 	// before redirecting to its status page. Keep it well under WriteTimeout.
 	lookupWait time.Duration
+
+	// now returns the current time. Tests override it.
+	now func() time.Time
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -98,6 +102,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		services:       services,
 		sessionManager: sessionManager,
 		lookupWait:     3 * time.Second,
+		now:            time.Now,
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

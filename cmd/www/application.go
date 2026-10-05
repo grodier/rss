@@ -49,6 +49,7 @@ func (app *Application) Run(args []string) error {
 		UserService:   psql.NewUserRepository(db),
 		SearchService: psql.NewSearchRepository(db),
 		SiteService:   psql.NewSiteRepository(db),
+		LookupService: psql.NewLookupRepository(db),
 	}
 
 	srvConfig := server.Config{

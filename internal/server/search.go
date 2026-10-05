@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -23,6 +24,9 @@ type searchData struct {
 	Sites    []rss.SiteWithFeeds
 	Searched bool
 	Flash    string
+	// LookupQ is the query to offer as a site lookup, or "" if q doesn't
+	// look like a website address.
+	LookupQ string
 }
 
 // searchHandler searches the database only. It never fetches or writes, since
@@ -40,6 +44,9 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	case !data.Form.Valid():
 		status = http.StatusUnprocessableEntity
 	case data.Form.Q != "":
+		if discovery.LooksLikeURL(data.Form.Q) {
+			data.LookupQ = data.Form.Q
+		}
 		sites, err := s.services.SearchService.Search(r.Context(), data.Form.Q, searchLimit)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)

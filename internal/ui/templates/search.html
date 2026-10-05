@@ -41,6 +41,15 @@
       </form>
     </section>
 
+    {{with .LookupQ}}
+    <section>
+      <form action="/lookups" method="post">
+        <input type="hidden" name="q" value="{{.}}">
+        <button type="submit">Look up {{.}}</button>
+      </form>
+    </section>
+    {{end}}
+
     {{if .Searched}}
     <section>
       {{range .Sites}}

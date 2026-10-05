@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  {{if .InProgress}}
+  <meta http-equiv="refresh" content="2" />
+  {{end}}
+  <title>rss - looking up {{.SiteKey}}</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+
+<body>
+  <main>
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>Looking up {{.SiteKey}}</h1>
+
+    <section>
+      <nav>
+        <div>
+          <a href="/">Home</a>
+          <a href="/feeds">Feeds</a>
+          <a href="/search">Search</a>
+        </div>
+        <div>
+          <form action="/logout" method="post">
+            <button type="submit">Logout</button>
+          </form>
+        </div>
+      </nav>
+    </section>
+
+    <section>
+      {{if .InProgress}}
+      <p>Looking for feeds on {{.SiteKey}}…</p>
+      <p><a href="/lookups/{{.ID}}">Refresh</a></p>
+      {{else if .Failed}}
+      <p>We couldn't reach {{.SiteKey}}. Try again later.</p>
+      <p><a href="/search">Back to search</a></p>
+      {{else}}
+      <p>No feeds found on {{.SiteKey}}.</p>
+      <p><a href="/search">Back to search</a></p>
+      {{end}}
+    </section>
+  </main>
+</body>
+
+</html>

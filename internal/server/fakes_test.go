@@ -58,3 +58,16 @@ type fakeSearchStore struct {
 func (f *fakeSearchStore) Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error) {
 	return f.searchFn(ctx, q, limit)
 }
+
+type fakeLookupStore struct {
+	requestFn func(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
+	getByIDFn func(ctx context.Context, id string) (rss.Lookup, error)
+}
+
+func (f *fakeLookupStore) Request(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
+	return f.requestFn(ctx, siteKey, url, doneTTL, failedTTL)
+}
+
+func (f *fakeLookupStore) GetByID(ctx context.Context, id string) (rss.Lookup, error) {
+	return f.getByIDFn(ctx, id)
+}

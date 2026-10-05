@@ -41,6 +41,7 @@ func (app *Application) Run(args []string) error {
 		FeedService:   psql.NewFeedRepository(db),
 		UserService:   psql.NewUserRepository(db),
 		SearchService: psql.NewSearchRepository(db),
+		SiteService:   psql.NewSiteRepository(db),
 	}
 
 	srvConfig := server.Config{

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -53,20 +54,53 @@ func serveFeed(t *testing.T, s *Server, id string) *httptest.ResponseRecorder {
 	return rr
 }
 
-func TestFeedHandlerSuccess(t *testing.T) {
-	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
-			return rss.Feed{Title: "Example Feed Title"}, nil
+func feedServer(t *testing.T, siteErr error) *Server {
+	t.Helper()
+	return newTestServerWith(t, Services{
+		FeedService: &fakeFeedStore{
+			getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				return rss.Feed{
+					Title:       "Example Feed Title",
+					Description: "A feed about examples",
+					Url:         "https://example.com/feed.xml",
+					SiteID:      testSiteID,
+				}, nil
+			},
 		},
-	}})
+		SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+			if siteErr != nil {
+				return rss.Site{}, siteErr
+			}
+			return rss.Site{ID: id, Host: "example.com", Title: "Example Site"}, nil
+		}},
+	})
+}
 
-	rr := serveFeed(t, s, testFeedID)
+func TestFeedHandlerSuccess(t *testing.T) {
+	rr := serveFeed(t, feedServer(t, nil), testFeedID)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
-	if !strings.Contains(rr.Body.String(), "Example Feed Title") {
-		t.Errorf("body does not contain feed title: %s", rr.Body.String())
+	body := rr.Body.String()
+	for _, want := range []string{
+		"Example Feed Title",
+		"A feed about examples",
+		"https://example.com/feed.xml",
+		`href="/sites/` + testSiteID + `"`,
+		"Example Site",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+}
+
+func TestFeedHandlerSiteError(t *testing.T) {
+	rr := serveFeed(t, feedServer(t, errors.New("boom")), testFeedID)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 	}
 }
 

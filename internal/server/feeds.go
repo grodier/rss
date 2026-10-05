@@ -42,13 +42,21 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	site, err := s.services.SiteService.GetByID(r.Context(), feed.SiteID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
-		Name  string
+		Feed  rss.Feed
+		Site  rss.Site
 		Flash string
 	}{
-		Name:  feed.Title,
+		Feed:  feed,
+		Site:  site,
 		Flash: flash,
 	}
 

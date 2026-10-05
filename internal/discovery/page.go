@@ -1,7 +1,7 @@
 package discovery
 
 import (
-	"io"
+	"bytes"
 	"net/url"
 	"strings"
 
@@ -45,8 +45,10 @@ type feedLink struct {
 	href, title, typ string
 }
 
-// ParsePage reads an HTML document fetched from pageURL.
-func ParsePage(pageURL *url.URL, r io.Reader) (PageInfo, error) {
+// ParsePage extracts page info from an HTML document fetched from pageURL.
+// Malformed or truncated HTML is not an error: parsing stops at the end of
+// body and returns what it found up to there.
+func ParsePage(pageURL *url.URL, body []byte) PageInfo {
 	var (
 		links                         []feedLink
 		baseHref                      string
@@ -55,14 +57,13 @@ func ParsePage(pageURL *url.URL, r io.Reader) (PageInfo, error) {
 		inTitle, titleDone            bool
 	)
 
-	z := html.NewTokenizer(r)
+	z := html.NewTokenizer(bytes.NewReader(body))
 	for {
 		tt := z.Next()
 		switch tt {
 		case html.ErrorToken:
-			if err := z.Err(); err != io.EOF {
-				return PageInfo{}, err
-			}
+			// The end of the document. Reading from memory, z.Err() can
+			// only be io.EOF.
 			info := PageInfo{
 				Title:       collapseSpace(siteName),
 				Description: desc,
@@ -74,7 +75,7 @@ func ParsePage(pageURL *url.URL, r io.Reader) (PageInfo, error) {
 				info.Description = ogDesc
 			}
 			info.Feeds = resolveFeeds(pageURL, baseHref, haveBase, links)
-			return info, nil
+			return info
 
 		case html.TextToken:
 			if inTitle {

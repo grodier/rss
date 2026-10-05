@@ -42,3 +42,11 @@ func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string
 func (f *fakeUserStore) Exists(ctx context.Context, id string) (bool, error) {
 	return f.existsFn(ctx, id)
 }
+
+type fakeSearchStore struct {
+	searchFn func(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error)
+}
+
+func (f *fakeSearchStore) Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error) {
+	return f.searchFn(ctx, q, limit)
+}

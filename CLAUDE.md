@@ -4,6 +4,10 @@
 
 A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts and adding feed URLs work; fetching feeds and subscriptions are not built yet.
 
+## Prototype stage
+
+The app is pre-alpha and not in production: there are no users or data to preserve. When new work replaces existing behavior, change or remove the old code instead of keeping it working alongside the new: no compatibility shims, fallbacks, or special cases for rows or flows the old code produced. This applies to issues and plans too; if one asks for legacy support, question it. Once backwards compatibility is actually needed (after we're in production and past alpha), every compatibility path needs a plan for when and how it gets removed.
+
 ## Commands
 
 `make` targets need a `.env` file (`include .env`) defining `RSS_DB_DSN`.

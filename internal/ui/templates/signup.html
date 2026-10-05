@@ -26,7 +26,7 @@
     <section>
       <form action="/signup" method="post">
         <div>
-          <label for="url">Name:</label>
+          <label for="name">Name:</label>
           {{with .Form.FieldErrors.name}}
           <span class="error">{{.}}</span>
           {{end}}
@@ -47,7 +47,7 @@
           <input type="password" id="password" name="password" />
         </div>
         <div>
-          <button type="submit">Add Feed</button>
+          <button type="submit">Sign up</button>
         </div>
       </form>
     </section>

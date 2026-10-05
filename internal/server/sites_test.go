@@ -133,8 +133,42 @@ func TestSiteHandlerStoreErrors(t *testing.T) {
 	})
 }
 
-func TestSiteHandlerRecheck(t *testing.T) {
+func TestCanRecheck(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	lookup := func(status rss.LookupStatus, age time.Duration) rss.Lookup {
+		l := rss.Lookup{Status: status}
+		if age > 0 {
+			l.FinishedAt = now.Add(-age)
+		}
+		return l
+	}
+
+	tests := []struct {
+		name   string
+		lookup rss.Lookup
+		want   bool
+	}{
+		{"no lookup", rss.Lookup{}, true},
+		{"pending", lookup(rss.LookupPending, 0), false},
+		{"running", lookup(rss.LookupRunning, 0), false},
+		{"done 2h ago", lookup(rss.LookupDone, 2*time.Hour), false},
+		{"done exactly 24h ago", lookup(rss.LookupDone, lookupDoneTTL), false},
+		{"done just over 24h ago", lookup(rss.LookupDone, lookupDoneTTL+time.Second), true},
+		{"failed 30m ago", lookup(rss.LookupFailed, 30*time.Minute), false},
+		{"failed exactly 1h ago", lookup(rss.LookupFailed, lookupFailedTTL), false},
+		{"failed just over 1h ago", lookup(rss.LookupFailed, lookupFailedTTL+time.Second), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canRecheck(tt.lookup, now); got != tt.want {
+				t.Errorf("canRecheck = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSiteHandlerRecheck(t *testing.T) {
+	now := time.Now()
 	site := rss.Site{ID: testSiteID, Host: "example.com", URL: "https://www.example.com/"}
 	const button = "Check for new feeds</button>"
 	const checking = "Checking for new feeds"
@@ -158,7 +192,6 @@ func TestSiteHandlerRecheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := siteServerWithLookup(t, site, nil, nil, nil, tt.lookup, tt.lookupErr)
-			s.now = func() time.Time { return now }
 			rr := serveSite(t, s, testSiteID)
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)

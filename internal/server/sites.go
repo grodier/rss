@@ -53,7 +53,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Feeds:       feeds,
 		LastChecked: lookup.FinishedAt,
 		Checking:    lookupInProgress(lookup),
-		CanRecheck:  s.canRecheck(lookup),
+		CanRecheck:  canRecheck(lookup, time.Now()),
 		LookupID:    lookup.ID,
 		Flash:       s.sessionManager.PopString(r.Context(), "flash"),
 	}
@@ -64,10 +64,10 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // canRecheck reports whether a new lookup of the site may be requested: there
-// is none yet, or the last one finished longer ago than the TTL that
+// is none yet, or at now the last one finished longer ago than the TTL that
 // LookupStore.Request enforces for its status.
-func (s *Server) canRecheck(l rss.Lookup) bool {
-	age := s.now().Sub(l.FinishedAt)
+func canRecheck(l rss.Lookup, now time.Time) bool {
+	age := now.Sub(l.FinishedAt)
 	switch l.Status {
 	case "":
 		return true

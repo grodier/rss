@@ -18,6 +18,18 @@
     <p>{{.}}</p>
     {{end}}
     <p><a href="{{.Site.URL}}" rel="noopener noreferrer">{{.Site.Host}}</a></p>
+    {{if not .LastChecked.IsZero}}
+    <p>Feeds last checked {{.LastChecked.Format "2 Jan 2006 15:04 MST"}}.</p>
+    {{end}}
+    {{if .Checking}}
+    <p>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></p>
+    {{end}}
+    {{if .CanRecheck}}
+    <form action="/lookups" method="post">
+      <input type="hidden" name="q" value="{{.Site.URL}}">
+      <button type="submit">Check for new feeds</button>
+    </form>
+    {{end}}
 
     <section>
       <nav>

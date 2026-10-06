@@ -44,6 +44,7 @@ func (s *Server) router() http.Handler {
 			r.Use(s.requireAuthentication)
 			r.Post("/subscribe", s.subscribeFeedHandler)
 			r.Get("/feeds/{id}", s.feedHandler)
+			r.Post("/feeds/{id}/refresh", s.feedRefreshHandler)
 			r.Get("/feeds", s.feedsHandler)
 			r.Get("/sites/{id}", s.siteHandler)
 			r.Get("/search", s.searchHandler)

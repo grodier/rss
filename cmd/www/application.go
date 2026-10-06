@@ -16,6 +16,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/lookup"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/server"
@@ -45,12 +46,16 @@ func (app *Application) Run(args []string) error {
 	}
 	defer db.Close()
 
+	// One client serves lookups and refreshes; it is safe for concurrent use.
+	fetcher := fetch.New(fetch.Options{})
+
 	services := server.Services{
 		FeedService:   psql.NewFeedRepository(db),
 		UserService:   psql.NewUserRepository(db),
 		SearchService: psql.NewSearchRepository(db),
 		SiteService:   psql.NewSiteRepository(db),
 		LookupService: psql.NewLookupRepository(db),
+		Refresher:     &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)},
 	}
 
 	srvConfig := server.Config{
@@ -85,7 +90,7 @@ func (app *Application) Run(args []string) error {
 		runner := &lookup.Runner{
 			Store:      psql.NewLookupRepository(db),
 			Saver:      psql.NewDiscoveryRepository(db),
-			Discoverer: &discovery.Discoverer{Fetcher: fetch.New(fetch.Options{})},
+			Discoverer: &discovery.Discoverer{Fetcher: fetcher},
 			Logger:     app.logger,
 			Workers:    app.config.lookup.workers,
 		}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -51,12 +52,19 @@ type LookupStore interface {
 	GetBySiteKey(ctx context.Context, siteKey string) (rss.Lookup, error)
 }
 
+// FeedRefresher fetches a feed and saves its articles; satisfied by
+// *ingest.Refresher.
+type FeedRefresher interface {
+	Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
+}
+
 var (
-	_ FeedStore   = (*psql.FeedRepository)(nil)
-	_ UserStore   = (*psql.UserRepository)(nil)
-	_ SearchStore = (*psql.SearchRepository)(nil)
-	_ SiteStore   = (*psql.SiteRepository)(nil)
-	_ LookupStore = (*psql.LookupRepository)(nil)
+	_ FeedRefresher = (*ingest.Refresher)(nil)
+	_ FeedStore     = (*psql.FeedRepository)(nil)
+	_ UserStore     = (*psql.UserRepository)(nil)
+	_ SearchStore   = (*psql.SearchRepository)(nil)
+	_ SiteStore     = (*psql.SiteRepository)(nil)
+	_ LookupStore   = (*psql.LookupRepository)(nil)
 )
 
 type Services struct {
@@ -65,6 +73,7 @@ type Services struct {
 	SearchService SearchStore
 	SiteService   SiteStore
 	LookupService LookupStore
+	Refresher     FeedRefresher
 }
 
 type Server struct {
@@ -83,6 +92,9 @@ type Server struct {
 
 	// lookupLimiter caps distinct lookups per user (keyed by user ID).
 	lookupLimiter *rateLimiter
+
+	// refreshLimiter caps feed refreshes per user (keyed by user ID).
+	refreshLimiter *rateLimiter
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -100,6 +112,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		sessionManager: sessionManager,
 		lookupWait:     3 * time.Second,
 		lookupLimiter:  newRateLimiter(10, 10*time.Minute),
+		refreshLimiter: newRateLimiter(10, 10*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

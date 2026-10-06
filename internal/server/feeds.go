@@ -1,12 +1,25 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
+)
+
+const (
+	// refreshCooldown is how long after a successful fetch a feed can't be
+	// refreshed again.
+	refreshCooldown = 5 * time.Minute
+	// refreshTimeout bounds a refresh. Keep it under the server's
+	// WriteTimeout (10s) so the redirect can still be written.
+	refreshTimeout = 8 * time.Second
 )
 
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
@@ -73,4 +86,74 @@ func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.writeJSON(w, http.StatusCreated, data, nil); err != nil {
 		s.serverErrorJSON(w, r, err)
 	}
+}
+
+func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	feed, err := s.services.FeedService.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	redirect := func(msg string) {
+		s.sessionManager.Put(r.Context(), "flash", msg)
+		http.Redirect(w, r, "/feeds/"+feed.ID, http.StatusSeeOther)
+	}
+
+	// Check the cooldown first so these clicks don't use up the user's limit.
+	if !feed.LastFetched.IsZero() && time.Since(feed.LastFetched) < refreshCooldown {
+		redirect("This feed was refreshed in the last few minutes. Try again later.")
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if !s.refreshLimiter.Allow(userID) {
+		redirect("You've refreshed a lot of feeds recently. Please wait a few minutes and try again.")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), refreshTimeout)
+	defer cancel()
+	res, err := s.services.Refresher.Refresh(ctx, feed)
+	switch {
+	case err == nil:
+		redirect(refreshFlash(res))
+	case errors.Is(err, ingest.ErrUnreachable):
+		s.logger.Info("feed refresh failed", "feed_id", feed.ID, "error", err)
+		redirect("Couldn't reach this feed. Try again later.")
+	case errors.Is(err, ingest.ErrNotFeed):
+		s.logger.Info("feed refresh failed", "feed_id", feed.ID, "error", err)
+		redirect("This feed's address didn't return a feed. Try again later.")
+	case errors.Is(err, rss.ErrNoRecord):
+		s.notFoundResponse(w, r)
+	default:
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// refreshFlash describes the outcome of a successful refresh.
+func refreshFlash(res rss.FetchResult) string {
+	var msg string
+	switch res.New {
+	case 0:
+		msg = "No new articles"
+	case 1:
+		msg = "1 new article"
+	default:
+		msg = fmt.Sprintf("%d new articles", res.New)
+	}
+	if res.Updated > 0 {
+		msg += fmt.Sprintf(", %d updated", res.Updated)
+	}
+	return msg + "."
 }

@@ -1,5 +1,5 @@
 // Package feedparse recognizes RSS, Atom and JSON Feed documents and reads
-// their metadata. Parsing is done by github.com/mmcdole/gofeed.
+// their metadata and items. Parsing is done by github.com/mmcdole/gofeed.
 package feedparse
 
 import (
@@ -7,14 +7,17 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"io"
 	"mime"
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mmcdole/gofeed"
 	"github.com/mmcdole/gofeed/atom"
+	jsonfeed "github.com/mmcdole/gofeed/json"
 	"golang.org/x/net/html"
 )
 
@@ -27,6 +30,22 @@ type Meta struct {
 	Title       string // plain text, whitespace-trimmed and collapsed; may be ""
 	Description string // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
 	SiteURL     string // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
+}
+
+// Feed is a parsed feed: its metadata and its items in document order.
+type Feed struct {
+	Meta
+	Items []Item
+}
+
+// Item is one entry of a feed.
+type Item struct {
+	ID        string    // RSS <guid>, Atom <id>, JSON "id"; whitespace-trimmed; "" if missing
+	URL       string    // absolute http(s) link to the article, resolved against the feed URL; "" if missing or not http(s)
+	Title     string    // plain text, trimmed and collapsed; may be ""
+	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
+	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
+	Published time.Time // published date, else updated date, in UTC; zero if neither parses
 }
 
 // feedContentTypes are the media types Sniff accepts without looking at the
@@ -65,9 +84,10 @@ func Sniff(contentType string, body []byte) bool {
 }
 
 // Parse parses body as a feed. feedURL is the URL the feed was fetched from
-// and is used to resolve a relative SiteURL. Returns ErrNotFeed (wrapped is
-// fine) if body isn't a recognizable feed, including HTML pages.
-func Parse(feedURL *url.URL, body []byte) (Meta, error) {
+// and is used to resolve a relative SiteURL and item URLs. Returns
+// ErrNotFeed (wrapped is fine) if body isn't a recognizable feed, including
+// HTML pages.
+func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 	var format string
 	switch root := rootElement(body); {
 	case root == "rss":
@@ -79,18 +99,19 @@ func Parse(feedURL *url.URL, body []byte) (Meta, error) {
 	case root == "" && isJSONFeed(body):
 		format = "json"
 	default:
-		return Meta{}, ErrNotFeed
+		return Feed{}, ErrNotFeed
 	}
 
 	p := gofeed.NewParser()
 	p.KeepOriginalFeed = true
 	f, err := p.Parse(bytes.NewReader(body))
 	if err != nil {
-		return Meta{}, fmt.Errorf("%w: %w", ErrNotFeed, err)
+		return Feed{}, fmt.Errorf("%w: %w", ErrNotFeed, err)
 	}
 
 	title, desc := collapseSpace(f.Title), collapseSpace(f.Description)
 	link := f.Link
+	var entryTitleTypes []string // Atom only: per-entry <title> type, in order
 	switch format {
 	case "rss", "rdf":
 		// RSS has no type attribute; channel descriptions are commonly
@@ -101,7 +122,8 @@ func Parse(feedURL *url.URL, body []byte) (Meta, error) {
 		if a, ok := f.OriginalFeed().(*atom.Feed); ok {
 			link = atomSiteLink(a.Links)
 		}
-		titleType, subtitleType := atomTextTypes(body)
+		var titleType, subtitleType string
+		titleType, subtitleType, entryTitleTypes = atomTextTypes(body)
 		if isHTMLType(titleType) {
 			title = htmlToText(f.Title)
 		}
@@ -110,19 +132,73 @@ func Parse(feedURL *url.URL, body []byte) (Meta, error) {
 		}
 	}
 
-	return Meta{
-		Format:      format,
-		Title:       title,
-		Description: desc,
-		SiteURL:     resolveHTTP(feedURL, link),
+	if len(entryTitleTypes) != len(f.Items) {
+		// Malformed document: types can't be matched to items.
+		entryTitleTypes = nil
+	}
+	var jsonItems []*jsonfeed.Item
+	if j, ok := f.OriginalFeed().(*jsonfeed.Feed); ok && len(j.Items) == len(f.Items) {
+		jsonItems = j.Items
+	}
+
+	items := make([]Item, 0, len(f.Items))
+	for i, it := range f.Items {
+		if it == nil {
+			continue
+		}
+		item := Item{
+			ID:      strings.TrimSpace(it.GUID),
+			URL:     resolveHTTP(feedURL, it.Link),
+			Title:   collapseSpace(it.Title),
+			Summary: it.Description,
+			Content: it.Content,
+		}
+		for _, l := range it.Links {
+			if item.URL != "" {
+				break
+			}
+			item.URL = resolveHTTP(feedURL, l)
+		}
+		if entryTitleTypes != nil && isHTMLType(entryTitleTypes[i]) {
+			item.Title = htmlToText(it.Title)
+		}
+		if format == "json" {
+			// gofeed falls back to content_text, which is plain text, not
+			// HTML.
+			item.Content = ""
+			if jsonItems != nil && jsonItems[i] != nil {
+				item.Content = jsonItems[i].ContentHTML
+				if item.Content == "" {
+					item.Content = stdhtml.EscapeString(jsonItems[i].ContentText)
+				}
+			}
+		}
+		switch {
+		case it.PublishedParsed != nil:
+			item.Published = it.PublishedParsed.UTC()
+		case it.UpdatedParsed != nil:
+			item.Published = it.UpdatedParsed.UTC()
+		}
+		items = append(items, item)
+	}
+
+	return Feed{
+		Meta: Meta{
+			Format:      format,
+			Title:       title,
+			Description: desc,
+			SiteURL:     resolveHTTP(feedURL, link),
+		},
+		Items: items,
 	}, nil
 }
 
 // atomTextTypes returns the type attributes of the feed-level <title> and
-// <subtitle> of an Atom document ("" if missing). gofeed doesn't expose
-// them, and by the time it returns the text, html and xhtml content has
-// been decoded differently.
-func atomTextTypes(body []byte) (titleType, subtitleType string) {
+// <subtitle> of an Atom document ("" if missing), and of each <entry>'s
+// <title> in document order ("" for an entry without a title or type).
+// gofeed doesn't expose them, and by the time it returns the text, html and
+// xhtml content has been decoded differently.
+func atomTextTypes(body []byte) (titleType, subtitleType string, entryTitleTypes []string) {
 	d := xml.NewDecoder(bytes.NewReader(body))
 	d.Strict = false
 	d.Entity = xml.HTMLEntity
@@ -130,42 +206,74 @@ func atomTextTypes(body []byte) (titleType, subtitleType string) {
 	// encoding through undecoded.
 	d.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil }
 
-	depth := 0
+	// Find the root element.
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return titleType, subtitleType, entryTitleTypes
+		}
+		if _, ok := tok.(xml.StartElement); ok {
+			break
+		}
+	}
+
 	var seenTitle, seenSubtitle bool
 	for {
 		tok, err := d.Token()
 		if err != nil {
-			return titleType, subtitleType
+			return titleType, subtitleType, entryTitleTypes
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			if depth == 1 {
-				switch t.Name.Local {
-				case "title":
-					if !seenTitle {
-						seenTitle = true
-						titleType = attr(t, "type")
-					}
-				case "subtitle":
-					if !seenSubtitle {
-						seenSubtitle = true
-						subtitleType = attr(t, "type")
-					}
+			switch t.Name.Local {
+			case "title":
+				if !seenTitle {
+					seenTitle = true
+					titleType = attr(t, "type")
 				}
-				if seenTitle && seenSubtitle {
-					return titleType, subtitleType
+			case "subtitle":
+				if !seenSubtitle {
+					seenSubtitle = true
+					subtitleType = attr(t, "type")
 				}
-				if err := d.Skip(); err != nil {
-					return titleType, subtitleType
+			case "entry":
+				typ, err := entryTitleType(d)
+				entryTitleTypes = append(entryTitleTypes, typ)
+				if err != nil {
+					return titleType, subtitleType, entryTitleTypes
 				}
-				continue
+				continue // entryTitleType consumed the whole entry
 			}
-			depth++
+			if err := d.Skip(); err != nil {
+				return titleType, subtitleType, entryTitleTypes
+			}
 		case xml.EndElement:
-			depth--
-			if depth == 0 {
-				return titleType, subtitleType
+			// End of the root element.
+			return titleType, subtitleType, entryTitleTypes
+		}
+	}
+}
+
+// entryTitleType reads the rest of an <entry> element whose start tag has
+// just been read and returns the type attribute of its first child <title>.
+func entryTitleType(d *xml.Decoder) (string, error) {
+	typ, seen := "", false
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return typ, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if t.Name.Local == "title" && !seen {
+				seen = true
+				typ = attr(t, "type")
 			}
+			if err := d.Skip(); err != nil {
+				return typ, err
+			}
+		case xml.EndElement:
+			return typ, nil
 		}
 	}
 }

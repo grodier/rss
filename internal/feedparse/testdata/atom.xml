@@ -7,9 +7,25 @@
   <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
   <updated>2026-10-01T18:30:02Z</updated>
   <entry>
-    <title>Entry</title>
-    <link href="/blog/entry"/>
-    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <title type="html">&lt;em&gt;Hi&lt;/em&gt; there</title>
+    <link rel="alternate" href="/posts/1"/>
+    <id> urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a </id>
+    <published>2026-10-01T10:00:00+02:00</published>
     <updated>2026-10-01T18:30:02Z</updated>
+    <summary type="html">&lt;p&gt;Short&lt;/p&gt;</summary>
+    <content type="html">&lt;p&gt;Long &amp;amp; full&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>A &amp; B</title>
+    <link rel="replies" href="https://example.net/posts/2/comments"/>
+    <link rel="enclosure" href="https://example.net/posts/2.mp3"/>
+    <link rel="alternate" href="https://example.net/posts/2"/>
+    <id>tag:example.net,2026:2</id>
+    <updated>2026-10-02T09:00:00Z</updated>
+  </entry>
+  <entry>
+    <title>Entry</title>
+    <link href="entry"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-bbbb-80da344efa6a</id>
   </entry>
 </feed>

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func readTestdata(t *testing.T, name string) []byte {
@@ -114,8 +115,175 @@ func TestParse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
-			if got != tt.want {
-				t.Errorf("Parse:\n got %+v\nwant %+v", got, tt.want)
+			if got.Meta != tt.want {
+				t.Errorf("Parse:\n got %+v\nwant %+v", got.Meta, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseItems(t *testing.T) {
+	tests := []struct {
+		file    string
+		feedURL string
+		want    []Item
+	}{
+		{
+			file:    "rss2.xml",
+			feedURL: "https://example.com/feed.xml",
+			want: []Item{
+				{
+					// Trimmed <guid>, entity-encoded <description> stays
+					// HTML, CDATA <content:encoded>, <pubDate> in UTC.
+					ID:        "https://example.com/?p=1",
+					URL:       "https://example.com/first",
+					Title:     "First post",
+					Summary:   "<p>Hello &amp; welcome</p>",
+					Content:   "<p>Full <b>text</b></p>",
+					Published: time.Date(2026, 10, 5, 7, 30, 0, 0, time.UTC),
+				},
+				{
+					// No <guid>, no <pubDate>, relative <link>.
+					URL:     "https://example.com/second",
+					Title:   "No guid",
+					Summary: "Plain",
+				},
+				{
+					// javascript: link.
+					ID:        "bad-link",
+					Title:     "Bad link",
+					Published: time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC),
+				},
+			},
+		},
+		{
+			// RDF items have no <guid>; rdf:about isn't read.
+			file:    "rss1-rdf.xml",
+			feedURL: "https://example.org/index.rdf",
+			want: []Item{
+				{
+					URL:       "https://example.org/a",
+					Title:     "A",
+					Summary:   "<i>First</i>",
+					Published: time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC),
+				},
+				{
+					// mailto: link; <dc:date> with an offset.
+					Title:     "B",
+					Published: time.Date(2026, 10, 3, 11, 0, 0, 0, time.UTC),
+				},
+			},
+		},
+		{
+			file:    "atom.xml",
+			feedURL: "https://example.net/blog/atom.xml",
+			want: []Item{
+				{
+					// Trimmed <id>, HTML title, relative alternate link,
+					// <published> preferred over <updated>.
+					ID:        "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a",
+					URL:       "https://example.net/posts/1",
+					Title:     "Hi there",
+					Summary:   "<p>Short</p>",
+					Content:   "<p>Long &amp; full</p>",
+					Published: time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC),
+				},
+				{
+					// replies and enclosure links before the alternate one;
+					// text title; only <updated>.
+					ID:        "tag:example.net,2026:2",
+					URL:       "https://example.net/posts/2",
+					Title:     "A & B",
+					Published: time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC),
+				},
+				{
+					// Link without rel; no dates.
+					ID:    "urn:uuid:1225c695-cfb8-4ebb-bbbb-80da344efa6a",
+					URL:   "https://example.net/blog/entry",
+					Title: "Entry",
+				},
+			},
+		},
+		{
+			file:    "jsonfeed.json",
+			feedURL: "https://example.com/feed.json",
+			want: []Item{
+				{
+					ID:        "1",
+					URL:       "https://example.com/1",
+					Title:     "One",
+					Summary:   "First item",
+					Content:   "<p>Hello <b>world</b></p>",
+					Published: time.Date(2026, 10, 4, 17, 0, 0, 0, time.UTC),
+				},
+				{
+					// Trimmed id, relative url, content_text is escaped,
+					// date_modified only.
+					ID:        "2",
+					URL:       "https://example.com/2",
+					Content:   "Use &lt;b&gt; for bold",
+					Published: time.Date(2026, 10, 5, 8, 0, 0, 0, time.UTC),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			got, err := Parse(mustParseURL(t, tt.feedURL), readTestdata(t, tt.file))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != len(tt.want) {
+				t.Fatalf("got %d items, want %d: %+v", len(got.Items), len(tt.want), got.Items)
+			}
+			for i, g := range got.Items {
+				w := tt.want[i]
+				if !g.Published.Equal(w.Published) || g.Published.Location() != time.UTC {
+					t.Errorf("item %d: Published = %v, want %v (UTC)", i, g.Published, w.Published)
+				}
+				g.Published, w.Published = time.Time{}, time.Time{}
+				if g != w {
+					t.Errorf("item %d:\n got %+v\nwant %+v", i, g, w)
+				}
+			}
+		})
+	}
+}
+
+func TestParseItemsAtomTitleTypes(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	const atomNS = `<feed xmlns="http://www.w3.org/2005/Atom">`
+	tests := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			// Each entry's own type counts, not the feed's or another
+			// entry's; a nested element's <title> is ignored.
+			name: "per entry",
+			body: atomNS + `<title type="html">F</title>` +
+				`<entry><title>&lt;b&gt;</title></entry>` +
+				`<entry><source><title type="text">S</title></source><title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">A <em>B</em></div></title></entry>` +
+				`<entry><title type="html">x &amp;lt; y</title></entry>` +
+				`<entry></entry></feed>`,
+			want: []string{"<b>", "A B", "x < y", ""},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != len(tt.want) {
+				t.Fatalf("got %d items, want %d", len(got.Items), len(tt.want))
+			}
+			for i, w := range tt.want {
+				if got.Items[i].Title != w {
+					t.Errorf("item %d: Title = %q, want %q", i, got.Items[i].Title, w)
+				}
 			}
 		})
 	}

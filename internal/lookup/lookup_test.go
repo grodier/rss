@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/feedparse"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -73,7 +75,7 @@ func (s *fakeStore) ResetStale(ctx context.Context, olderThan time.Duration, max
 
 type saveCall struct {
 	site  rss.Site
-	feeds []rss.Feed
+	feeds []rss.FeedWithArticles
 }
 
 type fakeSaver struct {
@@ -83,7 +85,7 @@ type fakeSaver struct {
 	err    error
 }
 
-func (s *fakeSaver) Save(ctx context.Context, site rss.Site, feeds []rss.Feed) (string, error) {
+func (s *fakeSaver) Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, saveCall{site, feeds})
@@ -152,7 +154,7 @@ func TestRunSavesDiscoveredFeeds(t *testing.T) {
 		return discovery.Result{
 			Site: discovery.SiteInfo{Key: "a.example.com", URL: "https://a.example.com/", Title: "A", Description: "Site A"},
 			Feeds: []discovery.FeedInfo{
-				{URL: "https://a.example.com/feed.xml", Title: "Posts", Description: "All posts", SiteURL: "https://a.example.com/"},
+				{URL: "https://a.example.com/feed.xml", Title: "Posts", Description: "All posts", SiteURL: "https://a.example.com/", Items: []feedparse.Item{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}},
 				{URL: "https://a.example.com/comments.xml", Title: "Comments"},
 			},
 		}, nil
@@ -172,9 +174,15 @@ func TestRunSavesDiscoveredFeeds(t *testing.T) {
 	if saver.calls[0].site != wantSite {
 		t.Errorf("Save site = %+v, want %+v", saver.calls[0].site, wantSite)
 	}
-	wantFeeds := []rss.Feed{
-		{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts"},
-		{Url: "https://a.example.com/comments.xml", Title: "Comments"},
+	wantFeeds := []rss.FeedWithArticles{
+		{
+			Feed:     rss.Feed{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts"},
+			Articles: ingest.Articles([]feedparse.Item{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}),
+		},
+		{Feed: rss.Feed{Url: "https://a.example.com/comments.xml", Title: "Comments"}, Articles: []rss.Article{}},
+	}
+	if arts := saver.calls[0].feeds[0].Articles; len(arts) != 2 || arts[0].ExternalID != "a" || arts[1].ExternalID != "b" {
+		t.Errorf("first feed articles = %+v, want ExternalIDs a, b", arts)
 	}
 	if !reflect.DeepEqual(saver.calls[0].feeds, wantFeeds) {
 		t.Errorf("Save feeds = %+v, want %+v", saver.calls[0].feeds, wantFeeds)

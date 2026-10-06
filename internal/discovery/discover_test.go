@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/grodier/rss/internal/feedparse"
 	"github.com/grodier/rss/internal/fetch"
 )
 
@@ -69,6 +70,8 @@ func htmlResp(body string) *fetch.Response {
 func rssResp(title, link string) *fetch.Response {
 	body := fmt.Sprintf(`<?xml version="1.0"?><rss version="2.0"><channel>
 		<title>%s</title><link>%s</link><description>About %s</description>
+		<item><guid>g1</guid><title>First</title><link>https://example.com/1</link></item>
+		<item><guid>g2</guid><title>Second</title><link>https://example.com/2</link></item>
 		</channel></rss>`, title, link, title)
 	return &fetch.Response{
 		StatusCode: http.StatusOK,
@@ -98,6 +101,18 @@ func assertURLs(t *testing.T, got []FeedInfo, want ...string) {
 	t.Helper()
 	if g := strings.Join(feedURLs(got), " "); g != strings.Join(want, " ") {
 		t.Errorf("feeds = [%s], want [%s]", g, strings.Join(want, " "))
+	}
+}
+
+// assertItems checks items' "ID:Title" strings.
+func assertItems(t *testing.T, got []feedparse.Item, want ...string) {
+	t.Helper()
+	var g []string
+	for _, it := range got {
+		g = append(g, it.ID+":"+it.Title)
+	}
+	if strings.Join(g, " ") != strings.Join(want, " ") {
+		t.Errorf("items = %v, want %v", g, want)
 	}
 }
 
@@ -133,6 +148,7 @@ func TestDiscoverAdvertisedFeeds(t *testing.T) {
 		if got := res.Feeds[1].Title; got != "Example Atom" {
 			t.Errorf("Feeds[1].Title = %q, want %q", got, "Example Atom")
 		}
+		assertItems(t, res.Feeds[0].Items, "g1:First", "g2:Second")
 	}
 }
 
@@ -261,6 +277,9 @@ func TestDiscoverInputIsFeed(t *testing.T) {
 				t.Errorf("Site.Title = %q, want %q", res.Site.Title, wantTitle)
 			}
 			assertURLs(t, res.Feeds, "https://feeds.example.net/x.xml")
+			if len(res.Feeds) == 1 {
+				assertItems(t, res.Feeds[0].Items, "g1:First", "g2:Second")
+			}
 			if len(f.gets) != 1 {
 				t.Errorf("fetched %v, want only the feed", f.gets)
 			}

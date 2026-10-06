@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -37,7 +38,7 @@ type Store interface {
 // Saver stores a discovered site and its feeds; satisfied by
 // *psql.DiscoveryRepository.
 type Saver interface {
-	Save(ctx context.Context, site rss.Site, feeds []rss.Feed) (string, error)
+	Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error)
 }
 
 // Discoverer finds a site's feeds; satisfied by *discovery.Discoverer.
@@ -144,7 +145,7 @@ func (r *Runner) wait(ctx context.Context) bool {
 // meanwhile: the row is then left running for ResetStale to re-queue.
 func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 	start := time.Now()
-	siteID, feeds, err := r.run(ctx, job)
+	siteID, feeds, articles, err := r.run(ctx, job)
 
 	if ctx.Err() != nil {
 		r.Logger.Info("lookup interrupted by shutdown", "site_key", job.SiteKey)
@@ -169,24 +170,25 @@ func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 		"site_key", job.SiteKey,
 		"status", status,
 		"feeds", feeds,
+		"articles", articles,
 		"duration", time.Since(start),
 	)
 }
 
 // run discovers the job's feeds and saves them. It returns the saved site's
-// ID ("" if no feeds were found) and the number of feeds. A panic is
-// returned as an error.
-func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds int, err error) {
+// ID ("" if no feeds were found), the number of feeds and the total number
+// of articles saved with them. A panic is returned as an error.
+func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds, articles int, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.Logger.Error("lookup: panic", "site_key", job.SiteKey, "panic", rec)
-			siteID, feeds, err = "", 0, fmt.Errorf("panic: %v", rec)
+			siteID, feeds, articles, err = "", 0, 0, fmt.Errorf("panic: %v", rec)
 		}
 	}()
 
 	u, err := url.Parse(job.URL)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 
 	jobCtx, cancel := context.WithTimeout(ctx, r.JobTimeout)
@@ -194,10 +196,10 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds 
 
 	res, err := r.Discoverer.Discover(jobCtx, u)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 	if len(res.Feeds) == 0 {
-		return "", 0, nil
+		return "", 0, 0, nil
 	}
 
 	site := rss.Site{
@@ -206,19 +208,23 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds 
 		Title:       res.Site.Title,
 		Description: res.Site.Description,
 	}
-	fs := make([]rss.Feed, len(res.Feeds))
+	fs := make([]rss.FeedWithArticles, len(res.Feeds))
 	for i, f := range res.Feeds {
-		fs[i] = rss.Feed{
-			Url:         f.URL,
-			SiteUrl:     f.SiteURL,
-			Title:       f.Title,
-			Description: f.Description,
+		fs[i] = rss.FeedWithArticles{
+			Feed: rss.Feed{
+				Url:         f.URL,
+				SiteUrl:     f.SiteURL,
+				Title:       f.Title,
+				Description: f.Description,
+			},
+			Articles: ingest.Articles(f.Items),
 		}
+		articles += len(fs[i].Articles)
 	}
 
 	siteID, err = r.Saver.Save(jobCtx, site, fs)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
-	return siteID, len(fs), nil
+	return siteID, len(fs), articles, nil
 }

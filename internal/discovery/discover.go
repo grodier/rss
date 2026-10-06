@@ -41,7 +41,8 @@ type FeedInfo struct {
 	URL         string // CanonicalFeedURL of the feed's final URL (after redirects)
 	Title       string // feedparse Meta.Title, else Candidate.Title, else URL
 	Description string
-	SiteURL     string // Meta.SiteURL (may be "")
+	SiteURL     string           // Meta.SiteURL (may be "")
+	Items       []feedparse.Item // the feed's items as parsed during discovery
 }
 
 // Result is what Discover found.
@@ -77,7 +78,7 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	// The input is itself a feed.
 	if feedparse.Sniff(resp.Header.Get("Content-Type"), resp.Body) {
 		if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil {
-			feed := feedInfo(resp.URL, f.Meta, "")
+			feed := feedInfo(resp.URL, f, "")
 			siteURL := resp.URL
 			if f.SiteURL != "" {
 				if su, err := url.Parse(f.SiteURL); err == nil && su.Host != "" {
@@ -191,17 +192,18 @@ func (d *Discoverer) checkCandidate(ctx context.Context, c Candidate) *FeedInfo 
 	if err != nil {
 		return nil
 	}
-	f := feedInfo(resp.URL, parsed.Meta, c.Title)
+	f := feedInfo(resp.URL, parsed, c.Title)
 	return &f
 }
 
 // feedInfo builds the FeedInfo for a feed fetched from finalURL.
-func feedInfo(finalURL *url.URL, meta feedparse.Meta, candidateTitle string) FeedInfo {
+func feedInfo(finalURL *url.URL, parsed feedparse.Feed, candidateTitle string) FeedInfo {
 	f := FeedInfo{
 		URL:         CanonicalFeedURL(finalURL),
-		Title:       meta.Title,
-		Description: meta.Description,
-		SiteURL:     meta.SiteURL,
+		Title:       parsed.Title,
+		Description: parsed.Description,
+		SiteURL:     parsed.SiteURL,
+		Items:       parsed.Items,
 	}
 	if f.Title == "" {
 		f.Title = candidateTitle

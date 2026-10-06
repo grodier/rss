@@ -15,9 +15,10 @@ func NewDiscoveryRepository(db *sql.DB) *DiscoveryRepository {
 	return &DiscoveryRepository{DB: db}
 }
 
-// Save upserts the site and its feeds (each with SiteID set to the site's
-// ID) in one transaction and returns the site ID.
-func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, feeds []rss.Feed) (string, error) {
+// Save upserts the site, its feeds (each with SiteID set to the site's ID)
+// and each feed's articles (see saveArticles, which also sets the feed's
+// last_fetched_at) in one transaction, and returns the site ID.
+func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -31,8 +32,12 @@ func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, feeds []r
 	}
 
 	for _, f := range feeds {
-		f.SiteID = siteID
-		if _, err := upsertFeed(ctx, tx, f); err != nil {
+		f.Feed.SiteID = siteID
+		id, err := upsertFeed(ctx, tx, f.Feed)
+		if err != nil {
+			return "", err
+		}
+		if _, err := saveArticles(ctx, tx, id, f.Articles); err != nil {
 			return "", err
 		}
 	}

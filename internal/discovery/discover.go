@@ -76,19 +76,19 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 
 	// The input is itself a feed.
 	if feedparse.Sniff(resp.Header.Get("Content-Type"), resp.Body) {
-		if meta, err := feedparse.Parse(resp.URL, resp.Body); err == nil {
-			feed := feedInfo(resp.URL, meta, "")
+		if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil {
+			feed := feedInfo(resp.URL, f.Meta, "")
 			siteURL := resp.URL
-			if meta.SiteURL != "" {
-				if su, err := url.Parse(meta.SiteURL); err == nil && su.Host != "" {
+			if f.SiteURL != "" {
+				if su, err := url.Parse(f.SiteURL); err == nil && su.Host != "" {
 					siteURL = su
 				}
 			}
 			site := SiteInfo{
 				Key:         SiteKey(siteURL),
 				URL:         origin(siteURL),
-				Title:       meta.Title,
-				Description: meta.Description,
+				Title:       f.Title,
+				Description: f.Description,
 			}
 			if site.Title == "" {
 				site.Title = site.Key
@@ -187,11 +187,11 @@ func (d *Discoverer) checkCandidate(ctx context.Context, c Candidate) *FeedInfo 
 	if err != nil || !ok2xx(resp.StatusCode) {
 		return nil
 	}
-	meta, err := feedparse.Parse(resp.URL, resp.Body)
+	parsed, err := feedparse.Parse(resp.URL, resp.Body)
 	if err != nil {
 		return nil
 	}
-	f := feedInfo(resp.URL, meta, c.Title)
+	f := feedInfo(resp.URL, parsed.Meta, c.Title)
 	return &f
 }
 

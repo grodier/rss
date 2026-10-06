@@ -5,6 +5,19 @@
   "feed_url": "https://example.com/feed.json",
   "description": "  A JSON\nFeed.  ",
   "items": [
-    {"id": "1", "url": "https://example.com/1", "content_text": "Hello"}
+    {
+      "id": "1",
+      "url": "https://example.com/1",
+      "title": "One",
+      "summary": "First item",
+      "content_html": "<p>Hello <b>world</b></p>",
+      "date_published": "2026-10-04T12:00:00-05:00"
+    },
+    {
+      "id": "  2\n",
+      "url": "/2",
+      "content_text": "Use <b> for bold",
+      "date_modified": "2026-10-05T08:00:00Z"
+    }
   ]
 }

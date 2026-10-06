@@ -76,3 +76,13 @@ func (f *fakeLookupStore) GetByID(ctx context.Context, id string) (rss.Lookup, e
 func (f *fakeLookupStore) GetBySiteKey(ctx context.Context, siteKey string) (rss.Lookup, error) {
 	return f.getBySiteKeyFn(ctx, siteKey)
 }
+
+type fakeRefresher struct {
+	refreshFn func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
+	calls     []rss.Feed
+}
+
+func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+	f.calls = append(f.calls, feed)
+	return f.refreshFn(ctx, feed)
+}

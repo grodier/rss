@@ -5,17 +5,33 @@ Work that has been identified but does **not** yet have a GitHub issue. Items ma
 first and split them into issues. When an item gets an issue, replace it here with a link
 or delete it.
 
-## Feed ingestion (needs planning)
+## Feed ingestion
 
 The core missing feature: feeds are never fetched for their articles.
 
-- [ ] **Fetch and save articles.** Feed discovery (#50) creates feeds with their title,
-  site URL and description, but no articles. Fetch each feed and save its items, reusing
-  `internal/fetch` (#52) and the parser chosen in #54. The `articles` table needs a unique
-  `(feed_id, external_id)` so re-fetching doesn't create duplicates.
-- [ ] **Background refresh.** Re-fetch feeds on a schedule using `last_fetched_at`, skip
-  unchanged feeds via ETag / Last-Modified, and back off on errors. The lookup worker loop
-  (#64) is a model for running this inside `www`.
+- **Fetch and save articles** is planned and split into issues: #105 (feedparse items),
+  #106 (articles schema and repository), #107 (`internal/ingest`), #108 (save articles
+  during discovery), #109 (Refresh button on the feed page), #110 (list articles on the
+  feed page). #105 and #106 can be done in parallel; #107 needs both; #108 and #109 need
+  #107; #110 needs only #106.
+- [ ] **Background refresh (needs planning).** Re-fetch feeds on a schedule. The lookup
+  worker loop (#64) is a model for running this inside `www`, and it will call the same
+  `ingest.Refresher` as the Refresh button. Deliberately left out of the issues above,
+  because each only pays off when fetches repeat unattended:
+  - Scheduling: use the `feeds` table itself as the queue (e.g. a `next_fetch_at` column
+    claimed with `FOR UPDATE SKIP LOCKED`), not a separate jobs table. Never-fetched feeds
+    (`last_fetched_at IS NULL`) are the most due. Decide what the Refresh button becomes
+    (e.g. "set `next_fetch_at = now()`", or remove it).
+  - Conditional GET: store ETag / Last-Modified per feed and send `If-None-Match` /
+    `If-Modified-Since`. `fetch.Client.Get` can't send extra request headers yet.
+  - Errors and backoff: record the last attempt and last error per feed
+    (`last_fetched_at` only records the last *success*), back off on repeated failures,
+    and show "last fetch failed" on the feed page. Retry on the next cycle, never inside a
+    single fetch.
+  - Redirects and gone feeds: update the feed URL on permanent redirects (301/308; needs
+    `fetch` to report them, and `feeds.url` is unique, so two feeds can collide), and stop
+    fetching on 410 Gone.
+  - Article retention: whether to delete old articles, and when.
 
 ## Feed discovery
 
@@ -43,8 +59,28 @@ yet:
 - [ ] **Subscriptions.** Replace the placeholder `POST /subscribe`, show each user only
   their own feeds, and support unsubscribing. Subscribe/unsubscribe lives on the feed page
   that discovery (#50) leads to.
-- [ ] **Reading experience.** List articles on the feed page, add an "all my feeds"
-  timeline, and track read/unread per user (needs a new table).
+- [ ] **Reading experience.** Add an "all my feeds" timeline, show article content, and
+  track read/unread per user (needs a new table). The feed page's article list (#110)
+  shows titles and links only. Summary and content are stored as raw HTML (#106) and
+  must be sanitized before rendering (e.g. bluemonday, a new dependency), along with
+  resolving relative URLs inside them.
+- [ ] **One entry per article in the timeline.** The same post often appears in several
+  feeds (e.g. a site's "all posts" and category feeds). Feed pages should still show it in
+  each feed, but a user's timeline should show it once, ideally with "Also in: X, Y".
+  Approach agreed while planning ingestion:
+  - Keep one `articles` row per feed (as #106 does) and collapse duplicates when the
+    timeline is queried, not by sharing a row between feeds. Feed pages then stay
+    faithful to each feed, and a bad match is fixed by changing the rule, not by un-merging
+    stored data.
+  - Match on a conservative normalized link: lowercase scheme and host, drop the
+    fragment and known tracking parameters (`utm_*`, `fbclid`, …), keep the rest of the
+    query. When in doubt, don't merge, since hiding a distinct article is worse than
+    showing a duplicate. Proxy links (e.g. FeedBurner) and syndicated copies at other URLs
+    won't match, which is acceptable.
+  - Probably store the key as an indexed `canonical_url` column computed in
+    `internal/ingest`. Not added yet because nothing uses it.
+  - Open question: should read state follow the key, so reading one copy marks all of
+    them read?
 
 ## Security
 
@@ -57,9 +93,9 @@ yet:
 
 ## Suggested order
 
-1. #87: signal handling only in `cmd/www`, `server.Serve` takes a context.
-2. **Plan** feed ingestion, then subscriptions and reading, in their own sessions, and
-   turn them into issues. Ingestion's background refresh will run alongside the lookup
-   worker, so do #87 first so both use the same shutdown context.
+1. Feed ingestion: #105 to #110 (dependencies under "Feed ingestion" above).
+2. **Plan** background refresh, then subscriptions and reading, in their own sessions,
+   and turn them into issues. Background refresh runs alongside the lookup worker, using
+   the shutdown context from #87.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

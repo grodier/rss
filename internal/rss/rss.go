@@ -29,6 +29,12 @@ type Article struct {
 	UpdatedAt   time.Time
 }
 
+// FeedWithArticles is a feed and articles to save for it.
+type FeedWithArticles struct {
+	Feed     Feed
+	Articles []Article
+}
+
 // FetchResult counts the articles a fetch saved.
 type FetchResult struct {
 	New     int // articles inserted

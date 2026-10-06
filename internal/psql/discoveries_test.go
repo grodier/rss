@@ -126,9 +126,15 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 
 	host := fmt.Sprintf("disc-%d.example.com", n)
 	site := rss.Site{Host: host, URL: "https://" + host + "/", Title: "Disc"}
-	feedList := []rss.Feed{
-		{Url: "https://" + host + "/a.xml", Title: "A"},
-		{Url: "https://" + host + "/b.xml", Title: "B"},
+	feedList := []rss.FeedWithArticles{
+		{
+			Feed: rss.Feed{Url: "https://" + host + "/a.xml", Title: "A"},
+			Articles: []rss.Article{
+				{ExternalID: "1", URL: "https://" + host + "/1", Title: "One"},
+				{ExternalID: "2", URL: "https://" + host + "/2", Title: "Two"},
+			},
+		},
+		{Feed: rss.Feed{Url: "https://" + host + "/b.xml", Title: "B"}},
 	}
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM feeds WHERE url LIKE $1`, "https://"+host+"/%"); err != nil {
@@ -158,6 +164,26 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 	if count != 2 {
 		t.Errorf("got %d feeds; want 2", count)
 	}
+
+	t.Run("saves articles and marks feeds fetched", func(t *testing.T) {
+		got, err := NewFeedRepository(db).ListBySite(t.Context(), id)
+		if err != nil || len(got) != 2 {
+			t.Fatalf("ListBySite: %+v, err %v", got, err)
+		}
+		articleCounts := map[string]int{"A": 2, "B": 0}
+		for _, f := range got {
+			if f.LastFetched.IsZero() {
+				t.Errorf("feed %q has zero LastFetched", f.Title)
+			}
+			arts, err := NewArticleRepository(db).ListByFeed(t.Context(), f.ID, 10)
+			if err != nil {
+				t.Fatalf("ListByFeed: %v", err)
+			}
+			if len(arts) != articleCounts[f.Title] {
+				t.Errorf("feed %q has %d articles; want %d", f.Title, len(arts), articleCounts[f.Title])
+			}
+		}
+	})
 
 	t.Run("zero feeds is allowed", func(t *testing.T) {
 		h := fmt.Sprintf("empty-%d.example.com", n)

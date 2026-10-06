@@ -58,7 +58,13 @@ type FeedRefresher interface {
 	Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
 }
 
+// ArticleStore reads saved articles.
+type ArticleStore interface {
+	ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+}
+
 var (
+	_ ArticleStore  = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher = (*ingest.Refresher)(nil)
 	_ FeedStore     = (*psql.FeedRepository)(nil)
 	_ UserStore     = (*psql.UserRepository)(nil)
@@ -68,12 +74,13 @@ var (
 )
 
 type Services struct {
-	FeedService   FeedStore
-	UserService   UserStore
-	SearchService SearchStore
-	SiteService   SiteStore
-	LookupService LookupStore
-	Refresher     FeedRefresher
+	FeedService    FeedStore
+	UserService    UserStore
+	SearchService  SearchStore
+	SiteService    SiteStore
+	LookupService  LookupStore
+	Refresher      FeedRefresher
+	ArticleService ArticleStore
 }
 
 type Server struct {

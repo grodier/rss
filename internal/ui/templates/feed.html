@@ -42,6 +42,20 @@
     <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
       <button type="submit">Refresh</button>
     </form>
+
+    <h2>Articles</h2>
+    {{with .Articles}}
+    <ul>
+      {{range .}}
+      <li>
+        {{if .URL}}<a href="{{.URL}}">{{or .Title "(untitled)"}}</a>{{else}}{{or .Title "(untitled)"}}{{end}}
+        {{if not .PublishedAt.IsZero}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.PublishedAt.Format "2 Jan 2006"}}</time>{{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p>No articles yet.</p>
+    {{end}}
   </main>
 </body>
 

@@ -59,10 +59,17 @@ func serveFeed(t *testing.T, s *Server, id string) *httptest.ResponseRecorder {
 
 func feedServer(t *testing.T, siteErr error) *Server {
 	t.Helper()
+	return feedServerWithArticles(t, siteErr, &fakeArticleStore{})
+}
+
+func feedServerWithArticles(t *testing.T, siteErr error, articles ArticleStore) *Server {
+	t.Helper()
 	return newTestServerWith(t, Services{
+		ArticleService: articles,
 		FeedService: &fakeFeedStore{
 			getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 				return rss.Feed{
+					ID:          id,
 					Title:       "Example Feed Title",
 					Description: "A feed about examples",
 					Url:         "https://example.com/feed.xml",
@@ -96,6 +103,83 @@ func TestFeedHandlerSuccess(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)
 		}
+	}
+}
+
+func TestFeedHandlerListsArticles(t *testing.T) {
+	var gotFeedID string
+	var gotLimit int
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+			gotFeedID, gotLimit = feedID, limit
+			return []rss.Article{
+				{
+					Title:       "A <b>bold</b> title",
+					URL:         "https://example.com/a",
+					PublishedAt: time.Date(2024, time.March, 2, 10, 0, 0, 0, time.UTC),
+					Summary:     "<script>SUMMARY-MARKER</script>",
+					Content:     "<script>SUMMARY-MARKER</script>",
+				},
+				{URL: "https://example.com/b"},
+				{Title: "No link title"},
+			}, nil
+		},
+	})
+
+	rr := serveFeed(t, s, testFeedID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if gotFeedID != testFeedID || gotLimit != 50 {
+		t.Errorf("ListByFeed(%q, %d), want (%q, 50)", gotFeedID, gotLimit, testFeedID)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`href="https://example.com/a"`,
+		"A &lt;b&gt;bold&lt;/b&gt; title",
+		"(untitled)",
+		`href="https://example.com/b"`,
+		"No link title",
+		"2 Mar 2024",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "<b>bold</b>") {
+		t.Errorf("title was not escaped: %s", body)
+	}
+	if strings.Contains(body, "SUMMARY-MARKER") {
+		t.Errorf("summary or content was rendered: %s", body)
+	}
+	if n := strings.Count(body, "<time"); n != 1 {
+		t.Errorf("<time elements = %d, want 1", n)
+	}
+	if strings.Contains(body, ">No link title</a>") {
+		t.Errorf("article without a URL was linked: %s", body)
+	}
+}
+
+func TestFeedHandlerNoArticles(t *testing.T) {
+	rr := serveFeed(t, feedServer(t, nil), testFeedID)
+
+	if !strings.Contains(rr.Body.String(), "No articles yet.") {
+		t.Errorf("body does not contain %q: %s", "No articles yet.", rr.Body.String())
+	}
+}
+
+func TestFeedHandlerArticlesError(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+			return nil, errors.New("boom")
+		},
+	})
+
+	rr := serveFeed(t, s, testFeedID)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 	}
 }
 
@@ -165,6 +249,7 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestServerWith(t, Services{
+				ArticleService: &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched}, nil
 				}},

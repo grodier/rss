@@ -50,12 +50,13 @@ func (app *Application) Run(args []string) error {
 	fetcher := fetch.New(fetch.Options{})
 
 	services := server.Services{
-		FeedService:   psql.NewFeedRepository(db),
-		UserService:   psql.NewUserRepository(db),
-		SearchService: psql.NewSearchRepository(db),
-		SiteService:   psql.NewSiteRepository(db),
-		LookupService: psql.NewLookupRepository(db),
-		Refresher:     &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)},
+		FeedService:    psql.NewFeedRepository(db),
+		UserService:    psql.NewUserRepository(db),
+		SearchService:  psql.NewSearchRepository(db),
+		SiteService:    psql.NewSiteRepository(db),
+		LookupService:  psql.NewLookupRepository(db),
+		ArticleService: psql.NewArticleRepository(db),
+		Refresher:      &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)},
 	}
 
 	srvConfig := server.Config{

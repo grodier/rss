@@ -13,6 +13,9 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
+// feedArticleLimit is how many articles the feed page lists.
+const feedArticleLimit = 50
+
 const (
 	// refreshCooldown is how long after a successful fetch a feed can't be
 	// refreshed again.
@@ -61,16 +64,24 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	articles, err := s.services.ArticleService.ListByFeed(r.Context(), feed.ID, feedArticleLimit)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
-		Feed  rss.Feed
-		Site  rss.Site
-		Flash string
+		Feed     rss.Feed
+		Site     rss.Site
+		Articles []rss.Article
+		Flash    string
 	}{
-		Feed:  feed,
-		Site:  site,
-		Flash: flash,
+		Feed:     feed,
+		Site:     site,
+		Articles: articles,
+		Flash:    flash,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {

@@ -86,3 +86,14 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 	f.calls = append(f.calls, feed)
 	return f.refreshFn(ctx, feed)
 }
+
+type fakeArticleStore struct {
+	listByFeedFn func(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+}
+
+func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+	if f.listByFeedFn == nil {
+		return nil, nil
+	}
+	return f.listByFeedFn(ctx, feedID, limit)
+}

@@ -4,8 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
 	"github.com/grodier/rss/internal/rss"
 )
+
+// feedColumns are the columns scanFeed reads, in order.
+const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at, created_at`
+
+// scanFeed scans a row selected with feedColumns.
+func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
+	var feed rss.Feed
+	var lastFetched sql.NullTime
+	if err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched, &feed.CreatedAt); err != nil {
+		return rss.Feed{}, err
+	}
+	feed.LastFetched = lastFetched.Time
+	return feed, nil
+}
 
 type FeedRepository struct {
 	DB *sql.DB
@@ -39,9 +54,51 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 	return id, nil
 }
 
+// SaveFetch records a successful fetch of feed f.ID in one transaction:
+// updates the feed's title, description and site URL (keeping the current
+// value when the new one is empty), saves articles (see saveArticles) and
+// sets last_fetched_at. It returns rss.ErrNoRecord if the feed doesn't exist.
+func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.FetchResult{}, err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	stmt := `UPDATE feeds SET
+			title = COALESCE(NULLIF($2, ''), title),
+			description = COALESCE(NULLIF($3, ''), description),
+			site_url = COALESCE(NULLIF($4, ''), site_url)
+		WHERE id = $1`
+
+	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl)
+	if err != nil {
+		return rss.FetchResult{}, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return rss.FetchResult{}, err
+	}
+	if n == 0 {
+		return rss.FetchResult{}, rss.ErrNoRecord
+	}
+
+	res, err := saveArticles(ctx, tx, f.ID, articles)
+	if err != nil {
+		return rss.FetchResult{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return rss.FetchResult{}, err
+	}
+
+	return res, nil
+}
+
 // ListBySite returns a site's feeds ordered by title, then URL.
 func (r *FeedRepository) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
-	stmt := `SELECT id, site_id, url, site_url, title, description, created_at
+	stmt := `SELECT ` + feedColumns + `
 		FROM feeds
 		WHERE site_id = $1
 		ORDER BY title, url`
@@ -54,8 +111,8 @@ func (r *FeedRepository) ListBySite(ctx context.Context, siteID string) ([]rss.F
 
 	var feeds []rss.Feed
 	for rows.Next() {
-		var feed rss.Feed
-		if err := rows.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt); err != nil {
+		feed, err := scanFeed(rows)
+		if err != nil {
 			return nil, err
 		}
 		feeds = append(feeds, feed)
@@ -68,12 +125,12 @@ func (r *FeedRepository) ListBySite(ctx context.Context, siteID string) ([]rss.F
 }
 
 func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, error) {
-	stmt := `SELECT id, site_id, url, site_url, title, description, created_at
+	stmt := `SELECT ` + feedColumns + `
 		FROM feeds
 		WHERE id = $1`
 
-	var feed rss.Feed
-	if err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt); err != nil {
+	feed, err := scanFeed(r.DB.QueryRowContext(ctx, stmt, id))
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Feed{}, rss.ErrNoRecord
 		} else {
@@ -85,7 +142,7 @@ func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, erro
 }
 
 func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
-	stmt := `SELECT id, site_id, url, site_url, title, description, created_at
+	stmt := `SELECT ` + feedColumns + `
 		FROM feeds
 		ORDER BY created_at DESC
 		LIMIT 10`
@@ -99,8 +156,7 @@ func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
 	var feeds []rss.Feed
 
 	for rows.Next() {
-		var feed rss.Feed
-		err = rows.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &feed.CreatedAt)
+		feed, err := scanFeed(rows)
 		if err != nil {
 			return nil, err
 		}

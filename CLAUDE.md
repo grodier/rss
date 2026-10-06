@@ -82,3 +82,14 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 ## Finding work
 
 GitHub issues are the source of truth for scoped tasks; `docs/todo.md` holds planned work that isn't an issue yet.
+
+## Writing issues
+
+Issues are written for an implementer with no context from the planning conversation.
+
+- Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
+- Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
+- State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them. Leave an option open only on purpose, and say which one is preferred.
+- Give new types and function signatures, SQL and user-facing strings verbatim.
+- Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
+- Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).

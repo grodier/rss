@@ -56,6 +56,9 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 	if feed.SiteID != siteID {
 		t.Errorf("got site_id %q; want %q", feed.SiteID, siteID)
 	}
+	if !feed.LastFetched.IsZero() {
+		t.Errorf("got LastFetched %v for a never-fetched feed; want zero", feed.LastFetched)
+	}
 
 	if _, err := repo.GetLatest(t.Context()); err != nil {
 		t.Fatalf("GetLatest: %v", err)

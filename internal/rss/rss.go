@@ -14,6 +14,27 @@ type Feed struct {
 	CreatedAt   time.Time
 }
 
+// Article is an item of a feed. Summary and Content are raw HTML as
+// published and must be sanitized before being rendered as HTML.
+type Article struct {
+	ID          string
+	FeedID      string
+	ExternalID  string
+	URL         string
+	Title       string
+	Summary     string
+	Content     string
+	PublishedAt time.Time // zero if unknown
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// FetchResult counts the articles a fetch saved.
+type FetchResult struct {
+	New     int // articles inserted
+	Updated int // existing articles whose url, title, summary, content or missing date changed
+}
+
 // Site is a website that feeds are discovered from. Host is its site key:
 // the lowercase host without a leading "www." (see discovery.SiteKey).
 type Site struct {

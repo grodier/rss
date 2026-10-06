@@ -32,7 +32,7 @@ CREATE TABLE feeds (
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
 
-    last_fetched_at TIMESTAMPTZ,
+    last_fetched_at TIMESTAMPTZ, -- last successful fetch of the feed's articles; NULL if never
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -65,17 +65,24 @@ CREATE TABLE articles (
         REFERENCES feeds(id)
         ON DELETE CASCADE,
 
-    external_id TEXT,
+    -- Identity within the feed (item ID, else link, else a content hash);
+    -- computed by internal/ingest.
+    external_id TEXT NOT NULL,
 
-    url TEXT,
-    title TEXT NOT NULL,
-    summary TEXT,
-    content TEXT,
+    url TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',   -- plain text
+    summary TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
+    content TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
 
-    published_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (feed_id, external_id)
 );
+
+CREATE INDEX articles_feed_sort_idx ON articles (feed_id, (COALESCE(published_at, created_at)) DESC);
 
 CREATE TABLE subscriptions (
     user_id UUID NOT NULL

@@ -188,6 +188,55 @@ func TestFeedRepositoryRecordFailure(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryRecordNotModified(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+
+	t.Run("records a successful attempt and clears failures", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		feed.ETag = `"v1"`
+		feed.Title = "Saved title"
+		if _, err := repo.SaveFetch(ctx, feed, nil); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if err := repo.RecordFailure(ctx, feed.ID, "boom", time.Now()); err != nil {
+			t.Fatalf("RecordFailure: %v", err)
+		}
+
+		next := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+		before := dbNow(t, db)
+		if err := repo.RecordNotModified(ctx, feed.ID, next); err != nil {
+			t.Fatalf("RecordNotModified: %v", err)
+		}
+
+		got, err := repo.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.NextFetch.Equal(next) {
+			t.Errorf("got NextFetch %v; want %v", got.NextFetch, next)
+		}
+		if got.LastAttempt.Before(before) || !got.LastAttempt.Equal(got.LastFetched) {
+			t.Errorf("got LastAttempt %v, LastFetched %v; want both the same, not before %v", got.LastAttempt, got.LastFetched, before)
+		}
+		if got.LastError != "" || got.ConsecutiveFailures != 0 {
+			t.Errorf("got LastError %q, ConsecutiveFailures %d; want cleared", got.LastError, got.ConsecutiveFailures)
+		}
+		if got.ETag != feed.ETag || got.Title != feed.Title {
+			t.Errorf("got ETag %q, Title %q; want unchanged %q, %q", got.ETag, got.Title, feed.ETag, feed.Title)
+		}
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		err := repo.RecordNotModified(ctx, "00000000-0000-4000-8000-000000000000", time.Now())
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("got %v; want rss.ErrNoRecord", err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)

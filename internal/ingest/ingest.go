@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/grodier/rss/internal/feedparse"
@@ -63,7 +64,7 @@ func externalID(it feedparse.Item) string {
 
 // Fetcher is satisfied by *fetch.Client.
 type Fetcher interface {
-	Get(ctx context.Context, rawURL string) (*fetch.Response, error)
+	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
 var _ Fetcher = (*fetch.Client)(nil)
@@ -72,6 +73,7 @@ var _ Fetcher = (*fetch.Client)(nil)
 type Store interface {
 	SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error)
 	RecordFailure(ctx context.Context, id, msg string, next time.Time) error
+	RecordNotModified(ctx context.Context, id string, next time.Time) error
 }
 
 // recordTimeout bounds recording a failed fetch, which uses a context that
@@ -92,44 +94,67 @@ type Refresher struct {
 	Store   Store
 }
 
-// Refresh fetches feed.Url, parses it and saves its metadata and articles,
-// scheduling the feed's next fetch (see NextFetch). The caller sets the
-// deadline on ctx. Fetch failures wrap ErrUnreachable and parse failures
-// ErrNotFeed; both are recorded with Store.RecordFailure and reschedule the
-// feed with backoff (see RetryAt), unless ctx was canceled (shutdown or a
-// disconnected user), which records nothing. If recording fails, its error
-// is joined to the fetch error. Any other error is from Store.SaveFetch and
-// is not recorded as a feed failure.
+// Refresh fetches feed.Url, parses it and saves its metadata, validators
+// (ETag, Last-Modified) and articles, scheduling the feed's next fetch (see
+// NextFetch). It sends the feed's stored validators, and when the server
+// answers 304 it records that with Store.RecordNotModified, without parsing,
+// and returns a result with NotModified set. The caller sets the deadline on
+// ctx. Fetch failures wrap ErrUnreachable and parse failures ErrNotFeed; both
+// are recorded with Store.RecordFailure and reschedule the feed with backoff
+// (see RetryAt), unless ctx was canceled (shutdown or a disconnected user),
+// which records nothing. If recording fails, its error is joined to the fetch
+// error. Any other error is from Store.SaveFetch or Store.RecordNotModified
+// and is not recorded as a feed failure.
 func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
 	update, articles, err := r.fetch(ctx, feed)
 	if err != nil {
 		return rss.FetchResult{}, r.recordFailure(ctx, feed, err)
 	}
+	if update == nil {
+		if err := r.Store.RecordNotModified(ctx, feed.ID, NextFetch(time.Now())); err != nil {
+			return rss.FetchResult{}, err
+		}
+		return rss.FetchResult{NotModified: true}, nil
+	}
 	update.NextFetch = NextFetch(time.Now())
-	return r.Store.SaveFetch(ctx, update, articles)
+	return r.Store.SaveFetch(ctx, *update, articles)
 }
 
 // fetch fetches and parses feed.Url and returns the feed's new metadata and
-// its articles. Errors wrap ErrUnreachable or ErrNotFeed.
-func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (rss.Feed, []rss.Article, error) {
-	resp, err := r.Fetcher.Get(ctx, feed.Url)
+// its articles, or a nil feed if the server answered 304. Errors wrap
+// ErrUnreachable or ErrNotFeed.
+func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*rss.Feed, []rss.Article, error) {
+	header := http.Header{}
+	if feed.ETag != "" {
+		header.Set("If-None-Match", feed.ETag)
+	}
+	if feed.LastModified != "" {
+		header.Set("If-Modified-Since", feed.LastModified)
+	}
+
+	resp, err := r.Fetcher.Get(ctx, feed.Url, header)
 	if err != nil {
-		return rss.Feed{}, nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
+	}
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, nil, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return rss.Feed{}, nil, fmt.Errorf("%w: status %d", ErrUnreachable, resp.StatusCode)
+		return nil, nil, fmt.Errorf("%w: status %d", ErrUnreachable, resp.StatusCode)
 	}
 
 	parsed, err := feedparse.Parse(resp.URL, resp.Body)
 	if err != nil {
-		return rss.Feed{}, nil, fmt.Errorf("%w: %w", ErrNotFeed, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrNotFeed, err)
 	}
 
-	update := rss.Feed{
-		ID:          feed.ID,
-		Title:       parsed.Title,
-		Description: parsed.Description,
-		SiteUrl:     parsed.SiteURL,
+	update := &rss.Feed{
+		ID:           feed.ID,
+		Title:        parsed.Title,
+		Description:  parsed.Description,
+		SiteUrl:      parsed.SiteURL,
+		ETag:         resp.Header.Get("ETag"),
+		LastModified: resp.Header.Get("Last-Modified"),
 	}
 	return update, Articles(parsed.Items), nil
 }

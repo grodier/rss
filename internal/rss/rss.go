@@ -17,6 +17,9 @@ type Feed struct {
 	ConsecutiveFailures int
 	NextFetch           time.Time
 
+	ETag         string // of the last 2xx response; "" if none
+	LastModified string // of the last 2xx response; "" if none
+
 	CreatedAt time.Time
 }
 
@@ -43,8 +46,9 @@ type FeedWithArticles struct {
 
 // FetchResult counts the articles a fetch saved.
 type FetchResult struct {
-	New     int // articles inserted
-	Updated int // existing articles whose url, title, summary, content or missing date changed
+	New         int  // articles inserted
+	Updated     int  // existing articles whose url, title, summary, content or missing date changed
+	NotModified bool // the server answered 304
 }
 
 // Site is a website that feeds are discovered from. Host is its site key:

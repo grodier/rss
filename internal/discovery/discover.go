@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sync"
 
@@ -13,7 +14,7 @@ import (
 
 // Fetcher is satisfied by *fetch.Client.
 type Fetcher interface {
-	Get(ctx context.Context, rawURL string) (*fetch.Response, error)
+	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
 var _ Fetcher = (*fetch.Client)(nil)
@@ -67,7 +68,7 @@ type Discoverer struct {
 // description and feed links it could read, and when the page advertises no
 // feeds it tries CommonFeedPaths.
 func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
-	resp, err := d.Fetcher.Get(ctx, u.String())
+	resp, err := d.Fetcher.Get(ctx, u.String(), nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("discovery: fetching %s: %w", u, err)
 	}
@@ -184,7 +185,7 @@ loop:
 // checkCandidate returns the feed at c, or nil if it can't be fetched or
 // isn't a feed.
 func (d *Discoverer) checkCandidate(ctx context.Context, c Candidate) *FeedInfo {
-	resp, err := d.Fetcher.Get(ctx, c.URL.String())
+	resp, err := d.Fetcher.Get(ctx, c.URL.String(), nil)
 	if err != nil || !ok2xx(resp.StatusCode) {
 		return nil
 	}

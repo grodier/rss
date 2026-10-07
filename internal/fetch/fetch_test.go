@@ -65,7 +65,7 @@ func TestBlocksLoopbackServer(t *testing.T) {
 
 	c := New(Options{})
 	for _, u := range []string{srv.URL, strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)} {
-		_, err := c.Get(context.Background(), u)
+		_, err := c.Get(context.Background(), u, nil)
 		if !errors.Is(err, ErrBlockedAddress) {
 			t.Errorf("Get(%s) error = %v; want ErrBlockedAddress", u, err)
 		}
@@ -94,7 +94,7 @@ func TestGetOK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := newTestClient(Options{}).Get(context.Background(), srv.URL+"/start")
+	resp, err := newTestClient(Options{}).Get(context.Background(), srv.URL+"/start", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,36 @@ func TestGetOK(t *testing.T) {
 	}
 }
 
+func TestCallerHeaders(t *testing.T) {
+	var got http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+	}))
+	defer srv.Close()
+
+	header := http.Header{}
+	header.Set("If-None-Match", `W/"abc"`)
+	header.Set("If-Modified-Since", "Mon, 02 Jan 2006 15:04:05 GMT")
+	header.Set("User-Agent", "caller-agent")
+	header.Set("Accept", "text/plain")
+	if _, err := newTestClient(Options{UserAgent: "test-agent"}).Get(context.Background(), srv.URL, header); err != nil {
+		t.Fatal(err)
+	}
+
+	if v := got.Get("If-None-Match"); v != `W/"abc"` {
+		t.Errorf("If-None-Match = %q; want %q", v, `W/"abc"`)
+	}
+	if v := got.Get("If-Modified-Since"); v != "Mon, 02 Jan 2006 15:04:05 GMT" {
+		t.Errorf("If-Modified-Since = %q; want Mon, 02 Jan 2006 15:04:05 GMT", v)
+	}
+	if v := got.Values("User-Agent"); len(v) != 1 || v[0] != "test-agent" {
+		t.Errorf("User-Agent = %q; want only test-agent", v)
+	}
+	if v := got.Values("Accept"); len(v) != 1 || v[0] != acceptHeader {
+		t.Errorf("Accept = %q; want only %q", v, acceptHeader)
+	}
+}
+
 func TestCustomUserAgent(t *testing.T) {
 	var gotUA string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +155,7 @@ func TestCustomUserAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := newTestClient(Options{UserAgent: "test-agent"}).Get(context.Background(), srv.URL); err != nil {
+	if _, err := newTestClient(Options{UserAgent: "test-agent"}).Get(context.Background(), srv.URL, nil); err != nil {
 		t.Fatal(err)
 	}
 	if gotUA != "test-agent" {
@@ -137,7 +167,7 @@ func TestNotFoundIsNotAnError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 
-	resp, err := newTestClient(Options{}).Get(context.Background(), srv.URL)
+	resp, err := newTestClient(Options{}).Get(context.Background(), srv.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,12 +194,12 @@ func TestRedirectLimit(t *testing.T) {
 	c := newTestClient(Options{MaxRedirects: 3})
 
 	srv := redirectServer(t, 3)
-	if _, err := c.Get(context.Background(), srv.URL+"/0"); err != nil {
+	if _, err := c.Get(context.Background(), srv.URL+"/0", nil); err != nil {
 		t.Errorf("3 redirects: error = %v; want nil", err)
 	}
 
 	srv = redirectServer(t, 4)
-	_, err := c.Get(context.Background(), srv.URL+"/0")
+	_, err := c.Get(context.Background(), srv.URL+"/0", nil)
 	if !errors.Is(err, ErrTooManyRedirects) {
 		t.Errorf("4 redirects: error = %v; want ErrTooManyRedirects", err)
 	}
@@ -181,7 +211,7 @@ func TestRedirectToUnsupportedScheme(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := newTestClient(Options{}).Get(context.Background(), srv.URL)
+	_, err := newTestClient(Options{}).Get(context.Background(), srv.URL, nil)
 	if !errors.Is(err, ErrUnsupportedScheme) {
 		t.Errorf("error = %v; want ErrUnsupportedScheme", err)
 	}
@@ -197,7 +227,7 @@ func TestBodyLimit(t *testing.T) {
 
 	c := newTestClient(Options{MaxBodyBytes: max})
 
-	resp, err := c.Get(context.Background(), srv.URL+"?n="+strconv.Itoa(max))
+	resp, err := c.Get(context.Background(), srv.URL+"?n="+strconv.Itoa(max), nil)
 	if err != nil {
 		t.Fatalf("exactly MaxBodyBytes: error = %v", err)
 	}
@@ -205,7 +235,7 @@ func TestBodyLimit(t *testing.T) {
 		t.Errorf("len(Body) = %d; want %d", len(resp.Body), max)
 	}
 
-	_, err = c.Get(context.Background(), srv.URL+"?n="+strconv.Itoa(max+1))
+	_, err = c.Get(context.Background(), srv.URL+"?n="+strconv.Itoa(max+1), nil)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Errorf("MaxBodyBytes+1: error = %v; want ErrTooLarge", err)
 	}
@@ -227,7 +257,7 @@ func TestTimeout(t *testing.T) {
 	srv := slowServer(t)
 
 	start := time.Now()
-	_, err := newTestClient(Options{Timeout: 100 * time.Millisecond}).Get(context.Background(), srv.URL)
+	_, err := newTestClient(Options{Timeout: 100 * time.Millisecond}).Get(context.Background(), srv.URL, nil)
 	if err == nil {
 		t.Fatal("error = nil; want timeout")
 	}
@@ -241,7 +271,7 @@ func TestContextCancel(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := newTestClient(Options{}).Get(ctx, srv.URL)
+	_, err := newTestClient(Options{}).Get(ctx, srv.URL, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("error = %v; want context.DeadlineExceeded", err)
 	}
@@ -264,7 +294,7 @@ func TestRejectedURLs(t *testing.T) {
 	c := newTestClient(Options{})
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			_, err := c.Get(context.Background(), tt.url)
+			_, err := c.Get(context.Background(), tt.url, nil)
 			if !errors.Is(err, tt.want) {
 				t.Errorf("error = %v; want %v", err, tt.want)
 			}

@@ -126,15 +126,16 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 
 	host := fmt.Sprintf("disc-%d.example.com", n)
 	site := rss.Site{Host: host, URL: "https://" + host + "/", Title: "Disc"}
+	firstFetch := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 	feedList := []rss.FeedWithArticles{
 		{
-			Feed: rss.Feed{Url: "https://" + host + "/a.xml", Title: "A"},
+			Feed: rss.Feed{Url: "https://" + host + "/a.xml", Title: "A", NextFetch: firstFetch},
 			Articles: []rss.Article{
 				{ExternalID: "1", URL: "https://" + host + "/1", Title: "One"},
 				{ExternalID: "2", URL: "https://" + host + "/2", Title: "Two"},
 			},
 		},
-		{Feed: rss.Feed{Url: "https://" + host + "/b.xml", Title: "B"}},
+		{Feed: rss.Feed{Url: "https://" + host + "/b.xml", Title: "B", NextFetch: firstFetch}},
 	}
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM feeds WHERE url LIKE $1`, "https://"+host+"/%"); err != nil {
@@ -149,6 +150,25 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 	if err != nil || id == "" {
 		t.Fatalf("Save: id %q, err %v", id, err)
 	}
+	checkNextFetch := func(t *testing.T, want time.Time) {
+		t.Helper()
+		got, err := NewFeedRepository(db).ListBySite(t.Context(), id)
+		if err != nil {
+			t.Fatalf("ListBySite: %v", err)
+		}
+		for _, f := range got {
+			if !f.NextFetch.Equal(want) {
+				t.Errorf("feed %q: got NextFetch %v, want %v", f.Title, f.NextFetch, want)
+			}
+		}
+	}
+	checkNextFetch(t, firstFetch)
+
+	// Saving again updates the existing feeds' next fetch.
+	secondFetch := firstFetch.Add(time.Hour)
+	for i := range feedList {
+		feedList[i].Feed.NextFetch = secondFetch
+	}
 	id2, err := repo.Save(t.Context(), site, feedList)
 	if err != nil {
 		t.Fatalf("Save again: %v", err)
@@ -156,6 +176,7 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 	if id2 != id {
 		t.Errorf("got site id %q; want %q", id2, id)
 	}
+	checkNextFetch(t, secondFetch)
 
 	var count int
 	if err := db.QueryRow(`SELECT count(*) FROM feeds WHERE site_id = $1`, id).Scan(&count); err != nil {

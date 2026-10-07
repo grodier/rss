@@ -216,6 +216,7 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds,
 				SiteUrl:     f.SiteURL,
 				Title:       f.Title,
 				Description: f.Description,
+				NextFetch:   ingest.NextFetch(time.Now()), // discovery just fetched it
 			},
 			Articles: ingest.Articles(f.Items),
 		}

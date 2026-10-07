@@ -7,16 +7,12 @@ or delete it.
 
 ## Feed ingestion
 
-The core missing feature: feeds are never fetched for their articles.
+Feeds are fetched and their articles saved (discovery, the Refresh button and the
+feed page's article list), but only on demand.
 
-- **Fetch and save articles** is planned and split into issues: #105 (feedparse items),
-  #106 (articles schema and repository), #107 (`internal/ingest`), #108 (save articles
-  during discovery), #109 (Refresh button on the feed page), #110 (list articles on the
-  feed page). #105 and #106 can be done in parallel; #107 needs both; #108 and #109 need
-  #107; #110 needs only #106.
 - [ ] **Background refresh (needs planning).** Re-fetch feeds on a schedule. The lookup
   worker loop (#64) is a model for running this inside `www`, and it will call the same
-  `ingest.Refresher` as the Refresh button. Deliberately left out of the issues above,
+  `ingest.Refresher` as the Refresh button. Deliberately left out of the on-demand ingestion work,
   because each only pays off when fetches repeat unattended:
   - Scheduling: use the `feeds` table itself as the queue (e.g. a `next_fetch_at` column
     claimed with `FOR UPDATE SKIP LOCKED`), not a separate jobs table. Never-fetched feeds
@@ -93,8 +89,7 @@ yet:
 
 ## Suggested order
 
-1. Feed ingestion: #105 to #110 (dependencies under "Feed ingestion" above).
-2. **Plan** background refresh, then subscriptions and reading, in their own sessions,
+1. **Plan** background refresh, then subscriptions and reading, in their own sessions,
    and turn them into issues. Background refresh runs alongside the lookup worker, using
    the shutdown context from #87.
 

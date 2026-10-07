@@ -7,10 +7,11 @@ import (
 )
 
 type config struct {
-	env    string
-	server serverConfig
-	db     dbConfig
-	lookup lookupConfig
+	env     string
+	server  serverConfig
+	db      dbConfig
+	lookup  lookupConfig
+	refresh refreshConfig
 }
 
 type serverConfig struct {
@@ -18,6 +19,10 @@ type serverConfig struct {
 }
 
 type lookupConfig struct {
+	workers int
+}
+
+type refreshConfig struct {
 	workers int
 }
 
@@ -42,6 +47,9 @@ func defaultConfig() config {
 		lookup: lookupConfig{
 			workers: 2,
 		},
+		refresh: refreshConfig{
+			workers: 2,
+		},
 	}
 }
 
@@ -58,6 +66,9 @@ func (c config) Validate() error {
 	}
 	if c.lookup.workers < 0 || c.lookup.workers > 16 {
 		errs = append(errs, fmt.Errorf("invalid lookup workers %d: must be 0-16", c.lookup.workers))
+	}
+	if c.refresh.workers < 0 || c.refresh.workers > 16 {
+		errs = append(errs, fmt.Errorf("invalid refresh workers %d: must be 0-16", c.refresh.workers))
 	}
 	return errors.Join(errs...)
 }

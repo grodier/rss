@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/lookup"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/refresh"
 	"github.com/grodier/rss/internal/server"
 )
 
@@ -48,6 +50,8 @@ func (app *Application) Run(args []string) error {
 
 	// One client serves lookups and refreshes; it is safe for concurrent use.
 	fetcher := fetch.New(fetch.Options{})
+	// One refresher serves the Refresh button and the background workers.
+	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
 
 	services := server.Services{
 		FeedService:    psql.NewFeedRepository(db),
@@ -56,7 +60,7 @@ func (app *Application) Run(args []string) error {
 		SiteService:    psql.NewSiteRepository(db),
 		LookupService:  psql.NewLookupRepository(db),
 		ArticleService: psql.NewArticleRepository(db),
-		Refresher:      &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)},
+		Refresher:      refresher,
 	}
 
 	srvConfig := server.Config{
@@ -81,12 +85,8 @@ func (app *Application) Run(args []string) error {
 	// Ctrl-C kills the process if graceful shutdown hangs.
 	context.AfterFunc(sigCtx, stop)
 
-	// ctx is also canceled when either component fails, stopping the other.
-	ctx, cancel := context.WithCancel(sigCtx)
-	defer cancel()
-
-	var runnerErr error
-	runnerDone := make(chan struct{})
+	// Background components run alongside the server until ctx is canceled.
+	var background []func(context.Context) error
 	if app.config.lookup.workers > 0 {
 		runner := &lookup.Runner{
 			Store:      psql.NewLookupRepository(db),
@@ -95,25 +95,53 @@ func (app *Application) Run(args []string) error {
 			Logger:     app.logger,
 			Workers:    app.config.lookup.workers,
 		}
-		go func() {
-			defer close(runnerDone)
+		background = append(background, func(ctx context.Context) error {
 			if err := runner.Run(ctx); err != nil {
-				runnerErr = fmt.Errorf("lookup runner: %w", err)
+				return fmt.Errorf("lookup runner: %w", err)
+			}
+			return nil
+		})
+	}
+	if app.config.refresh.workers > 0 {
+		runner := &refresh.Runner{
+			Store:     psql.NewFeedRepository(db),
+			Refresher: refresher,
+			Logger:    app.logger,
+			Workers:   app.config.refresh.workers,
+		}
+		background = append(background, func(ctx context.Context) error {
+			if err := runner.Run(ctx); err != nil {
+				return fmt.Errorf("refresh runner: %w", err)
+			}
+			return nil
+		})
+	}
+
+	// ctx is also canceled when any component fails, stopping the others.
+	ctx, cancel := context.WithCancel(sigCtx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	errs := make([]error, len(background))
+	for i, run := range background {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := run(ctx); err != nil {
+				errs[i] = err
 				cancel()
 			}
 		}()
-	} else {
-		close(runnerDone)
 	}
 
 	err = srv.Serve(ctx)
 
-	// Stop the workers (if Serve returned on its own) and wait for them
-	// before the deferred db.Close runs.
+	// Stop the background components (if Serve returned on its own) and
+	// wait for them before the deferred db.Close runs.
 	cancel()
-	<-runnerDone
+	wg.Wait()
 
-	return errors.Join(err, runnerErr)
+	return errors.Join(append([]error{err}, errs...)...)
 }
 
 func (app *Application) ParseConfigs(args []string) (config, error) {
@@ -130,6 +158,7 @@ func (app *Application) ParseConfigs(args []string) (config, error) {
 	fs.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", cfg.db.maxIdleTime, "PostgreSQL max idle time")
 
 	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
+	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
 
 	if err := fs.Parse(args); err != nil {
 		return config{}, err

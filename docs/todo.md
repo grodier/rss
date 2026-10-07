@@ -10,24 +10,49 @@ or delete it.
 Feeds are fetched and their articles saved (discovery, the Refresh button and the
 feed page's article list), but only on demand.
 
-- [ ] **Background refresh (needs planning).** Re-fetch feeds on a schedule. The lookup
-  worker loop (#64) is a model for running this inside `www`, and it will call the same
-  `ingest.Refresher` as the Refresh button. Deliberately left out of the on-demand ingestion work,
-  because each only pays off when fetches repeat unattended:
-  - Scheduling: use the `feeds` table itself as the queue (e.g. a `next_fetch_at` column
-    claimed with `FOR UPDATE SKIP LOCKED`), not a separate jobs table. Never-fetched feeds
-    (`last_fetched_at IS NULL`) are the most due. Decide what the Refresh button becomes
-    (e.g. "set `next_fetch_at = now()`", or remove it).
-  - Conditional GET: store ETag / Last-Modified per feed and send `If-None-Match` /
-    `If-Modified-Since`. `fetch.Client.Get` can't send extra request headers yet.
-  - Errors and backoff: record the last attempt and last error per feed
-    (`last_fetched_at` only records the last *success*), back off on repeated failures,
-    and show "last fetch failed" on the feed page. Retry on the next cycle, never inside a
-    single fetch.
-  - Redirects and gone feeds: update the feed URL on permanent redirects (301/308; needs
-    `fetch` to report them, and `feeds.url` is unique, so two feeds can collide), and stop
-    fetching on 410 Gone.
-  - Article retention: whether to delete old articles, and when.
+Background refresh is planned; implement in this order: #119 → (#120 and #121 in
+parallel) → #122 → #123 → #124.
+
+- #119 Record fetch attempts and schedule each feed's next fetch (`next_fetch_at`,
+  failure backoff 1h doubling to 24h).
+- #120 Refresh due feeds in the background (`internal/refresh` workers inside `www`).
+- #121 Show fetch failures on the feed page.
+- #122 Conditional GET (ETag / Last-Modified).
+- #123 Stop fetching feeds that answer 410 Gone.
+- #124 Honor `Retry-After` and `Cache-Control` when scheduling.
+
+Decisions made while planning (don't reopen them in these issues): workers run inside
+`www`, not as a cron-hit endpoint or a separate service; the `feeds` table is the queue,
+claimed with a lease instead of a status column; every feed is refreshed until
+subscriptions exist; the Refresh button stays synchronous and goes through the same
+`ingest.Refresher`; RSS `<ttl>` / `sy:updatePeriod` are ignored.
+
+Later, each with when it pays off:
+
+- [ ] **Adaptive refresh interval.** Fetch busy feeds often and dormant ones rarely, from
+  posting frequency: count articles published in the last 14 days (`n`), interval =
+  clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` /
+  `Cache-Control` floors (#124). Worth it at a few thousand feeds, or when most fetches
+  are 304s or find no new articles.
+- [ ] **Permanent redirects (301/308).** Update `feeds.url`. Needs `fetch` to report the
+  redirect chain, and a decision for the unique-URL collision when two feeds end up at
+  the same URL (merge, or keep the old one). Redirects are already followed, so this can
+  wait until moved feeds are a visible problem.
+- [ ] **Give up on long-dead feeds.** E.g. stop after 30 days of consecutive failures and
+  say so on the feed page. When dead feeds are a noticeable share of fetches.
+- [ ] **Per-host politeness.** At most N concurrent fetches per host. When one host has
+  many feeds (category feeds, platform hosts like Substack or Medium).
+- [ ] **Separate worker process or `-once` mode.** Move `internal/refresh` to its own
+  process (`cmd/worker` or a `-role` flag) when fetching measurably slows web requests or
+  should scale separately from web instances. On a scale-to-zero host, add a `-once`
+  command that drains the due feeds, run by the platform's cron, rather than an HTTP
+  endpoint.
+- [ ] **WebSub (push).** Subscribe to hubs that feeds advertise for near-instant updates.
+  Only when freshness matters more than it does now; needs a public callback URL.
+- [ ] **Article retention.** Whether to delete old articles, and when. Depends on read
+  state; plan it with the reading experience.
+- [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
+  304 rate). When the app runs somewhere the logs aren't at hand.
 
 ## Feed discovery
 
@@ -55,6 +80,10 @@ yet:
 - [ ] **Subscriptions.** Replace the placeholder `POST /subscribe`, show each user only
   their own feeds, and support unsubscribing. Subscribe/unsubscribe lives on the feed page
   that discovery (#50) leads to.
+  Background refresh (#120) then refreshes only feeds with at least one subscriber (add
+  `AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)` to `ClaimDue`),
+  and an unsubscribed feed is refreshed when its page is viewed and its last fetch is
+  older than `ingest.RefreshInterval`.
 - [ ] **Reading experience.** Add an "all my feeds" timeline, show article content, and
   track read/unread per user (needs a new table). The feed page's article list (#110)
   shows titles and links only. Summary and content are stored as raw HTML (#106) and
@@ -89,8 +118,7 @@ yet:
 
 ## Suggested order
 
-1. **Plan** background refresh, then subscriptions and reading, in their own sessions,
-   and turn them into issues. Background refresh runs alongside the lookup worker, using
-   the shutdown context from #87.
+1. Background refresh: #119 → (#120 and #121) → #122 → #123 → #124.
+2. **Plan** subscriptions and reading in their own session, and turn them into issues.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

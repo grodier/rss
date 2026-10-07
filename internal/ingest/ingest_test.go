@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -138,7 +139,8 @@ const testRSS = `<?xml version="1.0"?>
 
 const testHTML = `<!doctype html><html><head><title>Not a feed</title></head><body>hi</body></html>`
 
-// fakeStore records the arguments of SaveFetch and RecordFailure.
+// fakeStore records the arguments of SaveFetch, RecordFailure and
+// RecordNotModified.
 type fakeStore struct {
 	calls    int
 	feed     rss.Feed
@@ -148,6 +150,14 @@ type fakeStore struct {
 
 	failures  []failure
 	recordErr error
+
+	notModified    []notModified
+	notModifiedErr error
+}
+
+type notModified struct {
+	id   string
+	next time.Time
 }
 
 type failure struct {
@@ -166,6 +176,11 @@ func (s *fakeStore) SaveFetch(_ context.Context, f rss.Feed, articles []rss.Arti
 func (s *fakeStore) RecordFailure(ctx context.Context, id, msg string, next time.Time) error {
 	s.failures = append(s.failures, failure{id, msg, next, ctx.Err()})
 	return s.recordErr
+}
+
+func (s *fakeStore) RecordNotModified(_ context.Context, id string, next time.Time) error {
+	s.notModified = append(s.notModified, notModified{id, next})
+	return s.notModifiedErr
 }
 
 func serve(t *testing.T, status int, contentType, body string) *httptest.Server {
@@ -217,6 +232,114 @@ func TestRefresh(t *testing.T) {
 		}
 		if len(store.failures) != 0 {
 			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
+		}
+	})
+
+	t.Run("sends stored validators", func(t *testing.T) {
+		tests := []struct {
+			name               string
+			etag, lastModified string
+			wantINM, wantIMS   []string
+		}{
+			{"both set", `W/"v1"`, "Mon, 02 Jan 2006 15:04:05 GMT", []string{`W/"v1"`}, []string{"Mon, 02 Jan 2006 15:04:05 GMT"}},
+			{"ETag only", `"v2"`, "", []string{`"v2"`}, nil},
+			{"Last-Modified only", "", "Tue, 03 Jan 2006 15:04:05 GMT", nil, []string{"Tue, 03 Jan 2006 15:04:05 GMT"}},
+			{"neither", "", "", nil, nil},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var got http.Header
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					got = r.Header.Clone()
+					w.Header().Set("Content-Type", "application/rss+xml")
+					fmt.Fprint(w, testRSS)
+				}))
+				t.Cleanup(srv.Close)
+
+				r := &Refresher{Fetcher: fetcher, Store: &fakeStore{}}
+				feed := rss.Feed{ID: "feed-1", Url: srv.URL, ETag: tt.etag, LastModified: tt.lastModified}
+				if _, err := r.Refresh(context.Background(), feed); err != nil {
+					t.Fatalf("Refresh: %v", err)
+				}
+				if v := got.Values("If-None-Match"); !slices.Equal(v, tt.wantINM) {
+					t.Errorf("If-None-Match = %q, want %q", v, tt.wantINM)
+				}
+				if v := got.Values("If-Modified-Since"); !slices.Equal(v, tt.wantIMS) {
+					t.Errorf("If-Modified-Since = %q, want %q", v, tt.wantIMS)
+				}
+			})
+		}
+	})
+
+	t.Run("304 records not modified", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotModified)
+		}))
+		t.Cleanup(srv.Close)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+
+		before := time.Now()
+		res, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL, ETag: `"v1"`, ConsecutiveFailures: 2})
+		after := time.Now()
+		if err != nil {
+			t.Fatalf("Refresh: %v", err)
+		}
+		if want := (rss.FetchResult{NotModified: true}); res != want {
+			t.Errorf("result = %+v, want %+v", res, want)
+		}
+		if store.calls != 0 || len(store.failures) != 0 {
+			t.Errorf("SaveFetch called %d times, RecordFailure %d times; want 0, 0", store.calls, len(store.failures))
+		}
+		if len(store.notModified) != 1 {
+			t.Fatalf("RecordNotModified called %d times, want 1", len(store.notModified))
+		}
+		if id := store.notModified[0].id; id != "feed-1" {
+			t.Errorf("RecordNotModified id = %q, want feed-1", id)
+		}
+		checkWithin(t, "RecordNotModified next", store.notModified[0].next, before, after, RefreshInterval)
+	})
+
+	t.Run("RecordNotModified error returned and not recorded", func(t *testing.T) {
+		srv := serve(t, http.StatusNotModified, "", "")
+		store := &fakeStore{notModifiedErr: rss.ErrNoRecord}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+		if len(store.failures) != 0 {
+			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
+		}
+	})
+
+	t.Run("saves response validators", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Header().Set("ETag", `W/"new"`)
+			w.Header().Set("Last-Modified", "Wed, 04 Jan 2006 15:04:05 GMT")
+			fmt.Fprint(w, testRSS)
+		}))
+		t.Cleanup(srv.Close)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		if _, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL, ETag: `"old"`, LastModified: "old"}); err != nil {
+			t.Fatalf("Refresh: %v", err)
+		}
+		if store.feed.ETag != `W/"new"` || store.feed.LastModified != "Wed, 04 Jan 2006 15:04:05 GMT" {
+			t.Errorf("got ETag %q, LastModified %q; want %q, %q", store.feed.ETag, store.feed.LastModified, `W/"new"`, "Wed, 04 Jan 2006 15:04:05 GMT")
+		}
+	})
+
+	t.Run("response without validators clears them", func(t *testing.T) {
+		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		if _, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL, ETag: `"old"`, LastModified: "old"}); err != nil {
+			t.Fatalf("Refresh: %v", err)
+		}
+		if store.feed.ETag != "" || store.feed.LastModified != "" {
+			t.Errorf("got ETag %q, LastModified %q; want both empty", store.feed.ETag, store.feed.LastModified)
 		}
 	})
 

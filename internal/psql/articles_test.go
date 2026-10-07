@@ -198,6 +198,33 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("stores and clears validators", func(t *testing.T) {
+		update := feed
+		update.ETag = `W/"v1"`
+		update.LastModified = "Mon, 02 Jan 2006 15:04:05 GMT"
+		if _, err := feeds.SaveFetch(ctx, update, nil); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		f, err := feeds.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if f.ETag != update.ETag || f.LastModified != update.LastModified {
+			t.Errorf("got ETag %q, LastModified %q; want %q, %q", f.ETag, f.LastModified, update.ETag, update.LastModified)
+		}
+
+		if _, err := feeds.SaveFetch(ctx, feed, nil); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		f, err = feeds.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if f.ETag != "" || f.LastModified != "" {
+			t.Errorf("got ETag %q, LastModified %q; want both cleared", f.ETag, f.LastModified)
+		}
+	})
+
 	t.Run("schedules and records a successful attempt", func(t *testing.T) {
 		if err := feeds.RecordFailure(ctx, feed.ID, "boom", time.Now()); err != nil {
 			t.Fatalf("RecordFailure: %v", err)

@@ -11,14 +11,15 @@ import (
 
 // feedColumns are the columns scanFeed reads, in order.
 const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at,
-	last_attempt_at, last_error, consecutive_failures, next_fetch_at, created_at`
+	last_attempt_at, last_error, consecutive_failures, next_fetch_at, etag, last_modified, created_at`
 
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
 	var lastFetched, lastAttempt sql.NullTime
 	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
-		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch, &feed.CreatedAt)
+		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch,
+		&feed.ETag, &feed.LastModified, &feed.CreatedAt)
 	if err != nil {
 		return rss.Feed{}, err
 	}
@@ -65,7 +66,8 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 
 // SaveFetch records a successful fetch of feed f.ID in one transaction:
 // updates the feed's title, description and site URL (keeping the current
-// value when the new one is empty), sets next_fetch_at to f.NextFetch, saves
+// value when the new one is empty), overwrites etag and last_modified with
+// f.ETag and f.LastModified, sets next_fetch_at to f.NextFetch, saves
 // articles and records the successful attempt (see saveArticles). It returns
 // rss.ErrNoRecord if the feed doesn't exist, and an error if f.NextFetch is
 // zero.
@@ -86,10 +88,12 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 			title = COALESCE(NULLIF($2, ''), title),
 			description = COALESCE(NULLIF($3, ''), description),
 			site_url = COALESCE(NULLIF($4, ''), site_url),
-			next_fetch_at = $5
+			next_fetch_at = $5,
+			etag = $6,
+			last_modified = $7
 		WHERE id = $1`
 
-	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.NextFetch)
+	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.NextFetch, f.ETag, f.LastModified)
 	if err != nil {
 		return rss.FetchResult{}, err
 	}
@@ -123,6 +127,17 @@ func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen), next)
+}
+
+// RecordNotModified records a 304 for feed id: a successful attempt with no
+// changes (last_fetched_at, last_attempt_at, clears last_error and
+// consecutive_failures) and next_fetch_at = next. rss.ErrNoRecord if missing.
+func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next time.Time) error {
+	stmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
+			last_error = '', consecutive_failures = 0, next_fetch_at = $2
+		WHERE id = $1`
+
+	return execOne(ctx, r.DB, stmt, id, next)
 }
 
 // ClaimDue claims the feed that has been due longest (next_fetch_at <= now())

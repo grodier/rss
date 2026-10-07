@@ -28,7 +28,7 @@ type fakeFetcher struct {
 	gets []string
 }
 
-func (f *fakeFetcher) Get(ctx context.Context, rawURL string) (*fetch.Response, error) {
+func (f *fakeFetcher) Get(ctx context.Context, rawURL string, _ http.Header) (*fetch.Response, error) {
 	f.mu.Lock()
 	f.gets = append(f.gets, rawURL)
 	f.mu.Unlock()

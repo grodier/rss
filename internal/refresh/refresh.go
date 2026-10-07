@@ -135,6 +135,7 @@ func (r *Runner) refresh(ctx context.Context, feed rss.Feed) {
 			"url", feed.Url,
 			"new", res.New,
 			"updated", res.Updated,
+			"not_modified", res.NotModified,
 			"duration", time.Since(start),
 		)
 	case errors.Is(err, ingest.ErrUnreachable), errors.Is(err, ingest.ErrNotFeed):

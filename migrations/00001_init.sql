@@ -37,6 +37,8 @@ CREATE TABLE feeds (
     last_error TEXT NOT NULL DEFAULT '',             -- why the last attempt failed; '' after a success. Internal detail, never shown to users
     consecutive_failures INT NOT NULL DEFAULT 0,     -- failed attempts since the last success
     next_fetch_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when background refresh should next fetch the feed
+    etag TEXT NOT NULL DEFAULT '',          -- ETag of the last 2xx response, sent back as If-None-Match
+    last_modified TEXT NOT NULL DEFAULT '', -- Last-Modified of the last 2xx response, sent back as If-Modified-Since
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

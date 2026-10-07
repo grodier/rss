@@ -100,9 +100,10 @@ type Response struct {
 	Body       []byte
 }
 
-// Get fetches rawURL. Non-2xx statuses are returned as a Response, not an
-// error; callers decide what to do with them.
-func (c *Client) Get(ctx context.Context, rawURL string) (*Response, error) {
+// Get fetches rawURL with header's values (header may be nil); User-Agent
+// and Accept are always the client's own. Non-2xx statuses are returned as a
+// Response, not an error; callers decide what to do with them.
+func (c *Client) Get(ctx context.Context, rawURL string, header http.Header) (*Response, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
@@ -114,6 +115,11 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	for k, vs := range header {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
 	}
 	req.Header.Set("User-Agent", c.opts.UserAgent)
 	req.Header.Set("Accept", acceptHeader)

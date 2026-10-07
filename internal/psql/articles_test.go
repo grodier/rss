@@ -22,6 +22,7 @@ func newTestFeed(t *testing.T, db *sql.DB) rss.Feed {
 		SiteUrl:     "https://example.com/",
 		Title:       "Old title",
 		Description: "Old description",
+		NextFetch:   time.Now().Add(time.Hour),
 	}
 	id, err := NewFeedRepository(db).Upsert(t.Context(), f)
 	if err != nil {
@@ -197,8 +198,42 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("schedules and records a successful attempt", func(t *testing.T) {
+		if err := feeds.RecordFailure(ctx, feed.ID, "boom", time.Now()); err != nil {
+			t.Fatalf("RecordFailure: %v", err)
+		}
+		update := feed
+		update.NextFetch = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+		before := dbNow(t, db)
+		if _, err := feeds.SaveFetch(ctx, update, nil); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		f, err := feeds.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !f.NextFetch.Equal(update.NextFetch) {
+			t.Errorf("got NextFetch %v, want %v", f.NextFetch, update.NextFetch)
+		}
+		if f.LastAttempt.Before(before) || !f.LastAttempt.Equal(f.LastFetched) {
+			t.Errorf("got LastAttempt %v, LastFetched %v; want both the same, not before %v", f.LastAttempt, f.LastFetched, before)
+		}
+		if f.LastError != "" || f.ConsecutiveFailures != 0 {
+			t.Errorf("got LastError %q, ConsecutiveFailures %d; want cleared", f.LastError, f.ConsecutiveFailures)
+		}
+	})
+
+	t.Run("zero NextFetch is an error", func(t *testing.T) {
+		update := feed
+		update.NextFetch = time.Time{}
+		if _, err := feeds.SaveFetch(ctx, update, nil); err == nil {
+			t.Fatal("SaveFetch with zero NextFetch succeeded; want an error")
+		}
+	})
+
 	t.Run("unknown feed", func(t *testing.T) {
-		unknown := rss.Feed{ID: "00000000-0000-4000-8000-000000000000", Title: "T"}
+		unknown := rss.Feed{ID: "00000000-0000-4000-8000-000000000000", Title: "T", NextFetch: time.Now()}
 		_, err := feeds.SaveFetch(ctx, unknown, []rss.Article{{ExternalID: "x", Title: "X"}})
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Fatalf("got %v, want rss.ErrNoRecord", err)

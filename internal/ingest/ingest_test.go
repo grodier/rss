@@ -138,13 +138,22 @@ const testRSS = `<?xml version="1.0"?>
 
 const testHTML = `<!doctype html><html><head><title>Not a feed</title></head><body>hi</body></html>`
 
-// fakeStore records the arguments of SaveFetch.
+// fakeStore records the arguments of SaveFetch and RecordFailure.
 type fakeStore struct {
 	calls    int
 	feed     rss.Feed
 	articles []rss.Article
 	result   rss.FetchResult
 	err      error
+
+	failures  []failure
+	recordErr error
+}
+
+type failure struct {
+	id, msg string
+	next    time.Time
+	ctxErr  error // the context's error when RecordFailure was called
 }
 
 func (s *fakeStore) SaveFetch(_ context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error) {
@@ -152,6 +161,11 @@ func (s *fakeStore) SaveFetch(_ context.Context, f rss.Feed, articles []rss.Arti
 	s.feed = f
 	s.articles = articles
 	return s.result, s.err
+}
+
+func (s *fakeStore) RecordFailure(ctx context.Context, id, msg string, next time.Time) error {
+	s.failures = append(s.failures, failure{id, msg, next, ctx.Err()})
+	return s.recordErr
 }
 
 func serve(t *testing.T, status int, contentType, body string) *httptest.Server {
@@ -173,7 +187,9 @@ func TestRefresh(t *testing.T) {
 		store := &fakeStore{result: rss.FetchResult{New: 2}}
 		r := &Refresher{Fetcher: fetcher, Store: store}
 
+		before := time.Now()
 		res, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL + "/feed.xml", Title: "old"})
+		after := time.Now()
 		if err != nil {
 			t.Fatalf("Refresh: %v", err)
 		}
@@ -183,9 +199,12 @@ func TestRefresh(t *testing.T) {
 		if store.calls != 1 {
 			t.Fatalf("SaveFetch called %d times, want 1", store.calls)
 		}
+		checkWithin(t, "NextFetch", store.feed.NextFetch, before, after, RefreshInterval)
+		gotFeed := store.feed
+		gotFeed.NextFetch = time.Time{}
 		wantFeed := rss.Feed{ID: "feed-1", Title: "Example Feed", Description: "An example", SiteUrl: "https://example.com/"}
-		if store.feed != wantFeed {
-			t.Errorf("feed = %+v, want %+v", store.feed, wantFeed)
+		if gotFeed != wantFeed {
+			t.Errorf("feed = %+v, want %+v", gotFeed, wantFeed)
 		}
 		if len(store.articles) != 2 {
 			t.Fatalf("got %d articles, want 2", len(store.articles))
@@ -196,22 +215,28 @@ func TestRefresh(t *testing.T) {
 		if got := store.articles[1].ExternalID; got != "https://example.com/2" {
 			t.Errorf("articles[1].ExternalID = %q, want https://example.com/2", got)
 		}
+		if len(store.failures) != 0 {
+			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
+		}
 	})
 
 	errorTests := []struct {
 		name    string
 		feedURL func(t *testing.T) string
 		wantErr error
+		wantMsg string // substring of the recorded message
 	}{
 		{
 			name:    "404",
 			feedURL: func(t *testing.T) string { return serve(t, http.StatusNotFound, "text/plain", "not found").URL },
 			wantErr: ErrUnreachable,
+			wantMsg: "status 404",
 		},
 		{
 			name:    "HTML page",
 			feedURL: func(t *testing.T) string { return serve(t, http.StatusOK, "text/html", testHTML).URL },
 			wantErr: ErrNotFeed,
+			wantMsg: ErrNotFeed.Error(),
 		},
 		{
 			name: "server down",
@@ -221,29 +246,94 @@ func TestRefresh(t *testing.T) {
 				return srv.URL
 			},
 			wantErr: ErrUnreachable,
+			wantMsg: ErrUnreachable.Error(),
 		},
 	}
 	for _, tt := range errorTests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &fakeStore{}
 			r := &Refresher{Fetcher: fetcher, Store: store}
-			_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: tt.feedURL(t)})
+			before := time.Now()
+			_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: tt.feedURL(t), ConsecutiveFailures: 2})
+			after := time.Now()
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("err = %v, want %v", err, tt.wantErr)
 			}
 			if store.calls != 0 {
 				t.Errorf("SaveFetch called %d times, want 0", store.calls)
 			}
+			if len(store.failures) != 1 {
+				t.Fatalf("RecordFailure called %d times, want 1", len(store.failures))
+			}
+			f := store.failures[0]
+			if f.id != "feed-1" {
+				t.Errorf("RecordFailure id = %q, want feed-1", f.id)
+			}
+			if f.msg != err.Error() || !strings.Contains(f.msg, tt.wantMsg) {
+				t.Errorf("RecordFailure msg = %q, want %q (containing %q)", f.msg, err.Error(), tt.wantMsg)
+			}
+			// Third failure in a row: RetryAt(now, 3).
+			checkWithin(t, "RecordFailure next", f.next, before, after, 4*RefreshInterval)
 		})
 	}
 
-	t.Run("store error returned", func(t *testing.T) {
+	t.Run("canceled context records nothing", func(t *testing.T) {
+		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := r.Refresh(ctx, rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, ErrUnreachable) {
+			t.Errorf("err = %v, want %v", err, ErrUnreachable)
+		}
+		if len(store.failures) != 0 || store.calls != 0 {
+			t.Errorf("RecordFailure called %d times, SaveFetch %d times; want 0, 0", len(store.failures), store.calls)
+		}
+	})
+
+	t.Run("expired deadline is recorded", func(t *testing.T) {
+		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		_, err := r.Refresh(ctx, rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, ErrUnreachable) {
+			t.Errorf("err = %v, want %v", err, ErrUnreachable)
+		}
+		if len(store.failures) != 1 {
+			t.Fatalf("RecordFailure called %d times, want 1", len(store.failures))
+		}
+		if err := store.failures[0].ctxErr; err != nil {
+			t.Errorf("RecordFailure ctx.Err() = %v, want nil", err)
+		}
+	})
+
+	t.Run("RecordFailure error is joined", func(t *testing.T) {
+		srv := serve(t, http.StatusNotFound, "text/plain", "not found")
+		recErr := errors.New("db down")
+		store := &fakeStore{recordErr: recErr}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, ErrUnreachable) {
+			t.Errorf("err = %v, want it to match %v", err, ErrUnreachable)
+		}
+		if !errors.Is(err, recErr) {
+			t.Errorf("err = %v, want it to match %v", err, recErr)
+		}
+	})
+
+	t.Run("store error returned and not recorded", func(t *testing.T) {
 		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
 		store := &fakeStore{err: rss.ErrNoRecord}
 		r := &Refresher{Fetcher: fetcher, Store: store}
 		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL})
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+		if len(store.failures) != 0 {
+			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
 		}
 	})
 }

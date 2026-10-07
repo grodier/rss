@@ -33,11 +33,16 @@ CREATE TABLE feeds (
     description TEXT NOT NULL DEFAULT '',
 
     last_fetched_at TIMESTAMPTZ, -- last successful fetch of the feed's articles; NULL if never
+    last_attempt_at TIMESTAMPTZ, -- last fetch attempt, successful or not; NULL if never
+    last_error TEXT NOT NULL DEFAULT '',             -- why the last attempt failed; '' after a success. Internal detail, never shown to users
+    consecutive_failures INT NOT NULL DEFAULT 0,     -- failed attempts since the last success
+    next_fetch_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when background refresh should next fetch the feed
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX feeds_site_id_idx ON feeds (site_id);
+CREATE INDEX feeds_next_fetch_at_idx ON feeds (next_fetch_at);
 
 -- lookups is both the queue of site lookups that workers claim jobs from
 -- and the cache of their results: one row per site key.

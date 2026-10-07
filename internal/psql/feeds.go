@@ -4,21 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 )
 
 // feedColumns are the columns scanFeed reads, in order.
-const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at, created_at`
+const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at,
+	last_attempt_at, last_error, consecutive_failures, next_fetch_at, created_at`
 
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
-	var lastFetched sql.NullTime
-	if err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched, &feed.CreatedAt); err != nil {
+	var lastFetched, lastAttempt sql.NullTime
+	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
+		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch, &feed.CreatedAt)
+	if err != nil {
 		return rss.Feed{}, err
 	}
 	feed.LastFetched = lastFetched.Time
+	feed.LastAttempt = lastAttempt.Time
 	return feed, nil
 }
 
@@ -32,22 +37,26 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 
 // Upsert inserts a feed or updates its metadata by URL and returns its ID.
 // An existing site_id is kept (a feed belongs to the first site it was
-// discovered from).
+// discovered from). next_fetch_at is set to f.NextFetch, or now() for a new
+// feed when f.NextFetch is zero.
 func (r *FeedRepository) Upsert(ctx context.Context, f rss.Feed) (string, error) {
 	return upsertFeed(ctx, r.DB, f)
 }
 
 func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
-	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id)
-		VALUES ($1, $2, $3, $4, $5)
+	// The caller just fetched the feed, so a conflict takes its next_fetch_at.
+	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id, next_fetch_at)
+		VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()))
 		ON CONFLICT (url) DO UPDATE SET
 			site_url = EXCLUDED.site_url,
 			title = COALESCE(NULLIF(EXCLUDED.title, ''), feeds.title),
-			description = COALESCE(NULLIF(EXCLUDED.description, ''), feeds.description)
+			description = COALESCE(NULLIF(EXCLUDED.description, ''), feeds.description),
+			next_fetch_at = EXCLUDED.next_fetch_at
 		RETURNING id`
 
+	nextFetch := sql.NullTime{Time: f.NextFetch, Valid: !f.NextFetch.IsZero()}
 	var id string
-	if err := q.QueryRowContext(ctx, stmt, f.Url, f.SiteUrl, f.Title, f.Description, f.SiteID).Scan(&id); err != nil {
+	if err := q.QueryRowContext(ctx, stmt, f.Url, f.SiteUrl, f.Title, f.Description, f.SiteID, nextFetch).Scan(&id); err != nil {
 		return "", err
 	}
 
@@ -56,9 +65,16 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 
 // SaveFetch records a successful fetch of feed f.ID in one transaction:
 // updates the feed's title, description and site URL (keeping the current
-// value when the new one is empty), saves articles (see saveArticles) and
-// sets last_fetched_at. It returns rss.ErrNoRecord if the feed doesn't exist.
+// value when the new one is empty), sets next_fetch_at to f.NextFetch, saves
+// articles and records the successful attempt (see saveArticles). It returns
+// rss.ErrNoRecord if the feed doesn't exist, and an error if f.NextFetch is
+// zero.
 func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error) {
+	// A zero time would make the feed due immediately, silently.
+	if f.NextFetch.IsZero() {
+		return rss.FetchResult{}, errors.New("psql: SaveFetch: NextFetch not set")
+	}
+
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return rss.FetchResult{}, err
@@ -69,10 +85,11 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 	stmt := `UPDATE feeds SET
 			title = COALESCE(NULLIF($2, ''), title),
 			description = COALESCE(NULLIF($3, ''), description),
-			site_url = COALESCE(NULLIF($4, ''), site_url)
+			site_url = COALESCE(NULLIF($4, ''), site_url),
+			next_fetch_at = $5
 		WHERE id = $1`
 
-	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl)
+	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.NextFetch)
 	if err != nil {
 		return rss.FetchResult{}, err
 	}
@@ -94,6 +111,43 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 	}
 
 	return res, nil
+}
+
+// RecordFailure records a failed fetch of feed id: sets last_attempt_at,
+// last_error (msg truncated to maxErrorLen bytes), increments
+// consecutive_failures and sets next_fetch_at to next. rss.ErrNoRecord if the
+// feed doesn't exist.
+func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next time.Time) error {
+	stmt := `UPDATE feeds SET last_attempt_at = now(), last_error = $2,
+			consecutive_failures = consecutive_failures + 1, next_fetch_at = $3
+		WHERE id = $1`
+
+	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen), next)
+}
+
+// ClaimDue claims the feed that has been due longest (next_fetch_at <= now())
+// by moving its next_fetch_at to now() + lease, and returns it. If the
+// claimer never records an outcome, the feed is due again when the lease
+// runs out. rss.ErrNoRecord when no feed is due.
+func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss.Feed, error) {
+	stmt := `UPDATE feeds SET next_fetch_at = now() + make_interval(secs => $1)
+		WHERE id = (
+			SELECT id FROM feeds
+			WHERE next_fetch_at <= now()
+			ORDER BY next_fetch_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING ` + feedColumns
+
+	feed, err := scanFeed(r.DB.QueryRowContext(ctx, stmt, lease.Seconds()))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.Feed{}, rss.ErrNoRecord
+		}
+		return rss.Feed{}, err
+	}
+	return feed, nil
 }
 
 // ListBySite returns a site's feeds ordered by title, then URL.

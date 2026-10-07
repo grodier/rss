@@ -49,7 +49,9 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit
 }
 
 // saveArticles upserts articles for feedID by (feed_id, external_id) and
-// sets the feed's last_fetched_at to now(). Callers dedupe external IDs.
+// records a successful fetch of the feed: sets last_fetched_at and
+// last_attempt_at to now() and clears last_error and consecutive_failures.
+// Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
@@ -85,7 +87,10 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		}
 	}
 
-	if _, err := q.ExecContext(ctx, `UPDATE feeds SET last_fetched_at = now() WHERE id = $1`, feedID); err != nil {
+	feedStmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
+			last_error = '', consecutive_failures = 0
+		WHERE id = $1`
+	if _, err := q.ExecContext(ctx, feedStmt, feedID); err != nil {
 		return rss.FetchResult{}, err
 	}
 

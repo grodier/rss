@@ -277,11 +277,11 @@ func TestLookupRepositoryFinishAndFail(t *testing.T) {
 
 	t.Run("Fail truncates long messages", func(t *testing.T) {
 		l := newRunning(t)
-		if err := repo.Fail(t.Context(), l.ID, strings.Repeat("é", maxLookupErrorLen)); err != nil {
+		if err := repo.Fail(t.Context(), l.ID, strings.Repeat("é", maxErrorLen)); err != nil {
 			t.Fatalf("Fail: %v", err)
 		}
-		if got := getLookup(t, repo, l.ID); len(got.Error) != maxLookupErrorLen {
-			t.Errorf("len(error) = %d; want %d", len(got.Error), maxLookupErrorLen)
+		if got := getLookup(t, repo, l.ID); len(got.Error) != maxErrorLen {
+			t.Errorf("len(error) = %d; want %d", len(got.Error), maxErrorLen)
 		}
 	})
 

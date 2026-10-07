@@ -184,6 +184,13 @@ func TestRunSavesDiscoveredFeeds(t *testing.T) {
 	if arts := saver.calls[0].feeds[0].Articles; len(arts) != 2 || arts[0].ExternalID != "a" || arts[1].ExternalID != "b" {
 		t.Errorf("first feed articles = %+v, want ExternalIDs a, b", arts)
 	}
+	for i := range saver.calls[0].feeds {
+		f := &saver.calls[0].feeds[i].Feed
+		if f.NextFetch.IsZero() {
+			t.Errorf("feed %q has zero NextFetch", f.Url)
+		}
+		f.NextFetch = time.Time{} // jittered; compared above
+	}
 	if !reflect.DeepEqual(saver.calls[0].feeds, wantFeeds) {
 		t.Errorf("Save feeds = %+v, want %+v", saver.calls[0].feeds, wantFeeds)
 	}

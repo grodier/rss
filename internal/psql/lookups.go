@@ -10,8 +10,9 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// maxLookupErrorLen caps the error message stored by Fail, in bytes.
-const maxLookupErrorLen = 1000
+// maxErrorLen caps the error messages stored by LookupRepository.Fail and
+// FeedRepository.RecordFailure, in bytes.
+const maxErrorLen = 1000
 
 const lookupColumns = `id, site_key, url, status, site_id, error, attempts, requested_at, started_at, finished_at`
 
@@ -81,12 +82,12 @@ func (r *LookupRepository) Finish(ctx context.Context, id, siteID string) error 
 }
 
 // Fail marks a lookup failed with an internal error message, truncated to
-// maxLookupErrorLen bytes.
+// maxErrorLen bytes.
 func (r *LookupRepository) Fail(ctx context.Context, id, msg string) error {
 	stmt := `UPDATE lookups SET status = 'failed', error = $2, finished_at = now()
 		WHERE id = $1`
 
-	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxLookupErrorLen))
+	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen))
 }
 
 // ResetStale puts running lookups started more than olderThan ago back to

@@ -11,7 +11,13 @@ type Feed struct {
 	Title       string
 	Description string
 	LastFetched time.Time
-	CreatedAt   time.Time
+
+	LastAttempt         time.Time // zero if never attempted
+	LastError           string    // internal detail; never shown to users
+	ConsecutiveFailures int
+	NextFetch           time.Time
+
+	CreatedAt time.Time
 }
 
 // Article is an item of a feed. Summary and Content are raw HTML as

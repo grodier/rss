@@ -20,6 +20,8 @@ type Feed struct {
 	ETag         string // of the last 2xx response; "" if none
 	LastModified string // of the last 2xx response; "" if none
 
+	GoneAt time.Time // zero unless the feed answered 410
+
 	CreatedAt time.Time
 }
 

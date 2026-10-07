@@ -86,6 +86,23 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 		}
 	})
 
+	t.Run("skips gone feeds", func(t *testing.T) {
+		gone, live := newTestFeed(t, db), newTestFeed(t, db)
+		setNextFetch(t, db, gone.ID, longAgo.Add(-time.Hour))
+		setNextFetch(t, db, live.ID, longAgo)
+		if err := repo.MarkGone(t.Context(), gone.ID); err != nil {
+			t.Fatalf("MarkGone: %v", err)
+		}
+
+		got, err := repo.ClaimDue(t.Context(), lease)
+		if err != nil {
+			t.Fatalf("ClaimDue: %v", err)
+		}
+		if got.ID != live.ID {
+			t.Errorf("claimed %q; want %q (not the gone feed %q)", got.ID, live.ID, gone.ID)
+		}
+	})
+
 	t.Run("concurrent claims never return the same feed", func(t *testing.T) {
 		var ids []string
 		for range 2 {
@@ -230,6 +247,66 @@ func TestFeedRepositoryRecordNotModified(t *testing.T) {
 
 	t.Run("unknown feed", func(t *testing.T) {
 		err := repo.RecordNotModified(ctx, "00000000-0000-4000-8000-000000000000", time.Now())
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("got %v; want rss.ErrNoRecord", err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryMarkGone(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+
+	t.Run("records the gone feed", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		stored, err := repo.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !stored.GoneAt.IsZero() {
+			t.Fatalf("new feed has GoneAt %v; want zero", stored.GoneAt)
+		}
+
+		before := dbNow(t, db)
+		if err := repo.MarkGone(ctx, feed.ID); err != nil {
+			t.Fatalf("MarkGone: %v", err)
+		}
+		got, err := repo.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.GoneAt.Before(before) || !got.GoneAt.Equal(got.LastAttempt) {
+			t.Errorf("got GoneAt %v, LastAttempt %v; want both the same, not before %v", got.GoneAt, got.LastAttempt, before)
+		}
+		if got.LastError != "status 410" {
+			t.Errorf("got LastError %q; want %q", got.LastError, "status 410")
+		}
+		if !got.NextFetch.Equal(stored.NextFetch) || got.ConsecutiveFailures != stored.ConsecutiveFailures {
+			t.Errorf("got NextFetch %v, ConsecutiveFailures %d; want unchanged %v, %d", got.NextFetch, got.ConsecutiveFailures, stored.NextFetch, stored.ConsecutiveFailures)
+		}
+	})
+
+	t.Run("Upsert clears it", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		if err := repo.MarkGone(ctx, feed.ID); err != nil {
+			t.Fatalf("MarkGone: %v", err)
+		}
+		if _, err := repo.Upsert(ctx, feed); err != nil {
+			t.Fatalf("Upsert: %v", err)
+		}
+		got, err := repo.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.GoneAt.IsZero() {
+			t.Errorf("got GoneAt %v; want zero", got.GoneAt)
+		}
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		err := repo.MarkGone(ctx, "00000000-0000-4000-8000-000000000000")
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("got %v; want rss.ErrNoRecord", err)
 		}

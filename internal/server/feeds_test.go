@@ -318,6 +318,32 @@ func TestFeedHandlerFetchStatus(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerGoneFeed(t *testing.T) {
+	s := newTestServerWith(t, Services{
+		ArticleService: &fakeArticleStore{},
+		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			return rss.Feed{
+				ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID,
+				LastAttempt: time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), NextFetch: time.Date(2026, 1, 3, 9, 30, 0, 0, time.UTC),
+				ConsecutiveFailures: 2, LastError: "status 410", GoneAt: time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC),
+			}, nil
+		}},
+		SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+			return rss.Site{ID: id, Host: "example.com"}, nil
+		}},
+	})
+	body := serveFeed(t, s, testFeedID).Body.String()
+	want := `<p class="fetch-error">This feed no longer exists: its publisher removed it. We've stopped checking it.</p>`
+	if !strings.Contains(body, want) {
+		t.Errorf("body does not contain %q: %s", want, body)
+	}
+	for _, w := range []string{"attempts to fetch this feed failed", "Next check", "/refresh", "Refresh</button>"} {
+		if strings.Contains(body, w) {
+			t.Errorf("body contains %q: %s", w, body)
+		}
+	}
+}
+
 func TestRefreshFlash(t *testing.T) {
 	tests := []struct {
 		res  rss.FetchResult
@@ -384,6 +410,7 @@ func TestFeedRefreshHandler(t *testing.T) {
 		{"success", rss.FetchResult{New: 3, Updated: 1}, nil, http.StatusSeeOther, "3 new articles, 1 updated."},
 		{"unreachable", rss.FetchResult{}, fmt.Errorf("%w: status 500", ingest.ErrUnreachable), http.StatusSeeOther, "Couldn't reach this feed. Try again later."},
 		{"not a feed", rss.FetchResult{}, fmt.Errorf("%w: bad xml", ingest.ErrNotFeed), http.StatusSeeOther, "This feed's address didn't return a feed. Try again later."},
+		{"gone", rss.FetchResult{}, fmt.Errorf("%w: status 410", ingest.ErrGone), http.StatusSeeOther, "This feed no longer exists. We've stopped checking it."},
 		{"deleted", rss.FetchResult{}, rss.ErrNoRecord, http.StatusNotFound, ""},
 		{"other error", rss.FetchResult{}, errors.New("db down"), http.StatusInternalServerError, ""},
 	}
@@ -473,6 +500,26 @@ func TestFeedRefreshHandlerCooldown(t *testing.T) {
 			t.Error("cooldown clicks used up the rate limit")
 		}
 	})
+}
+
+func TestFeedRefreshHandlerGoneFeed(t *testing.T) {
+	ref := refreshReturns(rss.FetchResult{}, nil)
+	s := refreshServer(t, rss.Feed{GoneAt: time.Now().Add(-time.Hour), LastFetched: time.Now().Add(-time.Minute)}, nil, ref)
+	for range 11 {
+		rr, flash := postRefresh(t, s, "user-1", testFeedID)
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rr.Code)
+		}
+		if want := "This feed no longer exists, so it can't be refreshed."; flash != want {
+			t.Fatalf("flash = %q, want %q", flash, want)
+		}
+	}
+	if len(ref.calls) != 0 {
+		t.Errorf("Refresh called %d times, want 0", len(ref.calls))
+	}
+	if !s.refreshLimiter.Allow("user-1") {
+		t.Error("clicks on a gone feed used up the rate limit")
+	}
 }
 
 func TestFeedRefreshHandlerRateLimit(t *testing.T) {

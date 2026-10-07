@@ -121,7 +121,11 @@ func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/feeds/"+feed.ID, http.StatusSeeOther)
 	}
 
-	// Check the cooldown first so these clicks don't use up the user's limit.
+	// Check these first so these clicks don't use up the user's limit.
+	if !feed.GoneAt.IsZero() {
+		redirect("This feed no longer exists, so it can't be refreshed.")
+		return
+	}
 	if !feed.LastFetched.IsZero() && time.Since(feed.LastFetched) < refreshCooldown {
 		redirect("This feed was refreshed in the last few minutes. Try again later.")
 		return
@@ -139,6 +143,9 @@ func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 		redirect(refreshFlash(res))
+	case errors.Is(err, ingest.ErrGone):
+		s.logger.Info("feed gone", "feed_id", feed.ID, "error", err)
+		redirect("This feed no longer exists. We've stopped checking it.")
 	case errors.Is(err, ingest.ErrUnreachable):
 		s.logger.Info("feed refresh failed", "feed_id", feed.ID, "error", err)
 		redirect("Couldn't reach this feed. Try again later.")

@@ -103,6 +103,53 @@ production, or once there are a few thousand feeds.
   refresh interval (all listed under Feed ingestion). Record the numbers that led to each
   decision.
 
+## Error-state walkthrough (needs planning)
+
+A way to see every error state an end user can hit and judge the experience (wording,
+what the user can do next, tone, layout) without having to provoke each one by hand. Do it
+once after the initial feature set is built, then repeat periodically and whenever a
+feature adds a failure mode. Nothing here is built yet.
+
+- [ ] **Catalog.** `docs/error-states.md`: one row per user-visible error state with
+  *trigger* (how to reproduce it), *where it shows* (page / status code), *current
+  message*, *can the user recover?*, and a *reviewed on* date and verdict. Seed it by
+  grepping handlers for `CheckField`, `notFoundResponse`, `serverErrorHTML`, `errorHTML`,
+  `sessionManager.Put(ctx, "flash"` and the sentinel errors in `internal/rss/errors.go`, and
+  every template that renders an error or status. Rule for contributors: a PR that adds a
+  user-visible failure adds a row.
+- [ ] **Walkthrough tool.** Something that renders every state in one place so they can
+  be clicked through in a browser, preferably a dev-only route group (e.g. `/dev/states`,
+  mounted only with a flag, never in production) that lists each state and renders it with
+  fake data. A test table (`name`, `setup`, `request`, `want status`) can drive the same
+  list, so the catalog can't drift: a test fails if a state is in the code but not the
+  catalog. Prefer this over screenshots, which go stale.
+- [ ] **States to cover.**
+  - Forms: signup (invalid email, short or weak password, duplicate email), login (wrong
+    credentials, locked out or rate limited), empty or oversized input, a missing or
+    expired CSRF token, a malformed form body.
+  - Auth and sessions: visiting a login-only page while logged out (redirect and
+    message), an expired session mid-action, logging out, a logged-in user on `/login`.
+  - HTTP errors: 403, 404 (unknown feed, site or lookup id; malformed id), 405, 413, 429
+    (the lookup rate limit), and 500, including a database outage.
+  - Lookups and discovery: invalid URL, a URL that is blocked (private address, bad
+    scheme), a site that is unreachable, times out, redirects too often, returns a non-HTML
+    or huge body, has no feeds, or has a feed that fails to parse; a lookup that is
+    pending, running, failed or done; the status page after the lookup row is gone.
+  - Feeds: a refresh that fails (and the backoff / failure display from #121), a feed
+    that has never been fetched, a feed with no articles, the Refresh button during a
+    refresh, 410 Gone feeds (#123).
+  - Search: no results, empty query, very long query, special characters.
+  - Empty states that aren't errors but read like one: a new account with no feeds, an
+    empty site page.
+  - Later features: subscribe or unsubscribe failures, an article that can't be shown.
+- [ ] **Review pass.** For each state ask: does the user know what happened and what to
+  do next? Is the message free of internals (SQL, stack traces, raw Go errors)? Is the
+  status code right? Does the form keep what they typed? Is it usable on a narrow screen
+  and with a screen reader (focus, `role="alert"`)? Record findings in the catalog and
+  turn the ones that need work into issues.
+- [ ] **Cadence.** Repeat after any change to a template, middleware or error path, and
+  at least before each release. Note the date of the last pass at the top of the catalog.
+
 ## Feed discovery
 
 Done in #50 (search, site pages, background lookups). Later improvements, not issues
@@ -169,5 +216,7 @@ yet:
 
 1. Background refresh: #119 → (#120 and #121) → #122 → #123 → #124.
 2. **Plan** subscriptions and reading in their own session, and turn them into issues.
+3. Once the initial features are done, **plan** the error-state walkthrough and run the
+   first pass; then repeat it periodically.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

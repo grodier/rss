@@ -54,6 +54,55 @@ Later, each with when it pays off:
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand.
 
+## Load and performance testing (needs planning)
+
+Background refresh (#120) is designed but has never run against more than a few feeds.
+Rough capacity: feeds per hour ≈ workers × 3600 s ÷ average fetch duration (2 workers at
+1 s per fetch ≈ 7,200 feeds/hour). The poll interval only matters when nothing is due, so
+it doesn't limit throughput. Measure before relying on these numbers. Worth doing before
+production, or once there are a few thousand feeds.
+
+- [ ] **Load-test harness.** A program that seeds N fake feeds pointing at a local fake
+  feed server and runs the refresh workers against them. The fake server takes configurable
+  latency, error rate, hang rate and body size. The `www` binary can't fetch local
+  addresses (`fetch.Options.AllowPrivate` is tests-only), so the harness should wire
+  `internal/refresh` itself rather than add a `www` flag that turns off the address check.
+  Rows are uniquely named and deleted afterwards, as in the DB tests.
+- [ ] **What to measure.**
+  - Due backlog: `count(*)` and `max(now() - next_fetch_at)` of overdue feeds. Should stay
+    near 0 and under a minute.
+  - Fetch duration p50/p95 (from the `feed refreshed` log's `duration`).
+  - Worker utilization: fetches per hour × average duration ÷ (workers × 3600). Keep it
+    under ~50–70% to leave headroom for spikes.
+  - Web request latency p95 while the workers are busy.
+  - Database connections in use (`pg_stat_activity`).
+  - Memory and CPU of the `www` process.
+- [ ] **Scenarios.**
+  - Steady state: find the most feeds each worker count (2, 8, 16) keeps up with, using a
+    realistic latency mix.
+  - Slow and dead feeds: a share of feeds hang until the 10 s fetch timeout or fail
+    outright. How much capacity they cost, and whether backoff wins it back over time.
+  - Everything due at once: a fresh database, a restart after downtime, or a large import
+    (`next_fetch_at` defaults to `now()`). How long the backlog takes to drain, and
+    whether jitter spreads the next round.
+  - Outage recovery: a host serving many feeds goes down and comes back. Do retries
+    cluster? Does jitter spread them?
+  - Many feeds on one host: requests per second hitting a single host (input for per-host
+    politeness).
+  - Large feeds: bodies near the fetch size cap and `ingest.MaxArticles` items, so the
+    per-article upserts in `saveArticles` show their cost.
+  - Web traffic during refresh load: page latency and DB connection contention.
+    `cmd/www` sets no `SetMaxOpenConns`, so workers and handlers share an unbounded pool.
+  - Lookups and refresh together: both runners claiming and writing at the same time.
+  - Several instances: `SKIP LOCKED` claims never fetch a feed twice, and throughput
+    scales with instances.
+  - Data growth: `EXPLAIN ANALYZE` for `ClaimDue`, `ListByFeed`, search (`ILIKE`) and
+    site pages at ~100k feeds and millions of articles.
+- [ ] **Act on the results.** Possible outcomes: a different default `-refresh-workers`, a
+  DB connection cap, per-host politeness, a separate worker process, or the adaptive
+  refresh interval (all listed under Feed ingestion). Record the numbers that led to each
+  decision.
+
 ## Feed discovery
 
 Done in #50 (search, site pages, background lookups). Later improvements, not issues

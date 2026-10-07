@@ -37,6 +37,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
+- `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation

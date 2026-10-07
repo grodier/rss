@@ -47,6 +47,7 @@ Instead of `make db/migrations/up` you can run `goose -dir ./migrations postgres
 | `-db-max-idle-conns` | `25` | PostgreSQL max idle connections |
 | `-db-max-idle-time` | `15m` | PostgreSQL max idle time |
 | `-lookup-workers` | `2` | Background lookup workers (0–16; 0 disables them) |
+| `-refresh-workers` | `2` | Background feed refresh workers (0–16; 0 disables them) |
 
 ## Make targets
 
@@ -71,6 +72,7 @@ Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make t
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way the app makes outbound HTTP requests to user-influenced URLs (blocks private addresses, limits redirects, size and time)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
+- `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded HTML templates and static files
 - `internal/validator`: form validation helpers

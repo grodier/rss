@@ -197,6 +197,10 @@
     color: var(--error);
   }
 
+  .fetch-error {
+    color: var(--error);
+  }
+
   span.error {
     display: block;
     margin-block-end: 0.25rem;

@@ -70,3 +70,56 @@ func (r *SubscriptionRepository) SubscribedFeedIDs(ctx context.Context, userID s
 
 	return subscribed, nil
 }
+
+// ListByUser returns userID's subscriptions ordered by site (title, else host),
+// then feed title and URL.
+func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error) {
+	stmt := `SELECT ` + qualifiedFeedColumns + `,
+			s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at, latest.at
+		FROM subscriptions sub
+		JOIN feeds f ON f.id = sub.feed_id
+		JOIN sites s ON s.id = f.site_id
+		LEFT JOIN LATERAL (
+			SELECT COALESCE(a.published_at, a.created_at) AS at
+			FROM articles a
+			WHERE a.feed_id = f.id
+			ORDER BY COALESCE(a.published_at, a.created_at) DESC
+			LIMIT 1
+		) latest ON true
+		WHERE sub.user_id = $1
+		ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host, lower(f.title), f.url`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subs []rss.Subscription
+	for rows.Next() {
+		var sub rss.Subscription
+		var latest sql.NullTime
+		// scanFeed only takes a Scan func, so wrap the extra columns around it.
+		feed, err := scanFeed(scanFunc(func(dest ...any) error {
+			dest = append(dest, &sub.Site.ID, &sub.Site.Host, &sub.Site.URL, &sub.Site.Title,
+				&sub.Site.Description, &sub.Site.CreatedAt, &sub.Site.UpdatedAt, &latest)
+			return rows.Scan(dest...)
+		}))
+		if err != nil {
+			return nil, err
+		}
+		sub.Feed = feed
+		sub.LatestArticleAt = latest.Time
+		subs = append(subs, sub)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return subs, nil
+}
+
+// scanFunc adapts a function to the Scan interface scanFeed takes.
+type scanFunc func(dest ...any) error
+
+func (f scanFunc) Scan(dest ...any) error { return f(dest...) }

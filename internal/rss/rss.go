@@ -65,6 +65,13 @@ type Site struct {
 	UpdatedAt   time.Time
 }
 
+// Subscription is a feed a user follows, with its site.
+type Subscription struct {
+	Feed            Feed
+	Site            Site
+	LatestArticleAt time.Time // newest article's published_at, else created_at; zero if the feed has no articles
+}
+
 // SiteWithFeeds is a site and its feeds.
 type SiteWithFeeds struct {
 	Site  Site

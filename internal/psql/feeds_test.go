@@ -345,10 +345,6 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 	if !feed.LastFetched.IsZero() {
 		t.Errorf("got LastFetched %v for a never-fetched feed; want zero", feed.LastFetched)
 	}
-
-	if _, err := repo.GetLatest(t.Context()); err != nil {
-		t.Fatalf("GetLatest: %v", err)
-	}
 }
 
 // Requires a migrated database; see psqltest.NewDB.

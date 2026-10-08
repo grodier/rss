@@ -2,7 +2,7 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; fetching articles and subscriptions are not built yet.
+A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; feed ingestion (fetching and saving articles, background refresh) works; subscriptions and reading are not built yet.
 
 ## Prototype stage
 

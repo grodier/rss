@@ -37,6 +37,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
+- `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)
 - `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
@@ -82,7 +83,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 
 ## Finding work
 
-GitHub issues are the source of truth for scoped tasks; `docs/todo.md` holds planned work that isn't an issue yet.
+GitHub issues are the source of truth for scoped tasks; `docs/todo.md` holds planned work that isn't an issue yet, and its Performance watchlist tracks things to monitor as the app grows.
 
 ## Writing issues
 
@@ -94,3 +95,4 @@ Issues are written for an implementer with no context from the planning conversa
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).
+- Performance risks: when planning, look at what the planned work could cost as data and traffic grow (queries that can't use an index, unpaginated lists, writes on page views, polling, per-row loops, unbounded tables). Add each risk to the Performance watchlist in `docs/todo.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix. Don't fix risks early, but don't leave them unrecorded. A PR that adds a risk the plan missed adds it to the watchlist too.

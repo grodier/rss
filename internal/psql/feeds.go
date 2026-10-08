@@ -11,20 +11,21 @@ import (
 
 // feedColumns are the columns scanFeed reads, in order.
 const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at,
-	last_attempt_at, last_error, consecutive_failures, next_fetch_at, etag, last_modified, created_at`
+	last_attempt_at, last_error, consecutive_failures, next_fetch_at, etag, last_modified, gone_at, created_at`
 
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
-	var lastFetched, lastAttempt sql.NullTime
+	var lastFetched, lastAttempt, goneAt sql.NullTime
 	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
 		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch,
-		&feed.ETag, &feed.LastModified, &feed.CreatedAt)
+		&feed.ETag, &feed.LastModified, &goneAt, &feed.CreatedAt)
 	if err != nil {
 		return rss.Feed{}, err
 	}
 	feed.LastFetched = lastFetched.Time
 	feed.LastAttempt = lastAttempt.Time
+	feed.GoneAt = goneAt.Time
 	return feed, nil
 }
 
@@ -39,20 +40,23 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 // Upsert inserts a feed or updates its metadata by URL and returns its ID.
 // An existing site_id is kept (a feed belongs to the first site it was
 // discovered from). next_fetch_at is set to f.NextFetch, or now() for a new
-// feed when f.NextFetch is zero.
+// feed when f.NextFetch is zero. It clears gone_at: the caller just parsed a
+// feed at that URL, so it's back.
 func (r *FeedRepository) Upsert(ctx context.Context, f rss.Feed) (string, error) {
 	return upsertFeed(ctx, r.DB, f)
 }
 
 func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
-	// The caller just fetched the feed, so a conflict takes its next_fetch_at.
+	// The caller just fetched the feed, so a conflict takes its next_fetch_at
+	// and clears gone_at.
 	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id, next_fetch_at)
 		VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()))
 		ON CONFLICT (url) DO UPDATE SET
 			site_url = EXCLUDED.site_url,
 			title = COALESCE(NULLIF(EXCLUDED.title, ''), feeds.title),
 			description = COALESCE(NULLIF(EXCLUDED.description, ''), feeds.description),
-			next_fetch_at = EXCLUDED.next_fetch_at
+			next_fetch_at = EXCLUDED.next_fetch_at,
+			gone_at = NULL
 		RETURNING id`
 
 	nextFetch := sql.NullTime{Time: f.NextFetch, Valid: !f.NextFetch.IsZero()}
@@ -140,15 +144,26 @@ func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next 
 	return execOne(ctx, r.DB, stmt, id, next)
 }
 
+// MarkGone records that feed id answered 410 Gone: sets gone_at and
+// last_attempt_at to now() and last_error to "status 410". Gone feeds are
+// never claimed by ClaimDue. rss.ErrNoRecord if the feed doesn't exist.
+func (r *FeedRepository) MarkGone(ctx context.Context, id string) error {
+	stmt := `UPDATE feeds SET gone_at = now(), last_attempt_at = now(), last_error = 'status 410'
+		WHERE id = $1`
+
+	return execOne(ctx, r.DB, stmt, id)
+}
+
 // ClaimDue claims the feed that has been due longest (next_fetch_at <= now())
 // by moving its next_fetch_at to now() + lease, and returns it. If the
 // claimer never records an outcome, the feed is due again when the lease
-// runs out. rss.ErrNoRecord when no feed is due.
+// runs out. Gone feeds (see MarkGone) are skipped. rss.ErrNoRecord when no
+// feed is due.
 func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss.Feed, error) {
 	stmt := `UPDATE feeds SET next_fetch_at = now() + make_interval(secs => $1)
 		WHERE id = (
 			SELECT id FROM feeds
-			WHERE next_fetch_at <= now()
+			WHERE next_fetch_at <= now() AND gone_at IS NULL
 			ORDER BY next_fetch_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1

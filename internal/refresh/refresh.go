@@ -138,6 +138,8 @@ func (r *Runner) refresh(ctx context.Context, feed rss.Feed) {
 			"not_modified", res.NotModified,
 			"duration", time.Since(start),
 		)
+	case errors.Is(err, ingest.ErrGone):
+		r.Logger.Info("feed gone", "feed_id", feed.ID, "url", feed.Url, "error", err)
 	case errors.Is(err, ingest.ErrUnreachable), errors.Is(err, ingest.ErrNotFeed):
 		r.Logger.Info("feed refresh failed", "feed_id", feed.ID, "url", feed.Url, "error", err)
 	default:

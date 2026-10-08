@@ -39,12 +39,13 @@ CREATE TABLE feeds (
     next_fetch_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when background refresh should next fetch the feed
     etag TEXT NOT NULL DEFAULT '',          -- ETag of the last 2xx response, sent back as If-None-Match
     last_modified TEXT NOT NULL DEFAULT '', -- Last-Modified of the last 2xx response, sent back as If-Modified-Since
+    gone_at TIMESTAMPTZ, -- set when the feed answered 410 Gone; it is no longer fetched
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX feeds_site_id_idx ON feeds (site_id);
-CREATE INDEX feeds_next_fetch_at_idx ON feeds (next_fetch_at);
+CREATE INDEX feeds_next_fetch_at_idx ON feeds (next_fetch_at) WHERE gone_at IS NULL;
 
 -- lookups is both the queue of site lookups that workers claim jobs from
 -- and the cache of their results: one row per site key.

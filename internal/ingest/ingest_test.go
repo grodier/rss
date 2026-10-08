@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -139,8 +140,8 @@ const testRSS = `<?xml version="1.0"?>
 
 const testHTML = `<!doctype html><html><head><title>Not a feed</title></head><body>hi</body></html>`
 
-// fakeStore records the arguments of SaveFetch, RecordFailure and
-// RecordNotModified.
+// fakeStore records the arguments of SaveFetch, RecordFailure,
+// RecordNotModified and MarkGone.
 type fakeStore struct {
 	calls    int
 	feed     rss.Feed
@@ -153,6 +154,14 @@ type fakeStore struct {
 
 	notModified    []notModified
 	notModifiedErr error
+
+	gone    []gone
+	goneErr error
+}
+
+type gone struct {
+	id     string
+	ctxErr error // the context's error when MarkGone was called
 }
 
 type notModified struct {
@@ -181,6 +190,11 @@ func (s *fakeStore) RecordFailure(ctx context.Context, id, msg string, next time
 func (s *fakeStore) RecordNotModified(_ context.Context, id string, next time.Time) error {
 	s.notModified = append(s.notModified, notModified{id, next})
 	return s.notModifiedErr
+}
+
+func (s *fakeStore) MarkGone(ctx context.Context, id string) error {
+	s.gone = append(s.gone, gone{id, ctx.Err()})
+	return s.goneErr
 }
 
 func serve(t *testing.T, status int, contentType, body string) *httptest.Server {
@@ -400,6 +414,67 @@ func TestRefresh(t *testing.T) {
 		})
 	}
 
+	t.Run("410 marks the feed gone", func(t *testing.T) {
+		srv := serve(t, http.StatusGone, "text/plain", "gone")
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, ErrGone) {
+			t.Errorf("err = %v, want %v", err, ErrGone)
+		}
+		if errors.Is(err, ErrUnreachable) {
+			t.Errorf("err = %v, want it not to match %v", err, ErrUnreachable)
+		}
+		if len(store.gone) != 1 || store.gone[0].id != "feed-1" {
+			t.Fatalf("MarkGone calls = %+v, want one for feed-1", store.gone)
+		}
+		if len(store.failures) != 0 || store.calls != 0 {
+			t.Errorf("RecordFailure called %d times, SaveFetch %d times; want 0, 0", len(store.failures), store.calls)
+		}
+	})
+
+	t.Run("410 with expired deadline is recorded", func(t *testing.T) {
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: &stubFetcher{status: http.StatusGone}, Store: store}
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		_, err := r.Refresh(ctx, rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+		if !errors.Is(err, ErrGone) {
+			t.Errorf("err = %v, want %v", err, ErrGone)
+		}
+		if len(store.gone) != 1 {
+			t.Fatalf("MarkGone called %d times, want 1", len(store.gone))
+		}
+		if err := store.gone[0].ctxErr; err != nil {
+			t.Errorf("MarkGone ctx.Err() = %v, want nil", err)
+		}
+	})
+
+	t.Run("410 with canceled context records nothing", func(t *testing.T) {
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: &stubFetcher{status: http.StatusGone}, Store: store}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := r.Refresh(ctx, rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+		if !errors.Is(err, ErrGone) {
+			t.Errorf("err = %v, want %v", err, ErrGone)
+		}
+		if len(store.gone) != 0 {
+			t.Errorf("MarkGone called %d times, want 0", len(store.gone))
+		}
+	})
+
+	t.Run("MarkGone error is joined", func(t *testing.T) {
+		srv := serve(t, http.StatusGone, "text/plain", "gone")
+		recErr := errors.New("db down")
+		store := &fakeStore{goneErr: recErr}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL})
+		if !errors.Is(err, ErrGone) || !errors.Is(err, recErr) {
+			t.Errorf("err = %v, want it to match %v and %v", err, ErrGone, recErr)
+		}
+	})
+
 	t.Run("canceled context records nothing", func(t *testing.T) {
 		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
 		store := &fakeStore{}
@@ -459,4 +534,18 @@ func TestRefresh(t *testing.T) {
 			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
 		}
 	})
+}
+
+// stubFetcher answers every request with status, ignoring ctx, so tests can
+// see what Refresh does with an expired or canceled context after a response.
+type stubFetcher struct {
+	status int
+}
+
+func (f *stubFetcher) Get(_ context.Context, rawURL string, _ http.Header) (*fetch.Response, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return &fetch.Response{StatusCode: f.status, URL: u, Header: http.Header{}}, nil
 }

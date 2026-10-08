@@ -39,6 +39,9 @@
     {{else}}
     <p>Last fetched {{.Feed.LastFetched.Format "2 Jan 2006 15:04 MST"}}.</p>
     {{end}}
+    {{if not .Feed.GoneAt.IsZero}}
+    <p class="fetch-error">This feed no longer exists: its publisher removed it. We've stopped checking it.</p>
+    {{else}}
     {{if eq .Feed.ConsecutiveFailures 1}}
     <p class="fetch-error">The last attempt to fetch this feed failed ({{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}). We'll keep trying.</p>
     {{else if gt .Feed.ConsecutiveFailures 1}}
@@ -50,6 +53,7 @@
     <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
       <button type="submit">Refresh</button>
     </form>
+    {{end}}
 
     <h2>Articles</h2>
     {{with .Articles}}

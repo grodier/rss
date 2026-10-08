@@ -29,6 +29,18 @@
     <div class="flash">{{.}}</div>
     {{end}}
     <h1>{{.Feed.Title}}</h1>
+    {{if .Subscribed}}
+    <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
+      <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
+      <span>Subscribed ✓</span>
+      <button type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
+    </form>
+    {{else if .Feed.GoneAt.IsZero}}
+    <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">
+      <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
+      <button type="submit" aria-label="Subscribe to {{or .Feed.Title .Feed.Url}}">Subscribe</button>
+    </form>
+    {{end}}
     {{with .Feed.Description}}
     <p>{{.}}</p>
     {{end}}

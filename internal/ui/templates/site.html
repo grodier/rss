@@ -51,10 +51,24 @@
       {{if .Feeds}}
       <ul>
         {{range .Feeds}}
-        <li>
+        <li id="feed-{{.ID}}">
           <a href="/feeds/{{.ID}}">{{.Title}}</a>
           {{with .Description}}<p>{{.}}</p>{{end}}
           <p>{{.Url}}</p>
+          {{if index $.Subscribed .ID}}
+          <form action="/feeds/{{.ID}}/unsubscribe" method="post">
+            <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
+            <span>Subscribed ✓</span>
+            <button type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
+          </form>
+          {{else if .GoneAt.IsZero}}
+          <form action="/feeds/{{.ID}}/subscribe" method="post">
+            <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
+            <button type="submit" aria-label="Subscribe to {{or .Title .Url}}">Subscribe</button>
+          </form>
+          {{else}}
+          <span>This feed no longer exists.</span>
+          {{end}}
         </li>
         {{end}}
       </ul>

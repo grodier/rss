@@ -33,6 +33,17 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	feedIDs := make([]string, len(feeds))
+	for i, f := range feeds {
+		feedIDs[i] = f.ID
+	}
+	userID, _ := s.authenticatedUserID(r)
+	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	// No lookup for the site's key means it can be checked now.
 	lookup, err := s.services.LookupService.GetBySiteKey(r.Context(), site.Host)
 	if err != nil && !errors.Is(err, rss.ErrNoRecord) {
@@ -43,6 +54,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Site        rss.Site
 		Feeds       []rss.Feed
+		Subscribed  map[string]bool
 		LastChecked time.Time
 		Checking    bool
 		CanRecheck  bool
@@ -51,6 +63,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Site:        site,
 		Feeds:       feeds,
+		Subscribed:  subscribed,
 		LastChecked: lookup.FinishedAt,
 		Checking:    lookupInProgress(lookup),
 		CanRecheck:  canRecheck(lookup, time.Now()),

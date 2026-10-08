@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-playground/form/v4"
 )
@@ -69,4 +71,17 @@ func (s *Server) authenticatedUserID(r *http.Request) (id string, ok bool) {
 func (s *Server) isAuthenticated(r *http.Request) bool {
 	_, ok := s.authenticatedUserID(r)
 	return ok
+}
+
+// safeReturnPath returns p if it is a local path (for redirecting back to the
+// page a form was posted from), else fallback. Prevents open redirects.
+func safeReturnPath(p, fallback string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
+		return fallback
+	}
+	u, err := url.Parse(p)
+	if err != nil || u.Scheme != "" || u.Host != "" {
+		return fallback
+	}
+	return p
 }

@@ -70,18 +70,27 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, _ := s.authenticatedUserID(r)
+	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, []string{feed.ID})
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
-		Feed     rss.Feed
-		Site     rss.Site
-		Articles []rss.Article
-		Flash    string
+		Feed       rss.Feed
+		Site       rss.Site
+		Articles   []rss.Article
+		Subscribed bool
+		Flash      string
 	}{
-		Feed:     feed,
-		Site:     site,
-		Articles: articles,
-		Flash:    flash,
+		Feed:       feed,
+		Site:       site,
+		Articles:   articles,
+		Subscribed: subscribed[feed.ID],
+		Flash:      flash,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {
@@ -89,14 +98,94 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) subscribeFeedHandler(w http.ResponseWriter, r *http.Request) {
-	data := map[string]string{
-		"message": "Subscribed successfully",
+type subscriptionForm struct {
+	// ReturnTo is the local path to redirect back to, usually the page the
+	// form was posted from.
+	ReturnTo string `form:"return_to"`
+}
+
+// feedSubscribeHandler subscribes the user to a feed. Subscribing again is a
+// no-op with the same message.
+func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
+	feed, form, ok := s.subscriptionTarget(w, r)
+	if !ok {
+		return
 	}
 
-	if err := s.writeJSON(w, http.StatusCreated, data, nil); err != nil {
-		s.serverErrorJSON(w, r, err)
+	if !feed.GoneAt.IsZero() {
+		s.redirectWithFlash(w, r, form, feed, "This feed no longer exists, so you can't subscribe to it.")
+		return
 	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.SubscriptionService.Subscribe(r.Context(), userID, feed.ID); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+	s.redirectWithFlash(w, r, form, feed, "Subscribed to "+feedLabel(feed)+".")
+}
+
+// feedUnsubscribeHandler removes the user's subscription to a feed, including
+// a gone one. Unsubscribing when not subscribed is a no-op with the same
+// message.
+func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) {
+	feed, form, ok := s.subscriptionTarget(w, r)
+	if !ok {
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.SubscriptionService.Unsubscribe(r.Context(), userID, feed.ID); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	s.redirectWithFlash(w, r, form, feed, "Unsubscribed from "+feedLabel(feed)+".")
+}
+
+// subscriptionTarget reads what the subscribe and unsubscribe handlers share:
+// the feed named in the URL and the posted form. If ok is false it has already
+// written the response.
+func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (feed rss.Feed, form subscriptionForm, ok bool) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return rss.Feed{}, subscriptionForm{}, false
+	}
+
+	if err := s.decodePostForm(r, &form); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return rss.Feed{}, subscriptionForm{}, false
+	}
+
+	feed, err := s.services.FeedService.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return rss.Feed{}, subscriptionForm{}, false
+	}
+	return feed, form, true
+}
+
+// redirectWithFlash flashes msg and sends the user back to the page they
+// posted from, or to the feed page if that isn't a local path.
+func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form subscriptionForm, feed rss.Feed, msg string) {
+	s.sessionManager.Put(r.Context(), "flash", msg)
+	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID), http.StatusSeeOther)
+}
+
+// feedLabel is how messages refer to a feed: its title, else its URL.
+func feedLabel(feed rss.Feed) string {
+	if feed.Title != "" {
+		return feed.Title
+	}
+	return feed.Url
 }
 
 func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {

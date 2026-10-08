@@ -7,21 +7,13 @@ or delete it.
 
 ## Feed ingestion
 
-Feeds are fetched and their articles saved (discovery, the Refresh button and the
-feed page's article list), but only on demand.
+Done. Feeds are fetched and their articles saved on discovery, from the feed page's
+Refresh button, and in the background by `internal/refresh` workers inside `www`
+(`-refresh-workers`, default 2). Shipped in #126 and #128–#133: fetch attempts and
+`next_fetch_at` scheduling with failure backoff, background workers, fetch failures on the
+feed page, conditional GET, 410 Gone, and `Retry-After` / `Cache-Control`.
 
-Background refresh is planned; implement in this order: #119 → (#120 and #121 in
-parallel) → #122 → #123 → #124.
-
-- #119 Record fetch attempts and schedule each feed's next fetch (`next_fetch_at`,
-  failure backoff 1h doubling to 24h).
-- #120 Refresh due feeds in the background (`internal/refresh` workers inside `www`).
-- #121 Show fetch failures on the feed page.
-- #122 Conditional GET (ETag / Last-Modified).
-- #123 Stop fetching feeds that answer 410 Gone.
-- #124 Honor `Retry-After` and `Cache-Control` when scheduling.
-
-Decisions made while planning (don't reopen them in these issues): workers run inside
+Decisions made while planning (don't reopen them without a reason): workers run inside
 `www`, not as a cron-hit endpoint or a separate service; the `feeds` table is the queue,
 claimed with a lease instead of a status column; every feed is refreshed until
 subscriptions exist; the Refresh button stays synchronous and goes through the same
@@ -32,7 +24,7 @@ Later, each with when it pays off:
 - [ ] **Adaptive refresh interval.** Fetch busy feeds often and dormant ones rarely, from
   posting frequency: count articles published in the last 14 days (`n`), interval =
   clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` /
-  `Cache-Control` floors (#124). Worth it at a few thousand feeds, or when most fetches
+  `Cache-Control` floors (#133). Worth it at a few thousand feeds, or when most fetches
   are 304s or find no new articles.
 - [ ] **Permanent redirects (301/308).** Update `feeds.url`. Needs `fetch` to report the
   redirect chain, and a decision for the unique-URL collision when two feeds end up at
@@ -56,7 +48,7 @@ Later, each with when it pays off:
 
 ## Load and performance testing (needs planning)
 
-Background refresh (#120) is designed but has never run against more than a few feeds.
+Background refresh (#128) has never run against more than a few feeds.
 Rough capacity: feeds per hour ≈ workers × 3600 s ÷ average fetch duration (2 workers at
 1 s per fetch ≈ 7,200 feeds/hour). The poll interval only matters when nothing is due, so
 it doesn't limit throughput. Measure before relying on these numbers. Worth doing before
@@ -135,9 +127,9 @@ feature adds a failure mode. Nothing here is built yet.
     scheme), a site that is unreachable, times out, redirects too often, returns a non-HTML
     or huge body, has no feeds, or has a feed that fails to parse; a lookup that is
     pending, running, failed or done; the status page after the lookup row is gone.
-  - Feeds: a refresh that fails (and the backoff / failure display from #121), a feed
+  - Feeds: a refresh that fails (and the backoff / failure display from #129), a feed
     that has never been fetched, a feed with no articles, the Refresh button during a
-    refresh, 410 Gone feeds (#123).
+    refresh, 410 Gone feeds (#132).
   - Search: no results, empty query, very long query, special characters.
   - Empty states that aren't errors but read like one: a new account with no feeds, an
     empty site page.
@@ -176,7 +168,7 @@ yet:
 - [ ] **Subscriptions.** Replace the placeholder `POST /subscribe`, show each user only
   their own feeds, and support unsubscribing. Subscribe/unsubscribe lives on the feed page
   that discovery (#50) leads to.
-  Background refresh (#120) then refreshes only feeds with at least one subscriber (add
+  Background refresh then refreshes only feeds with at least one subscriber (add
   `AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)` to `ClaimDue`),
   and an unsubscribed feed is refreshed when its page is viewed and its last fetch is
   older than `ingest.RefreshInterval`.
@@ -214,9 +206,12 @@ yet:
 
 ## Suggested order
 
-1. Background refresh: #119 → (#120 and #121) → #122 → #123 → #124.
-2. **Plan** subscriptions and reading in their own session, and turn them into issues.
+1. **Plan** subscriptions and reading in their own session, and turn them into issues.
+   Subscriptions come first: they gate what background refresh fetches and what each
+   user sees.
+2. Rate-limit login and signup (Security); small and independent, can go in parallel.
 3. Once the initial features are done, **plan** the error-state walkthrough and run the
    first pass; then repeat it periodically.
+4. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

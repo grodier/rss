@@ -46,6 +46,81 @@ Later, each with when it pays off:
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand.
 
+## Performance watchlist
+
+Things that are fine at today's scale but could become performance problems as feeds,
+articles, users or instances grow. Each entry says what it is, the signal that it has
+become a problem, and the planned fix. Don't fix these early: watch the signal, and use the
+load tests below to measure. When planning adds a new risk, add it here (see CLAUDE.md,
+"Writing issues"); when one is fixed, delete it.
+
+Background refresh:
+
+- [ ] **`ClaimDue` walks past feeds nobody wants refreshed** (#137). The `EXISTS`
+  subscription check and `refresh_requested_at` can't be in the partial
+  `feeds_next_fetch_at_idx`. Unsubscribed feeds keep an old `next_fetch_at`, so they pile
+  up at the front of the order and every claim skips them. Ordering requested feeds
+  first (`refresh_requested_at IS NULL, next_fetch_at`) also stops the index from serving
+  the sort. *Signal:* `EXPLAIN ANALYZE` of `ClaimDue` reads far more rows than it returns,
+  or idle claims get slow, once most feeds are unsubscribed. *Fix:* keep a
+  `subscriber_count` on `feeds` (updated by `Subscribe`/`Unsubscribe` in the same
+  transaction) and index `next_fetch_at WHERE gone_at IS NULL AND (subscriber_count > 0
+  OR refresh_requested_at IS NOT NULL)`.
+- [ ] **Polling latency and idle queries.** Each idle refresh and lookup worker queries
+  every poll interval (15 s for refresh), on every instance. A requested refresh can wait
+  a full interval before a worker sees it. *Signal:* users wait noticeably for "Checking
+  for new articles…", or idle claim queries show up in `pg_stat_statements`. *Fix:* Postgres
+  `LISTEN`/`NOTIFY` from `RequestRefresh`, `Subscribe` and lookup requests to wake a
+  worker, keeping the poll as a fallback.
+- [ ] **One statement per article in `saveArticles`.** Each fetched item is a separate
+  upsert inside the `SaveFetch` transaction. *Signal:* `SaveFetch` time dominates the
+  `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario
+  below). *Fix:* a single multi-row upsert (`unnest` of arrays) per fetch.
+- [ ] **Writes from feed page views** (#137). Viewing a stale feed runs an `UPDATE`
+  (`RequestRefresh`). The `refresh_requested_at IS NULL` guard limits it to once per stale
+  period per feed, so this is unlikely to matter. *Signal:* `RequestRefresh` shows up in
+  `pg_stat_statements` or in row-lock waits on `feeds`. *Fix:* skip the call unless the
+  feed has been stale for a while, or move requests to their own table.
+- Also listed under Feed ingestion: adaptive refresh interval, per-host politeness,
+  separate worker process, giving up on long-dead feeds.
+
+Pages and queries:
+
+- [ ] **My feeds is unpaginated** (#136). It loads every subscription with a `LATERAL`
+  lookup of each feed's newest article. *Signal:* users with hundreds of subscriptions, or
+  `/feeds` p95 latency rising. *Fix:* store `latest_article_at` on `feeds` (set in
+  `SaveFetch`) instead of the `LATERAL` subquery; add filtering or pagination.
+- [ ] **Site pages and search results load all of a site's feeds.** `ListBySite` and the
+  second search query have no limit. Platform hosts and category-heavy sites can have
+  hundreds of feeds. *Signal:* a site page or search response with hundreds of feeds, or
+  slow ones in the logs. *Fix:* limit feeds per site in search (with a "more" link to the
+  site page) and paginate the site page.
+- [ ] **`SubscribedFeedIDs` on every page** (#135, #138). One extra indexed query per site,
+  feed and search page. Unlikely to matter. *Signal:* it shows up in
+  `pg_stat_statements` totals. *Fix:* fold it into the page's main query.
+- [ ] **Search scans with `ILIKE`.** Sites and feeds are matched with `%q%`, which can't
+  use a b-tree index. *Signal:* search latency growing with the number of sites and feeds.
+  *Fix:* see "Better search ranking" under Feed discovery (`pg_trgm` or full-text search,
+  with an index).
+
+Data growth:
+
+- [ ] **Articles grow without bound.** Raw `summary` and `content` HTML is stored for every
+  article forever. *Signal:* `articles` table and index size, slower `ListByFeed` and
+  timeline queries, backup size. *Fix:* see "Article retention" under Feed ingestion.
+- [ ] **Timeline deduplication at query time.** The planned timeline collapses duplicate
+  articles across a user's feeds when it's queried ("One entry per article in the
+  timeline"). *Signal:* timeline queries slow for users with many overlapping feeds.
+  *Fix:* the indexed `canonical_url` column already planned there; if that isn't enough,
+  precompute per-user timeline entries.
+- [ ] **Sessions in Postgres.** scs reads the `sessions` row on every request in the
+  session group and writes it whenever the session changes (flash messages, login).
+  Expired rows are swept periodically. *Signal:* session queries in `pg_stat_statements`
+  or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
+  sessions.
+- [ ] **In-memory rate limiters.** Their maps grow with distinct keys between sweeps and
+  aren't shared between instances. Covered by the rate-limiter item under Security.
+
 ## Load and performance testing (needs planning)
 
 Background refresh (#128) has never run against more than a few feeds.
@@ -84,7 +159,7 @@ production, or once there are a few thousand feeds.
   - Large feeds: bodies near the fetch size cap and `ingest.MaxArticles` items, so the
     per-article upserts in `saveArticles` show their cost.
   - Web traffic during refresh load: page latency and DB connection contention.
-    `cmd/www` sets no `SetMaxOpenConns`, so workers and handlers share an unbounded pool.
+    Workers and handlers share one pool (`-db-max-open-conns`, default 25).
   - Lookups and refresh together: both runners claiming and writing at the same time.
   - Several instances: `SKIP LOCKED` claims never fetch a feed twice, and throughput
     scales with instances.
@@ -147,8 +222,12 @@ feature adds a failure mode. Nothing here is built yet.
 Done in #50 (search, site pages, background lookups). Later improvements, not issues
 yet:
 
-- [ ] **Progressive enhancement for lookups.** Replace the status page's
-  `<meta http-equiv="refresh">` with JavaScript polling, server-sent events or websockets.
+- [ ] **Live updates for pending work (lookups and feed refreshes).** Replace the lookup
+  status page's `<meta http-equiv="refresh">` with JavaScript polling, server-sent events
+  or websockets, and use the same mechanism to update a feed page after the background
+  refresh it requested (#137) finishes: the request is pending while
+  `feeds.refresh_requested_at` is set. Progressive enhancement: pages keep working without
+  JavaScript.
 - [ ] **Logged-out access.** Let logged-out visitors search and view site and feed pages, to
   help people find the app. Keep lookups login-only.
 - [ ] **Name → website suggestions.** For free-text queries ("the verge"), suggest likely
@@ -163,15 +242,32 @@ yet:
 - [ ] **Better search ranking.** `pg_trgm` or full-text search instead of `ILIKE`
   substring matching, with an index.
 
-## Subscriptions and reading (needs planning)
+## Subscriptions and reading
 
-- [ ] **Subscriptions.** Replace the placeholder `POST /subscribe`, show each user only
-  their own feeds, and support unsubscribing. Subscribe/unsubscribe lives on the feed page
-  that discovery (#50) leads to.
-  Background refresh then refreshes only feeds with at least one subscriber (add
-  `AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)` to `ClaimDue`),
-  and an unsubscribed feed is refreshed when its page is viewed and its last fetch is
-  older than `ingest.RefreshInterval`.
+Subscriptions are planned and split into issues: #135 (subscribe and unsubscribe from the
+feed and site pages), #136 (`/feeds` becomes "My feeds"), #137 (background refresh only
+fetches subscribed feeds; viewing a stale feed queues a refresh) and #138 (subscribed
+markers in search). #136–#138 each depend on #135 only.
+
+Decisions made while planning (don't reopen them without a reason): subscribing and
+unsubscribing are one click with no confirmation, and redirect back to the page they were
+posted from; the global "latest feeds" list is removed, not moved; subscribed state comes
+from a separate `SubscribedFeedIDs` query rather than a user parameter on feed queries;
+refresh requests from page views are a `feeds` column worked by the existing refresh
+workers, never a goroutine or in-memory queue; subscriptions are private (no subscriber
+counts).
+
+Later, not issues yet:
+
+- [ ] **Feed tabs on the site page.** Show a site's articles one feed at a time, as tabs
+  that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
+  browsing a site's feeds in context. It isn't a way to organise subscriptions (no
+  folders or pinned feeds). Plan it after the reading experience. Open question: how it
+  relates to the standalone feed page.
+- [ ] **OPML import/export.** Import subscriptions from another reader and export your own.
+
+Reading (needs planning):
+
 - [ ] **Reading experience.** Add an "all my feeds" timeline, show article content, and
   track read/unread per user (needs a new table). The feed page's article list (#110)
   shows titles and links only. Summary and content are stored as raw HTML (#106) and
@@ -206,9 +302,8 @@ yet:
 
 ## Suggested order
 
-1. **Plan** subscriptions and reading in their own session, and turn them into issues.
-   Subscriptions come first: they gate what background refresh fetches and what each
-   user sees.
+1. Build subscriptions: #135 first, then #136, #137 and #138 (one PR at a time). Then
+   **plan** the reading experience in its own session and turn it into issues.
 2. Rate-limit login and signup (Security); small and independent, can go in parallel.
 3. Once the initial features are done, **plan** the error-state walkthrough and run the
    first pass; then repeat it periodically.

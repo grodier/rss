@@ -522,6 +522,64 @@ func TestRefresh(t *testing.T) {
 		}
 	})
 
+	t.Run("schedules by server hints", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			status   int
+			header   string // name: value
+			failures int    // feed.ConsecutiveFailures
+			want     time.Duration
+		}{
+			{"max-age of 6h", http.StatusOK, "Cache-Control: max-age=21600", 0, 6 * time.Hour},
+			{"2-day max-age capped", http.StatusOK, "Cache-Control: max-age=172800", 0, MaxRetryDelay},
+			{"short max-age keeps the interval", http.StatusOK, "Cache-Control: max-age=60", 0, RefreshInterval},
+			{"no-cache keeps the interval", http.StatusOK, "Cache-Control: no-cache", 0, RefreshInterval},
+			{"304 with max-age", http.StatusNotModified, "Cache-Control: max-age=21600", 0, 6 * time.Hour},
+			{"429 Retry-After on a first failure", http.StatusTooManyRequests, "Retry-After: 7200", 0, 2 * time.Hour},
+			{"503 3-day Retry-After capped", http.StatusServiceUnavailable, "Retry-After: 259200", 0, MaxRetryDelay},
+			{"short Retry-After keeps the backoff", http.StatusTooManyRequests, "Retry-After: 60", 2, 4 * RefreshInterval},
+			{"Retry-After ignored on 404", http.StatusNotFound, "Retry-After: 7200", 0, RefreshInterval},
+			{"max-age ignored on failure", http.StatusServiceUnavailable, "Cache-Control: max-age=21600", 0, RefreshInterval},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				name, value, _ := strings.Cut(tt.header, ": ")
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set(name, value)
+					w.Header().Set("Content-Type", "application/rss+xml")
+					w.WriteHeader(tt.status)
+					fmt.Fprint(w, testRSS)
+				}))
+				t.Cleanup(srv.Close)
+				store := &fakeStore{}
+				r := &Refresher{Fetcher: fetcher, Store: store}
+
+				before := time.Now()
+				_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL, ConsecutiveFailures: tt.failures})
+				after := time.Now()
+
+				var next time.Time
+				switch {
+				case tt.status == http.StatusOK && store.calls == 1:
+					next = store.feed.NextFetch
+				case tt.status == http.StatusNotModified && len(store.notModified) == 1:
+					next = store.notModified[0].next
+				case tt.status >= 400 && len(store.failures) == 1:
+					next = store.failures[0].next
+				default:
+					t.Fatalf("Refresh: err = %v, SaveFetch calls %d, RecordNotModified %d, RecordFailure %d",
+						err, store.calls, len(store.notModified), len(store.failures))
+				}
+				if tt.status == http.StatusTooManyRequests || tt.status == http.StatusServiceUnavailable {
+					if !errors.Is(err, ErrUnreachable) {
+						t.Errorf("err = %v, want %v", err, ErrUnreachable)
+					}
+				}
+				checkWithin(t, "next fetch", next, before, after, tt.want)
+			})
+		}
+	})
+
 	t.Run("store error returned and not recorded", func(t *testing.T) {
 		srv := serve(t, http.StatusOK, "application/rss+xml", testRSS)
 		store := &fakeStore{err: rss.ErrNoRecord}

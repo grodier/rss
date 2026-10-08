@@ -99,43 +99,61 @@ type Refresher struct {
 
 // Refresh fetches feed.Url, parses it and saves its metadata, validators
 // (ETag, Last-Modified) and articles, scheduling the feed's next fetch (see
-// NextFetch). It sends the feed's stored validators, and when the server
-// answers 304 it records that with Store.RecordNotModified, without parsing,
-// and returns a result with NotModified set. The caller sets the deadline on
-// ctx. Fetch failures wrap ErrUnreachable and parse failures ErrNotFeed; both
-// are recorded with Store.RecordFailure and reschedule the feed with backoff
-// (see RetryAt). A 410 Gone is recorded with Store.MarkGone, which stops
-// background fetches of the feed, and returns an error wrapping ErrGone.
-// Neither is recorded if ctx was canceled (shutdown or a disconnected user).
-// If recording fails, its error is joined to the fetch error. Any other error is from Store.SaveFetch or Store.RecordNotModified
-// and is not recorded as a feed failure.
+// NextFetch, delayed until the response is no longer fresh per Cache-Control
+// max-age or Expires, up to MaxRetryDelay). It sends the feed's stored
+// validators, and when the server answers 304 it records that with
+// Store.RecordNotModified, without parsing, and returns a result with
+// NotModified set. The caller sets the deadline on ctx. Fetch failures wrap
+// ErrUnreachable and parse failures ErrNotFeed; both are recorded with
+// Store.RecordFailure and reschedule the feed with backoff (see RetryAt,
+// delayed by a 429's or 503's Retry-After, up to MaxRetryDelay). A 410 Gone is
+// recorded with Store.MarkGone, which stops background fetches of the feed,
+// and returns an error wrapping ErrGone. Neither is recorded if ctx was
+// canceled (shutdown or a disconnected user). If recording fails, its error is
+// joined to the fetch error. Any other error is from Store.SaveFetch or
+// Store.RecordNotModified and is not recorded as a feed failure.
 func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
-	update, articles, err := r.fetch(ctx, feed)
+	resp, update, articles, err := r.fetch(ctx, feed)
 	if errors.Is(err, ErrGone) {
 		return rss.FetchResult{}, r.record(ctx, err, func(ctx context.Context) error {
 			return r.Store.MarkGone(ctx, feed.ID)
 		})
 	}
+	now := time.Now()
 	if err != nil {
-		next := RetryAt(time.Now(), feed.ConsecutiveFailures+1)
+		next := RetryAt(now, feed.ConsecutiveFailures+1)
+		if resp != nil && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) {
+			next = notBefore(next, now, retryAfter(resp.Header, now))
+		}
 		return rss.FetchResult{}, r.record(ctx, err, func(ctx context.Context) error {
 			return r.Store.RecordFailure(ctx, feed.ID, err.Error(), next)
 		})
 	}
+	next := notBefore(NextFetch(now), now, freshness(resp.Header, now))
 	if update == nil {
-		if err := r.Store.RecordNotModified(ctx, feed.ID, NextFetch(time.Now())); err != nil {
+		if err := r.Store.RecordNotModified(ctx, feed.ID, next); err != nil {
 			return rss.FetchResult{}, err
 		}
 		return rss.FetchResult{NotModified: true}, nil
 	}
-	update.NextFetch = NextFetch(time.Now())
+	update.NextFetch = next
 	return r.Store.SaveFetch(ctx, *update, articles)
 }
 
-// fetch fetches and parses feed.Url and returns the feed's new metadata and
-// its articles, or a nil feed if the server answered 304. Errors wrap
-// ErrUnreachable, ErrNotFeed or ErrGone.
-func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*rss.Feed, []rss.Article, error) {
+// notBefore returns the later of next and now + d, with d capped at
+// MaxRetryDelay. A server's hint only ever delays the next fetch.
+func notBefore(next, now time.Time, d time.Duration) time.Time {
+	if hinted := now.Add(min(d, MaxRetryDelay)); hinted.After(next) {
+		return hinted
+	}
+	return next
+}
+
+// fetch fetches and parses feed.Url and returns the response, the feed's new
+// metadata and its articles, or a nil feed if the server answered 304. Errors
+// wrap ErrUnreachable, ErrNotFeed or ErrGone; the response is nil only if
+// the request itself failed.
+func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*fetch.Response, *rss.Feed, []rss.Article, error) {
 	header := http.Header{}
 	if feed.ETag != "" {
 		header.Set("If-None-Match", feed.ETag)
@@ -146,21 +164,21 @@ func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*rss.Feed, []rss.
 
 	resp, err := r.Fetcher.Get(ctx, feed.Url, header)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	if resp.StatusCode == http.StatusNotModified {
-		return nil, nil, nil
+		return resp, nil, nil, nil
 	}
 	if resp.StatusCode == http.StatusGone {
-		return nil, nil, fmt.Errorf("%w: status %d", ErrGone, resp.StatusCode)
+		return resp, nil, nil, fmt.Errorf("%w: status %d", ErrGone, resp.StatusCode)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, nil, fmt.Errorf("%w: status %d", ErrUnreachable, resp.StatusCode)
+		return resp, nil, nil, fmt.Errorf("%w: status %d", ErrUnreachable, resp.StatusCode)
 	}
 
 	parsed, err := feedparse.Parse(resp.URL, resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrNotFeed, err)
+		return resp, nil, nil, fmt.Errorf("%w: %w", ErrNotFeed, err)
 	}
 
 	update := &rss.Feed{
@@ -171,7 +189,7 @@ func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*rss.Feed, []rss.
 		ETag:         resp.Header.Get("ETag"),
 		LastModified: resp.Header.Get("Last-Modified"),
 	}
-	return update, Articles(parsed.Items), nil
+	return resp, update, Articles(parsed.Items), nil
 }
 
 // record records the outcome of a fetch that failed with fetchErr by calling

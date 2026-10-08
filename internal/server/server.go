@@ -63,24 +63,33 @@ type ArticleStore interface {
 	ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
 }
 
+// SubscriptionStore is the subscription persistence the server depends on.
+type SubscriptionStore interface {
+	Subscribe(ctx context.Context, userID, feedID string) error
+	Unsubscribe(ctx context.Context, userID, feedID string) error
+	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
+}
+
 var (
-	_ ArticleStore  = (*psql.ArticleRepository)(nil)
-	_ FeedRefresher = (*ingest.Refresher)(nil)
-	_ FeedStore     = (*psql.FeedRepository)(nil)
-	_ UserStore     = (*psql.UserRepository)(nil)
-	_ SearchStore   = (*psql.SearchRepository)(nil)
-	_ SiteStore     = (*psql.SiteRepository)(nil)
-	_ LookupStore   = (*psql.LookupRepository)(nil)
+	_ ArticleStore      = (*psql.ArticleRepository)(nil)
+	_ FeedRefresher     = (*ingest.Refresher)(nil)
+	_ FeedStore         = (*psql.FeedRepository)(nil)
+	_ UserStore         = (*psql.UserRepository)(nil)
+	_ SearchStore       = (*psql.SearchRepository)(nil)
+	_ SiteStore         = (*psql.SiteRepository)(nil)
+	_ LookupStore       = (*psql.LookupRepository)(nil)
+	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
 )
 
 type Services struct {
-	FeedService    FeedStore
-	UserService    UserStore
-	SearchService  SearchStore
-	SiteService    SiteStore
-	LookupService  LookupStore
-	Refresher      FeedRefresher
-	ArticleService ArticleStore
+	FeedService         FeedStore
+	UserService         UserStore
+	SearchService       SearchStore
+	SiteService         SiteStore
+	LookupService       LookupStore
+	Refresher           FeedRefresher
+	ArticleService      ArticleStore
+	SubscriptionService SubscriptionStore
 }
 
 type Server struct {

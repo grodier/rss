@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -65,7 +66,8 @@ func feedServer(t *testing.T, siteErr error) *Server {
 func feedServerWithArticles(t *testing.T, siteErr error, articles ArticleStore) *Server {
 	t.Helper()
 	return newTestServerWith(t, Services{
-		ArticleService: articles,
+		SubscriptionService: &fakeSubscriptionStore{},
+		ArticleService:      articles,
 		FeedService: &fakeFeedStore{
 			getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 				return rss.Feed{
@@ -249,7 +251,8 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestServerWith(t, Services{
-				ArticleService: &fakeArticleStore{},
+				SubscriptionService: &fakeSubscriptionStore{},
+				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched}, nil
 				}},
@@ -291,7 +294,8 @@ func TestFeedHandlerFetchStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestServerWith(t, Services{
-				ArticleService: &fakeArticleStore{},
+				SubscriptionService: &fakeSubscriptionStore{},
+				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{
 						ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID,
@@ -320,7 +324,8 @@ func TestFeedHandlerFetchStatus(t *testing.T) {
 
 func TestFeedHandlerGoneFeed(t *testing.T) {
 	s := newTestServerWith(t, Services{
-		ArticleService: &fakeArticleStore{},
+		SubscriptionService: &fakeSubscriptionStore{},
+		ArticleService:      &fakeArticleStore{},
 		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 			return rss.Feed{
 				ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID,
@@ -576,4 +581,342 @@ func TestFeedRefreshRouteRequiresAuthentication(t *testing.T) {
 	if loc := rr.Header().Get("Location"); loc != "/login" {
 		t.Errorf("Location = %q, want /login", loc)
 	}
+}
+
+// postSubscription posts to handler as userID, with returnTo as the form's
+// return_to if it is not empty. It returns the response and the flash message
+// left in the session.
+func postSubscription(t *testing.T, s *Server, handler http.HandlerFunc, userID, feedID, returnTo string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	form := url.Values{}
+	if returnTo != "" {
+		form.Set("return_to", returnTo)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/feeds/x/subscribe", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", feedID)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	var flash string
+	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	})).ServeHTTP(rr, req)
+	return rr, flash
+}
+
+type subscriptionCall struct{ userID, feedID string }
+
+func subscriptionServer(t *testing.T, feed rss.Feed, getErr error, subs *fakeSubscriptionStore) *Server {
+	t.Helper()
+	feed.ID = testFeedID
+	return newTestServerWith(t, Services{
+		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			if getErr != nil {
+				return rss.Feed{}, getErr
+			}
+			return feed, nil
+		}},
+		SubscriptionService: subs,
+	})
+}
+
+func TestFeedSubscribeHandler(t *testing.T) {
+	feed := rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"}
+
+	t.Run("success", func(t *testing.T) {
+		var calls []subscriptionCall
+		s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{subscribeFn: func(ctx context.Context, userID, feedID string) error {
+			calls = append(calls, subscriptionCall{userID, feedID})
+			return nil
+		}})
+
+		rr, flash := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "/sites/"+testSiteID+"?x=1")
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/sites/"+testSiteID+"?x=1" {
+			t.Errorf("Location = %q, want the return_to path", loc)
+		}
+		if want := "Subscribed to Example Feed."; flash != want {
+			t.Errorf("flash = %q, want %q", flash, want)
+		}
+		if len(calls) != 1 || calls[0] != (subscriptionCall{"user-1", testFeedID}) {
+			t.Errorf("Subscribe calls = %+v, want one for user-1 and %s", calls, testFeedID)
+		}
+	})
+
+	t.Run("return_to keeps a fragment", func(t *testing.T) {
+		s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{})
+		returnTo := "/sites/" + testSiteID + "#feed-" + testFeedID
+
+		rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, returnTo)
+
+		if loc := rr.Header().Get("Location"); loc != returnTo {
+			t.Errorf("Location = %q, want %q", loc, returnTo)
+		}
+	})
+
+	t.Run("invalid return_to goes to the feed page", func(t *testing.T) {
+		for _, returnTo := range []string{"", "//example.com", "https://example.com/"} {
+			s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{})
+
+			rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, returnTo)
+
+			if loc := rr.Header().Get("Location"); loc != "/feeds/"+testFeedID {
+				t.Errorf("return_to %q: Location = %q, want /feeds/%s", returnTo, loc, testFeedID)
+			}
+		}
+	})
+
+	t.Run("empty title uses the URL", func(t *testing.T) {
+		s := subscriptionServer(t, rss.Feed{Url: "https://example.com/feed.xml"}, nil, &fakeSubscriptionStore{})
+
+		_, flash := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
+
+		if want := "Subscribed to https://example.com/feed.xml."; flash != want {
+			t.Errorf("flash = %q, want %q", flash, want)
+		}
+	})
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t) // nil stores: any store call would panic
+		rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", "abc", "")
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		s := subscriptionServer(t, rss.Feed{}, rss.ErrNoRecord, &fakeSubscriptionStore{})
+		rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("feed deleted before subscribing", func(t *testing.T) {
+		s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{subscribeFn: func(context.Context, string, string) error {
+			return rss.ErrNoRecord
+		}})
+		rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("gone feed", func(t *testing.T) {
+		called := false
+		gone := rss.Feed{Title: "Old Feed", GoneAt: time.Now()}
+		s := subscriptionServer(t, gone, nil, &fakeSubscriptionStore{subscribeFn: func(context.Context, string, string) error {
+			called = true
+			return nil
+		}})
+
+		rr, flash := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+		}
+		if want := "This feed no longer exists, so you can't subscribe to it."; flash != want {
+			t.Errorf("flash = %q, want %q", flash, want)
+		}
+		if called {
+			t.Error("Subscribe called for a gone feed")
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{subscribeFn: func(context.Context, string, string) error {
+			return errors.New("db down")
+		}})
+		rr, _ := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestFeedUnsubscribeHandler(t *testing.T) {
+	feed := rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"}
+
+	tests := []struct {
+		name      string
+		feed      rss.Feed
+		storeErr  error
+		wantCode  int
+		wantFlash string
+	}{
+		{"success", feed, nil, http.StatusSeeOther, "Unsubscribed from Example Feed."},
+		{"empty title uses the URL", rss.Feed{Url: "https://example.com/feed.xml"}, nil, http.StatusSeeOther, "Unsubscribed from https://example.com/feed.xml."},
+		{"gone feed", rss.Feed{Title: "Old Feed", GoneAt: time.Now()}, nil, http.StatusSeeOther, "Unsubscribed from Old Feed."},
+		{"store error", feed, errors.New("db down"), http.StatusInternalServerError, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []subscriptionCall
+			s := subscriptionServer(t, tt.feed, nil, &fakeSubscriptionStore{unsubscribeFn: func(ctx context.Context, userID, feedID string) error {
+				calls = append(calls, subscriptionCall{userID, feedID})
+				return tt.storeErr
+			}})
+
+			rr, flash := postSubscription(t, s, s.feedUnsubscribeHandler, "user-1", testFeedID, "/sites/"+testSiteID)
+
+			if rr.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantCode)
+			}
+			if tt.wantCode == http.StatusSeeOther {
+				if loc := rr.Header().Get("Location"); loc != "/sites/"+testSiteID {
+					t.Errorf("Location = %q, want the return_to path", loc)
+				}
+			}
+			if flash != tt.wantFlash {
+				t.Errorf("flash = %q, want %q", flash, tt.wantFlash)
+			}
+			if len(calls) != 1 || calls[0] != (subscriptionCall{"user-1", testFeedID}) {
+				t.Errorf("Unsubscribe calls = %+v, want one for user-1 and %s", calls, testFeedID)
+			}
+		})
+	}
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t)
+		rr, _ := postSubscription(t, s, s.feedUnsubscribeHandler, "user-1", "abc", "")
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		s := subscriptionServer(t, rss.Feed{}, rss.ErrNoRecord, &fakeSubscriptionStore{})
+		rr, _ := postSubscription(t, s, s.feedUnsubscribeHandler, "user-1", testFeedID, "")
+		assertNotFoundHTML(t, rr)
+	})
+}
+
+func TestSubscriptionRoutesRequireAuthentication(t *testing.T) {
+	s := newTestServer(t)
+	for _, action := range []string{"subscribe", "unsubscribe"} {
+		t.Run(action, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/feeds/"+testFeedID+"/"+action, nil)
+			rr := httptest.NewRecorder()
+
+			s.router().ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want 303", rr.Code)
+			}
+			if loc := rr.Header().Get("Location"); loc != "/login" {
+				t.Errorf("Location = %q, want /login", loc)
+			}
+		})
+	}
+}
+
+func TestFeedHandlerSubscribeControl(t *testing.T) {
+	const (
+		subscribeForm   = `action="/feeds/` + testFeedID + `/subscribe"`
+		unsubscribeForm = `action="/feeds/` + testFeedID + `/unsubscribe"`
+	)
+	tests := []struct {
+		name       string
+		feed       rss.Feed
+		subscribed bool
+		want       []string
+		notWant    []string
+	}{
+		{
+			name: "not subscribed",
+			feed: rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
+			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Subscribe to Example Feed"`},
+			notWant: []string{
+				unsubscribeForm, "Subscribed ✓",
+			},
+		},
+		{
+			name:       "subscribed",
+			feed:       rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
+			subscribed: true,
+			want:       []string{unsubscribeForm, "Subscribed ✓", `aria-label="Unsubscribe from Example Feed"`},
+			notWant:    []string{subscribeForm},
+		},
+		{
+			name: "empty title labels the button with the URL",
+			feed: rss.Feed{Url: "https://example.com/feed.xml"},
+			want: []string{`aria-label="Subscribe to https://example.com/feed.xml"`},
+		},
+		{
+			name:    "gone and not subscribed",
+			feed:    rss.Feed{Title: "Old Feed", GoneAt: time.Now()},
+			notWant: []string{subscribeForm, unsubscribeForm},
+		},
+		{
+			name:       "gone and subscribed",
+			feed:       rss.Feed{Title: "Old Feed", GoneAt: time.Now()},
+			subscribed: true,
+			want:       []string{unsubscribeForm},
+			notWant:    []string{subscribeForm},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotUser string
+			var gotIDs []string
+			s := subscriptionServer(t, tt.feed, nil, &fakeSubscriptionStore{
+				subscribedFeedIDsFn: func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {
+					gotUser, gotIDs = userID, feedIDs
+					return map[string]bool{testFeedID: tt.subscribed}, nil
+				},
+			})
+			s.services.ArticleService = &fakeArticleStore{}
+			s.services.SiteService = &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+				return rss.Site{ID: id, Host: "example.com"}, nil
+			}}
+
+			rr := serveFeedAs(t, s, "user-1", testFeedID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if gotUser != "user-1" || len(gotIDs) != 1 || gotIDs[0] != testFeedID {
+				t.Errorf("SubscribedFeedIDs(%q, %v), want (user-1, [%s])", gotUser, gotIDs, testFeedID)
+			}
+			body := rr.Body.String()
+			for _, w := range tt.want {
+				if !strings.Contains(body, w) {
+					t.Errorf("body does not contain %q: %s", w, body)
+				}
+			}
+			for _, w := range tt.notWant {
+				if strings.Contains(body, w) {
+					t.Errorf("body contains %q: %s", w, body)
+				}
+			}
+		})
+	}
+}
+
+func TestFeedHandlerSubscribedFeedIDsError(t *testing.T) {
+	s := feedServer(t, nil)
+	s.services.SubscriptionService = &fakeSubscriptionStore{
+		subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	rr := serveFeed(t, s, testFeedID)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+// serveFeedAs is serveFeed for a logged-in user.
+func serveFeedAs(t *testing.T, s *Server, userID, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/feeds/"+id, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.feedHandler)).ServeHTTP(rr, req)
+	return rr
 }

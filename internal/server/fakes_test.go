@@ -97,3 +97,30 @@ func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, limit 
 	}
 	return f.listByFeedFn(ctx, feedID, limit)
 }
+
+type fakeSubscriptionStore struct {
+	subscribeFn         func(ctx context.Context, userID, feedID string) error
+	unsubscribeFn       func(ctx context.Context, userID, feedID string) error
+	subscribedFeedIDsFn func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
+}
+
+func (f *fakeSubscriptionStore) Subscribe(ctx context.Context, userID, feedID string) error {
+	if f.subscribeFn == nil {
+		return nil
+	}
+	return f.subscribeFn(ctx, userID, feedID)
+}
+
+func (f *fakeSubscriptionStore) Unsubscribe(ctx context.Context, userID, feedID string) error {
+	if f.unsubscribeFn == nil {
+		return nil
+	}
+	return f.unsubscribeFn(ctx, userID, feedID)
+}
+
+func (f *fakeSubscriptionStore) SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {
+	if f.subscribedFeedIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.subscribedFeedIDsFn(ctx, userID, feedIDs)
+}

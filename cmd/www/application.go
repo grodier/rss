@@ -54,13 +54,14 @@ func (app *Application) Run(args []string) error {
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
 
 	services := server.Services{
-		FeedService:    psql.NewFeedRepository(db),
-		UserService:    psql.NewUserRepository(db),
-		SearchService:  psql.NewSearchRepository(db),
-		SiteService:    psql.NewSiteRepository(db),
-		LookupService:  psql.NewLookupRepository(db),
-		ArticleService: psql.NewArticleRepository(db),
-		Refresher:      refresher,
+		FeedService:         psql.NewFeedRepository(db),
+		UserService:         psql.NewUserRepository(db),
+		SearchService:       psql.NewSearchRepository(db),
+		SiteService:         psql.NewSiteRepository(db),
+		LookupService:       psql.NewLookupRepository(db),
+		ArticleService:      psql.NewArticleRepository(db),
+		SubscriptionService: psql.NewSubscriptionRepository(db),
+		Refresher:           refresher,
 	}
 
 	srvConfig := server.Config{

@@ -35,6 +35,7 @@ func siteServer(t *testing.T, site rss.Site, siteErr error, feeds []rss.Feed, fe
 func siteServerWithLookup(t *testing.T, site rss.Site, siteErr error, feeds []rss.Feed, feedsErr error, lookup rss.Lookup, lookupErr error) *Server {
 	t.Helper()
 	return newTestServerWith(t, Services{
+		SubscriptionService: &fakeSubscriptionStore{},
 		SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
 			return site, siteErr
 		}},
@@ -233,4 +234,98 @@ func TestSiteURLMapsToSiteHost(t *testing.T) {
 	if got := discovery.SiteKey(u); got != "example.com" {
 		t.Errorf("SiteKey = %q, want %q", got, "example.com")
 	}
+}
+
+func TestSiteHandlerSubscribeControls(t *testing.T) {
+	const (
+		subscribedID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		openID       = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		goneID       = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		goneFollowID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	)
+	site := rss.Site{ID: testSiteID, Host: "example.com", URL: "https://example.com/"}
+	feeds := []rss.Feed{
+		{ID: subscribedID, Title: "Followed", Url: "https://example.com/a.xml"},
+		{ID: openID, Title: "Open", Url: "https://example.com/b.xml"},
+		{ID: goneID, Title: "Gone", Url: "https://example.com/c.xml", GoneAt: time.Now()},
+		{ID: goneFollowID, Title: "Gone but followed", Url: "https://example.com/d.xml", GoneAt: time.Now()},
+	}
+	var gotUser string
+	var gotIDs []string
+	s := siteServer(t, site, nil, feeds, nil)
+	s.services.SubscriptionService = &fakeSubscriptionStore{
+		subscribedFeedIDsFn: func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {
+			gotUser, gotIDs = userID, feedIDs
+			return map[string]bool{subscribedID: true, goneFollowID: true}, nil
+		},
+	}
+
+	rr := serveSiteAs(t, s, "user-1", testSiteID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if gotUser != "user-1" || strings.Join(gotIDs, ",") != strings.Join([]string{subscribedID, openID, goneID, goneFollowID}, ",") {
+		t.Errorf("SubscribedFeedIDs(%q, %v), want user-1 and the site's feed IDs in order", gotUser, gotIDs)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`id="feed-` + subscribedID + `"`,
+		`action="/feeds/` + subscribedID + `/unsubscribe"`,
+		`value="/sites/` + testSiteID + `#feed-` + subscribedID + `"`,
+		`aria-label="Unsubscribe from Followed"`,
+		`action="/feeds/` + openID + `/subscribe"`,
+		`value="/sites/` + testSiteID + `#feed-` + openID + `"`,
+		`aria-label="Subscribe to Open"`,
+		`action="/feeds/` + goneFollowID + `/unsubscribe"`,
+		"This feed no longer exists.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`action="/feeds/` + subscribedID + `/subscribe"`,
+		`action="/feeds/` + openID + `/unsubscribe"`,
+		`action="/feeds/` + goneID + `/subscribe"`,
+		`action="/feeds/` + goneID + `/unsubscribe"`,
+		`action="/feeds/` + goneFollowID + `/subscribe"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Errorf("body contains %q: %s", notWant, body)
+		}
+	}
+	if n := strings.Count(body, "This feed no longer exists."); n != 1 {
+		t.Errorf("%q appears %d times, want 1 (only the gone feed that isn't followed)", "This feed no longer exists.", n)
+	}
+}
+
+func TestSiteHandlerSubscribedFeedIDsError(t *testing.T) {
+	site := rss.Site{ID: testSiteID, Host: "example.com"}
+	s := siteServer(t, site, nil, []rss.Feed{{ID: testFeedID, Title: "F"}}, nil)
+	s.services.SubscriptionService = &fakeSubscriptionStore{
+		subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	rr := serveSite(t, s, testSiteID)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+// serveSiteAs is serveSite for a logged-in user.
+func serveSiteAs(t *testing.T, s *Server, userID, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/sites/x", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.siteHandler)).ServeHTTP(rr, req)
+	return rr
 }

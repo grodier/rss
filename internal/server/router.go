@@ -42,9 +42,10 @@ func (s *Server) router() http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuthentication)
-			r.Post("/subscribe", s.subscribeFeedHandler)
 			r.Get("/feeds/{id}", s.feedHandler)
 			r.Post("/feeds/{id}/refresh", s.feedRefreshHandler)
+			r.Post("/feeds/{id}/subscribe", s.feedSubscribeHandler)
+			r.Post("/feeds/{id}/unsubscribe", s.feedUnsubscribeHandler)
 			r.Get("/feeds", s.feedsHandler)
 			r.Get("/sites/{id}", s.siteHandler)
 			r.Get("/search", s.searchHandler)

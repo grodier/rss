@@ -32,19 +32,20 @@ type Feed struct {
 // Article is an item of a feed. Summary and Content are raw HTML as
 // published and must be sanitized before being rendered as HTML.
 type Article struct {
-	ID          string
-	FeedID      string
-	ExternalID  string
-	URL         string
-	ImageURL    string // feed-declared image; "" if none
-	Title       string
-	Summary     string
-	Content     string
-	Excerpt     string    // plain text, at most ingest.ExcerptLen runes plus "…"
-	PublishedAt time.Time // zero if unknown
-	TimelineAt  time.Time // position in timelines; see psql.timelineAt
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           string
+	FeedID       string
+	ExternalID   string
+	URL          string
+	CanonicalURL string // see ingest.CanonicalURL; "" if the article has no usable URL
+	ImageURL     string // feed-declared image; "" if none
+	Title        string
+	Summary      string
+	Content      string
+	Excerpt      string    // plain text, at most ingest.ExcerptLen runes plus "…"
+	PublishedAt  time.Time // zero if unknown
+	TimelineAt   time.Time // position in timelines; see psql.timelineAt
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // displayTitleLen is the most runes of an excerpt DisplayTitle uses.

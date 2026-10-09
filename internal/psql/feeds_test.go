@@ -48,16 +48,48 @@ func setNextFetch(t *testing.T, db *sql.DB, id string, at time.Time) {
 	}
 }
 
+// setRefreshRequested sets feed id's refresh_requested_at to now().
+func setRefreshRequested(t *testing.T, db *sql.DB, id string) {
+	t.Helper()
+	if _, err := db.Exec(`UPDATE feeds SET refresh_requested_at = now() WHERE id = $1`, id); err != nil {
+		t.Fatalf("set refresh_requested_at: %v", err)
+	}
+}
+
+// newSubscribedFeed is newTestFeed with a subscription by userID, so
+// ClaimDue considers it.
+func newSubscribedFeed(t *testing.T, db *sql.DB, userID string) rss.Feed {
+	t.Helper()
+	f := newTestFeed(t, db)
+	if err := NewSubscriptionRepository(db).Subscribe(t.Context(), userID, f.ID); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	return f
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestFeedRepositoryClaimDue(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)
+	userID := newTestUser(t, db)
 	const lease = 10 * time.Minute
 	// Other tests share the database, so make this test's feeds due longest.
 	longAgo := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
+	// claim claims a feed and fails unless it is want.
+	claim := func(t *testing.T, want rss.Feed) {
+		t.Helper()
+		got, err := repo.ClaimDue(t.Context(), lease)
+		if err != nil {
+			t.Fatalf("ClaimDue: %v", err)
+		}
+		if got.ID != want.ID {
+			t.Fatalf("claimed %q; want %q", got.ID, want.ID)
+		}
+	}
+
 	t.Run("claims the feed due longest and leases it", func(t *testing.T) {
-		first, second := newTestFeed(t, db), newTestFeed(t, db)
+		first, second := newSubscribedFeed(t, db, userID), newSubscribedFeed(t, db, userID)
 		setNextFetch(t, db, first.ID, longAgo)
 		setNextFetch(t, db, second.ID, longAgo.Add(time.Hour))
 
@@ -87,7 +119,7 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 	})
 
 	t.Run("skips gone feeds", func(t *testing.T) {
-		gone, live := newTestFeed(t, db), newTestFeed(t, db)
+		gone, live := newSubscribedFeed(t, db, userID), newSubscribedFeed(t, db, userID)
 		setNextFetch(t, db, gone.ID, longAgo.Add(-time.Hour))
 		setNextFetch(t, db, live.ID, longAgo)
 		if err := repo.MarkGone(t.Context(), gone.ID); err != nil {
@@ -106,7 +138,7 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 	t.Run("concurrent claims never return the same feed", func(t *testing.T) {
 		var ids []string
 		for range 2 {
-			f := newTestFeed(t, db)
+			f := newSubscribedFeed(t, db, userID)
 			setNextFetch(t, db, f.ID, longAgo)
 			ids = append(ids, f.ID)
 		}
@@ -139,6 +171,167 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 			}
 		}
 	})
+
+	// Each subtest below makes the feed that must be skipped due longer than
+	// the one that must be claimed.
+
+	t.Run("skips a due feed with no subscriber and no request", func(t *testing.T) {
+		unfollowed, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		setNextFetch(t, db, unfollowed.ID, longAgo.Add(-time.Hour))
+		setNextFetch(t, db, subscribed.ID, longAgo)
+
+		claim(t, subscribed)
+	})
+
+	t.Run("claims a requested feed with no subscriber", func(t *testing.T) {
+		requested := newTestFeed(t, db)
+		setNextFetch(t, db, requested.ID, longAgo)
+		setRefreshRequested(t, db, requested.ID)
+
+		claim(t, requested)
+	})
+
+	t.Run("claims a requested feed before a subscribed feed due longer", func(t *testing.T) {
+		subscribed, requested := newSubscribedFeed(t, db, userID), newTestFeed(t, db)
+		setNextFetch(t, db, subscribed.ID, longAgo.Add(-time.Hour))
+		setNextFetch(t, db, requested.ID, longAgo)
+		setRefreshRequested(t, db, requested.ID)
+
+		claim(t, requested)
+		claim(t, subscribed)
+	})
+
+	t.Run("skips a gone feed with a request", func(t *testing.T) {
+		gone, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		setNextFetch(t, db, gone.ID, longAgo.Add(-time.Hour))
+		setNextFetch(t, db, subscribed.ID, longAgo)
+		if err := repo.MarkGone(t.Context(), gone.ID); err != nil {
+			t.Fatalf("MarkGone: %v", err)
+		}
+		// MarkGone clears requests, so set it afterwards.
+		setRefreshRequested(t, db, gone.ID)
+
+		claim(t, subscribed)
+	})
+
+	t.Run("skips a requested feed that isn't due yet", func(t *testing.T) {
+		backoff, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		setNextFetch(t, db, backoff.ID, time.Now().Add(time.Hour))
+		setRefreshRequested(t, db, backoff.ID)
+		setNextFetch(t, db, subscribed.ID, longAgo)
+
+		claim(t, subscribed)
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryRequestRefresh(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+	past := time.Now().Add(-time.Hour)
+
+	requestedAt := func(t *testing.T, id string) time.Time {
+		t.Helper()
+		f, err := repo.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		return f.RefreshRequestedAt
+	}
+
+	t.Run("requests a due feed", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setNextFetch(t, db, feed.ID, past)
+
+		before := dbNow(t, db)
+		if err := repo.RequestRefresh(ctx, feed.ID); err != nil {
+			t.Fatalf("RequestRefresh: %v", err)
+		}
+		if got, after := requestedAt(t, feed.ID), dbNow(t, db); got.Before(before) || got.After(after) {
+			t.Errorf("got RefreshRequestedAt %v; want within [%v, %v]", got, before, after)
+		}
+	})
+
+	t.Run("ignores a feed that isn't due", func(t *testing.T) {
+		feed := newTestFeed(t, db) // next_fetch_at an hour from now
+		if err := repo.RequestRefresh(ctx, feed.ID); err != nil {
+			t.Fatalf("RequestRefresh: %v", err)
+		}
+		if got := requestedAt(t, feed.ID); !got.IsZero() {
+			t.Errorf("got RefreshRequestedAt %v; want zero", got)
+		}
+	})
+
+	t.Run("ignores a gone feed", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setNextFetch(t, db, feed.ID, past)
+		if err := repo.MarkGone(ctx, feed.ID); err != nil {
+			t.Fatalf("MarkGone: %v", err)
+		}
+		if err := repo.RequestRefresh(ctx, feed.ID); err != nil {
+			t.Fatalf("RequestRefresh: %v", err)
+		}
+		if got := requestedAt(t, feed.ID); !got.IsZero() {
+			t.Errorf("got RefreshRequestedAt %v; want zero", got)
+		}
+	})
+
+	t.Run("keeps an existing request", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setNextFetch(t, db, feed.ID, past)
+		first := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+		if _, err := db.Exec(`UPDATE feeds SET refresh_requested_at = $2 WHERE id = $1`, feed.ID, first); err != nil {
+			t.Fatalf("set refresh_requested_at: %v", err)
+		}
+		if err := repo.RequestRefresh(ctx, feed.ID); err != nil {
+			t.Fatalf("RequestRefresh: %v", err)
+		}
+		if got := requestedAt(t, feed.ID); !got.Equal(first) {
+			t.Errorf("got RefreshRequestedAt %v; want unchanged %v", got, first)
+		}
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		if err := repo.RequestRefresh(ctx, "00000000-0000-4000-8000-000000000000"); err != nil {
+			t.Errorf("got %v; want nil", err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryOutcomesClearRefreshRequest(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+	next := time.Now().Add(time.Hour)
+
+	tests := []struct {
+		name   string
+		record func(f rss.Feed) error
+	}{
+		{"SaveFetch", func(f rss.Feed) error { _, err := repo.SaveFetch(ctx, f, nil); return err }},
+		{"RecordFailure", func(f rss.Feed) error { return repo.RecordFailure(ctx, f.ID, "boom", next) }},
+		{"RecordNotModified", func(f rss.Feed) error { return repo.RecordNotModified(ctx, f.ID, next) }},
+		{"MarkGone", func(f rss.Feed) error { return repo.MarkGone(ctx, f.ID) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feed := newTestFeed(t, db)
+			setRefreshRequested(t, db, feed.ID)
+
+			if err := tt.record(feed); err != nil {
+				t.Fatalf("%s: %v", tt.name, err)
+			}
+			got, err := repo.GetByID(ctx, feed.ID)
+			if err != nil {
+				t.Fatalf("GetByID: %v", err)
+			}
+			if !got.RefreshRequestedAt.IsZero() {
+				t.Errorf("got RefreshRequestedAt %v; want zero", got.RefreshRequestedAt)
+			}
+		})
+	}
 }
 
 // Requires a migrated database; see psqltest.NewDB.

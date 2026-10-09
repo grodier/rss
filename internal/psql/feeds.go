@@ -13,7 +13,8 @@ import (
 // feedColumnNames are the columns scanFeed reads, in order.
 var feedColumnNames = []string{
 	"id", "site_id", "url", "site_url", "title", "description", "last_fetched_at",
-	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at", "created_at",
+	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at",
+	"refresh_requested_at", "created_at",
 }
 
 var (
@@ -27,16 +28,17 @@ var (
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
-	var lastFetched, lastAttempt, goneAt sql.NullTime
+	var lastFetched, lastAttempt, goneAt, refreshRequested sql.NullTime
 	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
 		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch,
-		&feed.ETag, &feed.LastModified, &goneAt, &feed.CreatedAt)
+		&feed.ETag, &feed.LastModified, &goneAt, &refreshRequested, &feed.CreatedAt)
 	if err != nil {
 		return rss.Feed{}, err
 	}
 	feed.LastFetched = lastFetched.Time
 	feed.LastAttempt = lastAttempt.Time
 	feed.GoneAt = goneAt.Time
+	feed.RefreshRequestedAt = refreshRequested.Time
 	return feed, nil
 }
 
@@ -105,7 +107,8 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 			site_url = COALESCE(NULLIF($4, ''), site_url),
 			next_fetch_at = $5,
 			etag = $6,
-			last_modified = $7
+			last_modified = $7,
+			refresh_requested_at = NULL
 		WHERE id = $1`
 
 	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.NextFetch, f.ETag, f.LastModified)
@@ -138,7 +141,8 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 // feed doesn't exist.
 func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next time.Time) error {
 	stmt := `UPDATE feeds SET last_attempt_at = now(), last_error = $2,
-			consecutive_failures = consecutive_failures + 1, next_fetch_at = $3
+			consecutive_failures = consecutive_failures + 1, next_fetch_at = $3,
+			refresh_requested_at = NULL
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen), next)
@@ -149,7 +153,8 @@ func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next
 // consecutive_failures) and next_fetch_at = next. rss.ErrNoRecord if missing.
 func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next time.Time) error {
 	stmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
-			last_error = '', consecutive_failures = 0, next_fetch_at = $2
+			last_error = '', consecutive_failures = 0, next_fetch_at = $2,
+			refresh_requested_at = NULL
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, id, next)
@@ -159,23 +164,28 @@ func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next 
 // last_attempt_at to now() and last_error to "status 410". Gone feeds are
 // never claimed by ClaimDue. rss.ErrNoRecord if the feed doesn't exist.
 func (r *FeedRepository) MarkGone(ctx context.Context, id string) error {
-	stmt := `UPDATE feeds SET gone_at = now(), last_attempt_at = now(), last_error = 'status 410'
+	stmt := `UPDATE feeds SET gone_at = now(), last_attempt_at = now(), last_error = 'status 410',
+			refresh_requested_at = NULL
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, id)
 }
 
-// ClaimDue claims the feed that has been due longest (next_fetch_at <= now())
-// by moving its next_fetch_at to now() + lease, and returns it. If the
-// claimer never records an outcome, the feed is due again when the lease
-// runs out. Gone feeds (see MarkGone) are skipped. rss.ErrNoRecord when no
-// feed is due.
+// ClaimDue claims a due feed (next_fetch_at <= now()) that has a subscriber
+// or a pending refresh request (see RequestRefresh), by moving its
+// next_fetch_at to now() + lease, and returns it. Requested feeds come first,
+// since someone is waiting on the page; then the feed that has been due
+// longest. If the claimer never records an outcome, the feed is due again when
+// the lease runs out (a request is only cleared when an outcome is recorded).
+// Gone feeds (see MarkGone) are skipped. rss.ErrNoRecord when no feed is due.
 func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss.Feed, error) {
 	stmt := `UPDATE feeds SET next_fetch_at = now() + make_interval(secs => $1)
 		WHERE id = (
 			SELECT id FROM feeds
 			WHERE next_fetch_at <= now() AND gone_at IS NULL
-			ORDER BY next_fetch_at
+			  AND (refresh_requested_at IS NOT NULL
+			       OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id))
+			ORDER BY refresh_requested_at IS NULL, next_fetch_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
@@ -189,6 +199,18 @@ func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss
 		return rss.Feed{}, err
 	}
 	return feed, nil
+}
+
+// RequestRefresh asks background refresh to fetch feed id soon, if it's due
+// (next_fetch_at <= now()), not gone and not already requested. Otherwise, or
+// if the feed doesn't exist, it does nothing and returns nil.
+func (r *FeedRepository) RequestRefresh(ctx context.Context, id string) error {
+	stmt := `UPDATE feeds SET refresh_requested_at = now()
+		WHERE id = $1 AND refresh_requested_at IS NULL
+		  AND gone_at IS NULL AND next_fetch_at <= now()`
+
+	_, err := r.DB.ExecContext(ctx, stmt, id)
+	return err
 }
 
 // ListBySite returns a site's feeds ordered by title, then URL.

@@ -376,21 +376,21 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 
 func TestFeedHandlerFetchStatus(t *testing.T) {
 	attempt := time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC)
-	next := time.Date(2026, 1, 3, 9, 30, 0, 0, time.UTC)
+	next := time.Date(2099, 1, 3, 9, 30, 0, 0, time.UTC) // future, so no refresh is requested
 	tests := []struct {
 		name     string
 		failures int
 		want     []string
 		notWant  []string
 	}{
-		{"no failures", 0, []string{"Next check around 3 Jan 2026 09:30 UTC."}, []string{"fetch-error"}},
+		{"no failures", 0, []string{"Next check around 3 Jan 2099 09:30 UTC."}, []string{"fetch-error"}},
 		{"one failure", 1, []string{
 			"The last attempt to fetch this feed failed (2 Jan 2026 15:04 UTC). We'll keep trying.",
-			"Next check around 3 Jan 2026 09:30 UTC.",
+			"Next check around 3 Jan 2099 09:30 UTC.",
 		}, []string{"The last 1 attempts"}},
 		{"three failures", 3, []string{
 			"The last 3 attempts to fetch this feed failed, most recently 2 Jan 2026 15:04 UTC.",
-			"Next check around 3 Jan 2026 09:30 UTC.",
+			"Next check around 3 Jan 2099 09:30 UTC.",
 		}, nil},
 	}
 	for _, tt := range tests {
@@ -448,6 +448,70 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 		if strings.Contains(body, w) {
 			t.Errorf("body contains %q: %s", w, body)
 		}
+	}
+}
+
+func TestFeedHandlerRefreshRequest(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(time.Hour)
+	const checking = "Checking for new articles…"
+
+	tests := []struct {
+		name        string
+		feed        rss.Feed
+		requestErr  error
+		wantRequest bool
+		wantMessage bool
+	}{
+		{"due feed", rss.Feed{NextFetch: past}, nil, true, true},
+		{"feed not due", rss.Feed{NextFetch: future}, nil, false, false},
+		{"gone feed", rss.Feed{NextFetch: past, GoneAt: past}, nil, false, false},
+		{"pending request", rss.Feed{NextFetch: past, RefreshRequestedAt: past}, nil, false, true},
+		{"pending request, not due", rss.Feed{NextFetch: future, RefreshRequestedAt: past}, nil, false, true},
+		{"request error", rss.Feed{NextFetch: past}, errors.New("db down"), true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requested []string
+			s := newTestServerWith(t, Services{
+				SubscriptionService: &fakeSubscriptionStore{},
+				ArticleService:      &fakeArticleStore{},
+				FeedService: &fakeFeedStore{
+					getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+						f := tt.feed
+						f.ID, f.Title, f.Url, f.SiteID = id, "T", "https://example.com/feed.xml", testSiteID
+						return f, nil
+					},
+					requestRefreshFn: func(ctx context.Context, id string) error {
+						requested = append(requested, id)
+						return tt.requestErr
+					},
+				},
+				SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+					return rss.Site{ID: id, Host: "example.com"}, nil
+				}},
+			})
+
+			rr := serveFeed(t, s, testFeedID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if tt.wantRequest {
+				if len(requested) != 1 || requested[0] != testFeedID {
+					t.Errorf("RequestRefresh calls = %v, want [%s]", requested, testFeedID)
+				}
+			} else if len(requested) != 0 {
+				t.Errorf("RequestRefresh calls = %v, want none", requested)
+			}
+			body := rr.Body.String()
+			if got := strings.Contains(body, checking); got != tt.wantMessage {
+				t.Errorf("body contains %q = %v, want %v: %s", checking, got, tt.wantMessage, body)
+			}
+			if tt.wantMessage && strings.Contains(body, "Next check around") {
+				t.Errorf("body contains %q alongside %q: %s", "Next check around", checking, body)
+			}
+		})
 	}
 }
 

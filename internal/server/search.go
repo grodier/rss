@@ -29,8 +29,10 @@ type searchData struct {
 	LookupQ string
 }
 
-// searchHandler searches the database only. It never fetches or writes, since
-// GET requests are not covered by CrossOriginProtection.
+// searchHandler searches the database only. GET requests are not covered by
+// CrossOriginProtection, so GET handlers never fetch user-supplied URLs or make
+// changes on the user's behalf; at most they do idempotent, bounded upkeep
+// (see feedHandler's RequestRefresh).
 func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	data := searchData{
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},

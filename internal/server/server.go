@@ -25,6 +25,7 @@ type Config struct {
 type FeedStore interface {
 	GetByID(ctx context.Context, id string) (rss.Feed, error)
 	ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error)
+	RequestRefresh(ctx context.Context, id string) error
 }
 
 // SiteStore is the site persistence the server depends on.

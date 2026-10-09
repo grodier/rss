@@ -15,9 +15,10 @@ feed page, conditional GET, 410 Gone, and `Retry-After` / `Cache-Control`.
 
 Decisions made while planning (don't reopen them without a reason): workers run inside
 `www`, not as a cron-hit endpoint or a separate service; the `feeds` table is the queue,
-claimed with a lease instead of a status column; every feed is refreshed until
-subscriptions exist; the Refresh button stays synchronous and goes through the same
-`ingest.Refresher`; RSS `<ttl>` / `sy:updatePeriod` are ignored.
+claimed with a lease instead of a status column; only feeds someone subscribes to, or
+whose page view requested a refresh (#137), are refreshed; the Refresh button stays
+synchronous and goes through the same `ingest.Refresher`; RSS `<ttl>` /
+`sy:updatePeriod` are ignored.
 
 Later, each with when it pays off:
 

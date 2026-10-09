@@ -59,7 +59,9 @@
     {{else if gt .Feed.ConsecutiveFailures 1}}
     <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}. We'll keep trying.</p>
     {{end}}
-    {{if not .Feed.NextFetch.IsZero}}
+    {{if .RefreshPending}}
+    <p>Checking for new articles…</p>
+    {{else if not .Feed.NextFetch.IsZero}}
     <p>Next check around {{.Feed.NextFetch.Format "2 Jan 2006 15:04 MST"}}.</p>
     {{end}}
     <form action="/feeds/{{.Feed.ID}}/refresh" method="post">

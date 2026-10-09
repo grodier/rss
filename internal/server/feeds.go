@@ -85,6 +85,23 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Viewing a stale feed queues a background refresh, so the page doesn't
+	// wait on a fetch. GET handlers otherwise never write, since
+	// CrossOriginProtection doesn't cover GET (see searchHandler). This write
+	// is idempotent upkeep rather than a change made on the user's behalf: it
+	// can only queue a fetch of a feed that's already stale, and it changes
+	// nothing the user sees except freshness, so a forged request gains
+	// nothing. Subscriptions aren't checked: for a subscribed feed the request
+	// is harmless.
+	pending := !feed.RefreshRequestedAt.IsZero()
+	if !pending && feed.GoneAt.IsZero() && !feed.NextFetch.After(time.Now()) {
+		if err := s.services.FeedService.RequestRefresh(r.Context(), feed.ID); err != nil {
+			s.logError(r, err) // the page still renders
+		} else {
+			pending = true
+		}
+	}
+
 	site, err := s.services.SiteService.GetByID(r.Context(), feed.SiteID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -107,17 +124,19 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
-		Feed       rss.Feed
-		Site       rss.Site
-		Articles   []rss.Article
-		Subscribed bool
-		Flash      string
+		Feed           rss.Feed
+		Site           rss.Site
+		Articles       []rss.Article
+		Subscribed     bool
+		RefreshPending bool
+		Flash          string
 	}{
-		Feed:       feed,
-		Site:       site,
-		Articles:   articles,
-		Subscribed: subscribed[feed.ID],
-		Flash:      flash,
+		Feed:           feed,
+		Site:           site,
+		Articles:       articles,
+		Subscribed:     subscribed[feed.ID],
+		RefreshPending: pending,
+		Flash:          flash,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {

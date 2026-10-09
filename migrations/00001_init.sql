@@ -40,6 +40,7 @@ CREATE TABLE feeds (
     etag TEXT NOT NULL DEFAULT '',          -- ETag of the last 2xx response, sent back as If-None-Match
     last_modified TEXT NOT NULL DEFAULT '', -- Last-Modified of the last 2xx response, sent back as If-Modified-Since
     gone_at TIMESTAMPTZ, -- set when the feed answered 410 Gone; it is no longer fetched
+    refresh_requested_at TIMESTAMPTZ, -- set when a page view asks for a stale feed to be fetched; cleared when the outcome is recorded
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -105,6 +106,8 @@ CREATE TABLE subscriptions (
 
     PRIMARY KEY (user_id, feed_id)
 );
+
+CREATE INDEX subscriptions_feed_id_idx ON subscriptions (feed_id);
 
 CREATE TABLE sessions (
   token TEXT PRIMARY KEY,

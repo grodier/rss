@@ -52,7 +52,7 @@
       <ul>
         {{range .Feeds}}
         <li id="feed-{{.ID}}">
-          <a href="/feeds/{{.ID}}">{{.Title}}</a>
+          <a href="/feeds/{{.ID}}">{{or .Title .Url}}</a>
           {{with .Description}}<p>{{.}}</p>{{end}}
           <p>{{.Url}}</p>
           {{if index $.Subscribed .ID}}

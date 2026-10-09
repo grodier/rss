@@ -451,6 +451,35 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerEmptyTitleShowsURL(t *testing.T) {
+	tests := []struct {
+		name, title, want string
+	}{
+		{"titled", "Example Feed", "Example Feed"},
+		{"untitled", "", "https://example.com/feed.xml"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerWith(t, Services{
+				SubscriptionService: &fakeSubscriptionStore{},
+				ArticleService:      &fakeArticleStore{},
+				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+					return rss.Feed{ID: id, Title: tt.title, Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
+				}},
+				SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+					return rss.Site{ID: id, Host: "example.com"}, nil
+				}},
+			})
+			body := serveFeed(t, s, testFeedID).Body.String()
+			for _, want := range []string{"<h1>" + tt.want + "</h1>", "<title>rss - " + tt.want + "</title>"} {
+				if !strings.Contains(body, want) {
+					t.Errorf("body does not contain %q: %s", want, body)
+				}
+			}
+		})
+	}
+}
+
 func TestFeedHandlerRefreshRequest(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	future := time.Now().Add(time.Hour)

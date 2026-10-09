@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rss - {{.Feed.Title}}</title>
+  <title>rss - {{or .Feed.Title .Feed.Url}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
@@ -28,7 +28,7 @@
     {{with .Flash}}
     <div class="flash">{{.}}</div>
     {{end}}
-    <h1>{{.Feed.Title}}</h1>
+    <h1>{{or .Feed.Title .Feed.Url}}</h1>
     {{if .Subscribed}}
     <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
       <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">

@@ -90,6 +90,29 @@ func TestSearchNoResults(t *testing.T) {
 	}
 }
 
+func TestSearchEmptyFeedTitleShowsURL(t *testing.T) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+		return []rss.SiteWithFeeds{{
+			Site: rss.Site{ID: "site-1", Host: "one.example"},
+			Feeds: []rss.Feed{
+				{ID: "feed-1", Title: "Titled", Url: "https://one.example/a.xml"},
+				{ID: "feed-2", Url: "https://one.example/b.xml"},
+			},
+		}}, nil
+	}}
+	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
+	body := searchRequest(t, s, "one").Body.String()
+
+	for _, want := range []string{
+		`<a href="/feeds/feed-1">Titled</a>`,
+		`<a href="/feeds/feed-2">https://one.example/b.xml</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+}
+
 func TestSearchStoreError(t *testing.T) {
 	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, errors.New("boom")

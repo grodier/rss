@@ -10,19 +10,19 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// feedColumns are the columns scanFeed reads, in order.
-const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at,
-	last_attempt_at, last_error, consecutive_failures, next_fetch_at, etag, last_modified, gone_at, created_at`
+// feedColumnNames are the columns scanFeed reads, in order.
+var feedColumnNames = []string{
+	"id", "site_id", "url", "site_url", "title", "description", "last_fetched_at",
+	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at", "created_at",
+}
 
-// qualifiedFeedColumns is feedColumns with each column prefixed by the feeds
-// table alias f, for queries that join tables with clashing column names.
-var qualifiedFeedColumns = func() string {
-	cols := strings.Split(feedColumns, ",")
-	for i, c := range cols {
-		cols[i] = "f." + strings.TrimSpace(c)
-	}
-	return strings.Join(cols, ", ")
-}()
+var (
+	// feedColumns is feedColumnNames as a select list.
+	feedColumns = strings.Join(feedColumnNames, ", ")
+	// qualifiedFeedColumns prefixes each column with the feeds alias f, for
+	// queries that join tables with clashing column names.
+	qualifiedFeedColumns = "f." + strings.Join(feedColumnNames, ", f.")
+)
 
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {

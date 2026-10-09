@@ -267,11 +267,7 @@ Later, not issues yet:
   folders or pinned feeds). Plan it after the reading experience. Open question: how it
   relates to the standalone feed page.
 - [ ] **OPML import/export.** Import subscriptions from another reader and export your own.
-- [ ] **Show feeds that have no title.** `site.html` renders `<a href="/feeds/{{.ID}}">{{.Title}}</a>`
-  and `feed.html` renders `<h1>{{.Feed.Title}}</h1>`, so a feed without a title shows an
-  empty link and heading. Found while building #135, whose flash messages and button labels
-  already fall back to the feed URL. *Fix:* `{{or .Title .Url}}` in both templates (and in
-  the search and My feeds lists).
+- [ ] **Show feeds that have no title:** #145.
 
 Reading (needs planning):
 

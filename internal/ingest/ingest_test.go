@@ -58,6 +58,36 @@ func TestExternalID(t *testing.T) {
 	})
 }
 
+func TestExcerpt(t *testing.T) {
+	words := func(n int) string { return strings.Repeat("a", n) }
+	exact := strings.Repeat("ab ", 99) + "abc" // 300 runes
+	over := strings.Repeat("ab ", 100) + "x"   // 301 runes
+	tests := []struct {
+		name, summary, content, want string
+	}{
+		{"summary wins", "<p>sum</p>", "<p>con</p>", "sum"},
+		{"content when summary empty", "", "<p>con</p>", "con"},
+		{"content when summary only tags", "<p> </p>", "con", "con"},
+		{"entities and tags", "<p>a &amp; <b>b</b></p>", "", "a & b"},
+		{"exactly 300 unchanged", exact, "", exact},
+		{"301 cut at last space", over, "", strings.Repeat("ab ", 99) + "ab…"},
+		{"long word cut at 300", words(400), "", words(300) + "…"},
+		{"multi-byte runes", strings.Repeat("é", 300), "", strings.Repeat("é", 300)},
+		{"multi-byte cut", strings.Repeat("é", 301), "", strings.Repeat("é", 300) + "…"},
+		{"both empty", "", "", ""},
+	}
+	if len([]rune(exact)) != 300 || len([]rune(over)) != 301 {
+		t.Fatal("bad fixtures")
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := excerpt(tt.summary, tt.content); got != tt.want {
+				t.Errorf("excerpt = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestArticles(t *testing.T) {
 	t.Run("fields copied, order preserved", func(t *testing.T) {
 		published := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -66,7 +96,7 @@ func TestArticles(t *testing.T) {
 			{ID: "a", URL: "https://example.com/a", Title: "A"},
 		}
 		want := []rss.Article{
-			{ExternalID: "b", URL: "https://example.com/b", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", PublishedAt: published},
+			{ExternalID: "b", URL: "https://example.com/b", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Excerpt: "sb", PublishedAt: published},
 			{ExternalID: "a", URL: "https://example.com/a", Title: "A"},
 		}
 		got := Articles(items)

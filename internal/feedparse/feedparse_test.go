@@ -381,8 +381,8 @@ func TestHTMLToText(t *testing.T) {
 		{"a<!-- comment -->b", "ab"},
 	}
 	for _, tt := range tests {
-		if got := htmlToText(tt.in); got != tt.want {
-			t.Errorf("htmlToText(%q) = %q, want %q", tt.in, got, tt.want)
+		if got := HTMLToText(tt.in); got != tt.want {
+			t.Errorf("HTMLToText(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

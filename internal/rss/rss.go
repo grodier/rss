@@ -1,7 +1,10 @@
 // Package rss holds the application's domain types and errors.
 package rss
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Feed struct {
 	ID          string
@@ -36,10 +39,45 @@ type Article struct {
 	Title       string
 	Summary     string
 	Content     string
+	Excerpt     string    // plain text, at most ingest.ExcerptLen runes plus "…"
 	PublishedAt time.Time // zero if unknown
 	TimelineAt  time.Time // position in timelines; see psql.timelineAt
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// displayTitleLen is the most runes of an excerpt DisplayTitle uses.
+const displayTitleLen = 80
+
+// DisplayTitle returns Title; for an untitled article, the start of its
+// excerpt (at most 80 runes, cut at a word boundary, with "…" if cut);
+// else "(untitled)".
+func (a Article) DisplayTitle() string {
+	if a.Title != "" {
+		return a.Title
+	}
+	if a.Excerpt != "" {
+		return Shorten(a.Excerpt, displayTitleLen)
+	}
+	return "(untitled)"
+}
+
+// Shorten returns s unchanged if it has at most n runes. Otherwise it cuts
+// s at the last space at or before n runes (or at n if there is none),
+// trims trailing space and appends "…".
+func Shorten(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	cut := n
+	for i := n; i > 0; i-- {
+		if r[i] == ' ' {
+			cut = i
+			break
+		}
+	}
+	return strings.TrimSpace(string(r[:cut])) + "…"
 }
 
 // FeedWithArticles is a feed and articles to save for it.

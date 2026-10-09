@@ -18,6 +18,20 @@ import (
 // MaxArticles is the most articles kept from one fetch of a feed.
 const MaxArticles = 200
 
+// ExcerptLen is the most runes an article's excerpt has, not counting
+// the trailing "…".
+const ExcerptLen = 300
+
+// excerpt returns plain text from summary, else content (both raw HTML),
+// shortened to ExcerptLen runes at a word boundary with "…" appended.
+func excerpt(summary, content string) string {
+	text := feedparse.HTMLToText(summary)
+	if text == "" {
+		text = feedparse.HTMLToText(content)
+	}
+	return rss.Shorten(text, ExcerptLen)
+}
+
 // Articles converts parsed items to articles, in document order: each gets
 // an ExternalID (see externalID), items with a duplicate ExternalID after
 // the first are dropped, and at most MaxArticles are returned. FeedID, ID
@@ -40,6 +54,7 @@ func Articles(items []feedparse.Item) []rss.Article {
 			Title:       it.Title,
 			Summary:     it.Summary,
 			Content:     it.Content,
+			Excerpt:     excerpt(it.Summary, it.Content),
 			PublishedAt: it.Published,
 		})
 	}

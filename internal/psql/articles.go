@@ -21,7 +21,7 @@ func NewArticleRepository(db *sql.DB) *ArticleRepository {
 // ListByFeed returns a feed's newest articles first (by published date, else
 // when we first saw them), at most limit.
 func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
-	stmt := `SELECT id, feed_id, external_id, url, title, summary, content, excerpt, published_at, timeline_at, created_at, updated_at
+	stmt := `SELECT id, feed_id, external_id, url, image_url, title, summary, content, excerpt, published_at, timeline_at, created_at, updated_at
 		FROM articles
 		WHERE feed_id = $1
 		ORDER BY COALESCE(published_at, created_at) DESC, id
@@ -37,7 +37,7 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit
 	for rows.Next() {
 		var a rss.Article
 		var publishedAt sql.NullTime
-		if err := rows.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.ImageURL, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		a.PublishedAt = publishedAt.Time
@@ -114,18 +114,19 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
 	// timeline_at is deliberately not updated.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, title, summary, content, excerpt, published_at, timeline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	stmt := `INSERT INTO articles (feed_id, external_id, url, image_url, title, summary, content, excerpt, published_at, timeline_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
+			image_url = EXCLUDED.image_url,
 			title = EXCLUDED.title,
 			summary = EXCLUDED.summary,
 			content = EXCLUDED.content,
 			excerpt = EXCLUDED.excerpt,
 			published_at = COALESCE(articles.published_at, EXCLUDED.published_at),
 			updated_at = now()
-		WHERE (articles.url, articles.title, articles.summary, articles.content, articles.excerpt)
-				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
+		WHERE (articles.url, articles.image_url, articles.title, articles.summary, articles.content, articles.excerpt)
+				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.image_url, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
 			OR (articles.published_at IS NULL AND EXCLUDED.published_at IS NOT NULL)
 		RETURNING (xmax = 0) AS inserted`
 
@@ -134,7 +135,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
 		var inserted bool
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, positions[i]).Scan(&inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.ImageURL, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, positions[i]).Scan(&inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.

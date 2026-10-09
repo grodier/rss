@@ -197,6 +197,11 @@
     color: var(--error);
   }
 
+  .subscribed {
+    color: #666;
+    font-size: 0.85em;
+  }
+
   .fetch-error {
     color: var(--error);
   }

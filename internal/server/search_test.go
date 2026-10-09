@@ -63,7 +63,7 @@ func TestSearchResults(t *testing.T) {
 			{Site: rss.Site{ID: "site-2", Host: "two.example"}},
 		}, nil
 	}}
-	s := newTestServerWith(t, Services{SearchService: store})
+	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
 	rr := searchRequest(t, s, "ex")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -119,4 +119,85 @@ func TestSearchRequiresAuthentication(t *testing.T) {
 	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
 		t.Errorf("got %d %q, want 303 /login", rr.Code, rr.Header().Get("Location"))
 	}
+}
+
+func TestSearchHandlerSubscribedMarker(t *testing.T) {
+	results := []rss.SiteWithFeeds{
+		{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}, {ID: "feed-2", Title: "F2"}}},
+		{Site: rss.Site{ID: "site-2", Host: "two.example"}, Feeds: []rss.Feed{{ID: "feed-3", Title: "F3"}}},
+	}
+	search := func(sites []rss.SiteWithFeeds) *fakeSearchStore {
+		return &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+			return sites, nil
+		}}
+	}
+	// get searches as user-1.
+	get := func(t *testing.T, s *Server) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/search?q=ex", nil)
+		ctx, err := s.sessionManager.Load(req.Context(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
+		rr := httptest.NewRecorder()
+		s.searchHandler(rr, req.WithContext(ctx))
+		return rr
+	}
+
+	t.Run("marks subscribed feeds only", func(t *testing.T) {
+		var gotUser string
+		var gotIDs []string
+		subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(_ context.Context, userID string, feedIDs []string) (map[string]bool, error) {
+			gotUser, gotIDs = userID, feedIDs
+			return map[string]bool{"feed-2": true}, nil
+		}}
+		s := newTestServerWith(t, Services{SearchService: search(results), SubscriptionService: subs})
+		rr := get(t, s)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if gotUser != "user-1" {
+			t.Errorf("SubscribedFeedIDs user = %q, want user-1", gotUser)
+		}
+		if strings.Join(gotIDs, ",") != "feed-1,feed-2,feed-3" {
+			t.Errorf("SubscribedFeedIDs ids = %v, want [feed-1 feed-2 feed-3]", gotIDs)
+		}
+		body := rr.Body.String()
+		if n := strings.Count(body, `class="subscribed"`); n != 1 {
+			t.Errorf("found %d Subscribed markers, want 1", n)
+		}
+		if !strings.Contains(body, `F2</a> <span class="subscribed">Subscribed</span>`) {
+			t.Error("subscribed feed F2 missing its marker")
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		sites []rss.SiteWithFeeds
+	}{
+		{"no results", nil},
+		{"no feeds", []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+				t.Error("SubscribedFeedIDs must not be called")
+				return nil, nil
+			}}
+			s := newTestServerWith(t, Services{SearchService: search(tc.sites), SubscriptionService: subs})
+			if rr := get(t, s); rr.Code != http.StatusOK {
+				t.Errorf("status = %d, want 200", rr.Code)
+			}
+		})
+	}
+
+	t.Run("store error", func(t *testing.T) {
+		subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("boom")
+		}}
+		s := newTestServerWith(t, Services{SearchService: search(results), SubscriptionService: subs})
+		if rr := get(t, s); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
 }

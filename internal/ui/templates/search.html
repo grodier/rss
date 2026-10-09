@@ -60,7 +60,7 @@
         <p>{{.Site.Host}}</p>
         <ul>
           {{range .Feeds}}
-          <li><a href="/feeds/{{.ID}}">{{.Title}}</a></li>
+          <li><a href="/feeds/{{.ID}}">{{.Title}}</a>{{if index $.Subscribed .ID}} <span class="subscribed">Subscribed</span>{{end}}</li>
           {{end}}
         </ul>
       </div>

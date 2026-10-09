@@ -8,8 +8,9 @@ import (
 )
 
 type fakeFeedStore struct {
-	getByIDFn    func(ctx context.Context, id string) (rss.Feed, error)
-	listBySiteFn func(ctx context.Context, siteID string) ([]rss.Feed, error)
+	getByIDFn        func(ctx context.Context, id string) (rss.Feed, error)
+	listBySiteFn     func(ctx context.Context, siteID string) ([]rss.Feed, error)
+	requestRefreshFn func(ctx context.Context, id string) error
 }
 
 func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error) {
@@ -18,6 +19,13 @@ func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error
 
 func (f *fakeFeedStore) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
 	return f.listBySiteFn(ctx, siteID)
+}
+
+func (f *fakeFeedStore) RequestRefresh(ctx context.Context, id string) error {
+	if f.requestRefreshFn == nil {
+		return nil
+	}
+	return f.requestRefreshFn(ctx, id)
 }
 
 type fakeSiteStore struct {

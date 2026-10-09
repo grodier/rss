@@ -110,6 +110,24 @@ func TestSiteHandlerEmptyTitleShowsHost(t *testing.T) {
 	}
 }
 
+func TestSiteHandlerEmptyFeedTitleShowsURL(t *testing.T) {
+	site := rss.Site{ID: testSiteID, Host: "example.com", URL: "https://example.com/"}
+	feeds := []rss.Feed{
+		{ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Titled", Url: "https://example.com/a.xml"},
+		{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Url: "https://example.com/b.xml"},
+	}
+	body := serveSite(t, siteServer(t, site, nil, feeds, nil), testSiteID).Body.String()
+
+	for _, want := range []string{
+		`<a href="/feeds/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa">Titled</a>`,
+		`<a href="/feeds/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb">https://example.com/b.xml</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+}
+
 func TestSiteHandlerStoreErrors(t *testing.T) {
 	boom := errors.New("boom")
 	site := rss.Site{ID: testSiteID, Host: "example.com"}

@@ -82,6 +82,7 @@ CREATE TABLE articles (
     title TEXT NOT NULL DEFAULT '',   -- plain text
     summary TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
     content TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
+    excerpt TEXT NOT NULL DEFAULT '', -- plain text from summary, else content; computed by internal/ingest
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines: arrival time for news, published date for backlog; set on insert, never updated

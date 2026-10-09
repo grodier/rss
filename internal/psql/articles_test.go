@@ -63,7 +63,7 @@ func TestSaveFetch(t *testing.T) {
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	first := []rss.Article{
-		{ExternalID: "a", URL: "https://example.com/a", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", PublishedAt: date},
+		{ExternalID: "a", URL: "https://example.com/a", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
 		{ExternalID: "b", URL: "https://example.com/b", Title: "B", PublishedAt: date.Add(time.Hour)},
 		{ExternalID: "c", URL: "https://example.com/c", Title: "C"},
 	}
@@ -85,7 +85,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Fatalf("got %d articles, want 3", len(got))
 		}
 		a := articleByExternalID(t, got, "a")
-		if a.FeedID != feed.ID || a.URL != "https://example.com/a" || a.Title != "A" || a.Summary != "<p>a</p>" || a.Content != "<p>A</p>" || !a.PublishedAt.Equal(date) {
+		if a.FeedID != feed.ID || a.URL != "https://example.com/a" || a.Title != "A" || a.Summary != "<p>a</p>" || a.Content != "<p>A</p>" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
 			t.Errorf("article a: got %+v", a)
 		}
 		if c := articleByExternalID(t, got, "c"); !c.PublishedAt.IsZero() {
@@ -228,6 +228,28 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("excerpt updated", func(t *testing.T) {
+		ef := newTestFeed(t, db)
+		save := func(excerpt string) rss.FetchResult {
+			res, err := feeds.SaveFetch(ctx, ef, []rss.Article{{ExternalID: "e", Title: "E", Excerpt: excerpt}})
+			if err != nil {
+				t.Fatalf("SaveFetch: %v", err)
+			}
+			return res
+		}
+		save("one")
+		if res := save("two"); res.Updated != 1 {
+			t.Errorf("changed excerpt: got %+v, want Updated 1", res)
+		}
+		got, err := articles.ListByFeed(ctx, ef.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if len(got) != 1 || got[0].Excerpt != "two" {
+			t.Errorf("got %+v, want excerpt %q", got, "two")
+		}
+	})
+
 	t.Run("feed metadata", func(t *testing.T) {
 		update := feed
 		update.Title = "New title"
@@ -342,7 +364,7 @@ func TestListByFeed(t *testing.T) {
 	// the dated ones, which are all in the past.
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{
-		{ExternalID: "old", PublishedAt: date},
+		{ExternalID: "old", Excerpt: "old excerpt", PublishedAt: date},
 		{ExternalID: "undated"},
 		{ExternalID: "new", PublishedAt: date.Add(time.Hour)},
 		{ExternalID: "middle", PublishedAt: date.Add(time.Minute)},
@@ -360,6 +382,16 @@ func TestListByFeed(t *testing.T) {
 		}
 		return ids
 	}
+
+	t.Run("returns Excerpt", func(t *testing.T) {
+		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if a := articleByExternalID(t, got, "old"); a.Excerpt != "old excerpt" {
+			t.Errorf("got Excerpt %q, want %q", a.Excerpt, "old excerpt")
+		}
+	})
 
 	t.Run("returns TimelineAt", func(t *testing.T) {
 		got, err := articles.ListByFeed(ctx, other.ID, 10)

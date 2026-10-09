@@ -123,6 +123,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 					Content:     "<script>SUMMARY-MARKER</script>",
 				},
 				{URL: "https://example.com/b"},
+				{Excerpt: "Microblog post start"},
 				{Title: "No link title"},
 			}, nil
 		},
@@ -141,6 +142,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 		`href="https://example.com/a"`,
 		"A &lt;b&gt;bold&lt;/b&gt; title",
 		"(untitled)",
+		"Microblog post start",
 		`href="https://example.com/b"`,
 		"No link title",
 		"2 Mar 2024",

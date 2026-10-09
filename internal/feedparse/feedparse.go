@@ -117,7 +117,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 		// RSS has no type attribute; channel descriptions are commonly
 		// entity-encoded HTML, so they are always treated as HTML. Titles
 		// are treated as text.
-		desc = htmlToText(f.Description)
+		desc = HTMLToText(f.Description)
 	case "atom":
 		if a, ok := f.OriginalFeed().(*atom.Feed); ok {
 			link = atomSiteLink(a.Links)
@@ -125,10 +125,10 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 		var titleType, subtitleType string
 		titleType, subtitleType, entryTitleTypes = atomTextTypes(body)
 		if isHTMLType(titleType) {
-			title = htmlToText(f.Title)
+			title = HTMLToText(f.Title)
 		}
 		if isHTMLType(subtitleType) {
-			desc = htmlToText(f.Description)
+			desc = HTMLToText(f.Description)
 		}
 	}
 
@@ -160,7 +160,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 			item.URL = resolveHTTP(feedURL, l)
 		}
 		if entryTitleTypes != nil && isHTMLType(entryTitleTypes[i]) {
-			item.Title = htmlToText(it.Title)
+			item.Title = HTMLToText(it.Title)
 		}
 		if format == "json" {
 			// gofeed falls back to content_text, which is plain text, not
@@ -296,7 +296,7 @@ func isHTMLType(t string) bool {
 	return t == "html" || t == "text/html" || strings.Contains(t, "xhtml")
 }
 
-// blockElements are the HTML elements that separate words, so htmlToText
+// blockElements are the HTML elements that separate words, so HTMLToText
 // replaces their tags with a space.
 var blockElements = map[string]bool{
 	"address": true, "article": true, "aside": true, "blockquote": true,
@@ -308,11 +308,11 @@ var blockElements = map[string]bool{
 	"td": true, "th": true, "tr": true, "ul": true,
 }
 
-// htmlToText converts an HTML fragment to plain text: tags are dropped
+// HTMLToText returns the plain text of an HTML fragment: tags are dropped
 // (block elements and <br> become a space), entities are decoded,
 // <script> and <style> content is dropped, and whitespace is trimmed and
 // collapsed.
-func htmlToText(s string) string {
+func HTMLToText(s string) string {
 	var b strings.Builder
 	z := html.NewTokenizer(strings.NewReader(s))
 	skip := false // inside <script> or <style>

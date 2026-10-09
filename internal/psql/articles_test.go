@@ -176,6 +176,58 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("timeline position", func(t *testing.T) {
+		tf := newTestFeed(t, db)
+		old := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
+			{ExternalID: "x", Title: "X", PublishedAt: old},
+			{ExternalID: "y", Title: "Y", PublishedAt: old.Add(time.Hour)},
+		}); err != nil {
+			t.Fatalf("SaveFetch first: %v", err)
+		}
+		got, err := articles.ListByFeed(ctx, tf.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		for _, a := range got {
+			if !a.TimelineAt.Equal(a.PublishedAt) {
+				t.Errorf("first save, article %s: got TimelineAt %v, want published %v", a.ExternalID, a.TimelineAt, a.PublishedAt)
+			}
+		}
+
+		before := dbNow(t, db)
+		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
+			{ExternalID: "recent", Title: "Recent", PublishedAt: before.Add(-time.Hour)},
+			{ExternalID: "ancient", Title: "Ancient", PublishedAt: old.Add(-48 * time.Hour)},
+		}); err != nil {
+			t.Fatalf("SaveFetch second: %v", err)
+		}
+		got, err = articles.ListByFeed(ctx, tf.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if r := articleByExternalID(t, got, "recent"); r.TimelineAt.Before(before) {
+			t.Errorf("recent: got TimelineAt %v, want at or after %v", r.TimelineAt, before)
+		}
+		if a := articleByExternalID(t, got, "ancient"); !a.TimelineAt.Equal(a.PublishedAt) {
+			t.Errorf("ancient: got TimelineAt %v, want %v", a.TimelineAt, a.PublishedAt)
+		}
+
+		x := articleByExternalID(t, got, "x")
+		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
+			{ExternalID: "x", Title: "X edited", Content: "<p>new</p>", PublishedAt: old},
+		}); err != nil {
+			t.Fatalf("SaveFetch edit: %v", err)
+		}
+		got, err = articles.ListByFeed(ctx, tf.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if e := articleByExternalID(t, got, "x"); e.Title != "X edited" || !e.TimelineAt.Equal(x.TimelineAt) {
+			t.Errorf("edited x: got title %q, TimelineAt %v; want edited title, TimelineAt %v", e.Title, e.TimelineAt, x.TimelineAt)
+		}
+	})
+
 	t.Run("feed metadata", func(t *testing.T) {
 		update := feed
 		update.Title = "New title"
@@ -309,6 +361,16 @@ func TestListByFeed(t *testing.T) {
 		return ids
 	}
 
+	t.Run("returns TimelineAt", func(t *testing.T) {
+		got, err := articles.ListByFeed(ctx, other.ID, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if len(got) != 1 || !got[0].TimelineAt.Equal(date.Add(2*time.Hour)) {
+			t.Errorf("got %+v, want one article with TimelineAt %v", got, date.Add(2*time.Hour))
+		}
+	})
+
 	tests := []struct {
 		name   string
 		feedID string
@@ -331,6 +393,60 @@ func TestListByFeed(t *testing.T) {
 			}
 			if g := fmt.Sprint(externalIDs(got)); g != fmt.Sprint(tt.want) {
 				t.Errorf("got %s, want %s", g, fmt.Sprint(tt.want))
+			}
+		})
+	}
+}
+
+func TestTimelineAt(t *testing.T) {
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	prev := now.Add(-6 * time.Hour)
+	us := time.Microsecond
+	art := func(published time.Time) rss.Article { return rss.Article{PublishedAt: published} }
+
+	tests := []struct {
+		name     string
+		articles []rss.Article
+		prev     time.Time
+		want     []time.Time
+	}{
+		{
+			name:     "first save: dated get their dates, future clamped, undated in document order",
+			articles: []rss.Article{art(now.Add(-72 * time.Hour)), art(now.Add(time.Hour)), art(time.Time{}), art(time.Time{})},
+			want:     []time.Time{now.Add(-72 * time.Hour), now, now, now.Add(-us)},
+		},
+		{
+			name:     "later save: news, backlog and undated",
+			articles: []rss.Article{art(now.Add(-time.Hour)), art(prev.Add(-backlogSlack - time.Second)), art(time.Time{})},
+			prev:     prev,
+			want:     []time.Time{now.Add(-us), prev.Add(-backlogSlack - time.Second), now},
+		},
+		{
+			name: "later save: several news items, newest first, undated ahead",
+			articles: []rss.Article{
+				art(now.Add(-3 * time.Hour)), art(time.Time{}), art(now.Add(-time.Hour)), art(time.Time{}), art(now.Add(-2 * time.Hour)),
+			},
+			prev: prev,
+			want: []time.Time{now.Add(-4 * us), now, now.Add(-2 * us), now.Add(-us), now.Add(-3 * us)},
+		},
+		{
+			name:     "exactly at the boundary is news",
+			articles: []rss.Article{art(prev.Add(-backlogSlack))},
+			prev:     prev,
+			want:     []time.Time{now},
+		},
+		{name: "no articles", prev: prev, want: []time.Time{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := timelineAt(tt.articles, tt.prev, now)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d positions, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if !got[i].Equal(tt.want[i]) {
+					t.Errorf("article %d: got %v, want %v", i, got[i], tt.want[i])
+				}
 			}
 		})
 	}

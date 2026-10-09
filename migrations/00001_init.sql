@@ -84,6 +84,7 @@ CREATE TABLE articles (
     content TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
+    timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines: arrival time for news, published date for backlog; set on insert, never updated
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -92,6 +93,7 @@ CREATE TABLE articles (
 );
 
 CREATE INDEX articles_feed_sort_idx ON articles (feed_id, (COALESCE(published_at, created_at)) DESC);
+CREATE INDEX articles_feed_timeline_idx ON articles (feed_id, timeline_at DESC, id DESC);
 
 CREATE TABLE subscriptions (
     user_id UUID NOT NULL

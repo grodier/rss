@@ -79,6 +79,7 @@ CREATE TABLE articles (
     external_id TEXT NOT NULL,
 
     url TEXT NOT NULL DEFAULT '',
+    canonical_url TEXT NOT NULL DEFAULT '', -- ingest.CanonicalURL(url); matches copies of one article across feeds
     image_url TEXT NOT NULL DEFAULT '', -- image the feed declares for the item; "" if none
     title TEXT NOT NULL DEFAULT '',   -- plain text
     summary TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
@@ -96,6 +97,7 @@ CREATE TABLE articles (
 
 CREATE INDEX articles_feed_sort_idx ON articles (feed_id, (COALESCE(published_at, created_at)) DESC);
 CREATE INDEX articles_feed_timeline_idx ON articles (feed_id, timeline_at DESC, id DESC);
+CREATE INDEX articles_canonical_url_idx ON articles (canonical_url) WHERE canonical_url <> '';
 
 CREATE TABLE subscriptions (
     user_id UUID NOT NULL

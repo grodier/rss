@@ -63,7 +63,7 @@ func TestSaveFetch(t *testing.T) {
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	first := []rss.Article{
-		{ExternalID: "a", URL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
+		{ExternalID: "a", URL: "https://example.com/a#x", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
 		{ExternalID: "b", URL: "https://example.com/b", Title: "B", PublishedAt: date.Add(time.Hour)},
 		{ExternalID: "c", URL: "https://example.com/c", Title: "C"},
 	}
@@ -85,7 +85,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Fatalf("got %d articles, want 3", len(got))
 		}
 		a := articleByExternalID(t, got, "a")
-		if a.FeedID != feed.ID || a.URL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.Title != "A" || a.Summary != "<p>a</p>" || a.Content != "<p>A</p>" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
+		if a.FeedID != feed.ID || a.URL != "https://example.com/a#x" || a.CanonicalURL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.Title != "A" || a.Summary != "<p>a</p>" || a.Content != "<p>A</p>" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
 			t.Errorf("article a: got %+v", a)
 		}
 		if c := articleByExternalID(t, got, "c"); !c.PublishedAt.IsZero() {

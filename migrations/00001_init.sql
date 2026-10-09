@@ -79,6 +79,7 @@ CREATE TABLE articles (
     external_id TEXT NOT NULL,
 
     url TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '', -- image the feed declares for the item; "" if none
     title TEXT NOT NULL DEFAULT '',   -- plain text
     summary TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
     content TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML

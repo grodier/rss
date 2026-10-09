@@ -42,6 +42,7 @@ type Feed struct {
 type Item struct {
 	ID        string    // RSS <guid>, Atom <id>, JSON "id"; whitespace-trimmed; "" if missing
 	URL       string    // absolute http(s) link to the article, resolved against the feed URL; "" if missing or not http(s)
+	ImageURL  string    // absolute http(s) URL of the item's declared image, resolved against the feed URL; "" if none
 	Title     string    // plain text, trimmed and collapsed; may be ""
 	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
 	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
@@ -104,6 +105,10 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 
 	p := gofeed.NewParser()
 	p.KeepOriginalFeed = true
+	// Only images the feed declares: the first <img> in the content is
+	// often a tracking pixel, avatar or emoji. The Atom translator has no
+	// such scan.
+	p.RSSTranslator = &gofeed.DefaultRSSTranslator{DisableContentImageScan: true}
 	f, err := p.Parse(bytes.NewReader(body))
 	if err != nil {
 		return Feed{}, fmt.Errorf("%w: %w", ErrNotFeed, err)
@@ -147,11 +152,12 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 			continue
 		}
 		item := Item{
-			ID:      strings.TrimSpace(it.GUID),
-			URL:     resolveHTTP(feedURL, it.Link),
-			Title:   collapseSpace(it.Title),
-			Summary: it.Description,
-			Content: it.Content,
+			ID:       strings.TrimSpace(it.GUID),
+			URL:      resolveHTTP(feedURL, it.Link),
+			Title:    collapseSpace(it.Title),
+			Summary:  it.Description,
+			Content:  it.Content,
+			ImageURL: resolveHTTP(feedURL, itemImage(it)),
 		}
 		for _, l := range it.Links {
 			if item.URL != "" {
@@ -191,6 +197,28 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 		},
 		Items: items,
 	}, nil
+}
+
+// itemImage returns the URL of the image an item declares, unresolved, from
+// the first non-empty of: gofeed's item image (itunes:image, a media:content
+// image, an image enclosure; JSON Feed image, then banner_image), the first
+// media:thumbnail, and the first image enclosure (which covers Atom
+// <link rel="enclosure">). "" if none.
+func itemImage(it *gofeed.Item) string {
+	if it.Image != nil && strings.TrimSpace(it.Image.URL) != "" {
+		return it.Image.URL
+	}
+	if thumbs := it.Extensions["media"]["thumbnail"]; len(thumbs) > 0 {
+		if u := thumbs[0].Attrs["url"]; strings.TrimSpace(u) != "" {
+			return u
+		}
+	}
+	for _, e := range it.Enclosures {
+		if e != nil && strings.HasPrefix(e.Type, "image/") {
+			return e.URL
+		}
+	}
+	return ""
 }
 
 // atomTextTypes returns the type attributes of the feed-level <title> and

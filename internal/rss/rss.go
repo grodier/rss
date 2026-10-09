@@ -36,6 +36,7 @@ type Article struct {
 	FeedID      string
 	ExternalID  string
 	URL         string
+	ImageURL    string // feed-declared image; "" if none
 	Title       string
 	Summary     string
 	Content     string
@@ -89,7 +90,7 @@ type FeedWithArticles struct {
 // FetchResult counts the articles a fetch saved.
 type FetchResult struct {
 	New         int  // articles inserted
-	Updated     int  // existing articles whose url, title, summary, content or missing date changed
+	Updated     int  // existing articles whose url, image, title, summary, content or missing date changed
 	NotModified bool // the server answered 304
 }
 

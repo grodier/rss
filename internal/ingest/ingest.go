@@ -51,6 +51,7 @@ func Articles(items []feedparse.Item) []rss.Article {
 		articles = append(articles, rss.Article{
 			ExternalID:  id,
 			URL:         it.URL,
+			ImageURL:    it.ImageURL,
 			Title:       it.Title,
 			Summary:     it.Summary,
 			Content:     it.Content,

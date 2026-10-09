@@ -289,6 +289,122 @@ func TestParseItemsAtomTitleTypes(t *testing.T) {
 	}
 }
 
+func TestParseItemImage(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/blog/feed.xml")
+	rssItem := func(ns, item string) string {
+		return `<rss version="2.0"` + ns + `><channel><title>F</title><item><title>A</title>` + item + `</item></channel></rss>`
+	}
+	const mediaNS = ` xmlns:media="http://search.yahoo.com/mrss/"`
+	const itunesNS = ` xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"`
+	const contentNS = ` xmlns:content="http://purl.org/rss/1.0/modules/content/"`
+	atomEntry := func(entry string) string {
+		return `<feed xmlns="http://www.w3.org/2005/Atom"` + mediaNS + `><title>F</title><entry><title>A</title>` + entry + `</entry></feed>`
+	}
+	jsonItem := func(item string) string {
+		return `{"version":"https://jsonfeed.org/version/1.1","title":"F","items":[{"id":"1",` + item + `}]}`
+	}
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "rss media:content medium image",
+			body: rssItem(mediaNS, `<media:content url="https://cdn.example.com/a.jpg" medium="image"/>`),
+			want: "https://cdn.example.com/a.jpg",
+		},
+		{
+			name: "rss media:content image type",
+			body: rssItem(mediaNS, `<media:content url="https://cdn.example.com/a.jpg" type="image/jpeg"/>`),
+			want: "https://cdn.example.com/a.jpg",
+		},
+		{
+			name: "rss media:content before media:thumbnail",
+			body: rssItem(mediaNS, `<media:thumbnail url="https://cdn.example.com/thumb.jpg"/><media:content url="https://cdn.example.com/a.jpg" medium="image"/>`),
+			want: "https://cdn.example.com/a.jpg",
+		},
+		{
+			name: "rss media:thumbnail only",
+			body: rssItem(mediaNS, `<media:thumbnail url="https://cdn.example.com/thumb.jpg"/>`),
+			want: "https://cdn.example.com/thumb.jpg",
+		},
+		{
+			name: "rss image enclosure",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.png" type="image/png" length="1"/>`),
+			want: "https://cdn.example.com/a.png",
+		},
+		{
+			name: "rss audio enclosure",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.mp3" type="audio/mpeg" length="1"/>`),
+			want: "",
+		},
+		{
+			name: "rss itunes:image",
+			body: rssItem(itunesNS, `<itunes:image href="https://cdn.example.com/cover.jpg"/>`),
+			want: "https://cdn.example.com/cover.jpg",
+		},
+		{
+			name: "rss img in content only",
+			body: rssItem(contentNS, `<description>&lt;img src="https://example.com/d.gif"&gt;</description><content:encoded><![CDATA[<p><img src="https://example.com/pixel.gif"></p>]]></content:encoded>`),
+			want: "",
+		},
+		{
+			name: "atom image enclosure link",
+			body: atomEntry(`<link rel="enclosure" type="image/png" href="https://cdn.example.com/a.png"/>`),
+			want: "https://cdn.example.com/a.png",
+		},
+		{
+			name: "atom media:thumbnail",
+			body: atomEntry(`<media:thumbnail url="https://cdn.example.com/thumb.jpg"/>`),
+			want: "https://cdn.example.com/thumb.jpg",
+		},
+		{
+			name: "json image",
+			body: jsonItem(`"image":"https://cdn.example.com/a.jpg","banner_image":"https://cdn.example.com/banner.jpg"`),
+			want: "https://cdn.example.com/a.jpg",
+		},
+		{
+			name: "json banner_image only",
+			body: jsonItem(`"banner_image":"https://cdn.example.com/banner.jpg"`),
+			want: "https://cdn.example.com/banner.jpg",
+		},
+		{
+			name: "relative URL resolved",
+			body: rssItem(mediaNS, `<media:thumbnail url="img/a.jpg"/>`),
+			want: "https://example.com/blog/img/a.jpg",
+		},
+		{
+			name: "data URL",
+			body: rssItem(mediaNS, `<media:thumbnail url="data:image/gif;base64,R0lGODlhAQABAAAAACw="/>`),
+			want: "",
+		},
+		{
+			name: "javascript URL",
+			body: jsonItem(`"image":"javascript:alert(1)"`),
+			want: "",
+		},
+		{
+			name: "no image",
+			body: rssItem("", `<description>text</description>`),
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			if got.Items[0].ImageURL != tt.want {
+				t.Errorf("ImageURL = %q, want %q", got.Items[0].ImageURL, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseText(t *testing.T) {
 	feedURL := mustParseURL(t, "https://example.com/feed.xml")
 	const atomNS = `<feed xmlns="http://www.w3.org/2005/Atom">`

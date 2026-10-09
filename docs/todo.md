@@ -209,7 +209,8 @@ feature adds a failure mode. Nothing here is built yet.
   - Search: no results, empty query, very long query, special characters.
   - Empty states that aren't errors but read like one: a new account with no feeds, an
     empty site page.
-  - Later features: subscribe or unsubscribe failures, an article that can't be shown.
+  - Subscriptions: a subscribe or unsubscribe that fails.
+  - Later features: an article that can't be shown.
 - [ ] **Review pass.** For each state ask: does the user know what happened and what to
   do next? Is the message free of internals (SQL, stack traces, raw Go errors)? Is the
   status code right? Does the form keep what they typed? Is it usable on a narrow screen
@@ -245,10 +246,10 @@ yet:
 
 ## Subscriptions and reading
 
-Subscriptions are planned and split into issues: #135 (subscribe and unsubscribe from the
-feed and site pages), #136 (`/feeds` becomes "My feeds"), #137 (background refresh only
-fetches subscribed feeds; viewing a stale feed queues a refresh) and #138 (subscribed
-markers in search). #136–#138 each depend on #135 only.
+Subscriptions are done. Shipped in #140–#143 (issues #135–#138): subscribe and unsubscribe
+from the feed and site pages, `/feeds` as "My feeds" (the user's subscriptions), background
+refresh only for subscribed feeds with a queued refresh when a stale feed is viewed, and
+subscribed markers in search results.
 
 Decisions made while planning (don't reopen them without a reason): subscribing and
 unsubscribing are one click with no confirmation, and redirect back to the page they were
@@ -308,8 +309,8 @@ Reading (needs planning):
 
 ## Suggested order
 
-1. Build subscriptions: #135 first, then #136, #137 and #138 (one PR at a time). Then
-   **plan** the reading experience in its own session and turn it into issues.
+1. **Plan** the reading experience in its own session and turn it into issues
+   (subscriptions are done).
 2. Rate-limit login and signup (Security); small and independent, can go in parallel.
 3. Once the initial features are done, **plan** the error-state walkthrough and run the
    first pass; then repeat it periodically.

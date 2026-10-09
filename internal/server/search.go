@@ -27,6 +27,8 @@ type searchData struct {
 	// LookupQ is the query to offer as a site lookup, or "" if q doesn't
 	// look like a website address.
 	LookupQ string
+	// Subscribed holds the IDs of the result feeds the user follows.
+	Subscribed map[string]bool
 }
 
 // searchHandler searches the database only. GET requests are not covered by
@@ -56,6 +58,21 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Sites = sites
 		data.Searched = true
+
+		var feedIDs []string
+		for _, site := range sites {
+			for _, f := range site.Feeds {
+				feedIDs = append(feedIDs, f.ID)
+			}
+		}
+		if len(feedIDs) > 0 {
+			userID, _ := s.authenticatedUserID(r)
+			data.Subscribed, err = s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
+			if err != nil {
+				s.serverErrorHTML(w, r, err)
+				return
+			}
+		}
 	}
 
 	if err := s.renderHTML(w, status, "search.html", data); err != nil {

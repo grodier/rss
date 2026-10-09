@@ -4,14 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
 )
 
-// feedColumns are the columns scanFeed reads, in order.
-const feedColumns = `id, site_id, url, site_url, title, description, last_fetched_at,
-	last_attempt_at, last_error, consecutive_failures, next_fetch_at, etag, last_modified, gone_at, created_at`
+// feedColumnNames are the columns scanFeed reads, in order.
+var feedColumnNames = []string{
+	"id", "site_id", "url", "site_url", "title", "description", "last_fetched_at",
+	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at", "created_at",
+}
+
+var (
+	// feedColumns is feedColumnNames as a select list.
+	feedColumns = strings.Join(feedColumnNames, ", ")
+	// qualifiedFeedColumns prefixes each column with the feeds alias f, for
+	// queries that join tables with clashing column names.
+	qualifiedFeedColumns = "f." + strings.Join(feedColumnNames, ", f.")
+)
 
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
@@ -223,34 +234,4 @@ func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, erro
 	}
 
 	return feed, nil
-}
-
-func (r *FeedRepository) GetLatest(ctx context.Context) ([]rss.Feed, error) {
-	stmt := `SELECT ` + feedColumns + `
-		FROM feeds
-		ORDER BY created_at DESC
-		LIMIT 10`
-
-	rows, err := r.DB.QueryContext(ctx, stmt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var feeds []rss.Feed
-
-	for rows.Next() {
-		feed, err := scanFeed(rows)
-		if err != nil {
-			return nil, err
-		}
-
-		feeds = append(feeds, feed)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return feeds, nil
 }

@@ -9,16 +9,11 @@ import (
 
 type fakeFeedStore struct {
 	getByIDFn    func(ctx context.Context, id string) (rss.Feed, error)
-	getLatestFn  func(ctx context.Context) ([]rss.Feed, error)
 	listBySiteFn func(ctx context.Context, siteID string) ([]rss.Feed, error)
 }
 
 func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error) {
 	return f.getByIDFn(ctx, id)
-}
-
-func (f *fakeFeedStore) GetLatest(ctx context.Context) ([]rss.Feed, error) {
-	return f.getLatestFn(ctx)
 }
 
 func (f *fakeFeedStore) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
@@ -102,6 +97,7 @@ type fakeSubscriptionStore struct {
 	subscribeFn         func(ctx context.Context, userID, feedID string) error
 	unsubscribeFn       func(ctx context.Context, userID, feedID string) error
 	subscribedFeedIDsFn func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
+	listByUserFn        func(ctx context.Context, userID string) ([]rss.Subscription, error)
 }
 
 func (f *fakeSubscriptionStore) Subscribe(ctx context.Context, userID, feedID string) error {
@@ -123,4 +119,11 @@ func (f *fakeSubscriptionStore) SubscribedFeedIDs(ctx context.Context, userID st
 		return map[string]bool{}, nil
 	}
 	return f.subscribedFeedIDsFn(ctx, userID, feedIDs)
+}
+
+func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error) {
+	if f.listByUserFn == nil {
+		return nil, nil
+	}
+	return f.listByUserFn(ctx, userID)
 }

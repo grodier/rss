@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rss - feeds</title>
+  <title>rss - my feeds</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
@@ -14,7 +14,7 @@
       <nav>
         <div>
           <a href="/">Home</a>
-          <a href="/feeds">Feeds</a>
+          <a href="/feeds">My feeds</a>
           <a href="/search">Search</a>
         </div>
         <div>
@@ -25,20 +25,39 @@
       </nav>
     </header>
 
-    <h1>Feeds</h1>
+    {{with .Flash}}
+    <div class="flash">{{.}}</div>
+    {{end}}
+    <h1>My feeds</h1>
 
+    {{range .Sites}}
     <section>
+      <h2><a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></h2>
       <ul>
-        {{range .Feeds}}
+        {{range .Subs}}
         <li>
-          <h2><a href="/feeds/{{.ID}}">{{or .Title .Url}}</a></h2>
-          {{with .Description}}<p>{{.}}</p>{{end}}
-          <p><a href="{{.Url}}">Feed URL</a></p>
-          <p><a href="{{.SiteUrl}}">Site URL</a></p>
+          <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
+          {{if .LatestArticleAt.IsZero}}
+          <p>No articles yet.</p>
+          {{else}}
+          <p>Latest article {{.LatestArticleAt.Format "2 Jan 2006"}}</p>
+          {{end}}
+          {{if not .Feed.GoneAt.IsZero}}
+          <p class="fetch-error">This feed no longer exists.</p>
+          {{else if ge .Feed.ConsecutiveFailures $.FailingThreshold}}
+          <p class="fetch-error">This feed is failing to update.</p>
+          {{end}}
+          <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
+            <input type="hidden" name="return_to" value="/feeds">
+            <button type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
+          </form>
         </li>
         {{end}}
       </ul>
     </section>
+    {{else}}
+    <p>You're not subscribed to any feeds yet. <a href="/search">Search</a> for a site to find some.</p>
+    {{end}}
   </main>
 </body>
 

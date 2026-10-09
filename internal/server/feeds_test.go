@@ -205,38 +205,140 @@ func TestFeedHandlerNotFound(t *testing.T) {
 	assertNotFoundHTML(t, rr)
 }
 
-func TestFeedsHandlerLinksToFeedPage(t *testing.T) {
-	const otherID = "22222222-2222-4222-8222-222222222222"
-	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		getLatestFn: func(ctx context.Context) ([]rss.Feed, error) {
-			return []rss.Feed{
-				{ID: testFeedID, Title: "Example Feed", Description: "About the feed", Url: "https://example.org/feed.xml"},
-				{ID: otherID, Url: "https://example.org/empty.xml"},
-			}, nil
-		},
-	}})
+func getFeeds(t *testing.T, subs *fakeSubscriptionStore) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	s := newTestServerWith(t, Services{SubscriptionService: subs})
 	req := httptest.NewRequest(http.MethodGet, "/feeds", nil)
+	req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
 	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.feedsHandler)).ServeHTTP(rr, req)
+	return rr, rr.Body.String()
+}
 
-	s.feedsHandler(rr, req)
+func listing(subs ...rss.Subscription) *fakeSubscriptionStore {
+	return &fakeSubscriptionStore{listByUserFn: func(ctx context.Context, userID string) ([]rss.Subscription, error) {
+		if userID != "user-1" {
+			return nil, fmt.Errorf("listed for user %q", userID)
+		}
+		return subs, nil
+	}}
+}
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
-	}
-	body := rr.Body.String()
-	for _, want := range []string{
-		`href="/feeds/` + testFeedID + `"`,
-		"Example Feed",
-		`href="/feeds/` + otherID + `"`,
-		`>https://example.org/empty.xml</a>`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body does not contain %q: %s", want, body)
+func TestFeedsHandler(t *testing.T) {
+	const (
+		otherID = "22222222-2222-4222-8222-222222222222"
+		siteA   = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		siteB   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	)
+	a := rss.Site{ID: siteA, Host: "a.example.com", Title: "Site A"}
+	b := rss.Site{ID: siteB, Host: "b.example.com"}
+	latest := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+
+	assertContains := func(t *testing.T, body string, wants ...string) {
+		t.Helper()
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
 		}
 	}
-	if strings.Contains(body, "<p></p>") {
-		t.Errorf("body contains an empty paragraph: %s", body)
+	assertNotContains := func(t *testing.T, body string, nots ...string) {
+		t.Helper()
+		for _, not := range nots {
+			if strings.Contains(body, not) {
+				t.Errorf("body contains %q: %s", not, body)
+			}
+		}
 	}
+
+	t.Run("groups feeds under their site", func(t *testing.T) {
+		rr, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: latest},
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Url: "https://a.example.com/two.xml"}},
+			rss.Subscription{Site: b, Feed: rss.Feed{ID: "33333333-3333-4333-8333-333333333333", Title: "Three"}},
+		))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertContains(t, body,
+			"<h1>My feeds</h1>",
+			`<a href="/sites/`+siteA+`">Site A</a>`,
+			`<a href="/sites/`+siteB+`">b.example.com</a>`,
+			`<a href="/feeds/`+testFeedID+`">One</a>`,
+			`<a href="/feeds/`+otherID+`">https://a.example.com/two.xml</a>`,
+		)
+		if n := strings.Count(body, "<h2>"); n != 2 {
+			t.Errorf("got %d sites, want 2: %s", n, body)
+		}
+		if strings.Index(body, "One") > strings.Index(body, "Three") {
+			t.Errorf("site A's feeds should come before site B's: %s", body)
+		}
+	})
+
+	t.Run("latest article", func(t *testing.T) {
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: latest},
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
+		))
+		assertContains(t, body, "Latest article 4 Mar 2026", "No articles yet.")
+	})
+
+	health := []struct {
+		name    string
+		feed    rss.Feed
+		want    []string
+		wantNot []string
+	}{
+		{"gone", rss.Feed{GoneAt: latest}, []string{"This feed no longer exists."}, []string{"failing to update"}},
+		{"3 failures", rss.Feed{ConsecutiveFailures: 3}, []string{"This feed is failing to update."}, []string{"no longer exists"}},
+		{"2 failures", rss.Feed{ConsecutiveFailures: 2}, nil, []string{"failing to update", "no longer exists"}},
+		{"gone wins over failing", rss.Feed{GoneAt: latest, ConsecutiveFailures: 5}, []string{"This feed no longer exists."}, []string{"failing to update"}},
+	}
+	for _, tt := range health {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.feed.ID = testFeedID
+			_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: tt.feed}))
+			assertContains(t, body, tt.want...)
+			assertNotContains(t, body, tt.wantNot...)
+		})
+	}
+
+	t.Run("unsubscribe form", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertContains(t, body,
+			`action="/feeds/`+testFeedID+`/unsubscribe"`,
+			`name="return_to" value="/feeds"`,
+		)
+	})
+
+	t.Run("empty state", func(t *testing.T) {
+		rr, body := getFeeds(t, listing())
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertContains(t, body, `<a href="/search">Search</a> for a site to find some.`)
+	})
+
+	t.Run("flash", func(t *testing.T) {
+		s := newTestServerWith(t, Services{SubscriptionService: listing()})
+		req := httptest.NewRequest(http.MethodGet, "/feeds", nil)
+		req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
+		rr := httptest.NewRecorder()
+		s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.sessionManager.Put(r.Context(), "flash", "Unsubscribed from One.")
+			s.feedsHandler(w, r)
+		})).ServeHTTP(rr, req)
+		assertContains(t, rr.Body.String(), "Unsubscribed from One.")
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		rr, _ := getFeeds(t, &fakeSubscriptionStore{listByUserFn: func(ctx context.Context, userID string) ([]rss.Subscription, error) {
+			return nil, errors.New("boom")
+		}})
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
 }
 
 func TestFeedHandlerRefreshControls(t *testing.T) {

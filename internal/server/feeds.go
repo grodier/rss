@@ -25,16 +25,43 @@ const (
 	refreshTimeout = 8 * time.Second
 )
 
+// failingThreshold is how many consecutive failed fetches make the feeds
+// page warn that a feed is failing, so a single failure doesn't raise an alarm.
+const failingThreshold = 3
+
+// siteSubscriptions is one site's feeds on the user's feeds page.
+type siteSubscriptions struct {
+	Site rss.Site
+	Subs []rss.Subscription
+}
+
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
-	feeds, err := s.services.FeedService.GetLatest(r.Context())
+	userID, _ := s.authenticatedUserID(r)
+	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
+	// subs is ordered by site, so a site's feeds are consecutive.
+	var sites []siteSubscriptions
+	for _, sub := range subs {
+		if n := len(sites); n > 0 && sites[n-1].Site.ID == sub.Site.ID {
+			sites[n-1].Subs = append(sites[n-1].Subs, sub)
+			continue
+		}
+		sites = append(sites, siteSubscriptions{Site: sub.Site, Subs: []rss.Subscription{sub}})
+	}
+
 	data := struct {
-		Feeds []rss.Feed
-	}{Feeds: feeds}
+		Sites            []siteSubscriptions
+		Flash            string
+		FailingThreshold int
+	}{
+		Sites:            sites,
+		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
+		FailingThreshold: failingThreshold,
+	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

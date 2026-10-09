@@ -72,3 +72,19 @@ func TestPasswordNotEchoed(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplateNavSaysMyFeeds(t *testing.T) {
+	files, err := fs.Glob(ui.Templates, "templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := fs.ReadFile(ui.Templates, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `href="/feeds"`) && !strings.Contains(string(b), `<a href="/feeds">My feeds</a>`) {
+			t.Errorf("%s: the nav link to /feeds should say My feeds", f)
+		}
+	}
+}

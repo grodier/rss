@@ -37,6 +37,7 @@ type Article struct {
 	Summary     string
 	Content     string
 	PublishedAt time.Time // zero if unknown
+	TimelineAt  time.Time // position in timelines; see psql.timelineAt
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

@@ -228,7 +228,7 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 			if published != "" {
 				pub = published
 			}
-			if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, published_at) VALUES ($1, $2, $3)`, feed, ext, pub); err != nil {
+			if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, published_at, timeline_at) VALUES ($1, $2, $3, COALESCE($3::timestamptz, now()))`, feed, ext, pub); err != nil {
 				t.Fatalf("insert article: %v", err)
 			}
 		}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 )
@@ -19,7 +21,7 @@ func NewArticleRepository(db *sql.DB) *ArticleRepository {
 // ListByFeed returns a feed's newest articles first (by published date, else
 // when we first saw them), at most limit.
 func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
-	stmt := `SELECT id, feed_id, external_id, url, title, summary, content, published_at, created_at, updated_at
+	stmt := `SELECT id, feed_id, external_id, url, title, summary, content, published_at, timeline_at, created_at, updated_at
 		FROM articles
 		WHERE feed_id = $1
 		ORDER BY COALESCE(published_at, created_at) DESC, id
@@ -35,7 +37,7 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit
 	for rows.Next() {
 		var a rss.Article
 		var publishedAt sql.NullTime
-		if err := rows.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.Title, &a.Summary, &a.Content, &publishedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.Title, &a.Summary, &a.Content, &publishedAt, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		a.PublishedAt = publishedAt.Time
@@ -48,15 +50,72 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit
 	return articles, nil
 }
 
+// backlogSlack is how far before a feed's previous successful fetch an
+// article's published date must be for it to count as backlog.
+const backlogSlack = 24 * time.Hour
+
+// timelineAt returns each article's timeline position, in the order of
+// articles, for a save at now of a feed whose previous successful fetch
+// was prevFetched (zero for the feed's first save).
+//
+// News (undated, or published since prevFetched - backlogSlack) is placed
+// at now, newest-published first with undated items ahead of dated ones,
+// each 1 µs below the one before. Backlog is placed at its published date,
+// clamped to now. Undated backlog (a first fetch of an undated feed) is
+// treated like news.
+func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
+	cutoff := prevFetched.Add(-backlogSlack)
+	positions := make([]time.Time, len(articles))
+
+	var news []int
+	for i, a := range articles {
+		backlog := !a.PublishedAt.IsZero() && (prevFetched.IsZero() || a.PublishedAt.Before(cutoff))
+		if backlog {
+			positions[i] = a.PublishedAt
+			if positions[i].After(now) {
+				positions[i] = now
+			}
+			continue
+		}
+		news = append(news, i)
+	}
+
+	// Undated items count as published now, so they sort ahead of dated ones.
+	published := func(i int) time.Time {
+		if t := articles[i].PublishedAt; !t.IsZero() {
+			return t
+		}
+		return now
+	}
+	sort.SliceStable(news, func(x, y int) bool {
+		return published(news[x]).After(published(news[y]))
+	})
+	for n, i := range news {
+		positions[i] = now.Add(-time.Duration(n) * time.Microsecond)
+	}
+
+	return positions
+}
+
 // saveArticles upserts articles for feedID by (feed_id, external_id) and
 // records a successful fetch of the feed: sets last_fetched_at and
 // last_attempt_at to now() and clears last_error and consecutive_failures.
+// A new article's timeline_at is set on insert (see timelineAt) and never
+// changes. It locks the feed row so concurrent saves of a feed are ordered.
 // Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
+	var prevFetched sql.NullTime
+	var now time.Time
+	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &now); err != nil {
+		return rss.FetchResult{}, err
+	}
+	positions := timelineAt(articles, prevFetched.Time, now)
+
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, title, summary, content, published_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	// timeline_at is deliberately not updated.
+	stmt := `INSERT INTO articles (feed_id, external_id, url, title, summary, content, published_at, timeline_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
 			title = EXCLUDED.title,
@@ -70,11 +129,11 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		RETURNING (xmax = 0) AS inserted`
 
 	var res rss.FetchResult
-	for _, a := range articles {
+	for i, a := range articles {
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
 		var inserted bool
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.Title, a.Summary, a.Content, publishedAt).Scan(&inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.Title, a.Summary, a.Content, publishedAt, positions[i]).Scan(&inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.

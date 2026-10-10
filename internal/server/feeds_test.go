@@ -116,15 +116,16 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 			gotFeedID, gotLimit = feedID, limit
 			return []rss.Article{
 				{
+					ID:          "art-1",
 					Title:       "A <b>bold</b> title",
 					URL:         "https://example.com/a",
 					PublishedAt: time.Date(2024, time.March, 2, 10, 0, 0, 0, time.UTC),
 					Summary:     "<script>SUMMARY-MARKER</script>",
 					Content:     "<script>SUMMARY-MARKER</script>",
 				},
-				{URL: "https://example.com/b"},
-				{Excerpt: "Microblog post start"},
-				{Title: "No link title"},
+				{ID: "art-2", URL: "https://example.com/b"},
+				{ID: "art-3", Excerpt: "Microblog post start"},
+				{ID: "art-4", Title: "No link title"},
 			}, nil
 		},
 	})
@@ -139,12 +140,10 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
-		`href="https://example.com/a"`,
-		"A &lt;b&gt;bold&lt;/b&gt; title",
-		"(untitled)",
-		"Microblog post start",
-		`href="https://example.com/b"`,
-		"No link title",
+		`<a href="/articles/art-1">A &lt;b&gt;bold&lt;/b&gt; title</a>`,
+		`<a href="/articles/art-2">(untitled)</a>`,
+		`<a href="/articles/art-3">Microblog post start</a>`,
+		`<a href="/articles/art-4">No link title</a>`,
 		"2 Mar 2024",
 	} {
 		if !strings.Contains(body, want) {
@@ -160,8 +159,8 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	if n := strings.Count(body, "<time"); n != 1 {
 		t.Errorf("<time elements = %d, want 1", n)
 	}
-	if strings.Contains(body, ">No link title</a>") {
-		t.Errorf("article without a URL was linked: %s", body)
+	if strings.Contains(body, `href="https://example.com/a"`) || strings.Contains(body, `href="https://example.com/b"`) {
+		t.Errorf("titles link to the original instead of the article page: %s", body)
 	}
 }
 

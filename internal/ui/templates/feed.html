@@ -74,7 +74,7 @@
     <ul>
       {{range .}}
       <li>
-        {{if .URL}}<a href="{{.URL}}">{{.DisplayTitle}}</a>{{else}}{{.DisplayTitle}}{{end}}
+        <a href="/articles/{{.ID}}">{{.DisplayTitle}}</a>
         {{if not .PublishedAt.IsZero}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.PublishedAt.Format "2 Jan 2006"}}</time>{{end}}
       </li>
       {{end}}

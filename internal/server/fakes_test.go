@@ -91,7 +91,12 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 }
 
 type fakeArticleStore struct {
+	getByIDFn    func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn func(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+}
+
+func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article, error) {
+	return f.getByIDFn(ctx, id)
 }
 
 func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {

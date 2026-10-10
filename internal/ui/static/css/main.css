@@ -214,4 +214,22 @@
   div.error {
     margin-block-end: 1rem;
   }
+
+  .article-body {
+    max-inline-size: 65ch;
+  }
+
+  .article-body > * + * {
+    margin-block-start: 1rem;
+  }
+
+  .article-body img {
+    max-inline-size: 100%;
+    block-size: auto;
+  }
+
+  .article-body pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
 }

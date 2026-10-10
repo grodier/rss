@@ -130,3 +130,16 @@ func TestRequireAuthentication(t *testing.T) {
 		}
 	})
 }
+
+func TestCommonHeadersCSP(t *testing.T) {
+	s := newTestServer(t)
+	h := s.commonHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	want := "default-src 'self'; img-src 'self' https:"
+	if got := rr.Header().Get("Content-Security-Policy"); got != want {
+		t.Errorf("Content-Security-Policy = %q, want %q", got, want)
+	}
+}

@@ -18,6 +18,25 @@ func NewArticleRepository(db *sql.DB) *ArticleRepository {
 	return &ArticleRepository{DB: db}
 }
 
+// GetByID returns the article with id, or rss.ErrNoRecord.
+func (r *ArticleRepository) GetByID(ctx context.Context, id string) (rss.Article, error) {
+	stmt := `SELECT id, feed_id, external_id, url, canonical_url, image_url, title, summary, content, excerpt, published_at, timeline_at, created_at, updated_at
+		FROM articles
+		WHERE id = $1`
+
+	var a rss.Article
+	var publishedAt sql.NullTime
+	err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.Article{}, rss.ErrNoRecord
+		}
+		return rss.Article{}, err
+	}
+	a.PublishedAt = publishedAt.Time
+	return a, nil
+}
+
 // ListByFeed returns a feed's newest articles first (by published date, else
 // when we first saw them), at most limit.
 func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {

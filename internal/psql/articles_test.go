@@ -511,3 +511,55 @@ func TestTimelineAt(t *testing.T) {
 		})
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestArticleRepositoryGetByID(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	ctx := t.Context()
+
+	feed := newTestFeed(t, db)
+	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{
+		{ExternalID: "a", URL: "https://example.com/a#x", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
+		{ExternalID: "b", Title: "B"},
+	}); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	listed, err := articles.ListByFeed(ctx, feed.ID, 10)
+	if err != nil {
+		t.Fatalf("ListByFeed: %v", err)
+	}
+
+	t.Run("returns all fields", func(t *testing.T) {
+		want := articleByExternalID(t, listed, "a")
+		got, err := articles.GetByID(ctx, want.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got != want {
+			t.Errorf("got %+v, want %+v", got, want)
+		}
+		if got.FeedID != feed.ID || got.URL != "https://example.com/a#x" || got.CanonicalURL != "https://example.com/a" || got.ImageURL != "https://example.com/a.jpg" || got.Title != "A" || got.Summary != "<p>a</p>" || got.Content != "<p>A</p>" || got.Excerpt != "a" || !got.PublishedAt.Equal(date) || got.TimelineAt.IsZero() {
+			t.Errorf("article a: got %+v", got)
+		}
+	})
+
+	t.Run("undated article has zero PublishedAt", func(t *testing.T) {
+		got, err := articles.GetByID(ctx, articleByExternalID(t, listed, "b").ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !got.PublishedAt.IsZero() {
+			t.Errorf("PublishedAt = %v, want zero", got.PublishedAt)
+		}
+	})
+
+	t.Run("unknown ID", func(t *testing.T) {
+		_, err := articles.GetByID(ctx, "00000000-0000-4000-8000-000000000000")
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want ErrNoRecord", err)
+		}
+	})
+}

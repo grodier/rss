@@ -120,6 +120,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 					Title:       "A <b>bold</b> title",
 					URL:         "https://example.com/a",
 					PublishedAt: time.Date(2024, time.March, 2, 10, 0, 0, 0, time.UTC),
+					Excerpt:     "First excerpt",
 					Summary:     "<script>SUMMARY-MARKER</script>",
 					Content:     "<script>SUMMARY-MARKER</script>",
 				},
@@ -140,15 +141,21 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
+		`<article class="article-row" id="article-art-1">`,
+		`<article class="article-row" id="article-art-2">`,
 		`<a href="/articles/art-1">A &lt;b&gt;bold&lt;/b&gt; title</a>`,
 		`<a href="/articles/art-2">(untitled)</a>`,
 		`<a href="/articles/art-3">Microblog post start</a>`,
 		`<a href="/articles/art-4">No link title</a>`,
-		"2 Mar 2024",
+		`<p class="article-excerpt">First excerpt</p>`,
+		`<time datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)
 		}
+	}
+	if n := strings.Count(body, `class="article-row"`); n != 4 {
+		t.Errorf("article rows = %d, want 4", n)
 	}
 	if strings.Contains(body, "<b>bold</b>") {
 		t.Errorf("title was not escaped: %s", body)
@@ -161,6 +168,40 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	}
 	if strings.Contains(body, `href="https://example.com/a"`) || strings.Contains(body, `href="https://example.com/b"`) {
 		t.Errorf("titles link to the original instead of the article page: %s", body)
+	}
+	// On the feed's own page the rows don't link back to the feed.
+	if strings.Count(body, `href="/feeds/`) != 0 {
+		t.Errorf("rows link to the feed on the feed's own page: %s", body)
+	}
+}
+
+func TestFeedHandlerArticleImages(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+			return []rss.Article{
+				{ID: "art-1", Title: "With image", ImageURL: "https://example.com/pic.jpg"},
+				{ID: "art-2", Title: "Without image"},
+			}, nil
+		},
+	})
+
+	body := serveFeed(t, s, testFeedID).Body.String()
+
+	if n := strings.Count(body, "<img"); n != 1 {
+		t.Fatalf("<img elements = %d, want 1: %s", n, body)
+	}
+	for _, want := range []string{
+		`src="https://example.com/pic.jpg"`,
+		`referrerpolicy="no-referrer"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+	// The image belongs to the first row only.
+	second := body[strings.Index(body, `id="article-art-2"`):]
+	if strings.Contains(second, "<img") {
+		t.Errorf("article without an image rendered an <img>: %s", second)
 	}
 }
 

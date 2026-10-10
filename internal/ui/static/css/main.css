@@ -232,4 +232,37 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
+
+  .article-list > * + * {
+    margin-block-start: 1rem;
+  }
+
+  .article-row {
+    border: 1px solid var(--muted);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .article-image {
+    inline-size: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+  }
+
+  .article-text {
+    padding: 0.75rem 1rem;
+  }
+
+  .article-meta {
+    color: #666;
+    font-size: 0.85em;
+  }
+
+  .article-excerpt {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
 }

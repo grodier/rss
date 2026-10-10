@@ -62,6 +62,7 @@ type FeedRefresher interface {
 type ArticleStore interface {
 	GetByID(ctx context.Context, id string) (rss.Article, error)
 	ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+	ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 
 // SubscriptionStore is the subscription persistence the server depends on.

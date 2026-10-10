@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>rss</title>
+  <title>Timeline</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
@@ -25,7 +25,25 @@
       </nav>
     </header>
 
-    <h1>rss</h1>
+    <h1>Timeline</h1>
+
+    {{if .Before}}<p><a href="/">Back to newest</a></p>{{end}}
+
+    {{if .Rows}}
+    <div class="article-list">
+      {{range .Rows}}
+      {{template "article-row" .}}
+      {{end}}
+    </div>
+    {{else if .Before}}
+    <p>No older articles.</p>
+    {{else}}
+    <p>Your timeline is empty. Find feeds to follow with <a href="/search">Search</a>; their articles will show up here.</p>
+    {{end}}
+
+    {{if .Next}}
+    <nav class="pager"><a rel="next" href="/?before={{.Next}}">Older articles</a></nav>
+    {{end}}
 
   </main>
 </body>

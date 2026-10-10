@@ -152,3 +152,18 @@ type Lookup struct {
 	StartedAt   time.Time // zero if never started
 	FinishedAt  time.Time // zero if not finished
 }
+
+// ArticleCursor is a position in a sorted list of articles: the sort time
+// and ID of the last article already shown. The zero value is the start.
+type ArticleCursor struct {
+	At time.Time
+	ID string
+}
+
+func (c ArticleCursor) IsZero() bool { return c.ID == "" }
+
+// ArticleWithFeed is an article and the feed it's from.
+type ArticleWithFeed struct {
+	Article Article
+	Feed    Feed
+}

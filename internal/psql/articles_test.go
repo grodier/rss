@@ -563,3 +563,116 @@ func TestArticleRepositoryGetByID(t *testing.T) {
 		}
 	})
 }
+
+func TestListTimeline(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	feedA, feedB, feedC := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	for _, f := range []rss.Feed{feedA, feedB} {
+		if err := subs.Subscribe(ctx, user, f.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+	if err := subs.Subscribe(ctx, other, feedC.ID); err != nil {
+		t.Fatalf("Subscribe other: %v", err)
+	}
+
+	for feed, ids := range map[*rss.Feed][]string{&feedA: {"a1", "a2", "a3"}, &feedB: {"b1", "b2"}, &feedC: {"c1"}} {
+		var batch []rss.Article
+		for _, id := range ids {
+			batch = append(batch, rss.Article{ExternalID: id})
+		}
+		if _, err := feeds.SaveFetch(ctx, *feed, batch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+	}
+
+	// Deterministic positions; a2, b1 and b2 tie on timeline_at.
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for ext, at := range map[string]time.Time{
+		"a1": base, "a2": base.Add(time.Hour), "a3": base.Add(2 * time.Hour),
+		"b1": base.Add(time.Hour), "b2": base.Add(time.Hour), "c1": base.Add(3 * time.Hour),
+	} {
+		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE external_id = $2 AND feed_id IN ($3, $4, $5)`, at, ext, feedA.ID, feedB.ID, feedC.ID); err != nil {
+			t.Fatalf("set timeline_at: %v", err)
+		}
+	}
+
+	all, err := articles.ListTimeline(ctx, user, rss.ArticleCursor{}, 100)
+	if err != nil {
+		t.Fatalf("ListTimeline: %v", err)
+	}
+
+	t.Run("only subscribed feeds, ordered by timeline_at then ID desc", func(t *testing.T) {
+		if len(all) != 5 {
+			t.Fatalf("got %d articles, want 5", len(all))
+		}
+		if all[0].Article.ExternalID != "a3" || all[4].Article.ExternalID != "a1" {
+			t.Errorf("first/last = %s/%s, want a3/a1", all[0].Article.ExternalID, all[4].Article.ExternalID)
+		}
+		for i, item := range all {
+			if item.Feed.ID == feedC.ID {
+				t.Errorf("article %s from an unsubscribed feed", item.Article.ExternalID)
+			}
+			if i > 0 {
+				p, c := all[i-1].Article, item.Article
+				if c.TimelineAt.After(p.TimelineAt) || (c.TimelineAt.Equal(p.TimelineAt) && c.ID > p.ID) {
+					t.Errorf("order broken between %s and %s", p.ExternalID, c.ExternalID)
+				}
+			}
+		}
+	})
+
+	t.Run("feed fields are populated", func(t *testing.T) {
+		for _, item := range all {
+			if item.Feed.ID != item.Article.FeedID || item.Feed.Url == "" || item.Feed.Title != "Old title" {
+				t.Errorf("article %s feed = %+v", item.Article.ExternalID, item.Feed)
+			}
+		}
+	})
+
+	t.Run("pages with a cursor have no overlap or gap", func(t *testing.T) {
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 10 {
+			page, err := articles.ListTimeline(ctx, user, cursor, 2)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			if len(page) > 2 {
+				t.Fatalf("page has %d rows, want at most 2", len(page))
+			}
+			if len(page) == 0 {
+				break
+			}
+			for _, item := range page {
+				got = append(got, item.Article.ID)
+			}
+			last := page[len(page)-1].Article
+			cursor = rss.ArticleCursor{At: last.TimelineAt, ID: last.ID}
+		}
+		if len(got) != len(all) {
+			t.Fatalf("paged %d articles, want %d", len(got), len(all))
+		}
+		for i := range got {
+			if got[i] != all[i].Article.ID {
+				t.Errorf("paged[%d] = %s, want %s", i, got[i], all[i].Article.ID)
+			}
+		}
+	})
+
+	t.Run("no subscriptions gives an empty slice", func(t *testing.T) {
+		got, err := articles.ListTimeline(ctx, newTestUser(t, db), rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		if got == nil || len(got) != 0 {
+			t.Errorf("got %v, want empty non-nil slice", got)
+		}
+	})
+}

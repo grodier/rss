@@ -5,7 +5,7 @@
     <h3><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
     <p class="article-meta">
       {{if .Feed.ID}}<a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
-      {{if not .Article.PublishedAt.IsZero}}<time datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
+      {{if not .Article.PublishedAt.IsZero}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
     </p>
     {{with .Article.Excerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
   </div>

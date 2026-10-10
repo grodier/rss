@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>rss - {{.Article.DisplayTitle}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <script src="/static/js/app.js" defer></script>
 </head>
 
 <body>
@@ -27,7 +28,7 @@
 
     <h1>{{.Article.DisplayTitle}}</h1>
     <p>From <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-      {{if not .Article.PublishedAt.IsZero}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
+      {{if not .Article.PublishedAt.IsZero}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
     </p>
     {{if .Body}}
     <div class="article-body">{{.Body}}</div>

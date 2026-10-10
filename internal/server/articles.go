@@ -108,8 +108,9 @@ func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 // articleRow is one article in a list of articles.
 type articleRow struct {
 	Article rss.Article
-	Feed    rss.Feed // links the row to its feed; zero on the feed's own page
-	Read    bool     // this user has opened the article
+	Feed    rss.Feed   // links the row to its feed; zero on the feed's own page
+	AlsoIn  []rss.Feed // other subscribed feeds with a copy; timeline only
+	Read    bool       // this user has opened the article
 }
 
 // markRead sets Read on each row userID has read.

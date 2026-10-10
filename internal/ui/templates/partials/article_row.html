@@ -8,6 +8,7 @@
       {{if .Article.PublishedAt.IsZero}}{{else if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
       {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
     </p>
+    {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
     {{with .Article.Excerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
   </div>
 </article>

@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 // articleColumnNames are the columns scanArticle reads, in order.
@@ -94,16 +96,32 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 	return articles, nil
 }
 
-// ListTimeline returns up to limit articles from the feeds userID subscribes
+// ListTimeline returns up to limit entries from the feeds userID subscribes
 // to, ordered by timeline_at then ID, newest first, starting after before
 // (from the start if before is zero).
+//
+// Copies of one article (same non-empty canonical_url) in several subscribed
+// feeds are one entry: the earliest copy to arrive (smallest timeline_at,
+// then ID), at that copy's position, with AlsoIn listing the other feeds
+// that have a copy, ordered by title.
 func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
-	stmt := `SELECT ` + qualifiedArticleColumns + `, ` + qualifiedFeedColumns + `
-		FROM subscriptions sub
-		JOIN articles a ON a.feed_id = sub.feed_id
+	// Articles with no canonical URL key on their own ID, so they're never
+	// collapsed.
+	stmt := `WITH mine AS (
+			SELECT a.*,
+				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
+			FROM subscriptions sub
+			JOIN articles a ON a.feed_id = sub.feed_id
+			WHERE sub.user_id = $1
+		), firsts AS (
+			SELECT DISTINCT ON (dedup_key) *
+			FROM mine
+			ORDER BY dedup_key, timeline_at, id
+		)
+		SELECT ` + qualifiedArticleColumns + `, ` + qualifiedFeedColumns + `
+		FROM firsts a
 		JOIN feeds f ON f.id = a.feed_id
-		WHERE sub.user_id = $1
-			AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
+		WHERE ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
 
@@ -137,7 +155,58 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 		return nil, err
 	}
 
+	if err := r.fillAlsoIn(ctx, userID, items); err != nil {
+		return nil, err
+	}
+
 	return items, nil
+}
+
+// fillAlsoIn sets AlsoIn on each item with a canonical URL to the other
+// feeds userID subscribes to that have a copy of it, ordered by title.
+func (r *ArticleRepository) fillAlsoIn(ctx context.Context, userID string, items []rss.ArticleWithFeed) error {
+	byURL := map[string]*rss.ArticleWithFeed{}
+	var urls []string
+	for i := range items {
+		if u := items[i].Article.CanonicalURL; u != "" {
+			byURL[u] = &items[i]
+			urls = append(urls, u)
+		}
+	}
+	if len(urls) == 0 {
+		return nil
+	}
+
+	stmt := `SELECT a.canonical_url, ` + qualifiedFeedColumns + `
+		FROM subscriptions sub
+		JOIN articles a ON a.feed_id = sub.feed_id
+		JOIN feeds f ON f.id = a.feed_id
+		WHERE sub.user_id = $1 AND a.canonical_url = ANY($2)
+		ORDER BY lower(COALESCE(NULLIF(f.title, ''), f.url)), f.id`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, userID, pq.Array(urls))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var canonicalURL string
+		feed, err := scanFeed(scanFunc(func(feedDests ...any) error {
+			return rows.Scan(append([]any{&canonicalURL}, feedDests...)...)
+		}))
+		if err != nil {
+			return err
+		}
+		item := byURL[canonicalURL]
+		// A feed can carry several copies itself; list it once, and never
+		// the entry's own feed.
+		if item == nil || feed.ID == item.Feed.ID || slices.ContainsFunc(item.AlsoIn, func(f rss.Feed) bool { return f.ID == feed.ID }) {
+			continue
+		}
+		item.AlsoIn = append(item.AlsoIn, feed)
+	}
+	return rows.Err()
 }
 
 // cursorArgs returns before's time and ID as query arguments, both NULL for

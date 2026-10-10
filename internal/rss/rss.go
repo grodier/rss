@@ -188,4 +188,5 @@ func (c ArticleCursor) IsZero() bool { return c.ID == "" }
 type ArticleWithFeed struct {
 	Article Article
 	Feed    Feed
+	AlsoIn  []Feed // other subscribed feeds with a copy of the article; timeline only
 }

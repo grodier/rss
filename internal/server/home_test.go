@@ -83,6 +83,27 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("also in links each other feed", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		result[0].AlsoIn = []rss.Feed{{ID: "feed-2", Title: "Feed Two"}, {ID: "feed-3", Url: "https://example.com/three.xml"}}
+		body := getHome(t, s, "/", true).Body.String()
+		want := `<p class="article-also-in">Also in: <a href="/feeds/feed-2">Feed Two</a>, <a href="/feeds/feed-3">https://example.com/three.xml</a></p>`
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s in: %s", want, body)
+		}
+		if got := strings.Count(body, "Also in:"); got != 1 {
+			t.Errorf(`"Also in:" appears %d times, want 1 (only the row with AlsoIn)`, got)
+		}
+	})
+
+	t.Run("no also in renders nothing", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		body := getHome(t, s, "/", true).Body.String()
+		if strings.Contains(body, "Also in") || strings.Contains(body, "article-also-in") {
+			t.Errorf("unexpected Also in: %s", body)
+		}
+	})
+
 	t.Run("31 results gives 30 rows and an older link", func(t *testing.T) {
 		result, storeErr = timelineItems(31), nil
 		body := getHome(t, s, "/", true).Body.String()

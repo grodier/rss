@@ -385,6 +385,46 @@ Later, not issues yet:
 - [ ] **Timezone setting and day headers.** Only if local times via JavaScript aren't
   enough (e.g. "Today"/"Yesterday" groups rendered server-side).
 
+## Pre-alpha testing
+
+What's needed before other people use the app on a public URL. Running it locally for
+yourself needs none of this.
+
+- [ ] **Decide whether testers' data is kept (decide first).** While pre-alpha, schema
+  changes edit `migrations/00001_init.sql` and rebuild the database with `make db/reset`,
+  which deletes every account, subscription and read (see "Prototype stage" in
+  CLAUDE.md). Either tell testers their data may be wiped, or freeze `00001_init.sql` and
+  make schema changes through new migrations from then on. The second option changes
+  CLAUDE.md's "Prototype stage" and "Schema changes" rules.
+- [ ] **Deployment (needs planning).** Nothing exists yet: no Dockerfile or deploy guide,
+  and migrations are run by hand with goose. Choose a host and decide how migrations run
+  on deploy. The app doesn't do HTTPS itself, so the host or a reverse proxy must
+  provide it. `-env production` must be set, since it's the only thing that makes the
+  session cookie `Secure`. Postgres needs backups. Write the steps down in the README.
+- [ ] **Control who can sign up.** Anyone who finds the URL can create an account and
+  use lookups to make the server fetch URLs they choose. Gate signup with an invite code,
+  an email allowlist or a flag that turns signup off. Goes with rate-limiting login and
+  signup (Security).
+- [ ] **Client IP behind a proxy.** `logRequest` logs `r.RemoteAddr`, which behind a
+  reverse proxy is the proxy's address. An IP-keyed login or signup limit would then
+  treat every visitor as one client. Read the client IP from the proxy's header
+  (`X-Forwarded-For` or the platform's own), only when the request comes from a trusted
+  proxy (a flag), and use it for logs and IP-keyed limits. Decide this together with the
+  login and signup rate limit.
+- [ ] **Account management.** No password change, password reset or account deletion.
+  With a few known testers, passwords can be reset by hand in the database. Self-service
+  reset needs email, which the app doesn't send yet.
+- [ ] **Log in to the timeline.** `loginFormHandler` redirects to `/feeds`. Since `/` is
+  now the timeline, send users there instead.
+- [ ] **Session lifetime.** Sessions expire 12 hours after login
+  (`sessionManager.Lifetime` in `cmd/www/application.go`), so a daily reader logs in
+  every day. Consider a longer lifetime with an idle timeout (`sessionManager.IdleTimeout`).
+- [ ] **Malformed form bodies return 500.** `decodePostForm` errors go to
+  `serverErrorHTML`, so a bad body is a 500 when it should be a 400, and form bodies
+  aren't capped beyond `ParseForm`'s 10 MB default. Return 400 for decode errors and cap
+  bodies with `http.MaxBytesReader` (413 when exceeded). The error-state walkthrough
+  lists both states.
+
 ## Security
 
 - [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.
@@ -396,9 +436,14 @@ Later, not issues yet:
 
 ## Suggested order
 
-1. Rate-limit login and signup (Security); small and independent.
-2. Now that the initial features are done, **plan** the error-state walkthrough and run
+1. Decide whether testers' data is kept (Pre-alpha testing).
+2. Rate-limit login and signup (Security), control who can sign up, and the client IP
+   behind a proxy; they depend on each other.
+3. **Plan** deployment. Once it's done the app is ready for invited testers.
+4. The rest of Pre-alpha testing (account management, logging in to the timeline,
+   session lifetime, malformed form bodies), in parallel with testing.
+5. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-3. Before production or a few thousand feeds, **plan** load and performance testing.
+6. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

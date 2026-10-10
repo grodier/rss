@@ -70,15 +70,8 @@
     {{end}}
 
     <h2>Articles</h2>
-    {{with .Articles}}
-    <ul>
-      {{range .}}
-      <li>
-        <a href="/articles/{{.ID}}">{{.DisplayTitle}}</a>
-        {{if not .PublishedAt.IsZero}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.PublishedAt.Format "2 Jan 2006"}}</time>{{end}}
-      </li>
-      {{end}}
-    </ul>
+    {{with .Rows}}
+    <div class="article-list">{{range .}}{{template "article-row" .}}{{end}}</div>
     {{else}}
     <p>No articles yet.</p>
     {{end}}

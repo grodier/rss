@@ -114,6 +114,11 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rows := make([]articleRow, len(articles))
+	for i, a := range articles {
+		rows[i] = articleRow{Article: a}
+	}
+
 	userID, _ := s.authenticatedUserID(r)
 	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, []string{feed.ID})
 	if err != nil {
@@ -126,14 +131,14 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Feed           rss.Feed
 		Site           rss.Site
-		Articles       []rss.Article
+		Rows           []articleRow
 		Subscribed     bool
 		RefreshPending bool
 		Flash          string
 	}{
 		Feed:           feed,
 		Site:           site,
-		Articles:       articles,
+		Rows:           rows,
 		Subscribed:     subscribed[feed.ID],
 		RefreshPending: pending,
 		Flash:          flash,

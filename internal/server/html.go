@@ -20,7 +20,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 	ts := map[string]*template.Template{}
 	for _, page := range pages {
 		name := filepath.Base(page)
-		t, err := template.New(name).ParseFS(ui.Templates, page)
+		t, err := template.New(name).ParseFS(ui.Templates, page, "templates/partials/*.html")
 		if err != nil {
 			return nil, fmt.Errorf("parse template %s: %w", name, err)
 		}

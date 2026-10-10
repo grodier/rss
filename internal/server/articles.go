@@ -70,3 +70,9 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 	}
 }
+
+// articleRow is one article in a list of articles.
+type articleRow struct {
+	Article rss.Article
+	Feed    rss.Feed // links the row to its feed; zero on the feed's own page
+}

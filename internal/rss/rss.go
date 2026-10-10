@@ -44,9 +44,12 @@ type Article struct {
 	Content      string
 	Excerpt      string    // plain text, at most ingest.ExcerptLen runes plus "…"
 	PublishedAt  time.Time // zero if unknown
-	TimelineAt   time.Time // position in timelines; see psql.timelineAt
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// PublishedDateOnly reports that the feed's date had no time of day:
+	// PublishedAt is midnight UTC and only its date is meaningful.
+	PublishedDateOnly bool
+	TimelineAt        time.Time // position in timelines; see psql.timelineAt
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.

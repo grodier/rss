@@ -47,6 +47,8 @@ type Item struct {
 	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
 	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
 	Published time.Time // published date, else updated date, in UTC; zero if neither parses
+
+	PublishedDateOnly bool // Published came from a date with no time of day
 }
 
 // feedContentTypes are the media types Sniff accepts without looking at the
@@ -179,11 +181,14 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 				}
 			}
 		}
+		// A date with no ":" has no time of day: every time format uses one.
 		switch {
 		case it.PublishedParsed != nil:
 			item.Published = it.PublishedParsed.UTC()
+			item.PublishedDateOnly = !strings.Contains(it.Published, ":")
 		case it.UpdatedParsed != nil:
 			item.Published = it.UpdatedParsed.UTC()
+			item.PublishedDateOnly = !strings.Contains(it.Updated, ":")
 		}
 		items = append(items, item)
 	}

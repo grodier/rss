@@ -58,6 +58,8 @@ func Articles(items []feedparse.Item) []rss.Article {
 			Content:      it.Content,
 			Excerpt:      excerpt(it.Summary, it.Content),
 			PublishedAt:  it.Published,
+
+			PublishedDateOnly: it.PublishedDateOnly,
 		})
 	}
 	return articles

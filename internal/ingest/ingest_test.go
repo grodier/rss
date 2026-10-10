@@ -94,10 +94,12 @@ func TestArticles(t *testing.T) {
 		items := []feedparse.Item{
 			{ID: "b", URL: "https://Example.com/b#c", ImageURL: "https://example.com/b.jpg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Published: published},
 			{ID: "a", URL: "https://example.com/a", Title: "A"},
+			{ID: "d", Title: "D", Published: published.Truncate(24 * time.Hour), PublishedDateOnly: true},
 		}
 		want := []rss.Article{
 			{ExternalID: "b", URL: "https://Example.com/b#c", CanonicalURL: "https://example.com/b", ImageURL: "https://example.com/b.jpg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Excerpt: "sb", PublishedAt: published},
 			{ExternalID: "a", URL: "https://example.com/a", CanonicalURL: "https://example.com/a", Title: "A"},
+			{ExternalID: "d", Title: "D", PublishedAt: published.Truncate(24 * time.Hour), PublishedDateOnly: true},
 		}
 		got := Articles(items)
 		if len(got) != len(want) {

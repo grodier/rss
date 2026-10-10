@@ -61,16 +61,19 @@ func (r *ArticleRepository) GetByID(ctx context.Context, id string) (rss.Article
 	return a, nil
 }
 
-// ListByFeed returns a feed's newest articles first (by published date, else
-// when we first saw them), at most limit.
-func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+// ListByFeed returns up to limit of feedID's articles, newest first by
+// published date (else created date) then ID, starting after before (from
+// the start if before is zero).
+func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 	stmt := `SELECT ` + articleColumns + `
 		FROM articles
 		WHERE feed_id = $1
-		ORDER BY COALESCE(published_at, created_at) DESC, id
-		LIMIT $2`
+			AND ($2::timestamptz IS NULL OR (COALESCE(published_at, created_at), id) < ($2, $3::uuid))
+		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+		LIMIT $4`
 
-	rows, err := r.DB.QueryContext(ctx, stmt, feedID, limit)
+	at, id := cursorArgs(before)
+	rows, err := r.DB.QueryContext(ctx, stmt, feedID, at, id, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -104,12 +107,7 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
 
-	var at sql.NullTime
-	var id sql.NullString
-	if !before.IsZero() {
-		at = sql.NullTime{Time: before.At, Valid: true}
-		id = sql.NullString{String: before.ID, Valid: true}
-	}
+	at, id := cursorArgs(before)
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID, at, id, limit)
 	if err != nil {
@@ -140,6 +138,15 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 	}
 
 	return items, nil
+}
+
+// cursorArgs returns before's time and ID as query arguments, both NULL for
+// the zero cursor.
+func cursorArgs(before rss.ArticleCursor) (sql.NullTime, sql.NullString) {
+	if before.IsZero() {
+		return sql.NullTime{}, sql.NullString{}
+	}
+	return sql.NullTime{Time: before.At, Valid: true}, sql.NullString{String: before.ID, Valid: true}
 }
 
 // backlogSlack is how far before a feed's previous successful fetch an

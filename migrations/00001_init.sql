@@ -95,7 +95,7 @@ CREATE TABLE articles (
     UNIQUE (feed_id, external_id)
 );
 
-CREATE INDEX articles_feed_sort_idx ON articles (feed_id, (COALESCE(published_at, created_at)) DESC);
+CREATE INDEX articles_feed_sort_idx ON articles (feed_id, (COALESCE(published_at, created_at)) DESC, id DESC);
 CREATE INDEX articles_feed_timeline_idx ON articles (feed_id, timeline_at DESC, id DESC);
 CREATE INDEX articles_canonical_url_idx ON articles (canonical_url) WHERE canonical_url <> '';
 

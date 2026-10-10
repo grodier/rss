@@ -61,7 +61,7 @@ type FeedRefresher interface {
 // ArticleStore reads saved articles.
 type ArticleStore interface {
 	GetByID(ctx context.Context, id string) (rss.Article, error)
-	ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 

@@ -77,7 +77,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got %+v, want %+v", res, want)
 		}
 
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -127,7 +127,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got %+v, want %+v", res, want)
 		}
 
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got %+v, want %+v", res, want)
 		}
 
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -165,7 +165,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got %+v, want %+v", res, want)
 		}
 
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -185,7 +185,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got %+v, want %+v", res, want)
 		}
 
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -203,7 +203,7 @@ func TestSaveFetch(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("SaveFetch first: %v", err)
 		}
-		got, err := articles.ListByFeed(ctx, tf.ID, 10)
+		got, err := articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -220,7 +220,7 @@ func TestSaveFetch(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("SaveFetch second: %v", err)
 		}
-		got, err = articles.ListByFeed(ctx, tf.ID, 10)
+		got, err = articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -237,7 +237,7 @@ func TestSaveFetch(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("SaveFetch edit: %v", err)
 		}
-		got, err = articles.ListByFeed(ctx, tf.ID, 10)
+		got, err = articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -259,7 +259,7 @@ func TestSaveFetch(t *testing.T) {
 		if res := save("two"); res.Updated != 1 {
 			t.Errorf("changed excerpt: got %+v, want Updated 1", res)
 		}
-		got, err := articles.ListByFeed(ctx, ef.ID, 10)
+		got, err := articles.ListByFeed(ctx, ef.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
@@ -378,16 +378,24 @@ func TestListByFeed(t *testing.T) {
 	feed := newTestFeed(t, db)
 	other := newTestFeed(t, db)
 
-	// The undated article sorts by created_at (now), so it comes before
-	// the dated ones, which are all in the past.
+	// "undated" sorts by created_at (now), so it comes before the dated
+	// ones, which are all in the past. "undated-old" gets a created_at
+	// between "middle" and "new" below. "tie-1" and "tie-2" share
+	// "middle"'s date, so the three are ordered by ID.
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{
 		{ExternalID: "old", Excerpt: "old excerpt", ImageURL: "https://example.com/old.jpg", PublishedAt: date},
 		{ExternalID: "undated"},
+		{ExternalID: "undated-old"},
 		{ExternalID: "new", PublishedAt: date.Add(time.Hour)},
 		{ExternalID: "middle", PublishedAt: date.Add(time.Minute)},
+		{ExternalID: "tie-1", PublishedAt: date.Add(time.Minute)},
+		{ExternalID: "tie-2", PublishedAt: date.Add(time.Minute)},
 	}); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE articles SET created_at = $1 WHERE feed_id = $2 AND external_id = 'undated-old'`, date.Add(30*time.Minute), feed.ID); err != nil {
+		t.Fatalf("set created_at: %v", err)
 	}
 	if _, err := feeds.SaveFetch(ctx, other, []rss.Article{{ExternalID: "other", PublishedAt: date.Add(2 * time.Hour)}}); err != nil {
 		t.Fatalf("SaveFetch other: %v", err)
@@ -401,33 +409,87 @@ func TestListByFeed(t *testing.T) {
 		return ids
 	}
 
+	all, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 100)
+	if err != nil {
+		t.Fatalf("ListByFeed: %v", err)
+	}
+
 	t.Run("returns Excerpt", func(t *testing.T) {
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
-		if err != nil {
-			t.Fatalf("ListByFeed: %v", err)
-		}
-		if a := articleByExternalID(t, got, "old"); a.Excerpt != "old excerpt" {
+		if a := articleByExternalID(t, all, "old"); a.Excerpt != "old excerpt" {
 			t.Errorf("got Excerpt %q, want %q", a.Excerpt, "old excerpt")
 		}
 	})
 
 	t.Run("returns ImageURL", func(t *testing.T) {
-		got, err := articles.ListByFeed(ctx, feed.ID, 10)
-		if err != nil {
-			t.Fatalf("ListByFeed: %v", err)
-		}
-		if a := articleByExternalID(t, got, "old"); a.ImageURL != "https://example.com/old.jpg" {
+		if a := articleByExternalID(t, all, "old"); a.ImageURL != "https://example.com/old.jpg" {
 			t.Errorf("got ImageURL %q, want %q", a.ImageURL, "https://example.com/old.jpg")
 		}
 	})
 
 	t.Run("returns TimelineAt", func(t *testing.T) {
-		got, err := articles.ListByFeed(ctx, other.ID, 10)
+		got, err := articles.ListByFeed(ctx, other.ID, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
 		if len(got) != 1 || !got[0].TimelineAt.Equal(date.Add(2*time.Hour)) {
 			t.Errorf("got %+v, want one article with TimelineAt %v", got, date.Add(2*time.Hour))
+		}
+	})
+
+	t.Run("newest first, undated by created_at, ties by ID desc", func(t *testing.T) {
+		got := externalIDs(all)
+		if len(got) != 7 {
+			t.Fatalf("got %v, want 7 articles", got)
+		}
+		// Positions 3-5 are middle, tie-1 and tie-2 in ID order, checked below.
+		want := []string{"undated", "new", "undated-old", "", "", "", "old"}
+		for i, w := range want {
+			if w != "" && got[i] != w {
+				t.Errorf("got %v, want %s at %d", got, w, i)
+			}
+		}
+		for i := 1; i < len(all); i++ {
+			p, c := all[i-1], all[i]
+			if c.FeedSortAt().After(p.FeedSortAt()) || (c.FeedSortAt().Equal(p.FeedSortAt()) && c.ID > p.ID) {
+				t.Errorf("order broken between %s and %s", p.ExternalID, c.ExternalID)
+			}
+		}
+		ties := map[string]bool{}
+		for _, id := range got[3:6] {
+			ties[id] = true
+		}
+		if !ties["middle"] || !ties["tie-1"] || !ties["tie-2"] {
+			t.Errorf("positions 3-5 = %v, want middle, tie-1, tie-2 in some order", got[3:6])
+		}
+	})
+
+	t.Run("pages with a cursor have no overlap or gap", func(t *testing.T) {
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 10 {
+			page, err := articles.ListByFeed(ctx, feed.ID, cursor, 2)
+			if err != nil {
+				t.Fatalf("ListByFeed: %v", err)
+			}
+			if len(page) > 2 {
+				t.Fatalf("page has %d rows, want at most 2", len(page))
+			}
+			if len(page) == 0 {
+				break
+			}
+			for _, a := range page {
+				got = append(got, a.ID)
+			}
+			last := page[len(page)-1]
+			cursor = rss.ArticleCursor{At: last.FeedSortAt(), ID: last.ID}
+		}
+		if len(got) != len(all) {
+			t.Fatalf("paged %d articles, want %d", len(got), len(all))
+		}
+		for i := range got {
+			if got[i] != all[i].ID {
+				t.Errorf("paged[%d] = %s, want %s", i, got[i], all[i].ID)
+			}
 		}
 	})
 
@@ -437,14 +499,13 @@ func TestListByFeed(t *testing.T) {
 		limit  int
 		want   []string
 	}{
-		{"all, newest first", feed.ID, 10, []string{"undated", "new", "middle", "old"}},
 		{"limit", feed.ID, 2, []string{"undated", "new"}},
 		{"other feed", other.ID, 10, []string{"other"}},
 		{"unknown feed", "00000000-0000-4000-8000-000000000000", 10, []string{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := articles.ListByFeed(ctx, tt.feedID, tt.limit)
+			got, err := articles.ListByFeed(ctx, tt.feedID, rss.ArticleCursor{}, tt.limit)
 			if err != nil {
 				t.Fatalf("ListByFeed: %v", err)
 			}
@@ -527,7 +588,7 @@ func TestArticleRepositoryGetByID(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
-	listed, err := articles.ListByFeed(ctx, feed.ID, 10)
+	listed, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
 	if err != nil {
 		t.Fatalf("ListByFeed: %v", err)
 	}

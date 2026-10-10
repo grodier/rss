@@ -47,6 +47,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/feeds/{id}/subscribe", s.feedSubscribeHandler)
 			r.Post("/feeds/{id}/unsubscribe", s.feedUnsubscribeHandler)
 			r.Get("/feeds", s.feedsHandler)
+			r.Get("/articles/{id}", s.articleHandler)
 			r.Get("/sites/{id}", s.siteHandler)
 			r.Get("/search", s.searchHandler)
 			r.Post("/lookups", s.lookupCreateHandler)

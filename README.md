@@ -2,7 +2,7 @@
 
 A server-rendered RSS reader written in Go, using [chi](https://github.com/go-chi/chi), `html/template` (templates and static files are embedded in the binary), Postgres, and [scs](https://github.com/alexedwards/scs) sessions.
 
-> **Work in progress.** Accounts (sign up, log in, log out), searching for sites and discovering their feeds (site lookups) work. Fetching articles and subscriptions are not built yet (see `docs/todo.md`).
+> **Work in progress.** Accounts (sign up, log in, log out), searching for sites and discovering their feeds (site lookups), fetching articles in the background, subscriptions, and reading (a timeline at `/`, article pages, read state) work. Planned work is in `docs/todo.md`.
 
 ## Prerequisites
 
@@ -72,7 +72,9 @@ Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make t
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way the app makes outbound HTTP requests to user-influenced URLs (blocks private addresses, limits redirects, size and time)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
+- `internal/ingest`: fetches a feed, saves its articles and schedules the next fetch
 - `internal/refresh`: refreshes feeds in the background when they're due
+- `internal/sanitize`: makes untrusted article HTML safe to render
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded HTML templates and static files
 - `internal/validator`: form validation helpers

@@ -81,6 +81,30 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// articleReadHandler records that the user clicked through to the original
+// article from a row: the row's source link pings it (<a ping>, or a beacon
+// sent by app.js). The request body is ignored. CrossOriginProtection rejects
+// cross-site POSTs; pings and beacons from our own pages are same-origin.
+func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.ReadService.MarkRead(r.Context(), userID, id); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // articleRow is one article in a list of articles.
 type articleRow struct {
 	Article rss.Article

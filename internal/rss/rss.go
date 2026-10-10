@@ -2,6 +2,7 @@
 package rss
 
 import (
+	"net/url"
 	"strings"
 	"time"
 )
@@ -54,6 +55,16 @@ func (a Article) FeedSortAt() time.Time {
 		return a.PublishedAt
 	}
 	return a.CreatedAt
+}
+
+// URLHost returns the host of the article's URL without a leading "www.",
+// or "" if it has no parseable http(s) URL.
+func (a Article) URLHost() string {
+	u, err := url.Parse(a.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return strings.TrimPrefix(u.Hostname(), "www.")
 }
 
 // displayTitleLen is the most runes of an excerpt DisplayTitle uses.

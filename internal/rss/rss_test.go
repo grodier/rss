@@ -46,3 +46,23 @@ func TestArticleFeedSortAt(t *testing.T) {
 		})
 	}
 }
+
+func TestArticleURLHost(t *testing.T) {
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{"https://www.example.com/a", "example.com"},
+		{"http://blog.example.com", "blog.example.com"},
+		{"https://example.com:8443/a", "example.com"},
+		{"", ""},
+		{"mailto:someone@example.com", ""},
+		{"/relative/path", ""},
+		{"https://exa mple.com/", ""},
+	}
+	for _, tt := range tests {
+		if got := (Article{URL: tt.url}).URLHost(); got != tt.want {
+			t.Errorf("URLHost(%q) = %q, want %q", tt.url, got, tt.want)
+		}
+	}
+}

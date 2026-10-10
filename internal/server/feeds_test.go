@@ -175,12 +175,38 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	if n := strings.Count(body, "<time"); n != 1 {
 		t.Errorf("<time elements = %d, want 1", n)
 	}
-	if strings.Contains(body, `href="https://example.com/a"`) || strings.Contains(body, `href="https://example.com/b"`) {
+	if strings.Contains(body, `<a href="https://example.com/`) {
 		t.Errorf("titles link to the original instead of the article page: %s", body)
 	}
 	// On the feed's own page the rows don't link back to the feed.
 	if strings.Count(body, `href="/feeds/`) != 0 {
 		t.Errorf("rows link to the feed on the feed's own page: %s", body)
+	}
+}
+
+func TestFeedHandlerSourceLinks(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return []rss.Article{
+				{ID: "art-1", Title: "Linked", URL: "https://www.example.com/a"},
+				{ID: "art-2", Title: "Unlinked"},
+				{ID: "art-3", Title: "Not http", URL: "mailto:someone@example.com"},
+			}, nil
+		},
+	})
+
+	rr := serveFeed(t, s, testFeedID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	want := `<a class="article-source" href="https://www.example.com/a" ping="/articles/art-1/read" target="_blank" rel="noopener noreferrer">example.com ↗</a>`
+	if !strings.Contains(body, want) {
+		t.Errorf("body does not contain %q: %s", want, body)
+	}
+	if n := strings.Count(body, `class="article-source"`); n != 1 {
+		t.Errorf("source links = %d, want 1 (only the article with an http(s) URL): %s", n, body)
 	}
 }
 

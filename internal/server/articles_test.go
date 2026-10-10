@@ -308,3 +308,90 @@ func assertReadMarkers(t *testing.T, body, readID, unreadID string) {
 		t.Errorf("unread row is marked read: %s", unread)
 	}
 }
+
+func postArticleRead(t *testing.T, s *Server, userID, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/articles/x/read", strings.NewReader("PING"))
+	req.Header.Set("Content-Type", "text/ping")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.articleReadHandler)).ServeHTTP(rr, req.WithContext(ctx))
+	return rr
+}
+
+func TestArticleReadHandler(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		var gotUser, gotArticle string
+		calls := 0
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markReadFn: func(ctx context.Context, userID, articleID string) error {
+			calls++
+			gotUser, gotArticle = userID, articleID
+			return nil
+		}}})
+
+		rr := postArticleRead(t, s, "user-1", testArticleID)
+
+		if rr.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+		}
+		if rr.Body.Len() != 0 {
+			t.Errorf("body = %q, want empty", rr.Body.String())
+		}
+		if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
+			t.Errorf("MarkRead called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
+		}
+	})
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t) // nil stores: any store call would panic
+		assertNotFoundHTML(t, postArticleRead(t, s, "user-1", "abc"))
+	})
+
+	t.Run("unknown article", func(t *testing.T) {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markReadFn: func(context.Context, string, string) error {
+			return rss.ErrNoRecord
+		}}})
+		assertNotFoundHTML(t, postArticleRead(t, s, "user-1", testArticleID))
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markReadFn: func(context.Context, string, string) error {
+			return errors.New("db down")
+		}}})
+		rr := postArticleRead(t, s, "user-1", testArticleID)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("logged out", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/read", nil)
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
+		}
+	})
+
+	t.Run("cross-origin", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/read", nil)
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+	})
+}

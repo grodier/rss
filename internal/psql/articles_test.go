@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -775,5 +776,145 @@ func TestListTimeline(t *testing.T) {
 		if got == nil || len(got) != 0 {
 			t.Errorf("got %v, want empty non-nil slice", got)
 		}
+	})
+}
+
+func TestListTimelineCollapsesCopies(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	// The reader subscribes to A, B and C; D is subscribed only by someone else.
+	feedA, feedB, feedC, feedD := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+	reader, bOnly, other := newTestUser(t, db), newTestUser(t, db), newTestUser(t, db)
+	for _, s := range []struct {
+		user string
+		feed rss.Feed
+	}{{reader, feedA}, {reader, feedB}, {reader, feedC}, {bOnly, feedB}, {other, feedD}} {
+		if err := subs.Subscribe(ctx, s.user, s.feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+
+	nano := time.Now().UnixNano()
+	postX := fmt.Sprintf("https://example.com/post-x-%d", nano)
+	postZ := fmt.Sprintf("https://example.com/post-z-%d", nano)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// x is in A, B and D: D's copy is earliest but unsubscribed, B's arrives
+	// after A's. z is in A and C, C's first. e1 and e2 share a title but have
+	// no canonical URL.
+	type copyOf struct {
+		feed     rss.Feed
+		ext, url string
+		title    string
+		offset   time.Duration
+	}
+	for _, c := range []copyOf{
+		{feedA, "x", postX, "Post X", time.Hour},
+		{feedB, "x", postX, "Post X", 3 * time.Hour},
+		{feedD, "x", postX, "Post X", 0},
+		{feedA, "z", postZ, "Post Z", 6 * time.Hour},
+		{feedC, "z", postZ, "Post Z", 30 * time.Minute},
+		{feedC, "e1", "", "Same", 2 * time.Hour},
+		{feedC, "e2", "", "Same", 4 * time.Hour},
+	} {
+		a := rss.Article{ExternalID: c.ext, CanonicalURL: c.url, Title: c.title}
+		if _, err := feeds.SaveFetch(ctx, c.feed, []rss.Article{a}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(c.offset), c.feed.ID, c.ext); err != nil {
+			t.Fatalf("set timeline_at: %v", err)
+		}
+	}
+
+	all, err := articles.ListTimeline(ctx, reader, rss.ArticleCursor{}, 100)
+	if err != nil {
+		t.Fatalf("ListTimeline: %v", err)
+	}
+
+	type entry struct {
+		ext, feedID string
+		at          string // timeline_at, RFC 3339, so failures print readably
+		alsoIn      []string
+	}
+	entries := func(items []rss.ArticleWithFeed) []entry {
+		var got []entry
+		for _, item := range items {
+			e := entry{ext: item.Article.ExternalID, feedID: item.Feed.ID, at: item.Article.TimelineAt.UTC().Format(time.RFC3339)}
+			for _, f := range item.AlsoIn {
+				e.alsoIn = append(e.alsoIn, f.ID)
+			}
+			got = append(got, e)
+		}
+		return got
+	}
+	at := func(offset time.Duration) string { return base.Add(offset).Format(time.RFC3339) }
+	want := []entry{
+		{"e2", feedC.ID, at(4 * time.Hour), nil},
+		{"e1", feedC.ID, at(2 * time.Hour), nil},
+		{"x", feedA.ID, at(time.Hour), []string{feedB.ID}},
+		{"z", feedC.ID, at(30 * time.Minute), []string{feedA.ID}},
+	}
+	assertEntries := func(t *testing.T, got, want []entry) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("got %d entries %+v, want %d %+v", len(got), got, len(want), want)
+		}
+		for i := range want {
+			g, w := got[i], want[i]
+			if g.ext != w.ext || g.feedID != w.feedID || g.at != w.at || !slices.Equal(g.alsoIn, w.alsoIn) {
+				t.Errorf("entry %d = %+v, want %+v", i, g, w)
+			}
+		}
+	}
+
+	// One check covers: x appears once, as A's copy (the earliest subscribed)
+	// at A's position, with AlsoIn [B] (not D, which the reader doesn't
+	// subscribe to); B's later copy doesn't move it; z is C's earlier copy;
+	// e1 and e2 aren't collapsed.
+	t.Run("copies collapse to the earliest subscribed copy", func(t *testing.T) {
+		assertEntries(t, entries(all), want)
+	})
+
+	t.Run("AlsoIn feeds are populated", func(t *testing.T) {
+		for _, item := range all {
+			for _, f := range item.AlsoIn {
+				if f.Url == "" || f.Title != "Old title" {
+					t.Errorf("article %s AlsoIn feed = %+v", item.Article.ExternalID, f)
+				}
+			}
+		}
+	})
+
+	t.Run("pages over collapsed entries have no overlap or gap", func(t *testing.T) {
+		var got []rss.ArticleWithFeed
+		cursor := rss.ArticleCursor{}
+		for range 10 {
+			page, err := articles.ListTimeline(ctx, reader, cursor, 1)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			if len(page) > 1 {
+				t.Fatalf("page has %d rows, want at most 1", len(page))
+			}
+			if len(page) == 0 {
+				break
+			}
+			got = append(got, page...)
+			last := page[0].Article
+			cursor = rss.ArticleCursor{At: last.TimelineAt, ID: last.ID}
+		}
+		assertEntries(t, entries(got), want)
+	})
+
+	t.Run("a user subscribed only to B sees B's copy without AlsoIn", func(t *testing.T) {
+		got, err := articles.ListTimeline(ctx, bOnly, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		assertEntries(t, entries(got), []entry{{"x", feedB.ID, at(3 * time.Hour), nil}})
 	})
 }

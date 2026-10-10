@@ -22,6 +22,7 @@ func TestStaticRoutes(t *testing.T) {
 		{"/static/", http.StatusNotFound, "text/html"},
 		{"/static/css/", http.StatusNotFound, "text/html"},
 		{"/static/css/main.css", http.StatusOK, "text/css"},
+		{"/static/js/app.js", http.StatusOK, "text/javascript"},
 	}
 
 	for _, tt := range tests {

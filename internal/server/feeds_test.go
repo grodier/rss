@@ -156,7 +156,8 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 		`<a href="/articles/art-3">Microblog post start</a>`,
 		`<a href="/articles/art-4">No link title</a>`,
 		`<p class="article-excerpt">First excerpt</p>`,
-		`<time datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
+		`<time data-local datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
+		`<script src="/static/js/app.js" defer></script>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)

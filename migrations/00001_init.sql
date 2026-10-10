@@ -115,6 +115,22 @@ CREATE TABLE subscriptions (
 
 CREATE INDEX subscriptions_feed_id_idx ON subscriptions (feed_id);
 
+CREATE TABLE reads (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX reads_article_id_idx ON reads (article_id);
+
 CREATE TABLE sessions (
   token TEXT PRIMARY KEY,
   data BYTEA NOT NULL,
@@ -124,6 +140,7 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 
 -- +goose Down
+DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;
 DROP TABLE lookups;

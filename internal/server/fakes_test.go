@@ -114,6 +114,25 @@ func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, befo
 	return f.listTimelineFn(ctx, userID, before, limit)
 }
 
+type fakeReadStore struct {
+	markReadFn       func(ctx context.Context, userID, articleID string) error
+	readArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
+func (f *fakeReadStore) MarkRead(ctx context.Context, userID, articleID string) error {
+	if f.markReadFn == nil {
+		return nil
+	}
+	return f.markReadFn(ctx, userID, articleID)
+}
+
+func (f *fakeReadStore) ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+	if f.readArticleIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.readArticleIDsFn(ctx, userID, articleIDs)
+}
+
 type fakeSubscriptionStore struct {
 	subscribeFn         func(ctx context.Context, userID, feedID string) error
 	unsubscribeFn       func(ctx context.Context, userID, feedID string) error

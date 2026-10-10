@@ -61,6 +61,7 @@ func (app *Application) Run(args []string) error {
 		LookupService:       psql.NewLookupRepository(db),
 		ArticleService:      psql.NewArticleRepository(db),
 		SubscriptionService: psql.NewSubscriptionRepository(db),
+		ReadService:         psql.NewReadRepository(db),
 		Refresher:           refresher,
 	}
 

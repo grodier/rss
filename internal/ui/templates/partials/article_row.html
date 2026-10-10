@@ -1,8 +1,8 @@
 {{define "article-row"}}
-<article class="article-row" id="article-{{.Article.ID}}">
+<article class="article-row{{if .Read}} read{{end}}" id="article-{{.Article.ID}}">
   {{with .Article.ImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
   <div class="article-text">
-    <h3><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a></h3>
+    <h3><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
     <p class="article-meta">
       {{if .Feed.ID}}<a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
       {{if not .Article.PublishedAt.IsZero}}<time datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}

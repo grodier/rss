@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"net/http"
@@ -29,6 +30,15 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 			s.serverErrorHTML(w, r, err)
 		}
 		return
+	}
+
+	// Opening the article page marks it read. GET handlers otherwise never
+	// write, since CrossOriginProtection doesn't cover GET (see feedHandler).
+	// This write is idempotent and only records that this user opened this
+	// page, so a forged request gains nothing beyond a read marker.
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.ReadService.MarkRead(r.Context(), userID, article.ID); err != nil {
+		s.logError(r, err) // the page still renders
 	}
 
 	feed, err := s.services.FeedService.GetByID(r.Context(), article.FeedID)
@@ -75,4 +85,21 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 type articleRow struct {
 	Article rss.Article
 	Feed    rss.Feed // links the row to its feed; zero on the feed's own page
+	Read    bool     // this user has opened the article
+}
+
+// markRead sets Read on each row userID has read.
+func (s *Server) markRead(ctx context.Context, userID string, rows []articleRow) error {
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Article.ID
+	}
+	read, err := s.services.ReadService.ReadArticleIDs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Read = read[rows[i].Article.ID]
+	}
+	return nil
 }

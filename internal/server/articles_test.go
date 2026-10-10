@@ -108,6 +108,20 @@ func TestArticleHandler(t *testing.T) {
 	}
 }
 
+func TestArticleHandlerDateOnly(t *testing.T) {
+	day := time.Date(2026, time.October, 9, 0, 0, 0, 0, time.UTC).In(time.FixedZone("EDT", -4*60*60))
+	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", PublishedAt: day, PublishedDateOnly: true}, nil, nil, nil), testArticleID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body, `<time datetime="2026-10-09">9 Oct 2026</time>`)
+	if strings.Contains(body, "data-local") || strings.Contains(body, "00:00 UTC") {
+		t.Errorf("date-only date is localized or shows a time: %s", body)
+	}
+}
+
 func TestArticleHandlerSummaryWhenNoContent(t *testing.T) {
 	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", Summary: "<p>Just a summary</p>"}, nil, nil, nil), testArticleID)
 

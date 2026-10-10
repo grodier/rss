@@ -405,6 +405,56 @@ func TestParseItemImage(t *testing.T) {
 	}
 }
 
+func TestParseItemDateOnly(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	rssItem := func(item string) string {
+		return `<rss version="2.0"><channel><title>F</title><item><title>A</title>` + item + `</item></channel></rss>`
+	}
+	atomEntry := func(entry string) string {
+		return `<feed xmlns="http://www.w3.org/2005/Atom"><title>F</title><entry><title>A</title>` + entry + `</entry></feed>`
+	}
+	jsonItem := func(item string) string {
+		return `{"version":"https://jsonfeed.org/version/1.1","title":"F","items":[{"id":"1"` + item + `}]}`
+	}
+	midnight := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	timed := time.Date(2026, 10, 9, 14, 3, 0, 0, time.UTC)
+	tests := []struct {
+		name          string
+		body          string
+		wantPublished time.Time
+		wantDateOnly  bool
+	}{
+		{"rss pubDate date-only", rssItem(`<pubDate>Thu, 09 Oct 2026</pubDate>`), midnight, true},
+		{"rss pubDate with time", rssItem(`<pubDate>Thu, 09 Oct 2026 14:03:00 +0000</pubDate>`), timed, false},
+		{"atom published date-only", atomEntry(`<published>2026-10-09</published>`), midnight, true},
+		{"atom published with time", atomEntry(`<published>2026-10-09T14:03:00Z</published>`), timed, false},
+		{"atom updated only, date-only", atomEntry(`<updated>2026-10-09</updated>`), midnight, true},
+		{"atom date-only updated ignored when published has a time", atomEntry(`<published>2026-10-09T14:03:00Z</published><updated>2026-10-10</updated>`), timed, false},
+		{"json date_published date-only", jsonItem(`,"date_published":"2026-10-09"`), midnight, true},
+		{"json date_published with time", jsonItem(`,"date_published":"2026-10-09T14:03:00Z"`), timed, false},
+		{"json date_modified only, date-only", jsonItem(`,"date_modified":"2026-10-09"`), midnight, true},
+		{"no date", rssItem(`<description>text</description>`), time.Time{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			item := got.Items[0]
+			if !item.Published.Equal(tt.wantPublished) {
+				t.Errorf("Published = %v, want %v", item.Published, tt.wantPublished)
+			}
+			if item.PublishedDateOnly != tt.wantDateOnly {
+				t.Errorf("PublishedDateOnly = %t, want %t", item.PublishedDateOnly, tt.wantDateOnly)
+			}
+		})
+	}
+}
+
 func TestParseText(t *testing.T) {
 	feedURL := mustParseURL(t, "https://example.com/feed.xml")
 	const atomNS = `<feed xmlns="http://www.w3.org/2005/Atom">`

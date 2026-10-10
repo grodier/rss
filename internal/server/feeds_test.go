@@ -184,6 +184,37 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerDateOnlyRows(t *testing.T) {
+	// Midnight UTC in a zone behind UTC, as a scan can return it: the row
+	// still shows the UTC date.
+	day := time.Date(2026, time.October, 9, 0, 0, 0, 0, time.UTC).In(time.FixedZone("EDT", -4*60*60))
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
+			return []rss.Article{
+				{ID: "art-1", Title: "Date only", PublishedAt: day, PublishedDateOnly: true},
+				{ID: "art-2", Title: "Timed", PublishedAt: time.Date(2024, time.March, 2, 10, 0, 0, 0, time.UTC)},
+			}, nil
+		},
+	})
+
+	rr := serveFeed(t, s, testFeedID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body,
+		`<time datetime="2026-10-09">9 Oct 2026</time>`,
+		`<time data-local datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
+	)
+	if n := strings.Count(body, "data-local"); n != 1 {
+		t.Errorf("data-local attributes = %d, want 1 (the timed row only)", n)
+	}
+	if strings.Contains(body, "00:00 UTC") {
+		t.Errorf("date-only row shows a time: %s", body)
+	}
+}
+
 func TestFeedHandlerSourceLinks(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {

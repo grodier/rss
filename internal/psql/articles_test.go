@@ -194,6 +194,46 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("date-only flag follows the kept date", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		day := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+		dateOnly := rss.Article{ExternalID: "date-only", Title: "Date only", PublishedAt: day, PublishedDateOnly: true}
+		undated := rss.Article{ExternalID: "undated", Title: "Undated"}
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{dateOnly, undated}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		// The feed now gives a time: the kept date is still date-only.
+		timed := dateOnly
+		timed.PublishedAt, timed.PublishedDateOnly = day.Add(14*time.Hour), false
+		timed.Title = "Date only edited"
+		// The undated article gets a date-only date, which is filled in.
+		dated := undated
+		dated.PublishedAt, dated.PublishedDateOnly = day, true
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{timed, dated}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if a := articleByExternalID(t, got, "date-only"); a.Title != "Date only edited" || !a.PublishedAt.Equal(day) || !a.PublishedDateOnly {
+			t.Errorf("article date-only: got title %q, PublishedAt %v, PublishedDateOnly %t; want edited, %v, true", a.Title, a.PublishedAt, a.PublishedDateOnly, day)
+		}
+		if a := articleByExternalID(t, got, "undated"); !a.PublishedAt.Equal(day) || !a.PublishedDateOnly {
+			t.Errorf("article undated: got PublishedAt %v, PublishedDateOnly %t; want %v, true", a.PublishedAt, a.PublishedDateOnly, day)
+		}
+
+		byID, err := articles.GetByID(ctx, articleByExternalID(t, got, "date-only").ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if !byID.PublishedDateOnly {
+			t.Error("GetByID: PublishedDateOnly = false, want true")
+		}
+	})
+
 	t.Run("timeline position", func(t *testing.T) {
 		tf := newTestFeed(t, db)
 		old := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)

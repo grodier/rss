@@ -14,7 +14,7 @@ import (
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
 	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "title", "summary", "content", "excerpt",
-	"published_at", "timeline_at", "created_at", "updated_at",
+	"published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
 }
 
 var (
@@ -29,7 +29,7 @@ var (
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
 	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
@@ -212,9 +212,10 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
+	// published_date_only follows the kept published_at.
 	// timeline_at is deliberately not updated.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, title, summary, content, excerpt, published_at, timeline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, title, summary, content, excerpt, published_at, published_date_only, timeline_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
 			canonical_url = EXCLUDED.canonical_url,
@@ -224,6 +225,8 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			content = EXCLUDED.content,
 			excerpt = EXCLUDED.excerpt,
 			published_at = COALESCE(articles.published_at, EXCLUDED.published_at),
+			published_date_only = CASE WHEN articles.published_at IS NULL
+				THEN EXCLUDED.published_date_only ELSE articles.published_date_only END,
 			updated_at = now()
 		WHERE (articles.url, articles.image_url, articles.title, articles.summary, articles.content, articles.excerpt)
 				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.image_url, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
@@ -235,7 +238,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
 		var inserted bool
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, positions[i]).Scan(&inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.

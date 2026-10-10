@@ -390,12 +390,11 @@ Later, not issues yet:
 What's needed before other people use the app on a public URL. Running it locally for
 yourself needs none of this.
 
-- [ ] **Decide whether testers' data is kept (decide first).** While pre-alpha, schema
-  changes edit `migrations/00001_init.sql` and rebuild the database with `make db/reset`,
-  which deletes every account, subscription and read (see "Prototype stage" in
-  CLAUDE.md). Either tell testers their data may be wiped, or freeze `00001_init.sql` and
-  make schema changes through new migrations from then on. The second option changes
-  CLAUDE.md's "Prototype stage" and "Schema changes" rules.
+Decided (don't reopen it without a reason): testers' data isn't kept. Schema changes keep
+editing `migrations/00001_init.sql`, and rebuilding the database deletes every account,
+subscription and read. Testers are told their data may be wiped. This holds until it's
+explicitly changed (see "Prototype stage" in CLAUDE.md).
+
 - [ ] **Deployment (needs planning).** Nothing exists yet: no Dockerfile or deploy guide,
   and migrations are run by hand with goose. Choose a host and decide how migrations run
   on deploy. The app doesn't do HTTPS itself, so the host or a reverse proxy must
@@ -436,14 +435,13 @@ yourself needs none of this.
 
 ## Suggested order
 
-1. Decide whether testers' data is kept (Pre-alpha testing).
-2. Rate-limit login and signup (Security), control who can sign up, and the client IP
+1. Rate-limit login and signup (Security), control who can sign up, and the client IP
    behind a proxy; they depend on each other.
-3. **Plan** deployment. Once it's done the app is ready for invited testers.
-4. The rest of Pre-alpha testing (account management, logging in to the timeline,
+2. **Plan** deployment. Once it's done the app is ready for invited testers.
+3. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.
-5. Now that the initial features are done, **plan** the error-state walkthrough and run
+4. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-6. Before production or a few thousand feeds, **plan** load and performance testing.
+5. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

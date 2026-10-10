@@ -296,26 +296,15 @@ Later, not issues yet:
 - [ ] **Feed tabs on the site page.** Show a site's articles one feed at a time, as tabs
   that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
   browsing a site's feeds in context. It isn't a way to organise subscriptions (no
-  folders or pinned feeds). Plan it after the reading experience. Open question: how it
-  relates to the standalone feed page.
+  folders or pinned feeds). Open question: how it relates to the standalone feed page.
 - [ ] **OPML import/export.** Import subscriptions from another reader and export your own.
 
 ## Reading
 
-Planned; issues #147–#162. Work them roughly in this order (each issue names its
-dependencies). Several edit the `articles` table and `saveArticles`, so merge one at a time.
-
-1. Data at ingest, independent of each other: arrival position `timeline_at` (#147),
-   plain-text excerpts and `DisplayTitle` (#148), feed-declared images (#149),
-   `canonical_url` (#150).
-2. `internal/sanitize` with bluemonday (#151), then the article page `/articles/{id}`
-   (#152).
-3. Shared article-row cards on the feed page (#153), the timeline at `/` (#154), feed page
-   paging (#155).
-4. Read state (#156), local times and the first JavaScript (#157), outbound links that
-   count as reads (#158), infinite scroll (#159).
-5. Date-only timestamps (#160), read state across copies (#161), one timeline entry per
-   article with "Also in" (#162).
+Done. Shipped in #164–#179 (issues #147–#162): arrival-ordered timeline at `/` with one
+entry per article and "Also in", article pages with sanitized HTML, shared article cards,
+excerpts and feed-declared images, paging with infinite scroll, local times, and read
+state (article opens and click-throughs, matched across copies by `canonical_url`).
 
 Decisions made while planning (don't reopen them without a reason):
 
@@ -407,10 +396,9 @@ Later, not issues yet:
 
 ## Suggested order
 
-1. Build the reading experience: issues #147–#162, in the order under Reading.
-2. Rate-limit login and signup (Security); small and independent, can go in parallel.
-3. Once the initial features are done, **plan** the error-state walkthrough and run the
-   first pass; then repeat it periodically.
-4. Before production or a few thousand feeds, **plan** load and performance testing.
+1. Rate-limit login and signup (Security); small and independent.
+2. Now that the initial features are done, **plan** the error-state walkthrough and run
+   the first pass; then repeat it periodically.
+3. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

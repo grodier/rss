@@ -2,7 +2,7 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; feed ingestion (fetching and saving articles, background refresh) works; subscriptions work; reading (timeline, article pages, read state) is planned in #147–#162 and not built yet.
+A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; feed ingestion (fetching and saving articles, background refresh) works; subscriptions work; reading (timeline, article pages, read state) works.
 
 Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles. Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/todo.md` for the decisions behind this.
 

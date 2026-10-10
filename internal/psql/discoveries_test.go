@@ -196,7 +196,7 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 			if f.LastFetched.IsZero() {
 				t.Errorf("feed %q has zero LastFetched", f.Title)
 			}
-			arts, err := NewArticleRepository(db).ListByFeed(t.Context(), f.ID, 10)
+			arts, err := NewArticleRepository(db).ListByFeed(t.Context(), f.ID, rss.ArticleCursor{}, 10)
 			if err != nil {
 				t.Fatalf("ListByFeed: %v", err)
 			}

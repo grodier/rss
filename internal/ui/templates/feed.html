@@ -70,10 +70,17 @@
     {{end}}
 
     <h2>Articles</h2>
-    {{with .Rows}}
-    <div class="article-list">{{range .}}{{template "article-row" .}}{{end}}</div>
+    {{if .Before}}<p><a href="/feeds/{{.Feed.ID}}">Back to newest</a></p>{{end}}
+    {{if .Rows}}
+    <div class="article-list">{{range .Rows}}{{template "article-row" .}}{{end}}</div>
+    {{else if .Before}}
+    <p>No older articles.</p>
     {{else}}
     <p>No articles yet.</p>
+    {{end}}
+
+    {{if .Next}}
+    <nav class="pager"><a rel="next" href="/feeds/{{.Feed.ID}}?before={{.Next}}">Older articles</a></nav>
     {{end}}
   </main>
 </body>

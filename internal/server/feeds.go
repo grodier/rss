@@ -13,8 +13,8 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
-// feedArticleLimit is how many articles the feed page lists.
-const feedArticleLimit = 50
+// feedPageSize is how many articles a feed page shows.
+const feedPageSize = 30
 
 const (
 	// refreshCooldown is how long after a successful fetch a feed can't be
@@ -75,6 +75,12 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	before, err := decodeCursor(r.URL.Query().Get("before"))
+	if err != nil {
+		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
+		return
+	}
+
 	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
 	if err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
@@ -108,10 +114,17 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	articles, err := s.services.ArticleService.ListByFeed(r.Context(), feed.ID, feedArticleLimit)
+	articles, err := s.services.ArticleService.ListByFeed(r.Context(), feed.ID, before, feedPageSize+1)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
+	}
+
+	next := ""
+	if len(articles) > feedPageSize {
+		articles = articles[:feedPageSize]
+		last := articles[len(articles)-1]
+		next = encodeCursor(rss.ArticleCursor{At: last.FeedSortAt(), ID: last.ID})
 	}
 
 	rows := make([]articleRow, len(articles))
@@ -132,6 +145,8 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Feed           rss.Feed
 		Site           rss.Site
 		Rows           []articleRow
+		Before         bool
+		Next           string
 		Subscribed     bool
 		RefreshPending bool
 		Flash          string
@@ -139,6 +154,8 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Feed:           feed,
 		Site:           site,
 		Rows:           rows,
+		Before:         !before.IsZero(),
+		Next:           next,
 		Subscribed:     subscribed[feed.ID],
 		RefreshPending: pending,
 		Flash:          flash,

@@ -48,6 +48,14 @@ type Article struct {
 	UpdatedAt    time.Time
 }
 
+// FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.
+func (a Article) FeedSortAt() time.Time {
+	if !a.PublishedAt.IsZero() {
+		return a.PublishedAt
+	}
+	return a.CreatedAt
+}
+
 // displayTitleLen is the most runes of an excerpt DisplayTitle uses.
 const displayTitleLen = 80
 

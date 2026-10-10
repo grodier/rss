@@ -92,7 +92,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 
 type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
-	listByFeedFn   func(ctx context.Context, feedID string, limit int) ([]rss.Article, error)
+	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listTimelineFn func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 
@@ -100,11 +100,11 @@ func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article,
 	return f.getByIDFn(ctx, id)
 }
 
-func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 	if f.listByFeedFn == nil {
 		return nil, nil
 	}
-	return f.listByFeedFn(ctx, feedID, limit)
+	return f.listByFeedFn(ctx, feedID, before, limit)
 }
 
 func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {

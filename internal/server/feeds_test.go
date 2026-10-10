@@ -49,7 +49,13 @@ const testFeedID = "11111111-1111-4111-8111-111111111111"
 
 func serveFeed(t *testing.T, s *Server, id string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/feeds/"+id, nil)
+	return serveFeedQuery(t, s, id, "")
+}
+
+// serveFeedQuery serves the feed page for id with query appended to its URL.
+func serveFeedQuery(t *testing.T, s *Server, id, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/feeds/"+id+query, nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", id)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -112,7 +118,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	var gotFeedID string
 	var gotLimit int
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
-		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 			gotFeedID, gotLimit = feedID, limit
 			return []rss.Article{
 				{
@@ -136,8 +142,8 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
-	if gotFeedID != testFeedID || gotLimit != 50 {
-		t.Errorf("ListByFeed(%q, %d), want (%q, 50)", gotFeedID, gotLimit, testFeedID)
+	if gotFeedID != testFeedID || gotLimit != 31 {
+		t.Errorf("ListByFeed(%q, %d), want (%q, 31)", gotFeedID, gotLimit, testFeedID)
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
@@ -175,9 +181,128 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 	}
 }
 
+// feedArticles returns n articles, newest first, the odd ones undated.
+func feedArticles(n int) []rss.Article {
+	as := make([]rss.Article, n)
+	for i := range as {
+		at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(i) * time.Minute)
+		as[i] = rss.Article{ID: fmt.Sprintf(timelineUUID, i), Title: fmt.Sprintf("Article %d", i), CreatedAt: at}
+		if i%2 == 0 {
+			as[i].PublishedAt, as[i].CreatedAt = at, at.Add(time.Hour)
+		}
+	}
+	return as
+}
+
+func TestFeedHandlerPaging(t *testing.T) {
+	var gotBefore rss.ArticleCursor
+	calls := 0
+	var result []rss.Article
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
+			calls++
+			gotBefore = before
+			return result, nil
+		},
+	})
+	feedPath := "/feeds/" + testFeedID
+
+	olderHref := func(t *testing.T, body string) string {
+		t.Helper()
+		start := strings.Index(body, `href="`+feedPath+`?before=`)
+		if start < 0 {
+			return ""
+		}
+		href := body[start+len(`href="`):]
+		return href[:strings.Index(href, `"`)]
+	}
+
+	t.Run("31 results gives 30 rows and an older link", func(t *testing.T) {
+		result = feedArticles(31)
+		body := serveFeed(t, s, testFeedID).Body.String()
+		if got := strings.Count(body, `class="article-row"`); got != 30 {
+			t.Errorf("rows = %d, want 30", got)
+		}
+		if !strings.Contains(body, `rel="next"`) || !strings.Contains(body, "Older articles") {
+			t.Fatalf("no older link: %s", body)
+		}
+		href := olderHref(t, body)
+		if href == "" {
+			t.Fatalf("no before link: %s", body)
+		}
+		// The 30th article is undated, so the cursor uses its CreatedAt.
+		last := result[29]
+		want := encodeCursor(rss.ArticleCursor{At: last.CreatedAt, ID: last.ID})
+		// html/template's URL escaping may differ from QueryEscape; compare decoded.
+		u, err := url.ParseRequestURI(href)
+		if err != nil || u.Path != feedPath || u.Query().Get("before") != want {
+			t.Errorf("href = %q, want %s?before=%s", href, feedPath, want)
+		}
+		if strings.Contains(body, "Back to newest") {
+			t.Errorf("unexpected Back to newest on the first page")
+		}
+	})
+
+	t.Run("30 results gives no link", func(t *testing.T) {
+		result = feedArticles(30)
+		body := serveFeed(t, s, testFeedID).Body.String()
+		if strings.Contains(body, "Older articles") {
+			t.Errorf("unexpected older link")
+		}
+	})
+
+	t.Run("before is decoded and shows back to newest", func(t *testing.T) {
+		result = feedArticles(2)
+		want := rss.ArticleCursor{At: time.Date(2026, 1, 1, 0, 0, 0, 5, time.UTC), ID: "123e4567-e89b-12d3-a456-426614174000"}
+		rr := serveFeedQuery(t, s, testFeedID, "?before="+url.QueryEscape(encodeCursor(want)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if !gotBefore.At.Equal(want.At) || gotBefore.ID != want.ID {
+			t.Errorf("store before = %+v, want %+v", gotBefore, want)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, `<a href="`+feedPath+`">Back to newest</a>`) {
+			t.Errorf("missing Back to newest link to %s: %s", feedPath, body)
+		}
+		// Paged views keep the feed's header.
+		if !strings.Contains(body, "Example Feed Title") || !strings.Contains(body, "Subscribe") {
+			t.Errorf("paged view lost the feed header: %s", body)
+		}
+	})
+
+	t.Run("malformed before is 400", func(t *testing.T) {
+		before := calls
+		rr := serveFeedQuery(t, s, testFeedID, "?before=junk")
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rr.Code)
+		}
+		if calls != before {
+			t.Errorf("store was called")
+		}
+	})
+
+	t.Run("empty with a cursor", func(t *testing.T) {
+		result = nil
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		body := serveFeedQuery(t, s, testFeedID, "?before="+url.QueryEscape(cur)).Body.String()
+		if !strings.Contains(body, "No older articles.") || strings.Contains(body, "No articles yet.") {
+			t.Errorf("wrong empty message: %s", body)
+		}
+	})
+
+	t.Run("empty without a cursor", func(t *testing.T) {
+		result = nil
+		body := serveFeed(t, s, testFeedID).Body.String()
+		if !strings.Contains(body, "No articles yet.") || strings.Contains(body, "No older articles.") {
+			t.Errorf("wrong empty message: %s", body)
+		}
+	})
+}
+
 func TestFeedHandlerArticleImages(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
-		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 			return []rss.Article{
 				{ID: "art-1", Title: "With image", ImageURL: "https://example.com/pic.jpg"},
 				{ID: "art-2", Title: "Without image"},
@@ -215,7 +340,7 @@ func TestFeedHandlerNoArticles(t *testing.T) {
 
 func TestFeedHandlerArticlesError(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
-		listByFeedFn: func(ctx context.Context, feedID string, limit int) ([]rss.Article, error) {
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 			return nil, errors.New("boom")
 		},
 	})

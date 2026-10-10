@@ -133,6 +133,11 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, _ := s.authenticatedUserID(r)
+	if err := s.markRead(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, []string{feed.ID})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)

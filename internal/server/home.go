@@ -41,6 +41,10 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	for i, item := range items {
 		rows[i] = articleRow{Article: item.Article, Feed: item.Feed}
 	}
+	if err := s.markRead(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 
 	data := struct {
 		Rows   []articleRow

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	calls := 0
 	var result []rss.ArticleWithFeed
 	var storeErr error
-	s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, ArticleService: &fakeArticleStore{
 		listTimelineFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			calls++
 			gotUser, gotBefore, gotLimit = userID, before, limit
@@ -153,6 +154,36 @@ func TestHomeHandlerTimeline(t *testing.T) {
 
 	t.Run("store error is 500", func(t *testing.T) {
 		result, storeErr = nil, errors.New("boom")
+		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	t.Run("read rows are marked", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		var gotUser string
+		var gotIDs []string
+		s.services.ReadService = readStoreReporting(&gotUser, &gotIDs, result[0].Article.ID)
+		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+
+		rr := getHome(t, s, "/", true)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if gotUser != "user-1" || !slices.Equal(gotIDs, []string{result[0].Article.ID, result[1].Article.ID}) {
+			t.Errorf("ReadArticleIDs(%q, %v)", gotUser, gotIDs)
+		}
+		assertReadMarkers(t, rr.Body.String(), result[0].Article.ID, result[1].Article.ID)
+	})
+
+	t.Run("read store error is 500", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		s.services.ReadService = &fakeReadStore{readArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("boom")
+		}}
+		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+
 		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want 500", rr.Code)
 		}

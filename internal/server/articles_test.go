@@ -34,6 +34,7 @@ func articleServer(t *testing.T, article rss.Article, articleErr, feedErr, siteE
 	article.ID = testArticleID
 	article.FeedID = testFeedID
 	return newTestServerWith(t, Services{
+		ReadService: &fakeReadStore{},
 		ArticleService: &fakeArticleStore{getByIDFn: func(ctx context.Context, id string) (rss.Article, error) {
 			if articleErr != nil {
 				return rss.Article{}, articleErr
@@ -201,5 +202,109 @@ func TestArticleRouteRequiresAuthentication(t *testing.T) {
 	}
 	if loc := rr.Header().Get("Location"); loc != "/login" {
 		t.Errorf("Location = %q, want /login", loc)
+	}
+}
+
+func TestArticleHandlerMarksRead(t *testing.T) {
+	var gotUser, gotArticle string
+	calls := 0
+	s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
+	s.services.ReadService = &fakeReadStore{markReadFn: func(ctx context.Context, userID, articleID string) error {
+		calls++
+		gotUser, gotArticle = userID, articleID
+		return nil
+	}}
+
+	rr := serveArticleAs(t, s, "user-1", testArticleID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
+		t.Errorf("MarkRead called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
+	}
+}
+
+func TestArticleHandlerMarkReadErrorStillRenders(t *testing.T) {
+	s := articleServer(t, rss.Article{Title: "Still here"}, nil, nil, nil)
+	s.services.ReadService = &fakeReadStore{markReadFn: func(context.Context, string, string) error {
+		return errors.New("db down")
+	}}
+
+	rr := serveArticleAs(t, s, "user-1", testArticleID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	assertBodyContains(t, rr.Body.String(), "<h1>Still here</h1>")
+}
+
+func TestArticleHandlerDoesNotMarkMissingArticles(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		err  error
+	}{
+		{"malformed ID", "abc", nil},
+		{"unknown ID", testArticleID, rss.ErrNoRecord},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := articleServer(t, rss.Article{}, tt.err, nil, nil)
+			s.services.ReadService = &fakeReadStore{markReadFn: func(context.Context, string, string) error {
+				t.Error("MarkRead was called")
+				return nil
+			}}
+
+			assertNotFoundHTML(t, serveArticleAs(t, s, "user-1", tt.id))
+		})
+	}
+}
+
+// serveArticleAs is serveArticle for a logged-in user.
+func serveArticleAs(t *testing.T, s *Server, userID, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/articles/x", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.articleHandler)).ServeHTTP(rr, req.WithContext(ctx))
+	return rr
+}
+
+// readStoreReporting returns a read store reporting readIDs as read, recording
+// the user and IDs it was asked about.
+func readStoreReporting(gotUser *string, gotIDs *[]string, readIDs ...string) *fakeReadStore {
+	return &fakeReadStore{readArticleIDsFn: func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+		*gotUser, *gotIDs = userID, articleIDs
+		read := map[string]bool{}
+		for _, id := range readIDs {
+			read[id] = true
+		}
+		return read, nil
+	}}
+}
+
+// assertReadMarkers checks that the row for readID is marked read and the row
+// for unreadID isn't.
+func assertReadMarkers(t *testing.T, body, readID, unreadID string) {
+	t.Helper()
+	row := func(id string) string {
+		start := strings.Index(body, `id="article-`+id+`"`)
+		if start < 0 {
+			t.Fatalf("no row for %s: %s", id, body)
+		}
+		start = strings.LastIndex(body[:start], "<article")
+		end := strings.Index(body[start:], "</article>")
+		return body[start : start+end]
+	}
+	read, unread := row(readID), row(unreadID)
+	if !strings.Contains(read, `class="article-row read"`) || !strings.Contains(read, `<span class="visually-hidden"> (read)</span>`) {
+		t.Errorf("read row isn't marked read: %s", read)
+	}
+	if strings.Contains(unread, " read\"") || strings.Contains(unread, "(read)") {
+		t.Errorf("unread row is marked read: %s", unread)
 	}
 }

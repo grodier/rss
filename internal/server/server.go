@@ -73,6 +73,12 @@ type SubscriptionStore interface {
 	ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error)
 }
 
+// ReadStore records and reports which articles a user has read.
+type ReadStore interface {
+	MarkRead(ctx context.Context, userID, articleID string) error
+	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
 var (
 	_ ArticleStore      = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
@@ -82,6 +88,7 @@ var (
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
+	_ ReadStore         = (*psql.ReadRepository)(nil)
 )
 
 type Services struct {
@@ -93,6 +100,7 @@ type Services struct {
 	Refresher           FeedRefresher
 	ArticleService      ArticleStore
 	SubscriptionService SubscriptionStore
+	ReadService         ReadStore
 }
 
 type Server struct {

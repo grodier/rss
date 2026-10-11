@@ -142,14 +142,6 @@ type SiteWithFeeds struct {
 	Feeds []Feed
 }
 
-type User struct {
-	ID             string
-	Name           string
-	Email          string
-	HashedPassword []byte
-	CreatedAt      time.Time
-}
-
 // LookupStatus is the state of a site lookup.
 type LookupStatus string
 

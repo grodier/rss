@@ -113,8 +113,8 @@ type articleRow struct {
 	Read    bool       // this user has opened the article
 }
 
-// markRead sets Read on each row userID has read.
-func (s *Server) markRead(ctx context.Context, userID string, rows []articleRow) error {
+// fillRead sets Read on each row userID has read.
+func (s *Server) fillRead(ctx context.Context, userID string, rows []articleRow) error {
 	ids := make([]string, len(rows))
 	for i, row := range rows {
 		ids[i] = row.Article.ID

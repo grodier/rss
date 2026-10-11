@@ -79,6 +79,11 @@ Background refresh:
   for new articles…", or idle claim queries show up in `pg_stat_statements`. *Fix:* Postgres
   `LISTEN`/`NOTIFY` from `RequestRefresh`, `Subscribe` and lookup requests to wake a
   worker, keeping the poll as a fallback.
+- [ ] **Stale lookup resets scan `lookups`** (#195). Every instance's lookup runner resets
+  stale jobs every minute, and no index covers `ResetStale`'s `status = 'running'`
+  filter, so each reset scans the table, which keeps a row per site key ever looked up.
+  *Signal:* `ResetStale` in `pg_stat_statements` totals, or a large `lookups` table.
+  *Fix:* a partial index on `started_at WHERE status = 'running'`.
 - [ ] **One statement per article in `saveArticles`.** Each fetched item is a separate
   upsert inside the `SaveFetch` transaction. *Signal:* `SaveFetch` time dominates the
   `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario
@@ -427,6 +432,12 @@ Later, not issues yet:
   `data-theme` attribute on `<html>` that redefines the color tokens. Needs somewhere
   to store user preferences. The avatar tints (`.tone-1` to `.tone-6`) need dark
   variants too.
+- [ ] **Asset build step (needs planning).** Bundle and minify the CSS and JavaScript
+  for production, writing content-hashed file names. Templates link assets through
+  `asset` (#199), so only `asset` changes: it looks names up in the build's manifest
+  instead of hashing files at startup, and every file under `/static` gets the immutable
+  `Cache-Control`. This reverses the "no build step" decision (Reading, and CLAUDE.md),
+  so planning it updates both. Pages must still work without JavaScript.
 
 ## Pre-alpha testing
 
@@ -525,13 +536,18 @@ Later, not issues yet:
 
 ## Suggested order
 
-1. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
+1. Fixes and quick wins, in parallel with each other and with planning deployment:
+   #194 (concurrent logins get past the per-email limit), #195 (stuck lookups), #196
+   (article lists load full HTML), #197 (request log status and duration), #198 (HEAD
+   requests), #199 (static asset caching) and #200 (dead code). #197, #198 and #199 each
+   edit `router.go`, and #198 and #200 each edit `errors.go`; see each issue's notes.
+2. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
    is ready to run in production, with signup off.
-2. Before inviting testers: the shared invite code (Pre-alpha testing).
-3. The rest of Pre-alpha testing (account management, logging in to the timeline,
+3. Before inviting testers: the shared invite code (Pre-alpha testing).
+4. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.
-4. Now that the initial features are done, **plan** the error-state walkthrough and run
+5. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-5. Before production or a few thousand feeds, **plan** load and performance testing.
+6. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

@@ -3,27 +3,22 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-        </div>
-        <div>
-          <a href="/signup">Sign Up</a>
-          <a href="/login">Login</a>
-        </div>
-      </nav>
-    </header>
-
-    <h1>rss</h1>
-
+  <main class="solo">
+    <div class="solo-panel hero">
+      <span class="brand-mark">{{template "icon-rss"}}</span>
+      <h1>rss</h1>
+      <p>One quiet timeline for the sites you follow.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/signup">Sign Up</a>
+        <a class="btn" href="/login">Login</a>
+      </div>
+    </div>
   </main>
 </body>
 

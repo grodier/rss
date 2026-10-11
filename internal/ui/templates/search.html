@@ -3,73 +3,71 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - search</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" "search"}}
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>Search</h1>
+    <main class="column">
+      <header class="page-head stack">
+        <h1>Search</h1>
+        <form class="search-form" action="/search" method="get">
+          <label class="visually-hidden" for="q">Search</label>
+          {{with .Form.FieldErrors.q}}
+          <span class="error">{{.}}</span>
+          {{end}}
+          <div class="search-row">
+            <div class="search-field">
+              {{template "icon-search"}}
+              <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" />
+            </div>
+            <button class="btn-primary" type="submit">Search</button>
+          </div>
+        </form>
+      </header>
 
-    <section>
-      <form class="search-form" action="/search" method="get">
-        <label for="q">Search:</label>
-        {{with .Form.FieldErrors.q}}
-        <span class="error">{{.}}</span>
-        {{end}}
-        <div class="row">
-          <input type="search" id="q" name="q" value="{{.Form.Q}}" />
-          <button type="submit">Search</button>
-        </div>
-      </form>
-    </section>
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
 
-    {{with .LookupQ}}
-    <section>
-      <form action="/lookups" method="post">
-        <input type="hidden" name="q" value="{{.}}">
-        <button type="submit">Look up {{.}}</button>
-      </form>
-    </section>
-    {{end}}
+      {{with .LookupQ}}
+      <section class="lookup-cta">
+        <p>Not what you're looking for? Find the feeds a website publishes.</p>
+        <form action="/lookups" method="post">
+          <input type="hidden" name="q" value="{{.}}">
+          <button class="btn-sm" type="submit">Look up {{.}}</button>
+        </form>
+      </section>
+      {{end}}
 
-    {{if .Searched}}
-    <section>
+      {{if .Searched}}
       {{range .Sites}}
-      <div>
-        <h2><a href="/sites/{{.Site.ID}}">{{if .Site.Title}}{{.Site.Title}}{{else}}{{.Site.Host}}{{end}}</a></h2>
-        <p>{{.Site.Host}}</p>
-        <ul>
+      <section class="result">
+        <div class="result-head">
+          {{template "site-avatar" .Site}}
+          <div>
+            <h2><a href="/sites/{{.Site.ID}}">{{if .Site.Title}}{{.Site.Title}}{{else}}{{.Site.Host}}{{end}}</a></h2>
+            <p>{{.Site.Host}}</p>
+          </div>
+        </div>
+        {{if .Feeds}}
+        <ul role="list">
           {{range .Feeds}}
           <li><a href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="subscribed">Subscribed</span>{{end}}</li>
           {{end}}
         </ul>
-      </div>
+        {{end}}
+      </section>
       {{else}}
-      <p>No sites or feeds match “{{.Form.Q}}”.</p>
+      <p class="empty">No sites or feeds match “{{.Form.Q}}”.</p>
       {{end}}
-    </section>
-    {{end}}
-  </main>
+      {{end}}
+    </main>
+  </div>
 </body>
 
 </html>

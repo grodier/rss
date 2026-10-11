@@ -1,0 +1,4 @@
+{{/* Avatars: a letter on a tint chosen by site, so a site's feeds match.
+     Decorative: the name is always shown next to them. */}}
+{{define "feed-avatar"}}<span class="avatar tone-{{avatarTone .SiteID}}" aria-hidden="true">{{monogram (or .Title .Url)}}</span>{{end}}
+{{define "site-avatar"}}<span class="avatar tone-{{avatarTone .ID}}" aria-hidden="true">{{monogram (or .Title .Host)}}</span>{{end}}

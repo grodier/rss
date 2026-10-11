@@ -83,11 +83,15 @@ func TestLogoutRequiresPost(t *testing.T) {
 }
 
 func TestTemplatesLogoutFormUsesPost(t *testing.T) {
-	files, err := fs.Glob(ui.Templates, "templates/*.html")
+	pages, err := fs.Glob(ui.Templates, "templates/*.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
+	partials, err := fs.Glob(ui.Templates, "templates/partials/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range append(pages, partials...) {
 		b, err := fs.ReadFile(ui.Templates, f)
 		if err != nil {
 			t.Fatal(err)

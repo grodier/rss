@@ -325,10 +325,11 @@ Decisions made while planning (don't reopen them without a reason):
 - **The timeline is `/`** for logged-in users (nav label stays "Home"). Duplicates are
   collapsed at query time on `canonical_url`, keeping the earliest arrival, with "Also in"
   on the row. Feed pages show every copy.
-- **Rows are cards** (one design for the timeline and feed pages): optional
-  feed-declared image, title linking to the in-app article page, feed, time, two-line
-  excerpt, and a small link to the original. Untitled articles use the start of the
-  excerpt.
+- **Rows are divided sections with a preview card** (one design for the timeline and
+  feed pages): the feed's avatar and name with the time, then a card with the optional
+  feed-declared image, title, two-line excerpt and a small link to the original. The
+  whole card links to the in-app article page. Feed pages leave out the avatar and
+  name. Untitled articles use the start of the excerpt.
 - **Article page:** sanitized content, else summary, plus "Read on {site}". No
   previous/next. Any logged-in user can open any article.
 - **Article HTML** is sanitized at render time with bluemonday, relative URLs resolved,
@@ -384,6 +385,37 @@ Later, not issues yet:
 - [ ] **Unread filter.** Maybe never; it pulls toward the inbox model.
 - [ ] **Timezone setting and day headers.** Only if local times via JavaScript aren't
   enough (e.g. "Today"/"Yesterday" groups rendered server-side).
+
+## Design
+
+A modern, minimal look modelled on social timelines. Decisions made (don't reopen them
+without a reason):
+
+- **One centered column, nav on the left.** A rail with icons and labels on wide
+  screens, icons only on medium ones, and a top bar (logo, logout) with a bottom tab
+  bar on phones. CSS only; no JavaScript.
+- **Lists are sections separated by dividers, not boxes.** A card is only for a preview
+  of something elsewhere: an article now, Open Graph data later (see "Enrich articles
+  from their page" under Reading).
+- **Avatars are letters on a tint chosen by site** (`avatarTone`), so a site's feeds
+  share a color, until we have site icons.
+- **Light theme only for now.** Colors are custom properties on `:root` in `main.css`,
+  so a theme can redefine them in one place. System font stack; icons are inline SVG
+  partials (`templates/partials/icons.html`), not an icon font or library.
+
+Later, not issues yet:
+
+- [ ] **Site icons (favicons) as avatars.** Show the site's icon instead of its letter.
+  Find it during lookup (`<link rel="icon">` or `apple-touch-icon`, preferring one that
+  is sharp at 40px, else `/favicon.ico`) through `internal/fetch`, store its URL on
+  `sites`, and keep the letter as the fallback when there is none or it fails to load.
+  Loading icons from publishers has the same privacy cost as article images; the image
+  proxy (see Reading) would cover both.
+- [ ] **Themes, including dark mode (needs planning).** A theme choice (light, dark,
+  follow the system) on a settings page, which doesn't exist yet, applied as a
+  `data-theme` attribute on `<html>` that redefines the color tokens. Needs somewhere
+  to store user preferences. The avatar tints (`.tone-1` to `.tone-6`) need dark
+  variants too.
 
 ## Pre-alpha testing
 

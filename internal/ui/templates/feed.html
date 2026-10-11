@@ -3,87 +3,88 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - {{or .Feed.Title .Feed.Url}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
   <script src="/static/js/app.js" defer></script>
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
+  <div class="shell">
+    {{template "app-nav" ""}}
+
+    <main class="column">
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      <section class="profile">
+        <div class="profile-top">
+          {{template "feed-avatar" .Feed}}
+          {{if .Subscribed}}
+          <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
+            <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
+            <span class="chip">Subscribed ✓</span>
+            <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
           </form>
+          {{else if .Feed.GoneAt.IsZero}}
+          <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">
+            <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
+            <button class="btn-primary btn-sm" type="submit" aria-label="Subscribe to {{or .Feed.Title .Feed.Url}}">Subscribe</button>
+          </form>
+          {{end}}
         </div>
-      </nav>
-    </header>
+        <h1>{{or .Feed.Title .Feed.Url}}</h1>
+        <p class="profile-sub">From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
+        {{with .Feed.Description}}
+        <p class="profile-desc">{{.}}</p>
+        {{end}}
+        <p class="facts">
+          <span>{{template "icon-link"}}<code>{{.Feed.Url}}</code></span>
+          {{if .Feed.LastFetched.IsZero}}
+          <span>{{template "icon-clock"}}Never fetched.</span>
+          {{else}}
+          <span>{{template "icon-clock"}}Last fetched {{.Feed.LastFetched.Format "2 Jan 2006 15:04 MST"}}.</span>
+          {{end}}
+        </p>
+        {{if not .Feed.GoneAt.IsZero}}
+        <p class="fetch-error">This feed no longer exists: its publisher removed it. We've stopped checking it.</p>
+        {{else}}
+        {{if eq .Feed.ConsecutiveFailures 1}}
+        <p class="fetch-error">The last attempt to fetch this feed failed ({{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}). We'll keep trying.</p>
+        {{else if gt .Feed.ConsecutiveFailures 1}}
+        <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}. We'll keep trying.</p>
+        {{end}}
+        <div class="profile-actions">
+          <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
+            <button class="btn-sm" type="submit">{{template "icon-refresh"}}Refresh</button>
+          </form>
+          {{if .RefreshPending}}
+          <p class="quiet">Checking for new articles…</p>
+          {{else if not .Feed.NextFetch.IsZero}}
+          <p class="quiet">Next check around {{.Feed.NextFetch.Format "2 Jan 2006 15:04 MST"}}.</p>
+          {{end}}
+        </div>
+        {{end}}
+      </section>
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>{{or .Feed.Title .Feed.Url}}</h1>
-    {{if .Subscribed}}
-    <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-      <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
-      <span>Subscribed ✓</span>
-      <button type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
-    </form>
-    {{else if .Feed.GoneAt.IsZero}}
-    <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">
-      <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
-      <button type="submit" aria-label="Subscribe to {{or .Feed.Title .Feed.Url}}">Subscribe</button>
-    </form>
-    {{end}}
-    {{with .Feed.Description}}
-    <p>{{.}}</p>
-    {{end}}
-    <p>From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
-    <p>Feed URL: <code>{{.Feed.Url}}</code></p>
-    {{if .Feed.LastFetched.IsZero}}
-    <p>Never fetched.</p>
-    {{else}}
-    <p>Last fetched {{.Feed.LastFetched.Format "2 Jan 2006 15:04 MST"}}.</p>
-    {{end}}
-    {{if not .Feed.GoneAt.IsZero}}
-    <p class="fetch-error">This feed no longer exists: its publisher removed it. We've stopped checking it.</p>
-    {{else}}
-    {{if eq .Feed.ConsecutiveFailures 1}}
-    <p class="fetch-error">The last attempt to fetch this feed failed ({{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}). We'll keep trying.</p>
-    {{else if gt .Feed.ConsecutiveFailures 1}}
-    <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}. We'll keep trying.</p>
-    {{end}}
-    {{if .RefreshPending}}
-    <p>Checking for new articles…</p>
-    {{else if not .Feed.NextFetch.IsZero}}
-    <p>Next check around {{.Feed.NextFetch.Format "2 Jan 2006 15:04 MST"}}.</p>
-    {{end}}
-    <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
-      <button type="submit">Refresh</button>
-    </form>
-    {{end}}
+      <div class="list-head">
+        <h2>Articles</h2>
+        {{if .Before}}<a href="/feeds/{{.Feed.ID}}">Back to newest</a>{{end}}
+      </div>
+      {{if .Rows}}
+      <div class="article-list">{{range .Rows}}{{template "article-row" .}}{{end}}</div>
+      {{else if .Before}}
+      <p class="empty">No older articles.</p>
+      {{else}}
+      <p class="empty">No articles yet.</p>
+      {{end}}
 
-    <h2>Articles</h2>
-    {{if .Before}}<p><a href="/feeds/{{.Feed.ID}}">Back to newest</a></p>{{end}}
-    {{if .Rows}}
-    <div class="article-list">{{range .Rows}}{{template "article-row" .}}{{end}}</div>
-    {{else if .Before}}
-    <p>No older articles.</p>
-    {{else}}
-    <p>No articles yet.</p>
-    {{end}}
-
-    {{if .Next}}
-    <nav class="pager"><a rel="next" href="/feeds/{{.Feed.ID}}?before={{.Next}}">Older articles</a></nav>
-    {{end}}
-  </main>
+      {{if .Next}}
+      <nav class="pager"><a class="btn" rel="next" href="/feeds/{{.Feed.ID}}?before={{.Next}}">Older articles</a></nav>
+      {{end}}
+    </main>
+  </div>
 </body>
 
 </html>

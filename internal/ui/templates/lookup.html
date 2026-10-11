@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   {{if .InProgress}}
   <meta http-equiv="refresh" content="2" />
   {{end}}
@@ -12,40 +12,33 @@
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" "search"}}
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>Looking up {{.SiteKey}}</h1>
+    <main class="column">
+      <header class="page-head">
+        <h1>Looking up {{.SiteKey}}</h1>
+      </header>
 
-    <section>
-      {{if .InProgress}}
-      <p>Looking for feeds on {{.SiteKey}}…</p>
-      <p><a href="/lookups/{{.ID}}">Refresh</a></p>
-      {{else if .Failed}}
-      <p>We couldn't reach {{.SiteKey}}. Try again later.</p>
-      <p><a href="/search">Back to search</a></p>
-      {{else}}
-      <p>No feeds found on {{.SiteKey}}.</p>
-      <p><a href="/search">Back to search</a></p>
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
       {{end}}
-    </section>
-  </main>
+
+      <section class="empty">
+        {{if .InProgress}}
+        <div class="spinner"></div>
+        <p>Looking for feeds on {{.SiteKey}}…</p>
+        <p><a href="/lookups/{{.ID}}">Refresh</a></p>
+        {{else if .Failed}}
+        <p>We couldn't reach {{.SiteKey}}. Try again later.</p>
+        <p><a href="/search">Back to search</a></p>
+        {{else}}
+        <p>No feeds found on {{.SiteKey}}.</p>
+        <p><a href="/search">Back to search</a></p>
+        {{end}}
+      </section>
+    </main>
+  </div>
 </body>
 
 </html>

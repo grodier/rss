@@ -1,15 +1,20 @@
 {{define "article-row"}}
 <article class="article-row{{if .Read}} read{{end}}" id="article-{{.Article.ID}}">
-  {{with .Article.ImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
-  <div class="article-text">
-    <h3><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
+  {{if .Feed.ID}}{{template "feed-avatar" .Feed}}{{end}}
+  <div class="article-main">
     <p class="article-meta">
-      {{if .Feed.ID}}<a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
-      {{if .Article.PublishedAt.IsZero}}{{else if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
-      {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
+      {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
+      {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
     </p>
+    <div class="article-card">
+      {{with .Article.ImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
+      <div class="article-text">
+        <h3 class="article-title"><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
+        {{with .Article.Excerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
+        {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
+      </div>
+    </div>
     {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
-    {{with .Article.Excerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
   </div>
 </article>
 {{end}}

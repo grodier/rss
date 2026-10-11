@@ -3,62 +3,62 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - my feeds</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" "feeds"}}
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>My feeds</h1>
+    <main class="column">
+      <header class="page-head">
+        <h1>My feeds</h1>
+      </header>
 
-    {{range .Sites}}
-    <section>
-      <h2><a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></h2>
-      <ul>
-        {{range .Subs}}
-        <li>
-          <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-          {{if .LatestArticleAt.IsZero}}
-          <p>No articles yet.</p>
-          {{else}}
-          <p>Latest article {{.LatestArticleAt.Format "2 Jan 2006"}}</p>
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{range .Sites}}
+      <section>
+        <div class="list-head">
+          <h2><a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></h2>
+        </div>
+        <ul role="list">
+          {{range .Subs}}
+          <li class="feed-row">
+            {{template "feed-avatar" .Feed}}
+            <div>
+              <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
+              {{if .LatestArticleAt.IsZero}}
+              <p>No articles yet.</p>
+              {{else}}
+              <p>Latest article {{.LatestArticleAt.Format "2 Jan 2006"}}</p>
+              {{end}}
+              {{if not .Feed.GoneAt.IsZero}}
+              <p class="fetch-error">This feed no longer exists.</p>
+              {{else if ge .Feed.ConsecutiveFailures $.FailingThreshold}}
+              <p class="fetch-error">This feed is failing to update.</p>
+              {{end}}
+            </div>
+            <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
+              <input type="hidden" name="return_to" value="/feeds">
+              <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
+            </form>
+          </li>
           {{end}}
-          {{if not .Feed.GoneAt.IsZero}}
-          <p class="fetch-error">This feed no longer exists.</p>
-          {{else if ge .Feed.ConsecutiveFailures $.FailingThreshold}}
-          <p class="fetch-error">This feed is failing to update.</p>
-          {{end}}
-          <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-            <input type="hidden" name="return_to" value="/feeds">
-            <button type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
-          </form>
-        </li>
-        {{end}}
-      </ul>
-    </section>
-    {{else}}
-    <p>You're not subscribed to any feeds yet. <a href="/search">Search</a> for a site to find some.</p>
-    {{end}}
-  </main>
+        </ul>
+      </section>
+      {{else}}
+      <div class="empty">
+        {{template "icon-feeds"}}
+        <p>You're not subscribed to any feeds yet. <a href="/search">Search</a> for a site to find some.</p>
+      </div>
+      {{end}}
+    </main>
+  </div>
 </body>
 
 </html>

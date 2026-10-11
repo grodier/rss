@@ -3,42 +3,35 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - {{.Article.DisplayTitle}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
   <script src="/static/js/app.js" defer></script>
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" ""}}
 
-    <h1>{{.Article.DisplayTitle}}</h1>
-    <p>From <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-      {{if .Article.PublishedAt.IsZero}}{{else if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
-    </p>
-    {{if .Body}}
-    <div class="article-body">{{.Body}}</div>
-    {{else}}
-    <p>This article has no text in its feed.</p>
-    {{end}}
-    {{if .Article.URL}}
-    <p><a href="{{.Article.URL}}" target="_blank" rel="noopener noreferrer">Read on {{or .Site.Title .Site.Host}} ↗</a></p>
-    {{end}}
-  </main>
+    <main class="column">
+      <article class="reader">
+        <p class="reader-meta">
+          {{template "feed-avatar" .Feed}}
+          <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
+          {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
+        </p>
+        <h1>{{.Article.DisplayTitle}}</h1>
+        {{if .Body}}
+        <div class="article-body">{{.Body}}</div>
+        {{else}}
+        <p class="empty">This article has no text in its feed.</p>
+        {{end}}
+        {{if .Article.URL}}
+        <p class="reader-foot"><a class="btn" href="{{.Article.URL}}" target="_blank" rel="noopener noreferrer">Read on {{or .Site.Title .Site.Host}} ↗</a></p>
+        {{end}}
+      </article>
+    </main>
+  </div>
 </body>
 
 </html>

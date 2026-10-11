@@ -1,16 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>rss - error</title>
-    <link rel="stylesheet" href="/static/css/main.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - error</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
 </head>
+
 <body>
-    <main>
-        <h1>{{.Title}}</h1>
-        <p>{{.Message}}</p>
-        <p><a href="/">Go to the home page</a></p>
-    </main>
+  <main class="solo">
+    <div class="solo-panel hero">
+      <h1>{{.Title}}</h1>
+      <p>{{.Message}}</p>
+      <div class="hero-actions">
+        <a class="btn" href="/">Go to the home page</a>
+      </div>
+    </div>
+  </main>
 </body>
+
 </html>

@@ -1,12 +1,17 @@
 package server
 
 import (
+	"bytes"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/ui"
 )
@@ -73,19 +78,108 @@ func TestPasswordNotEchoed(t *testing.T) {
 	}
 }
 
-func TestTemplateNavSaysMyFeeds(t *testing.T) {
-	files, err := fs.Glob(ui.Templates, "templates/*.html")
+// TestAppNav checks the nav partial: the link to /feeds says My feeds, and
+// only the current section's link is marked aria-current.
+func TestAppNav(t *testing.T) {
+	ts, err := parseTemplates()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
-		b, err := fs.ReadFile(ui.Templates, f)
-		if err != nil {
-			t.Fatal(err)
+	tests := []struct {
+		section string
+		current string // href of the link marked current; "" for none
+	}{
+		{"home", "/"},
+		{"feeds", "/feeds"},
+		{"search", "/search"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run("section "+tt.section, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := ts["timeline.html"].ExecuteTemplate(&buf, "app-nav", tt.section); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := html.Parse(&buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			links := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && n.Parent != nil && n.Parent.Data == "li" })
+			if len(links) != 3 {
+				t.Fatalf("found %d nav links, want 3", len(links))
+			}
+			var current []string
+			for _, a := range links {
+				href := attr(a, "href")
+				if href == "/feeds" {
+					if got := strings.TrimSpace(textContent(a)); got != "My feeds" {
+						t.Errorf("the nav link to /feeds says %q, want My feeds", got)
+					}
+				}
+				if attr(a, "aria-current") == "page" {
+					current = append(current, href)
+				}
+			}
+			var want []string
+			if tt.current != "" {
+				want = []string{tt.current}
+			}
+			if !slices.Equal(current, want) {
+				t.Errorf("links marked current = %q, want %q", current, want)
+			}
+		})
+	}
+}
+
+func textContent(n *html.Node) string {
+	var b strings.Builder
+	for d := range n.Descendants() {
+		if d.Type == html.TextNode {
+			b.WriteString(d.Data)
 		}
-		if strings.Contains(string(b), `href="/feeds"`) && !strings.Contains(string(b), `<a href="/feeds">My feeds</a>`) {
-			t.Errorf("%s: the nav link to /feeds should say My feeds", f)
+	}
+	return b.String()
+}
+
+func TestAvatarTone(t *testing.T) {
+	seen := map[int]bool{}
+	for i := range 100 {
+		id := fmt.Sprintf("%08d-0000-4000-8000-000000000000", i)
+		tone := avatarTone(id)
+		if tone < 1 || tone > avatarTones {
+			t.Fatalf("avatarTone(%q) = %d, want 1 to %d", id, tone, avatarTones)
 		}
+		if avatarTone(id) != tone {
+			t.Fatalf("avatarTone(%q) is not stable", id)
+		}
+		seen[tone] = true
+	}
+	if len(seen) != avatarTones {
+		t.Errorf("100 IDs got %d of the %d tones", len(seen), avatarTones)
+	}
+}
+
+func TestMonogram(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"title", "kernel notes", "K"},
+		{"leading punctuation", "“The Slow Web”", "T"},
+		{"digit", "99% Invisible", "9"},
+		{"non-Latin letter", "ëlan", "Ë"},
+		{"https URL", "https://example.com/feed.xml", "E"},
+		{"http URL with www", "http://www.blog.example/rss", "B"},
+		{"empty", "", ""},
+		{"no letters", "—", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := monogram(tt.in); got != tt.want {
+				t.Errorf("monogram(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

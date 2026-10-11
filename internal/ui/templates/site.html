@@ -3,80 +3,84 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - {{or .Site.Title .Site.Host}}</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" ""}}
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>{{or .Site.Title .Site.Host}}</h1>
-    {{with .Site.Description}}
-    <p>{{.}}</p>
-    {{end}}
-    <p><a href="{{.Site.URL}}" rel="noopener noreferrer">{{.Site.Host}}</a></p>
-    {{if not .LastChecked.IsZero}}
-    <p>Feeds last checked {{.LastChecked.Format "2 Jan 2006 15:04 MST"}}.</p>
-    {{end}}
-    {{if .Checking}}
-    <p>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></p>
-    {{end}}
-    {{if .CanRecheck}}
-    <form action="/lookups" method="post">
-      <input type="hidden" name="q" value="{{.Site.URL}}">
-      <button type="submit">Check for new feeds</button>
-    </form>
-    {{end}}
-
-    <section>
-      <h2>Feeds</h2>
-      {{if .Feeds}}
-      <ul>
-        {{range .Feeds}}
-        <li id="feed-{{.ID}}">
-          <a href="/feeds/{{.ID}}">{{or .Title .Url}}</a>
-          {{with .Description}}<p>{{.}}</p>{{end}}
-          <p>{{.Url}}</p>
-          {{if index $.Subscribed .ID}}
-          <form action="/feeds/{{.ID}}/unsubscribe" method="post">
-            <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
-            <span>Subscribed ✓</span>
-            <button type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
-          </form>
-          {{else if .GoneAt.IsZero}}
-          <form action="/feeds/{{.ID}}/subscribe" method="post">
-            <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
-            <button type="submit" aria-label="Subscribe to {{or .Title .Url}}">Subscribe</button>
-          </form>
-          {{else}}
-          <span>This feed no longer exists.</span>
-          {{end}}
-        </li>
-        {{end}}
-      </ul>
-      {{else}}
-      <p>No feeds found for this site yet.</p>
+    <main class="column">
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
       {{end}}
-    </section>
-  </main>
+
+      <section class="profile">
+        <div class="profile-top">
+          {{template "site-avatar" .Site}}
+          {{if .CanRecheck}}
+          <form action="/lookups" method="post">
+            <input type="hidden" name="q" value="{{.Site.URL}}">
+            <button class="btn-sm" type="submit">{{template "icon-refresh"}}Check for new feeds</button>
+          </form>
+          {{end}}
+        </div>
+        <h1>{{or .Site.Title .Site.Host}}</h1>
+        <p class="profile-sub"><a href="{{.Site.URL}}" rel="noopener noreferrer">{{.Site.Host}}</a></p>
+        {{with .Site.Description}}
+        <p class="profile-desc">{{.}}</p>
+        {{end}}
+        {{if or (not .LastChecked.IsZero) .Checking}}
+        <p class="facts">
+          {{if not .LastChecked.IsZero}}
+          <span>{{template "icon-clock"}}Feeds last checked {{.LastChecked.Format "2 Jan 2006 15:04 MST"}}.</span>
+          {{end}}
+          {{if .Checking}}
+          <span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span>
+          {{end}}
+        </p>
+        {{end}}
+      </section>
+
+      <section>
+        <div class="list-head">
+          <h2>Feeds</h2>
+        </div>
+        {{if .Feeds}}
+        <ul role="list">
+          {{range .Feeds}}
+          <li class="feed-row" id="feed-{{.ID}}">
+            {{template "feed-avatar" .}}
+            <div>
+              <a class="feed-row-title" href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="chip">Subscribed ✓</span>{{end}}
+              {{with .Description}}<p class="feed-desc">{{.}}</p>{{end}}
+              <p class="feed-url">{{.Url}}</p>
+              {{if and (not (index $.Subscribed .ID)) (not .GoneAt.IsZero)}}
+              <p class="fetch-error">This feed no longer exists.</p>
+              {{end}}
+            </div>
+            {{if index $.Subscribed .ID}}
+            <form action="/feeds/{{.ID}}/unsubscribe" method="post">
+              <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
+              <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
+            </form>
+            {{else if .GoneAt.IsZero}}
+            <form action="/feeds/{{.ID}}/subscribe" method="post">
+              <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
+              <button class="btn-primary btn-sm" type="submit" aria-label="Subscribe to {{or .Title .Url}}">Subscribe</button>
+            </form>
+            {{end}}
+          </li>
+          {{end}}
+        </ul>
+        {{else}}
+        <p class="empty">No feeds found for this site yet.</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
 </body>
 
 </html>

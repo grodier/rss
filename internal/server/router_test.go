@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -165,6 +167,61 @@ func TestMethodNotAllowedSetsAllow(t *testing.T) {
 			}
 			if got := rr.Header().Get("Allow"); got != tt.want {
 				t.Errorf("Allow = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSignupRoutes(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
+			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SignupEnabled: enabled}, Services{})
+			h := s.router()
+
+			do := func(method, target string) *httptest.ResponseRecorder {
+				var body io.Reader
+				if method == http.MethodPost {
+					body = strings.NewReader("")
+				}
+				req := httptest.NewRequestWithContext(t.Context(), method, target, body)
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				rr := httptest.NewRecorder()
+				h.ServeHTTP(rr, req)
+				return rr
+			}
+
+			get, post := do(http.MethodGet, "/signup"), do(http.MethodPost, "/signup")
+			if enabled {
+				if get.Code != http.StatusOK {
+					t.Errorf("GET /signup = %d, want 200", get.Code)
+				}
+				if post.Code != http.StatusUnprocessableEntity {
+					t.Errorf("POST /signup = %d, want 422", post.Code)
+				}
+			} else {
+				for name, rr := range map[string]*httptest.ResponseRecorder{"GET": get, "POST": post} {
+					if rr.Code != http.StatusNotFound {
+						t.Errorf("%s /signup = %d, want 404", name, rr.Code)
+					}
+					if !strings.Contains(rr.Body.String(), "<html") {
+						t.Errorf("%s /signup body is not the HTML 404 page", name)
+					}
+				}
+			}
+
+			login := do(http.MethodGet, "/login")
+			home := do(http.MethodGet, "/")
+			failed := do(http.MethodPost, "/login")
+			if failed.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("POST /login = %d, want 422", failed.Code)
+			}
+			for name, rr := range map[string]*httptest.ResponseRecorder{"GET /login": login, "GET /": home, "failed login": failed} {
+				if got := strings.Contains(rr.Body.String(), `href="/signup"`); got != enabled {
+					t.Errorf("%s links to /signup = %v, want %v", name, got, enabled)
+				}
+			}
+			if !strings.Contains(home.Body.String(), `href="/login"`) {
+				t.Error("GET / has no link to /login")
 			}
 		})
 	}

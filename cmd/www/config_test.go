@@ -71,3 +71,21 @@ func TestParseConfigsRefreshWorkers(t *testing.T) {
 		})
 	}
 }
+
+func TestParseConfigsSignup(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://x"}
+	cfg, err := NewApplication(nil).ParseConfigs(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.server.signup {
+		t.Error("signup defaults to true, want false")
+	}
+	cfg, err = NewApplication(nil).ParseConfigs(append(dsn, "-signup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.server.signup {
+		t.Error("-signup did not set server.signup")
+	}
+}

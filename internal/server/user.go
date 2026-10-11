@@ -75,15 +75,19 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	flash := s.sessionManager.PopString(r.Context(), "flash")
-	data := struct {
-		Form  any
-		Flash string
-	}{
-		Flash: flash,
-		Form:  loginForm{},
-	}
+	s.renderLogin(w, r, http.StatusOK, loginForm{}, flash)
+}
 
-	if err := s.renderHTML(w, http.StatusOK, "login.html", data); err != nil {
+type loginPage struct {
+	Form          loginForm
+	Flash         string
+	SignupEnabled bool
+}
+
+// renderLogin renders login.html with status, setting SignupEnabled from the config.
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, form loginForm, flash string) {
+	data := loginPage{Form: form, Flash: flash, SignupEnabled: s.config.SignupEnabled}
+	if err := s.renderHTML(w, status, "login.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
@@ -105,13 +109,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(clientIP(r))); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
-		data := struct {
-			Flash string
-			Form  any
-		}{Form: form}
-		if err := s.renderHTML(w, http.StatusTooManyRequests, "login.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-		}
+		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")
 		return
 	}
 
@@ -121,14 +119,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	form.CheckField(validator.MaxChars(form.Password, 256), "password", "Password is too long")
 
 	if !form.Valid() {
-		data := struct {
-			Flash string
-			Form  any
-		}{Form: form}
-
-		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-		}
+		s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
 		return
 	}
 
@@ -139,13 +130,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	if exceeded, retryAfter := s.loginFailureLimiter.Exceeded(emailKey); exceeded {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
-		data := struct {
-			Flash string
-			Form  any
-		}{Form: form}
-		if err := s.renderHTML(w, http.StatusTooManyRequests, "login.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-		}
+		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")
 		return
 	}
 
@@ -155,14 +140,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, rss.ErrInvalidCredentials):
 			s.loginFailureLimiter.Record(emailKey)
 			form.AddNonFieldError("Email or password is incorrect")
-			data := struct {
-				Flash string
-				Form  any
-			}{Form: form}
-
-			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "login.html", data); err != nil {
-				s.serverErrorHTML(w, r, err)
-			}
+			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
 		default:
 			s.serverErrorHTML(w, r, err)
 		}

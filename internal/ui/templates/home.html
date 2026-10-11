@@ -15,8 +15,12 @@
       <h1>rss</h1>
       <p>One quiet timeline for the sites you follow.</p>
       <div class="hero-actions">
+        {{if .SignupEnabled}}
         <a class="btn btn-primary" href="/signup">Sign Up</a>
         <a class="btn" href="/login">Login</a>
+        {{else}}
+        <a class="btn btn-primary" href="/login">Login</a>
+        {{end}}
       </div>
     </div>
   </main>

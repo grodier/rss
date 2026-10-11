@@ -15,7 +15,8 @@ type config struct {
 }
 
 type serverConfig struct {
-	port int
+	port   int
+	signup bool
 }
 
 type lookupConfig struct {

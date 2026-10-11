@@ -19,6 +19,8 @@ import (
 type Config struct {
 	Port int
 	Env  string
+	// SignupEnabled turns on GET and POST /signup and the links to it.
+	SignupEnabled bool
 }
 
 // FeedStore is the feed persistence the server depends on.

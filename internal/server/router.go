@@ -37,6 +37,11 @@ func (s *Server) router() http.Handler {
 			s.notFoundResponse(w, r)
 			return
 		}
+		// Only a request for the file's current version is cached; any other
+		// (no v, or a stale one) is served without Cache-Control.
+		if v := r.URL.Query().Get("v"); v != "" && v == staticVersions[strings.TrimPrefix(r.URL.Path, "/static/")] {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
 		fileServer.ServeHTTP(w, r)
 	}))
 

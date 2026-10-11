@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -32,6 +33,11 @@ var current = params{
 	keyLen:  32,
 }
 
+// slots caps how many Argon2 computations run at once. Each one allocates
+// its memory parameter (19 MiB for current), so without a cap a burst of
+// logins or signups could exhaust memory. Callers beyond the cap wait.
+var slots = make(chan struct{}, runtime.GOMAXPROCS(0))
+
 // Hash returns an encoded Argon2id hash of pw.
 func Hash(pw string) (string, error) {
 	return hashWith(pw, current)
@@ -42,7 +48,9 @@ func hashWith(pw string, p params) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
+	slots <- struct{}{}
 	key := argon2.IDKey([]byte(pw), salt, p.time, p.memory, p.threads, p.keyLen)
+	<-slots
 
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, p.memory, p.time, p.threads,
@@ -83,6 +91,8 @@ func Verify(pw, encoded string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 
+	slots <- struct{}{}
 	got := argon2.IDKey([]byte(pw), salt, p.time, p.memory, p.threads, uint32(len(want)))
+	<-slots
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

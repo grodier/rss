@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHashVerify(t *testing.T) {
@@ -91,5 +92,74 @@ func TestVerifyMalformed(t *testing.T) {
 				t.Errorf("Verify = %v, %v; want false, ErrInvalidHash", ok, err)
 			}
 		})
+	}
+}
+
+// fillSlots takes every Argon2 slot and returns a function that releases one.
+// The remaining slots are released when the test ends.
+func fillSlots(t *testing.T) (releaseOne func()) {
+	t.Helper()
+	held := cap(slots)
+	for range held {
+		slots <- struct{}{}
+	}
+	t.Cleanup(func() {
+		for ; held > 0; held-- {
+			<-slots
+		}
+	})
+	return func() {
+		<-slots
+		held--
+	}
+}
+
+// waitsForSlot runs fn with every slot taken and checks that it only returns
+// once a slot is released.
+func waitsForSlot(t *testing.T, fn func()) {
+	t.Helper()
+	releaseOne := fillSlots(t)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("returned while every slot was taken")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseOne()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("didn't return after a slot was released")
+	}
+}
+
+func TestHashWaitsForSlot(t *testing.T) {
+	var h string
+	var err error
+	waitsForSlot(t, func() { h, err = Hash("pw") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := Verify("pw", h); err != nil || !ok {
+		t.Errorf("Verify = %v, %v; want true, nil", ok, err)
+	}
+}
+
+func TestVerifyWaitsForSlot(t *testing.T) {
+	h, err := Hash("pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ok bool
+	waitsForSlot(t, func() { ok, err = Verify("pw", h) })
+	if err != nil || !ok {
+		t.Errorf("Verify = %v, %v; want true, nil", ok, err)
 	}
 }

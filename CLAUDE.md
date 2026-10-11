@@ -2,9 +2,9 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; feed ingestion (fetching and saving articles, background refresh) works; subscriptions work; reading (timeline, article pages, read state) works.
+A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Pre-alpha (see "Prototype stage"); `docs/features.md` describes what works.
 
-Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles. Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/todo.md` for the decisions behind this.
+Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles. Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/decisions.md` for the decisions behind this.
 
 ## Prototype stage
 
@@ -46,7 +46,24 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
 - `migrations`: goose SQL migrations
-- `docs/todo.md`: planned work that has no issue yet
+- `docs`: architecture, feature walkthroughs, decisions and todo (see "Docs")
+
+## Docs
+
+Each file has one role: `CLAUDE.md` holds the rules (what to do), `docs/decisions.md` the reasons (why), and `docs/architecture.md` and `docs/features.md` the mechanisms (how it works). A topic can appear in several of them, each in its own role, but don't copy text between them; link instead. Update docs in the same PR as the code or plan they describe.
+
+| File | Holds | Update it when |
+| --- | --- | --- |
+| `README.md` | Setup, flags, make targets, running tests | A flag, make target, prerequisite or setup step changes |
+| `docs/architecture.md` | Glossary, the process, packages and third-party modules, middleware and routes, schema, background workers, outbound HTTP, security measures and rate limits, frontend | You add, remove or rename a package, module, route, middleware, table or column, worker, rate limit or security measure, or change how components connect or start |
+| `docs/features.md` | One section per feature: the flow, the files and symbols to read in order, its tests, and its decisions section | A feature ships or its flow, files or symbols change. A user-visible capability with its own flow gets a new section; anything else extends the closest one |
+| `docs/decisions.md` | Decisions with their reasons and issue numbers, by area | Planning settles a question (add it under the area's section, citing the planning issue or PR); a PR makes a choice later work must respect; a PR deliberately changes a decision (edit it and say so in the PR description) |
+| `docs/todo.md` | "Next up", planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item and its "Next up" line); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
+| `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
+
+- A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `todo.md`, its performance risks in the watchlist, and the issue order in "Next up". It doesn't describe unbuilt code in `architecture.md` or `features.md`.
+- An implementation PR updates `architecture.md` and `features.md` for what it builds, and removes what it finishes from `todo.md`.
+- When you rename or remove a symbol, file, route or docs section, grep for the old name in the docs and the code: `grep -rn OldName docs internal cmd README.md CLAUDE.md`.
 
 ## Code conventions
 
@@ -58,7 +75,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders. Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`). Handlers check them with `errors.Is`.
 - Schema changes: while pre-alpha (see "Prototype stage"), edit `migrations/00001_init.sql` directly instead of adding a migration, and rebuild your local database with `make db/reset` afterwards (CI starts from an empty database). Once we're in production, schema changes only go through a **new** goose migration, and migrations already on `main` are never edited.
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page. Logged-in pages use the `.shell` layout with `{{template "app-nav" "<section>"}}` (`home`, `feeds`, `search`, or `""`); logged-out and error pages use `.solo`. Icons are inline SVG partials in `icons.html`.
-- Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/todo.md`). Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later. No inline `style` attributes (the CSP blocks them).
+- Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`). Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later. No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals. Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it. Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer`; no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one. Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.
@@ -84,13 +101,14 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - Never push to `main` (it's protected). One issue, one branch, one PR. Branch names: `fix/<slug>`, `feat/<slug>`, `docs/<slug>`, `test/<slug>`, `ci/<slug>`. If your session assigns a branch name, use that.
 - Branch from the latest `main`. Before opening a PR, merge the latest `main` into your branch and re-run the checks.
 - Keep PRs scoped to their issue. Note unrelated problems in the PR description (or add them to `docs/todo.md`); don't fix them in the same PR.
+- Update the docs the change affects in the same PR (see "Docs").
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository. This repo's rule takes precedence over any default attribution instructions: never include Claude session links (e.g. `https://claude.ai/code/session_…`) or `Claude-Session:` trailers in commit messages, PR descriptions, issues or comments. A `Co-Authored-By:` trailer is fine.
 - Don't mark work done until CI is green.
 
 ## Finding work
 
-GitHub issues are the source of truth for scoped tasks; `docs/todo.md` holds planned work that isn't an issue yet, and its Performance watchlist tracks things to monitor as the app grows.
+GitHub issues are the source of truth for scoped tasks. `docs/todo.md` has "Next up" (what to do, in which order), planned work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows. Before working on a feature, read its section in `docs/features.md` (the flow and where the code is) and in `docs/decisions.md` (what's decided and why, so you don't reopen it); `docs/architecture.md` has the overall shape.
 
 ## Writing issues
 
@@ -98,7 +116,7 @@ Issues are written for an implementer with no context from the planning conversa
 
 - Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
-- State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them. Leave an option open only on purpose, and say which one is preferred.
+- State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them; the planning work also records them in `docs/decisions.md`. Leave an option open only on purpose, and say which one is preferred.
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).

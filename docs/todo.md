@@ -460,16 +460,15 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
     leftmost entry is whatever the client sent.
   - Don't use chi's `middleware.RealIP`: it trusts those headers from anyone, so a
     client could choose its own rate-limit key.
-- [ ] **Signup is off by default** (#186). `-signup` turns it on; `/signup` is a 404 and
-  its links are hidden otherwise. Accounts are made by starting the app with `-signup`
-  briefly. Later, when inviting testers:
-  - [ ] **Shared invite code.** Replace `-signup` with `-invite-code`: signup is open
-    when it's set, and the code arrives pre-filled from a link like
-    `/signup?invite=…`. Remove the bool flag rather than keeping both. Testers choose
-    their own password, which matters while there's no reset. Rotating the code is a
-    restart. Keep the per-IP signup limit (#182) so the code can't be brute-forced.
-  - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to
-    make them. Only once people we don't know personally are invited.
+- [ ] **Shared invite code.** Signup is off unless `-signup` is set (#186), and accounts
+  are made by starting the app with it briefly. Before inviting testers, replace
+  `-signup` with `-invite-code`: signup is open when it's set, and the code arrives
+  pre-filled from a link like `/signup?invite=…`. Remove the bool flag rather than
+  keeping both. Testers choose their own password, which matters while there's no reset.
+  Rotating the code is a restart. Keep the per-IP signup limit (#182) so the code can't
+  be brute-forced.
+- [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
+  them. Only once people we don't know personally are invited.
 - [ ] **Account management.** No password change, password reset or account deletion.
   With a few known testers, passwords can be reset by hand in the database. Self-service
   reset needs email, which the app doesn't send yet.
@@ -491,11 +490,29 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Security
 
-- [ ] Rate-limit login and signup, and stop revealing which emails have accounts:
-  - #182 per-IP limits on login and signup (with the `clientIP` helper)
-  - #183 failed logins per email
-  - #184 a cap on concurrent Argon2 hashing
-  - #185 duplicate signups look like success, and login hashes a dummy for unknown emails
+Login and signup protection is done. Shipped in #188–#192 (issues #182–#186): per-IP
+limits on login (20 per 10 minutes) and signup (10 per hour), at most 10 failed logins
+per email per 15 minutes, at most `GOMAXPROCS` Argon2 hashes at once, signup and login
+that don't reveal which emails have accounts, and signup off unless `-signup` is set.
+
+Decisions made while planning (don't reopen them without a reason):
+
+- **In-memory limits** (`internal/server/ratelimit.go`) are enough for one instance, and
+  they reset on restart. Revisiting them is the last item below.
+- **IPv6 clients are keyed by their /64**, since one client usually controls a whole /64.
+- **A limited login or signup re-renders its form with 429** and `Retry-After`, keeping
+  the email filled in. The generic 429 page is only for lookups.
+- **Failed logins are counted per submitted email, whether or not it has an account**,
+  so a 429 doesn't reveal which emails do. Successful logins don't count or reset it.
+- **A duplicate signup looks exactly like a successful one**, and login verifies a dummy
+  hash for unknown emails so it takes as long as a wrong password.
+- **Hashing beyond the cap waits in line rather than failing** (see "Queued password
+  hashing" in the Performance watchlist).
+- **`clientIP` reads only `RemoteAddr`** until deployment decides how to read the
+  proxy's header (see "Client IP behind a proxy" under Pre-alpha testing).
+
+Later, not issues yet:
+
 - [ ] **Per-email login lockout.** #183 lets anyone keep a known email locked out of
   login for 15 minutes at a time by failing logins for it. That's accepted while users
   are a handful of known people. Revisit before signup is open to strangers (e.g. key
@@ -508,15 +525,13 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Suggested order
 
-1. Login and signup protection: #182, then #183, #185 and #186, one at a time (they all
-   edit `internal/server/user.go`). #184 can go in parallel.
-2. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
+1. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
    is ready to run in production, with signup off.
-3. Before inviting testers: the shared invite code (Pre-alpha testing).
-4. The rest of Pre-alpha testing (account management, logging in to the timeline,
+2. Before inviting testers: the shared invite code (Pre-alpha testing).
+3. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.
-5. Now that the initial features are done, **plan** the error-state walkthrough and run
+4. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-6. Before production or a few thousand feeds, **plan** load and performance testing.
+5. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

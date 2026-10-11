@@ -119,8 +119,8 @@ func TestSiteHandlerEmptyFeedTitleShowsURL(t *testing.T) {
 	body := serveSite(t, siteServer(t, site, nil, feeds, nil), testSiteID).Body.String()
 
 	for _, want := range []string{
-		`<a href="/feeds/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa">Titled</a>`,
-		`<a href="/feeds/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb">https://example.com/b.xml</a>`,
+		`<a class="feed-row-title" href="/feeds/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa">Titled</a>`,
+		`<a class="feed-row-title" href="/feeds/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb">https://example.com/b.xml</a>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)

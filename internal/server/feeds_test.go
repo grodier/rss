@@ -524,8 +524,8 @@ func TestFeedsHandler(t *testing.T) {
 			"<h1>My feeds</h1>",
 			`<a href="/sites/`+siteA+`">Site A</a>`,
 			`<a href="/sites/`+siteB+`">b.example.com</a>`,
-			`<a href="/feeds/`+testFeedID+`">One</a>`,
-			`<a href="/feeds/`+otherID+`">https://a.example.com/two.xml</a>`,
+			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">One</a>`,
+			`<a class="feed-row-title" href="/feeds/`+otherID+`">https://a.example.com/two.xml</a>`,
 		)
 		if n := strings.Count(body, "<h2>"); n != 2 {
 			t.Errorf("got %d sites, want 2: %s", n, body)

@@ -3,53 +3,46 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - login</title>
   <link rel="stylesheet" href="/static/css/main.css" />
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-        </div>
-        <div>
-          <a href="/signup">Sign Up</a>
-        </div>
-      </nav>
-    </header>
+  <main class="solo">
+    <div class="solo-panel">
+      {{template "brand"}}
+      <h1>Login</h1>
 
-    {{with .Flash}}
-    <div class="flash">{{.}}</div>
-    {{end}}
-    <h1>Login</h1>
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
 
-    <section>
       <form action="/login" method="post">
         {{range .Form.NonFieldErrors}}
         <div class="error">{{.}}</div>
         {{end}}
         <div class="field">
-          <label for="email">Email:</label>
+          <label for="email">Email</label>
           {{with .Form.FieldErrors.email}}
           <span class="error">{{.}}</span>
           {{end}}
-          <input type="email" id="email" name="email" value="{{.Form.Email}}" />
+          <input type="email" id="email" name="email" value="{{.Form.Email}}" autocomplete="email" />
         </div>
         <div class="field">
-          <label for="password">Password:</label>
+          <label for="password">Password</label>
           {{with .Form.FieldErrors.password}}
           <span class="error">{{.}}</span>
           {{end}}
-          <input type="password" id="password" name="password" />
+          <input type="password" id="password" name="password" autocomplete="current-password" />
         </div>
         <div>
-          <button type="submit">Login</button>
+          <button class="btn-primary btn-block" type="submit">Login</button>
         </div>
       </form>
-    </section>
+
+      <p class="alt">No account? <a href="/signup">Sign Up</a></p>
+    </div>
   </main>
 </body>
 

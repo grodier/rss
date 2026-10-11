@@ -3,50 +3,42 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Timeline</title>
   <link rel="stylesheet" href="/static/css/main.css" />
   <script src="/static/js/app.js" defer></script>
 </head>
 
 <body>
-  <main>
-    <header class="site-nav">
-      <nav>
-        <div>
-          <a href="/">Home</a>
-          <a href="/feeds">My feeds</a>
-          <a href="/search">Search</a>
-        </div>
-        <div>
-          <form action="/logout" method="post">
-            <button type="submit">Logout</button>
-          </form>
-        </div>
-      </nav>
-    </header>
+  <div class="shell">
+    {{template "app-nav" "home"}}
 
-    <h1>Timeline</h1>
+    <main class="column">
+      <header class="page-head">
+        <h1>Timeline</h1>
+        {{if .Before}}<a href="/">Back to newest</a>{{end}}
+      </header>
 
-    {{if .Before}}<p><a href="/">Back to newest</a></p>{{end}}
-
-    {{if .Rows}}
-    <div class="article-list">
-      {{range .Rows}}
-      {{template "article-row" .}}
+      {{if .Rows}}
+      <div class="article-list">
+        {{range .Rows}}
+        {{template "article-row" .}}
+        {{end}}
+      </div>
+      {{else if .Before}}
+      <p class="empty">No older articles.</p>
+      {{else}}
+      <div class="empty">
+        {{template "icon-rss"}}
+        <p>Your timeline is empty. Find feeds to follow with <a href="/search">Search</a>; their articles will show up here.</p>
+      </div>
       {{end}}
-    </div>
-    {{else if .Before}}
-    <p>No older articles.</p>
-    {{else}}
-    <p>Your timeline is empty. Find feeds to follow with <a href="/search">Search</a>; their articles will show up here.</p>
-    {{end}}
 
-    {{if .Next}}
-    <nav class="pager"><a rel="next" href="/?before={{.Next}}">Older articles</a></nav>
-    {{end}}
-
-  </main>
+      {{if .Next}}
+      <nav class="pager"><a class="btn" rel="next" href="/?before={{.Next}}">Older articles</a></nav>
+      {{end}}
+    </main>
+  </div>
 </body>
 
 </html>

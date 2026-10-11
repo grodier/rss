@@ -16,11 +16,12 @@ import (
 )
 
 const (
-	defaultWorkers      = 2
-	defaultPollInterval = 500 * time.Millisecond
-	defaultJobTimeout   = 30 * time.Second
-	defaultStaleAfter   = 2 * time.Minute
-	defaultMaxAttempts  = 3
+	defaultWorkers       = 2
+	defaultPollInterval  = 500 * time.Millisecond
+	defaultJobTimeout    = 30 * time.Second
+	defaultStaleAfter    = 2 * time.Minute
+	defaultMaxAttempts   = 3
+	defaultResetInterval = time.Minute
 
 	// recordTimeout bounds writing a job's outcome, which uses a fresh
 	// context so an expired job context doesn't prevent it.
@@ -49,33 +50,44 @@ type Discoverer interface {
 // Runner processes queued lookups with a pool of workers. Zero values use
 // the defaults.
 type Runner struct {
-	Store        Store
-	Saver        Saver
-	Discoverer   Discoverer
-	Logger       *slog.Logger
-	Workers      int           // default 2
-	PollInterval time.Duration // default 500ms
-	JobTimeout   time.Duration // default 30s
-	StaleAfter   time.Duration // default 2m (must exceed JobTimeout)
-	MaxAttempts  int           // default 3
+	Store         Store
+	Saver         Saver
+	Discoverer    Discoverer
+	Logger        *slog.Logger
+	Workers       int           // default 2
+	PollInterval  time.Duration // default 500ms
+	JobTimeout    time.Duration // default 30s
+	StaleAfter    time.Duration // default 2m (must exceed JobTimeout)
+	MaxAttempts   int           // default 3
+	ResetInterval time.Duration // default 1m; how often stale jobs are reset
 }
 
-// Run resets stale jobs once, then runs Workers goroutines until ctx is
-// canceled, and returns after they have all stopped.
+// Run resets stale jobs, then runs Workers goroutines and resets stale jobs
+// again every ResetInterval until ctx is canceled, and returns after they
+// have all stopped.
 func (r *Runner) Run(ctx context.Context) error {
 	r.setDefaults()
 	if r.StaleAfter <= r.JobTimeout {
 		return fmt.Errorf("lookup: StaleAfter (%s) must exceed JobTimeout (%s)", r.StaleAfter, r.JobTimeout)
 	}
 
-	n, err := r.Store.ResetStale(ctx, r.StaleAfter, r.MaxAttempts)
-	if err != nil {
-		r.Logger.Error("lookup: reset stale jobs", "error", err)
-	} else if n > 0 {
-		r.Logger.Info("lookup: reset stale jobs", "count", n)
-	}
+	r.resetStale(ctx)
 
 	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(r.ResetInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				r.resetStale(ctx)
+			}
+		}
+	}()
 	for range r.Workers {
 		wg.Add(1)
 		go func() {
@@ -105,6 +117,25 @@ func (r *Runner) setDefaults() {
 	}
 	if r.MaxAttempts <= 0 {
 		r.MaxAttempts = defaultMaxAttempts
+	}
+	if r.ResetInterval <= 0 {
+		r.ResetInterval = defaultResetInterval
+	}
+}
+
+// resetStale puts running jobs that started more than StaleAfter ago back to
+// pending, or fails them after MaxAttempts (see Store.ResetStale), and logs
+// what it changed.
+func (r *Runner) resetStale(ctx context.Context) {
+	n, err := r.Store.ResetStale(ctx, r.StaleAfter, r.MaxAttempts)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.Logger.Error("lookup: reset stale jobs", "error", err)
+		}
+		return
+	}
+	if n > 0 {
+		r.Logger.Info("lookup: reset stale jobs", "count", n)
 	}
 }
 
@@ -142,7 +173,7 @@ func (r *Runner) wait(ctx context.Context) bool {
 }
 
 // process runs one job and records its outcome, unless ctx was canceled
-// meanwhile: the row is then left running for ResetStale to re-queue.
+// meanwhile: the row is then left running, and is re-queued once it's stale.
 func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 	start := time.Now()
 	siteID, feeds, articles, err := r.run(ctx, job)

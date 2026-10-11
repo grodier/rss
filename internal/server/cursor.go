@@ -2,14 +2,12 @@ package server
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/validator"
 )
-
-var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // encodeCursor formats c for a URL: the UTC time in RFC 3339 with
 // nanoseconds, "_", and the ID.
@@ -31,7 +29,7 @@ func decodeCursor(s string) (rss.ArticleCursor, error) {
 	if err != nil {
 		return rss.ArticleCursor{}, fmt.Errorf("cursor time: %w", err)
 	}
-	if !uuidPattern.MatchString(id) {
+	if !validator.Matches(id, validator.UUIDRX) {
 		return rss.ArticleCursor{}, fmt.Errorf("cursor id %q is not a UUID", id)
 	}
 	return rss.ArticleCursor{At: t.UTC(), ID: strings.ToLower(id)}, nil

@@ -133,7 +133,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.markRead(r.Context(), userID, rows); err != nil {
+	if err := s.fillRead(r.Context(), userID, rows); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}

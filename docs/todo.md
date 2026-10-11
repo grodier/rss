@@ -499,9 +499,17 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Deployment
 
-Planned in #PLAN. Issues: [A] container image, [B] configuration from environment
-variables and JSON logs, [C] `migrate` command, [D] client IP behind a proxy, [E]
-Terraform for Render, [F] deploy workflows, [G] database backups to R2.
+Planned in #PLAN. Issues, in order:
+
+1. #208 (manual): set up Render, Cloudflare R2 and GitHub. Any time before #213.
+2. #209 container image and #210 configuration from environment variables and JSON
+   logs, in parallel.
+3. #211 `migrate` command and #212 client IP behind a proxy, both after #210.
+4. #213 Terraform for Render.
+5. #214 (manual): first apply and go-live.
+6. #215 deploy, reset and Terraform workflows, then #216 database backups to R2.
+7. #217 (manual): exercise deploys, rollback, resets and backups in production, and add
+   the uptime check.
 
 Decisions made while planning (don't reopen them without a reason):
 
@@ -524,39 +532,57 @@ Decisions made while planning (don't reopen them without a reason):
 - **No domain yet.** The app is served at its `*.onrender.com` URL with Render's HTTPS.
   A custom domain (possibly a subdomain of georgerodier.com) is a later, separate change:
   Cloudflare DNS plus a Render custom domain, both in Terraform.
-- **Migrations run before each deploy**, not at app startup, so they also work with
-  several instances. While pre-alpha, `migrate` wipes and rebuilds the database when
-  the embedded migrations have changed since they were applied (only when
-  `RSS_RESET_ON_SCHEMA_CHANGE` is set, as it is in production). This replaces "rebuild
-  the database by hand" and is removed when we leave pre-alpha.
+- **Migrations are built into the binary** (`www migrate`) and run before each deploy,
+  not at app startup, so they also work with several instances, and a failed migration
+  aborts the deploy while the old version keeps serving. One artifact carries the code
+  and the migrations it expects, and the same command runs everywhere.
+- **Wiping the database is never automatic.** While pre-alpha, `migrate` refuses to run
+  when `migrations/*.sql` have changed since they were applied (code-only changes never
+  touch the database). It wipes and rebuilds only when given the new migrations' exact
+  fingerprint: locally `make db/reset`, in production the "Reset production database"
+  workflow (typed confirmation), which sets `RSS_ALLOW_RESET_TO` and redeploys. A
+  one-off Render job can't do it, since it runs the old image.
+- **Images are public on GHCR**, like the source. A private image would need a
+  long-lived GitHub token stored at Render. Deploys reference images by digest, and CI
+  attests build provenance. No secrets at build time.
+- **Deploys switch with no downtime.** Render starts the new version, waits for
+  `/healthcheck`, switches traffic, then stops the old one (30-second shutdown delay,
+  matching the app). A failed health check or pre-deploy leaves the old version
+  serving. Old and new versions overlap for a few seconds: background workers are safe
+  (`SKIP LOCKED`) and in-memory rate limits reset. Rollback redeploys an earlier image and
+  doesn't undo migrations. No blue-green slots or canaries on Render; Fly or ECS offer
+  them if we move.
 - **Client IP:** `X-Forwarded-For`, taking the rightmost address that isn't in
   `-trusted-proxies`, which defaults to trusting nobody. Render's proxy keeps whatever
   `X-Forwarded-For` the client sent and appends to it, so the leftmost entry can be forged.
   Render's proxy address range is measured after the first deploy, not guessed.
 - **Backups:** Render's point-in-time recovery (3 days on the Hobby workspace) plus a
-  nightly `pg_dump` to R2, kept 35 days. The R2 copy is at a different provider from the
+  nightly `pg_dump` to R2 from a Render cron job, kept 35 days. The R2 copy is at a different provider from the
   database, and restoring it is also how the database moves to a new host.
 - **Logs** stay in Render's log viewer for as long as Render keeps them (a few days on
   the Hobby workspace; the README records the current figure). No log shipping, so client
   IPs aren't kept anywhere else.
-- **Deploys:** every push to `main` that passes CI deploys automatically. Infrastructure
-  changes (`terraform apply`) wait for approval in a GitHub environment.
+- **Deploys:** every push to `main` that passes CI deploys automatically; merging the PR
+  is the approval. Infrastructure changes (`terraform apply`) wait for the owner's
+  approval in the `infrastructure` GitHub environment, since some Terraform changes
+  replace or destroy resources. The database also has `prevent_destroy`.
 
 Later, not issues yet:
 
 - [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
   domain is settled.
-- [ ] **Uptime check.** An external monitor (UptimeRobot or Better Stack free tier) on
-  `/healthcheck`, set up by hand and noted in the README. Render already emails on failed
-  deploys and failed cron jobs.
 - [ ] **PR preview environments.** Render preview environments need the Professional
   workspace (about $19 per user a month plus compute). Only from same-repo branches: never
   `pull_request_target` with fork code, since this repository is public.
 - [ ] **Separate worker service.** If web and background work compete for the Starter
   instance, run the same image as a Render background worker with the web service's
   workers set to 0 (`RSS_LOOKUP_WORKERS=0`, `RSS_REFRESH_WORKERS=0`), for about $7 more.
-- [ ] **Leaving pre-alpha:** remove `RSS_RESET_ON_SCHEMA_CHANGE` and the fingerprint
-  check from `migrate`, and make schema changes new migrations (see CLAUDE.md).
+- [ ] **Leaving pre-alpha.** Remove the fingerprint check, `-allow-reset-to` and the
+  "Reset production database" workflow, and make schema changes new migrations (see
+  CLAUDE.md). From then on every migration must also work with the version still
+  running during a deploy ("expand/contract": add, deploy code using both, backfill,
+  deploy code using the new, then drop the old). Give migrations their own Postgres role
+  that owns the schema, and the app a role that can only read and write data.
 
 ## Security
 
@@ -578,7 +604,7 @@ Decisions made while planning (don't reopen them without a reason):
   hash for unknown emails so it takes as long as a wrong password.
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password
   hashing" in the Performance watchlist).
-- **`clientIP` reads only `RemoteAddr`** until [D] reads `X-Forwarded-For` from trusted
+- **`clientIP` reads only `RemoteAddr`** until #212 reads `X-Forwarded-For` from trusted
   proxies (see Deployment).
 
 Later, not issues yet:
@@ -600,9 +626,8 @@ Later, not issues yet:
    (article lists load full HTML), #197 (request log status and duration), #198 (HEAD
    requests), #199 (static asset caching) and #200 (dead code). #197, #198 and #199 each
    edit `router.go`, and #198 and #200 each edit `errors.go`; see each issue's notes.
-2. Deployment (see Deployment): [A] and [B] in parallel, then [C] and [D] (both build on
-   [B]), then [E], then [F] and [G]. Once they're done, the app runs in production with
-   signup off.
+2. Deployment, #208–#217 in the order listed under Deployment. Once they're done, the
+   app runs in production with signup off.
 3. Before inviting testers: the shared invite code (Pre-alpha testing).
 4. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.

@@ -63,7 +63,11 @@ type FeedRefresher interface {
 // ArticleStore reads saved articles.
 type ArticleStore interface {
 	GetByID(ctx context.Context, id string) (rss.Article, error)
+	// ListByFeed returns a page of a feed's articles. Summary and Content
+	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
+	// ListTimeline returns a page of the user's timeline. Summary and
+	// Content are left empty.
 	ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 

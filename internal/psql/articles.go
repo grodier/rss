@@ -25,7 +25,28 @@ var (
 	// qualifiedArticleColumns prefixes each column with the articles alias a,
 	// for queries that join tables with clashing column names.
 	qualifiedArticleColumns = "a." + strings.Join(articleColumnNames, ", a.")
+	// listArticleColumns and qualifiedListArticleColumns are the select lists
+	// for articles shown in a list (see articleListColumns).
+	listArticleColumns          = articleListColumns("")
+	qualifiedListArticleColumns = articleListColumns("a.")
 )
+
+// articleListColumns returns the select list for articles shown in a list,
+// in scanArticle's order, each column prefixed with prefix ("" or "a."):
+// summary and content are selected as empty strings because lists show the
+// excerpt and article HTML can be large.
+func articleListColumns(prefix string) string {
+	cols := make([]string, len(articleColumnNames))
+	for i, name := range articleColumnNames {
+		switch name {
+		case "summary", "content":
+			cols[i] = "'' AS " + name
+		default:
+			cols[i] = prefix + name
+		}
+	}
+	return strings.Join(cols, ", ")
+}
 
 // scanArticle scans a row selected with articleColumns.
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
@@ -65,9 +86,9 @@ func (r *ArticleRepository) GetByID(ctx context.Context, id string) (rss.Article
 
 // ListByFeed returns up to limit of feedID's articles, newest first by
 // published date (else created date) then ID, starting after before (from
-// the start if before is zero).
+// the start if before is zero). Summary and Content are left empty.
 func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
-	stmt := `SELECT ` + articleColumns + `
+	stmt := `SELECT ` + listArticleColumns + `
 		FROM articles
 		WHERE feed_id = $1
 			AND ($2::timestamptz IS NULL OR (COALESCE(published_at, created_at), id) < ($2, $3::uuid))
@@ -104,11 +125,13 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 // feeds are one entry: the earliest copy to arrive (smallest timeline_at,
 // then ID), at that copy's position, with AlsoIn listing the other feeds
 // that have a copy, ordered by title.
+//
+// Summary and Content are left empty.
 func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	// Articles with no canonical URL key on their own ID, so they're never
 	// collapsed.
 	stmt := `WITH mine AS (
-			SELECT a.*,
+			SELECT ` + qualifiedListArticleColumns + `,
 				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
 			FROM subscriptions sub
 			JOIN articles a ON a.feed_id = sub.feed_id

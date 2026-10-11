@@ -86,8 +86,15 @@ func TestSaveFetch(t *testing.T) {
 			t.Fatalf("got %d articles, want 3", len(got))
 		}
 		a := articleByExternalID(t, got, "a")
-		if a.FeedID != feed.ID || a.URL != "https://example.com/a#x" || a.CanonicalURL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.Title != "A" || a.Summary != "<p>a</p>" || a.Content != "<p>A</p>" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
+		if a.FeedID != feed.ID || a.URL != "https://example.com/a#x" || a.CanonicalURL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.Title != "A" || a.Summary != "" || a.Content != "" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
 			t.Errorf("article a: got %+v", a)
+		}
+		byID, err := articles.GetByID(ctx, a.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if byID.Summary != "<p>a</p>" || byID.Content != "<p>A</p>" {
+			t.Errorf("article a by ID: got Summary %q, Content %q, want %q, %q", byID.Summary, byID.Content, "<p>a</p>", "<p>A</p>")
 		}
 		if c := articleByExternalID(t, got, "c"); !c.PublishedAt.IsZero() {
 			t.Errorf("article c: got PublishedAt %v, want zero", c.PublishedAt)
@@ -425,7 +432,7 @@ func TestListByFeed(t *testing.T) {
 	// "middle"'s date, so the three are ordered by ID.
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{
-		{ExternalID: "old", Excerpt: "old excerpt", ImageURL: "https://example.com/old.jpg", PublishedAt: date},
+		{ExternalID: "old", Title: "Old", Summary: "<p>old summary</p>", Content: "<p>old content</p>", Excerpt: "old excerpt", ImageURL: "https://example.com/old.jpg", PublishedAt: date},
 		{ExternalID: "undated"},
 		{ExternalID: "undated-old"},
 		{ExternalID: "new", PublishedAt: date.Add(time.Hour)},
@@ -464,6 +471,16 @@ func TestListByFeed(t *testing.T) {
 	t.Run("returns ImageURL", func(t *testing.T) {
 		if a := articleByExternalID(t, all, "old"); a.ImageURL != "https://example.com/old.jpg" {
 			t.Errorf("got ImageURL %q, want %q", a.ImageURL, "https://example.com/old.jpg")
+		}
+	})
+
+	t.Run("leaves Summary and Content empty", func(t *testing.T) {
+		a := articleByExternalID(t, all, "old")
+		if a.Summary != "" || a.Content != "" {
+			t.Errorf("got Summary %q, Content %q, want both empty", a.Summary, a.Content)
+		}
+		if a.Title != "Old" || a.Excerpt != "old excerpt" || a.ImageURL != "https://example.com/old.jpg" || !a.PublishedAt.Equal(date) || a.TimelineAt.IsZero() || a.CreatedAt.IsZero() {
+			t.Errorf("got %+v, want the other fields filled", a)
 		}
 	})
 
@@ -635,7 +652,9 @@ func TestArticleRepositoryGetByID(t *testing.T) {
 	}
 
 	t.Run("returns all fields", func(t *testing.T) {
+		// Lists leave out the article HTML; GetByID returns it.
 		want := articleByExternalID(t, listed, "a")
+		want.Summary, want.Content = "<p>a</p>", "<p>A</p>"
 		got, err := articles.GetByID(ctx, want.ID)
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)
@@ -821,7 +840,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		{feedC, "e1", "", "Same", 2 * time.Hour},
 		{feedC, "e2", "", "Same", 4 * time.Hour},
 	} {
-		a := rss.Article{ExternalID: c.ext, CanonicalURL: c.url, Title: c.title}
+		a := rss.Article{ExternalID: c.ext, CanonicalURL: c.url, Title: c.title, Summary: "<p>summary</p>", Content: "<p>content</p>", Excerpt: "excerpt"}
 		if _, err := feeds.SaveFetch(ctx, c.feed, []rss.Article{a}); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -877,6 +896,24 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 	// e1 and e2 aren't collapsed.
 	t.Run("copies collapse to the earliest subscribed copy", func(t *testing.T) {
 		assertEntries(t, entries(all), want)
+	})
+
+	// x has copies in other feeds, so it comes through DISTINCT ON.
+	t.Run("leaves Summary and Content empty", func(t *testing.T) {
+		for _, item := range all {
+			if item.Article.ExternalID != "x" {
+				continue
+			}
+			a := item.Article
+			if a.Summary != "" || a.Content != "" {
+				t.Errorf("got Summary %q, Content %q, want both empty", a.Summary, a.Content)
+			}
+			if a.Title != "Post X" || a.Excerpt != "excerpt" || a.CanonicalURL != postX || a.TimelineAt.IsZero() {
+				t.Errorf("got %+v, want the other fields filled", a)
+			}
+			return
+		}
+		t.Fatal("no entry x")
 	})
 
 	t.Run("AlsoIn feeds are populated", func(t *testing.T) {

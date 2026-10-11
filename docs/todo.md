@@ -499,7 +499,7 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Deployment
 
-Planned in #PLAN. Issues, in order:
+Planned in #218. Issues, in order:
 
 1. #208 (manual): set up Render, Cloudflare R2 and GitHub. Any time before #213.
 2. #209 container image and #210 configuration from environment variables and JSON

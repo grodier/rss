@@ -172,14 +172,16 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP
-	form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
 
+	// A different email each time, so the per-email failure limit doesn't trip.
 	for i := 1; i <= 20; i++ {
+		form := url.Values{"email": {fmt.Sprintf("user%d@example.com", i)}, "password": {"wrong-password"}}
 		if rr := postForm(t, h, "/login", "192.0.2.1:1234", form); rr.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("attempt %d: status = %d, want %d", i, rr.Code, http.StatusUnprocessableEntity)
 		}
 	}
 
+	form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
 	rr := postForm(t, h, "/login", "192.0.2.1:1234", form)
 	assertRateLimitedForm(t, rr, "user@example.com")
 	if calls != 20 {
@@ -189,6 +191,83 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 	if rr := postForm(t, h, "/login", "192.0.2.2:1234", form); rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("other IP: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 	}
+}
+
+func TestLoginFormHandlerFailureLimit(t *testing.T) {
+	const (
+		email    = "user@example.com"
+		password = "correct-horse-battery"
+	)
+	// newServer returns a login handler whose fake store accepts only email
+	// with password, and a count of the calls to Authenticate.
+	newServer := func(t *testing.T) (http.HandlerFunc, *int) {
+		calls := 0
+		s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+			authenticateFn: func(ctx context.Context, e, p string) (string, error) {
+				calls++
+				if strings.EqualFold(e, email) && p == password {
+					return "user-1", nil
+				}
+				return "", rss.ErrInvalidCredentials
+			},
+		}})
+		return s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP, &calls
+	}
+	// Each request comes from a new IP, so the per-IP limit doesn't trip.
+	ip := 0
+	post := func(t *testing.T, h http.HandlerFunc, e, p string) *httptest.ResponseRecorder {
+		t.Helper()
+		ip++
+		form := url.Values{"email": {e}, "password": {p}}
+		return postForm(t, h, "/login", fmt.Sprintf("10.0.%d.%d:1234", ip/256, ip%256), form)
+	}
+	fail10 := func(t *testing.T, h http.HandlerFunc, e string) {
+		t.Helper()
+		for i := 1; i <= 10; i++ {
+			if rr := post(t, h, e, "wrong-password"); rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("failure %d: status = %d, want %d", i, rr.Code, http.StatusUnprocessableEntity)
+			}
+		}
+	}
+
+	t.Run("limits after 10 failures", func(t *testing.T) {
+		h, calls := newServer(t)
+		fail10(t, h, email)
+
+		rr := post(t, h, email, password)
+		assertRateLimitedForm(t, rr, email)
+		if *calls != 10 {
+			t.Errorf("Authenticate called %d times, want 10", *calls)
+		}
+
+		rr = post(t, h, "USER@example.com", password)
+		assertRateLimitedForm(t, rr, "USER@example.com")
+
+		if rr := post(t, h, "other@example.com", "wrong-password"); rr.Code != http.StatusUnprocessableEntity {
+			t.Errorf("other email: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+	})
+
+	t.Run("successes don't count", func(t *testing.T) {
+		h, _ := newServer(t)
+		for i := 1; i <= 15; i++ {
+			rr := post(t, h, email, password)
+			if rr.Code != http.StatusSeeOther {
+				t.Fatalf("login %d: status = %d, want %d", i, rr.Code, http.StatusSeeOther)
+			}
+		}
+	})
+
+	t.Run("email with no account", func(t *testing.T) {
+		h, calls := newServer(t)
+		fail10(t, h, "nobody@example.com")
+
+		rr := post(t, h, "nobody@example.com", "wrong-password")
+		assertRateLimitedForm(t, rr, "nobody@example.com")
+		if *calls != 10 {
+			t.Errorf("Authenticate called %d times, want 10", *calls)
+		}
+	})
 }
 
 func TestSignupFormHandlerRateLimited(t *testing.T) {

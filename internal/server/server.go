@@ -126,6 +126,9 @@ type Server struct {
 	// loginLimiter caps login attempts per client IP (keyed by ipRateLimitKey).
 	loginLimiter *rateLimiter
 
+	// loginFailureLimiter caps failed logins per submitted email (lowercased).
+	loginFailureLimiter *rateLimiter
+
 	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
 	signupLimiter *rateLimiter
 }
@@ -137,17 +140,18 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 	}
 
 	s := &Server{
-		logger:         logger,
-		config:         cfg,
-		templates:      templates,
-		formDecoder:    form.NewDecoder(),
-		services:       services,
-		sessionManager: sessionManager,
-		lookupWait:     3 * time.Second,
-		lookupLimiter:  newRateLimiter(10, 10*time.Minute),
-		refreshLimiter: newRateLimiter(10, 10*time.Minute),
-		loginLimiter:   newRateLimiter(20, 10*time.Minute),
-		signupLimiter:  newRateLimiter(10, time.Hour),
+		logger:              logger,
+		config:              cfg,
+		templates:           templates,
+		formDecoder:         form.NewDecoder(),
+		services:            services,
+		sessionManager:      sessionManager,
+		lookupWait:          3 * time.Second,
+		lookupLimiter:       newRateLimiter(10, 10*time.Minute),
+		refreshLimiter:      newRateLimiter(10, 10*time.Minute),
+		loginLimiter:        newRateLimiter(20, 10*time.Minute),
+		loginFailureLimiter: newRateLimiter(10, 15*time.Minute),
+		signupLimiter:       newRateLimiter(10, time.Hour),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

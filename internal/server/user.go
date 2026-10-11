@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -140,10 +141,28 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Failures are counted per submitted email, whether or not it has an
+	// account, so a 429 doesn't reveal which emails do. Lowercased because
+	// users.email is citext.
+	emailKey := strings.ToLower(form.Email)
+	if exceeded, retryAfter := s.loginFailureLimiter.Exceeded(emailKey); exceeded {
+		setRetryAfter(w, retryAfter)
+		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		data := struct {
+			Flash string
+			Form  any
+		}{Form: form}
+		if err := s.renderHTML(w, http.StatusTooManyRequests, "login.html", data); err != nil {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
 	id, err := s.services.UserService.Authenticate(r.Context(), form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, rss.ErrInvalidCredentials):
+			s.loginFailureLimiter.Record(emailKey)
 			form.AddNonFieldError("Email or password is incorrect")
 			data := struct {
 				Flash string

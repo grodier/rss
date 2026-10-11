@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// maxRateLimitKeys is the map size above which Allow sweeps expired entries.
+// maxRateLimitKeys is the map size above which the limiter sweeps expired
+// entries.
 const maxRateLimitKeys = 10_000
 
 type windowCount struct {
@@ -50,21 +51,60 @@ func (l *rateLimiter) AllowWithRetry(key string) (ok bool, retryAfter time.Durat
 	defer l.mu.Unlock()
 
 	now := l.now()
-	if len(l.hits) > maxRateLimitKeys {
-		l.sweep(now)
-	}
-
-	c := l.hits[key]
-	if c == nil || !now.Before(c.start.Add(l.window)) {
-		c = &windowCount{start: now}
-		l.hits[key] = c
-	}
+	c := l.currentOrStart(key, now)
 	retryAfter = c.start.Add(l.window).Sub(now)
 	if c.count >= l.limit {
 		return false, retryAfter
 	}
 	c.count++
 	return true, retryAfter
+}
+
+// Exceeded reports whether key has used all its hits in the current window,
+// without recording a hit, and how long until that window ends.
+func (l *rateLimiter) Exceeded(key string) (exceeded bool, retryAfter time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.now()
+	c := l.current(key, now)
+	if c == nil {
+		return false, 0
+	}
+	return c.count >= l.limit, c.start.Add(l.window).Sub(now)
+}
+
+// Record records a hit for key without checking the limit.
+func (l *rateLimiter) Record(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.currentOrStart(key, l.now()).count++
+}
+
+// current returns key's window if it hasn't ended, or nil. It first sweeps
+// expired entries when the map is over maxRateLimitKeys. The caller must hold
+// l.mu.
+func (l *rateLimiter) current(key string, now time.Time) *windowCount {
+	if len(l.hits) > maxRateLimitKeys {
+		l.sweep(now)
+	}
+	c := l.hits[key]
+	if c == nil || !now.Before(c.start.Add(l.window)) {
+		return nil
+	}
+	return c
+}
+
+// currentOrStart is like current, but starts a new window for key when it has
+// none or its window has ended. The caller must hold l.mu.
+func (l *rateLimiter) currentOrStart(key string, now time.Time) *windowCount {
+	c := l.current(key, now)
+	if c == nil {
+		c = &windowCount{start: now}
+		l.hits[key] = c
+	}
+	return c
 }
 
 // sweep drops entries whose window has passed. The caller must hold l.mu.

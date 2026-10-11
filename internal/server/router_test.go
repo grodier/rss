@@ -147,6 +147,44 @@ func TestCrossOriginProtection(t *testing.T) {
 	}
 }
 
+func TestHeadRequests(t *testing.T) {
+	h := newTestServer(t).router()
+
+	tests := []struct {
+		path        string
+		status      int
+		contentType string // prefix; empty skips the check
+		location    string
+		allow       string
+	}{
+		{path: "/healthcheck", status: http.StatusOK, contentType: "application/json"},
+		{path: "/", status: http.StatusOK, contentType: "text/html"},
+		{path: "/login", status: http.StatusOK, contentType: "text/html"},
+		{path: "/feeds", status: http.StatusSeeOther, location: "/login"},
+		{path: "/static/css/main.css", status: http.StatusOK, contentType: "text/css"},
+		{path: "/nope", status: http.StatusNotFound},
+		{path: "/logout", status: http.StatusMethodNotAllowed, allow: "POST"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodHead, tt.path, nil))
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.status)
+			}
+			if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, tt.contentType) {
+				t.Errorf("Content-Type = %q, want prefix %q", got, tt.contentType)
+			}
+			if got := rr.Header().Get("Location"); got != tt.location {
+				t.Errorf("Location = %q, want %q", got, tt.location)
+			}
+			if got := rr.Header().Get("Allow"); got != tt.allow {
+				t.Errorf("Allow = %q, want %q", got, tt.allow)
+			}
+		})
+	}
+}
+
 func TestMethodNotAllowedSetsAllow(t *testing.T) {
 	h := newTestServer(t).router()
 
@@ -154,9 +192,9 @@ func TestMethodNotAllowedSetsAllow(t *testing.T) {
 		method, path, want string
 	}{
 		{http.MethodGet, "/logout", "POST"},
-		{http.MethodPut, "/login", "GET, POST"},
-		{http.MethodDelete, "/healthcheck", "GET"},
-		{http.MethodPut, "/", "GET"},
+		{http.MethodPut, "/login", "GET, HEAD, POST"},
+		{http.MethodDelete, "/healthcheck", "GET, HEAD"},
+		{http.MethodPut, "/", "GET, HEAD"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {

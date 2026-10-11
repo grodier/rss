@@ -9,7 +9,7 @@ import (
 // clientIP returns the address of the client that sent r, without the port.
 // It is the only code that reads r.RemoteAddr: when the app runs behind a
 // reverse proxy, this is where the proxy's forwarded header will be read
-// (see "Client IP behind a proxy" in docs/todo.md).
+// (see "Client IP" under Deployment in docs/decisions.md).
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

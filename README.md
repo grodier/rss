@@ -2,7 +2,7 @@
 
 A server-rendered RSS reader written in Go, using [chi](https://github.com/go-chi/chi), `html/template` (templates and static files are embedded in the binary), Postgres, and [scs](https://github.com/alexedwards/scs) sessions.
 
-> **Work in progress.** Accounts (sign up, log in, log out), searching for sites and discovering their feeds (site lookups), fetching articles in the background, subscriptions, and reading (a timeline at `/`, article pages, read state) work. Planned work is in `docs/todo.md`.
+> **Work in progress.** Accounts (sign up, log in, log out), searching for sites and discovering their feeds (site lookups), fetching articles in the background, subscriptions, and reading (a timeline at `/`, article pages, read state) work. See [Documentation](#documentation) for how it works and what's planned.
 
 ## Prerequisites
 
@@ -65,39 +65,10 @@ make test/db   # runs all tests, including database tests, against the local dat
 
 Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make test/db` uses `RSS_DB_DSN`). CI sets it and fails if it is missing.
 
-## Project layout
+## Documentation
 
-- `cmd/www`: application entry point, flag parsing and config
-- `internal/server`: HTTP server, router, middleware and handlers
-- `internal/rss`: domain types and sentinel errors
-- `internal/psql`: Postgres repositories (feeds, users, sites, lookups, search and discovery)
-- `internal/discovery`: finds the feeds a website publishes
-- `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
-- `internal/fetch`: the only way the app makes outbound HTTP requests to user-influenced URLs (blocks private addresses, limits redirects, size and time)
-- `internal/lookup`: runs the site lookups queued in the `lookups` table
-- `internal/ingest`: fetches a feed, saves its articles and schedules the next fetch
-- `internal/refresh`: refreshes feeds in the background when they're due
-- `internal/sanitize`: makes untrusted article HTML safe to render
-- `internal/password`: Argon2id password hashing and verification
-- `internal/ui`: embedded HTML templates and static files
-- `internal/validator`: form validation helpers
-- `migrations`: goose SQL migrations
-- `docs/todo.md`: planned work that has no issue yet
-
-## Routes
-
-| Route | Auth required | Description |
-| --- | --- | --- |
-| `GET /healthcheck` | No | Health check (JSON) |
-| `GET /static/*` | No | Embedded static files |
-| `GET /` | No | Home page |
-| `GET, POST /signup` | No | Sign up form (only with `-signup`) |
-| `GET, POST /login` | No | Log in form |
-| `POST /logout` | No | Log out |
-| `POST /subscribe` | Yes | Placeholder; subscriptions are not built yet |
-| `GET /feeds/{id}` | Yes | A single feed |
-| `GET /feeds` | Yes | Latest feeds |
-| `GET /sites/{id}` | Yes | A site and its discovered feeds |
-| `GET /search` | Yes | Search the database for sites |
-| `POST /lookups` | Yes | Queue a lookup of a site; redirects to the site if found in time, else to the lookup |
-| `GET /lookups/{id}` | Yes | Status of a site lookup; redirects to the site when found |
+- [`docs/architecture.md`](docs/architecture.md): how the app fits together: the process, packages, routes, data model, background workers and security measures. Start here.
+- [`docs/features.md`](docs/features.md): how each feature works and which code to read, in order.
+- [`docs/decisions.md`](docs/decisions.md): decisions made while planning, and why.
+- [`docs/todo.md`](docs/todo.md): what's next, planned work that has no issue yet, and the performance watchlist.
+- [`CLAUDE.md`](CLAUDE.md): code, testing and PR conventions (for people and coding agents), and which docs to update when.

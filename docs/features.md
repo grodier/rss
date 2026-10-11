@@ -1,0 +1,225 @@
+# Features
+
+How each feature works and which code to read, in order. Read
+[architecture.md](architecture.md) first for the overall shape; the reasons behind each
+feature are in [decisions.md](decisions.md), under the same names.
+
+Each section has the flow, a reading list (file and symbol, in the order a request or job
+goes through them), and the tests that pin the behavior.
+
+## Accounts and sessions
+
+**Flow.** Signup exists only when the app runs with `-signup`. `signupFormHandler`
+checks the per-IP limit, validates the form, and creates the user with an Argon2id hash.
+A duplicate email gets exactly the same response as a new account. Login checks the
+per-IP limit, validates, then counts the attempt against the submitted email *before*
+checking the password (refunded unless the password was wrong), so parallel guesses
+can't slip past the limit. On success it renews the session token, stores
+`authenticatedUserID` in the session and redirects. On every later request, `authenticate`
+reads that ID, checks the user still exists, and puts it in the request context, where
+handlers read it with `s.authenticatedUserID(r)`.
+
+**Read:**
+
+1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
+2. `internal/server/user.go`: `signupFormHandler`, `loginFormHandler`, `logoutHandler`.
+3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
+   (`clientIP`, `ipRateLimitKey`).
+4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
+   `Authenticate` (`dummyHash` for unknown emails).
+5. `internal/password/password.go`: `Hash`, `Verify`, the `slots` cap.
+6. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and
+   `helpers.go` (`authenticatedUserID`).
+7. `cmd/www/application.go`: the session manager's settings.
+
+**Tests:** `internal/server/user_test.go`, `middleware_test.go`, `ratelimit_test.go`,
+`clientip_test.go`; `internal/psql/users_test.go`; `internal/password/password_test.go`.
+
+## Search, site lookups and discovery
+
+**Concepts.** A *site* is a website, identified by its site key (`example.com` for
+`https://www.Example.com/blog`). It has *feeds*. A *lookup* is a background job that finds
+a site's feeds, and also the cached result for that site key.
+
+**Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or
+one of whose feeds' title or URL, contains `q`. When `q` looks like a website address,
+the page also offers a "Look up example.com" button, which posts to `/lookups`. That handler
+normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls
+`LookupRepository.Request`, which returns the site key's lookup, creating it or
+re-queuing it if its result is older than its TTL (24 h done, 1 h failed). The handler
+then polls the row for up to 3 s and redirects to the site page if it's done, else to
+`/lookups/{id}`, which reloads itself every 2 s until it is.
+
+Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL;
+if it is itself a feed, that's the result. Otherwise read the HTML page's title,
+description and `<link rel="alternate">` feeds, or, if there are none, try
+`CommonFeedPaths`. Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that
+parse. The worker turns each feed's items into articles (`ingest.Articles`) and saves the
+site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so
+a looked-up feed has articles right away. The site page lists the feeds with subscribe
+buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
+
+**Read:**
+
+1. `internal/server/search.go` (`searchHandler`) and `internal/psql/search.go` (`Search`).
+2. `internal/discovery/normalize.go`: `ParseInput`, `SiteKey`, `CanonicalFeedURL`.
+3. `internal/server/lookups.go`: `lookupCreateHandler`, `waitForLookup`, `lookupHandler`.
+4. `internal/psql/lookups.go`: `Request`, then the worker side: `ClaimNext`, `Finish`,
+   `Fail`, `ResetStale`.
+5. `internal/lookup/lookup.go`: `Runner.Run`, `work`, `process`, `run`.
+6. `internal/discovery/discover.go` (`Discover`, `checkCandidates`) and `page.go`
+   (`ParsePage`).
+7. `internal/feedparse/feedparse.go`: `Sniff`, `Parse`.
+8. `internal/psql/discoveries.go` (`Save`), with `upsertSite` in `sites.go` and
+   `upsertFeed` in `feeds.go`.
+9. `internal/server/sites.go`: `siteHandler`, `canRecheck`.
+
+**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`;
+`internal/lookup/lookup_test.go`; `internal/discovery/*_test.go`;
+`internal/feedparse/feedparse_test.go` (fixtures in `testdata/`);
+`internal/psql/search_test.go`, `lookups_test.go`, `discoveries_test.go`,
+`sites_test.go`.
+
+## Feed ingestion and background refresh
+
+**Flow.** Three things fetch a feed's articles: discovery (the first save, above), the
+Refresh button, and the refresh workers. The last two share one path,
+`ingest.Refresher.Refresh`:
+
+1. A conditional GET with the stored `ETag` / `Last-Modified`.
+2. The outcome is recorded and the next fetch scheduled:
+   - **304:** `RecordNotModified`; due again in about an hour.
+   - **410:** `MarkGone`; never fetched in the background again.
+   - **Network error, other non-2xx, or not a feed:** `RecordFailure`, with backoff
+     (`RetryAt`: 1 h, 2 h, 4 h, … up to 24 h), delayed further by a 429's or 503's
+     `Retry-After`.
+   - **2xx feed:** parse it, turn the items into articles (`Articles`), and `SaveFetch`
+     in one transaction: update the feed's metadata, validators and `next_fetch_at`
+     (`NextFetch`: an hour ±10%, delayed by `Cache-Control` / `Expires`), then upsert the
+     articles and record the success.
+
+Turning items into articles (`ingest.Articles`): each item's identity within its feed is
+its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are
+kept. Each article gets a plain-text excerpt and a `canonical_url` (tracking parameters
+removed) for matching copies across feeds. Saving (`saveArticles`) locks the feed row,
+computes each new article's `timeline_at` (see Reading), and upserts by
+`(feed_id, external_id)`: unchanged articles aren't written, and an existing
+`published_at` is kept because some feeds bump it on every edit.
+
+Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
+pending refresh request, requested ones first. A request is made when someone views a
+stale feed's page (`feedHandler` calls `RequestRefresh`, and the page says "Checking for
+new articles…"). The Refresh button instead fetches right away, within 8 s, unless the
+feed was fetched in the last 5 minutes or the user hit the per-user limit, and reports
+the result in a flash message.
+
+**Read:**
+
+1. `internal/refresh/refresh.go`: `Runner.work`, `refresh`.
+2. `internal/psql/feeds.go`: `ClaimDue`, `RequestRefresh`.
+3. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
+   `externalID`.
+4. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `retryAfter`, `freshness`) and
+   `canonical.go` (`CanonicalURL`).
+5. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
+   `MarkGone`.
+6. `internal/psql/articles.go`: `saveArticles`, `timelineAt`.
+7. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the
+   `RequestRefresh` call in `feedHandler`.
+
+**Tests:** `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
+`internal/psql/feeds_test.go`, `articles_test.go`; `internal/server/feeds_test.go`.
+
+## Subscriptions
+
+**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages post to
+`/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path; the handler changes
+the subscription, flashes a message, and redirects back (`safeReturnPath` keeps it
+local). Gone feeds can't be subscribed to but can be unsubscribed from. "My feeds"
+(`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest
+article date and a warning after 3 failed fetches in a row. Site, feed and search pages
+mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`).
+Subscriptions also decide which feeds are refreshed in the background and what's in the
+timeline.
+
+**Read:**
+
+1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
+   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler`.
+2. `internal/server/helpers.go`: `safeReturnPath`.
+3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
+   `ListByUser`.
+4. Templates: `feed.html`, `site.html`, `feeds.html`.
+
+**Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`;
+`internal/psql/subscriptions_test.go`.
+
+## Reading: timeline, article pages and read state
+
+**Timeline** (`/` when logged in). `homeHandler` asks `ListTimeline` for 31 entries to
+know whether there's a next page, and shows 30. `ListTimeline` joins the user's
+subscriptions to their feeds' articles, collapses copies of one article (same
+`canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending,
+and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
+`fillAlsoIn` then lists the other subscribed feeds that carry each entry. Feed pages work
+the same way with `ListByFeed`, but in publication order and without collapsing copies.
+List queries never load `summary` or `content`.
+
+**Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first
+saved. *News* (undated, or published since a day before the feed's previous successful
+fetch) goes at the save time, 1 µs apart, newest-published first. *Backlog* (everything
+on a feed's first save, or older items appearing later) goes at its published date. So
+new items always land on top, and an imported archive doesn't.
+
+**Article page.** `articleHandler` records the read, then renders the content (else the
+summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
+(else the feed's).
+
+**Read state.** An article is read when its page is opened, or when the reader clicks
+through to the original from a row: the link has `ping="/articles/{id}/read"`, which
+`app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`. List pages
+ask `ReadArticleIDs` which rows are read (matching any copy with the same
+`canonical_url`) and the `article-row` partial dims them.
+
+**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the
+viewport it fetches that page, appends its rows, and swaps in the new pager. It keeps the
+address bar on the topmost visible row (`history.replaceState`), so reload and Back land
+nearby. Without JavaScript the link just works.
+
+**Read:**
+
+1. `internal/server/home.go`: `homeHandler`; `cursor.go`.
+2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`,
+   `articleListColumns`, then `timelineAt`.
+3. `internal/server/articles.go`: `articleHandler`, `articleReadHandler`, `articleRow`,
+   `fillRead`.
+4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
+5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `newPolicy`.
+6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
+7. `internal/ui/static/js/app.js`.
+8. Also: `rss.Article.DisplayTitle` (untitled articles) and `FeedSortAt` in
+   `internal/rss/rss.go`.
+
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`,
+`scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`;
+`internal/sanitize/sanitize_test.go`.
+
+## Adding a feature
+
+The usual path for a new page or action, following the conventions in CLAUDE.md:
+
+1. **Schema:** edit `migrations/00001_init.sql` and run `make db/reset`.
+2. **Domain type:** add or extend a type in `internal/rss`, and a sentinel error in
+   `errors.go` if handlers need to tell a case apart.
+3. **Repository:** a method in `internal/psql` with a DB test.
+4. **Interface:** add the method to the store interface in `internal/server/server.go`
+   (or a new interface, a `Services` field, the compile-time check, and the wiring in
+   `cmd/www/application.go`), and a function field to the fake in `fakes_test.go`.
+5. **Handler and route:** a method on `*Server`, registered in `router.go`, in the
+   `requireAuthentication` group if it needs login. Forms decode into a struct with
+   `validator.Validator` and re-render with 422 when invalid; actions redirect with a
+   flash message.
+6. **Template:** a page in `internal/ui/templates` using the `.shell` layout and
+   `app-nav`, with shared parts in `partials/`.
+7. **Tests:** handler tests with fakes, plus a test that fails without the change.
+8. **Docs:** see "Docs" in CLAUDE.md for which files to update.

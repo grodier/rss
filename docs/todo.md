@@ -1,17 +1,23 @@
 # TODO
 
-Work that has been identified but does **not** yet have a GitHub issue, plus the
-Performance watchlist. Items marked "needs planning" are too large or too open-ended to
-hand to an agent as-is; plan them first and split them into issues. When an item gets an
-issue, delete it here (link the issue from "Next up" if it should be done soon); when work
-ships, delete its item. Decisions already made about these areas, and the reasons, are in
-[decisions.md](decisions.md) under the same section names.
+Open work only: what's next, work that has no GitHub issue yet, and the Performance
+watchlist. Items marked "needs planning" are too large or open-ended to hand to an agent
+as-is; plan them first and split them into issues. How to keep this file up to date is
+under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decisions.md).
 
 ## Next up
 
-1. Deployment, #208–#217: #208 (manual) any time before #213; #209 and #210 in parallel;
-   #211 and #212 after #210; #213; #214 (manual); #215, then #216; #217 (manual). Once
-   they're done, the app runs in production with signup off.
+1. Deployment (planned in #218). Once these are done, the app runs in production with
+   signup off.
+   1. #208 (manual): set up Render, Cloudflare R2 and GitHub. Any time before #213.
+   2. #209 container image and #210 configuration from environment variables and JSON
+      logs, in parallel.
+   3. #211 `migrate` command and #212 client IP behind a proxy, both after #210.
+   4. #213 Terraform for Render.
+   5. #214 (manual): first apply and go-live.
+   6. #215 deploy, reset and Terraform workflows, then #216 database backups to R2.
+   7. #217 (manual): exercise deploys, rollback, resets and backups in production, and
+      add the uptime check.
 2. Before inviting testers: the shared invite code (Pre-alpha testing).
 3. The rest of Pre-alpha testing (account management, logging in to the timeline, session
    lifetime, malformed form bodies), in parallel with testing.
@@ -19,13 +25,13 @@ ships, delete its item. Decisions already made about these areas, and the reason
    periodically.
 5. Before production or a few thousand feeds, **plan** load and performance testing.
 
+Merge one PR at a time; each branch merges the latest `main` before its PR.
+
 ## Pre-alpha testing
 
-What's needed before other people use the app on a public URL. Running it locally for
-yourself needs none of this.
+What's needed, after deployment, before other people use the app on a public URL.
+Running it locally for yourself needs none of this.
 
-- [ ] **Deploy** (#208–#217). The app runs in production with signup off once they're
-  done; #217 marks this item done.
 - [ ] **Shared invite code.** Signup is off unless `-signup` is set (#186), and accounts
   are made by starting the app with it briefly. Before inviting testers, replace
   `-signup` with `-invite-code`: signup is open when it's set, and the code arrives
@@ -56,16 +62,13 @@ yourself needs none of this.
 
 ## Deployment
 
-The deployment issues are #208–#217 (order under "Next up"). Later, not issues yet:
+Later, after #208–#217:
 
 - [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
   domain is settled.
 - [ ] **PR preview environments.** Render preview environments need the Professional
   workspace (about $19 per user a month plus compute). Only from same-repo branches: never
   `pull_request_target` with fork code, since this repository is public.
-- [ ] **Separate worker service.** If web and background work compete for the Starter
-  instance, run the same image as a Render background worker with the web service's
-  workers set to 0 (`RSS_LOOKUP_WORKERS=0`, `RSS_REFRESH_WORKERS=0`), for about $7 more.
 - [ ] **Leaving pre-alpha.** Remove the fingerprint check, `-allow-reset-to` and the
   "Reset production database" workflow, and make schema changes new migrations (see
   CLAUDE.md). From then on every migration must also work with the version still
@@ -84,41 +87,6 @@ The deployment issues are #208–#217 (order under "Next up"). Later, not issues
   shared across instances. Before running more than one instance, or if limits need to
   survive restarts, compare options (e.g. Postgres-backed counters, a reverse-proxy/edge
   limit, Redis) and decide. No decision yet.
-
-## Feed ingestion
-
-Each with when it pays off:
-
-- [ ] **Adaptive refresh interval.** Fetch busy feeds often and dormant ones rarely, from
-  posting frequency: count articles published in the last 14 days (`n`), interval =
-  clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` /
-  `Cache-Control` floors (#133). Worth it at a few thousand feeds, or when most fetches
-  are 304s or find no new articles.
-- [ ] **Permanent redirects (301/308).** Update `feeds.url`. Needs `fetch` to report the
-  redirect chain, and a decision for the unique-URL collision when two feeds end up at
-  the same URL (merge, or keep the old one). Redirects are already followed, so this can
-  wait until moved feeds are a visible problem.
-- [ ] **Give up on long-dead feeds.** E.g. stop after 30 days of consecutive failures and
-  say so on the feed page. When dead feeds are a noticeable share of fetches.
-- [ ] **Per-host politeness.** At most N concurrent fetches per host. When one host has
-  many feeds (category feeds, platform hosts like Substack or Medium).
-- [ ] **Separate worker process or `-once` mode.** Move `internal/refresh` to its own
-  process (`cmd/worker` or a `-role` flag) when fetching measurably slows web requests or
-  should scale separately from web instances. On a scale-to-zero host, add a `-once`
-  command that drains the due feeds, run by the platform's cron, rather than an HTTP
-  endpoint.
-- [ ] **WebSub (push).** Subscribe to hubs that feeds advertise for near-instant updates.
-  Only when freshness matters more than it does now; needs a public callback URL.
-- [ ] **Article retention (needs planning before launch).** Whether to delete old
-  articles, and when. Read state doesn't drive it (the timeline isn't an inbox), so a
-  time- or count-based rule works (e.g. keep 6 months, or the newest N per feed), with
-  `reads` rows deleted along with their articles (`ON DELETE CASCADE`). Before launch,
-  weigh deleting against keeping: storage and backup cost and the "Articles grow without
-  bound" watchlist entry on one side; the value of a long article archive (search,
-  history, business uses of the data) and its copyright and privacy implications on the
-  other. Saved articles (see Reading) must survive whatever rule is chosen.
-- [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
-  304 rate). When the app runs somewhere the logs aren't at hand.
 
 ## Feed discovery
 
@@ -141,6 +109,43 @@ Each with when it pays off:
 - [ ] **Search autosuggest** showing matching sites and their related feeds as you type.
 - [ ] **Better search ranking.** `pg_trgm` or full-text search instead of `ILIKE`
   substring matching, with an index.
+
+## Feed ingestion
+
+Each with when it pays off:
+
+- [ ] **Adaptive refresh interval.** Fetch busy feeds often and dormant ones rarely, from
+  posting frequency: count articles published in the last 14 days (`n`), interval =
+  clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` /
+  `Cache-Control` floors (#133). Worth it at a few thousand feeds, or when most fetches
+  are 304s or find no new articles.
+- [ ] **Permanent redirects (301/308).** Update `feeds.url`. Needs `fetch` to report the
+  redirect chain, and a decision for the unique-URL collision when two feeds end up at
+  the same URL (merge, or keep the old one). Redirects are already followed, so this can
+  wait until moved feeds are a visible problem.
+- [ ] **Give up on long-dead feeds.** E.g. stop after 30 days of consecutive failures and
+  say so on the feed page. When dead feeds are a noticeable share of fetches.
+- [ ] **Per-host politeness.** At most N concurrent fetches per host. When one host has
+  many feeds (category feeds, platform hosts like Substack or Medium).
+- [ ] **Separate worker process or `-once` mode.** Run the background workers in their
+  own process when fetching measurably slows web requests or should scale separately
+  from web instances. On Render, that's the same image as a background worker service
+  with the web service's workers set to 0 (`RSS_LOOKUP_WORKERS=0`,
+  `RSS_REFRESH_WORKERS=0`), for about $7 more a month; a `cmd/worker` or `-role` flag is
+  the alternative. On a scale-to-zero host, add a `-once` command that drains the due
+  feeds, run by the platform's cron, rather than an HTTP endpoint.
+- [ ] **WebSub (push).** Subscribe to hubs that feeds advertise for near-instant updates.
+  Only when freshness matters more than it does now; needs a public callback URL.
+- [ ] **Article retention (needs planning before launch).** Whether to delete old
+  articles, and when. Read state doesn't drive it (the timeline isn't an inbox), so a
+  time- or count-based rule works (e.g. keep 6 months, or the newest N per feed), with
+  `reads` rows deleted along with their articles (`ON DELETE CASCADE`). Before launch,
+  weigh deleting against keeping: storage and backup cost and the "Articles grow without
+  bound" watchlist entry on one side; the value of a long article archive (search,
+  history, business uses of the data) and its copyright and privacy implications on the
+  other. Saved articles (see Reading) must survive whatever rule is chosen.
+- [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
+  304 rate). When the app runs somewhere the logs aren't at hand.
 
 ## Subscriptions
 
@@ -316,10 +321,9 @@ production, or once there are a few thousand feeds.
 ## Performance watchlist
 
 Things that are fine at today's scale but could become performance problems as feeds,
-articles, users or instances grow. Each entry says what it is, the signal that it has
-become a problem, and the planned fix. Don't fix these early: watch the signal, and use the
-load tests above to measure. When planning adds a new risk, add it here (see CLAUDE.md,
-"Writing issues"); when one is fixed, delete it.
+articles, users or instances grow: what each is, the issue that introduced it, the signal
+that it has become a problem, and the planned fix. Don't fix these early: watch the
+signal, and use the load tests above to measure (see "Writing issues" in CLAUDE.md).
 
 Background refresh:
 
@@ -433,8 +437,8 @@ Hosting (once deployed; see Deployment in decisions.md):
   Argon2 hashing runs at most `GOMAXPROCS` at once (1 here, since Go sizes it to the
   container's CPU limit). *Signal:* Render's memory and CPU graphs near their limits,
   restarts for running out of memory, slow logins, or database storage above 80%.
-  *Fix:* the next instance or database size, or the separate worker service under
-  Deployment.
+  *Fix:* the next instance or database size, or the separate worker process under Feed
+  ingestion.
 - [ ] **Database connections.** Each instance opens up to `-db-max-open-conns`
   connections (default 25), and small Postgres plans allow few. Production sets
   `RSS_DB_MAX_OPEN_CONNS=10`. *Signal:* "too many connections" errors, or connections

@@ -2,7 +2,7 @@
 
 A server-rendered RSS reader written in Go, using [chi](https://github.com/go-chi/chi), `html/template` (templates and static files are embedded in the binary), Postgres, and [scs](https://github.com/alexedwards/scs) sessions.
 
-> **Work in progress.** Accounts (sign up, log in, log out), searching for sites and discovering their feeds (site lookups), fetching articles in the background, subscriptions, and reading (a timeline at `/`, article pages, read state) work. See [Documentation](#documentation) for how it works and what's planned.
+> **Work in progress** (pre-alpha). You can find websites and their feeds, subscribe, and read a timeline of their articles. See [Documentation](#documentation) for how it works and what's planned.
 
 ## Prerequisites
 

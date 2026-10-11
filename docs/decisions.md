@@ -18,12 +18,15 @@ section names; how the code works is in [architecture.md](architecture.md) and
   has a status column; `feeds` is claimed with a lease on `next_fetch_at` instead of a
   status column. (#50, #126)
 - **Server-rendered HTML; JavaScript is progressive enhancement.** Every page works
-  without it. One plain file (`static/js/app.js`), no build step, no inline scripts (the
-  CSP blocks them), no libraries without a justification. (#50, #163)
+  without it. The rules that follow (one plain file, no build step, no libraries without
+  a justification) are in CLAUDE.md. (#50, #163)
 - **Outbound requests to user-influenced URLs only go through `internal/fetch`**, which
   blocks private addresses (SSRF) and limits time, size and redirects. (#50)
-- **GET handlers never fetch user-supplied URLs or make changes on the user's behalf.**
-  `CrossOriginProtection` only guards non-GET requests. The only writes from GET are
+- **Cross-site requests are blocked with Go's `http.CrossOriginProtection`**
+  (`Sec-Fetch-Site` / `Origin` headers) rather than CSRF tokens, so forms and sessions
+  carry no tokens.
+- **GET handlers never fetch user-supplied URLs or make changes on the user's behalf**,
+  because `CrossOriginProtection` only guards non-GET requests. The only writes from GET are
   documented, idempotent upkeep: queuing a refresh of a stale feed and recording that the
   user opened an article. (#50, #137, #156)
 - **Errors stored for debugging are never shown to users** (`lookups.error`,
@@ -31,10 +34,9 @@ section names; how the code works is in [architecture.md](architecture.md) and
 
 ## Pre-alpha testing
 
-- **Testers' data isn't kept.** Schema changes keep editing `migrations/00001_init.sql`,
-  and rebuilding the database deletes every account, subscription and read. Testers are
-  told their data may be wiped. This holds until it's explicitly changed (see "Prototype
-  stage" in CLAUDE.md). (#180)
+- **Testers' data isn't kept**: schema changes keep editing the initial migration and
+  wipe the database, and testers are told so. The rule and its scope are under "Prototype
+  stage" in CLAUDE.md. (#180)
 
 ## Feed discovery
 
@@ -50,7 +52,7 @@ Planned in #50 (issues #51–#67).
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable
   24 hours after it finished, or 1 hour after it failed.
 - **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the
-  lookup is done, else to a status page that refreshes itself with `<meta
+  lookup found the site, else to a status page that refreshes itself with `<meta
   http-equiv="refresh">` (no JavaScript).
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link
   rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only
@@ -65,7 +67,7 @@ Planned in #50 (issues #51–#67).
 
 ## Feed ingestion
 
-Planned in #126; shipped in #126 and #128–#133.
+Planned in #126, with issues #128–#133.
 
 - **Refresh workers run inside `www`**, not as a cron-hit endpoint or a separate service.
 - **Only feeds someone subscribes to, or whose page view requested a refresh, are
@@ -81,7 +83,7 @@ Planned in #126; shipped in #126 and #128–#133.
 
 ## Subscriptions
 
-Planned in #139; shipped in #140–#143 (issues #135–#138).
+Planned in #139 (issues #135–#138).
 
 - **Subscribing and unsubscribing are one click with no confirmation**, and redirect back
   to the page they were posted from.
@@ -95,22 +97,20 @@ Planned in #139; shipped in #140–#143 (issues #135–#138).
 
 ## Reading
 
-Planned in #163; shipped in #164–#179 (issues #147–#162).
+Planned in #163 (issues #147–#162).
 
 - **A timeline, not an inbox.** Read state is recorded but only shown as a quiet marker on
   read rows (dimmed, like a visited link). No unread counts, badges, "N new" indicators,
   "mark all read", or manual mark read/unread. No unread filter for now.
 - **What counts as read:** opening the article page, or clicking through to the original
-  (via `<a ping>`, with a `sendBeacon` fallback because Firefox disables ping). Scrolling
-  past doesn't; "seen" isn't recorded. Reads are per user and article, independent of
-  subscriptions; an article counts as read if any copy with the same `canonical_url` was
-  read. (#156, #158, #161)
+  from a row. Scrolling past doesn't; "seen" isn't recorded. Reads are per user and
+  article, independent of subscriptions; an article counts as read if any copy with the
+  same `canonical_url` was read. (#156, #158, #161)
 - **Timeline order is arrival order.** Each article gets `timeline_at` once, on insert:
-  the save time for news, its published date for backlog (a feed's first save, or an item
-  dated more than 24 h before the feed's previous successful fetch). New items can't land
-  below ones already seen, and republished archives don't flood the top. No bump on
-  subscribe. Displayed dates may look out of order; accepted. Feed pages keep publication
-  order. (#147)
+  the save time for news, its published date for backlog (how the two are told apart is
+  under Reading in features.md). New items can't land below ones already seen, and
+  republished archives don't flood the top. No bump on subscribe. Displayed dates may
+  look out of order; accepted. Feed pages keep publication order. (#147)
 - **The timeline is `/`** for logged-in users (the nav label stays "Home"). Duplicates are
   collapsed at query time on `canonical_url`, keeping the earliest arrival, with "Also in"
   on the row. Feed pages show every copy. (#154, #162)
@@ -151,7 +151,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 
 ## Security
 
-Planned in #187; shipped in #188–#192 (issues #182–#186).
+Planned in #187 (issues #182–#186).
 
 - **In-memory rate limits** (`internal/server/ratelimit.go`) are enough for one instance;
   they reset on restart. Whether to keep them long term is a todo item.

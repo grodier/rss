@@ -1,11 +1,11 @@
 # Features
 
 How each feature works and which code to read, in order. Read
-[architecture.md](architecture.md) first for the overall shape; the reasons behind each
-feature are in [decisions.md](decisions.md), under the same names.
+[architecture.md](architecture.md) first for the overall shape and the glossary.
 
 Each section has the flow, a reading list (file and symbol, in the order a request or job
-goes through them), and the tests that pin the behavior.
+goes through them), the tests that pin the behavior, and where the reasons behind it are
+in [decisions.md](decisions.md).
 
 ## Accounts and sessions
 
@@ -35,11 +35,9 @@ handlers read it with `s.authenticatedUserID(r)`.
 **Tests:** `internal/server/user_test.go`, `middleware_test.go`, `ratelimit_test.go`,
 `clientip_test.go`; `internal/psql/users_test.go`; `internal/password/password_test.go`.
 
-## Search, site lookups and discovery
+**Why:** "Security" in decisions.md.
 
-**Concepts.** A *site* is a website, identified by its site key (`example.com` for
-`https://www.Example.com/blog`). It has *feeds*. A *lookup* is a background job that finds
-a site's feeds, and also the cached result for that site key.
+## Search, site lookups and discovery
 
 **Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or
 one of whose feeds' title or URL, contains `q`. When `q` looks like a website address,
@@ -47,8 +45,10 @@ the page also offers a "Look up example.com" button, which posts to `/lookups`. 
 normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls
 `LookupRepository.Request`, which returns the site key's lookup, creating it or
 re-queuing it if its result is older than its TTL (24 h done, 1 h failed). The handler
-then polls the row for up to 3 s and redirects to the site page if it's done, else to
-`/lookups/{id}`, which reloads itself every 2 s until it is.
+then polls the row for up to 3 s and redirects to the site page if the lookup found one.
+Otherwise it redirects to `/lookups/{id}`, which reloads itself every 2 s while the lookup
+runs, then redirects to the site or says that no feeds were found or the site couldn't
+be reached.
 
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL;
 if it is itself a feed, that's the result. Otherwise read the HTML page's title,
@@ -80,6 +80,8 @@ buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
 `internal/psql/search_test.go`, `lookups_test.go`, `discoveries_test.go`,
 `sites_test.go`.
 
+**Why:** "Feed discovery" in decisions.md.
+
 ## Feed ingestion and background refresh
 
 **Flow.** Three things fetch a feed's articles: discovery (the first save, above), the
@@ -87,16 +89,17 @@ Refresh button, and the refresh workers. The last two share one path,
 `ingest.Refresher.Refresh`:
 
 1. A conditional GET with the stored `ETag` / `Last-Modified`.
-2. The outcome is recorded and the next fetch scheduled:
-   - **304:** `RecordNotModified`; due again in about an hour.
-   - **410:** `MarkGone`; never fetched in the background again.
+2. The outcome is recorded and the next fetch scheduled. After a success (2xx or 304) the
+   feed is due again in an hour ±10% (`NextFetch`), or later if the response's
+   `Cache-Control` / `Expires` says it stays fresh longer (`freshness`, capped at 24 h).
+   - **304:** `RecordNotModified`.
+   - **410:** `MarkGone`; not fetched again until a lookup finds the feed again.
    - **Network error, other non-2xx, or not a feed:** `RecordFailure`, with backoff
      (`RetryAt`: 1 h, 2 h, 4 h, … up to 24 h), delayed further by a 429's or 503's
      `Retry-After`.
    - **2xx feed:** parse it, turn the items into articles (`Articles`), and `SaveFetch`
-     in one transaction: update the feed's metadata, validators and `next_fetch_at`
-     (`NextFetch`: an hour ±10%, delayed by `Cache-Control` / `Expires`), then upsert the
-     articles and record the success.
+     in one transaction: update the feed's metadata, validators and `next_fetch_at`, then
+     upsert the articles and record the success.
 
 Turning items into articles (`ingest.Articles`): each item's identity within its feed is
 its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are
@@ -109,9 +112,9 @@ computes each new article's `timeline_at` (see Reading), and upserts by
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
 pending refresh request, requested ones first. A request is made when someone views a
 stale feed's page (`feedHandler` calls `RequestRefresh`, and the page says "Checking for
-new articles…"). The Refresh button instead fetches right away, within 8 s, unless the
-feed was fetched in the last 5 minutes or the user hit the per-user limit, and reports
-the result in a flash message.
+new articles…"). The Refresh button instead fetches right away, within 8 s, and reports
+the result in a flash message. It refuses gone feeds, feeds fetched successfully (2xx or
+304) in the last 5 minutes, and users over the per-user limit.
 
 **Read:**
 
@@ -130,9 +133,12 @@ the result in a flash message.
 **Tests:** `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
 `internal/psql/feeds_test.go`, `articles_test.go`; `internal/server/feeds_test.go`.
 
+**Why:** "Feed ingestion" in decisions.md.
+
 ## Subscriptions
 
-**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages post to
+**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on
+My feeds) post to
 `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path; the handler changes
 the subscription, flashes a message, and redirects back (`safeReturnPath` keeps it
 local). Gone feeds can't be subscribed to but can be unsubscribed from. "My feeds"
@@ -154,6 +160,8 @@ timeline.
 **Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`;
 `internal/psql/subscriptions_test.go`.
 
+**Why:** "Subscriptions" in decisions.md.
+
 ## Reading: timeline, article pages and read state
 
 **Timeline** (`/` when logged in). `homeHandler` asks `ListTimeline` for 31 entries to
@@ -167,9 +175,10 @@ List queries never load `summary` or `content`.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first
 saved. *News* (undated, or published since a day before the feed's previous successful
-fetch) goes at the save time, 1 µs apart, newest-published first. *Backlog* (everything
-on a feed's first save, or older items appearing later) goes at its published date. So
-new items always land on top, and an imported archive doesn't.
+fetch) goes at the save time, 1 µs apart, newest-published first. *Backlog* (every dated
+item on a feed's first save, or older items appearing later) goes at its published date,
+or now if that's in the future. So new items always land on top, and an imported archive
+doesn't.
 
 **Article page.** `articleHandler` records the read, then renders the content (else the
 summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
@@ -204,6 +213,8 @@ nearby. Without JavaScript the link just works.
 `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`;
 `internal/sanitize/sanitize_test.go`.
 
+**Why:** "Reading" and "Design" in decisions.md.
+
 ## Adding a feature
 
 The usual path for a new page or action, following the conventions in CLAUDE.md:
@@ -215,11 +226,9 @@ The usual path for a new page or action, following the conventions in CLAUDE.md:
 4. **Interface:** add the method to the store interface in `internal/server/server.go`
    (or a new interface, a `Services` field, the compile-time check, and the wiring in
    `cmd/www/application.go`), and a function field to the fake in `fakes_test.go`.
-5. **Handler and route:** a method on `*Server`, registered in `router.go`, in the
-   `requireAuthentication` group if it needs login. Forms decode into a struct with
-   `validator.Validator` and re-render with 422 when invalid; actions redirect with a
-   flash message.
-6. **Template:** a page in `internal/ui/templates` using the `.shell` layout and
-   `app-nav`, with shared parts in `partials/`.
-7. **Tests:** handler tests with fakes, plus a test that fails without the change.
+5. **Handler and route:** a method on `*Server`, registered in `router.go` (see "Code
+   conventions" in CLAUDE.md for forms, flash messages and error pages).
+6. **Template:** a page in `internal/ui/templates`, with shared parts in `partials/`.
+7. **Tests:** handler tests with fakes for the new behavior, and DB tests for the
+   repository method.
 8. **Docs:** see "Docs" in CLAUDE.md for which files to update.

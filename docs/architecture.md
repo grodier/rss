@@ -1,30 +1,51 @@
 # Architecture
 
-How the app fits together. For how each feature works, step by step, see
-[features.md](features.md); for why things are the way they are, see
-[decisions.md](decisions.md).
+How the app fits together. [features.md](features.md) walks through each feature's
+code, [decisions.md](decisions.md) has the reasons behind it, and CLAUDE.md has the
+conventions to follow when changing it.
+
+## What the app does
+
+A reader finds websites by searching. If a site isn't known yet, they *look it up*: the
+app finds the feeds the site publishes and shows them on a site page. They subscribe to
+feeds, and the app fetches those feeds in the background. Their home page is a timeline
+of the articles in their subscriptions, newest arrivals first; opening an article shows
+its text and marks it read.
+
+## Glossary
+
+- **Site:** a website, identified by its *site key*, the lowercase host without `www.`
+  (`example.com` for `https://www.Example.com/blog`).
+- **Feed:** an RSS, Atom or JSON Feed document. It belongs to the site it was first
+  discovered from.
+- **Lookup:** a background job that finds a site's feeds. Its row is also the cached
+  result for that site key.
+- **Article:** one item of a feed. The same story in two feeds is two articles, *copies*
+  matched by `canonical_url` (the article's URL without tracking parameters).
+- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when
+  it's first saved: the save time for *news*, its published date for *backlog* (older
+  items, including every dated item on a feed's first save).
+- **Subscription:** a user following a feed. Subscriptions decide what's in the user's
+  timeline and which feeds are refreshed in the background.
+- **Read:** the user opened the article, or clicked through to the original, or did either
+  for a copy of it.
+- **Refresh request:** a feed page view asking the workers to fetch a stale feed soon.
 
 ## The process
 
 There is one binary, `www` (`cmd/www`), and one Postgres database. Inside the process
 run three long-lived components, all stopped by one context:
 
-- the **HTTP server** (`internal/server`), which renders HTML pages;
-- the **lookup runner** (`internal/lookup`), whose workers find the feeds of websites
-  that users look up;
-- the **refresh runner** (`internal/refresh`), whose workers fetch feeds when they're due.
+- The **HTTP server** (`internal/server`) handles requests and reads and writes the
+  database through the `internal/psql` repositories. Its Refresh button calls
+  `ingest.Refresher` directly.
+- The **refresh runner** (`internal/refresh`) claims due feeds from the `feeds` table and
+  hands each to `ingest.Refresher`, which fetches the feed and saves the outcome.
+- The **lookup runner** (`internal/lookup`) claims pending rows from the `lookups` table,
+  runs `discovery.Discoverer` to find the site's feeds, and saves them with
+  `psql.DiscoveryRepository`.
 
-```
- browser ──HTTP──► server ──────────────► psql repositories ──► Postgres
-                     │ Refresh button            ▲   ▲
-                     ▼                           │   │ lookups and feeds
- refresh.Runner ─► ingest.Refresher ─────────────┘   │ tables are the queues
-                     │                               │
- lookup.Runner ──► discovery.Discoverer ─────────────┘ (saves via psql)
-                     │
-                     ▼
-                   fetch ──HTTP──► publishers' websites and feeds
-```
+`ingest` and `discovery` make every outbound request through `internal/fetch`.
 
 `cmd/www/application.go` (`Application.Run`) wires everything: it parses the flags,
 opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
@@ -38,7 +59,7 @@ then is the database closed. Only `cmd/www` handles signals.
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling | everything below |
+| `cmd/www` | Flags, wiring, signal handling | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors | `rss`, `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
@@ -57,8 +78,23 @@ Consumers define the interfaces they need, and only `cmd/www` builds the concret
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct
 that holds them are in `internal/server/server.go`, with compile-time checks that the
 `psql` repositories satisfy them. `lookup`, `refresh`, `ingest` and `discovery` each
-declare their own small `Store` or `Fetcher` interface. That's what lets every package
-be tested with fakes (see Testing).
+declare their own small interfaces (`Store`, `Fetcher`, `Saver`, …). That's what lets
+every package be tested with fakes (see Testing).
+
+Third-party modules and what they're for (CLAUDE.md asks for a justification before
+adding another):
+
+| Module | Used for |
+| --- | --- |
+| `go-chi/chi` | Router: route groups, URL parameters, `GetHead` |
+| `alexedwards/scs` (+ `postgresstore`) | Sessions, stored in the `sessions` table |
+| `lib/pq` | Postgres driver; `pq.Error` codes are mapped to `rss` errors |
+| `go-playground/form` | Decoding POST forms into structs |
+| `mmcdole/gofeed` | Parsing RSS, Atom and JSON Feed (`internal/feedparse`) |
+| `microcosm-cc/bluemonday` | The HTML allowlist in `internal/sanitize` |
+| `golang.org/x/net/html` | Reading HTML pages (`discovery.ParsePage`) and rewriting article HTML |
+| `golang.org/x/crypto/argon2` | Password hashing |
+| `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
 
 ## HTTP
 
@@ -70,7 +106,7 @@ be tested with fakes (see Testing).
    (`Sec-Fetch-Site` / `Origin`) with the 403 page. There are no CSRF tokens.
 4. `commonHeaders`: CSP `default-src 'self'; img-src 'self' https:`, `nosniff`,
    `X-Frame-Options: deny`, `Referrer-Policy`.
-5. `middleware.GetHead`: HEAD is served by the GET handler.
+5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
 Then routes are split into groups. `/static/*` and `/healthcheck` have no session. All
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
@@ -117,10 +153,11 @@ The whole schema is `migrations/00001_init.sql` (edited in place while pre-alpha
 CLAUDE.md).
 
 ```
-users ─┬─< subscriptions >── feeds ──< articles ──< reads >── users
-       │                       │
-       │                     sites ──< lookups (site_id, once found)
-       └── sessions (scs, keyed by token)
+users ──< subscriptions >── feeds ──< articles ──< reads >── users
+                              │
+                            sites ──< lookups (site_id, once found)
+
+sessions (scs's table: session data keyed by token, no foreign keys)
 ```
 
 - **`sites`**: a website, unique by `host`, its *site key* (lowercase host without
@@ -128,19 +165,20 @@ users ─┬─< subscriptions >── feeds ──< articles ──< reads >─
 - **`feeds`**: unique by canonical `url`; `site_id` is the site it was first discovered
   from. Also the refresh queue: `next_fetch_at` (when it's due, and the claim lease),
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
-  (for conditional GET), `gone_at` (410 Gone: never fetched again), and
-  `refresh_requested_at` (a page view asked for a fetch).
+  (for conditional GET), `gone_at` (410 Gone: not fetched again until a lookup finds the
+  feed again), and `refresh_requested_at` (a page view asked for a fetch).
 - **`articles`**: unique by `(feed_id, external_id)`. `summary` and `content` are raw HTML
-  from the feed and are only rendered through `sanitize.HTML`; `excerpt` is plain text;
-  `canonical_url` matches copies of one article across feeds; `timeline_at` is set once
-  on insert and never updated.
+  from the feed; `excerpt` is plain text; `canonical_url` matches copies of one article
+  across feeds; `timeline_at` is set once on insert and never updated.
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
-- **`users`** (`email` is `citext`) and **`sessions`** (scs's table).
+- **`users`**: `email` is `citext`, so unique regardless of case.
 
-Deleting a site cascades to its feeds, their articles and reads; deleting a user cascades
-to their subscriptions and reads. Nothing in the app deletes rows yet.
+Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
+clears `lookups.site_id`; deleting a user cascades to their subscriptions and reads.
+Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
+subscription row, and scs deletes expired sessions.
 
 ## Background work
 
@@ -176,27 +214,27 @@ servers; `cmd/www` never sets it.
 
 ## Security measures
 
-Where each protection lives; [decisions.md](decisions.md) has the reasons.
+Where each protection lives. The reasons are in [decisions.md](decisions.md); the rules
+for writing code that keeps them (GET handlers, article HTML, inline scripts) are in
+CLAUDE.md.
 
-- **Cross-site requests:** `CrossOriginProtection` (see HTTP). Because it doesn't cover
-  GET, GET handlers don't write, apart from two documented, idempotent exceptions
-  (`feedHandler` queues a refresh of a stale feed; `articleHandler` records a read), and
-  never fetch user-supplied URLs.
-- **Untrusted HTML:** article HTML is only rendered through `sanitize.HTML`, which
-  resolves relative URLs, replaces iframes with links and applies a bluemonday allowlist.
-  The CSP blocks inline scripts and styles; images may load from any `https:` host.
+- **Cross-site requests:** `CrossOriginProtection` in the middleware (see HTTP); there
+  are no CSRF tokens.
+- **Untrusted HTML:** `sanitize.HTML` (see Reading in features.md). The CSP blocks inline
+  scripts and styles; images may load from any `https:` host.
+- **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
   are `SameSite=Lax`, and `Secure` with `-env production`.
-- **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`). At most
-  `GOMAXPROCS` hashes run at once; the rest wait. Login verifies a dummy hash for unknown
-  emails, and a duplicate signup looks like a successful one.
+- **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most
+  `GOMAXPROCS` hashes run at once and the rest wait. How login and signup avoid revealing
+  which emails have accounts is under "Accounts and sessions" in features.md.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 
   | Limiter | Key | Limit |
   | --- | --- | --- |
   | `loginLimiter` | client IP (IPv6 by /64) | 20 per 10 min |
   | `loginFailureLimiter` | submitted email | 10 failed logins per 15 min |
-  | `signupLimiter` | client IP | 10 per hour |
+  | `signupLimiter` | client IP (IPv6 by /64) | 10 per hour |
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
 
@@ -207,31 +245,21 @@ Where each protection lives; [decisions.md](decisions.md) has the reasons.
 
 ## Frontend
 
-- **Templates** (`internal/ui/templates`) are standalone pages. Shared fragments are
-  `{{define}}` blocks in `partials/`: `app-nav` (the logged-in navigation), `article-row`
-  (one row of the timeline or a feed page), avatars and icons (inline SVG). Logged-in
-  pages use the `.shell` layout, logged-out and error pages `.solo`.
-- **CSS** is one file, `static/css/main.css`. Colors are custom properties on `:root`.
-- **JavaScript** is one file, `static/js/app.js`, loaded with `defer`. Each enhancement
-  hooks onto server-rendered markup and the page works without it: local times
-  (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), and infinite
-  scroll (fetch the page behind `.pager a[rel=next]` and append its `.article-row`s).
-  `internal/server/scroll_test.go` pins the markup the script relies on.
-- **Static files** are embedded and served at `/static/…?v=<hash>`; the `asset` template
-  function builds those URLs, so a changed file gets a new URL.
+Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
+
+- **Static files** are embedded and served at `/static/…?v=<hash>`. The `asset` template
+  function builds those URLs, so a changed file gets a new URL and can be cached for a
+  year.
+- **`app.js`** has three enhancements, each hooked onto server-rendered markup: local
+  times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), and
+  infinite scroll (fetch the page behind `.pager a[rel=next]` and append its
+  `.article-row`s). `internal/server/scroll_test.go` pins the markup the script relies on.
 
 ## Testing
 
-- **Server:** `newTestServer(t)` or `newTestServerWith(t, Services{...})` with the
-  function-field fakes in `internal/server/fakes_test.go`; no database. Tests go through
-  `s.router()` with `httptest`, or call a handler directly.
-- **Repositories:** DB tests in `internal/psql` use `psqltest.NewDB(t)` against a migrated
-  database (`RSS_TEST_DB_DSN`); they skip locally without it and fail in CI.
-- **Everything else** uses fakes for its own interfaces, and `httptest` servers with
-  `fetch.Options{AllowPrivate: true}` where real HTTP matters (`fetch`, `discovery`,
-  `ingest`).
-- **CI** (`.github/workflows/ci.yml`) runs gofmt, `go mod tidy -diff`, vet, staticcheck,
-  the migrations and `go test -race` against Postgres 17.
+Server and DB test conventions are in CLAUDE.md. The other packages test against fakes of
+their own interfaces, and use `httptest` servers with `fetch.Options{AllowPrivate: true}`
+where real HTTP matters (`fetch`, `discovery`, `ingest`).
 
 ## Deployment
 

@@ -2,7 +2,7 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Early-stage: accounts, site search and site lookups (feed discovery) work; feed ingestion (fetching and saving articles, background refresh) works; subscriptions work; reading (timeline, article pages, read state) works.
+A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations. Pre-alpha (see "Prototype stage"); `docs/features.md` describes what works.
 
 Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles. Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/decisions.md` for the decisions behind this.
 
@@ -50,21 +50,20 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 
 ## Docs
 
-Docs change in the same PR as the code or plan they describe. Each fact lives in one file; other files link to it.
+Each file has one role: `CLAUDE.md` holds the rules (what to do), `docs/decisions.md` the reasons (why), and `docs/architecture.md` and `docs/features.md` the mechanisms (how it works). A topic can appear in several of them, each in its own role, but don't copy text between them; link instead. Update docs in the same PR as the code or plan they describe.
 
 | File | Holds | Update it when |
 | --- | --- | --- |
 | `README.md` | Setup, flags, make targets, running tests | A flag, make target, prerequisite or setup step changes |
-| `docs/architecture.md` | How the app fits together: the process and its startup, packages and their dependencies, middleware and routes, data model, background workers, outbound HTTP, security measures and rate limits, frontend, testing | You add, remove or rename a package, route, middleware, table or column, worker, rate limit or security measure, or change how components connect or start |
-| `docs/features.md` | One section per feature: the flow, the files and symbols to read in order, and its tests | A feature ships (add a section), or a feature's flow, files or symbols change (including renames) |
-| `docs/decisions.md` | Decisions made while planning, each with its reason and issue number | Planning settles a question; a PR makes a choice later work must respect (a convention, a trade-off, a new dependency); a PR deliberately changes a decision (edit it and say so in the PR description) |
-| `docs/todo.md` | "Next up" (the order of open issues and upcoming work), planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item, update "Next up"); a performance risk is found or fixed |
-| `CLAUDE.md` | Conventions, commands and layout for agents | A convention, command or the layout changes |
+| `docs/architecture.md` | Glossary, the process, packages and third-party modules, middleware and routes, schema, background workers, outbound HTTP, security measures and rate limits, frontend | You add, remove or rename a package, module, route, middleware, table or column, worker, rate limit or security measure, or change how components connect or start |
+| `docs/features.md` | One section per feature: the flow, the files and symbols to read in order, its tests, and its decisions section | A feature ships or its flow, files or symbols change. A user-visible capability with its own flow gets a new section; anything else extends the closest one |
+| `docs/decisions.md` | Decisions with their reasons and issue numbers, by area | Planning settles a question (add it under the area's section, citing the planning issue or PR); a PR makes a choice later work must respect; a PR deliberately changes a decision (edit it and say so in the PR description) |
+| `docs/todo.md` | "Next up", planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item and its "Next up" line); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
+| `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
 
 - A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `todo.md`, its performance risks in the watchlist, and the issue order in "Next up". It doesn't describe unbuilt code in `architecture.md` or `features.md`.
 - An implementation PR updates `architecture.md` and `features.md` for what it builds, and removes what it finishes from `todo.md`.
-- `todo.md` holds only open work: no "done" notes or summaries of what shipped (the PRs and `features.md` cover that).
-- When you rename or remove a symbol, file or route, grep the docs for it: `grep -rn OldName docs README.md CLAUDE.md`.
+- When you rename or remove a symbol, file, route or docs section, grep for the old name in the docs and the code: `grep -rn OldName docs internal cmd README.md CLAUDE.md`.
 
 ## Code conventions
 

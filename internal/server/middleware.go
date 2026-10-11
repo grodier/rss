@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func (s *Server) recoverPanic(next http.Handler) http.Handler {
@@ -33,15 +36,17 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 
 func (s *Server) logRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var (
-			ip     = clientIP(r)
-			proto  = r.Proto
-			method = r.Method
-			uri    = r.RequestURI
-		)
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
 
-		s.logger.Info("Request received", "ip", ip, "proto", proto, "method", method, "uri", uri)
-		next.ServeHTTP(w, r)
+		status := ww.Status()
+		if status == 0 {
+			status = http.StatusOK // nothing was written: net/http sends 200
+		}
+		s.logger.Info("request",
+			"ip", clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
+			"status", status, "size", ww.BytesWritten(), "duration", time.Since(start))
 	})
 }
 

@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,5 +144,108 @@ func TestCommonHeadersCSP(t *testing.T) {
 	want := "default-src 'self'; img-src 'self' https:"
 	if got := rr.Header().Get("Content-Security-Policy"); got != want {
 		t.Errorf("Content-Security-Policy = %q, want %q", got, want)
+	}
+}
+
+func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var lines []map[string]any
+	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if l == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(l), &m); err != nil {
+			t.Fatalf("bad log line %q: %v", l, err)
+		}
+		lines = append(lines, m)
+	}
+	return lines
+}
+
+func TestLogRequest(t *testing.T) {
+	panicking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { panic("boom") })
+	tests := []struct {
+		name       string
+		wrap       func(s *Server, h http.Handler) http.Handler
+		h          http.HandlerFunc
+		wantStatus float64
+		wantSize   float64
+	}{
+		{"explicit status and body", nil, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("hello"))
+		}, 201, 5},
+		{"nothing written", nil, func(w http.ResponseWriter, r *http.Request) {}, 200, 0},
+		{"body without WriteHeader", nil, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("hi"))
+		}, 200, 2},
+		{"panic", func(s *Server, h http.Handler) http.Handler { return s.recoverPanic(h) },
+			func(w http.ResponseWriter, r *http.Request) { panicking.ServeHTTP(w, r) }, 500, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServer(t)
+			var buf bytes.Buffer
+			s.logger = slog.New(slog.NewJSONHandler(&buf, nil))
+			var h http.Handler = tt.h
+			if tt.wrap != nil {
+				h = tt.wrap(s, h)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/some/path?q=1", nil)
+			req.RemoteAddr = "192.0.2.7:5555"
+			s.logRequest(h).ServeHTTP(httptest.NewRecorder(), req)
+
+			lines := logLines(t, &buf)
+			var got map[string]any
+			for _, l := range lines {
+				if l["msg"] == "request" {
+					got = l
+				}
+			}
+			if got == nil {
+				t.Fatalf("no request line in %v", lines)
+			}
+			if got["status"] != tt.wantStatus {
+				t.Errorf("status = %v, want %v", got["status"], tt.wantStatus)
+			}
+			if tt.wantSize >= 0 && got["size"] != tt.wantSize {
+				t.Errorf("size = %v, want %v", got["size"], tt.wantSize)
+			}
+			if got["method"] != "GET" || got["uri"] != "/some/path?q=1" || got["ip"] != "192.0.2.7" || got["proto"] != "HTTP/1.1" {
+				t.Errorf("unexpected fields: %v", got)
+			}
+			if _, ok := got["duration"]; !ok {
+				t.Error("missing duration")
+			}
+		})
+	}
+}
+
+func TestLogRequestThroughRouter(t *testing.T) {
+	tests := []struct {
+		name   string
+		req    *http.Request
+		status float64
+	}{
+		{"cross-site POST", func() *http.Request {
+			r := httptest.NewRequest(http.MethodPost, "/login", nil)
+			r.Header.Set("Sec-Fetch-Site", "cross-site")
+			return r
+		}(), 403},
+		{"healthcheck", httptest.NewRequest(http.MethodGet, "/healthcheck", nil), 200},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServer(t)
+			var buf bytes.Buffer
+			s.logger = slog.New(slog.NewJSONHandler(&buf, nil))
+			s.router().ServeHTTP(httptest.NewRecorder(), tt.req)
+
+			lines := logLines(t, &buf)
+			if len(lines) != 1 || lines[0]["msg"] != "request" || lines[0]["status"] != tt.status {
+				t.Errorf("log lines = %v, want one request line with status %v", lines, tt.status)
+			}
+		})
 	}
 }

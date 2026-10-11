@@ -11,6 +11,9 @@ import (
 func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
 
+	// Outermost, so every response is logged, including those from recoverPanic
+	// and CrossOriginProtection.
+	router.Use(s.logRequest)
 	router.Use(s.recoverPanic)
 
 	// Rejects cross-origin, non-safe browser requests using Sec-Fetch-Site/Origin.
@@ -18,7 +21,6 @@ func (s *Server) router() http.Handler {
 	cop.SetDenyHandler(http.HandlerFunc(s.forbiddenResponse))
 	router.Use(cop.Handler)
 
-	router.Use(s.logRequest)
 	router.Use(s.commonHeaders)
 
 	router.NotFound(s.notFoundResponse)

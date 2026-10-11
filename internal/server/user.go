@@ -125,9 +125,11 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Failures are counted per submitted email, whether or not it has an
 	// account, so a 429 doesn't reveal which emails do. Lowercased because
-	// users.email is citext.
+	// users.email is citext. Counted before Authenticate, so concurrent
+	// attempts can't all get past the limit; refunded below unless the
+	// password was wrong.
 	emailKey := strings.ToLower(form.Email)
-	if exceeded, retryAfter := s.loginFailureLimiter.Exceeded(emailKey); exceeded {
+	if ok, retryAfter := s.loginFailureLimiter.AllowWithRetry(emailKey); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
 		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")
@@ -135,10 +137,12 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id, err := s.services.UserService.Authenticate(r.Context(), form.Email, form.Password)
+	if !errors.Is(err, rss.ErrInvalidCredentials) {
+		s.loginFailureLimiter.Refund(emailKey)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, rss.ErrInvalidCredentials):
-			s.loginFailureLimiter.Record(emailKey)
 			form.AddNonFieldError("Email or password is incorrect")
 			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
 		default:

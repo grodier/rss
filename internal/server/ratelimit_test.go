@@ -82,8 +82,7 @@ func TestRateLimiterSweepsExpiredKeys(t *testing.T) {
 		want int
 	}{
 		{"Allow", func(l *rateLimiter, key string) { l.Allow(key) }, 1},
-		{"Record", func(l *rateLimiter, key string) { l.Record(key) }, 1},
-		{"Exceeded", func(l *rateLimiter, key string) { l.Exceeded(key) }, 0},
+		{"Refund", func(l *rateLimiter, key string) { l.Refund(key) }, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -100,64 +99,57 @@ func TestRateLimiterSweepsExpiredKeys(t *testing.T) {
 	}
 }
 
-func TestRateLimiterExceeded(t *testing.T) {
-	l, now := testLimiter(3, time.Minute)
-
-	// Exceeded never records a hit, however often it's called.
-	for i := 1; i <= 5; i++ {
-		if exceeded, _ := l.Exceeded("a"); exceeded {
-			t.Fatalf("call %d with no hits: exceeded, want not", i)
+func TestRateLimiterRefund(t *testing.T) {
+	// allowed counts how many hits key gets before it is denied.
+	allowed := func(l *rateLimiter, key string) int {
+		n := 0
+		for n < 10 {
+			if ok, _ := l.AllowWithRetry(key); !ok {
+				break
+			}
+			n++
 		}
+		return n
 	}
 
-	l.Record("a")
-	l.Record("a")
-	for i := 1; i <= 5; i++ {
-		if exceeded, _ := l.Exceeded("a"); exceeded {
-			t.Fatalf("call %d with 2 of 3 hits: exceeded, want not", i)
+	t.Run("gives back a hit", func(t *testing.T) {
+		l, _ := testLimiter(2, time.Minute)
+		if n := allowed(l, "a"); n != 2 {
+			t.Fatalf("allowed %d hits, want 2", n)
 		}
-	}
+		l.Refund("a")
+		if n := allowed(l, "a"); n != 1 {
+			t.Errorf("allowed %d hits after Refund, want 1", n)
+		}
+	})
 
-	*now = now.Add(20 * time.Second)
-	l.Record("a")
-	exceeded, retry := l.Exceeded("a")
-	if !exceeded {
-		t.Fatal("not exceeded with 3 of 3 hits")
-	}
-	if retry != 40*time.Second {
-		t.Errorf("retryAfter = %v, want 40s", retry)
-	}
-	if exceeded, _ := l.Exceeded("b"); exceeded {
-		t.Error("key b exceeded after key a hit its limit")
-	}
+	t.Run("no window", func(t *testing.T) {
+		l, _ := testLimiter(2, time.Minute)
+		l.Refund("a")
+		if n := allowed(l, "a"); n != 2 {
+			t.Errorf("allowed %d hits, want 2", n)
+		}
+	})
 
-	*now = now.Add(40 * time.Second)
-	if exceeded, _ := l.Exceeded("a"); exceeded {
-		t.Error("exceeded after the window passed")
-	}
-}
+	t.Run("not below zero", func(t *testing.T) {
+		l, _ := testLimiter(2, time.Minute)
+		l.AllowWithRetry("a")
+		l.Refund("a")
+		l.Refund("a")
+		if n := allowed(l, "a"); n != 2 {
+			t.Errorf("allowed %d hits, want 2", n)
+		}
+	})
 
-func TestRateLimiterRecord(t *testing.T) {
-	l, _ := testLimiter(2, time.Minute)
-
-	// Hits from Record count toward AllowWithRetry.
-	l.Record("a")
-	if ok, _ := l.AllowWithRetry("a"); !ok {
-		t.Fatal("key a: hit 2 denied, want allowed")
-	}
-	if ok, _ := l.AllowWithRetry("a"); ok {
-		t.Error("key a: hit 3 allowed after Record, want denied")
-	}
-
-	// And hits from AllowWithRetry count alongside Record's.
-	l.AllowWithRetry("b")
-	if exceeded, _ := l.Exceeded("b"); exceeded {
-		t.Fatal("key b: exceeded with 1 of 2 hits")
-	}
-	l.Record("b")
-	if exceeded, _ := l.Exceeded("b"); !exceeded {
-		t.Error("key b: not exceeded after AllowWithRetry and Record")
-	}
+	t.Run("after the window ends", func(t *testing.T) {
+		l, now := testLimiter(2, time.Minute)
+		allowed(l, "a")
+		*now = now.Add(time.Minute)
+		l.Refund("a")
+		if n := allowed(l, "a"); n != 2 {
+			t.Errorf("allowed %d hits in the new window, want 2", n)
+		}
+	})
 }
 
 func TestTooManyAttemptsMessage(t *testing.T) {

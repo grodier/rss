@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/grodier/rss/internal/rss"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -205,7 +207,10 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 		s := newTestServerWith(t, Services{UserService: &fakeUserStore{
 			authenticateFn: func(ctx context.Context, e, p string) (string, error) {
 				calls++
-				if strings.EqualFold(e, email) && p == password {
+				switch {
+				case p == "db-down":
+					return "", errors.New("db down")
+				case strings.EqualFold(e, email) && p == password:
 					return "user-1", nil
 				}
 				return "", rss.ErrInvalidCredentials
@@ -258,6 +263,19 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 		}
 	})
 
+	t.Run("server errors don't count", func(t *testing.T) {
+		h, _ := newServer(t)
+		for i := 1; i <= 15; i++ {
+			rr := post(t, h, email, "db-down")
+			if rr.Code != http.StatusInternalServerError {
+				t.Fatalf("login %d: status = %d, want %d", i, rr.Code, http.StatusInternalServerError)
+			}
+		}
+		if rr := post(t, h, email, "wrong-password"); rr.Code != http.StatusUnprocessableEntity {
+			t.Errorf("wrong password: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+	})
+
 	t.Run("email with no account", func(t *testing.T) {
 		h, calls := newServer(t)
 		fail10(t, h, "nobody@example.com")
@@ -268,6 +286,53 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 			t.Errorf("Authenticate called %d times, want 10", *calls)
 		}
 	})
+}
+
+func TestLoginFormHandlerFailureLimitConcurrent(t *testing.T) {
+	const email = "user@example.com"
+	var calls atomic.Int32
+	release := make(chan struct{})
+	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+		authenticateFn: func(ctx context.Context, e, p string) (string, error) {
+			calls.Add(1)
+			<-release
+			return "", rss.ErrInvalidCredentials
+		},
+	}})
+	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP
+
+	// Each request comes from its own IP, so only the per-email limit applies.
+	codes := make(chan int)
+	form := url.Values{"email": {email}, "password": {"wrong-password"}}
+	for i := range 20 {
+		go func() {
+			codes <- postForm(t, h, "/login", fmt.Sprintf("10.0.0.%d:1234", i+1), form).Code
+		}()
+	}
+
+	// Requests over the limit return without reaching Authenticate.
+	timeout := time.After(5 * time.Second)
+	for i := 1; i <= 10; i++ {
+		select {
+		case code := <-codes:
+			if code != http.StatusTooManyRequests {
+				t.Errorf("early response %d: status = %d, want %d", i, code, http.StatusTooManyRequests)
+			}
+		case <-timeout:
+			close(release)
+			t.Fatalf("timed out waiting for 429s: got %d of 10", i-1)
+		}
+	}
+
+	close(release)
+	for i := 1; i <= 10; i++ {
+		if code := <-codes; code != http.StatusUnprocessableEntity {
+			t.Errorf("released response %d: status = %d, want %d", i, code, http.StatusUnprocessableEntity)
+		}
+	}
+	if n := calls.Load(); n != 10 {
+		t.Errorf("Authenticate called %d times, want 10", n)
+	}
 }
 
 func TestSignupFormHandlerRateLimited(t *testing.T) {

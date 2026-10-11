@@ -61,19 +61,10 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _, err = s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
-	if err != nil {
-		switch {
-		case errors.Is(err, rss.ErrDuplicateEmail):
-			form.AddFieldError("email", "Email is already in use")
-			data := struct {
-				Form any
-			}{Form: form}
-			if err := s.renderHTML(w, http.StatusUnprocessableEntity, "signup.html", data); err != nil {
-				s.serverErrorHTML(w, r, err)
-			}
-		default:
-			s.serverErrorHTML(w, r, err)
-		}
+	// A duplicate email gets the same response as a new account, so signup
+	// doesn't reveal which emails have one.
+	if err != nil && !errors.Is(err, rss.ErrDuplicateEmail) {
+		s.serverErrorHTML(w, r, err)
 		return
 	}
 

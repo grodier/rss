@@ -27,6 +27,7 @@ type fakeStore struct {
 	finished map[string]string // job ID → site ID
 	failed   map[string]string // job ID → message
 	resets   []resetCall
+	resetErr error         // returned by every ResetStale call
 	done     chan struct{} // receives once per Finish/Fail
 }
 
@@ -70,7 +71,7 @@ func (s *fakeStore) ResetStale(ctx context.Context, olderThan time.Duration, max
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.resets = append(s.resets, resetCall{olderThan, maxAttempts})
-	return 0, nil
+	return 0, s.resetErr
 }
 
 type saveCall struct {
@@ -303,7 +304,30 @@ func TestRunPanicFailsJobAndKeepsWorking(t *testing.T) {
 	}
 }
 
-func TestRunResetsStaleOnceAtStart(t *testing.T) {
+func (s *fakeStore) resetCalls() []resetCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]resetCall(nil), s.resets...)
+}
+
+// waitResets waits until ResetStale has been called at least n times and
+// returns the calls.
+func waitResets(t *testing.T, s *fakeStore, n int) []resetCall {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		calls := s.resetCalls()
+		if len(calls) >= n {
+			return calls
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ResetStale called %d times within 2s, want at least %d", len(calls), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestRunResetsStaleAtStart(t *testing.T) {
 	store := newFakeStore()
 	disc := &fakeDiscoverer{DiscoverFn: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
 		return discovery.Result{}, nil
@@ -312,6 +336,7 @@ func TestRunResetsStaleOnceAtStart(t *testing.T) {
 	stop := start(t, &Runner{
 		Store: store, Saver: &fakeSaver{}, Discoverer: disc,
 		JobTimeout: time.Second, StaleAfter: 5 * time.Minute, MaxAttempts: 7,
+		ResetInterval: time.Hour,
 	})
 	time.Sleep(20 * time.Millisecond) // let workers poll a few times
 	stop()
@@ -319,6 +344,53 @@ func TestRunResetsStaleOnceAtStart(t *testing.T) {
 	want := []resetCall{{5 * time.Minute, 7}}
 	if !reflect.DeepEqual(store.resets, want) {
 		t.Errorf("ResetStale calls = %v, want %v", store.resets, want)
+	}
+}
+
+func TestRunResetsStalePeriodically(t *testing.T) {
+	store := newFakeStore()
+	disc := &fakeDiscoverer{DiscoverFn: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+		return discovery.Result{}, nil
+	}}
+
+	stop := start(t, &Runner{
+		Store: store, Saver: &fakeSaver{}, Discoverer: disc,
+		JobTimeout: time.Second, StaleAfter: 5 * time.Minute, MaxAttempts: 7,
+		ResetInterval: 5 * time.Millisecond,
+	})
+	calls := waitResets(t, store, 3)
+	stop()
+
+	for i, c := range calls {
+		if want := (resetCall{5 * time.Minute, 7}); c != want {
+			t.Errorf("ResetStale call %d = %v, want %v", i, c, want)
+		}
+	}
+
+	n := len(store.resetCalls())
+	time.Sleep(20 * time.Millisecond)
+	if got := len(store.resetCalls()); got != n {
+		t.Errorf("ResetStale called %d more times after Run returned", got-n)
+	}
+}
+
+func TestRunKeepsResettingAfterError(t *testing.T) {
+	store := newFakeStore(job("a"))
+	store.resetErr = errors.New("db down")
+	disc := &fakeDiscoverer{DiscoverFn: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+		return discovery.Result{}, nil
+	}}
+
+	stop := start(t, &Runner{
+		Store: store, Saver: &fakeSaver{}, Discoverer: disc,
+		ResetInterval: 5 * time.Millisecond,
+	})
+	waitResets(t, store, 3)
+	waitOutcomes(t, store, 1)
+	stop()
+
+	if _, ok := store.finished["a"]; !ok {
+		t.Errorf("job a not finished (failed=%v)", store.failed)
 	}
 }
 

@@ -60,26 +60,15 @@ func (l *rateLimiter) AllowWithRetry(key string) (ok bool, retryAfter time.Durat
 	return true, retryAfter
 }
 
-// Exceeded reports whether key has used all its hits in the current window,
-// without recording a hit, and how long until that window ends.
-func (l *rateLimiter) Exceeded(key string) (exceeded bool, retryAfter time.Duration) {
+// Refund removes a hit recorded for key, for an attempt that turned out not
+// to count. It does nothing if key has no current window or no hits in it.
+func (l *rateLimiter) Refund(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := l.now()
-	c := l.current(key, now)
-	if c == nil {
-		return false, 0
+	if c := l.current(key, l.now()); c != nil && c.count > 0 {
+		c.count--
 	}
-	return c.count >= l.limit, c.start.Add(l.window).Sub(now)
-}
-
-// Record records a hit for key without checking the limit.
-func (l *rateLimiter) Record(key string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.currentOrStart(key, l.now()).count++
 }
 
 // current returns key's window if it hasn't ended, or nil. It first sweeps

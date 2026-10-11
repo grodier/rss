@@ -621,18 +621,13 @@ Later, not issues yet:
 
 ## Suggested order
 
-1. Fixes and quick wins, in parallel with each other and with planning deployment:
-   #194 (concurrent logins get past the per-email limit), #195 (stuck lookups), #196
-   (article lists load full HTML), #197 (request log status and duration), #198 (HEAD
-   requests), #199 (static asset caching) and #200 (dead code). #197, #198 and #199 each
-   edit `router.go`, and #198 and #200 each edit `errors.go`; see each issue's notes.
-2. Deployment, #208–#217 in the order listed under Deployment. Once they're done, the
+1. Deployment, #208–#217 in the order listed under Deployment. Once they're done, the
    app runs in production with signup off.
-3. Before inviting testers: the shared invite code (Pre-alpha testing).
-4. The rest of Pre-alpha testing (account management, logging in to the timeline,
+2. Before inviting testers: the shared invite code (Pre-alpha testing).
+3. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.
-5. Now that the initial features are done, **plan** the error-state walkthrough and run
+4. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-6. Before production or a few thousand feeds, **plan** load and performance testing.
+5. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

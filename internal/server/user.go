@@ -29,6 +29,18 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ok, retryAfter := s.signupLimiter.AllowWithRetry(ipRateLimitKey(clientIP(r))); !ok {
+		setRetryAfter(w, retryAfter)
+		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		data := struct {
+			Form any
+		}{Form: form}
+		if err := s.renderHTML(w, http.StatusTooManyRequests, "signup.html", data); err != nil {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
 	form.CheckField(validator.NotBlank(form.Name), "name", "Name is required")
 	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
@@ -95,6 +107,19 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	err := s.decodePostForm(r, &form)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(clientIP(r))); !ok {
+		setRetryAfter(w, retryAfter)
+		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		data := struct {
+			Flash string
+			Form  any
+		}{Form: form}
+		if err := s.renderHTML(w, http.StatusTooManyRequests, "login.html", data); err != nil {
+			s.serverErrorHTML(w, r, err)
+		}
 		return
 	}
 

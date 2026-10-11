@@ -86,3 +86,20 @@ func TestRateLimiterSweepsExpiredKeys(t *testing.T) {
 		t.Errorf("len(hits) = %d after sweep, want 1", len(l.hits))
 	}
 }
+
+func TestTooManyAttemptsMessage(t *testing.T) {
+	tests := []struct {
+		retryAfter time.Duration
+		want       string
+	}{
+		{30 * time.Second, "Too many attempts. Try again in 1 minute."},
+		{60 * time.Second, "Too many attempts. Try again in 1 minute."},
+		{61 * time.Second, "Too many attempts. Try again in 2 minutes."},
+		{10 * time.Minute, "Too many attempts. Try again in 10 minutes."},
+	}
+	for _, tt := range tests {
+		if got := tooManyAttemptsMessage(tt.retryAfter); got != tt.want {
+			t.Errorf("tooManyAttemptsMessage(%v) = %q, want %q", tt.retryAfter, got, tt.want)
+		}
+	}
+}

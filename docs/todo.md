@@ -79,6 +79,11 @@ Background refresh:
   for new articles…", or idle claim queries show up in `pg_stat_statements`. *Fix:* Postgres
   `LISTEN`/`NOTIFY` from `RequestRefresh`, `Subscribe` and lookup requests to wake a
   worker, keeping the poll as a fallback.
+- [ ] **Stale lookup resets scan `lookups`** (#195). Every instance's lookup runner resets
+  stale jobs every minute, and no index covers `ResetStale`'s `status = 'running'`
+  filter, so each reset scans the table, which keeps a row per site key ever looked up.
+  *Signal:* `ResetStale` in `pg_stat_statements` totals, or a large `lookups` table.
+  *Fix:* a partial index on `started_at WHERE status = 'running'`.
 - [ ] **One statement per article in `saveArticles`.** Each fetched item is a separate
   upsert inside the `SaveFetch` transaction. *Signal:* `SaveFetch` time dominates the
   `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario
@@ -427,6 +432,12 @@ Later, not issues yet:
   `data-theme` attribute on `<html>` that redefines the color tokens. Needs somewhere
   to store user preferences. The avatar tints (`.tone-1` to `.tone-6`) need dark
   variants too.
+- [ ] **Asset build step (needs planning).** Bundle and minify the CSS and JavaScript
+  for production, writing content-hashed file names. Templates link assets through
+  `asset` (#199), so only `asset` changes: it looks names up in the build's manifest
+  instead of hashing files at startup, and every file under `/static` gets the immutable
+  `Cache-Control`. This reverses the "no build step" decision (Reading, and CLAUDE.md),
+  so planning it updates both. Pages must still work without JavaScript.
 
 ## Pre-alpha testing
 
@@ -460,16 +471,15 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
     leftmost entry is whatever the client sent.
   - Don't use chi's `middleware.RealIP`: it trusts those headers from anyone, so a
     client could choose its own rate-limit key.
-- [ ] **Signup is off by default** (#186). `-signup` turns it on; `/signup` is a 404 and
-  its links are hidden otherwise. Accounts are made by starting the app with `-signup`
-  briefly. Later, when inviting testers:
-  - [ ] **Shared invite code.** Replace `-signup` with `-invite-code`: signup is open
-    when it's set, and the code arrives pre-filled from a link like
-    `/signup?invite=…`. Remove the bool flag rather than keeping both. Testers choose
-    their own password, which matters while there's no reset. Rotating the code is a
-    restart. Keep the per-IP signup limit (#182) so the code can't be brute-forced.
-  - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to
-    make them. Only once people we don't know personally are invited.
+- [ ] **Shared invite code.** Signup is off unless `-signup` is set (#186), and accounts
+  are made by starting the app with it briefly. Before inviting testers, replace
+  `-signup` with `-invite-code`: signup is open when it's set, and the code arrives
+  pre-filled from a link like `/signup?invite=…`. Remove the bool flag rather than
+  keeping both. Testers choose their own password, which matters while there's no reset.
+  Rotating the code is a restart. Keep the per-IP signup limit (#182) so the code can't
+  be brute-forced.
+- [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
+  them. Only once people we don't know personally are invited.
 - [ ] **Account management.** No password change, password reset or account deletion.
   With a few known testers, passwords can be reset by hand in the database. Self-service
   reset needs email, which the app doesn't send yet.
@@ -491,11 +501,29 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Security
 
-- [ ] Rate-limit login and signup, and stop revealing which emails have accounts:
-  - #182 per-IP limits on login and signup (with the `clientIP` helper)
-  - #183 failed logins per email
-  - #184 a cap on concurrent Argon2 hashing
-  - #185 duplicate signups look like success, and login hashes a dummy for unknown emails
+Login and signup protection is done. Shipped in #188–#192 (issues #182–#186): per-IP
+limits on login (20 per 10 minutes) and signup (10 per hour), at most 10 failed logins
+per email per 15 minutes, at most `GOMAXPROCS` Argon2 hashes at once, signup and login
+that don't reveal which emails have accounts, and signup off unless `-signup` is set.
+
+Decisions made while planning (don't reopen them without a reason):
+
+- **In-memory limits** (`internal/server/ratelimit.go`) are enough for one instance, and
+  they reset on restart. Revisiting them is the last item below.
+- **IPv6 clients are keyed by their /64**, since one client usually controls a whole /64.
+- **A limited login or signup re-renders its form with 429** and `Retry-After`, keeping
+  the email filled in. The generic 429 page is only for lookups.
+- **Failed logins are counted per submitted email, whether or not it has an account**,
+  so a 429 doesn't reveal which emails do. Successful logins don't count or reset it.
+- **A duplicate signup looks exactly like a successful one**, and login verifies a dummy
+  hash for unknown emails so it takes as long as a wrong password.
+- **Hashing beyond the cap waits in line rather than failing** (see "Queued password
+  hashing" in the Performance watchlist).
+- **`clientIP` reads only `RemoteAddr`** until deployment decides how to read the
+  proxy's header (see "Client IP behind a proxy" under Pre-alpha testing).
+
+Later, not issues yet:
+
 - [ ] **Per-email login lockout.** #183 lets anyone keep a known email locked out of
   login for 15 minutes at a time by failing logins for it. That's accepted while users
   are a handful of known people. Revisit before signup is open to strangers (e.g. key
@@ -508,8 +536,11 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Suggested order
 
-1. Login and signup protection: #182, then #183, #185 and #186, one at a time (they all
-   edit `internal/server/user.go`). #184 can go in parallel.
+1. Fixes and quick wins, in parallel with each other and with planning deployment:
+   #194 (concurrent logins get past the per-email limit), #195 (stuck lookups), #196
+   (article lists load full HTML), #197 (request log status and duration), #198 (HEAD
+   requests), #199 (static asset caching) and #200 (dead code). #197, #198 and #199 each
+   edit `router.go`, and #198 and #200 each edit `errors.go`; see each issue's notes.
 2. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
    is ready to run in production, with signup off.
 3. Before inviting testers: the shared invite code (Pre-alpha testing).

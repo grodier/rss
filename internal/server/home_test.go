@@ -75,7 +75,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		if !strings.Contains(body, `href="/feeds/feed-1"`) || !strings.Contains(body, "Feed One") {
 			t.Errorf("missing feed link: %s", body)
 		}
-		if !strings.Contains(body, `<script src="/static/js/app.js" defer></script>`) {
+		if !strings.Contains(body, `<script src="/static/js/app.js?v=`+jsVersion+`" defer></script>`) {
 			t.Errorf("missing app.js script tag: %s", body)
 		}
 		if strings.Contains(body, "Older articles") || strings.Contains(body, "Back to newest") {

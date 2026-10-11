@@ -95,7 +95,7 @@ func TestArticleHandler(t *testing.T) {
 		"<h1>A &lt;b&gt;title&lt;/b&gt;</h1>",
 		`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
 		`<time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time>`,
-		`<script src="/static/js/app.js" defer></script>`,
+		`<script src="/static/js/app.js?v=`+jsVersion+`" defer></script>`,
 		`<div class="article-body">`,
 		"<strong>world</strong>",
 		`src="https://example.com/pic.png"`,

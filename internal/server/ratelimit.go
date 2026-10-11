@@ -1,6 +1,10 @@
 package server
 
 import (
+	"fmt"
+	"math"
+	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -70,4 +74,19 @@ func (l *rateLimiter) sweep(now time.Time) {
 			delete(l.hits, k)
 		}
 	}
+}
+
+// setRetryAfter sets the Retry-After header to d in whole seconds, rounded up.
+func setRetryAfter(w http.ResponseWriter, d time.Duration) {
+	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.Seconds()))))
+}
+
+// tooManyAttemptsMessage tells a rate-limited user how long to wait,
+// in whole minutes rounded up (at least 1).
+func tooManyAttemptsMessage(retryAfter time.Duration) string {
+	minutes := max(int(math.Ceil(retryAfter.Minutes())), 1)
+	if minutes == 1 {
+		return "Too many attempts. Try again in 1 minute."
+	}
+	return fmt.Sprintf("Too many attempts. Try again in %d minutes.", minutes)
 }

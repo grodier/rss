@@ -15,6 +15,9 @@
       <h1>Sign Up</h1>
 
       <form action="/signup" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error">{{.}}</div>
+        {{end}}
         <div class="field">
           <label for="name">Name</label>
           {{with .Form.FieldErrors.name}}

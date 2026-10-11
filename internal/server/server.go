@@ -122,6 +122,12 @@ type Server struct {
 
 	// refreshLimiter caps feed refreshes per user (keyed by user ID).
 	refreshLimiter *rateLimiter
+
+	// loginLimiter caps login attempts per client IP (keyed by ipRateLimitKey).
+	loginLimiter *rateLimiter
+
+	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
+	signupLimiter *rateLimiter
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -140,6 +146,8 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		lookupWait:     3 * time.Second,
 		lookupLimiter:  newRateLimiter(10, 10*time.Minute),
 		refreshLimiter: newRateLimiter(10, 10*time.Minute),
+		loginLimiter:   newRateLimiter(20, 10*time.Minute),
+		signupLimiter:  newRateLimiter(10, time.Hour),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

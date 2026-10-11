@@ -34,7 +34,7 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 func (s *Server) logRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
-			ip     = r.RemoteAddr
+			ip     = clientIP(r)
 			proto  = r.Proto
 			method = r.Method
 			uri    = r.RequestURI

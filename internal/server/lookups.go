@@ -2,9 +2,7 @@ package server
 
 import (
 	"errors"
-	"math"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -49,7 +47,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := s.authenticatedUserID(r)
 	if ok, retryAfter := s.lookupLimiter.AllowWithRetry(userID); !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+		setRetryAfter(w, retryAfter)
 		s.tooManyRequestsResponse(w, r)
 		return
 	}

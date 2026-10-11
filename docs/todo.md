@@ -150,7 +150,16 @@ Data growth:
   or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
   sessions.
 - [ ] **In-memory rate limiters.** Their maps grow with distinct keys between sweeps and
-  aren't shared between instances. Covered by the rate-limiter item under Security.
+  aren't shared between instances. The login and signup limits (#182, #183) add maps
+  keyed by client IP and by any submitted email, so a stream of made-up emails or
+  rotating addresses grows them within a window: the sweep only drops expired entries.
+  *Signal:* process memory climbing during login floods. *Fix:* cap each map and refuse
+  new keys past it, or move the limits to the proxy or edge. Revisiting the limiter in
+  general is covered by the rate-limiter item under Security.
+- [ ] **Queued password hashing** (#184). Argon2 runs in at most `GOMAXPROCS` slots, and
+  logins and signups beyond that wait in line instead of failing. *Signal:* slow logins
+  under load, or login requests running past `WriteTimeout`. *Fix:* bound the queue and
+  return 503 with `Retry-After` when it's full.
 
 ## Load and performance testing (needs planning)
 
@@ -222,13 +231,15 @@ feature adds a failure mode. Nothing here is built yet.
   list, so the catalog can't drift: a test fails if a state is in the code but not the
   catalog. Prefer this over screenshots, which go stale.
 - [ ] **States to cover.**
-  - Forms: signup (invalid email, short or weak password, duplicate email), login (wrong
-    credentials, locked out or rate limited), empty or oversized input, a missing or
-    expired CSRF token, a malformed form body.
+  - Forms: signup (invalid email, short or weak password, a duplicate email that must
+    look like a success (#185), signup turned off (#186), rate limited (#182)), login
+    (wrong credentials, rate limited per IP (#182) or per email (#183)), empty or
+    oversized input, a missing or expired CSRF token, a malformed form body.
   - Auth and sessions: visiting a login-only page while logged out (redirect and
     message), an expired session mid-action, logging out, a logged-in user on `/login`.
   - HTTP errors: 403, 404 (unknown feed, site or lookup id; malformed id), 405, 413, 429
-    (the lookup rate limit), and 500, including a database outage.
+    (the lookup rate limit; login and signup re-render their form instead), and 500,
+    including a database outage.
   - Lookups and discovery: invalid URL, a URL that is blocked (private address, bad
     scheme), a site that is unreachable, times out, redirects too often, returns a non-HTML
     or huge body, has no feeds, or has a feed that fails to parse; a lookup that is
@@ -432,19 +443,41 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
   on deploy. The app doesn't do HTTPS itself, so the host or a reverse proxy must
   provide it. `-env production` must be set, since it's the only thing that makes the
   session cookie `Secure`. Postgres needs backups. Write the steps down in the README.
-- [ ] **Control who can sign up.** Anyone who finds the URL can create an account and
-  use lookups to make the server fetch URLs they choose. Gate signup with an invite code,
-  an email allowlist or a flag that turns signup off. Goes with rate-limiting login and
-  signup (Security).
-- [ ] **Client IP behind a proxy.** `logRequest` logs `r.RemoteAddr`, which behind a
-  reverse proxy is the proxy's address. An IP-keyed login or signup limit would then
-  treat every visitor as one client. Read the client IP from the proxy's header
-  (`X-Forwarded-For` or the platform's own), only when the request comes from a trusted
-  proxy (a flag), and use it for logs and IP-keyed limits. Decide this together with the
-  login and signup rate limit.
+  The deployment plan must also cover the client IP (next item) and decide how long
+  logs, which contain client IPs, are kept.
+- [ ] **Client IP behind a proxy (part of deployment).** `clientIP` (added in #182) is
+  the only code that reads `r.RemoteAddr`, for logs and the per-IP login and signup
+  limits. Behind a reverse proxy that is the proxy's address, so every visitor would
+  share one per-IP limit: not a hole, but an attacker could lock everyone out of login
+  for 10 minutes. Make `clientIP` read the proxy's header once the host is chosen.
+  Decided while planning:
+  - Waiting for the host is deliberate. How to read the IP depends on it (a platform
+    header such as `Fly-Client-IP` or `CF-Connecting-IP`, or `X-Forwarded-For` from our
+    own nginx), and until the app is deployed it takes connections directly.
+  - Trust the header only when `RemoteAddr` is a trusted proxy (a flag such as
+    `-trusted-proxies`, defaulting to trusting nobody).
+  - For `X-Forwarded-For`, take the rightmost address that isn't a trusted proxy; the
+    leftmost entry is whatever the client sent.
+  - Don't use chi's `middleware.RealIP`: it trusts those headers from anyone, so a
+    client could choose its own rate-limit key.
+- [ ] **Signup is off by default** (#186). `-signup` turns it on; `/signup` is a 404 and
+  its links are hidden otherwise. Accounts are made by starting the app with `-signup`
+  briefly. Later, when inviting testers:
+  - [ ] **Shared invite code.** Replace `-signup` with `-invite-code`: signup is open
+    when it's set, and the code arrives pre-filled from a link like
+    `/signup?invite=…`. Remove the bool flag rather than keeping both. Testers choose
+    their own password, which matters while there's no reset. Rotating the code is a
+    restart. Keep the per-IP signup limit (#182) so the code can't be brute-forced.
+  - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to
+    make them. Only once people we don't know personally are invited.
 - [ ] **Account management.** No password change, password reset or account deletion.
   With a few known testers, passwords can be reset by hand in the database. Self-service
   reset needs email, which the app doesn't send yet.
+- [ ] **"Check your inbox" signup (needs email).** #185 makes a duplicate signup look
+  like a success, so signup doesn't reveal which emails have accounts. The cost: someone
+  who forgot they have an account thinks they made a new one, and their new password
+  fails at login. Once the app sends email, signup should say "check your inbox", and an
+  existing owner should get a "you already have an account" email instead.
 - [ ] **Log in to the timeline.** `loginFormHandler` redirects to `/feeds`. Since `/` is
   now the timeline, send users there instead.
 - [ ] **Session lifetime.** Sessions expire 12 hours after login
@@ -458,7 +491,15 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Security
 
-- [ ] Rate-limit login and signup. Reuse the limiter added for lookups in #67.
+- [ ] Rate-limit login and signup, and stop revealing which emails have accounts:
+  - #182 per-IP limits on login and signup (with the `clientIP` helper)
+  - #183 failed logins per email
+  - #184 a cap on concurrent Argon2 hashing
+  - #185 duplicate signups look like success, and login hashes a dummy for unknown emails
+- [ ] **Per-email login lockout.** #183 lets anyone keep a known email locked out of
+  login for 15 minutes at a time by failing logins for it. That's accepted while users
+  are a handful of known people. Revisit before signup is open to strangers (e.g. key
+  the limit on IP and email together, or slow down with backoff instead of refusing).
 - [ ] Evaluate whether the in-memory rate limiter (`internal/server/ratelimit.go`) is the
   right approach long term. It resets on restart and isn't shared across instances. Before
   running more than one instance, or if limits need to survive restarts, compare options
@@ -467,13 +508,15 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
 
 ## Suggested order
 
-1. Rate-limit login and signup (Security), control who can sign up, and the client IP
-   behind a proxy; they depend on each other.
-2. **Plan** deployment. Once it's done the app is ready for invited testers.
-3. The rest of Pre-alpha testing (account management, logging in to the timeline,
+1. Login and signup protection: #182, then #183, #185 and #186, one at a time (they all
+   edit `internal/server/user.go`). #184 can go in parallel.
+2. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
+   is ready to run in production, with signup off.
+3. Before inviting testers: the shared invite code (Pre-alpha testing).
+4. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.
-4. Now that the initial features are done, **plan** the error-state walkthrough and run
+5. Now that the initial features are done, **plan** the error-state walkthrough and run
    the first pass; then repeat it periodically.
-5. Before production or a few thousand feeds, **plan** load and performance testing.
+6. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch should pull in the latest `main` before opening its PR.

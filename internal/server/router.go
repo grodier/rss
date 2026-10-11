@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -22,6 +23,9 @@ func (s *Server) router() http.Handler {
 	router.Use(cop.Handler)
 
 	router.Use(s.commonHeaders)
+
+	// Serves HEAD with the GET handler (upkeep side effects included).
+	router.Use(middleware.GetHead)
 
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)

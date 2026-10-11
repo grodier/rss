@@ -294,3 +294,61 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 		t.Errorf("other IP: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 	}
 }
+
+func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
+	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+			return "", time.Time{}, rss.ErrDuplicateEmail
+		},
+	}})
+
+	var flash string
+	h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.signupFormHandler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	}))
+
+	rr := postSignup(t, h)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/login" {
+		t.Errorf("Location = %q, want /login", loc)
+	}
+	const want = "Your signup was successful. Please log in."
+	if flash != want {
+		t.Errorf("flash = %q, want %q", flash, want)
+	}
+	if strings.Contains(rr.Body.String(), "already in use") {
+		t.Error("body reveals that the email is in use")
+	}
+}
+
+func TestSignupFormHandlerCreateError(t *testing.T) {
+	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+			return "", time.Time{}, io.ErrUnexpectedEOF
+		},
+	}})
+
+	rr := postSignup(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)))
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+func postSignup(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{
+		"name":     {"Test User"},
+		"email":    {"dup@example.com"},
+		"password": {"correct-horse-battery"},
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signup", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr
+}

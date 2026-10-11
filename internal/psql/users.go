@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/grodier/rss/internal/rss"
+	"sync"
 	"time"
 
 	"github.com/grodier/rss/internal/password"
@@ -44,6 +45,13 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 	return id, createdAt, nil
 }
 
+// dummyHash is verified against when no account has the email, so that login
+// takes as long as it does for a wrong password and doesn't reveal which
+// emails have accounts.
+var dummyHash = sync.OnceValues(func() (string, error) {
+	return password.Hash("dummy password for unknown emails")
+})
+
 func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (string, error) {
 	var id string
 	var hashedPassword []byte
@@ -54,6 +62,11 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
+			h, err := dummyHash()
+			if err != nil {
+				return "", err
+			}
+			_, _ = password.Verify(pw, h)
 			return "", rss.ErrInvalidCredentials
 		default:
 			return "", err

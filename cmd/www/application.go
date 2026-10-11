@@ -66,8 +66,9 @@ func (app *Application) Run(args []string) error {
 	}
 
 	srvConfig := server.Config{
-		Port: app.config.server.port,
-		Env:  app.config.env,
+		Port:          app.config.server.port,
+		Env:           app.config.env,
+		SignupEnabled: app.config.server.signup,
 	}
 
 	sessionManager := scs.New()
@@ -153,6 +154,7 @@ func (app *Application) ParseConfigs(args []string) (config, error) {
 
 	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
+	fs.BoolVar(&cfg.server.signup, "signup", cfg.server.signup, "Allow new accounts to sign up")
 
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
 	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections")

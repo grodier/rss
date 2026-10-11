@@ -47,10 +47,7 @@ func TestPasswordNotEchoed(t *testing.T) {
 		{
 			name:     "login",
 			template: "login.html",
-			data: struct {
-				Flash string
-				Form  any
-			}{Form: loginForm{Email: "a@b.co", Password: sentinel}},
+			data:     loginPage{Form: loginForm{Email: "a@b.co", Password: sentinel}},
 		},
 		{
 			name:     "signup",

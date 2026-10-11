@@ -21,8 +21,14 @@ func newTestServer(t *testing.T) *Server {
 // fakes from fakes_test.go) and no database.
 func newTestServerWith(t *testing.T, svc Services) *Server {
 	t.Helper()
+	return newTestServerConfig(t, Config{Port: 4000, Env: "development"}, svc)
+}
+
+// newTestServerConfig is newTestServerWith with an explicit Config.
+func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s, err := NewServer(logger, Config{Port: 4000, Env: "development"}, svc, scs.New())
+	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)
 	}

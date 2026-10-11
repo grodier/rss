@@ -42,12 +42,15 @@ Instead of `make db/migrations/up` you can run `goose -dir ./migrations postgres
 | --- | --- | --- |
 | `-env` | `development` | Environment (`development` or `production`) |
 | `-port` | `8080` | Server port |
+| `-signup` | `false` | Allow new accounts to sign up |
 | `-db-dsn` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `25` | PostgreSQL max open connections |
 | `-db-max-idle-conns` | `25` | PostgreSQL max idle connections |
 | `-db-max-idle-time` | `15m` | PostgreSQL max idle time |
 | `-lookup-workers` | `2` | Background lookup workers (0–16; 0 disables them) |
 | `-refresh-workers` | `2` | Background feed refresh workers (0–16; 0 disables them) |
+
+Signup is off by default. To create an account, run once with `-signup`, sign up, then restart without it.
 
 ## Make targets
 
@@ -88,7 +91,7 @@ Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make t
 | `GET /healthcheck` | No | Health check (JSON) |
 | `GET /static/*` | No | Embedded static files |
 | `GET /` | No | Home page |
-| `GET, POST /signup` | No | Sign up form |
+| `GET, POST /signup` | No | Sign up form (only with `-signup`) |
 | `GET, POST /login` | No | Log in form |
 | `POST /logout` | No | Log out |
 | `POST /subscribe` | Yes | Placeholder; subscriptions are not built yet |

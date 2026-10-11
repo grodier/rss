@@ -56,8 +56,10 @@ func (s *Server) router() http.Handler {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Get("/signup", s.signupHandler)
-			r.Post("/signup", s.signupFormHandler)
+			if s.config.SignupEnabled {
+				r.Get("/signup", s.signupHandler)
+				r.Post("/signup", s.signupFormHandler)
+			}
 			r.Get("/login", s.loginHandler)
 			r.Post("/login", s.loginFormHandler)
 			r.Post("/logout", s.logoutHandler)

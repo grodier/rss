@@ -166,6 +166,24 @@ Data growth:
   under load, or login requests running past `WriteTimeout`. *Fix:* bound the queue and
   return 503 with `Retry-After` when it's full.
 
+Hosting (see Deployment):
+
+- [ ] **Small instance and database.** The web service is a Render Starter instance (512
+  MB, a fraction of a CPU), and Postgres is the smallest paid plan with little storage.
+  Argon2 hashing runs at most `GOMAXPROCS` at once (1 here, since Go sizes it to the
+  container's CPU limit). *Signal:* Render's memory and CPU graphs near their limits,
+  restarts for running out of memory, slow logins, or database storage above 80%.
+  *Fix:* the next instance or database size, or the separate worker service under
+  Deployment.
+- [ ] **Database connections.** Each instance opens up to `-db-max-open-conns`
+  connections (default 25), and small Postgres plans allow few. Production sets
+  `RSS_DB_MAX_OPEN_CONNS=10`. *Signal:* "too many connections" errors, or connections
+  waiting in `sql.DBStats`. *Fix:* lower it per instance, or a bigger plan.
+- [ ] **The database is never idle.** Refresh workers poll every 15 seconds, so
+  usage-billed databases that scale to zero (Neon and similar) would bill every hour of
+  the month. Not a problem on Render. *Signal:* only matters if we move to such a
+  database. *Fix:* sleep until the next feed is due instead of polling.
+
 ## Load and performance testing (needs planning)
 
 Background refresh (#128) has never run against more than a few feeds.
@@ -449,28 +467,8 @@ editing `migrations/00001_init.sql`, and rebuilding the database deletes every a
 subscription and read. Testers are told their data may be wiped. This holds until it's
 explicitly changed (see "Prototype stage" in CLAUDE.md).
 
-- [ ] **Deployment (needs planning).** Nothing exists yet: no Dockerfile or deploy guide,
-  and migrations are run by hand with goose. Choose a host and decide how migrations run
-  on deploy. The app doesn't do HTTPS itself, so the host or a reverse proxy must
-  provide it. `-env production` must be set, since it's the only thing that makes the
-  session cookie `Secure`. Postgres needs backups. Write the steps down in the README.
-  The deployment plan must also cover the client IP (next item) and decide how long
-  logs, which contain client IPs, are kept.
-- [ ] **Client IP behind a proxy (part of deployment).** `clientIP` (added in #182) is
-  the only code that reads `r.RemoteAddr`, for logs and the per-IP login and signup
-  limits. Behind a reverse proxy that is the proxy's address, so every visitor would
-  share one per-IP limit: not a hole, but an attacker could lock everyone out of login
-  for 10 minutes. Make `clientIP` read the proxy's header once the host is chosen.
-  Decided while planning:
-  - Waiting for the host is deliberate. How to read the IP depends on it (a platform
-    header such as `Fly-Client-IP` or `CF-Connecting-IP`, or `X-Forwarded-For` from our
-    own nginx), and until the app is deployed it takes connections directly.
-  - Trust the header only when `RemoteAddr` is a trusted proxy (a flag such as
-    `-trusted-proxies`, defaulting to trusting nobody).
-  - For `X-Forwarded-For`, take the rightmost address that isn't a trusted proxy; the
-    leftmost entry is whatever the client sent.
-  - Don't use chi's `middleware.RealIP`: it trusts those headers from anyone, so a
-    client could choose its own rate-limit key.
+- [ ] **Deploy** (see Deployment). The app runs in production with signup off once its
+  issues are done.
 - [ ] **Shared invite code.** Signup is off unless `-signup` is set (#186), and accounts
   are made by starting the app with it briefly. Before inviting testers, replace
   `-signup` with `-invite-code`: signup is open when it's set, and the code arrives
@@ -499,6 +497,67 @@ explicitly changed (see "Prototype stage" in CLAUDE.md).
   bodies with `http.MaxBytesReader` (413 when exceeded). The error-state walkthrough
   lists both states.
 
+## Deployment
+
+Planned in #PLAN. Issues: [A] container image, [B] configuration from environment
+variables and JSON logs, [C] `migrate` command, [D] client IP behind a proxy, [E]
+Terraform for Render, [F] deploy workflows, [G] database backups to R2.
+
+Decisions made while planning (don't reopen them without a reason):
+
+- **Render, Virginia (US East).** A Starter web service (always on, 512 MB) and the
+  smallest paid Render Postgres 17, about $15 a month with backups. Chosen over a VPS (no
+  server to look after), AWS ECS/RDS (about $50–60 a month before there are paying
+  users), Fly.io (its managed Postgres starts at $38) and Neon (the refresh workers poll
+  every 15 seconds, so it never scales to zero). Check prices again before the first
+  `terraform apply`.
+- **Portable by contract, not by host.** Every host-specific piece sits behind the same
+  six things, so moving to Fly, AWS or a VPS is a new Terraform module, a new deploy step
+  and a DNS change, with no app code changes: one container image built by GitHub Actions
+  and pushed to GHCR; configuration from `RSS_*` environment variables; a `www migrate`
+  command run before new code goes live (Render's pre-deploy command, Fly's
+  `release_command`, an ECS one-off task); `/healthcheck` for the host's health checks;
+  JSON logs on stdout; plain Postgres 17. Don't add host-specific code paths.
+- **Terraform**, with the official Render provider and the Cloudflare provider (for R2).
+  State lives in an R2 bucket. After the first apply (by hand, during setup), applies run
+  only from GitHub Actions, one at a time.
+- **No domain yet.** The app is served at its `*.onrender.com` URL with Render's HTTPS.
+  A custom domain (possibly a subdomain of georgerodier.com) is a later, separate change:
+  Cloudflare DNS plus a Render custom domain, both in Terraform.
+- **Migrations run before each deploy**, not at app startup, so they also work with
+  several instances. While pre-alpha, `migrate` wipes and rebuilds the database when
+  the embedded migrations have changed since they were applied (only when
+  `RSS_RESET_ON_SCHEMA_CHANGE` is set, as it is in production). This replaces "rebuild
+  the database by hand" and is removed when we leave pre-alpha.
+- **Client IP:** `X-Forwarded-For`, taking the rightmost address that isn't in
+  `-trusted-proxies`, which defaults to trusting nobody. Render's proxy keeps whatever
+  `X-Forwarded-For` the client sent and appends to it, so the leftmost entry can be forged.
+  Render's proxy address range is measured after the first deploy, not guessed.
+- **Backups:** Render's point-in-time recovery (3 days on the Hobby workspace) plus a
+  nightly `pg_dump` to R2, kept 35 days. The R2 copy is at a different provider from the
+  database, and restoring it is also how the database moves to a new host.
+- **Logs** stay in Render's log viewer for as long as Render keeps them (a few days on
+  the Hobby workspace; the README records the current figure). No log shipping, so client
+  IPs aren't kept anywhere else.
+- **Deploys:** every push to `main` that passes CI deploys automatically. Infrastructure
+  changes (`terraform apply`) wait for approval in a GitHub environment.
+
+Later, not issues yet:
+
+- [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
+  domain is settled.
+- [ ] **Uptime check.** An external monitor (UptimeRobot or Better Stack free tier) on
+  `/healthcheck`, set up by hand and noted in the README. Render already emails on failed
+  deploys and failed cron jobs.
+- [ ] **PR preview environments.** Render preview environments need the Professional
+  workspace (about $19 per user a month plus compute). Only from same-repo branches: never
+  `pull_request_target` with fork code, since this repository is public.
+- [ ] **Separate worker service.** If web and background work compete for the Starter
+  instance, run the same image as a Render background worker with the web service's
+  workers set to 0 (`RSS_LOOKUP_WORKERS=0`, `RSS_REFRESH_WORKERS=0`), for about $7 more.
+- [ ] **Leaving pre-alpha:** remove `RSS_RESET_ON_SCHEMA_CHANGE` and the fingerprint
+  check from `migrate`, and make schema changes new migrations (see CLAUDE.md).
+
 ## Security
 
 Login and signup protection is done. Shipped in #188–#192 (issues #182–#186): per-IP
@@ -519,8 +578,8 @@ Decisions made while planning (don't reopen them without a reason):
   hash for unknown emails so it takes as long as a wrong password.
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password
   hashing" in the Performance watchlist).
-- **`clientIP` reads only `RemoteAddr`** until deployment decides how to read the
-  proxy's header (see "Client IP behind a proxy" under Pre-alpha testing).
+- **`clientIP` reads only `RemoteAddr`** until [D] reads `X-Forwarded-For` from trusted
+  proxies (see Deployment).
 
 Later, not issues yet:
 
@@ -541,8 +600,9 @@ Later, not issues yet:
    (article lists load full HTML), #197 (request log status and duration), #198 (HEAD
    requests), #199 (static asset caching) and #200 (dead code). #197, #198 and #199 each
    edit `router.go`, and #198 and #200 each edit `errors.go`; see each issue's notes.
-2. **Plan** deployment, including the client IP behind a proxy. Once it's done, the app
-   is ready to run in production, with signup off.
+2. Deployment (see Deployment): [A] and [B] in parallel, then [C] and [D] (both build on
+   [B]), then [E], then [F] and [G]. Once they're done, the app runs in production with
+   signup off.
 3. Before inviting testers: the shared invite code (Pre-alpha testing).
 4. The rest of Pre-alpha testing (account management, logging in to the timeline,
    session lifetime, malformed form bodies), in parallel with testing.

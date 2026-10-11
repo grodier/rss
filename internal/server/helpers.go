@@ -10,19 +10,13 @@ import (
 	"github.com/go-playground/form/v4"
 )
 
-func (s *Server) writeJSON(w http.ResponseWriter, status int, data any, headers http.Header) error {
+func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) error {
 	js, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
 
 	js = append(js, '\n')
-
-	for k, values := range headers {
-		for _, v := range values {
-			w.Header().Add(k, v)
-		}
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

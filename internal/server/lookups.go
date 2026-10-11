@@ -48,7 +48,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
 	if ok, retryAfter := s.lookupLimiter.AllowWithRetry(userID); !ok {
 		setRetryAfter(w, retryAfter)
-		s.tooManyRequestsResponse(w, r)
+		s.tooManyLookupsResponse(w, r)
 		return
 	}
 

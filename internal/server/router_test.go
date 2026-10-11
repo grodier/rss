@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,15 +18,24 @@ func TestStaticRoutes(t *testing.T) {
 	s := newTestServer(t)
 	h := s.router()
 
+	css, err := asset("css/main.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const immutable = "public, max-age=31536000, immutable"
+
 	tests := []struct {
 		path        string
 		wantStatus  int
 		wantContent string
+		wantCache   string
 	}{
-		{"/static/", http.StatusNotFound, "text/html"},
-		{"/static/css/", http.StatusNotFound, "text/html"},
-		{"/static/css/main.css", http.StatusOK, "text/css"},
-		{"/static/js/app.js", http.StatusOK, "text/javascript"},
+		{"/static/", http.StatusNotFound, "text/html", ""},
+		{"/static/css/", http.StatusNotFound, "text/html", ""},
+		{"/static/css/main.css", http.StatusOK, "text/css", ""},
+		{"/static/css/main.css?v=000000000000", http.StatusOK, "text/css", ""},
+		{css, http.StatusOK, "text/css", immutable},
+		{"/static/js/app.js", http.StatusOK, "text/javascript", ""},
 	}
 
 	for _, tt := range tests {
@@ -38,7 +49,53 @@ func TestStaticRoutes(t *testing.T) {
 			if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, tt.wantContent) {
 				t.Errorf("Content-Type = %q, want it to contain %q", ct, tt.wantContent)
 			}
+			if cc := rr.Header().Get("Cache-Control"); cc != tt.wantCache {
+				t.Errorf("Cache-Control = %q, want %q", cc, tt.wantCache)
+			}
 		})
+	}
+}
+
+func TestAsset(t *testing.T) {
+	for _, name := range []string{"css/main.css", "js/app.js"} {
+		b, err := fs.ReadFile(ui.Static, "static/"+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(b)
+		want := "/static/" + name + "?v=" + hex.EncodeToString(sum[:])[:12]
+		if got, err := asset(name); err != nil || got != want {
+			t.Errorf("asset(%q) = %q, %v; want %q", name, got, err, want)
+		}
+	}
+	if _, err := asset("nope.css"); err == nil {
+		t.Error(`asset("nope.css") = nil error, want error`)
+	}
+}
+
+func TestTemplatesLinkAssetsThroughAsset(t *testing.T) {
+	var files []string
+	for _, glob := range []string{"templates/*.html", "templates/partials/*.html"} {
+		m, err := fs.Glob(ui.Templates, glob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, m...)
+	}
+	for _, f := range files {
+		b, err := fs.ReadFile(ui.Templates, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `"/static/`) {
+			t.Errorf("%s: link static files through the asset function", f)
+		}
+	}
+
+	rr := httptest.NewRecorder()
+	newTestServer(t).router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if !strings.Contains(rr.Body.String(), `href="/static/css/main.css?v=`) {
+		t.Errorf("GET /login does not link a versioned main.css:\n%s", rr.Body.String())
 	}
 }
 
@@ -147,6 +204,44 @@ func TestCrossOriginProtection(t *testing.T) {
 	}
 }
 
+func TestHeadRequests(t *testing.T) {
+	h := newTestServer(t).router()
+
+	tests := []struct {
+		path        string
+		status      int
+		contentType string // prefix; empty skips the check
+		location    string
+		allow       string
+	}{
+		{path: "/healthcheck", status: http.StatusOK, contentType: "application/json"},
+		{path: "/", status: http.StatusOK, contentType: "text/html"},
+		{path: "/login", status: http.StatusOK, contentType: "text/html"},
+		{path: "/feeds", status: http.StatusSeeOther, location: "/login"},
+		{path: "/static/css/main.css", status: http.StatusOK, contentType: "text/css"},
+		{path: "/nope", status: http.StatusNotFound},
+		{path: "/logout", status: http.StatusMethodNotAllowed, allow: "POST"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodHead, tt.path, nil))
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.status)
+			}
+			if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, tt.contentType) {
+				t.Errorf("Content-Type = %q, want prefix %q", got, tt.contentType)
+			}
+			if got := rr.Header().Get("Location"); got != tt.location {
+				t.Errorf("Location = %q, want %q", got, tt.location)
+			}
+			if got := rr.Header().Get("Allow"); got != tt.allow {
+				t.Errorf("Allow = %q, want %q", got, tt.allow)
+			}
+		})
+	}
+}
+
 func TestMethodNotAllowedSetsAllow(t *testing.T) {
 	h := newTestServer(t).router()
 
@@ -154,9 +249,9 @@ func TestMethodNotAllowedSetsAllow(t *testing.T) {
 		method, path, want string
 	}{
 		{http.MethodGet, "/logout", "POST"},
-		{http.MethodPut, "/login", "GET, POST"},
-		{http.MethodDelete, "/healthcheck", "GET"},
-		{http.MethodPut, "/", "GET"},
+		{http.MethodPut, "/login", "GET, HEAD, POST"},
+		{http.MethodDelete, "/healthcheck", "GET, HEAD"},
+		{http.MethodPut, "/", "GET, HEAD"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
@@ -226,3 +321,6 @@ func TestSignupRoutes(t *testing.T) {
 		})
 	}
 }
+
+// jsVersion is the version in the app.js URL the templates render.
+var jsVersion = staticVersions["js/app.js"]

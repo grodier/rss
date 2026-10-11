@@ -18,6 +18,7 @@ import (
 const avatarTones = 6
 
 var templateFuncs = template.FuncMap{
+	"asset":      asset,
 	"avatarTone": avatarTone,
 	"monogram":   monogram,
 }

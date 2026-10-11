@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -23,6 +24,9 @@ func (s *Server) router() http.Handler {
 
 	router.Use(s.commonHeaders)
 
+	// Serves HEAD with the GET handler (upkeep side effects included).
+	router.Use(middleware.GetHead)
+
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
@@ -32,6 +36,11 @@ func (s *Server) router() http.Handler {
 		if strings.HasSuffix(r.URL.Path, "/") {
 			s.notFoundResponse(w, r)
 			return
+		}
+		// Only a request for the file's current version is cached; any other
+		// (no v, or a stale one) is served without Cache-Control.
+		if v := r.URL.Query().Get("v"); v != "" && v == staticVersions[strings.TrimPrefix(r.URL.Path, "/static/")] {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		fileServer.ServeHTTP(w, r)
 	}))

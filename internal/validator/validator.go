@@ -50,10 +50,6 @@ func MinChars(value string, n int) bool {
 	return utf8.RuneCountInString(value) >= n
 }
 
-func MaxBytes(value string, n int) bool {
-	return len(value) <= n
-}
-
 func Matches(value string, rx *regexp.Regexp) bool {
 	return rx.MatchString(value)
 }

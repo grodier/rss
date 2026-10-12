@@ -94,6 +94,38 @@ func TestParseConfigSignup(t *testing.T) {
 	}
 }
 
+func TestParseConfigTrustedProxies(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://x"}
+
+	cfg, err := parseConfig(dsn, noEnv, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.server.trustedProxies) != 0 {
+		t.Errorf("trustedProxies = %v, want none by default", cfg.server.trustedProxies)
+	}
+
+	cfg, err = parseConfig(append(dsn, "-trusted-proxies", "10.0.0.0/8,fd00::/8"), noEnv, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"10.0.0.0/8", "fd00::/8"}
+	if len(cfg.server.trustedProxies) != len(want) {
+		t.Fatalf("trustedProxies = %v, want %v", cfg.server.trustedProxies, want)
+	}
+	for i, p := range cfg.server.trustedProxies {
+		if p.String() != want[i] {
+			t.Errorf("trustedProxies[%d] = %s, want %s", i, p, want[i])
+		}
+	}
+
+	_, err = parseConfig(append(dsn, "-trusted-proxies", "abc"), noEnv, io.Discard)
+	msg := `invalid trusted proxy "abc": must be a CIDR such as 10.0.0.0/8`
+	if err == nil || !strings.Contains(err.Error(), msg) {
+		t.Fatalf("parseConfig() error = %v, want %q", err, msg)
+	}
+}
+
 // noEnv is a getenv with no variables set, so the developer's environment
 // can't leak into tests.
 func noEnv(string) string { return "" }

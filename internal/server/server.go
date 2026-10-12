@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -24,6 +25,9 @@ type Config struct {
 	// Version identifies the build (the commit SHA in the container image);
 	// /healthcheck reports it.
 	Version string
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For entries
+	// clientIP believes. Empty trusts nobody.
+	TrustedProxies []netip.Prefix
 }
 
 // FeedStore is the feed persistence the server depends on.

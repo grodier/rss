@@ -60,10 +60,11 @@ func (app *Application) Run() error {
 	}
 
 	srvConfig := server.Config{
-		Port:          app.config.server.port,
-		Env:           app.config.env,
-		SignupEnabled: app.config.server.signup,
-		Version:       version,
+		Port:           app.config.server.port,
+		Env:            app.config.env,
+		SignupEnabled:  app.config.server.signup,
+		Version:        version,
+		TrustedProxies: app.config.server.trustedProxies,
 	}
 
 	sessionManager := scs.New()

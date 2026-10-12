@@ -257,8 +257,9 @@ CLAUDE.md.
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
 
-- **Client IP:** `clientIP` (`internal/server/clientip.go`) is the only code that reads
-  `RemoteAddr`.
+- **Client IP:** `Server.clientIP` (`internal/server/clientip.go`) is the only code that
+  reads `RemoteAddr`. Only when the connection comes from `-trusted-proxies` does it read
+  `X-Forwarded-For`, taking the rightmost entry that isn't a trusted proxy.
 - **Internal errors** (`lookups.error`, `feeds.last_error`, Go errors) go to the logs,
   never to pages.
 

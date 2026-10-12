@@ -165,7 +165,24 @@ Planned in #187 (issues #182–#186).
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password
   hashing" in the Performance watchlist).
 - **Signup is off unless `-signup` is set.** Accounts are made by starting the app with it
-  briefly, until the shared invite code (a todo item) replaces the flag.
+  briefly, until the shared invite code (#226) replaces the flag.
+- **A shared invite code replaces `-signup`** (#226). Signup is open exactly when
+  `-invite-code` is set; the bool flag goes rather than staying alongside it.
+  - The code arrives pre-filled from `/signup?invite=…` into a visible field, so it can
+    also be typed. No page links to `/signup`: without a code it's useless, and
+    advertising it only invites guessing, which the per-IP signup limit (#182) bounds.
+  - At least 16 characters, compared in constant time.
+  - In production it's set in Render's dashboard and ignored by Terraform, like
+    `RSS_ALLOW_RESET_TO`: a Terraform variable would keep it in plain text in the state
+    and need a PR and an approved apply to rotate.
+  - It may appear in request logs (they log the URI); only the owner reads them, and the
+    owner sets it.
+- **`www create-user` makes accounts locally** (#225), and `make db/reset` uses it to put
+  your account back. Not seeding in `www migrate`: that manages the schema and runs before
+  every deploy. The password comes from stdin, never a flag (shell history, process
+  listings), and there's no hidden prompt, which would need a new dependency. It can't run
+  in production (distroless image, no external database access); production accounts
+  come from the invite code.
 
 ## Deployment
 
@@ -204,6 +221,10 @@ Planned in #218; issues #208–#217.
     itself, not in `00001_init.sql`: it belongs to the migration mechanism, not the app,
     and goes away with the pre-alpha rule. A database with no stored fingerprint (one
     migrated by the goose CLI) is refused like a changed one, with no special case (#211).
+- **No account is seeded after a production reset.** It would need a credential (or its
+  hash) stored in Render, Terraform state or GitHub, and a one-off job to run
+  `www create-user` in. Signing up again with the invite link (#226) is the way back in,
+  so production isn't reset before that's live. (#214, #215)
 - **Images are public on GHCR**, like the source. A private image would need a long-lived
   GitHub token stored at Render. Deploys reference images by digest, and CI attests build
   provenance. No secrets at build time.

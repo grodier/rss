@@ -7,13 +7,16 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. Deployment (planned in #218). Once these are done, the app runs in production with
-   signup off.
+1. Deployment (planned in #218). Once these are done, the app runs in production, with
+   signup open only to people with the invite code.
    1. #214 (manual): first apply and go-live.
    2. #215 deploy, reset and Terraform workflows, then #216 database backups to R2.
-   3. #217 (manual): exercise deploys, rollback, resets and backups in production, and
+   3. #226 shared invite code (after #215; any order with #216). Production isn't reset
+      until it's live, since signing up again is the way back in.
+   4. #217 (manual): exercise deploys, rollback, resets and backups in production, and
       add the uptime check.
-2. Before inviting testers: the shared invite code (Pre-alpha testing).
+2. #225 `www create-user` and `make db/seed`, for your local account after
+   `make db/reset`. Independent of the deployment issues.
 3. The rest of Pre-alpha testing (account management, logging in to the timeline, session
    lifetime, malformed form bodies), in parallel with testing.
 4. **Plan** the error-state walkthrough and run the first pass; then repeat it
@@ -27,13 +30,6 @@ Merge one PR at a time; each branch merges the latest `main` before its PR.
 What's needed, after deployment, before other people use the app on a public URL.
 Running it locally for yourself needs none of this.
 
-- [ ] **Shared invite code.** Signup is off unless `-signup` is set (#186), and accounts
-  are made by starting the app with it briefly. Before inviting testers, replace
-  `-signup` with `-invite-code`: signup is open when it's set, and the code arrives
-  pre-filled from a link like `/signup?invite=…`. Remove the bool flag rather than
-  keeping both. Testers choose their own password, which matters while there's no reset.
-  Rotating the code is a restart. Keep the per-IP signup limit (#182) so the code can't
-  be brute-forced.
 - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
   them. Only once people we don't know personally are invited.
 - [ ] **Account management.** No password change, password reset or account deletion.

@@ -8,7 +8,7 @@ import (
 )
 
 func TestHealthcheck(t *testing.T) {
-	s := newTestServer(t)
+	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", Version: "abc123"}, Services{})
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthcheck", nil)
@@ -28,6 +28,7 @@ func TestHealthcheck(t *testing.T) {
 		Status     string `json:"status"`
 		SystemInfo struct {
 			Environment string `json:"environment"`
+			Version     string `json:"version"`
 		} `json:"system_info"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
@@ -38,5 +39,8 @@ func TestHealthcheck(t *testing.T) {
 	}
 	if body.SystemInfo.Environment != "development" {
 		t.Errorf("system_info.environment = %q; want %q", body.SystemInfo.Environment, "development")
+	}
+	if body.SystemInfo.Version != "abc123" {
+		t.Errorf("system_info.version = %q; want %q", body.SystemInfo.Version, "abc123")
 	}
 }

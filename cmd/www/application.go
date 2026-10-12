@@ -69,6 +69,7 @@ func (app *Application) Run(args []string) error {
 		Port:          app.config.server.port,
 		Env:           app.config.env,
 		SignupEnabled: app.config.server.signup,
+		Version:       version,
 	}
 
 	sessionManager := scs.New()

@@ -10,8 +10,7 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 1. Deployment (planned in #218). Once these are done, the app runs in production with
    signup off.
    1. #208 (manual): set up Render, Cloudflare R2 and GitHub. Any time before #213.
-   2. #209 container image and #210 configuration from environment variables and JSON
-      logs, in parallel.
+   2. #210 configuration from environment variables and JSON logs.
    3. #211 `migrate` command and #212 client IP behind a proxy, both after #210.
    4. #213 Terraform for Render.
    5. #214 (manual): first apply and go-live.

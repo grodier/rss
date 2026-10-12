@@ -54,7 +54,7 @@ Signup is off by default. To create an account, run once with `-signup`, sign up
 
 ## Make targets
 
-Run `make help` for the documented targets. Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
+Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports). Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
 
 ## Tests
 

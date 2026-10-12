@@ -21,6 +21,9 @@ type Config struct {
 	Env  string
 	// SignupEnabled turns on GET and POST /signup and the links to it.
 	SignupEnabled bool
+	// Version identifies the build (the commit SHA in the container image);
+	// /healthcheck reports it.
+	Version string
 }
 
 // FeedStore is the feed persistence the server depends on.

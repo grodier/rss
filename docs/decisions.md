@@ -169,8 +169,10 @@ Planned in #187 (issues #182–#186).
 - **A shared invite code replaces `-signup`** (#226). Signup is open exactly when
   `-invite-code` is set; the bool flag goes rather than staying alongside it.
   - The code arrives pre-filled from `/signup?invite=…` into a visible field, so it can
-    also be typed. No page links to `/signup`: without a code it's useless, and
-    advertising it only invites guessing, which the per-IP signup limit (#182) bounds.
+    also be typed. While signup needs an invite code, no page links to `/signup`:
+    without a code it's useless, and advertising it only invites guessing, which the
+    per-IP signup limit (#182) bounds. Whatever opens signup more widely adds the links
+    back.
   - At least 16 characters, compared in constant time.
   - In production it's set in Render's dashboard and ignored by Terraform, like
     `RSS_ALLOW_RESET_TO`: a Terraform variable would keep it in plain text in the state

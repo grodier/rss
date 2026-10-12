@@ -44,13 +44,13 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func TestParseConfigsRefreshWorkers(t *testing.T) {
+func TestParseConfigRefreshWorkers(t *testing.T) {
 	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
 
 	t.Run("default", func(t *testing.T) {
-		cfg, err := NewApplication(io.Discard).ParseConfigs(dsn, noEnv)
+		cfg, err := parseConfig(dsn, noEnv, io.Discard)
 		if err != nil {
-			t.Fatalf("ParseConfigs() error = %v", err)
+			t.Fatalf("parseConfig() error = %v", err)
 		}
 		if cfg.refresh.workers != 2 {
 			t.Errorf("refresh.workers = %d, want 2", cfg.refresh.workers)
@@ -59,33 +59,33 @@ func TestParseConfigsRefreshWorkers(t *testing.T) {
 
 	for _, n := range []string{"0", "16"} {
 		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := NewApplication(io.Discard).ParseConfigs(append(dsn, "-refresh-workers", n), noEnv); err != nil {
-				t.Fatalf("ParseConfigs() error = %v, want nil", err)
+			if _, err := parseConfig(append(dsn, "-refresh-workers", n), noEnv, io.Discard); err != nil {
+				t.Fatalf("parseConfig() error = %v, want nil", err)
 			}
 		})
 	}
 
 	for _, n := range []string{"-1", "17"} {
 		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := NewApplication(io.Discard).ParseConfigs(append(dsn, "-refresh-workers", n), noEnv)
+			_, err := parseConfig(append(dsn, "-refresh-workers", n), noEnv, io.Discard)
 			want := "invalid refresh workers " + n + ": must be 0-16"
 			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("ParseConfigs() error = %v, want %q", err, want)
+				t.Fatalf("parseConfig() error = %v, want %q", err, want)
 			}
 		})
 	}
 }
 
-func TestParseConfigsSignup(t *testing.T) {
+func TestParseConfigSignup(t *testing.T) {
 	dsn := []string{"-db-dsn", "postgres://x"}
-	cfg, err := NewApplication(io.Discard).ParseConfigs(dsn, noEnv)
+	cfg, err := parseConfig(dsn, noEnv, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.server.signup {
 		t.Error("signup defaults to true, want false")
 	}
-	cfg, err = NewApplication(io.Discard).ParseConfigs(append(dsn, "-signup"), noEnv)
+	cfg, err = parseConfig(append(dsn, "-signup"), noEnv, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func envFrom(vars map[string]string) func(string) string {
 	return func(key string) string { return vars[key] }
 }
 
-func TestParseConfigsEnv(t *testing.T) {
+func TestParseConfigEnv(t *testing.T) {
 	dsnEnv := "postgres://u:p@localhost/db"
 
 	tests := []struct {
@@ -161,15 +161,15 @@ func TestParseConfigsEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := NewApplication(io.Discard).ParseConfigs(tt.args, envFrom(tt.env))
+			cfg, err := parseConfig(tt.args, envFrom(tt.env), io.Discard)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("ParseConfigs() error = %v, want it to contain %q", err, tt.wantErr)
+					t.Fatalf("parseConfig() error = %v, want it to contain %q", err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("ParseConfigs() error = %v", err)
+				t.Fatalf("parseConfig() error = %v", err)
 			}
 			if tt.wantPort != 0 && cfg.server.port != tt.wantPort {
 				t.Errorf("server.port = %d, want %d", cfg.server.port, tt.wantPort)
@@ -181,11 +181,11 @@ func TestParseConfigsEnv(t *testing.T) {
 	}
 }
 
-func TestParseConfigsUsageNamesEnv(t *testing.T) {
+func TestParseConfigUsageNamesEnv(t *testing.T) {
 	var out bytes.Buffer
-	_, err := NewApplication(&out).ParseConfigs([]string{"-help"}, noEnv)
+	_, err := parseConfig([]string{"-help"}, noEnv, &out)
 	if !errors.Is(err, flag.ErrHelp) {
-		t.Fatalf("ParseConfigs(-help) error = %v, want flag.ErrHelp", err)
+		t.Fatalf("parseConfig(-help) error = %v, want flag.ErrHelp", err)
 	}
 	if !strings.Contains(out.String(), "RSS_DB_DSN") {
 		t.Errorf("-help output doesn't mention RSS_DB_DSN:\n%s", out.String())

@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -29,31 +26,16 @@ import (
 type Application struct {
 	config config
 	logger *slog.Logger
-	// out receives the logs and the -help output.
-	out io.Writer
 }
 
-func NewApplication(out io.Writer) *Application {
+func NewApplication(cfg config, logger *slog.Logger) *Application {
 	return &Application{
-		out: out,
+		config: cfg,
+		logger: logger,
 	}
 }
 
-func (app *Application) Run(args []string) error {
-	cfg, err := app.ParseConfigs(args, os.Getenv)
-	if err != nil {
-		return err
-	}
-	app.config = cfg
-
-	// Hosts capture stdout; JSON lets their log search filter by field.
-	if app.config.env == "production" {
-		app.logger = slog.New(slog.NewJSONHandler(app.out, nil))
-	} else {
-		app.logger = slog.New(slog.NewTextHandler(app.out, nil))
-	}
-	app.logger.Info("starting", "version", version, "env", app.config.env)
-
+func (app *Application) Run() error {
 	db, err := psql.OpenDB(app.config.db.dsn, app.config.db.maxOpenConns, app.config.db.maxIdleConns, app.config.db.maxIdleTime)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -158,63 +140,4 @@ func (app *Application) Run(args []string) error {
 	wg.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
-}
-
-// ParseConfigs reads the configuration from args and, for flags not on the
-// command line, from RSS_ environment variables looked up with getenv.
-func (app *Application) ParseConfigs(args []string, getenv func(string) string) (config, error) {
-	cfg := defaultConfig()
-
-	fs := flag.NewFlagSet("rss-www", flag.ContinueOnError)
-	fs.SetOutput(app.out)
-
-	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
-	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
-	fs.BoolVar(&cfg.server.signup, "signup", cfg.server.signup, "Allow new accounts to sign up")
-
-	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
-	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections")
-	fs.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", cfg.db.maxIdleConns, "PostgreSQL max idle connections")
-	fs.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", cfg.db.maxIdleTime, "PostgreSQL max idle time")
-
-	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
-	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
-
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
-		return config{}, err
-	}
-	if err := fs.Parse(args); err != nil {
-		return config{}, err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return config{}, err
-	}
-
-	return cfg, nil
-}
-
-// setFlagsFromEnv sets each flag in fs from its RSS_ environment variable, if
-// set and not empty, and appends "(env RSS_…)" to its usage. Call it before
-// fs.Parse so flags on the command line win.
-func setFlagsFromEnv(fs *flag.FlagSet, getenv func(string) string) error {
-	var err error
-	fs.VisitAll(func(f *flag.Flag) {
-		name := envName(f.Name)
-		f.Usage += " (env " + name + ")"
-		if err != nil {
-			return
-		}
-		if v := getenv(name); v != "" {
-			if setErr := f.Value.Set(v); setErr != nil {
-				err = fmt.Errorf("invalid value %q for %s: %w", v, name, setErr)
-			}
-		}
-	})
-	return err
-}
-
-// envName returns the environment variable for a flag: -db-dsn → RSS_DB_DSN.
-func envName(flagName string) string {
-	return "RSS_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
 }

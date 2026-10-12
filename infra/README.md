@@ -50,8 +50,7 @@ terraform -chdir=infra apply -var signup=true
 terraform -chdir=infra apply    # signup off again; /signup returns 404
 ```
 
-The shared invite code (Pre-alpha testing in [`docs/todo.md`](../docs/todo.md)) later
-replaces this.
+The shared invite code (#226) later replaces this.
 
 ## Measuring Render's proxy range
 

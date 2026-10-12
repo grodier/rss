@@ -9,11 +9,12 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 1. Deployment (planned in #218). Once these are done, the app runs in production, with
    signup open only to people with the invite code.
-   1. #214 (manual): first apply and go-live.
-   2. #215 deploy, reset and Terraform workflows, then #216 database backups to R2.
-   3. #226 shared invite code (after #215; any order with #216). Production isn't reset
+   1. #228 trust a fixed number of proxy hops, replacing the measured proxy range.
+   2. #214 (manual): first apply and go-live.
+   3. #215 deploy, reset and Terraform workflows, then #216 database backups to R2.
+   4. #226 shared invite code (after #215; any order with #216). Production isn't reset
       until it's live, since signing up again is the way back in.
-   4. #217 (manual): exercise deploys, rollback, resets and backups in production, and
+   5. #217 (manual): exercise deploys, rollback, resets and backups in production, and
       add the uptime check.
 2. #225 `www create-user` and `make db/seed`, for your local account after
    `make db/reset`. Independent of the deployment issues.

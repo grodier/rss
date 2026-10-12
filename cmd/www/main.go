@@ -10,8 +10,9 @@ import (
 var version = "dev"
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := NewApplication(logger).Run(os.Args[1:]); err != nil {
+	if err := NewApplication(os.Stdout).Run(os.Args[1:]); err != nil {
+		// Run's logger may not exist yet (e.g. the flags were invalid).
+		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 		logger.Error(err.Error())
 		os.Exit(1)
 	}

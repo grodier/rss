@@ -5,10 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -27,20 +29,30 @@ import (
 type Application struct {
 	config config
 	logger *slog.Logger
+	// out receives the logs and the -help output.
+	out io.Writer
 }
 
-func NewApplication(logger *slog.Logger) *Application {
+func NewApplication(out io.Writer) *Application {
 	return &Application{
-		logger: logger,
+		out: out,
 	}
 }
 
 func (app *Application) Run(args []string) error {
-	cfg, err := app.ParseConfigs(args)
+	cfg, err := app.ParseConfigs(args, os.Getenv)
 	if err != nil {
 		return err
 	}
 	app.config = cfg
+
+	// Hosts capture stdout; JSON lets their log search filter by field.
+	if app.config.env == "production" {
+		app.logger = slog.New(slog.NewJSONHandler(app.out, nil))
+	} else {
+		app.logger = slog.New(slog.NewTextHandler(app.out, nil))
+	}
+	app.logger.Info("starting", "version", version, "env", app.config.env)
 
 	db, err := psql.OpenDB(app.config.db.dsn, app.config.db.maxOpenConns, app.config.db.maxIdleConns, app.config.db.maxIdleTime)
 	if err != nil {
@@ -148,10 +160,13 @@ func (app *Application) Run(args []string) error {
 	return errors.Join(append([]error{err}, errs...)...)
 }
 
-func (app *Application) ParseConfigs(args []string) (config, error) {
+// ParseConfigs reads the configuration from args and, for flags not on the
+// command line, from RSS_ environment variables looked up with getenv.
+func (app *Application) ParseConfigs(args []string, getenv func(string) string) (config, error) {
 	cfg := defaultConfig()
 
 	fs := flag.NewFlagSet("rss-www", flag.ContinueOnError)
+	fs.SetOutput(app.out)
 
 	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
@@ -165,6 +180,9 @@ func (app *Application) ParseConfigs(args []string) (config, error) {
 	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
 	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
 
+	if err := setFlagsFromEnv(fs, getenv); err != nil {
+		return config{}, err
+	}
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
@@ -174,4 +192,29 @@ func (app *Application) ParseConfigs(args []string) (config, error) {
 	}
 
 	return cfg, nil
+}
+
+// setFlagsFromEnv sets each flag in fs from its RSS_ environment variable, if
+// set and not empty, and appends "(env RSS_…)" to its usage. Call it before
+// fs.Parse so flags on the command line win.
+func setFlagsFromEnv(fs *flag.FlagSet, getenv func(string) string) error {
+	var err error
+	fs.VisitAll(func(f *flag.Flag) {
+		name := envName(f.Name)
+		f.Usage += " (env " + name + ")"
+		if err != nil {
+			return
+		}
+		if v := getenv(name); v != "" {
+			if setErr := f.Value.Set(v); setErr != nil {
+				err = fmt.Errorf("invalid value %q for %s: %w", v, name, setErr)
+			}
+		}
+	})
+	return err
+}
+
+// envName returns the environment variable for a flag: -db-dsn → RSS_DB_DSN.
+func envName(flagName string) string {
+	return "RSS_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
 }

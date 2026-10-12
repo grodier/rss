@@ -1,4 +1,5 @@
 -include .env
+export
 
 .PHONY: help
 help:
@@ -11,7 +12,7 @@ confirm:
 
 .PHONY: run
 run:
-	go run ./cmd/www -db-dsn ${RSS_DB_DSN}
+	go run ./cmd/www
 
 .PHONY: build
 build:

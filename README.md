@@ -43,6 +43,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-port` | `RSS_PORT` | `8080` | Server port |
 | `-signup` | `RSS_SIGNUP` | `false` | Allow new accounts to sign up |
+| `-trusted-proxies` | `RSS_TRUSTED_PROXIES` | _(none)_ | Comma-separated CIDRs of reverse proxies whose `X-Forwarded-For` entries are trusted for the client IP (e.g. `10.0.0.0/8,fd00::/8`) |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `25` | PostgreSQL max open connections |
 | `-db-max-idle-conns` | `RSS_DB_MAX_IDLE_CONNS` | `25` | PostgreSQL max idle connections |

@@ -166,8 +166,6 @@ Planned in #187 (issues #182–#186).
   hashing" in the Performance watchlist).
 - **Signup is off unless `-signup` is set.** Accounts are made by starting the app with it
   briefly, until the shared invite code (a todo item) replaces the flag.
-- **`clientIP` reads only `RemoteAddr`** until #212 reads `X-Forwarded-For` from trusted
-  proxies (see Deployment).
 
 ## Deployment
 

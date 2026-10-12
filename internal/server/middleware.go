@@ -45,7 +45,7 @@ func (s *Server) logRequest(next http.Handler) http.Handler {
 			status = http.StatusOK // nothing was written: net/http sends 200
 		}
 		s.logger.Info("request",
-			"ip", clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
+			"ip", s.clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
 			"status", status, "size", ww.BytesWritten(), "duration", time.Since(start))
 	})
 }

@@ -30,7 +30,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retryAfter := s.signupLimiter.AllowWithRetry(ipRateLimitKey(clientIP(r))); !ok {
+	if ok, retryAfter := s.signupLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
 		data := struct {
@@ -106,7 +106,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(clientIP(r))); !ok {
+	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
 		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")

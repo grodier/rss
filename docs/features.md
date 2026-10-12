@@ -24,7 +24,7 @@ handlers read it with `s.authenticatedUserID(r)`.
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
 2. `internal/server/user.go`: `signupFormHandler`, `loginFormHandler`, `logoutHandler`.
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
-   (`clientIP`, `ipRateLimitKey`).
+   (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
    `Authenticate` (`dummyHash` for unknown emails).
 5. `internal/password/password.go`: `Hash`, `Verify`, the `slots` cap.

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -20,6 +21,9 @@ type config struct {
 type serverConfig struct {
 	port   int
 	signup bool
+	// trustedProxies are the reverse proxies whose X-Forwarded-For entries
+	// are believed; empty trusts nobody.
+	trustedProxies []netip.Prefix
 }
 
 type lookupConfig struct {
@@ -91,6 +95,15 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
 	fs.BoolVar(&cfg.server.signup, "signup", cfg.server.signup, "Allow new accounts to sign up")
 
+	fs.Func("trusted-proxies", "Comma-separated CIDRs of reverse proxies whose X-Forwarded-For entries are trusted (default: none)", func(v string) error {
+		prefixes, err := parseTrustedProxies(v)
+		if err != nil {
+			return err
+		}
+		cfg.server.trustedProxies = prefixes
+		return nil
+	})
+
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
 	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections")
 	fs.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", cfg.db.maxIdleConns, "PostgreSQL max idle connections")
@@ -139,4 +152,21 @@ func setFlagsFromEnv(fs *flag.FlagSet, getenv func(string) string) error {
 // envName returns the environment variable for a flag: -db-dsn → RSS_DB_DSN.
 func envName(flagName string) string {
 	return "RSS_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
+}
+
+// parseTrustedProxies parses a comma-separated list of CIDRs.
+func parseTrustedProxies(v string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for _, entry := range strings.Split(v, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy %q: must be a CIDR such as 10.0.0.0/8", entry)
+		}
+		prefixes = append(prefixes, p.Masked())
+	}
+	return prefixes, nil
 }

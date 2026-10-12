@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -192,6 +193,38 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 
 	if rr := postForm(t, h, "/login", "192.0.2.2:1234", form); rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("other IP: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestLoginLimitPerForwardedClient(t *testing.T) {
+	s := newTestServerConfig(t,
+		Config{Port: 4000, Env: "development", TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}},
+		Services{UserService: &fakeUserStore{
+			authenticateFn: func(ctx context.Context, email, password string) (string, error) {
+				return "", rss.ErrInvalidCredentials
+			},
+		}})
+	h := s.router()
+
+	post := func(xff string, i int) *httptest.ResponseRecorder {
+		form := url.Values{"email": {fmt.Sprintf("user%d@example.com", i)}, "password": {"wrong-password"}}
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Forwarded-For", xff)
+		req.RemoteAddr = "10.0.0.1:1234"
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	for i := 1; i <= 20; i++ {
+		post("1.2.3.4", i)
+	}
+	if rr := post("1.2.3.4", 21); rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("1.2.3.4: status = %d, want %d", rr.Code, http.StatusTooManyRequests)
+	}
+	if rr := post("1.2.3.5", 22); rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("1.2.3.5: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 	}
 }
 

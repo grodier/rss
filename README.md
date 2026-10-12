@@ -85,4 +85,5 @@ Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make t
 - [`docs/features.md`](docs/features.md): how each feature works and which code to read, in order.
 - [`docs/decisions.md`](docs/decisions.md): decisions made while planning, and why.
 - [`docs/todo.md`](docs/todo.md): what's next, planned work that has no issue yet, and the performance watchlist.
+- [`infra/README.md`](infra/README.md): production infrastructure on Render (Terraform) and how to run it.
 - [`CLAUDE.md`](CLAUDE.md): code, testing and PR conventions (for people and coding agents), and which docs to update when.

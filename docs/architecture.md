@@ -301,3 +301,17 @@ CI's `image` job (`.github/workflows/ci.yml`, after `test`) builds the image for
 also pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss:main`, attests the
 pushed digest with `actions/attest-build-provenance`, and exposes the digest as the job
 output `digest`. PRs never push.
+
+**Infrastructure** (`infra/`, one Terraform root module; [`infra/README.md`](../infra/README.md)
+is the runbook). The `render-oss/render` provider creates `render_postgres.rss_db`
+(Postgres 17, `basic_256mb`, Virginia, an empty IP allow list so only Render's private
+network connects, `prevent_destroy`) and `render_web_service.rss` (Starter, Virginia,
+image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy command
+`/www migrate`, 30-second maximum shutdown delay). The service's environment sets
+`RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
+`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_TRUSTED_PROXIES`
+(variable `trusted_proxies`, left out while empty) and `RSS_PORT`/`PORT=8080`.
+`ignore_changes` leaves the image (set by deploys) and `RSS_ALLOW_RESET_TO` (set by the
+reset workflow) alone. State is in the R2 bucket `rss-tfstate` (S3 backend,
+`use_lockfile`); credentials come only from the environment. CI's `terraform` job runs
+`fmt -check`, `init -backend=false` and `validate`.

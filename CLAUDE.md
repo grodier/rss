@@ -26,9 +26,10 @@ go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up);
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/migrations/new name=<name>       # new migration (only once in production)
 docker build -t rss .                    # build the container image (or: make docker/build)
+terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, then its `image` job builds the container image (and, on `main`, pushes it to GHCR).
+Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR).
 
 ## Layout
 
@@ -46,6 +47,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
+- `infra`: Terraform for production (Render); its README is the runbook
 - `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`
 - `docs`: architecture, feature walkthroughs, decisions and todo (see "Docs")
 

@@ -237,10 +237,15 @@ Planned in #218; issues #208–#217.
   LOCKED`) and in-memory rate limits reset. Rollback redeploys an earlier image and
   doesn't undo migrations. No blue-green slots or canaries on Render; Fly or ECS offer
   them if we move.
-- **Client IP:** `X-Forwarded-For`, taking the rightmost address that isn't in
-  `-trusted-proxies`, which defaults to trusting nobody. Render's proxy keeps whatever
-  `X-Forwarded-For` the client sent and appends to it, so the leftmost entry can be
-  forged. Render's proxy address range is measured after the first deploy, not guessed.
+- **Client IP:** `X-Forwarded-For`, taking the entry `-proxy-hops` places from the right;
+  the default 0 ignores the header. Render's proxy keeps whatever `X-Forwarded-For` the
+  client sent and appends to it, so the leftmost entry can be forged. Production sets 1:
+  Render's proxy is the only way to reach the service, so the app doesn't need to know its
+  address. This replaces trusting a measured proxy range (#212): Render doesn't publish
+  that range and can change it without notice, and a stale range silently made every
+  visitor share one login limit. If the host adds a hop, the picked address is private,
+  and the app logs a warning rather than failing silently. Host-specific headers
+  (`CF-Connecting-IP`) aren't used: they'd be a host-specific code path. (#228)
 - **Backups:** Render's point-in-time recovery (3 days on the Hobby workspace) plus a
   nightly `pg_dump` to R2 from a Render cron job, kept 35 days. The R2 copy is at a
   different provider from the database, and restoring it is also how the database moves

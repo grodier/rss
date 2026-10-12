@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -29,19 +28,14 @@ type Application struct {
 	logger *slog.Logger
 }
 
-func NewApplication(logger *slog.Logger) *Application {
+func NewApplication(cfg config, logger *slog.Logger) *Application {
 	return &Application{
+		config: cfg,
 		logger: logger,
 	}
 }
 
-func (app *Application) Run(args []string) error {
-	cfg, err := app.ParseConfigs(args)
-	if err != nil {
-		return err
-	}
-	app.config = cfg
-
+func (app *Application) Run() error {
 	db, err := psql.OpenDB(app.config.db.dsn, app.config.db.maxOpenConns, app.config.db.maxIdleConns, app.config.db.maxIdleTime)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -146,32 +140,4 @@ func (app *Application) Run(args []string) error {
 	wg.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
-}
-
-func (app *Application) ParseConfigs(args []string) (config, error) {
-	cfg := defaultConfig()
-
-	fs := flag.NewFlagSet("rss-www", flag.ContinueOnError)
-
-	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
-	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
-	fs.BoolVar(&cfg.server.signup, "signup", cfg.server.signup, "Allow new accounts to sign up")
-
-	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
-	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections")
-	fs.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", cfg.db.maxIdleConns, "PostgreSQL max idle connections")
-	fs.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", cfg.db.maxIdleTime, "PostgreSQL max idle time")
-
-	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
-	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
-
-	if err := fs.Parse(args); err != nil {
-		return config{}, err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return config{}, err
-	}
-
-	return cfg, nil
 }

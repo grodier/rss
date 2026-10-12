@@ -7,12 +7,11 @@ import (
 )
 
 func TestRunReturnsErrorWhenDBUnreachable(t *testing.T) {
-	app := NewApplication(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	cfg := defaultConfig()
+	cfg.db.dsn = "postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1"
+	app := NewApplication(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	err := app.Run([]string{
-		"-db-dsn", "postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1",
-	})
-	if err == nil {
+	if err := app.Run(); err == nil {
 		t.Fatal("expected an error when the database is unreachable, got nil")
 	}
 }

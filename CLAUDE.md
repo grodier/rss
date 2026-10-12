@@ -12,7 +12,7 @@ The app is pre-alpha and not in production: there are no users or data to preser
 
 ## Commands
 
-`make` targets need a `.env` file (`include .env`) defining `RSS_DB_DSN`.
+`make` targets need a `.env` file (`include .env`, exported) defining `RSS_DB_DSN`. Every `cmd/www` flag can also be set by an `RSS_` environment variable (`-db-dsn` → `RSS_DB_DSN`); a flag on the command line wins.
 
 ```sh
 gofmt -l .                       # must print nothing
@@ -21,7 +21,7 @@ go vet ./...
 go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/db                     # all tests against the local DB (make db/start + migrations first)
-go run ./cmd/www -db-dsn "$RSS_DB_DSN"   # run the app (or: make run)
+go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 goose -dir ./migrations postgres "$RSS_DB_DSN" up
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/migrations/new name=<name>       # new migration (only once in production)

@@ -47,8 +47,11 @@ run three long-lived components, all stopped by one context:
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
-`cmd/www/application.go` (`Application.Run`) wires everything: it parses the flags,
-opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
+`cmd/www/main.go` parses the configuration (`parseConfig` in `config.go`: each flag,
+or else its `RSS_` environment variable via `setFlagsFromEnv`, or else its default;
+errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
+production, text otherwise), which also reports the error `Run` returns.
+`cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
 Refresh button and the background workers), the repositories, the scs session manager
 (sessions in Postgres, 12-hour lifetime) and the server, then starts the runners next to
 `Server.Serve`. On SIGINT or SIGTERM, or when any component fails, the context is
@@ -264,7 +267,7 @@ where real HTTP matters (`fetch`, `discovery`, `ingest`).
 ## Deployment
 
 Not deployed yet. The plan (Render, Terraform, a container image, configuration from
-environment variables, a `migrate` command) is under "Deployment" in
+`RSS_*` environment variables (done, see "The process"), a `migrate` command) is under "Deployment" in
 [decisions.md](decisions.md), and the work is #208–#217. Update this section as those
 land.
 

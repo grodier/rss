@@ -118,7 +118,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 
 | Route | Login | Handler | What it does |
 | --- | --- | --- | --- |
-| `GET /healthcheck` | no | `healthcheckHandler` | JSON status, for health checks |
+| `GET /healthcheck` | no | `healthcheckHandler` | JSON status, environment and build version, for health checks |
 | `GET /static/*` | no | file server | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
 | `GET /` | no | `homeHandler` | Landing page; the timeline when logged in |
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-signup` |
@@ -267,3 +267,17 @@ Not deployed yet. The plan (Render, Terraform, a container image, configuration 
 environment variables, a `migrate` command) is under "Deployment" in
 [decisions.md](decisions.md), and the work is #208–#217. Update this section as those
 land.
+
+**Container image.** The `Dockerfile` builds `www` in a `golang` stage (the version in
+`go.mod`) as a static binary (`CGO_ENABLED=0`) and copies it into
+`gcr.io/distroless/static-debian12:nonroot`, which has the CA certificates feed fetching
+needs and runs as a non-root user. The build takes no secrets; `.dockerignore` keeps
+`.env`, `.git` and `docs` out of the context. `-ldflags "-X main.version=..."` sets
+`version` in `cmd/www`, which reaches `server.Config.Version` and is reported by
+`/healthcheck` as `system_info.version` (`dev` for a plain `go build`).
+
+CI's `image` job (`.github/workflows/ci.yml`, after `test`) builds the image for
+`linux/amd64` on every event, with the commit SHA as the version. On pushes to `main` it
+also pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss:main`, attests the
+pushed digest with `actions/attest-build-provenance`, and exposes the digest as the job
+output `digest`. PRs never push.

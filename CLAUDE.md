@@ -25,9 +25,10 @@ go run ./cmd/www -db-dsn "$RSS_DB_DSN"   # run the app (or: make run)
 goose -dir ./migrations postgres "$RSS_DB_DSN" up
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/migrations/new name=<name>       # new migration (only once in production)
+docker build -t rss .                    # build the container image (or: make docker/build)
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres.
+Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, then its `image` job builds the container image (and, on `main`, pushes it to GHCR).
 
 ## Layout
 

@@ -7,6 +7,7 @@ func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 		"status": "available",
 		"system_info": map[string]any{
 			"environment": s.config.Env,
+			"version":     s.config.Version,
 		},
 	}
 

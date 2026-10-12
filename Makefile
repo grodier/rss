@@ -27,6 +27,11 @@ test:
 test/db: db/check
 	RSS_TEST_DB_DSN=${RSS_DB_DSN} go test -count=1 ./...
 
+## docker/build: build the container image, tagged rss, with the current commit as its version
+.PHONY: docker/build
+docker/build:
+	docker build --build-arg VERSION=$$(git rev-parse HEAD) -t rss .
+
 .PHONY: clean
 clean:
 	rm -rf bin

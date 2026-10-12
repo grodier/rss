@@ -8,7 +8,7 @@ A server-rendered RSS reader written in Go, using [chi](https://github.com/go-ch
 
 - Go (version in `go.mod`)
 - Docker and Docker Compose
-- [goose](https://github.com/pressly/goose): `go install github.com/pressly/goose/v3/cmd/goose@latest`
+- [goose](https://github.com/pressly/goose), only for `make db/migrations/new` and `make db/migrations/down`: `go install github.com/pressly/goose/v3/cmd/goose@latest`. The app applies migrations itself (`www migrate`).
 - Optional: `psql` (for `make db/psql`)
 
 ## Configuration
@@ -32,7 +32,7 @@ make db/migrations/up    # apply migrations (asks for confirmation)
 make run                 # http://localhost:8080
 ```
 
-Instead of `make db/migrations/up` you can run `goose -dir ./migrations postgres "$RSS_DB_DSN" up`.
+Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 
 ## Command-line flags and environment variables
 
@@ -51,6 +51,19 @@ Instead of `make db/migrations/up` you can run `goose -dir ./migrations postgres
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
 
 Signup is off by default. To create an account, run once with `-signup`, sign up, then restart without it.
+
+### `www migrate`
+
+`www migrate [flags]` applies the migrations embedded in the binary and exits; hosts run it before new code goes live. While pre-alpha, it refuses to run if `migrations/*.sql` have changed since the database was migrated, instead of wiping it: locally, rebuild the database with `make db/reset`. It takes its own flags, also settable by environment variables:
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
+| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
+| `-allow-reset-to` | `RSS_ALLOW_RESET_TO` | _(empty)_ | If the migrations have changed, wipe the database and migrate from scratch, but only if this is the new migrations' fingerprint |
+| `-print-fingerprint` | `RSS_PRINT_FINGERPRINT` | `false` | Print the migrations' fingerprint and exit, without opening the database |
+
+To wipe and rebuild a database other than the local one: `go run ./cmd/www migrate -allow-reset-to "$(go run ./cmd/www migrate -print-fingerprint)"`.
 
 ## Make targets
 

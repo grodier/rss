@@ -58,7 +58,7 @@ jobs:
         run: go tool staticcheck ./...
 
       - name: migrate
-        run: go run github.com/pressly/goose/v3/cmd/goose@v3.28.0 -dir ./migrations postgres "$RSS_TEST_DB_DSN" up
+        run: go run ./cmd/www migrate -db-dsn "$RSS_TEST_DB_DSN"
 
       - name: test
         run: go test -race -count=1 ./...

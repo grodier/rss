@@ -202,6 +202,10 @@ Planned in #218; issues #208–#217.
   fingerprint: locally `make db/reset`, in production the "Reset production database"
   workflow (typed confirmation), which sets `RSS_ALLOW_RESET_TO` and redeploys. A
   one-off Render job can't do it, since it runs the old image.
+  - The fingerprint is stored in a `schema_fingerprint` table that `migrate` creates
+    itself, not in `00001_init.sql`: it belongs to the migration mechanism, not the app,
+    and goes away with the pre-alpha rule. A database with no stored fingerprint (one
+    migrated by the goose CLI) is refused like a changed one, with no special case (#211).
 - **Images are public on GHCR**, like the source. A private image would need a long-lived
   GitHub token stored at Render. Deploys reference images by digest, and CI attests build
   provenance. No secrets at build time.

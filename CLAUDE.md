@@ -22,7 +22,7 @@ go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
-goose -dir ./migrations postgres "$RSS_DB_DSN" up
+go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/migrations/new name=<name>       # new migration (only once in production)
 docker build -t rss .                    # build the container image (or: make docker/build)
@@ -46,7 +46,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/password`: Argon2id password hashing and verification
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
-- `migrations`: goose SQL migrations
+- `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`
 - `docs`: architecture, feature walkthroughs, decisions and todo (see "Docs")
 
 ## Docs
@@ -74,7 +74,7 @@ Each file has one role: `CLAUDE.md` holds the rules (what to do), `docs/decision
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm`, validated with `CheckField`, re-rendered with **422** when invalid.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders. Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`). Handlers check them with `errors.Is`.
-- Schema changes: while pre-alpha (see "Prototype stage"), edit `migrations/00001_init.sql` directly instead of adding a migration, and rebuild your local database with `make db/reset` afterwards (CI starts from an empty database). Once we're in production, schema changes only go through a **new** goose migration, and migrations already on `main` are never edited.
+- Schema changes: while pre-alpha (see "Prototype stage"), edit `migrations/00001_init.sql` directly instead of adding a migration, and rebuild your local database with `make db/reset` afterwards (CI starts from an empty database). `www migrate` refuses to run on a database migrated from different `migrations/*.sql`, so it never wipes data by accident; `make db/reset` is how to get past that locally. Once we're in production, schema changes only go through a **new** goose migration, and migrations already on `main` are never edited.
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page. Logged-in pages use the `.shell` layout with `{{template "app-nav" "<section>"}}` (`home`, `feeds`, `search`, or `""`); logged-out and error pages use `.solo`. Icons are inline SVG partials in `icons.html`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`). Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later. No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals. Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.

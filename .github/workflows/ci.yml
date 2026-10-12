@@ -63,6 +63,27 @@ jobs:
       - name: test
         run: go test -race -count=1 ./...
 
+  # Checks infra/ without credentials or state: -backend=false skips the R2 backend.
+  terraform:
+    name: terraform # a required status check; don't rename casually
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "^1.10" # required_version in infra/versions.tf
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra
+
+      - name: terraform init
+        run: terraform -chdir=infra init -backend=false
+
+      - name: terraform validate
+        run: terraform -chdir=infra validate
+
   # Builds the container image on every event; pushes it to GHCR and attests its
   # provenance only for pushes to main. Deploys reference the digest, never a tag.
   image:

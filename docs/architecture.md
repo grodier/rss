@@ -47,7 +47,8 @@ run three long-lived components, all stopped by one context:
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
-`cmd/www/main.go` parses the configuration (`parseConfig` in `config.go`: each flag,
+`cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate` (below). Otherwise it
+parses the configuration (`parseConfig` in `config.go`: each flag,
 or else its `RSS_` environment variable via `setFlagsFromEnv`, or else its default;
 errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
 production, text otherwise), which also reports the error `Run` returns.
@@ -58,13 +59,22 @@ Refresh button and the background workers), the repositories, the scs session ma
 canceled: the server drains requests for up to 30 seconds, the workers stop, and only
 then is the database closed. Only `cmd/www` handles signals.
 
+`www migrate` (`runMigrate` in `cmd/www/migrate.go`, with its own flags) applies the
+migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits. It
+runs before new code goes live, never at startup. While pre-alpha, `Migrate` compares
+`psql.Fingerprint` (a SHA-256 of the names and contents of `migrations/*.sql`) with the
+one stored in `schema_fingerprint` when it last ran: if migrations were applied from
+different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in which
+case it drops and recreates the current schema first. Then it runs goose's `Up` and
+stores the new fingerprint.
+
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate` command | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `migrations` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors | `rss`, `password` |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
@@ -76,6 +86,7 @@ then is the database closed. Only `cmd/www` handles signals.
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded templates and static files | — |
 | `internal/validator` | Form validation helpers | — |
+| `migrations` | The goose SQL migrations, embedded (`FS`) | — |
 
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct
@@ -92,6 +103,7 @@ adding another):
 | `go-chi/chi` | Router: route groups, URL parameters, `GetHead` |
 | `alexedwards/scs` (+ `postgresstore`) | Sessions, stored in the `sessions` table |
 | `lib/pq` | Postgres driver; `pq.Error` codes are mapped to `rss` errors |
+| `pressly/goose` | Applying the migrations (`psql.Migrate`); its CLI only creates and rolls back migrations |
 | `go-playground/form` | Decoding POST forms into structs |
 | `mmcdole/gofeed` | Parsing RSS, Atom and JSON Feed (`internal/feedparse`) |
 | `microcosm-cc/bluemonday` | The HTML allowlist in `internal/sanitize` |
@@ -183,6 +195,10 @@ clears `lookups.site_id`; deleting a user cascades to their subscriptions and re
 Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
 subscription row, and scs deletes expired sessions.
 
+Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
+`schema_fingerprint` (one row: the fingerprint of the migrations last applied), which
+`psql.Migrate` creates for the pre-alpha check (see "The process").
+
 ## Background work
 
 Both runners follow the same pattern: N worker goroutines (`-lookup-workers`,
@@ -267,7 +283,7 @@ where real HTTP matters (`fetch`, `discovery`, `ingest`).
 ## Deployment
 
 Not deployed yet. The plan (Render, Terraform, a container image, configuration from
-`RSS_*` environment variables (done, see "The process"), a `migrate` command) is under "Deployment" in
+`RSS_*` environment variables and a `migrate` command (both done, see "The process")) is under "Deployment" in
 [decisions.md](decisions.md), and the work is #208–#217. Update this section as those
 land.
 

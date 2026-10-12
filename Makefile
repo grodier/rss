@@ -59,7 +59,7 @@ db/reset: confirm
 	@echo "Waiting for database to be ready..."
 	@until docker compose exec postgres pg_isready -U rssapp > /dev/null 2>&1; do sleep 0.5; done
 	@echo "Running up migrations..."
-	goose -dir ./migrations postgres ${RSS_DB_DSN} up
+	go run ./cmd/www migrate
 
 .PHONY: db/check
 db/check:
@@ -80,7 +80,7 @@ db/migrations/new:
 .PHONY: db/migrations/up
 db/migrations/up: db/check confirm
 	@echo "Running up migrations..."
-	goose -dir ./migrations postgres ${RSS_DB_DSN} up
+	go run ./cmd/www migrate
 
 ## db/migrations/down: apply all down database migrations
 .PHONY: db/migrations/down

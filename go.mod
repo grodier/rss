@@ -15,7 +15,7 @@ require (
 	github.com/mmcdole/gofeed v1.5.0
 	github.com/pressly/goose/v3 v3.28.0
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.60.0
+	golang.org/x/net v0.61.0
 )
 
 require (

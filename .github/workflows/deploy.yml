@@ -1,0 +1,172 @@
+name: Deploy
+
+# Deploys the image CI built for a commit to the Render service, by digest.
+# CI calls it for every push to main; run it by hand with an earlier commit's
+# SHA to roll back (that doesn't undo migrations). See "Deploys" in
+# infra/README.md.
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Full SHA of the commit whose image to deploy
+        required: true
+        type: string
+    secrets:
+      RENDER_API_KEY:
+        required: true
+      RENDER_SERVICE_ID:
+        required: true
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full SHA of the commit whose image to deploy (a main commit CI pushed an image for)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    # One deploy at a time, never cancelled midway.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      SHA: ${{ inputs.sha }}
+      IMAGE: ghcr.io/grodier/rss
+      RENDER_API: https://api.render.com/v1
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+    steps:
+      - name: check the SHA
+        run: |
+          if ! [[ $SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a full 40-character commit SHA, got '$SHA'"
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+
+      # The tag only says which image; the deploy names the digest, so it runs
+      # exactly the image CI built and tested.
+      - name: resolve the digest
+        id: digest
+        run: |
+          if ! digest=$(docker buildx imagetools inspect "$IMAGE:sha-$SHA" --format '{{.Manifest.Digest}}'); then
+            echo "::error::No image $IMAGE:sha-$SHA. CI pushes one for every commit on main that passes its tests."
+            exit 1
+          fi
+          echo "$IMAGE:sha-$SHA is $digest"
+          echo "ref=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+
+      # Render would queue ours behind a deploy that's already running (one
+      # from the dashboard, or one an environment variable change started), and
+      # then not return its ID. Let it finish first.
+      - name: wait for running deploys
+        run: |
+          for _ in $(seq 60); do
+            running=$(curl -sS --fail-with-body --retry 3 \
+              -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+              "$RENDER_API/services/$RENDER_SERVICE_ID/deploys?limit=20" |
+              jq '[.[].deploy | select(.status | IN("created", "queued", "build_in_progress", "update_in_progress", "pre_deploy_in_progress"))] | length')
+            if [ "$running" = 0 ]; then
+              exit 0
+            fi
+            echo "Waiting for $running running deploy(s) to finish"
+            sleep 10
+          done
+          echo "::error::Another deploy is still running after 10 minutes."
+          exit 1
+
+      - name: deploy
+        id: deploy
+        env:
+          REF: ${{ steps.digest.outputs.ref }}
+        run: |
+          since=$(date -u -d '-1 min' +%Y-%m-%dT%H:%M:%SZ)
+          code=$(jq -n --arg ref "$REF" '{imageUrl: $ref}' |
+            curl -sS -o "$RUNNER_TEMP/deploy.json" -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' --data @- \
+              "$RENDER_API/services/$RENDER_SERVICE_ID/deploys")
+          case $code in
+            201)
+              id=$(jq -r .id "$RUNNER_TEMP/deploy.json")
+              ;;
+            202)
+              # Queued behind a deploy that started meanwhile: find ours.
+              id=
+              for _ in $(seq 12); do
+                sleep 10
+                id=$(curl -sS --fail-with-body --retry 3 \
+                  -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+                  "$RENDER_API/services/$RENDER_SERVICE_ID/deploys?limit=20&createdAfter=$since" |
+                  jq -r --arg ref "$REF" --arg digest "${REF#*@}" \
+                    'first(.[].deploy | select(.image.ref == $ref or .image.sha == $digest) | .id) // empty')
+                if [ -n "$id" ]; then
+                  break
+                fi
+              done
+              if [ -z "$id" ]; then
+                echo "::error::Render queued the deploy but it didn't appear in the deploy list. Check the service's Events in Render's dashboard."
+                exit 1
+              fi
+              ;;
+            *)
+              cat "$RUNNER_TEMP/deploy.json"
+              echo "::error::Render refused the deploy (HTTP $code)."
+              exit 1
+              ;;
+          esac
+          echo "Deploy $id: $REF"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: wait until live
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.id }}
+        run: |
+          while :; do
+            status=$(curl -sS --fail-with-body --retry 3 \
+              -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+              "$RENDER_API/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" | jq -r .status)
+            case $status in
+              live)
+                echo "Deploy is live"
+                exit 0
+                ;;
+              pre_deploy_failed)
+                echo "::error::The pre-deploy command (www migrate) failed, so the old version keeps serving; its output is in the deploy's logs in Render's dashboard. If migrate refused because the migrations changed, run the Reset production database workflow."
+                exit 1
+                ;;
+              build_failed | update_failed | canceled | deactivated)
+                echo "::error::The deploy ended with status $status; the old version keeps serving."
+                exit 1
+                ;;
+            esac
+            echo "Status: $status"
+            sleep 10
+          done
+
+      - name: confirm the version
+        env:
+          REF: ${{ steps.digest.outputs.ref }}
+        run: |
+          url=$(curl -sS --fail-with-body --retry 3 \
+            -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+            "$RENDER_API/services/$RENDER_SERVICE_ID" | jq -r .serviceDetails.url)
+          for _ in $(seq 12); do
+            version=$(curl -sS --fail "$url/healthcheck" | jq -r .system_info.version) || version=
+            if [ "$version" = "$SHA" ]; then
+              echo "$url serves $SHA"
+              echo "Deployed \`$SHA\` (\`$REF\`) to $url." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "$url/healthcheck reports version '${version}', waiting for $SHA"
+            sleep 5
+          done
+          echo "::error::The deploy is live, but $url/healthcheck doesn't report version $SHA."
+          exit 1

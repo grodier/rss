@@ -51,7 +51,7 @@ resource "render_web_service" "rss" {
       # Deploys (the deploy workflow) set the image by digest; apply must
       # never roll them back.
       runtime_source.image,
-      # Set and cleared by the "Reset production database" workflow.
+      # Set by the "Reset production database" workflow.
       env_vars["RSS_ALLOW_RESET_TO"],
     ]
   }

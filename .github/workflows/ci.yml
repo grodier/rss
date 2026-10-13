@@ -130,3 +130,14 @@ jobs:
           subject-name: ghcr.io/grodier/rss
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  # Every push to main that passes CI deploys; merging the PR is the approval.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: image
+    uses: ./.github/workflows/deploy.yml
+    with:
+      sha: ${{ github.sha }}
+    secrets:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}

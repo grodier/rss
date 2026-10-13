@@ -1,0 +1,85 @@
+name: Reset production database
+
+# Wipes the production database and rebuilds it from a commit's migrations,
+# then deploys that commit. While pre-alpha, this is how a schema change
+# reaches production: migrate refuses to wipe the database unless
+# RSS_ALLOW_RESET_TO is the new migrations' fingerprint. See "Resetting the
+# database" in infra/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full SHA of the commit to deploy (a main commit CI pushed an image for)
+        required: true
+        type: string
+      confirm:
+        description: Type "wipe production" to delete every account and all data
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  allow-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: check the inputs
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "wipe production" ]; then
+            echo '::error::confirm must be exactly "wipe production".'
+            exit 1
+          fi
+          if ! [[ $SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a full 40-character commit SHA, got '$SHA'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Adds or updates only this key. If Render starts a deploy for the change,
+      # it runs the old image, whose migrate sees no change; the deploy job
+      # waits for it to finish. The variable stays set afterwards: it only
+      # allows a reset to the schema that has just been reached.
+      - name: allow a reset to these migrations
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          fp=$(go run ./cmd/www migrate -print-fingerprint)
+          jq -n --arg value "$fp" '{value: $value}' |
+            curl -sS --fail-with-body -o /dev/null -X PUT \
+              -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' --data @- \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/RSS_ALLOW_RESET_TO"
+          echo "Set RSS_ALLOW_RESET_TO=$fp"
+
+  deploy:
+    needs: allow-reset
+    uses: ./.github/workflows/deploy.yml
+    with:
+      sha: ${{ inputs.sha }}
+    secrets:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+
+  summary:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: job summary
+        run: |
+          echo 'The database is empty: every account is gone. To get back in, see "Resetting the database" in infra/README.md.' >> "$GITHUB_STEP_SUMMARY"

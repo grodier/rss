@@ -285,10 +285,9 @@ where real HTTP matters (`fetch`, `discovery`, `ingest`).
 
 ## Deployment
 
-Not deployed yet. The plan (Render, Terraform, a container image, configuration from
-`RSS_*` environment variables and a `migrate` command (both done, see "The process")) is under "Deployment" in
-[decisions.md](decisions.md), and the work is #208–#217. Update this section as those
-land.
+Production runs on Render since #214. Why this setup is under "Deployment" in
+[decisions.md](decisions.md); the remaining work is in "Next up" in [todo.md](todo.md).
+Update this section as it lands.
 
 **Container image.** The `Dockerfile` builds `www` in a `golang` stage (the version in
 `go.mod`) as a static binary (`CGO_ENABLED=0`) and copies it into
@@ -317,3 +316,29 @@ image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy comman
 reset workflow) alone. State is in the R2 bucket `rss-tfstate` (S3 backend,
 `use_lockfile`); credentials come only from the environment. CI's `terraform` job runs
 `fmt -check`, `init -backend=false` and `validate`.
+
+**Workflows** (`.github/workflows`; how to use them is under "Deploys" in
+[`infra/README.md`](../infra/README.md)). All Render, R2 and Cloudflare values are
+repository secrets. Every job that reads them runs only on `main`, by hand (restricted to
+`main` by its environment) or on a pull request from a branch in this repository; none
+uses `pull_request_target`.
+
+- `deploy.yml` (`workflow_call` from CI's `deploy` job on pushes to `main`, after
+  `image`, and `workflow_dispatch` for rollbacks; input `sha`; environment `production`;
+  concurrency group `deploy`): resolves `ghcr.io/grodier/rss:sha-<sha>` to its digest
+  with `docker buildx imagetools inspect`, waits for running deploys, `POST
+  /v1/services/{id}/deploys` with `imageUrl` = `ghcr.io/grodier/rss@<digest>`, polls
+  the deploy until `live` (fails on `pre_deploy_failed`, `build_failed`,
+  `update_failed`, `canceled` or `deactivated`), then checks that the service's
+  `/healthcheck` reports `<sha>`.
+- `reset-db.yml` ("Reset production database", `workflow_dispatch` with `sha` and
+  `confirm` = `wipe production`; environment `production`): runs `www migrate
+  -print-fingerprint` at `sha`, sets `RSS_ALLOW_RESET_TO` to it with `PUT
+  /v1/services/{id}/env-vars/RSS_ALLOW_RESET_TO`, then calls `deploy.yml`.
+- `infra.yml` (pull requests and pushes to `main` touching `infra/**`; concurrency group
+  `terraform`): `plan -no-color` into the job summary on pull requests (not from forks
+  or Dependabot), `apply -auto-approve` on `main` in the `infrastructure` environment,
+  which waits for the owner's approval.
+
+Dependabot (`.github/dependabot.yml`) proposes weekly updates for Go modules, GitHub
+Actions, the `Dockerfile`'s base images and the Terraform providers.

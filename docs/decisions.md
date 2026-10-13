@@ -262,3 +262,11 @@ Planned in #218; issues #208–#217.
   is the approval. Infrastructure changes (`terraform apply`) wait for the owner's
   approval in the `infrastructure` GitHub environment, since some Terraform changes
   replace or destroy resources. The database also has `prevent_destroy`.
+- **Workflow secrets.** Every value the workflows read is a repository secret, the IDs
+  (`RENDER_SERVICE_ID`, `CLOUDFLARE_ACCOUNT_ID`) included, rather than the repository
+  variables #208 planned for them, so they are masked in logs too. Jobs with secrets run
+  only on `main` or on pull requests from branches in this repository, never with
+  `pull_request_target`. Dependabot's pull requests get no Terraform plan, since they
+  can't read Actions secrets; copying the secrets into Dependabot's store isn't worth a
+  second place to keep them. A deploy waits for any deploy already running on the
+  service, so Render never queues it out of sight. (#215)

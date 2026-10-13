@@ -113,6 +113,11 @@ limit, but nobody can forge their address.
 
 ## Facts recorded after setup
 
-Filled in by #214.
+Filled in by #214, checked on 2026-10-13.
 
-- Render's log retention on the Hobby workspace: _not recorded yet_.
+- **Log retention:** 7 days on the Hobby workspace ([logging docs](https://render.com/docs/logging),
+  [pricing](https://render.com/pricing#plans)). That bounds how far back an incident can be
+  investigated, and how long the client IPs in the request logs are kept. Logs past it
+  are gone even after upgrading; keeping them longer needs a log stream.
+- **Cost:** Render's projection for October 2026 was $10.67 for the web service and
+  database, created on 13 October, so a partial month.

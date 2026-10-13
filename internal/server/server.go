@@ -20,8 +20,8 @@ import (
 type Config struct {
 	Port int
 	Env  string
-	// SignupEnabled turns on GET and POST /signup and the links to it.
-	SignupEnabled bool
+	// InviteCode, when set, turns on GET and POST /signup for people who have it.
+	InviteCode string
 	// Version identifies the build (the commit SHA in the container image);
 	// /healthcheck reports it.
 	Version string

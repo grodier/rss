@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -70,6 +71,45 @@ func TestPasswordNotEchoed(t *testing.T) {
 			}
 			if !strings.Contains(body, "a@b.co") {
 				t.Error("response body no longer echoes the email")
+			}
+		})
+	}
+}
+
+// TestNoSignupLinks checks that no logged-out page links to /signup, whether
+// or not an invite code is set: while signup needs a code, the page is only
+// reached through an invite link.
+func TestNoSignupLinks(t *testing.T) {
+	for _, code := range []string{"", testInviteCode} {
+		t.Run(fmt.Sprintf("code=%q", code), func(t *testing.T) {
+			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: code}, Services{})
+			h := s.router()
+
+			do := func(method, target string) *httptest.ResponseRecorder {
+				var body io.Reader
+				if method == http.MethodPost {
+					body = strings.NewReader("")
+				}
+				req := httptest.NewRequestWithContext(t.Context(), method, target, body)
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				rr := httptest.NewRecorder()
+				h.ServeHTTP(rr, req)
+				return rr
+			}
+
+			home := do(http.MethodGet, "/")
+			login := do(http.MethodGet, "/login")
+			failed := do(http.MethodPost, "/login")
+			if failed.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("POST /login = %d, want 422", failed.Code)
+			}
+			for name, rr := range map[string]*httptest.ResponseRecorder{"GET /": home, "GET /login": login, "failed login": failed} {
+				if strings.Contains(rr.Body.String(), `href="/signup"`) {
+					t.Errorf("%s links to /signup", name)
+				}
+			}
+			if !strings.Contains(home.Body.String(), `href="/login"`) {
+				t.Error("GET / has no link to /login")
 			}
 		})
 	}

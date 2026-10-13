@@ -164,8 +164,8 @@ Planned in #187 (issues #182–#186).
   hash for unknown emails so it takes as long as a wrong password.
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password
   hashing" in the Performance watchlist).
-- **Signup is off unless `-signup` is set.** Accounts are made by starting the app with it
-  briefly, until the shared invite code (#226) replaces the flag.
+- **Signup is off unless an invite code is set.** (#186 started with a `-signup` flag,
+  turned on briefly to make accounts; #226 replaced it with the code below.)
 - **A shared invite code replaces `-signup`** (#226). Signup is open exactly when
   `-invite-code` is set; the bool flag goes rather than staying alongside it.
   - The code arrives pre-filled from `/signup?invite=…` into a visible field, so it can

@@ -18,8 +18,9 @@ type config struct {
 }
 
 type serverConfig struct {
-	port   int
-	signup bool
+	port int
+	// inviteCode, when set, opens signup to people who have it.
+	inviteCode string
 	// proxyHops is how many reverse proxies in front of the app append to
 	// X-Forwarded-For; 0 ignores the header.
 	proxyHops int
@@ -71,6 +72,9 @@ func (c config) Validate() error {
 	if c.server.proxyHops < 0 || c.server.proxyHops > 3 {
 		errs = append(errs, errors.New("proxy hops must be between 0 and 3"))
 	}
+	if c.server.inviteCode != "" && len(c.server.inviteCode) < 16 {
+		errs = append(errs, errors.New("invite code must be at least 16 characters"))
+	}
 	if c.db.dsn == "" {
 		errs = append(errs, errors.New("database DSN must not be empty"))
 	}
@@ -95,7 +99,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 
 	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
-	fs.BoolVar(&cfg.server.signup, "signup", cfg.server.signup, "Allow new accounts to sign up")
+	fs.StringVar(&cfg.server.inviteCode, "invite-code", cfg.server.inviteCode, "Open signup to people with this code (at least 16 characters; default: signup off)")
 
 	fs.IntVar(&cfg.server.proxyHops, "proxy-hops", cfg.server.proxyHops, "Reverse proxies in front of the app that append to X-Forwarded-For (0-3; 0 ignores the header)")
 

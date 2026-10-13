@@ -42,7 +42,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | --- | --- | --- | --- |
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-port` | `RSS_PORT` | `8080` | Server port |
-| `-signup` | `RSS_SIGNUP` | `false` | Allow new accounts to sign up |
+| `-invite-code` | `RSS_INVITE_CODE` | _(empty: signup off)_ | Open signup to people with this code (at least 16 characters) |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the app that append to `X-Forwarded-For` (0–3; 0 ignores the header). The client IP is the entry this many places from the right. Only safe when those proxies are the only way to reach the app |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `25` | PostgreSQL max open connections |
@@ -51,7 +51,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-lookup-workers` | `RSS_LOOKUP_WORKERS` | `2` | Background lookup workers (0–16; 0 disables them) |
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
 
-Signup is off by default. To create an account, run once with `-signup`, sign up, then restart without it.
+Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`.
 
 ### `www migrate`
 

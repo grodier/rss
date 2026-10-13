@@ -136,7 +136,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /healthcheck` | no | `healthcheckHandler` | JSON status, environment and build version, for health checks |
 | `GET /static/*` | no | file server | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
 | `GET /` | no | `homeHandler` | Landing page; the timeline when logged in |
-| `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-signup` |
+| `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
@@ -319,13 +319,13 @@ network connects, `prevent_destroy`) and `render_web_service.rss` (Starter, Virg
 image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy command
 `/www migrate`, 30-second maximum shutdown delay). The service's environment sets
 `RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
-`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_PROXY_HOPS=2` and
-`RSS_PORT`/`PORT=8080`.
-`ignore_changes` leaves the image (set by deploys) and `RSS_ALLOW_RESET_TO` (set by the
-reset workflow) alone. `render_cron_job.backup` (`rss-backup`, Starter, Virginia,
-schedule `0 8 * * *`, image `ghcr.io/grodier/rss-backup:main`) gets `DATABASE_URL`
-(the internal connection string), `PGSSLMODE=require`, `R2_BUCKET=rss-backups`,
-`R2_ENDPOINT` (from variable `cloudflare_account_id`), the `rss-backups` token as
+`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_PROXY_HOPS=2` and `RSS_PORT`/`PORT=8080`.
+`ignore_changes` leaves the image (set by deploys), `RSS_ALLOW_RESET_TO` (set by the
+reset workflow) and `RSS_INVITE_CODE` (set in Render's dashboard) alone.
+`render_cron_job.backup` (`rss-backup`, Starter, Virginia, schedule `0 8 * * *`, image
+`ghcr.io/grodier/rss-backup:main`) gets `DATABASE_URL` (the internal connection string),
+`PGSSLMODE=require`, `R2_BUCKET=rss-backups`, `R2_ENDPOINT` (from variable
+`cloudflare_account_id`), the `rss-backups` token as
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (sensitive variables
 `backup_r2_access_key_id`/`backup_r2_secret_access_key`), `AWS_DEFAULT_REGION=auto`, and
 `AWS_REQUEST_CHECKSUM_CALCULATION`/`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. The

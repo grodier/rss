@@ -1,9 +1,3 @@
-variable "signup" {
-  description = "Allow new accounts to sign up (RSS_SIGNUP)."
-  type        = bool
-  default     = false
-}
-
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID that holds the R2 buckets (TF_VAR_cloudflare_account_id)."
   type        = string

@@ -67,7 +67,7 @@ func (s *Server) router() http.Handler {
 		})
 
 		r.Group(func(r chi.Router) {
-			if s.config.SignupEnabled {
+			if s.config.InviteCode != "" {
 				r.Get("/signup", s.signupHandler)
 				r.Post("/signup", s.signupFormHandler)
 			}

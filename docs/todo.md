@@ -10,9 +10,7 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 1. Deployment (planned in #218). Once these are done, the app runs in production, with
    signup open only to people with the invite code.
    1. #214 (manual): first apply and go-live.
-   2. #226 shared invite code. Production isn't reset until it's live, since signing up
-      again is the way back in.
-   3. #217 (manual): exercise deploys, rollback, resets and backups in production, and
+   2. #217 (manual): exercise deploys, rollback, resets and backups in production, and
       add the uptime check.
 2. #225 `www create-user` and `make db/seed`, for your local account after
    `make db/reset`. Independent of the deployment issues.

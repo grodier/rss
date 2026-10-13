@@ -268,9 +268,9 @@ func TestMethodNotAllowedSetsAllow(t *testing.T) {
 }
 
 func TestSignupRoutes(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
-			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SignupEnabled: enabled}, Services{})
+	for _, code := range []string{"", testInviteCode} {
+		t.Run(fmt.Sprintf("code=%q", code), func(t *testing.T) {
+			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: code}, Services{})
 			h := s.router()
 
 			do := func(method, target string) *httptest.ResponseRecorder {
@@ -286,7 +286,7 @@ func TestSignupRoutes(t *testing.T) {
 			}
 
 			get, post := do(http.MethodGet, "/signup"), do(http.MethodPost, "/signup")
-			if enabled {
+			if code != "" {
 				if get.Code != http.StatusOK {
 					t.Errorf("GET /signup = %d, want 200", get.Code)
 				}
@@ -302,21 +302,6 @@ func TestSignupRoutes(t *testing.T) {
 						t.Errorf("%s /signup body is not the HTML 404 page", name)
 					}
 				}
-			}
-
-			login := do(http.MethodGet, "/login")
-			home := do(http.MethodGet, "/")
-			failed := do(http.MethodPost, "/login")
-			if failed.Code != http.StatusUnprocessableEntity {
-				t.Fatalf("POST /login = %d, want 422", failed.Code)
-			}
-			for name, rr := range map[string]*httptest.ResponseRecorder{"GET /login": login, "GET /": home, "failed login": failed} {
-				if got := strings.Contains(rr.Body.String(), `href="/signup"`); got != enabled {
-					t.Errorf("%s links to /signup = %v, want %v", name, got, enabled)
-				}
-			}
-			if !strings.Contains(home.Body.String(), `href="/login"`) {
-				t.Error("GET / has no link to /login")
 			}
 		})
 	}

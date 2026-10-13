@@ -52,24 +52,19 @@ terraform -chdir=infra apply    # signup off again; /signup returns 404
 
 The shared invite code (#226) later replaces this.
 
-## Measuring Render's proxy range
+## Checking the client IP
 
-`trusted_proxies` in `terraform.tfvars` starts empty, so the app trusts no proxy and
-logs Render's proxy address as every client's IP. To measure it:
+The service sets `RSS_PROXY_HOPS=1`: Render's proxy is the only way in, and it appends
+one `X-Forwarded-For` entry. To check that the app sees visitors' real addresses, run
+`curl -H 'X-Forwarded-For: 203.0.113.9' "$URL/login"`. In Render's logs, the JSON request
+log's `ip` must be **your own public IP**: not `203.0.113.9`, and not a Render address.
 
-1. With `trusted_proxies = ""`, load a few pages. In Render's logs, the JSON request
-   log's `ip` is a Render proxy address, not yours.
-2. Set `trusted_proxies` in `terraform.tfvars` to the narrowest range covering those
-   addresses, or the range Render documents if it does. Apply.
-3. Run `curl -H 'X-Forwarded-For: 203.0.113.9' "$URL/login"`. The log's `ip` must be
-   **your own public IP**: not `203.0.113.9`, and not a proxy address.
-
-If it isn't, or the logs show more than one proxy hop, set `trusted_proxies` back to
-`""`, apply, and stop: until it's fixed, every visitor shares one login limit.
+If it isn't, or the logs show the warning `client IP from X-Forwarded-For is not a public
+address; check -proxy-hops`, set `RSS_PROXY_HOPS` back to `0` in `main.tf`, apply, and
+stop: until it's fixed, every visitor shares one login limit.
 
 ## Facts recorded after setup
 
 Filled in by #214.
 
 - Render's log retention on the Hobby workspace: _not recorded yet_.
-- Render's proxy range: _not measured yet_ (measured on: _date_).

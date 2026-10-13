@@ -7,7 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -25,9 +25,9 @@ type Config struct {
 	// Version identifies the build (the commit SHA in the container image);
 	// /healthcheck reports it.
 	Version string
-	// TrustedProxies are the reverse proxies whose X-Forwarded-For entries
-	// clientIP believes. Empty trusts nobody.
-	TrustedProxies []netip.Prefix
+	// ProxyHops is how many reverse proxies in front of the app append to
+	// X-Forwarded-For. 0 ignores the header.
+	ProxyHops int
 }
 
 // FeedStore is the feed persistence the server depends on.
@@ -144,6 +144,10 @@ type Server struct {
 
 	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
 	signupLimiter *rateLimiter
+
+	// proxyHopsWarning logs, once, that clientIP took a non-public address
+	// from X-Forwarded-For.
+	proxyHopsWarning sync.Once
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {

@@ -31,24 +31,19 @@ resource "render_web_service" "rss" {
   # Matches the 30-second graceful shutdown in internal/server/server.go.
   max_shutdown_delay_seconds = 30
 
-  env_vars = merge(
-    {
-      RSS_ENV = { value = "production" }
-      # Internal connections support TLS, so lib/pq's default sslmode=require
-      # works and never falls back to plaintext.
-      RSS_DB_DSN            = { value = sensitive(render_postgres.rss_db.connection_info.internal_connection_string) }
-      RSS_DB_MAX_OPEN_CONNS = { value = "10" }
-      RSS_SIGNUP            = { value = tostring(var.signup) }
-      # Render routes to PORT; the app listens on RSS_PORT.
-      RSS_PORT = { value = "8080" }
-      PORT     = { value = "8080" }
-    },
-    # Render may reject an empty value, and an empty RSS_TRUSTED_PROXIES
-    # already means trusting no proxy.
-    var.trusted_proxies == "" ? {} : {
-      RSS_TRUSTED_PROXIES = { value = var.trusted_proxies }
-    },
-  )
+  env_vars = {
+    RSS_ENV = { value = "production" }
+    # Internal connections support TLS, so lib/pq's default sslmode=require
+    # works and never falls back to plaintext.
+    RSS_DB_DSN            = { value = sensitive(render_postgres.rss_db.connection_info.internal_connection_string) }
+    RSS_DB_MAX_OPEN_CONNS = { value = "10" }
+    RSS_SIGNUP            = { value = tostring(var.signup) }
+    # Render's proxy is the only way in, and appends one X-Forwarded-For entry.
+    RSS_PROXY_HOPS = { value = "1" }
+    # Render routes to PORT; the app listens on RSS_PORT.
+    RSS_PORT = { value = "8080" }
+    PORT     = { value = "8080" }
+  }
 
   lifecycle {
     ignore_changes = [

@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -198,7 +197,7 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 
 func TestLoginLimitPerForwardedClient(t *testing.T) {
 	s := newTestServerConfig(t,
-		Config{Port: 4000, Env: "development", TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}},
+		Config{Port: 4000, Env: "development", ProxyHops: 1},
 		Services{UserService: &fakeUserStore{
 			authenticateFn: func(ctx context.Context, email, password string) (string, error) {
 				return "", rss.ErrInvalidCredentials

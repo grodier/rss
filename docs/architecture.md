@@ -258,8 +258,10 @@ CLAUDE.md.
   | `refreshLimiter` | user | 10 per 10 min |
 
 - **Client IP:** `Server.clientIP` (`internal/server/clientip.go`) is the only code that
-  reads `RemoteAddr`. Only when the connection comes from `-trusted-proxies` does it read
-  `X-Forwarded-For`, taking the rightmost entry that isn't a trusted proxy.
+  reads `RemoteAddr`. With `-proxy-hops` N above 0 it reads `X-Forwarded-For` instead,
+  taking the entry N places from the right, and falls back to `RemoteAddr` when the header
+  is missing, has fewer than N entries, or that entry doesn't parse. If that entry isn't a
+  public address, it logs a warning once per process.
 - **Internal errors** (`lookups.error`, `feeds.last_error`, Go errors) go to the logs,
   never to pages.
 
@@ -309,8 +311,8 @@ network connects, `prevent_destroy`) and `render_web_service.rss` (Starter, Virg
 image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy command
 `/www migrate`, 30-second maximum shutdown delay). The service's environment sets
 `RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
-`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_TRUSTED_PROXIES`
-(variable `trusted_proxies`, left out while empty) and `RSS_PORT`/`PORT=8080`.
+`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_PROXY_HOPS=1` and
+`RSS_PORT`/`PORT=8080`.
 `ignore_changes` leaves the image (set by deploys) and `RSS_ALLOW_RESET_TO` (set by the
 reset workflow) alone. State is in the R2 bucket `rss-tfstate` (S3 backend,
 `use_lockfile`); credentials come only from the environment. CI's `terraform` job runs

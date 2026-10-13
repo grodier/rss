@@ -10,20 +10,25 @@ import (
 // clientIP returns the address of the client that sent r, without the port.
 // It is the only code that reads r.RemoteAddr.
 //
-// If the connection comes from one of Config.TrustedProxies, the client is the
-// rightmost X-Forwarded-For entry that isn't itself a trusted proxy: each
-// trusted proxy appends the address it received the request from, so only
-// entries to the right of the first untrusted one can be believed, and the
-// leftmost entry is whatever the client chose to send. If every entry is
-// trusted, the leftmost is returned. A missing header or an unparsable entry
-// falls back to the connection's address. Otherwise the header is ignored.
-// See "Client IP" under Deployment in docs/decisions.md.
+// Config.ProxyHops is how many reverse proxies stand between the client and
+// the app, each appending the address it received the request from to
+// X-Forwarded-For. The client is therefore the entry ProxyHops places from the
+// right: the entries to its left are whatever the client chose to send, so
+// they can be forged. With ProxyHops 0 the header is ignored. A missing
+// header, fewer entries than ProxyHops, or an unparsable entry falls back to
+// the connection's address. This is only sound when the proxies are the only
+// way to reach the app.
+//
+// If the address taken from the header isn't public, clientIP logs a warning
+// once per Server: that is what an extra proxy hop added by the host looks
+// like. Fallbacks never warn. See "Client IP" under Deployment in
+// docs/decisions.md.
 func (s *Server) clientIP(r *http.Request) string {
 	remote := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(remote); err == nil {
 		remote = host
 	}
-	if !s.isTrustedProxy(remote) {
+	if s.config.ProxyHops == 0 {
 		return remote
 	}
 
@@ -32,32 +37,20 @@ func (s *Server) clientIP(r *http.Request) string {
 		return remote
 	}
 	entries := strings.Split(strings.Join(values, ","), ",")
-	var client netip.Addr
-	for i := len(entries) - 1; i >= 0; i-- {
-		addr, err := netip.ParseAddr(strings.TrimSpace(entries[i]))
-		if err != nil {
-			return remote
-		}
-		client = addr.Unmap()
-		if !s.trusts(client) {
-			break
-		}
+	if len(entries) < s.config.ProxyHops {
+		return remote
 	}
-	return client.String()
-}
-
-func (s *Server) isTrustedProxy(host string) bool {
-	addr, err := netip.ParseAddr(host)
-	return err == nil && s.trusts(addr.Unmap())
-}
-
-func (s *Server) trusts(addr netip.Addr) bool {
-	for _, p := range s.config.TrustedProxies {
-		if p.Contains(addr) {
-			return true
-		}
+	addr, err := netip.ParseAddr(strings.TrimSpace(entries[len(entries)-s.config.ProxyHops]))
+	if err != nil {
+		return remote
 	}
-	return false
+	addr = addr.Unmap()
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() {
+		s.proxyHopsWarning.Do(func() {
+			s.logger.Warn("client IP from X-Forwarded-For is not a public address; check -proxy-hops", "ip", addr.String(), "entries", len(entries), "proxy_hops", s.config.ProxyHops)
+		})
+	}
+	return addr.String()
 }
 
 // ipRateLimitKey returns the rate-limit key for ip: the address itself for

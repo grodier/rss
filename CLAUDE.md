@@ -29,7 +29,7 @@ docker build -t rss .                    # build the container image (or: make d
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR).
+Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`). `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
 
 ## Layout
 

@@ -8,7 +8,7 @@ Cloudflare R2 bucket `rss-tfstate`. Why Render and this setup: "Deployment" in
 Terraform doesn't own two things that change outside it, and ignores them:
 
 - **The image.** Deploys set it by digest; `apply` never rolls a deploy back.
-- **`RSS_ALLOW_RESET_TO`**, set and cleared by the "Reset production database" workflow.
+- **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
 
 ## Prerequisites
 
@@ -16,7 +16,8 @@ The accounts, buckets, tokens and GitHub settings from #208, and Terraform 1.10 
 
 ## Running Terraform locally
 
-Take every value from your password manager, never from a file in the repository:
+Since the first apply (#214), applies run only from GitHub Actions (see "Approving
+infrastructure applies"). Locally, run `plan` and `output`, never `apply`. Take every value from your password manager, never from a file in the repository:
 
 ```sh
 export AWS_ACCESS_KEY_ID=...        # the rss-tfstate R2 token's Access Key ID
@@ -31,11 +32,10 @@ Then, from the repository root:
 ```sh
 terraform -chdir=infra init
 terraform -chdir=infra plan
-terraform -chdir=infra apply
 ```
 
-Read the plan before applying: nothing should be destroyed or replaced unless you meant
-it, and no secret should appear in plain text. The database has `prevent_destroy`.
+In a plan, nothing should be destroyed or replaced unless you meant it, and no secret
+should appear in plain text. The database has `prevent_destroy`.
 
 `terraform -chdir=infra output -raw url` prints the service's URL, and `output -raw
 service_id` its ID.
@@ -69,11 +69,86 @@ shell, and masks them if Terraform prints one. Set it up once:
    alias tf-rss='op run --env-file ~/.config/rss/infra.env -- terraform -chdir=infra'
    ```
 
-   Then `tf-rss init`, `tf-rss plan`, `tf-rss apply`, `tf-rss output -raw url`, and so
-   on. The alias already includes `-chdir=infra`, so don't repeat it. `op read
+   Then `tf-rss init`, `tf-rss plan`, `tf-rss output -raw url`, and so on. The alias already includes `-chdir=infra`, so don't repeat it. `op read
    op://rss/render/owner-id` checks that a reference resolves.
 
+## Deploys
+
+Three workflows in `.github/workflows` run production. They read these repository
+secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`,
+`RENDER_SERVICE_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`,
+`TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and
+`BACKUP_R2_SECRET_ACCESS_KEY`.
+
+### How deploys happen
+
+Every push to `main` that passes CI deploys; merging the PR is the approval. CI's `image`
+job pushes `ghcr.io/grodier/rss:sha-<sha>`, then its `deploy` job calls `deploy.yml`
+(environment `production`, one deploy at a time), which:
+
+1. resolves the tag to its digest, and fails if CI pushed no image for that commit;
+2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`. Render never builds; it runs
+   the image CI tested;
+3. follows the deploy until it's live. Render runs `/www migrate` first; if it fails,
+   the deploy fails within seconds and the old version keeps serving;
+4. checks that `/healthcheck` reports the commit's SHA as its `version`.
+
+If another deploy is already running (one from the dashboard, or one a Terraform apply
+started), Render queues ours behind it without saying which deploy it is, so the job
+fails. The queued deploy still goes ahead; follow it in Render's dashboard.
+
+Each deploy overlaps the old and new versions for a few seconds: Render starts the new
+one, waits for `/healthcheck`, switches traffic, then stops the old one.
+
+A failed deploy shows up as a failed `deploy` job in CI, and Render emails you.
+
+### Rolling back
+
+Run **Actions → Deploy → Run workflow** with an earlier commit's full SHA. Its image is
+still in GHCR. Rolling back doesn't undo migrations: the older code runs against the
+newer schema. While pre-alpha, `migrate` refuses the rollback if the migrations differ;
+going back past a schema change is a reset to the older commit.
+
+### Resetting the database
+
+While pre-alpha, a commit that changes `migrations/*.sql` doesn't deploy: `migrate`
+refuses to wipe the database, the deploy fails with *"If migrate refused because the
+migrations changed, run the Reset production database workflow."*, and the old version
+keeps serving. To deploy it:
+
+1. Run **Actions → Reset production database → Run workflow** with the commit's full SHA
+   and `confirm` = `wipe production`.
+2. It sets `RSS_ALLOW_RESET_TO` on the service to that commit's migrations' fingerprint,
+   then deploys the commit; its `migrate` wipes the database and rebuilds it. The
+   variable stays set: it only allows a reset to the schema that has just been reached.
+
+A reset deletes every account, yours included, and testers have to sign up again.
+Getting back in is signing up with the invite link (#226, which updates this section
+when it lands). **Until then, don't reset production:** applies run only from GitHub
+Actions, so the "First account" local apply no longer applies, and there's no other way
+back in.
+
+### Approving infrastructure applies
+
+`infra.yml` runs when a pull request or a push to `main` touches `infra/**`, one run at a
+time:
+
+- **Pull requests** from branches in this repository run `terraform plan` and write it to
+  the job summary. Review it there like the code. Fork and Dependabot pull requests get
+  no plan, since they can't read the secrets; for a Dependabot provider update, read the
+  provider's changelog instead.
+- **Pushes to `main`** run `terraform apply -auto-approve` in the `infrastructure`
+  environment, which waits for your approval: **Actions → the run → Review deployments →
+  Approve**. Approve once the PR's plan was what you meant; reject to skip the apply.
+
+While an apply waits for approval, other `infra.yml` runs wait behind it, and GitHub keeps
+only the newest waiting run: an older one shows as cancelled. Re-run it if it was an
+apply you still want.
+
 ## First account
+
+This describes the first apply in #214 only. Applies now run only from GitHub Actions, so
+it no longer works; after a reset, see "Resetting the database".
 
 Signup is off. To create an account, turn it on briefly:
 

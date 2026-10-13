@@ -5,10 +5,11 @@ service (`rss`) running `ghcr.io/grodier/rss`, both in Virginia. State lives in 
 Cloudflare R2 bucket `rss-tfstate`. Why Render and this setup: "Deployment" in
 [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own two things that change outside it, and ignores them:
+Terraform doesn't own three things that change outside it, and ignores them:
 
 - **The image.** Deploys set it by digest; `apply` never rolls a deploy back.
 - **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
+- **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 
 ## Prerequisites
 
@@ -123,10 +124,8 @@ keeps serving. To deploy it:
    variable stays set: it only allows a reset to the schema that has just been reached.
 
 A reset deletes every account, yours included, and testers have to sign up again.
-Getting back in is signing up with the invite link (#226, which updates this section
-when it lands). **Until then, don't reset production:** applies run only from GitHub
-Actions, so the "First account" local apply no longer applies, and there's no other way
-back in.
+Getting back in is signing up with the invite link; see "Signing up". Nothing seeds an
+account after a reset.
 
 ### Approving infrastructure applies
 
@@ -145,20 +144,22 @@ While an apply waits for approval, other `infra.yml` runs wait behind it, and Gi
 only the newest waiting run: an older one shows as cancelled. Re-run it if it was an
 apply you still want.
 
-## First account
+## Signing up
 
-This describes the first apply in #214 only. Applies now run only from GitHub Actions, so
-it no longer works; after a reset, see "Resetting the database".
+Signup is open only to people with the shared invite code, and only while
+`RSS_INVITE_CODE` is set; without it, `/signup` returns 404. No page links to `/signup`,
+so share the link itself. Terraform ignores the variable, so none of this needs a PR or an
+apply:
 
-Signup is off. To create an account, turn it on briefly:
+1. Generate a code (at least 16 characters): `openssl rand -hex 16`.
+2. On the `rss` service's **Environment** page in Render's dashboard, set
+   `RSS_INVITE_CODE` to it and save (Render restarts the service).
+3. Share `<url>/signup?invite=<code>`. It opens the signup page with the code filled in;
+   the code can also be typed into the "Invite code" field. Each person chooses their
+   own password.
 
-```sh
-terraform -chdir=infra apply -var signup=true
-# sign up at <url>/signup
-terraform -chdir=infra apply    # signup off again; /signup returns 404
-```
-
-The shared invite code (#226) later replaces this.
+To rotate the code, edit the variable; to turn signup off, delete it. The code may appear
+in the request logs, which log the URI.
 
 ## Checking the client IP
 

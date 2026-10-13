@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 )
 
 type signupForm struct {
+	Invite              string `form:"invite"`
 	Name                string `form:"name"`
 	Email               string `form:"email"`
 	Password            string `form:"password"`
@@ -17,7 +19,10 @@ type signupForm struct {
 }
 
 func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
-	if err := s.renderHTML(w, http.StatusOK, "signup.html", nil); err != nil {
+	data := struct {
+		Form any
+	}{Form: signupForm{Invite: r.URL.Query().Get("invite")}}
+	if err := s.renderHTML(w, http.StatusOK, "signup.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
@@ -42,6 +47,8 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	form.CheckField(validator.NotBlank(form.Invite), "invite", "Invite code is required")
+	form.CheckField(subtle.ConstantTimeCompare([]byte(form.Invite), []byte(s.config.InviteCode)) == 1, "invite", "This invite code isn't valid")
 	form.CheckField(validator.NotBlank(form.Name), "name", "Name is required")
 	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
@@ -79,14 +86,13 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type loginPage struct {
-	Form          loginForm
-	Flash         string
-	SignupEnabled bool
+	Form  loginForm
+	Flash string
 }
 
-// renderLogin renders login.html with status, setting SignupEnabled from the config.
+// renderLogin renders login.html with status.
 func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, form loginForm, flash string) {
-	data := loginPage{Form: form, Flash: flash, SignupEnabled: s.config.SignupEnabled}
+	data := loginPage{Form: form, Flash: flash}
 	if err := s.renderHTML(w, status, "login.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}

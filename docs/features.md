@@ -9,20 +9,23 @@ in [decisions.md](decisions.md).
 
 ## Accounts and sessions
 
-**Flow.** Signup exists only when the app runs with `-signup`. `signupFormHandler`
-checks the per-IP limit, validates the form, and creates the user with an Argon2id hash.
-A duplicate email gets exactly the same response as a new account. Login checks the
-per-IP limit, validates, then counts the attempt against the submitted email *before*
-checking the password (refunded unless the password was wrong), so parallel guesses
-can't slip past the limit. On success it renews the session token, stores
-`authenticatedUserID` in the session and redirects. On every later request, `authenticate`
-reads that ID, checks the user still exists, and puts it in the request context, where
-handlers read it with `s.authenticatedUserID(r)`.
+**Flow.** Signup exists only when the app runs with `-invite-code`, and no page links to
+it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
+the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
+(including the code, compared with `subtle.ConstantTimeCompare`), and creates the user
+with an Argon2id hash. A duplicate email gets exactly the same response as a new
+account. Login checks the per-IP limit, validates, then counts the attempt against the
+submitted email *before* checking the password (refunded unless the password was
+wrong), so parallel guesses can't slip past the limit. On success it renews the session
+token, stores `authenticatedUserID` in the session and redirects. On every later
+request, `authenticate` reads that ID, checks the user still exists, and puts it in the
+request context, where handlers read it with `s.authenticatedUserID(r)`.
 
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go`: `signupFormHandler`, `loginFormHandler`, `logoutHandler`.
+2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
+   `logoutHandler`.
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
    (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
@@ -32,8 +35,11 @@ handlers read it with `s.authenticatedUserID(r)`.
    `helpers.go` (`authenticatedUserID`).
 7. `cmd/www/application.go`: the session manager's settings.
 
-**Tests:** `internal/server/user_test.go`, `middleware_test.go`, `ratelimit_test.go`,
-`clientip_test.go`; `internal/psql/users_test.go`; `internal/password/password_test.go`.
+**Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
+`TestSignupFormHandlerInviteCode`), `router_test.go` (`TestSignupRoutes`),
+`templates_test.go` (`TestNoSignupLinks`), `middleware_test.go`, `ratelimit_test.go`,
+`clientip_test.go`; `cmd/www/config_test.go` (`TestParseConfigInviteCode`);
+`internal/psql/users_test.go`; `internal/password/password_test.go`.
 
 **Why:** "Security" in decisions.md.
 

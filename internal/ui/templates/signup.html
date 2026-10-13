@@ -19,6 +19,13 @@
         <div class="error">{{.}}</div>
         {{end}}
         <div class="field">
+          <label for="invite">Invite code</label>
+          {{with .Form.FieldErrors.invite}}
+          <span class="error">{{.}}</span>
+          {{end}}
+          <input type="text" id="invite" name="invite" value="{{.Form.Invite}}" autocomplete="off" />
+        </div>
+        <div class="field">
           <label for="name">Name</label>
           {{with .Form.FieldErrors.name}}
           <span class="error">{{.}}</span>

@@ -20,6 +20,8 @@ func TestConfigValidate(t *testing.T) {
 		{"port zero", func(c *config) { c.server.port = 0 }, true},
 		{"port too high", func(c *config) { c.server.port = 70000 }, true},
 		{"empty dsn", func(c *config) { c.db.dsn = "" }, true},
+		{"invite code 15 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 15) }, true},
+		{"invite code 16 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 16) }, false},
 		{"lookup workers zero", func(c *config) { c.lookup.workers = 0 }, false},
 		{"lookup workers max", func(c *config) { c.lookup.workers = 16 }, false},
 		{"lookup workers negative", func(c *config) { c.lookup.workers = -1 }, true},
@@ -76,21 +78,38 @@ func TestParseConfigRefreshWorkers(t *testing.T) {
 	}
 }
 
-func TestParseConfigSignup(t *testing.T) {
+func TestParseConfigInviteCode(t *testing.T) {
 	dsn := []string{"-db-dsn", "postgres://x"}
+	const code = "0123456789abcdef"
+
 	cfg, err := parseConfig(dsn, noEnv, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.server.signup {
-		t.Error("signup defaults to true, want false")
+	if cfg.server.inviteCode != "" {
+		t.Errorf("inviteCode = %q, want empty by default", cfg.server.inviteCode)
 	}
-	cfg, err = parseConfig(append(dsn, "-signup"), noEnv, io.Discard)
+
+	cfg, err = parseConfig(append(dsn, "-invite-code", code), noEnv, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.server.signup {
-		t.Error("-signup did not set server.signup")
+	if cfg.server.inviteCode != code {
+		t.Errorf("-invite-code: inviteCode = %q, want %q", cfg.server.inviteCode, code)
+	}
+
+	cfg, err = parseConfig(dsn, envFrom(map[string]string{"RSS_INVITE_CODE": code}), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.server.inviteCode != code {
+		t.Errorf("RSS_INVITE_CODE: inviteCode = %q, want %q", cfg.server.inviteCode, code)
+	}
+
+	_, err = parseConfig(append(dsn, "-invite-code", code[:15]), noEnv, io.Discard)
+	const msg = "invite code must be at least 16 characters"
+	if err == nil || !strings.Contains(err.Error(), msg) {
+		t.Errorf("15 characters: parseConfig() error = %v, want %q", err, msg)
 	}
 }
 
@@ -168,15 +187,6 @@ func TestParseConfigEnv(t *testing.T) {
 			args:     []string{"-port", "9001"},
 			env:      map[string]string{"RSS_DB_DSN": dsnEnv, "RSS_PORT": "9000"},
 			wantPort: 9001,
-		},
-		{
-			name: "signup from env",
-			env:  map[string]string{"RSS_DB_DSN": dsnEnv, "RSS_SIGNUP": "true"},
-			check: func(t *testing.T, cfg config) {
-				if !cfg.server.signup {
-					t.Error("RSS_SIGNUP=true did not set server.signup")
-				}
-			},
 		},
 		{
 			name:     "empty counts as unset",

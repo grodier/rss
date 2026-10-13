@@ -21,10 +21,103 @@ import (
 	"github.com/grodier/rss/internal/psql/psqltest"
 )
 
+// testInviteCode is the invite code signup tests run the server with.
+const testInviteCode = "test-invite-code-0123"
+
+// newSignupTestServer is newTestServerWith with signup open to testInviteCode.
+func newSignupTestServer(t *testing.T, svc Services) *Server {
+	t.Helper()
+	return newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: testInviteCode}, svc)
+}
+
+func TestSignupHandlerInvitePrefill(t *testing.T) {
+	tests := []struct {
+		query string
+		want  string
+	}{
+		{"?invite=abc", `name="invite" value="abc"`},
+		{"?invite=%3Cscript%3E", `name="invite" value="&lt;script&gt;"`},
+		{"", `name="invite" value=""`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			s := newSignupTestServer(t, Services{})
+			rr := httptest.NewRecorder()
+			s.router().ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/signup"+tt.query, nil))
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			body := rr.Body.String()
+			if !strings.Contains(body, tt.want) {
+				t.Errorf("body does not contain %q", tt.want)
+			}
+			if strings.Contains(body, "<script>") {
+				t.Error("body contains an unescaped <script>")
+			}
+		})
+	}
+}
+
+func TestSignupFormHandlerInviteCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		invite     string
+		wantStatus int
+		wantError  string
+	}{
+		{"right code", testInviteCode, http.StatusSeeOther, ""},
+		{"wrong code", "wrong-invite-code-0123", http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
+		{"blank code", "", http.StatusUnprocessableEntity, "Invite code is required"},
+		{"prefix of the code", testInviteCode[:len(testInviteCode)-1], http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
+		{"code plus one character", testInviteCode + "x", http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls int
+			s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+				createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+					calls++
+					return "id", time.Now(), nil
+				},
+			}})
+			h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
+			form := url.Values{
+				"invite":   {tt.invite},
+				"name":     {"Test User"},
+				"email":    {"user@example.com"},
+				"password": {"correct-horse-battery"},
+			}
+
+			rr := postForm(t, h, "/signup", "192.0.2.1:1234", form)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusSeeOther {
+				if loc := rr.Header().Get("Location"); loc != "/login" {
+					t.Errorf("Location = %q, want /login", loc)
+				}
+				if calls != 1 {
+					t.Errorf("Create called %d times, want 1", calls)
+				}
+				return
+			}
+			if !strings.Contains(rr.Body.String(), tt.wantError) {
+				t.Errorf("body does not contain %q", tt.wantError)
+			}
+			if calls != 0 {
+				t.Errorf("Create called %d times, want 0", calls)
+			}
+		})
+	}
+}
+
 func TestSignupFormHandlerPasswordTooLong(t *testing.T) {
-	s := newTestServer(t)
+	s := newSignupTestServer(t, Services{})
 
 	form := url.Values{
+		"invite":   {testInviteCode},
 		"name":     {"a"},
 		"email":    {"a@b.co"},
 		"password": {strings.Repeat("a", 257)},
@@ -67,7 +160,7 @@ func TestLoginFormHandlerPasswordTooLong(t *testing.T) {
 func TestSignupFormHandlerSuccessFlash(t *testing.T) {
 	db := psqltest.NewDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s, err := NewServer(logger, Config{Port: 4000, Env: "development"},
+	s, err := NewServer(logger, Config{Port: 4000, Env: "development", InviteCode: testInviteCode},
 		Services{UserService: psql.NewUserRepository(db)}, scs.New())
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +180,7 @@ func TestSignupFormHandlerSuccessFlash(t *testing.T) {
 	}))
 
 	form := url.Values{
+		"invite":   {testInviteCode},
 		"name":     {"Test User"},
 		"email":    {email},
 		"password": {"correct-horse-battery"},
@@ -368,15 +462,16 @@ func TestLoginFormHandlerFailureLimitConcurrent(t *testing.T) {
 }
 
 func TestSignupFormHandlerRateLimited(t *testing.T) {
-	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
 		createFn: func(ctx context.Context, name, email, password string) (string, time.Time, error) {
 			t.Error("Create must not be called")
 			return "", time.Time{}, nil
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
-	// A blank name fails validation, so no attempt reaches the store.
-	form := url.Values{"name": {""}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
+	// A wrong invite code fails validation, so no attempt reaches the store,
+	// and the limit counts guesses at the code.
+	form := url.Values{"invite": {"wrong-invite-code-0123"}, "name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
 
 	for i := 1; i <= 10; i++ {
 		if rr := postForm(t, h, "/signup", "192.0.2.1:1234", form); rr.Code != http.StatusUnprocessableEntity {
@@ -386,6 +481,9 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 
 	rr := postForm(t, h, "/signup", "192.0.2.1:1234", form)
 	assertRateLimitedForm(t, rr, "user@example.com")
+	if strings.Contains(rr.Body.String(), "invite code isn") {
+		t.Error("the rate-limited response checked the invite code")
+	}
 
 	if rr := postForm(t, h, "/signup", "192.0.2.2:1234", form); rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("other IP: status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
@@ -393,7 +491,7 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 }
 
 func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
-	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
 		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
 			return "", time.Time{}, rss.ErrDuplicateEmail
 		},
@@ -423,7 +521,7 @@ func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 }
 
 func TestSignupFormHandlerCreateError(t *testing.T) {
-	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
 		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
 			return "", time.Time{}, io.ErrUnexpectedEOF
 		},
@@ -439,6 +537,7 @@ func TestSignupFormHandlerCreateError(t *testing.T) {
 func postSignup(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{
+		"invite":   {testInviteCode},
 		"name":     {"Test User"},
 		"email":    {"dup@example.com"},
 		"password": {"correct-horse-battery"},

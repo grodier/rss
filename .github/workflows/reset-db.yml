@@ -49,9 +49,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Adds or updates only this key. If Render starts a deploy for the change,
-      # it runs the old image, whose migrate sees no change; the deploy job
-      # waits for it to finish. The variable stays set afterwards: it only
+      # Adds or updates only this key, without starting a deploy (Render's
+      # Terraform provider deploys explicitly after changing variables); the
+      # deploy job does that. The variable stays set afterwards: it only
       # allows a reset to the schema that has just been reached.
       - name: allow a reset to these migrations
         env:

@@ -87,11 +87,15 @@ job pushes `ghcr.io/grodier/rss:sha-<sha>`, then its `deploy` job calls `deploy.
 (environment `production`, one deploy at a time), which:
 
 1. resolves the tag to its digest, and fails if CI pushed no image for that commit;
-2. waits for any deploy already running on the service, then asks Render to deploy
-   `ghcr.io/grodier/rss@<digest>`. Render never builds; it runs the image CI tested;
-3. waits until the deploy is live. Render runs `/www migrate` first; if it fails, the
-   deploy fails and the old version keeps serving;
+2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`. Render never builds; it runs
+   the image CI tested;
+3. follows the deploy until it's live. Render runs `/www migrate` first; if it fails,
+   the deploy fails within seconds and the old version keeps serving;
 4. checks that `/healthcheck` reports the commit's SHA as its `version`.
+
+If another deploy is already running (one from the dashboard, or one a Terraform apply
+started), Render queues ours behind it without saying which deploy it is, so the job
+fails. The queued deploy still goes ahead; follow it in Render's dashboard.
 
 Each deploy overlaps the old and new versions for a few seconds: Render starts the new
 one, waits for `/healthcheck`, switches traffic, then stops the old one.

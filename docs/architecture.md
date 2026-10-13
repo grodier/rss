@@ -326,11 +326,11 @@ uses `pull_request_target`.
 - `deploy.yml` (`workflow_call` from CI's `deploy` job on pushes to `main`, after
   `image`, and `workflow_dispatch` for rollbacks; input `sha`; environment `production`;
   concurrency group `deploy`): resolves `ghcr.io/grodier/rss:sha-<sha>` to its digest
-  with `docker buildx imagetools inspect`, waits for running deploys, `POST
-  /v1/services/{id}/deploys` with `imageUrl` = `ghcr.io/grodier/rss@<digest>`, polls
-  the deploy until `live` (fails on `pre_deploy_failed`, `build_failed`,
-  `update_failed`, `canceled` or `deactivated`), then checks that the service's
-  `/healthcheck` reports `<sha>`.
+  with `docker buildx imagetools inspect`, `POST /v1/services/{id}/deploys` with
+  `imageUrl` = `ghcr.io/grodier/rss@<digest>` (fails on a 202, which queues the deploy
+  without returning its ID), polls the deploy until `live` (fails on
+  `pre_deploy_failed`, `build_failed`, `update_failed`, `canceled` or `deactivated`),
+  then checks that the service's `/healthcheck` reports `<sha>`.
 - `reset-db.yml` ("Reset production database", `workflow_dispatch` with `sha` and
   `confirm` = `wipe production`; environment `production`): runs `www migrate
   -print-fingerprint` at `sha`, sets `RSS_ALLOW_RESET_TO` to it with `PUT

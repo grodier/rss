@@ -268,5 +268,14 @@ Planned in #218; issues #208–#217.
   only on `main` or on pull requests from branches in this repository, never with
   `pull_request_target`. Dependabot's pull requests get no Terraform plan, since they
   can't read Actions secrets; copying the secrets into Dependabot's store isn't worth a
-  second place to keep them. A deploy waits for any deploy already running on the
-  service, so Render never queues it out of sight. (#215)
+  second place to keep them. (#215)
+- **The deploy workflow follows Render's deploy status**, then checks `/healthcheck`
+  once it's live. Polling only `/healthcheck` for the new SHA would be shorter, but a
+  failed pre-deploy (`migrate` refusing a schema change, which happens with every
+  schema change while pre-alpha) would only show at a timeout, with no reason given;
+  following the status fails within seconds and names the cause. A deploy Render
+  queues behind a running one (202, no ID) fails the job rather than being tracked
+  down: our deploys never overlap (one concurrency group), and changing a variable
+  through the API doesn't start one, so only a dashboard deploy or a Terraform apply
+  can be running. The Render CLI's `deploys create --wait` would do the polling, but
+  it's a binary to download and pin in a job holding an account-wide API key. (#215)

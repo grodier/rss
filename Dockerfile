@@ -1,5 +1,5 @@
 # Build stage: the Go version matches go.mod's go directive.
-FROM golang:1.26.5 AS build
+FROM golang:1.27.1 AS build
 
 WORKDIR /src
 

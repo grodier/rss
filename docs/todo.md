@@ -56,7 +56,9 @@ Running it locally for yourself needs none of this.
 Later, after #208–#217:
 
 - [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
-  domain is settled.
+  domain is settled. A proxied ("orange cloud") record adds a hop in front of Render's
+  own Cloudflare, so either keep it DNS-only or change `RSS_PROXY_HOPS`; rerun the client
+  IP check in `infra/README.md` either way.
 - [ ] **PR preview environments.** Render preview environments need the Professional
   workspace (about $19 per user a month plus compute). Only from same-repo branches: never
   `pull_request_target` with fork code, since this repository is public.

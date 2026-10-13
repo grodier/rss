@@ -239,13 +239,18 @@ Planned in #218; issues #208–#217.
   them if we move.
 - **Client IP:** `X-Forwarded-For`, taking the entry `-proxy-hops` places from the right;
   the default 0 ignores the header. Render's proxy keeps whatever `X-Forwarded-For` the
-  client sent and appends to it, so the leftmost entry can be forged. Production sets 1:
-  Render's proxy is the only way to reach the service, so the app doesn't need to know its
-  address. This replaces trusting a measured proxy range (#212): Render doesn't publish
-  that range and can change it without notice, and a stale range silently made every
-  visitor share one login limit. If the host adds a hop, the picked address is private,
-  and the app logs a warning rather than failing silently. Host-specific headers
-  (`CF-Connecting-IP`) aren't used: they'd be a host-specific code path. (#228)
+  client sent and appends to it, so the leftmost entry can be forged. Production sets 2:
+  `onrender.com` traffic passes through Cloudflare and then Render's proxy, and each
+  appends one entry, so the app doesn't need to know either's address. This relies on
+  every request going through Cloudflare; one that reached Render's proxy directly could
+  forge its address. The first production check (#214) found the second hop: with 1 the
+  app saw Cloudflare's address. This replaces trusting a measured proxy range (#212):
+  Render doesn't publish that range and can change it without notice, and a stale range
+  silently made every visitor share one login limit. If the host adds a hop inside its
+  network, the picked address is private and the app logs a warning; an added public hop
+  (like Cloudflare) doesn't warn, so the runbook's check in `infra/README.md` is what
+  catches it. Host-specific headers (`CF-Connecting-IP`) aren't used: they'd be a
+  host-specific code path. (#228)
 - **Backups:** Render's point-in-time recovery (3 days on the Hobby workspace) plus a
   nightly `pg_dump` to R2 from a Render cron job, kept 35 days. The R2 copy is at a
   different provider from the database, and restoring it is also how the database moves

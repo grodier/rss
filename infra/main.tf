@@ -38,8 +38,9 @@ resource "render_web_service" "rss" {
     RSS_DB_DSN            = { value = sensitive(render_postgres.rss_db.connection_info.internal_connection_string) }
     RSS_DB_MAX_OPEN_CONNS = { value = "10" }
     RSS_SIGNUP            = { value = tostring(var.signup) }
-    # Render's proxy is the only way in, and appends one X-Forwarded-For entry.
-    RSS_PROXY_HOPS = { value = "1" }
+    # Requests come through Cloudflare, then Render's proxy, and each appends
+    # one X-Forwarded-For entry. Checked in #214; see infra/README.md.
+    RSS_PROXY_HOPS = { value = "2" }
     # Render routes to PORT; the app listens on RSS_PORT.
     RSS_PORT = { value = "8080" }
     PORT     = { value = "8080" }

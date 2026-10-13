@@ -48,6 +48,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/ui`: embedded templates and static files
 - `internal/validator`: form validation
 - `infra`: Terraform for production (Render); its README is the runbook
+- `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
 - `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`
 - `docs`: architecture, feature walkthroughs, decisions and todo (see "Docs")
 

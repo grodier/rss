@@ -20,9 +20,10 @@ import (
 // way to reach the app.
 //
 // If the address taken from the header isn't public, clientIP logs a warning
-// once per Server: that is what an extra proxy hop added by the host looks
-// like. Fallbacks never warn. See "Client IP" under Deployment in
-// docs/decisions.md.
+// once per Server: that is what an extra proxy hop inside the host's network
+// looks like. An extra public hop, such as a CDN, can't be told apart from a
+// client and doesn't warn. Fallbacks never warn. See "Client IP" under
+// Deployment in docs/decisions.md.
 func (s *Server) clientIP(r *http.Request) string {
 	remote := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(remote); err == nil {

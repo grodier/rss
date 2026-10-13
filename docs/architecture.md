@@ -311,7 +311,7 @@ network connects, `prevent_destroy`) and `render_web_service.rss` (Starter, Virg
 image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy command
 `/www migrate`, 30-second maximum shutdown delay). The service's environment sets
 `RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
-`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_PROXY_HOPS=1` and
+`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_SIGNUP` (variable `signup`), `RSS_PROXY_HOPS=2` and
 `RSS_PORT`/`PORT=8080`.
 `ignore_changes` leaves the image (set by deploys) and `RSS_ALLOW_RESET_TO` (set by the
 reset workflow) alone. State is in the R2 bucket `rss-tfstate` (S3 backend,

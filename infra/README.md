@@ -87,14 +87,29 @@ The shared invite code (#226) later replaces this.
 
 ## Checking the client IP
 
-The service sets `RSS_PROXY_HOPS=1`: Render's proxy is the only way in, and it appends
-one `X-Forwarded-For` entry. To check that the app sees visitors' real addresses, run
-`curl -H 'X-Forwarded-For: 203.0.113.9' "$URL/login"`. In Render's logs, the JSON request
-log's `ip` must be **your own public IP**: not `203.0.113.9`, and not a Render address.
+The service sets `RSS_PROXY_HOPS=2`: requests reach the app through Cloudflare and then
+Render's proxy, and each appends one `X-Forwarded-For` entry, so a request arrives with
+`<whatever the client sent>, <client>, <Cloudflare server>`. To check that the app sees
+visitors' real addresses, run:
 
-If it isn't, or the logs show the warning `client IP from X-Forwarded-For is not a public
-address; check -proxy-hops`, set `RSS_PROXY_HOPS` back to `0` in `main.tf`, apply, and
-stop: until it's fixed, every visitor shares one login limit.
+```sh
+curl -4 -H 'X-Forwarded-For: 203.0.113.9' "$URL/login" >/dev/null
+curl -4 https://api.ipify.org    # your public IPv4 address
+```
+
+In Render's logs, the `ip` of the JSON request log line for `/login` must be **your own
+public IP**. Anything else means the hop count is wrong:
+
+- `203.0.113.9`: one hop too many; the app is trusting what the client sent.
+- A Cloudflare address (such as `172.64.0.0/13` or `104.16.0.0/13`): one hop too few. The
+  app doesn't warn about this one, because the address is public.
+- A private address, with the warning `client IP from X-Forwarded-For is not a public
+  address; check -proxy-hops`: one hop too few, and the extra hop is inside Render.
+
+To find the right count, change `RSS_PROXY_HOPS` on the service's **Environment** page
+(saving redeploys) and repeat the check, then set the value that works in `main.tf` and
+apply. If no value works, set it to `0` and stop: every visitor then shares one login
+limit, but nobody can forge their address.
 
 ## Facts recorded after setup
 

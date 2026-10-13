@@ -40,6 +40,39 @@ it, and no secret should appear in plain text. The database has `prevent_destroy
 `terraform -chdir=infra output -raw url` prints the service's URL, and `output -raw
 service_id` its ID.
 
+### With 1Password
+
+`op run` hands the values to one Terraform command without exporting them into your
+shell, and masks them if Terraform prints one. Set it up once:
+
+1. `brew install 1password-cli`, then in the 1Password app turn on **Settings →
+   Developer → Integrate with 1Password CLI** (unlocks with Touch ID).
+2. In a vault `rss`, create two *API Credential* items with these custom fields.
+   Secrets are *Password* fields, the rest *Text*:
+   - `r2-tfstate`: `access-key-id` (Text), `secret-access-key` (Password),
+     `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
+   - `render`: `api-key` (Password), `owner-id` (Text)
+3. Outside the repository, create `~/.config/rss/infra.env`. It holds references, not
+   secrets:
+
+   ```sh
+   AWS_ACCESS_KEY_ID=op://rss/r2-tfstate/access-key-id
+   AWS_SECRET_ACCESS_KEY=op://rss/r2-tfstate/secret-access-key
+   AWS_ENDPOINT_URL_S3=op://rss/r2-tfstate/endpoint
+   RENDER_API_KEY=op://rss/render/api-key
+   RENDER_OWNER_ID=op://rss/render/owner-id
+   ```
+
+4. Add an alias to `~/.zshrc`, so every command below goes through `op run`:
+
+   ```sh
+   alias tf-rss='op run --env-file ~/.config/rss/infra.env -- terraform -chdir=infra'
+   ```
+
+   Then `tf-rss init`, `tf-rss plan`, `tf-rss apply`, `tf-rss output -raw url`, and so
+   on. The alias already includes `-chdir=infra`, so don't repeat it. `op read
+   op://rss/render/owner-id` checks that a reference resolves.
+
 ## First account
 
 Signup is off. To create an account, turn it on briefly:

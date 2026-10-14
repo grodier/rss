@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -67,11 +68,7 @@ func (app *Application) Run() error {
 		ProxyHops:  app.config.server.proxyHops,
 	}
 
-	sessionManager := scs.New()
-	sessionManager.Store = postgresstore.New(db)
-	sessionManager.Lifetime = 12 * time.Hour
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = app.config.env == "production"
+	sessionManager := newSessionManager(db, app.config.env)
 
 	srv, err := server.NewServer(app.logger, srvConfig, services, sessionManager)
 	if err != nil {
@@ -141,4 +138,17 @@ func (app *Application) Run() error {
 	wg.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
+}
+
+// sessionLifetime is how long a login lasts. See "Security" in docs/decisions.md.
+const sessionLifetime = 30 * 24 * time.Hour
+
+// newSessionManager returns the session manager, storing sessions in db.
+func newSessionManager(db *sql.DB, env string) *scs.SessionManager {
+	sessionManager := scs.New()
+	sessionManager.Store = postgresstore.New(db)
+	sessionManager.Lifetime = sessionLifetime
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = env == "production"
+	return sessionManager
 }

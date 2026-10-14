@@ -55,7 +55,7 @@ errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
 production, text otherwise), which also reports the error `Run` returns.
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
 Refresh button and the background workers), the repositories, the scs session manager
-(sessions in Postgres, 12-hour lifetime) and the server, then starts the runners next to
+(sessions in Postgres, 30-day lifetime) and the server, then starts the runners next to
 `Server.Serve`. On SIGINT or SIGTERM, or when any component fails, the context is
 canceled: the server drains requests for up to 30 seconds, the workers stop, and only
 then is the database closed. Only `cmd/www` handles signals.

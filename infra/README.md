@@ -198,8 +198,9 @@ A dump restores cleanly only into a database with the same migrations, so check 
 commit production ran when the dump was taken, then:
 
 1. `make db/reset`
-2. `pg_restore --clean --if-exists --no-owner -d "$RSS_DB_DSN" rss-….dump` (with
-   PostgreSQL 17's `pg_restore`)
+2. `pg_restore --clean --if-exists --no-owner --no-privileges -d "$RSS_DB_DSN" rss-….dump`
+   (with PostgreSQL 17's `pg_restore`). `--no-privileges` skips the dump's grants to
+   Render's database role, which doesn't exist locally.
 
 ### Restoring into production
 
@@ -225,7 +226,9 @@ commit production ran when the dump was taken, then:
 
 ### Test restores
 
-Filled in by #217: the date, the dump restored, where, and what was checked.
+- **2026-10-14** (#217): a dump from a manual run of `rss-backup`, restored into the local
+  database at the commit production ran (`68cadf3`). The app ran locally against it, the
+  production account logged in, and its subscriptions were there.
 
 ## Signing up
 

@@ -7,16 +7,13 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. Deployment (planned in #218). The app runs in production, with signup open only to
-   people with the invite code. Left: #217 (manual), exercising deploys, rollback,
-   resets and backups in production, and adding the uptime check.
-2. #225 `www create-user` and `make db/seed`, for your local account after
-   `make db/reset`. Independent of the deployment issues.
-3. The rest of Pre-alpha testing (account management, logging in to the timeline, session
+1. #225 `www create-user` and `make db/seed`, for your local account after
+   `make db/reset`.
+2. The rest of Pre-alpha testing (account management, logging in to the timeline, session
    lifetime, malformed form bodies), in parallel with testing.
-4. **Plan** the error-state walkthrough and run the first pass; then repeat it
+3. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-5. Before production or a few thousand feeds, **plan** load and performance testing.
+4. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 
@@ -48,8 +45,6 @@ Running it locally for yourself needs none of this.
 
 ## Deployment
 
-Later, after #208–#217:
-
 - [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
   domain is settled. A proxied ("orange cloud") record adds a hop in front of Render's
   own Cloudflare, so either keep it DNS-only or change `RSS_PROXY_HOPS`; rerun the client
@@ -58,6 +53,10 @@ Later, after #208–#217:
   the cron job is deployed, so a change to `deploy/backup` runs only after a manual deploy
   in Render's dashboard (see "Backups and restore" in `infra/README.md`). Have CI deploy
   it by digest like the app, which needs its ID as a secret.
+- [ ] **External uptime check.** Deferred from #217 while pre-alpha. A free UptimeRobot
+  (or Better Stack) keyword monitor on `<url>/healthcheck` for `available`, every 5
+  minutes, alerting by email; note the monitor (not its credentials) in
+  `infra/README.md`. Before other people rely on the app.
 - [ ] **Stop the lifecycle rules from changing on every apply.** Cloudflare returns the
   `rss-backups` lifecycle rules in the opposite order from `infra/backup.tf`, so every
   apply plans an in-place update of `cloudflare_r2_bucket_lifecycle.backups` that only

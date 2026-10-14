@@ -185,6 +185,14 @@ Planned in #187 (issues #182–#186).
   listings), and there's no hidden prompt, which would need a new dependency. It can't run
   in production (distroless image, no external database access); production accounts
   come from the invite code.
+- **Sessions last 30 days from login, with no idle timeout** (#248). An idle timeout
+  makes scs write the session row on every page view and logs out the reader who checks
+  in every week or two. Not longer yet: there's no way to revoke a session (no password
+  change, no "log out other sessions"), so a lost cookie stays valid until it expires.
+  Sliding sessions or "remember me" are part of planning account management.
+- **Malformed form bodies get 400 and bodies over 64 KiB get 413** (#249), as HTML error
+  pages, not logged as server errors. The cap is applied in `decodePostForm`, so only
+  routes that decode a form are capped; a future upload sets its own limit.
 
 ## Deployment
 

@@ -7,11 +7,9 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. Deployment (planned in #218). Once these are done, the app runs in production, with
-   signup open only to people with the invite code.
-   1. #214 (manual): first apply and go-live.
-   2. #217 (manual): exercise deploys, rollback, resets and backups in production, and
-      add the uptime check.
+1. Deployment (planned in #218). The app runs in production, with signup open only to
+   people with the invite code. Left: #217 (manual), exercising deploys, rollback,
+   resets and backups in production, and adding the uptime check.
 2. #225 `www create-user` and `make db/seed`, for your local account after
    `make db/reset`. Independent of the deployment issues.
 3. The rest of Pre-alpha testing (account management, logging in to the timeline, session
@@ -60,6 +58,12 @@ Later, after #208–#217:
   the cron job is deployed, so a change to `deploy/backup` runs only after a manual deploy
   in Render's dashboard (see "Backups and restore" in `infra/README.md`). Have CI deploy
   it by digest like the app, which needs its ID as a secret.
+- [ ] **Stop the lifecycle rules from changing on every apply.** Cloudflare returns the
+  `rss-backups` lifecycle rules in the opposite order from `infra/backup.tf`, so every
+  apply plans an in-place update of `cloudflare_r2_bucket_lifecycle.backups` that only
+  swaps the two rules. Harmless, but a plan that always shows a change hides real ones.
+  List the rules in the order Cloudflare returns them (the multipart-upload rule first)
+  and check that the next plan shows no change for it.
 - [ ] **PR preview environments.** Render preview environments need the Professional
   workspace (about $19 per user a month plus compute). Only from same-repo branches: never
   `pull_request_target` with fork code, since this repository is public.

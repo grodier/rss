@@ -49,12 +49,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	form.CheckField(validator.NotBlank(form.Invite), "invite", "Invite code is required")
 	form.CheckField(subtle.ConstantTimeCompare([]byte(form.Invite), []byte(s.config.InviteCode)) == 1, "invite", "This invite code isn't valid")
-	form.CheckField(validator.NotBlank(form.Name), "name", "Name is required")
-	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
-	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
-	form.CheckField(validator.NotBlank(form.Password), "password", "Password is required")
-	form.CheckField(validator.MinChars(form.Password, 8), "password", "Password must be at least 8 characters long")
-	form.CheckField(validator.MaxChars(form.Password, 256), "password", "Password must not be more than 256 characters long")
+	form.CheckNewAccount(form.Name, form.Email, form.Password)
 
 	if !form.Valid() {
 		data := struct {

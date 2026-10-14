@@ -51,7 +51,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-lookup-workers` | `RSS_LOOKUP_WORKERS` | `2` | Background lookup workers (0–16; 0 disables them) |
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
 
-Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`.
+Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`. Locally, `make db/seed` makes your account without signing up (see [`www create-user`](#www-create-user)).
 
 ### `www migrate`
 
@@ -66,9 +66,29 @@ Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex
 
 To wipe and rebuild a database other than the local one: `go run ./cmd/www migrate -allow-reset-to "$(go run ./cmd/www migrate -print-fingerprint)"`.
 
+### `www create-user`
+
+`www create-user -name <name> -email <email> [-db-dsn <dsn>]` creates an account and exits. The password is the first line of stdin (a trailing `\n` or `\r\n` is dropped; other whitespace is kept); it is never a flag, so it stays out of shell history and process listings:
+
+```sh
+printf '%s\n' "$PASSWORD" | go run ./cmd/www create-user -name You -email you@example.com
+```
+
+The name, email and password must pass signup's rules. It's for local development: in production, accounts come from signing up with the invite code. Its flags, also settable by environment variables:
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
+| `-name` | `RSS_NAME` | _(none, required)_ | The account's name |
+| `-email` | `RSS_EMAIL` | _(none, required)_ | The account's email |
+
+It exits 0 when the account is created, 1 when it can't be (including when an account with that email already exists), and 2 for an empty DSN or invalid input, before opening the database.
+
 ## Make targets
 
 Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports). Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
+
+`make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`. `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
 
 ## Tests
 

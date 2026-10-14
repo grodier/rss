@@ -10,7 +10,7 @@ import (
 
 func TestRunMigratePrintFingerprint(t *testing.T) {
 	var out bytes.Buffer
-	if code := run([]string{"migrate", "-print-fingerprint"}, noEnv, &out, io.Discard); code != 0 {
+	if code := run([]string{"migrate", "-print-fingerprint"}, noEnv, nil, &out, io.Discard); code != 0 {
 		t.Fatalf("run() = %d, want 0", code)
 	}
 	if got := strings.TrimSpace(out.String()); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(got) {
@@ -20,7 +20,7 @@ func TestRunMigratePrintFingerprint(t *testing.T) {
 
 func TestRunMigrateRequiresDSN(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := run([]string{"migrate"}, noEnv, io.Discard, &stderr); code != 2 {
+	if code := run([]string{"migrate"}, noEnv, nil, io.Discard, &stderr); code != 2 {
 		t.Fatalf("run() = %d, want 2", code)
 	}
 	if want := "database DSN must not be empty"; !strings.Contains(stderr.String(), want) {

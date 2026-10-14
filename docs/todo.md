@@ -7,13 +7,11 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. #225 `www create-user` and `make db/seed`, for your local account after
-   `make db/reset`.
-2. The rest of Pre-alpha testing (account management, logging in to the timeline, session
+1. The rest of Pre-alpha testing (account management, logging in to the timeline, session
    lifetime, malformed form bodies), in parallel with testing.
-3. **Plan** the error-state walkthrough and run the first pass; then repeat it
+2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-4. Before production or a few thousand feeds, **plan** load and performance testing.
+3. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

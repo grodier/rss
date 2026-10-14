@@ -47,7 +47,8 @@ run three long-lived components, all stopped by one context:
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
-`cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate` (below). Otherwise it
+`cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate` and `www create-user` to
+`runCreateUser` (below). Otherwise it
 parses the configuration (`parseConfig` in `config.go`: each flag,
 or else its `RSS_` environment variable via `setFlagsFromEnv`, or else its default;
 errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
@@ -68,11 +69,16 @@ different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in
 case it drops and recreates the current schema first. Then it runs goose's `Up` and
 stores the new fingerprint.
 
+`www create-user` (`runCreateUser` in `cmd/www/create_user.go`, with its own flags)
+creates an account with the password on the first line of stdin, validated with
+`validator.CheckNewAccount` like signup, through `psql.UserRepository.Create`, and exits.
+It's for local development (`make db/seed`); there's nowhere to run it in production.
+
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate` command | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `migrations` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate` and `create-user` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `migrations`, `validator`, `rss` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |

@@ -13,15 +13,22 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
 
 // run runs the command in args and returns the process's exit code: 0 on
 // success or -help, 1 when the command fails, 2 for invalid configuration.
-// "www migrate [flags]" applies the migrations; "www [flags]" serves the app.
-func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "migrate" {
-		return runMigrate(args[1:], getenv, stdout, stderr)
+// "www migrate [flags]" applies the migrations; "www create-user [flags]"
+// creates an account with the password read from stdin; "www [flags]" serves
+// the app.
+func run(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "migrate":
+			return runMigrate(args[1:], getenv, stdout, stderr)
+		case "create-user":
+			return runCreateUser(args[1:], getenv, stdin, stdout, stderr)
+		}
 	}
 
 	cfg, err := parseConfig(args, getenv, stderr)

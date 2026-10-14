@@ -60,6 +60,13 @@ db/reset: confirm
 	@until docker compose exec postgres pg_isready -U rssapp > /dev/null 2>&1; do sleep 0.5; done
 	@echo "Running up migrations..."
 	go run ./cmd/www migrate
+	@if [ -n "$$RSS_DEV_EMAIL" ]; then $(MAKE) db/seed; fi
+
+## db/seed: create your account from RSS_DEV_EMAIL and RSS_DEV_PASSWORD in .env
+.PHONY: db/seed
+db/seed: db/check
+	@test -n "$$RSS_DEV_EMAIL" && test -n "$$RSS_DEV_PASSWORD" || { echo "Set RSS_DEV_EMAIL and RSS_DEV_PASSWORD in .env"; exit 1; }
+	@printf '%s\n' "$$RSS_DEV_PASSWORD" | go run ./cmd/www create-user -name "$${RSS_DEV_NAME:-Dev}" -email "$$RSS_DEV_EMAIL"
 
 .PHONY: db/check
 db/check:

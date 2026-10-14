@@ -7,15 +7,13 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. #225 `www create-user` and `make db/seed`, for your local account after
-   `make db/reset`.
-2. #247 Send users to the timeline after login.
-3. #248 Keep sessions for 30 days instead of 12 hours.
-4. #249 Return 400/413 for malformed or oversized form bodies.
-5. **Plan** account management (see Pre-alpha testing), in parallel with testing.
-6. **Plan** the error-state walkthrough and run the first pass; then repeat it
+1. #247 Send users to the timeline after login.
+2. #248 Keep sessions for 30 days instead of 12 hours.
+3. #249 Return 400/413 for malformed or oversized form bodies.
+4. **Plan** account management (see Pre-alpha testing), in parallel with testing.
+5. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-7. Before production or a few thousand feeds, **plan** load and performance testing.
+6. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

@@ -7,11 +7,13 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. The rest of Pre-alpha testing (account management, logging in to the timeline, session
-   lifetime, malformed form bodies), in parallel with testing.
-2. **Plan** the error-state walkthrough and run the first pass; then repeat it
+1. #247 Send users to the timeline after login.
+2. #248 Keep sessions for 30 days instead of 12 hours.
+3. #249 Return 400/413 for malformed or oversized form bodies.
+4. **Plan** account management (see Pre-alpha testing), in parallel with testing.
+5. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-3. Before production or a few thousand feeds, **plan** load and performance testing.
+6. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 
@@ -22,24 +24,21 @@ Running it locally for yourself needs none of this.
 
 - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
   them. Only once people we don't know personally are invited.
-- [ ] **Account management.** No password change, password reset or account deletion.
-  With a few known testers, passwords can be reset by hand in the database. Self-service
-  reset needs email, which the app doesn't send yet.
+- [ ] **Account management (needs planning).** No password change, password reset or
+  account deletion. With a few known testers, passwords can be reset by hand in the
+  database. Self-service reset needs email, which the app doesn't send yet. Plan together:
+  - Revoking sessions: a password change should log out your other sessions. scs stores
+    session data as an opaque blob, so they can't be found by user; one option is a
+    per-user `password_changed_at` (or counter) kept in the session at login and checked
+    by `authenticate`, which already looks up the user on every request.
+  - Longer sessions, once they can be revoked (#248 keeps them for 30 days until then):
+    sliding sessions (a long `Lifetime` plus an `IdleTimeout`, which writes the session
+    row on every page view) or a "remember me" checkbox (scs's `RememberMe`).
 - [ ] **"Check your inbox" signup (needs email).** #185 makes a duplicate signup look
   like a success, so signup doesn't reveal which emails have accounts. The cost: someone
   who forgot they have an account thinks they made a new one, and their new password
   fails at login. Once the app sends email, signup should say "check your inbox", and an
   existing owner should get a "you already have an account" email instead.
-- [ ] **Log in to the timeline.** `loginFormHandler` redirects to `/feeds`. Since `/` is
-  now the timeline, send users there instead.
-- [ ] **Session lifetime.** Sessions expire 12 hours after login
-  (`sessionManager.Lifetime` in `cmd/www/application.go`), so a daily reader logs in
-  every day. Consider a longer lifetime with an idle timeout (`sessionManager.IdleTimeout`).
-- [ ] **Malformed form bodies return 500.** `decodePostForm` errors go to
-  `serverErrorHTML`, so a bad body is a 500 when it should be a 400, and form bodies
-  aren't capped beyond `ParseForm`'s 10 MB default. Return 400 for decode errors and cap
-  bodies with `http.MaxBytesReader` (413 when exceeded). The error-state walkthrough
-  lists both states.
 
 ## Deployment
 
@@ -410,8 +409,9 @@ Data growth:
   *Fix:* article retention (deleting articles cascades to `reads`).
 - [ ] **Sessions in Postgres.** scs reads the `sessions` row on every request in the
   session group and writes it whenever the session changes (flash messages, login).
-  Expired rows are swept periodically. *Signal:* session queries in `pg_stat_statements`
-  or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
+  Expired rows are swept periodically; a login's row lives up to 30 days (#248), so the
+  table holds roughly one row per device logged in during the last month. *Signal:*
+  session queries in `pg_stat_statements` or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
   sessions.
 - [ ] **In-memory rate limiters.** Their maps grow with distinct keys between sweeps and
   aren't shared between instances. The login and signup limits (#182, #183) add maps

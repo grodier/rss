@@ -160,7 +160,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.sessionManager.Put(r.Context(), "authenticatedUserID", id)
 
-	http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {

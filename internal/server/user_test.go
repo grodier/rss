@@ -548,3 +548,27 @@ func postSignup(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
 	h.ServeHTTP(rr, req)
 	return rr
 }
+
+func TestLoginFormHandlerSuccess(t *testing.T) {
+	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
+			return "user-id", nil
+		},
+	}})
+
+	form := url.Values{"email": {"user@example.com"}, "password": {"correct-password"}}
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.router().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want %q", loc, "/")
+	}
+	if len(rr.Result().Cookies()) == 0 {
+		t.Error("no session cookie in the response")
+	}
+}

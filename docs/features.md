@@ -12,8 +12,9 @@ in [decisions.md](decisions.md).
 **Flow.** Signup exists only when the app runs with `-invite-code`, and no page links to
 it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
 the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
-(including the code, compared with `subtle.ConstantTimeCompare`), and creates the user
-with an Argon2id hash. A duplicate email gets exactly the same response as a new
+(the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
+for the name, email and password), and creates the user with an Argon2id hash. A
+duplicate email gets exactly the same response as a new
 account. Login checks the per-IP limit, validates, then counts the attempt against the
 submitted email *before* checking the password (refunded unless the password was
 wrong), so parallel guesses can't slip past the limit. On success it renews the session
@@ -21,11 +22,18 @@ token, stores `authenticatedUserID` in the session and redirects. On every later
 request, `authenticate` reads that ID, checks the user still exists, and puts it in the
 request context, where handlers read it with `s.authenticatedUserID(r)`.
 
+The other way accounts are made is `www create-user` (`runCreateUser`), for your local
+account: it reads the password from the first line of stdin, checks the account with the
+same `CheckNewAccount`, and creates it with the same `Create`. Unlike signup, it says
+when the email is taken. `make db/seed` runs it with `RSS_DEV_EMAIL` and
+`RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL`
+is set.
+
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
 2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
-   `logoutHandler`.
+   `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`.
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
    (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
@@ -34,11 +42,14 @@ request context, where handlers read it with `s.authenticatedUserID(r)`.
 6. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and
    `helpers.go` (`authenticatedUserID`).
 7. `cmd/www/application.go`: the session manager's settings.
+8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
+   `Makefile`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`), `router_test.go` (`TestSignupRoutes`),
 `templates_test.go` (`TestNoSignupLinks`), `middleware_test.go`, `ratelimit_test.go`,
-`clientip_test.go`; `cmd/www/config_test.go` (`TestParseConfigInviteCode`);
+`clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`);
+`cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
 `internal/psql/users_test.go`; `internal/password/password_test.go`.
 
 **Why:** "Security" in decisions.md.

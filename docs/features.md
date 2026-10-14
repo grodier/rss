@@ -18,8 +18,8 @@ duplicate email gets exactly the same response as a new
 account. Login checks the per-IP limit, validates, then counts the attempt against the
 submitted email *before* checking the password (refunded unless the password was
 wrong), so parallel guesses can't slip past the limit. On success it renews the session
-token, stores `authenticatedUserID` in the session and redirects. On every later
-request, `authenticate` reads that ID, checks the user still exists, and puts it in the
+token, stores `authenticatedUserID` in the session and redirects to the timeline (`/`).
+On every later request, `authenticate` reads that ID, checks the user still exists, and puts it in the
 request context, where handlers read it with `s.authenticatedUserID(r)`.
 
 The other way accounts are made is `www create-user` (`runCreateUser`), for your local

@@ -37,7 +37,13 @@ func (s *Server) logError(r *http.Request, err error) {
 	s.logger.Error(err.Error(), "method", method, "uri", uri)
 }
 
-func (s *Server) decodePostForm(r *http.Request, dst any) error {
+// maxFormBytes caps the size of a decoded form body.
+const maxFormBytes = 64 << 10
+
+// decodePostForm parses the request body, capped at maxFormBytes, into dst.
+// Respond to its errors with formErrorResponse.
+func (s *Server) decodePostForm(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
 	err := r.ParseForm()
 	if err != nil {
 		return err

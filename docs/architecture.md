@@ -253,6 +253,7 @@ CLAUDE.md.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most
   `GOMAXPROCS` hashes run at once and the rest wait. How login and signup avoid revealing
   which emails have accounts is under "Accounts and sessions" in features.md.
+- **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 
   | Limiter | Key | Limit |

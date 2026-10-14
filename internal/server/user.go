@@ -29,9 +29,9 @@ func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form signupForm
-	err := s.decodePostForm(r, &form)
+	err := s.decodePostForm(w, r, &form)
 	if err != nil {
-		s.serverErrorHTML(w, r, err)
+		s.formErrorResponse(w, r, err)
 		return
 	}
 
@@ -101,9 +101,9 @@ type loginForm struct {
 
 func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form loginForm
-	err := s.decodePostForm(r, &form)
+	err := s.decodePostForm(w, r, &form)
 	if err != nil {
-		s.serverErrorHTML(w, r, err)
+		s.formErrorResponse(w, r, err)
 		return
 	}
 

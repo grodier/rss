@@ -7,12 +7,11 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. #248 Keep sessions for 30 days instead of 12 hours.
-2. #249 Return 400/413 for malformed or oversized form bodies.
-3. **Plan** account management (see Pre-alpha testing), in parallel with testing.
-4. **Plan** the error-state walkthrough and run the first pass; then repeat it
+1. #249 Return 400/413 for malformed or oversized form bodies.
+2. **Plan** account management (see Pre-alpha testing), in parallel with testing.
+3. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-5. Before production or a few thousand feeds, **plan** load and performance testing.
+4. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

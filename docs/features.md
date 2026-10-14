@@ -41,7 +41,7 @@ is set.
 5. `internal/password/password.go`: `Hash`, `Verify`, the `slots` cap.
 6. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and
    `helpers.go` (`authenticatedUserID`).
-7. `cmd/www/application.go`: the session manager's settings.
+7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings (30-day lifetime).
 8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
    `Makefile`.
 

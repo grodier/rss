@@ -1,3 +1,4 @@
+-- Production reset check (#217).
 -- +goose Up
 CREATE EXTENSION IF NOT EXISTS citext;
 

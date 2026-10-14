@@ -412,8 +412,8 @@ Data growth:
 - [ ] **Sessions in Postgres.** scs reads the `sessions` row on every request in the
   session group and writes it whenever the session changes (flash messages, login).
   Expired rows are swept periodically; a login's row lives up to 30 days (#248), so the
-  table holds roughly one row per device logged in during the last month. *Signal:* session queries in `pg_stat_statements`
-  or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
+  table holds roughly one row per device logged in during the last month. *Signal:*
+  session queries in `pg_stat_statements` or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
   sessions.
 - [ ] **In-memory rate limiters.** Their maps grow with distinct keys between sweeps and
   aren't shared between instances. The login and signup limits (#182, #183) add maps

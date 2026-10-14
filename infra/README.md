@@ -1,8 +1,9 @@
 # infra
 
-Terraform for production on Render: one Postgres 17 database (`rss-db`) and one web
-service (`rss`) running `ghcr.io/grodier/rss`, both in Virginia. State lives in the
-Cloudflare R2 bucket `rss-tfstate`. Why Render and this setup: "Deployment" in
+Terraform for production on Render: one Postgres 17 database (`rss-db`), one web
+service (`rss`) running `ghcr.io/grodier/rss`, and one cron job (`rss-backup`) that dumps
+the database to the Cloudflare R2 bucket `rss-backups` every night, all in Virginia.
+State lives in the R2 bucket `rss-tfstate`. Why Render and this setup: "Deployment" in
 [`docs/decisions.md`](../docs/decisions.md).
 
 Terraform doesn't own three things that change outside it, and ignores them:
@@ -26,6 +27,10 @@ export AWS_SECRET_ACCESS_KEY=...    # the rss-tfstate R2 token's Secret Access K
 export AWS_ENDPOINT_URL_S3=https://<account ID>.r2.cloudflarestorage.com
 export RENDER_API_KEY=...
 export RENDER_OWNER_ID=...          # starts with tea- or usr-
+export CLOUDFLARE_API_TOKEN=...     # the rss-terraform token
+export TF_VAR_cloudflare_account_id=...
+export TF_VAR_backup_r2_access_key_id=...      # the rss-backups R2 token's Access Key ID
+export TF_VAR_backup_r2_secret_access_key=...  # the rss-backups R2 token's Secret Access Key
 ```
 
 Then, from the repository root:
@@ -48,11 +53,13 @@ shell, and masks them if Terraform prints one. Set it up once:
 
 1. `brew install 1password-cli`, then in the 1Password app turn on **Settings →
    Developer → Integrate with 1Password CLI** (unlocks with Touch ID).
-2. In a vault `rss`, create two *API Credential* items with these custom fields.
+2. In a vault `rss`, create four *API Credential* items with these custom fields.
    Secrets are *Password* fields, the rest *Text*:
    - `r2-tfstate`: `access-key-id` (Text), `secret-access-key` (Password),
      `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
+   - `r2-backups`: `access-key-id` (Text), `secret-access-key` (Password)
    - `render`: `api-key` (Password), `owner-id` (Text)
+   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text)
 3. Outside the repository, create `~/.config/rss/infra.env`. It holds references, not
    secrets:
 
@@ -62,6 +69,10 @@ shell, and masks them if Terraform prints one. Set it up once:
    AWS_ENDPOINT_URL_S3=op://rss/r2-tfstate/endpoint
    RENDER_API_KEY=op://rss/render/api-key
    RENDER_OWNER_ID=op://rss/render/owner-id
+   CLOUDFLARE_API_TOKEN=op://rss/cloudflare/api-token
+   TF_VAR_cloudflare_account_id=op://rss/cloudflare/account-id
+   TF_VAR_backup_r2_access_key_id=op://rss/r2-backups/access-key-id
+   TF_VAR_backup_r2_secret_access_key=op://rss/r2-backups/secret-access-key
    ```
 
 4. Add an alias to `~/.zshrc`, so every command below goes through `op run`:
@@ -143,6 +154,78 @@ time:
 While an apply waits for approval, other `infra.yml` runs wait behind it, and GitHub keeps
 only the newest waiting run: an older one shows as cancelled. Re-run it if it was an
 apply you still want.
+
+## Backups and restore
+
+Two layers, both for the database only:
+
+- **Point-in-time recovery** by Render, for the last 3 days (Hobby workspace).
+- **A nightly dump** to the R2 bucket `rss-backups`, at another provider, kept 35 days.
+  The cron job `rss-backup` runs `deploy/backup/backup.sh` at 08:00 UTC: `pg_dump
+  --format=custom --no-owner`, streamed to `rss-<UTC date and time>.dump` (for example
+  `rss-2026-10-14T0800Z.dump`). A bucket lifecycle rule deletes dumps 35 days old. A
+  failed run deletes what it uploaded, exits non-zero, and Render emails you.
+
+Terraform sets the bucket's lifecycle rules but doesn't own the bucket, which was
+created by hand (#208) like `rss-tfstate`.
+
+**The backup image.** CI pushes `ghcr.io/grodier/rss-backup:main` from
+`deploy/backup` on every push to `main`. The package must be public, like `rss`, or
+Render can't pull it. Render pulls the tag when the cron job is deployed, not on every
+run, so after a change to `deploy/backup` (a Dependabot update of `postgres:17-alpine`,
+say) deploy the job again: **`rss-backup` in Render's dashboard → Manual Deploy → Deploy
+latest reference**. Its Postgres major version must stay that of the database.
+
+### Listing and downloading dumps
+
+In Cloudflare's dashboard, **R2 Object Storage → `rss-backups`** lists the dumps and
+downloads one. Or with the AWS CLI and the `rss-backups` token from your password
+manager:
+
+```sh
+export AWS_ACCESS_KEY_ID=...        # the rss-backups R2 token's Access Key ID
+export AWS_SECRET_ACCESS_KEY=...    # the rss-backups R2 token's Secret Access Key
+export AWS_DEFAULT_REGION=auto
+R2=https://<account ID>.r2.cloudflarestorage.com
+
+aws s3 ls s3://rss-backups --endpoint-url "$R2"
+aws s3 cp s3://rss-backups/rss-2026-10-14T0800Z.dump . --endpoint-url "$R2"
+```
+
+### Restoring into the local database
+
+A dump restores cleanly only into a database with the same migrations, so check out the
+commit production ran when the dump was taken, then:
+
+1. `make db/reset`
+2. `pg_restore --clean --if-exists --no-owner -d "$RSS_DB_DSN" rss-….dump` (with
+   PostgreSQL 17's `pg_restore`)
+
+### Restoring into production
+
+- **Within 3 days:** point-in-time recovery, from the database's **Recovery** page in
+  Render's dashboard → **Restore Database**, with a time at least ten minutes ago. It
+  doesn't restore in place: Render creates a *new* database with the data as it was at
+  that time ([docs](https://render.com/docs/postgresql-backups)), and the service has to
+  be pointed at it. Since Terraform owns `rss-db` and the service's `RSS_DB_DSN`, do this
+  only for a real emergency, and bring Terraform in line afterwards.
+- **Older:** restore a dump into `rss-db` with a Render one-off job on `rss-backup`, which
+  has `pg_restore`, the AWS CLI and the same environment. The database has no external
+  access, so the restore must run inside Render. As with a local restore, the deployed
+  migrations must match the dump's; if they don't, deploy the commit that matches first.
+
+  ```sh
+  curl -sS -X POST "https://api.render.com/v1/services/<rss-backup's ID, crn-…>/jobs" \
+    -H "Authorization: Bearer $RENDER_API_KEY" -H 'Content-Type: application/json' \
+    -d '{"startCommand": "sh -c '"'"'set -euo pipefail; aws s3 cp s3://$R2_BUCKET/rss-2026-10-14T0800Z.dump - --endpoint-url $R2_ENDPOINT | pg_restore --clean --if-exists --no-owner -d $DATABASE_URL'"'"'"}'
+  ```
+
+  The job's logs are on `rss-backup`'s **One-off Jobs** page. `--clean` replaces every
+  table, so anything written since the dump is lost.
+
+### Test restores
+
+Filled in by #217: the date, the dump restored, where, and what was checked.
 
 ## Signing up
 

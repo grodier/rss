@@ -10,8 +10,7 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 1. Deployment (planned in #218). Once these are done, the app runs in production, with
    signup open only to people with the invite code.
    1. #214 (manual): first apply and go-live.
-   2. #216 database backups to R2.
-   3. #217 (manual): exercise deploys, rollback, resets and backups in production, and
+   2. #217 (manual): exercise deploys, rollback, resets and backups in production, and
       add the uptime check.
 2. #225 `www create-user` and `make db/seed`, for your local account after
    `make db/reset`. Independent of the deployment issues.
@@ -57,6 +56,10 @@ Later, after #208–#217:
   domain is settled. A proxied ("orange cloud") record adds a hop in front of Render's
   own Cloudflare, so either keep it DNS-only or change `RSS_PROXY_HOPS`; rerun the client
   IP check in `infra/README.md` either way.
+- [ ] **Deploy the backup job with its image.** Render pulls `rss-backup:main` only when
+  the cron job is deployed, so a change to `deploy/backup` runs only after a manual deploy
+  in Render's dashboard (see "Backups and restore" in `infra/README.md`). Have CI deploy
+  it by digest like the app, which needs its ID as a secret.
 - [ ] **PR preview environments.** Render preview environments need the Professional
   workspace (about $19 per user a month plus compute). Only from same-repo branches: never
   `pull_request_target` with fork code, since this repository is public.

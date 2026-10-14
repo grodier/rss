@@ -84,8 +84,10 @@ jobs:
       - name: terraform validate
         run: terraform -chdir=infra validate
 
-  # Builds the container image on every event; pushes it to GHCR and attests its
-  # provenance only for pushes to main. Deploys reference the digest, never a tag.
+  # Builds the container images (the app, and the nightly backup from
+  # deploy/backup) on every event; pushes them to GHCR and attests their
+  # provenance only for pushes to main. Deploys reference the app's digest,
+  # never a tag.
   image:
     needs: test
     runs-on: ubuntu-latest
@@ -129,6 +131,27 @@ jobs:
         with:
           subject-name: ghcr.io/grodier/rss
           subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # Render's rss-backup cron job runs :main; see "Backups and restore" in
+      # infra/README.md.
+      - name: build backup
+        id: build-backup
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/backup
+          platforms: linux/amd64
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/grodier/rss-backup:sha-${{ github.sha }}
+            ghcr.io/grodier/rss-backup:main
+
+      - name: attest backup build provenance
+        if: env.PUSH == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/grodier/rss-backup
+          subject-digest: ${{ steps.build-backup.outputs.digest }}
           push-to-registry: true
 
   # Every push to main that passes CI deploys; merging the PR is the approval.

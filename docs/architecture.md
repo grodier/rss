@@ -303,6 +303,15 @@ also pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss:main`, atte
 pushed digest with `actions/attest-build-provenance`, and exposes the digest as the job
 output `digest`. PRs never push.
 
+The same job builds the backup image from `deploy/backup`: `postgres:17-alpine` (its
+`pg_dump` must be at least the database's major version) plus the Alpine `aws-cli`
+package, with `backup.sh` as the entrypoint. The script streams `pg_dump --format=custom
+--no-owner "$DATABASE_URL"` into `aws s3 cp - s3://$R2_BUCKET/rss-<UTC
+YYYY-MM-DDTHHMMZ>.dump --endpoint-url "$R2_ENDPOINT"`, and deletes the object if either
+side fails, since `aws` completes the upload with whatever `pg_dump` wrote. On pushes to
+`main`, CI pushes it as `ghcr.io/grodier/rss-backup:main` and `:sha-<sha>` and attests
+it like the app image.
+
 **Infrastructure** (`infra/`, one Terraform root module; [`infra/README.md`](../infra/README.md)
 is the runbook). The `render-oss/render` provider creates `render_postgres.rss_db`
 (Postgres 17, `basic_256mb`, Virginia, an empty IP allow list so only Render's private
@@ -312,9 +321,20 @@ image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy comman
 `RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
 `RSS_DB_MAX_OPEN_CONNS=10`, `RSS_PROXY_HOPS=2` and `RSS_PORT`/`PORT=8080`.
 `ignore_changes` leaves the image (set by deploys), `RSS_ALLOW_RESET_TO` (set by the
-reset workflow) and `RSS_INVITE_CODE` (set in Render's dashboard) alone. State is in the
-R2 bucket `rss-tfstate` (S3 backend, `use_lockfile`); credentials come only from the
-environment. CI's `terraform` job runs `fmt -check`, `init -backend=false` and `validate`.
+reset workflow) and `RSS_INVITE_CODE` (set in Render's dashboard) alone.
+`render_cron_job.backup` (`rss-backup`, Starter, Virginia, schedule `0 8 * * *`, image
+`ghcr.io/grodier/rss-backup:main`) gets `DATABASE_URL` (the internal connection string),
+`PGSSLMODE=require`, `R2_BUCKET=rss-backups`, `R2_ENDPOINT` (from variable
+`cloudflare_account_id`), the `rss-backups` token as
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (sensitive variables
+`backup_r2_access_key_id`/`backup_r2_secret_access_key`), `AWS_DEFAULT_REGION=auto`, and
+`AWS_REQUEST_CHECKSUM_CALCULATION`/`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. The
+`cloudflare/cloudflare` provider (token from `CLOUDFLARE_API_TOKEN`) sets
+`cloudflare_r2_bucket_lifecycle.backups` on the hand-made bucket `rss-backups`: delete
+objects after 35 days, and abort multipart uploads after 7 (R2's default rule, which the
+resource would otherwise replace). State is in the R2 bucket `rss-tfstate` (S3 backend,
+`use_lockfile`); credentials come only from the environment. CI's `terraform` job runs
+`fmt -check`, `init -backend=false` and `validate`.
 
 **Workflows** (`.github/workflows`; how to use them is under "Deploys" in
 [`infra/README.md`](../infra/README.md)). All Render, R2 and Cloudflare values are
@@ -340,4 +360,5 @@ uses `pull_request_target`.
   which waits for the owner's approval.
 
 Dependabot (`.github/dependabot.yml`) proposes weekly updates for Go modules, GitHub
-Actions, the `Dockerfile`'s base images and the Terraform providers.
+Actions, the base images of the `Dockerfile` and `deploy/backup/Dockerfile`, and the
+Terraform providers.

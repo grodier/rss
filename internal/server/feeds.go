@@ -229,8 +229,8 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (fee
 		return rss.Feed{}, subscriptionForm{}, false
 	}
 
-	if err := s.decodePostForm(r, &form); err != nil {
-		s.serverErrorHTML(w, r, err)
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
 		return rss.Feed{}, subscriptionForm{}, false
 	}
 

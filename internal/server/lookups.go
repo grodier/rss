@@ -27,8 +27,8 @@ type lookupForm struct {
 // the lookup found one in time, and to the lookup's status page otherwise.
 func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 	var form lookupForm
-	if err := s.decodePostForm(r, &form); err != nil {
-		s.serverErrorHTML(w, r, err)
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
 		return
 	}
 

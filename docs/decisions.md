@@ -27,8 +27,9 @@ section names; how the code works is in [architecture.md](architecture.md) and
   carry no tokens.
 - **GET handlers never fetch user-supplied URLs or make changes on the user's behalf**,
   because `CrossOriginProtection` only guards non-GET requests. The only writes from GET are
-  documented, idempotent upkeep: queuing a refresh of a stale feed and recording that the
-  user opened an article. (#50, #137, #156)
+  documented, idempotent upkeep: queuing a refresh of a stale feed, recording that the
+  user opened an article, and updating a session's `last_seen_at` at most once a day.
+  (#50, #137, #156, #258)
 - **Errors stored for debugging are never shown to users** (`lookups.error`,
   `feeds.last_error`). Pages say what happened in plain words. (#50, #129)
 
@@ -158,10 +159,13 @@ Planned in #187 (issues #182–#186).
 - **IPv6 clients are keyed by their /64**, since one client usually controls a whole /64.
 - **A limited login or signup re-renders its form with 429** and `Retry-After`, keeping
   the email filled in. The generic 429 page is only for lookups.
-- **Failed logins are counted per submitted email, whether or not it has an account**, so
-  a 429 doesn't reveal which emails do. Successful logins don't count or reset it.
-- **A duplicate signup looks exactly like a successful one**, and login verifies a dummy
-  hash for unknown emails so it takes as long as a wrong password.
+- **Failed logins are counted per submitted email** (#183), to slow password guessing
+  against one account. Successful logins don't count or reset it. Unknown emails were
+  counted too, so that a 429 didn't reveal which emails have accounts; "Accounts" dropped
+  that goal, and from #262 only wrong passwords count.
+- **Signup, login and reset say which emails have accounts** (see "Accounts"). #185 had
+  made a duplicate signup look exactly like a successful one, and login verify a dummy
+  hash for unknown emails; #262 removes both.
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password
   hashing" in the Performance watchlist).
 - **Signup is off unless an invite code is set.** (#186 started with a `-signup` flag,
@@ -185,14 +189,107 @@ Planned in #187 (issues #182–#186).
   listings), and there's no hidden prompt, which would need a new dependency. It can't run
   in production (distroless image, no external database access); production accounts
   come from the invite code.
-- **Sessions last 30 days from login, with no idle timeout** (#248). An idle timeout
-  makes scs write the session row on every page view and logs out the reader who checks
-  in every week or two. Not longer yet: there's no way to revoke a session (no password
-  change, no "log out other sessions"), so a lost cookie stays valid until it expires.
-  Sliding sessions or "remember me" are part of planning account management.
+- **Sessions: see "Accounts"** (#258). #248 kept them to 30 days from login, with no idle
+  timeout, until they could be revoked. scs's own idle timeout writes the session row on
+  every page view, which is why #258 tracks `last_seen_at` itself, at most once a day.
 - **Malformed form bodies get 400 and bodies over 64 KiB get 413** (#249), as HTML error
   pages, not logged as server errors. The cap is applied in `decodePostForm`, so only
   routes that decode a form are capped; a future upload sets its own limit.
+
+## Accounts
+
+Planned in #270 (issues #254–#269). In these flows, trade-offs favor the user's
+experience.
+
+- **Helpful errors, not hiding which emails have accounts.** Signup says when an email
+  already has an account, login says whether the email or the password is wrong, and
+  password reset says when there's no account (#262, #265). What this reveals, that
+  someone uses an RSS reader, isn't sensitive, and the commonest failures (forgetting
+  you signed up, using another of your addresses, a typo) get a next step instead of a
+  wait for an email that never comes. All three say the same, since hiding it in one
+  place protects nothing if another reveals it. Per-IP limits keep bulk checking slow.
+  This reverses #185.
+- **Soft email confirmation** (#264). Signup logs you in at once (#262), and a quiet
+  notice asks you to confirm until you do; a password reset also confirms. Confirming
+  first was rejected: it puts a trip to the inbox before first use, a slow or filtered
+  email strands you, and on phones the link opens in the mail app's own browser. A
+  confirmed address is required only for:
+  - changing your email: the new address takes effect once confirmed (#266);
+  - later, email that isn't about your account (digests, notifications);
+  - later, anything that reaches other people (invites by email, sharing, public
+    profiles);
+  - later, linking another sign-in method by matching email, which otherwise lets
+    someone who signed up with your address first keep a way in. A reset already covers
+    that case: it replaces the password and logs out every other session.
+- **Email links open a page with a button, and the POST does the work** (confirmation,
+  email change, and the reset form), so GET handlers still don't write and mail scanners
+  that open links can't act for the recipient. Tokens are 32 random bytes, and only
+  their SHA-256 is stored. They're single use; asking again doesn't cancel earlier links
+  (emails arrive out of order), and using one deletes the rest of its kind. Confirmation
+  links last 7 days, email change 24 hours, reset 1 hour. Confirmation and reset links
+  only work while the account still has the address they were sent to. Pages with a
+  token in the URL send `Referrer-Policy: no-referrer`.
+- **The email is how you log in and how we reach you, and it's never shown to other
+  people.** You're shown by your name and a letter avatar. No usernames until something
+  public or social needs one: they bring "taken" errors at signup, squatting, and broken
+  links on renames.
+- **No credentials table yet.** The password hash stays on `users`. Passkeys (a todo
+  item) add their own table, one user to many passkeys, and make `hashed_password`
+  nullable. Revisit before production if Google or Apple sign-in is planned.
+- **The name stays required at signup** (#261): it's what we call you in emails. One
+  field, what you'd like to be called, with no first/last split (which fails for many
+  names); at most 100 characters, trimmed.
+- **Avatar: the first letter of your name on a tint chosen by user ID**, like site
+  avatars. No uploads: only you see it, and storing and resizing untrusted images costs
+  more than it gives. No Gravatar: it sends a hash of your email to a third party.
+- **One Settings page** (#261): rows like a phone's settings, each opening its own small
+  page with one form. The nav's Logout button becomes an account entry (the avatar,
+  labelled Settings), and Log out moves to Settings: with sessions this long, a
+  prominent Logout mostly invites accidental logouts. Preferences (themes) will be typed
+  columns on `users`, not a key-value table.
+- **A `user_sessions` row per logged-in device** (#258), its ID kept in the scs session.
+  You stay logged in while you visit at least every 90 days, for at most a year (scs's
+  lifetime; browsers cap cookies at 400 days). `last_seen_at` is written at most once a
+  day, not on every page view. No "Remember me" checkbox: it asks a question most people
+  ignore, and logs out everyone who didn't tick it. Logout deletes this device's row and
+  only that one; changing or resetting your password deletes the others, and so does
+  "Log out of all other devices" in Settings (#263). A list of devices comes later.
+- **No password confirmation field** (#257). A show/hide toggle (JavaScript) catches
+  typos instead, and reset covers the rest.
+- **Passwords: 8 to 256 characters, not a common password, not your email** (#256),
+  normalized to NFKC. No composition rules or expiry. NIST's 15-character minimum for
+  password-only login was considered; the common-password list gets most of its benefit
+  with less friction. Checking Have I Been Pwned is a todo item.
+- **Re-enter your password to change your email or password, or to delete your
+  account** (#263, #266, #268). No "sudo mode" window that skips it for a while.
+- **Account deletion is immediate** (#268), after your password, with no grace period:
+  it's rare and deliberate, and a pending state adds a scheduled job and doubt about
+  whether the data is gone. Feeds and articles stay, since they're shared. Backups keep
+  the data up to 35 days, which the privacy policy says.
+- **Security emails:** password changed, email changed (to the old address), and account
+  deleted. No "new login" alerts: they're noisy, and people learn to ignore them.
+- **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by
+  configuration: Resend's free tier while testing, Amazon SES later (a todo item).
+  Without an SMTP host, emails are logged instead, in development only; production
+  refuses to start without one, since emails carry one-time links. Links use
+  `-base-url`, never the request's `Host` header.
+- **An outbox table, sent by a background worker** (#260), so pages don't wait on the
+  provider and failures retry. The handler that queues an email wakes its own worker, so
+  it goes out in about a second. Bodies are cleared once sent. At most 20 emails to one
+  address an hour: a backstop under each flow's own limit, so nobody can use the app to
+  flood an inbox.
+- **`rss.georgerodier.com` serves the app and sends its email** (#254) until there's a
+  product name. A subdomain keeps the email provider's records away from the personal
+  mail on `georgerodier.com`. Its DNS record is DNS-only, since a proxied one would add a
+  third `X-Forwarded-For` hop. DMARC starts at `p=none`, with reports. The SMTP password
+  is set in Render's dashboard and ignored by Terraform, like the invite code.
+- **A support address** (`-support-email`) is the Reply-To of every email, and is shown
+  on the reset pages and in Settings (#259, #265, #269).
+- **A privacy policy and terms before people we don't know use the app** (#269). The app
+  sets only the essential session cookie, so there's no cookie banner; anything else
+  (analytics, third-party scripts) means revisiting that.
+- **All the account tables land in one schema change** (#255), so production is reset
+  once rather than four times.
 
 ## Deployment
 

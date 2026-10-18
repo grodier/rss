@@ -7,7 +7,29 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. **Plan** account management (see Pre-alpha testing), in parallel with testing.
+1. Account management (planned in #270), in this order:
+   1. #254 Serve the app and send email from rss.georgerodier.com. Mostly the owner's
+      dashboard work; apply it before #259 merges.
+   2. #255 Add the account management tables to the schema (then reset production).
+   3. #256 Reject common passwords and passwords that are the account's email.
+   4. #257 Make the login and signup forms accessible, with a show-password toggle.
+   5. #258 Track logins in user_sessions, with 90-day idle sessions.
+   6. #259 Send email over SMTP (internal/mail).
+   7. #260 Queue emails in an outbox and send them from a background worker.
+   8. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   9. #262 Say which emails have accounts, log in at signup, and return to the page you
+      wanted.
+   10. #263 Change your password and log out other devices from Settings.
+   11. #264 Confirm email addresses (soft confirmation).
+   12. #265 Reset a forgotten password by email.
+   13. #266 Change your email address.
+   14. #267 Export your subscriptions as OPML.
+   15. #268 Delete your account.
+   16. #269 Add a privacy policy, terms of use and help links.
+
+   Issues that can be worked on in parallel sessions, in waves: #255, #256 and #257
+   (with #254 by the owner); then #258 and #259; then #260, #261 and #262; then #263,
+   #267 and #269; then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -20,29 +42,71 @@ What's needed, after deployment, before other people use the app on a public URL
 Running it locally for yourself needs none of this.
 
 - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
-  them. Only once people we don't know personally are invited.
-- [ ] **Account management (needs planning).** No password change, password reset or
-  account deletion. With a few known testers, passwords can be reset by hand in the
-  database. Self-service reset needs email, which the app doesn't send yet. Plan together:
-  - Revoking sessions: a password change should log out your other sessions. scs stores
-    session data as an opaque blob, so they can't be found by user; one option is a
-    per-user `password_changed_at` (or counter) kept in the session at login and checked
-    by `authenticate`, which already looks up the user on every request.
-  - Longer sessions, once they can be revoked (#248 keeps them for 30 days until then):
-    sliding sessions (a long `Lifetime` plus an `IdleTimeout`, which writes the session
-    row on every page view) or a "remember me" checkbox (scs's `RememberMe`).
-- [ ] **"Check your inbox" signup (needs email).** #185 makes a duplicate signup look
-  like a success, so signup doesn't reveal which emails have accounts. The cost: someone
-  who forgot they have an account thinks they made a new one, and their new password
-  fails at login. Once the app sends email, signup should say "check your inbox", and an
-  existing owner should get a "you already have an account" email instead.
+  them. Only once people we don't know personally are invited. When the code comes in
+  the link, show "Invited" instead of the text field.
+
+## Accounts
+
+Deferred while planning account management (#270). The decisions are under "Accounts" in
+decisions.md.
+
+- [ ] **Passkeys.** Log in with Face ID, a fingerprint or a security key, with no
+  password to make up at signup, and phishing-proof. Offered alongside the password form,
+  since WebAuthn needs JavaScript. Needs a dependency (`go-webauthn/webauthn`) and a
+  `passkeys` table (one user, many passkeys), and makes `users.hashed_password` nullable
+  for passkey-only accounts. The best login upgrade once #254–#269 are in.
+- [ ] **Sign in with Google or Apple (decide before production).** One-tap signup, but a
+  third party learns who uses the app, linking accounts that share an email must only
+  happen with confirmed addresses, and Apple charges a developer fee. If it's planned,
+  revisit whether credentials move to their own table (the password hash stays on
+  `users` for now).
+- [ ] **Devices list.** Settings lists each logged-in device ("Firefox on macOS · active
+  3 days ago") with its own Log out, from `user_sessions` plus a device label taken from
+  the User-Agent at login. No IP addresses or locations, which aren't kept outside the
+  logs. #263 only adds "Log out of all other devices".
+- [ ] **Email typo suggestions.** "Did you mean gmail.com?" under the signup email field,
+  for near-misses of common domains. Until then, the confirmation notice shows the
+  address you typed.
+- [ ] **Rehash passwords when the Argon2 parameters change.** On a successful login,
+  hash the password again if its stored parameters are older than `password`'s current
+  ones. Only matters once the parameters change.
+- [ ] **Have I Been Pwned check.** Reject passwords found in breaches, with the
+  k-anonymity range API (only the first 5 characters of the password's SHA-1 leave the
+  server), on top of the common-password list (#256). A third-party call per new
+  password; allow the password if the API is down.
+- [ ] **Bounces and complaints.** Record hard bounces and spam complaints from the email
+  provider's webhooks in a suppression table we own, skip those addresses in the outbox,
+  and tell the user in the app that we couldn't deliver to their address. Needed before
+  the move to SES.
+- [ ] **Move email to Amazon SES.** When Resend's free tier (100 emails a day, 3,000 a
+  month) gets tight or costs more than SES. Sending is SMTP (#259), so the app only
+  changes configuration. The rest: request SES production access (it asks how bounces
+  and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL
+  FROM domain, move DMARC from `p=none` to `quarantine` once its reports are clean, and
+  check the result with mail-tester.com.
+- [ ] **Product name and domain.** `rss.georgerodier.com` (#254) until the app has a name.
+  Moving means verifying the new domain with the email provider, new DNS records,
+  changing `RSS_BASE_URL`, `RSS_MAIL_FROM` and `RSS_SUPPORT_EMAIL`, and redirecting the
+  old domain. Sessions on the old domain end.
+- [ ] **One canonical host.** The app also answers on its `onrender.com` URL, so sessions
+  and links can be split between two hosts. Redirect requests for any other host to
+  `-base-url`'s, except `/healthcheck`, which Render's health checks call.
+- [ ] **Full data export.** A JSON file with your account, subscriptions and reading
+  history, next to the OPML export (#267).
+- [ ] **Clean up abandoned unconfirmed accounts**, e.g. delete accounts never confirmed
+  and unused for 30 days after signup. Only if they pile up.
+- [ ] **Support tools.** `www` commands can't run in production, so the self-service flows
+  are the support path. If support requests need more (looking up an account, resending
+  a confirmation for someone), plan an owner-only admin page.
+- [ ] **First-run experience (needs planning).** What a new account sees after signup:
+  today, an empty timeline pointing to Search. Perhaps suggested sites, OPML import, or a
+  short tour.
 
 ## Deployment
 
-- [ ] **Custom domain.** Cloudflare DNS record, Render custom domain, and HSTS once the
-  domain is settled. A proxied ("orange cloud") record adds a hop in front of Render's
-  own Cloudflare, so either keep it DNS-only or change `RSS_PROXY_HOPS`; rerun the client
-  IP check in `infra/README.md` either way.
+- [ ] **HSTS.** Send `Strict-Transport-Security` in production once the app's domain is
+  settled (see "Product name and domain" under Accounts), without `includeSubDomains`
+  so other `georgerodier.com` hosts are unaffected. #254 sets up the custom domain.
 - [ ] **Deploy the backup job with its image.** Render pulls `rss-backup:main` only when
   the cron job is deployed, so a change to `deploy/backup` runs only after a manual deploy
   in Render's dashboard (see "Backups and restore" in `infra/README.md`). Have CI deploy
@@ -71,8 +135,12 @@ Running it locally for yourself needs none of this.
 
 - [ ] **Per-email login lockout.** #183 lets anyone keep a known email locked out of
   login for 15 minutes at a time by failing logins for it. That's accepted while users
-  are a handful of known people. Revisit before signup is open to strangers (e.g. key
-  the limit on IP and email together, or slow down with backoff instead of refusing).
+  are a handful of known people, and from #265 a locked-out owner can still get in by
+  resetting their password. Revisit before signup is open to strangers (e.g. key the
+  limit on IP and email together, or slow down with backoff instead of refusing).
+- [ ] **Bot protection on signup.** Before signup opens beyond invite codes, add a
+  challenge (e.g. Cloudflare Turnstile, which needs a script and a CSP change) or another
+  bot check.
 - [ ] **Rate limiter approach.** Evaluate whether the in-memory rate limiter
   (`internal/server/ratelimit.go`) is right long term. It resets on restart and isn't
   shared across instances. Before running more than one instance, or if limits need to
@@ -144,7 +212,7 @@ Each with when it pays off:
   that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
   browsing a site's feeds in context. It isn't a way to organise subscriptions (no
   folders or pinned feeds). Open question: how it relates to the standalone feed page.
-- [ ] **OPML import/export.** Import subscriptions from another reader and export your own.
+- [ ] **OPML import.** Import subscriptions from another reader. Export is #267.
 
 ## Reading
 
@@ -196,10 +264,10 @@ Each with when it pays off:
   Loading icons from publishers has the same privacy cost as article images; the image
   proxy (see Reading) would cover both.
 - [ ] **Themes, including dark mode (needs planning).** A theme choice (light, dark,
-  follow the system) on a settings page, which doesn't exist yet, applied as a
-  `data-theme` attribute on `<html>` that redefines the color tokens. Needs somewhere
-  to store user preferences. The avatar tints (`.tone-1` to `.tone-6`) need dark
-  variants too.
+  follow the system) on the Settings page (#261), applied as a `data-theme` attribute
+  on `<html>` that redefines the color tokens. Stored as a typed column on `users`, not
+  a key-value table ("Accounts" in decisions.md). The avatar tints (`.tone-1` to
+  `.tone-6`) need dark variants too.
 - [ ] **Asset build step (needs planning).** Bundle and minify the CSS and JavaScript
   for production, writing content-hashed file names. Templates link assets through
   `asset` (#199), so only `asset` changes: it looks names up in the build's manifest
@@ -229,12 +297,20 @@ feature adds a failure mode. Nothing here is built yet.
   list, so the catalog can't drift: a test fails if a state is in the code but not the
   catalog. Prefer this over screenshots, which go stale.
 - [ ] **States to cover.**
-  - Forms: signup (invalid email, short or weak password, a duplicate email that must
-    look like a success (#185), signup turned off (#186), rate limited (#182)), login
-    (wrong credentials, rate limited per IP (#182) or per email (#183)), empty or
-    oversized input, a form posted from another site (403), a malformed form body.
+  - Forms: signup (invalid email, short, common or email-as-password password (#256), a
+    duplicate email (#262), signup turned off (#186), rate limited (#182)), login
+    (unknown email, wrong password (#262), rate limited per IP (#182) or per email
+    (#183)), empty or oversized input, a form posted from another site (403), a
+    malformed form body.
   - Auth and sessions: visiting a login-only page while logged out (redirect and
-    message), an expired session mid-action, logging out, a logged-in user on `/login`.
+    message), an expired or idle session mid-action (#258), logging out, a logged-in
+    user on `/login`.
+  - Account emails and settings (#254–#269): a confirmation, reset or email-change link
+    that's expired, used, or for an address the account no longer has; reset for an
+    unknown email; the rate limits on reset, resend, password change, email change and
+    deletion; an address over the outbox's hourly cap; a wrong current password in
+    Settings; an email change to a taken address; the confirmation notice; deleting an
+    account.
   - HTTP errors: 403, 404 (unknown feed, site or lookup id; malformed id), 405, 413, 429
     (the lookup rate limit; login and signup re-render their form instead), and 500,
     including a database outage.
@@ -328,12 +404,14 @@ Background refresh:
   `subscriber_count` on `feeds` (updated by `Subscribe`/`Unsubscribe` in the same
   transaction) and index `next_fetch_at WHERE gone_at IS NULL AND (subscriber_count > 0
   OR refresh_requested_at IS NOT NULL)`.
-- [ ] **Polling latency and idle queries.** Each idle refresh and lookup worker queries
-  every poll interval (15 s for refresh), on every instance. A requested refresh can wait
-  a full interval before a worker sees it. *Signal:* users wait noticeably for "Checking
-  for new articles…", or idle claim queries show up in `pg_stat_statements`. *Fix:* Postgres
-  `LISTEN`/`NOTIFY` from `RequestRefresh`, `Subscribe` and lookup requests to wake a
-  worker, keeping the poll as a fallback.
+- [ ] **Polling latency and idle queries.** Each idle refresh, lookup and mail worker
+  queries every poll interval (15 s for refresh, 10 s for mail (#260)), on every
+  instance. A requested refresh can wait a full interval before a worker sees it; the
+  mail worker is woken by its own instance when an email is queued, so only emails
+  queued by another instance wait. *Signal:* users wait noticeably for "Checking for
+  new articles…" or for emails, or idle claim queries show up in `pg_stat_statements`.
+  *Fix:* Postgres `LISTEN`/`NOTIFY` from `RequestRefresh`, `Subscribe`, lookup requests
+  and email `Enqueue` to wake a worker, keeping the poll as a fallback.
 - [ ] **Stale lookup resets scan `lookups`** (#195). Every instance's lookup runner resets
   stale jobs every minute, and no index covers `ResetStale`'s `status = 'running'`
   filter, so each reset scans the table, which keeps a row per site key ever looked up.
@@ -406,10 +484,15 @@ Data growth:
   *Fix:* article retention (deleting articles cascades to `reads`).
 - [ ] **Sessions in Postgres.** scs reads the `sessions` row on every request in the
   session group and writes it whenever the session changes (flash messages, login).
-  Expired rows are swept periodically; a login's row lives up to 30 days (#248), so the
-  table holds roughly one row per device logged in during the last month. *Signal:*
-  session queries in `pg_stat_statements` or a large `sessions` table. *Fix:* a faster store (e.g. Redis) or signed cookie
-  sessions.
+  `authenticate` then reads the `user_sessions` row joined to `users` (#258, in place of
+  the old `Exists` query) and updates its `last_seen_at` at most once a day. Expired
+  scs rows are swept periodically, but they live up to a year (#258), and visitors who
+  aren't logged in get one too as soon as something is stored for them: a flash message
+  after logging out, or the page to return to after login (#262), which crawlers
+  following links to login-only pages would trigger. *Signal:* session queries in
+  `pg_stat_statements`, or a `sessions` table much larger than the number of logged-in
+  devices. *Fix:* keep the return-to page in a short-lived cookie of its own instead of
+  the session, or a faster store (e.g. Redis) or signed cookie sessions.
 - [ ] **In-memory rate limiters.** Their maps grow with distinct keys between sweeps and
   aren't shared between instances. The login and signup limits (#182, #183) add maps
   keyed by client IP and by any submitted email, so a stream of made-up emails or
@@ -418,19 +501,26 @@ Data growth:
   new keys past it, or move the limits to the proxy or edge. Revisiting the limiter in
   general is the "Rate limiter approach" item under Security.
 - [ ] **Queued password hashing** (#184). Argon2 runs in at most `GOMAXPROCS` slots, and
-  logins and signups beyond that wait in line instead of failing. *Signal:* slow logins
-  under load, or login requests running past `WriteTimeout`. *Fix:* bound the queue and
-  return 503 with `Retry-After` when it's full.
+  requests beyond that wait in line instead of failing: logins and signups, and from
+  #263–#268 password changes, resets, email changes and account deletions, which also
+  hash or verify a password. *Signal:* slow logins under load, or login requests
+  running past `WriteTimeout`. *Fix:* bound the queue and return 503 with `Retry-After`
+  when it's full.
 
 Hosting (once deployed; see Deployment in decisions.md):
 
 - [ ] **Small instance and database.** The web service is a Render Starter instance (512
   MB, a fraction of a CPU), and Postgres is the smallest paid plan with little storage.
   Argon2 hashing runs at most `GOMAXPROCS` at once (1 here, since Go sizes it to the
-  container's CPU limit). *Signal:* Render's memory and CPU graphs near their limits,
-  restarts for running out of memory, slow logins, or database storage above 80%.
-  *Fix:* the next instance or database size, or the separate worker process under Feed
-  ingestion.
+  container's CPU limit). The common-password list (#256) adds a few MB of memory.
+  *Signal:* Render's memory and CPU graphs near their limits, restarts for running out of
+  memory, slow logins, or database storage above 80%. *Fix:* the next instance or
+  database size, or the separate worker process under Feed ingestion.
+- [ ] **Email sending limits** (#259, #260). Resend's free tier allows 100 emails a day
+  and 3,000 a month, and one mail worker sends one email at a time. *Signal:* sends
+  failing with quota or rate-limit errors in the logs, or emails waiting in the outbox
+  for minutes. *Fix:* a paid plan, the move to SES (see Accounts), or more mail workers
+  (`-mail-workers`).
 - [ ] **Database connections.** Each instance opens up to `-db-max-open-conns`
   connections (default 25), and small Postgres plans allow few. Production sets
   `RSS_DB_MAX_OPEN_CONNS=10`. *Signal:* "too many connections" errors, or connections

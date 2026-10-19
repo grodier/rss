@@ -283,6 +283,15 @@ experience.
   mail on `georgerodier.com`. Its DNS record is DNS-only, since a proxied one would add a
   third `X-Forwarded-For` hop. DMARC starts at `p=none`, with reports. The SMTP password
   is set in Render's dashboard and ignored by Terraform, like the invite code.
+- **Support mail goes to `rss-support@georgerodier.com`, a Google alias** (changed in
+  #254 from `support@rss.georgerodier.com`). The app's CNAME on `rss.georgerodier.com`
+  can't share its name with Email Routing's MX records, and Cloudflare's Email Routing
+  would have replaced the Google MX records on `georgerodier.com`. The domain is
+  temporary, so the address only has to work until the product has its own.
+- **No `_dmarc.rss` record** (#254): mail from `rss.georgerodier.com` falls back to the
+  `p=none` record on `georgerodier.com`, whose reports Cloudflare's DMARC Management
+  reads; it doesn't support subdomains. Tightening DMARC for the app means adding
+  `_dmarc.rss` with its own policy, or `sp=` on the parent's record.
 - **A support address** (`-support-email`) is the Reply-To of every email, and is shown
   on the reset pages and in Settings (#259, #265, #269).
 - **A privacy policy and terms before people we don't know use the app** (#269). The app

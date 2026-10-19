@@ -326,9 +326,13 @@ network connects, `prevent_destroy`) and `render_web_service.rss` (Starter, Virg
 image `ghcr.io/grodier/rss:main`, health check `/healthcheck`, pre-deploy command
 `/www migrate`, 30-second maximum shutdown delay). The service's environment sets
 `RSS_ENV=production`, `RSS_DB_DSN` (the database's internal connection string),
-`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_PROXY_HOPS=2` and `RSS_PORT`/`PORT=8080`.
-`ignore_changes` leaves the image (set by deploys), `RSS_ALLOW_RESET_TO` (set by the
-reset workflow) and `RSS_INVITE_CODE` (set in Render's dashboard) alone.
+`RSS_DB_MAX_OPEN_CONNS=10`, `RSS_PROXY_HOPS=2`, `RSS_PORT`/`PORT=8080`, and the email
+settings `RSS_BASE_URL=https://rss.georgerodier.com`, `RSS_SMTP_HOST=smtp.resend.com`,
+`RSS_SMTP_PORT=465`, `RSS_SMTP_USERNAME=resend`, `RSS_MAIL_FROM` and
+`RSS_SUPPORT_EMAIL=rss-support@georgerodier.com`. Its custom domain is
+`rss.georgerodier.com`. `ignore_changes` leaves the image (set by deploys),
+`RSS_ALLOW_RESET_TO` (set by the reset workflow), and `RSS_INVITE_CODE` and
+`RSS_SMTP_PASSWORD` (set in Render's dashboard) alone.
 `render_cron_job.backup` (`rss-backup`, Starter, Virginia, schedule `0 8 * * *`, image
 `ghcr.io/grodier/rss-backup:main`) gets `DATABASE_URL` (the internal connection string),
 `PGSSLMODE=require`, `R2_BUCKET=rss-backups`, `R2_ENDPOINT` (from variable
@@ -339,9 +343,13 @@ reset workflow) and `RSS_INVITE_CODE` (set in Render's dashboard) alone.
 `cloudflare/cloudflare` provider (token from `CLOUDFLARE_API_TOKEN`) sets
 `cloudflare_r2_bucket_lifecycle.backups` on the hand-made bucket `rss-backups`: delete
 objects after 35 days, and abort multipart uploads after 7 (R2's default rule, which the
-resource would otherwise replace). State is in the R2 bucket `rss-tfstate` (S3 backend,
-`use_lockfile`); credentials come only from the environment. CI's `terraform` job runs
-`fmt -check`, `init -backend=false` and `validate`.
+resource would otherwise replace). `domain.tf` holds the `cloudflare_dns_record`s in the
+`georgerodier.com` zone (variable `cloudflare_zone_id`): the DNS-only CNAME `rss` to the
+service's `onrender.com` host, and Resend's records (CNAMEs `send.rss` and `rsend.rss`,
+and the DKIM TXT `resend._domainkey.rss`); see "Domain and email" in the runbook. State
+is in the R2 bucket `rss-tfstate` (S3 backend, `use_lockfile`); credentials come only
+from the environment. CI's `terraform` job runs `fmt -check`, `init -backend=false` and
+`validate`.
 
 **Workflows** (`.github/workflows`; how to use them is under "Deploys" in
 [`infra/README.md`](../infra/README.md)). All Render, R2 and Cloudflare values are

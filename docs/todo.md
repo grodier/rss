@@ -8,28 +8,27 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #254 Serve the app and send email from rss.georgerodier.com. Mostly the owner's
-      dashboard work; apply it before #259 merges.
-   2. #255 Add the account management tables to the schema (then reset production).
-   3. #256 Reject common passwords and passwords that are the account's email.
-   4. #257 Make the login and signup forms accessible, with a show-password toggle.
-   5. #258 Track logins in user_sessions, with 90-day idle sessions.
-   6. #259 Send email over SMTP (internal/mail).
-   7. #260 Queue emails in an outbox and send them from a background worker.
-   8. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   9. #262 Say which emails have accounts, log in at signup, and return to the page you
+   1. #255 Add the account management tables to the schema (then reset production).
+   2. #256 Reject common passwords and passwords that are the account's email.
+   3. #257 Make the login and signup forms accessible, with a show-password toggle.
+   4. #258 Track logins in user_sessions, with 90-day idle sessions.
+   5. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
+      `RSS_SMTP_PASSWORD` is set (see "Domain and email" in `infra/README.md`).
+   6. #260 Queue emails in an outbox and send them from a background worker.
+   7. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   8. #262 Say which emails have accounts, log in at signup, and return to the page you
       wanted.
-   10. #263 Change your password and log out other devices from Settings.
-   11. #264 Confirm email addresses (soft confirmation).
-   12. #265 Reset a forgotten password by email.
-   13. #266 Change your email address.
-   14. #267 Export your subscriptions as OPML.
-   15. #268 Delete your account.
-   16. #269 Add a privacy policy, terms of use and help links.
+   9. #263 Change your password and log out other devices from Settings.
+   10. #264 Confirm email addresses (soft confirmation).
+   11. #265 Reset a forgotten password by email.
+   12. #266 Change your email address.
+   13. #267 Export your subscriptions as OPML.
+   14. #268 Delete your account.
+   15. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #255, #256 and #257
-   (with #254 by the owner); then #258 and #259; then #260, #261 and #262; then #263,
-   #267 and #269; then #264 and #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #255, #256 and #257;
+   then #258 and #259; then #260, #261 and #262; then #263, #267 and #269; then #264 and
+   #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -82,7 +81,8 @@ decisions.md.
   month) gets tight or costs more than SES. Sending is SMTP (#259), so the app only
   changes configuration. The rest: request SES production access (it asks how bounces
   and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL
-  FROM domain, move DMARC from `p=none` to `quarantine` once its reports are clean, and
+  FROM domain, move DMARC from `p=none` to `quarantine` once its reports are clean (the
+  app has no `_dmarc.rss` record yet: add one, or `sp=` on `georgerodier.com`'s), and
   check the result with mail-tester.com.
 - [ ] **Product name and domain.** `rss.georgerodier.com` (#254) until the app has a name.
   Moving means verifying the new domain with the email provider, new DNS records,

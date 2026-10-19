@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -152,25 +153,46 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.sessionManager.RenewToken(r.Context())
-	if err != nil {
+	if err := s.startSession(r, id); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	s.sessionManager.Put(r.Context(), "authenticatedUserID", id)
-
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// startSession logs userID in on this device: it renews the session token
+// (against session fixation), creates a user_sessions row, and keeps its ID
+// in the session.
+func (s *Server) startSession(r *http.Request, userID string) error {
+	if err := s.sessionManager.RenewToken(r.Context()); err != nil {
+		return err
+	}
+
+	id, err := s.services.SessionService.Create(r.Context(), userID, time.Now().Add(-sessionIdleTimeout))
+	if err != nil {
+		return err
+	}
+
+	s.sessionManager.Put(r.Context(), "sessionID", id)
+	return nil
+}
+
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if sess, ok := s.authenticatedSession(r); ok {
+		if err := s.services.SessionService.Delete(r.Context(), sess.ID); err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
+
 	err := s.sessionManager.RenewToken(r.Context())
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	s.sessionManager.Remove(r.Context(), "authenticatedUserID")
+	s.sessionManager.Remove(r.Context(), "sessionID")
 	s.sessionManager.Put(r.Context(), "flash", "You've been logged out successfully!")
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)

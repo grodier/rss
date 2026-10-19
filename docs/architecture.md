@@ -55,7 +55,7 @@ errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
 production, text otherwise), which also reports the error `Run` returns.
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
 Refresh button and the background workers), the repositories, the scs session manager
-(sessions in Postgres, 30-day lifetime) and the server, then starts the runners next to
+(sessions in Postgres, one-year lifetime) and the server, then starts the runners next to
 `Server.Serve`. On SIGINT or SIGTERM, or when any component fails, the context is
 canceled: the server drains requests for up to 30 seconds, the workers stop, and only
 then is the database closed. Only `cmd/www` handles signals.
@@ -132,7 +132,8 @@ adding another):
 
 Then routes are split into groups. `/static/*` and `/healthcheck` have no session. All
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
-puts the logged-in user's ID in the request context if the session's user still exists.
+loads the device's `user_sessions` row with its user and puts both in the request
+context, unless the row is gone or idle for 90 days.
 Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set
 `Cache-Control: no-store`.
 
@@ -201,9 +202,10 @@ emails   (the outbox: no foreign keys)
   running → done or failed) and the cache of the result (`site_id`).
 - **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
   is NULL until the address is confirmed; nothing reads it yet (#264).
-- **`user_sessions`**: one row per logged-in device, `last_seen_at` written at most once
-  a day. Not used yet: #258 keeps its `id` in the scs session, so deleting the row logs
-  that device out.
+- **`user_sessions`**: one row per logged-in device, created at login, its `id` kept in
+  the scs session under `sessionID`; deleting the row logs that device out.
+  `last_seen_at` is written at most once a day. There's no sweeper: `authenticate`
+  deletes an idle row when it sees it, and login deletes the user's idle rows.
 - **`user_tokens`**: one-time tokens for email links, keyed by the SHA-256 `hash` of the
   token, with their `purpose`, the `email` they were sent to and `expires_at`. Not used
   yet (#264).
@@ -216,7 +218,8 @@ Deleting a site cascades to its feeds and their articles, subscriptions and read
 clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
 `user_sessions` and `user_tokens`, and leaves their `emails`.
 Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
-subscription row, and scs deletes expired sessions.
+subscription row, logging out deletes the `user_sessions` row, and scs deletes expired
+sessions.
 
 Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
 `schema_fingerprint` (one row: the fingerprint of the migrations last applied), which
@@ -266,7 +269,9 @@ CLAUDE.md.
   scripts and styles; images may load from any `https:` host.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
-  are `SameSite=Lax`, and `Secure` with `-env production`.
+  are `SameSite=Lax`, and `Secure` with `-env production`. Each login is a
+  `user_sessions` row: it ends after 90 days unused (`sessionIdleTimeout`) and at most a
+  year after login (scs's `Lifetime`), and logging out deletes it.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most
   `GOMAXPROCS` hashes run at once and the rest wait. `Hash` and `Verify` normalize the
   password to Unicode NFKC first. Every new password (`validator.CheckNewPassword`) is 8

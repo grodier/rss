@@ -182,3 +182,19 @@ type ArticleWithFeed struct {
 	Feed    Feed
 	AlsoIn  []Feed // other subscribed feeds with a copy of the article; timeline only
 }
+
+// User is an account.
+type User struct {
+	ID               string
+	Name             string
+	Email            string
+	EmailConfirmedAt time.Time // zero until the email is confirmed
+	CreatedAt        time.Time
+}
+
+// Session is one logged-in device (a user_sessions row) with its user.
+type Session struct {
+	ID         string
+	User       User
+	LastSeenAt time.Time
+}

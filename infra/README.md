@@ -159,6 +159,21 @@ While an apply waits for approval, other `infra.yml` runs wait behind it, and Gi
 only the newest waiting run: an older one shows as cancelled. Re-run it if it was an
 apply you still want.
 
+### Changing the web service
+
+Until the provider is upgraded (a todo item), an apply that changes
+`render_web_service.rss` fails with *"unable to fetch image with provided input"*:
+deploys pin the service to a digest, and provider v1.9.1 can't send one back
+([#106](https://github.com/render-oss/terraform-provider-render/issues/106)). Plans
+aren't affected. Before approving such an apply:
+
+1. On the `rss` service's **Settings → Image** in Render's dashboard, set **Source** to
+   `ghcr.io/grodier/rss:main` and save. CI pushes `:main` for every commit on `main`, so
+   this redeploys the image that's running; wait until it's live.
+2. Approve the apply (or re-run it if it already failed).
+
+The next deploy pins the digest again.
+
 ## Backups and restore
 
 Two layers, both for the database only:

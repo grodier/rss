@@ -88,10 +88,10 @@ It's for local development (`make db/seed`); there's nowhere to run it in produc
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
-| `internal/password` | Argon2id hashing | — |
+| `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded templates and static files | — |
-| `internal/validator` | Form validation helpers | — |
+| `internal/validator` | Form validation helpers; the rules for new passwords, with the embedded common-password list | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
 
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
@@ -115,6 +115,7 @@ adding another):
 | `microcosm-cc/bluemonday` | The HTML allowlist in `internal/sanitize` |
 | `golang.org/x/net/html` | Reading HTML pages (`discovery.ParsePage`) and rewriting article HTML |
 | `golang.org/x/crypto/argon2` | Password hashing |
+| `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords before hashing and checking them |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
 
 ## HTTP
@@ -267,8 +268,13 @@ CLAUDE.md.
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
   are `SameSite=Lax`, and `Secure` with `-env production`.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most
-  `GOMAXPROCS` hashes run at once and the rest wait. How login and signup avoid revealing
-  which emails have accounts is under "Accounts and sessions" in features.md.
+  `GOMAXPROCS` hashes run at once and the rest wait. `Hash` and `Verify` normalize the
+  password to Unicode NFKC first. Every new password (`validator.CheckNewPassword`) is 8
+  to 256 characters, isn't the account's email and isn't on the common-password list
+  (`internal/validator/common_passwords.txt`: the NCSC's 100,000 most common passwords
+  from Have I Been Pwned, via SecLists, kept to 8 characters or more; lookups are
+  case-insensitive). How login and signup avoid revealing which emails have accounts is
+  under "Accounts and sessions" in features.md.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 

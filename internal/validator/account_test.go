@@ -21,6 +21,8 @@ func TestCheckNewAccount(t *testing.T) {
 		{"7-character password", name, email, "1234567", "password", "Password must be at least 8 characters long"},
 		{"256-character password", name, email, strings.Repeat("a", 256), "", ""},
 		{"257-character password", name, email, strings.Repeat("a", 257), "password", "Password must not be more than 256 characters long"},
+		{"common password", name, email, "password123", "password", "This password is too common. Try a longer one, or a few unrelated words."},
+		{"password is the email", name, email, "ADA@example.com", "password", "Your password can't be your email address."},
 	}
 
 	for _, tt := range tests {

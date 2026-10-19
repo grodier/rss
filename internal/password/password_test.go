@@ -57,6 +57,29 @@ func TestLongMultibytePasswords(t *testing.T) {
 	}
 }
 
+func TestNormalizesPasswords(t *testing.T) {
+	tests := []struct {
+		name, hashed, verified string
+		want                   bool
+	}{
+		{"composed and decomposed accent", "caf\u00e9-secret", "cafe\u0301-secret", true},
+		{"fi ligature", "\ufb01le-secret", "file-secret", true},
+		{"different password", "caf\u00e9-secret", "cafe-secret", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, err := Hash(tt.hashed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok, err := Verify(tt.verified, h); err != nil || ok != tt.want {
+				t.Errorf("Verify(%q) of a hash of %q = %v, %v; want %v, nil", tt.verified, tt.hashed, ok, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestVerifyOtherParams(t *testing.T) {
 	p := current
 	p.memory = 8 * 1024

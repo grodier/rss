@@ -33,6 +33,7 @@ func TestRunCreateUserInvalidInput(t *testing.T) {
 		{"invalid email", []string{"-name", "Ada", "-email", "not-an-email"}, "correct horse\n", "email: Email must be a valid email address"},
 		{"empty stdin", []string{"-name", "Ada", "-email", "ada@example.com"}, "", "password: Password is required"},
 		{"7-character password", []string{"-name", "Ada", "-email", "ada@example.com"}, "1234567\n", "password: Password must be at least 8 characters long"},
+		{"common password", []string{"-name", "Ada", "-email", "ada@example.com"}, "password123\n", "password: This password is too common. Try a longer one, or a few unrelated words."},
 	}
 
 	for _, tt := range tests {

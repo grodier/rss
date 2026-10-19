@@ -7,3 +7,6 @@ var Templates embed.FS
 
 //go:embed static
 var Static embed.FS
+
+//go:embed emails/*.tmpl
+var Emails embed.FS

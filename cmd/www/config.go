@@ -5,6 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	netmail "net/mail"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,6 +18,7 @@ type config struct {
 	db      dbConfig
 	lookup  lookupConfig
 	refresh refreshConfig
+	mail    mailConfig
 }
 
 type serverConfig struct {
@@ -33,6 +37,24 @@ type lookupConfig struct {
 type refreshConfig struct {
 	workers int
 }
+
+// mailConfig is how the app sends email, and what emails link to.
+type mailConfig struct {
+	// baseURL is the app's public URL, without a trailing slash. Links in
+	// emails are built from it, never from a request's Host header.
+	baseURL string
+	// supportEmail is where people can get help, and the Reply-To of emails.
+	supportEmail string
+	// smtpHost, when empty, makes the app log emails instead of sending them.
+	smtpHost     string
+	smtpPort     int
+	smtpUsername string
+	smtpPassword string
+	from         string
+}
+
+// defaultMailFrom is -mail-from's default, which production must override.
+const defaultMailFrom = "rss <hello@localhost>"
 
 type dbConfig struct {
 	dsn          string
@@ -58,6 +80,16 @@ func defaultConfig() config {
 		refresh: refreshConfig{
 			workers: 2,
 		},
+		mail: defaultMailConfig(8080),
+	}
+}
+
+// defaultMailConfig returns the mail defaults for an app listening on port.
+func defaultMailConfig(port int) mailConfig {
+	return mailConfig{
+		baseURL:  "http://localhost:" + strconv.Itoa(port),
+		smtpPort: 587,
+		from:     defaultMailFrom,
 	}
 }
 
@@ -84,7 +116,68 @@ func (c config) Validate() error {
 	if c.refresh.workers < 0 || c.refresh.workers > 16 {
 		errs = append(errs, fmt.Errorf("invalid refresh workers %d: must be 0-16", c.refresh.workers))
 	}
+	errs = append(errs, c.mail.validate(c.env)...)
 	return errors.Join(errs...)
+}
+
+// validate returns an error for each invalid mail setting, and in production
+// for each missing one: emails carry one-time links, which must never end up
+// in the logs there.
+func (c mailConfig) validate(env string) []error {
+	var errs []error
+	u, err := url.Parse(c.baseURL)
+	switch {
+	case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "":
+		errs = append(errs, fmt.Errorf("invalid base URL %q: must be an absolute http or https URL", c.baseURL))
+	case u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
+		errs = append(errs, fmt.Errorf("invalid base URL %q: must not have a path, query or fragment", c.baseURL))
+	case env == "production" && u.Scheme != "https":
+		errs = append(errs, errors.New("-base-url (RSS_BASE_URL) must be set to an https URL in production"))
+	}
+	if _, err := netmail.ParseAddress(c.from); err != nil {
+		errs = append(errs, fmt.Errorf("invalid mail from %q: %v", c.from, err))
+	}
+	if c.supportEmail != "" {
+		if _, err := netmail.ParseAddress(c.supportEmail); err != nil {
+			errs = append(errs, fmt.Errorf("invalid support email %q: %v", c.supportEmail, err))
+		}
+	}
+	if c.smtpPort < 1 || c.smtpPort > 65535 {
+		errs = append(errs, fmt.Errorf("invalid SMTP port %d: must be 1-65535", c.smtpPort))
+	}
+	if env == "production" {
+		if c.smtpHost == "" {
+			errs = append(errs, errors.New("-smtp-host (RSS_SMTP_HOST) must be set in production"))
+		}
+		if c.from == defaultMailFrom {
+			errs = append(errs, errors.New("-mail-from (RSS_MAIL_FROM) must be set in production"))
+		}
+		if c.supportEmail == "" {
+			errs = append(errs, errors.New("-support-email (RSS_SUPPORT_EMAIL) must be set in production"))
+		}
+	}
+	return errs
+}
+
+// registerMailFlags registers the mail flags in fs, writing to c. -base-url
+// has no default here: call c.setBaseURLDefault after fs.Parse.
+func registerMailFlags(fs *flag.FlagSet, c *mailConfig) {
+	fs.StringVar(&c.baseURL, "base-url", "", "Public URL of the app, for links in emails (default http://localhost:<port>; required in production)")
+	fs.StringVar(&c.supportEmail, "support-email", c.supportEmail, "Where people can get help: shown on pages and used as Reply-To (required in production)")
+	fs.StringVar(&c.smtpHost, "smtp-host", c.smtpHost, "SMTP server (default: emails are logged, not sent; required in production)")
+	fs.IntVar(&c.smtpPort, "smtp-port", c.smtpPort, "SMTP port: 465 for implicit TLS, otherwise STARTTLS")
+	fs.StringVar(&c.smtpUsername, "smtp-username", c.smtpUsername, "SMTP username")
+	fs.StringVar(&c.smtpPassword, "smtp-password", c.smtpPassword, "SMTP password")
+	fs.StringVar(&c.from, "mail-from", c.from, "From address of every email (required in production)")
+}
+
+// setBaseURLDefault defaults the base URL to the app on localhost at port,
+// and trims a trailing slash.
+func (c *mailConfig) setBaseURLDefault(port int) {
+	if c.baseURL == "" {
+		c.baseURL = defaultMailConfig(port).baseURL
+	}
+	c.baseURL = strings.TrimSuffix(c.baseURL, "/")
 }
 
 // parseConfig reads the configuration from args and, for flags not on the
@@ -111,6 +204,8 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
 	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
 
+	registerMailFlags(fs, &cfg.mail)
+
 	if err := setFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(out, err)
 		return config{}, err
@@ -119,6 +214,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
+	cfg.mail.setBaseURLDefault(cfg.server.port)
 
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(out, err)

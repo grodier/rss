@@ -41,12 +41,12 @@ clean:
 # DATABASE
 # ==================================================================================== #
 
-## db/start: start the database container
+## db/start: start the database and Mailpit containers
 .PHONY: db/start
 db/start:
 	docker compose up -d
 
-## db/stop: stop the database container
+## db/stop: stop the database and Mailpit containers
 .PHONY: db/stop
 db/stop:
 	docker compose down

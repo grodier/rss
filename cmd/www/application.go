@@ -19,6 +19,7 @@ import (
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/lookup"
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/refresh"
 	"github.com/grodier/rss/internal/server"
@@ -61,11 +62,13 @@ func (app *Application) Run() error {
 	}
 
 	srvConfig := server.Config{
-		Port:       app.config.server.port,
-		Env:        app.config.env,
-		InviteCode: app.config.server.inviteCode,
-		Version:    version,
-		ProxyHops:  app.config.server.proxyHops,
+		Port:         app.config.server.port,
+		Env:          app.config.env,
+		InviteCode:   app.config.server.inviteCode,
+		Version:      version,
+		ProxyHops:    app.config.server.proxyHops,
+		BaseURL:      app.config.mail.baseURL,
+		SupportEmail: app.config.mail.supportEmail,
 	}
 
 	sessionManager := newSessionManager(db, app.config.env)
@@ -151,4 +154,20 @@ func newSessionManager(db *sql.DB, env string) *scs.SessionManager {
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
 	sessionManager.Cookie.Secure = env == "production"
 	return sessionManager
+}
+
+// newMailSender returns the sender c describes: SMTP, or the log when there's
+// no SMTP host.
+func newMailSender(c mailConfig, logger *slog.Logger) mail.Sender {
+	if c.smtpHost == "" {
+		return &mail.LogSender{Logger: logger}
+	}
+	return &mail.SMTPSender{
+		Host:     c.smtpHost,
+		Port:     c.smtpPort,
+		Username: c.smtpUsername,
+		Password: c.smtpPassword,
+		From:     c.from,
+		ReplyTo:  c.supportEmail,
+	}
 }

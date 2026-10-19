@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -236,4 +237,107 @@ func TestParseConfigUsageNamesEnv(t *testing.T) {
 	if !strings.Contains(out.String(), "RSS_DB_DSN") {
 		t.Errorf("-help output doesn't mention RSS_DB_DSN:\n%s", out.String())
 	}
+}
+
+func TestParseConfigMail(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://x"}
+	production := map[string]string{
+		"RSS_ENV":           "production",
+		"RSS_BASE_URL":      "https://rss.example.com",
+		"RSS_SMTP_HOST":     "smtp.example.com",
+		"RSS_MAIL_FROM":     "rss <hello@rss.example.com>",
+		"RSS_SUPPORT_EMAIL": "help@example.com",
+	}
+	without := func(key string) map[string]string {
+		env := maps.Clone(production)
+		delete(env, key)
+		return env
+	}
+
+	t.Run("development defaults", func(t *testing.T) {
+		cfg, err := parseConfig(dsn, noEnv, io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		want := mailConfig{baseURL: "http://localhost:8080", smtpPort: 587, from: "rss <hello@localhost>"}
+		if cfg.mail != want {
+			t.Errorf("mail = %+v, want %+v", cfg.mail, want)
+		}
+	})
+
+	t.Run("base URL follows -port", func(t *testing.T) {
+		cfg, err := parseConfig(append(dsn, "-port", "9000"), noEnv, io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		if want := "http://localhost:9000"; cfg.mail.baseURL != want {
+			t.Errorf("baseURL = %q, want %q", cfg.mail.baseURL, want)
+		}
+	})
+
+	t.Run("trailing slash trimmed", func(t *testing.T) {
+		cfg, err := parseConfig(append(dsn, "-base-url", "https://rss.example.com/"), noEnv, io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		if want := "https://rss.example.com"; cfg.mail.baseURL != want {
+			t.Errorf("baseURL = %q, want %q", cfg.mail.baseURL, want)
+		}
+	})
+
+	t.Run("complete production set", func(t *testing.T) {
+		cfg, err := parseConfig(dsn, envFrom(production), io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		want := mailConfig{
+			baseURL:      "https://rss.example.com",
+			supportEmail: "help@example.com",
+			smtpHost:     "smtp.example.com",
+			smtpPort:     587,
+			from:         "rss <hello@rss.example.com>",
+		}
+		if cfg.mail != want {
+			t.Errorf("mail = %+v, want %+v", cfg.mail, want)
+		}
+	})
+
+	tests := []struct {
+		name string
+		args []string
+		env  map[string]string
+		want string
+	}{
+		{"production without base URL", nil, without("RSS_BASE_URL"), "-base-url (RSS_BASE_URL) must be set to an https URL in production"},
+		{"production http base URL", []string{"-base-url", "http://rss.example.com"}, production, "-base-url (RSS_BASE_URL) must be set to an https URL in production"},
+		{"production without SMTP host", nil, without("RSS_SMTP_HOST"), "-smtp-host (RSS_SMTP_HOST) must be set in production"},
+		{"production without mail from", nil, without("RSS_MAIL_FROM"), "-mail-from (RSS_MAIL_FROM) must be set in production"},
+		{"production without support email", nil, without("RSS_SUPPORT_EMAIL"), "-support-email (RSS_SUPPORT_EMAIL) must be set in production"},
+		{"base URL with path", []string{"-base-url", "https://example.com/rss"}, nil, `invalid base URL "https://example.com/rss": must not have a path, query or fragment`},
+		{"base URL with query", []string{"-base-url", "https://example.com?a=1"}, nil, "must not have a path, query or fragment"},
+		{"base URL with fragment", []string{"-base-url", "https://example.com#top"}, nil, "must not have a path, query or fragment"},
+		{"relative base URL", []string{"-base-url", "example.com"}, nil, `invalid base URL "example.com": must be an absolute http or https URL`},
+		{"ftp base URL", []string{"-base-url", "ftp://example.com"}, nil, "must be an absolute http or https URL"},
+		{"invalid mail from", []string{"-mail-from", "not an address"}, nil, `invalid mail from "not an address"`},
+		{"invalid support email", []string{"-support-email", "help"}, nil, `invalid support email "help"`},
+		{"SMTP port zero", []string{"-smtp-port", "0"}, nil, "invalid SMTP port 0: must be 1-65535"},
+		{"SMTP port too high", []string{"-smtp-port", "65536"}, nil, "invalid SMTP port 65536: must be 1-65535"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseConfig(append(dsn, tt.args...), envFrom(tt.env), io.Discard)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("parseConfig() error = %v, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+
+	t.Run("production without any mail settings", func(t *testing.T) {
+		_, err := parseConfig(append(dsn, "-env", "production"), noEnv, io.Discard)
+		for _, want := range []string{"-base-url", "-smtp-host", "-mail-from", "-support-email"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("parseConfig() error = %v, want it to name %s", err, want)
+			}
+		}
+	})
 }

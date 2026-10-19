@@ -11,5 +11,13 @@ services:
     volumes:
       - rss-postgres-data:/var/lib/postgresql/data
 
+  # Catches the app's email: SMTP on 1025, web UI at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    container_name: rss-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   rss-postgres-data:

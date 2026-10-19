@@ -23,6 +23,7 @@ go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
+go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/migrations/new name=<name>       # new migration (only once in production)
 docker build -t rss .                    # build the container image (or: make docker/build)
@@ -40,12 +41,13 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/discovery`: finds the feeds a website publishes
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
+- `internal/mail`: renders emails from embedded templates and sends them over SMTP (or logs them when there's no SMTP host)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)
 - `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
-- `internal/ui`: embedded templates and static files
+- `internal/ui`: embedded templates, emails and static files
 - `internal/validator`: form validation
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render

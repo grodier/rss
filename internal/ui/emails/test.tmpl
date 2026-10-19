@@ -1,0 +1,13 @@
+{{define "subject"}}Test email from rss{{end}}
+
+{{define "text" -}}
+This is a test email from rss at {{appURL}}. If you can read it, sending works.
+
+{{template "text-footer"}}
+{{- end}}
+
+{{define "html" -}}
+{{template "html-start"}}
+<p>This is a test email from rss at <a href="{{appURL}}">{{appURL}}</a>. If you can read it, sending works.</p>
+{{template "html-end"}}
+{{- end}}

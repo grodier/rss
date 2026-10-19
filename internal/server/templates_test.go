@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/ui"
+	"github.com/grodier/rss/internal/validator"
 )
 
 var labelForRe = regexp.MustCompile(`<label[^>]*\sfor="([^"]+)"`)
@@ -239,5 +240,200 @@ func TestParseTemplates(t *testing.T) {
 	}
 	if _, ok := ts["feed.html"]; !ok {
 		t.Error("feed.html was not parsed")
+	}
+}
+
+// renderForm renders a form page with s.renderHTML and parses it.
+func renderForm(t *testing.T, template string, data any) *html.Node {
+	t.Helper()
+	s := newTestServer(t)
+	rr := httptest.NewRecorder()
+	if err := s.renderHTML(rr, http.StatusUnprocessableEntity, template, data); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := html.Parse(rr.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return doc
+}
+
+func withFieldErrors(fields ...string) validator.Validator {
+	var v validator.Validator
+	for _, f := range fields {
+		v.AddFieldError(f, f+" is wrong")
+	}
+	return v
+}
+
+func formInputs(doc *html.Node) []*html.Node {
+	return findAll(doc, func(n *html.Node) bool { return n.Data == "input" && attr(n, "type") != "hidden" })
+}
+
+func hasAttr(n *html.Node, key string) bool {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func byID(doc *html.Node, id string) *html.Node {
+	found := findAll(doc, func(n *html.Node) bool { return attr(n, "id") == id })
+	if len(found) == 0 {
+		return nil
+	}
+	return found[0]
+}
+
+func TestFormFieldErrorsDescribed(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		data     func(errFields ...string) any
+		fields   []string
+	}{
+		{
+			name:     "login",
+			template: "login.html",
+			data: func(errFields ...string) any {
+				return loginPage{Form: loginForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"email", "password"},
+		},
+		{
+			name:     "signup",
+			template: "signup.html",
+			data: func(errFields ...string) any {
+				return struct{ Form any }{Form: signupForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"invite", "name", "email", "password"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+" with errors", func(t *testing.T) {
+			doc := renderForm(t, tt.template, tt.data(tt.fields...))
+			inputs := formInputs(doc)
+			if len(inputs) != len(tt.fields) {
+				t.Fatalf("found %d inputs, want %d", len(inputs), len(tt.fields))
+			}
+			for _, in := range inputs {
+				id := attr(in, "id")
+				if got := attr(in, "aria-invalid"); got != "true" {
+					t.Errorf("#%s: aria-invalid = %q, want true", id, got)
+				}
+				ids := strings.Fields(attr(in, "aria-describedby"))
+				if !slices.Contains(ids, id+"-error") {
+					t.Errorf("#%s: aria-describedby = %q, want it to name %s-error", id, attr(in, "aria-describedby"), id)
+				}
+				for _, ref := range ids {
+					if byID(doc, ref) == nil {
+						t.Errorf("#%s: aria-describedby names #%s, which isn't in the page", id, ref)
+					}
+				}
+				if el := byID(doc, id+"-error"); el != nil {
+					if want := id + " is wrong"; strings.TrimSpace(textContent(el)) != want {
+						t.Errorf("#%s-error says %q, want %q", id, textContent(el), want)
+					}
+				}
+			}
+		})
+		t.Run(tt.name+" without errors", func(t *testing.T) {
+			doc := renderForm(t, tt.template, tt.data())
+			for _, in := range formInputs(doc) {
+				id := attr(in, "id")
+				if hasAttr(in, "aria-invalid") {
+					t.Errorf("#%s has aria-invalid without an error", id)
+				}
+				for _, ref := range strings.Fields(attr(in, "aria-describedby")) {
+					if byID(doc, ref) == nil {
+						t.Errorf("#%s: aria-describedby names #%s, which isn't in the page", id, ref)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestFormAutofocus(t *testing.T) {
+	autofocused := func(doc *html.Node) []string {
+		var ids []string
+		for _, n := range findAll(doc, func(n *html.Node) bool { return hasAttr(n, "autofocus") }) {
+			ids = append(ids, attr(n, "id"))
+		}
+		return ids
+	}
+
+	t.Run("signup errors on email and password", func(t *testing.T) {
+		doc := renderForm(t, "signup.html", struct{ Form any }{
+			Form: signupForm{Validator: withFieldErrors("password", "email")},
+		})
+		if got := autofocused(doc); !slices.Equal(got, []string{"email"}) {
+			t.Errorf("autofocus on %q, want [email]", got)
+		}
+	})
+	t.Run("signup without errors", func(t *testing.T) {
+		doc := renderForm(t, "signup.html", struct{ Form any }{Form: signupForm{}})
+		if got := autofocused(doc); len(got) != 0 {
+			t.Errorf("autofocus on %q, want none", got)
+		}
+	})
+	t.Run("login without errors", func(t *testing.T) {
+		doc := renderForm(t, "login.html", loginPage{})
+		if got := autofocused(doc); len(got) != 0 {
+			t.Errorf("autofocus on %q, want none", got)
+		}
+	})
+	t.Run("login with only a non-field error", func(t *testing.T) {
+		var v validator.Validator
+		v.AddNonFieldError("Email or password is incorrect")
+		doc := renderForm(t, "login.html", loginPage{Form: loginForm{Validator: v}})
+		if got := autofocused(doc); len(got) != 0 {
+			t.Errorf("autofocus on %q, want none", got)
+		}
+		alerts := findAll(doc, func(n *html.Node) bool { return n.Data == "div" && hasClass(n, "error") })
+		if len(alerts) != 1 {
+			t.Fatalf("found %d error divs, want 1", len(alerts))
+		}
+		if got := attr(alerts[0], "role"); got != "alert" {
+			t.Errorf("error div role = %q, want alert", got)
+		}
+	})
+}
+
+func TestSignupHints(t *testing.T) {
+	tests := []struct {
+		field string
+		hint  string
+	}{
+		{"name", "What should we call you? We'll use it in emails."},
+		{"password", "At least 8 characters."},
+	}
+	for _, withErrors := range []bool{false, true} {
+		var v validator.Validator
+		if withErrors {
+			v = withFieldErrors("name", "password")
+		}
+		doc := renderForm(t, "signup.html", struct{ Form any }{Form: signupForm{Validator: v}})
+		for _, tt := range tests {
+			t.Run(fmt.Sprintf("%s errors=%t", tt.field, withErrors), func(t *testing.T) {
+				hint := byID(doc, tt.field+"-hint")
+				if hint == nil {
+					t.Fatalf("no #%s-hint", tt.field)
+				}
+				if got := strings.TrimSpace(textContent(hint)); got != tt.hint {
+					t.Errorf("#%s-hint says %q, want %q", tt.field, got, tt.hint)
+				}
+				input := byID(doc, tt.field)
+				if input == nil {
+					t.Fatalf("no #%s", tt.field)
+				}
+				ids := strings.Fields(attr(input, "aria-describedby"))
+				if !slices.Contains(ids, tt.field+"-hint") {
+					t.Errorf("#%s: aria-describedby = %q, want it to name %s-hint", tt.field, attr(input, "aria-describedby"), tt.field)
+				}
+			})
+		}
 	}
 }

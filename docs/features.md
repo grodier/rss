@@ -22,6 +22,12 @@ token, stores `authenticatedUserID` in the session and redirects to the timeline
 On every later request, `authenticate` reads that ID, checks the user still exists, and puts it in the
 request context, where handlers read it with `s.authenticatedUserID(r)`.
 
+Both forms show each field's error under it, tied to the input with `aria-describedby`,
+and signup shows the name and password hints there all the time. After a failed submit
+the server puts `autofocus` on the first invalid field (`Validator.FirstError`); nothing
+is focused when a form first loads. `app.js` adds a Show/Hide toggle to the password
+inputs.
+
 The other way accounts are made is `www create-user` (`runCreateUser`), for your local
 account: it reads the password from the first line of stdin, checks the account with the
 same `CheckNewAccount`, and creates it with the same `Create`. Unlike signup, it says
@@ -35,7 +41,9 @@ is set.
 2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
    `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
    password with `CheckNewPassword` (`password.go`: length, not the email, not on the
-   embedded common-password list, `isCommonPassword`).
+   embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html`
+   and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle
+   in `internal/ui/static/js/app.js`.
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
    (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
@@ -50,9 +58,11 @@ is set.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`), `router_test.go` (`TestSignupRoutes`),
-`templates_test.go` (`TestNoSignupLinks`), `middleware_test.go`, `ratelimit_test.go`,
+`templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
+`TestFormAutofocus`, `TestSignupHints`), `middleware_test.go`, `ratelimit_test.go`,
 `clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`),
-`password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`);
+`password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
+`validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
 `internal/psql/users_test.go`; `internal/password/password_test.go`.
 

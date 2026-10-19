@@ -32,6 +32,19 @@ func (v *Validator) AddNonFieldError(message string) {
 	v.NonFieldErrors = append(v.NonFieldErrors, message)
 }
 
+// FirstError returns the first of fields that has a field error, or "".
+// Templates use it to put autofocus on the first invalid field. It has a
+// value receiver so templates can call it on a form stored by value in an
+// interface (signup's data is struct{ Form any }).
+func (v Validator) FirstError(fields ...string) string {
+	for _, f := range fields {
+		if _, ok := v.FieldErrors[f]; ok {
+			return f
+		}
+	}
+	return ""
+}
+
 func (v *Validator) CheckField(ok bool, field, message string) {
 	if !ok {
 		v.AddFieldError(field, message)

@@ -8,25 +8,23 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #257 Make the login and signup forms accessible, with a show-password toggle.
-   2. #258 Track logins in user_sessions, with 90-day idle sessions.
-   3. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
+   1. #258 Track logins in user_sessions, with 90-day idle sessions.
+   2. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
       `RSS_SMTP_PASSWORD` is set (see "Domain and email" in `infra/README.md`).
-   4. #260 Queue emails in an outbox and send them from a background worker.
-   5. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   6. #262 Say which emails have accounts, log in at signup, and return to the page you
+   3. #260 Queue emails in an outbox and send them from a background worker.
+   4. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   5. #262 Say which emails have accounts, log in at signup, and return to the page you
       wanted.
-   7. #263 Change your password and log out other devices from Settings.
-   8. #264 Confirm email addresses (soft confirmation).
-   9. #265 Reset a forgotten password by email.
-   10. #266 Change your email address.
-   11. #267 Export your subscriptions as OPML.
-   12. #268 Delete your account.
-   13. #269 Add a privacy policy, terms of use and help links.
+   6. #263 Change your password and log out other devices from Settings.
+   7. #264 Confirm email addresses (soft confirmation).
+   8. #265 Reset a forgotten password by email.
+   9. #266 Change your email address.
+   10. #267 Export your subscriptions as OPML.
+   11. #268 Delete your account.
+   12. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #257;
-   then #258 and #259; then #260, #261 and #262; then #263, #267 and #269; then #264 and
-   #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #258 and #259; then #260,
+   #261 and #262; then #263, #267 and #269; then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

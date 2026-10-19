@@ -6,6 +6,7 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     email citext NOT NULL UNIQUE,
+    email_confirmed_at TIMESTAMPTZ, -- NULL until the user confirms their address; a password reset also confirms it
     hashed_password bytea NOT NULL,
     created_at timestamp(0) with time zone NOT NULL DEFAULT now()
 );
@@ -133,6 +134,58 @@ CREATE TABLE reads (
 
 CREATE INDEX reads_article_id_idx ON reads (article_id);
 
+-- One row per logged-in device. Its id is kept in the scs session; deleting
+-- the row logs that device out.
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now() -- updated at most once a day; the session ends 90 days after it
+);
+
+CREATE INDEX user_sessions_user_id_idx ON user_sessions (user_id);
+
+-- One-time tokens sent in email links. Only a SHA-256 hash of each token is
+-- stored; a token is deleted when it's used.
+CREATE TABLE user_tokens (
+    hash BYTEA PRIMARY KEY, -- sha256 of the token in the link
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    purpose TEXT NOT NULL
+        CHECK (purpose IN ('confirm_email', 'reset_password', 'change_email')),
+    email citext NOT NULL, -- the address it was sent to: the account's, or the new address for change_email
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX user_tokens_user_id_idx ON user_tokens (user_id);
+
+-- The outbox: emails to send, worked by the mail runner (internal/mail).
+CREATE TABLE emails (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    to_address citext NOT NULL, -- not a foreign key: the "account deleted" email outlives its user
+    subject TEXT NOT NULL,
+    text_body TEXT NOT NULL, -- cleared once sent or given up on: some carry one-time links
+    html_body TEXT NOT NULL, -- likewise
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sent', 'failed')),
+    attempts INT NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when a worker may claim it; also the claim lease
+    last_error TEXT NOT NULL DEFAULT '', -- internal detail for logs; never shown to users
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at TIMESTAMPTZ
+);
+
+CREATE INDEX emails_pending_idx ON emails (next_attempt_at) WHERE status = 'pending';
+CREATE INDEX emails_to_address_created_at_idx ON emails (to_address, created_at); -- the per-address hourly cap
+
 CREATE TABLE sessions (
   token TEXT PRIMARY KEY,
   data BYTEA NOT NULL,
@@ -142,6 +195,9 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 
 -- +goose Down
+DROP TABLE emails;
+DROP TABLE user_tokens;
+DROP TABLE user_sessions;
 DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;

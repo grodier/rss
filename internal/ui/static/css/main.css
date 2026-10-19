@@ -550,9 +550,45 @@
     font-size: 0.875rem;
   }
 
+  .hint {
+    margin-block-start: 0.375rem;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  p.error {
+    margin-block-start: 0.375rem;
+  }
+
+  /* The search form's error, above its row. */
   span.error {
     display: block;
     margin-block-end: 0.375rem;
+  }
+
+  .password-input {
+    position: relative;
+  }
+
+  .password-input input {
+    padding-inline-end: 4.5rem;
+  }
+
+  .password-toggle {
+    position: absolute;
+    inset-block: 0.3125rem;
+    inset-inline-end: 0.3125rem;
+    padding: 0 0.75rem;
+    border: 0;
+    border-radius: calc(var(--radius-sm) - 0.25rem);
+    background: none;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  .password-toggle:hover {
+    background: var(--surface);
+    color: var(--text);
   }
 
   div.error {

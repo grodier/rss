@@ -10,23 +10,22 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 1. Account management (planned in #270), in this order:
    1. #255 Add the account management tables to the schema (then reset production).
    2. #256 Reject common passwords and passwords that are the account's email.
-   3. #257 Make the login and signup forms accessible, with a show-password toggle.
-   4. #258 Track logins in user_sessions, with 90-day idle sessions.
-   5. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
+   3. #258 Track logins in user_sessions, with 90-day idle sessions.
+   4. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
       `RSS_SMTP_PASSWORD` is set (see "Domain and email" in `infra/README.md`).
-   6. #260 Queue emails in an outbox and send them from a background worker.
-   7. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   8. #262 Say which emails have accounts, log in at signup, and return to the page you
+   5. #260 Queue emails in an outbox and send them from a background worker.
+   6. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   7. #262 Say which emails have accounts, log in at signup, and return to the page you
       wanted.
-   9. #263 Change your password and log out other devices from Settings.
-   10. #264 Confirm email addresses (soft confirmation).
-   11. #265 Reset a forgotten password by email.
-   12. #266 Change your email address.
-   13. #267 Export your subscriptions as OPML.
-   14. #268 Delete your account.
-   15. #269 Add a privacy policy, terms of use and help links.
+   8. #263 Change your password and log out other devices from Settings.
+   9. #264 Confirm email addresses (soft confirmation).
+   10. #265 Reset a forgotten password by email.
+   11. #266 Change your email address.
+   12. #267 Export your subscriptions as OPML.
+   13. #268 Delete your account.
+   14. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #255, #256 and #257;
+   Issues that can be worked on in parallel sessions, in waves: #255 and #256;
    then #258 and #259; then #260, #261 and #262; then #263, #267 and #269; then #264 and
    #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it

@@ -279,10 +279,11 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`. The `asset` template
   function builds those URLs, so a changed file gets a new URL and can be cached for a
   year.
-- **`app.js`** has three enhancements, each hooked onto server-rendered markup: local
-  times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), and
+- **`app.js`** has four enhancements, each hooked onto server-rendered markup: local
+  times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   infinite scroll (fetch the page behind `.pager a[rel=next]` and append its
-  `.article-row`s). `internal/server/scroll_test.go` pins the markup the script relies on.
+  `.article-row`s), and a show/hide toggle on every `input[type=password]` (set back to
+  `password` before its form submits). `internal/server/scroll_test.go` pins the markup the script relies on.
 
 ## Testing
 

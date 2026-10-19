@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - signup</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -14,37 +15,45 @@
       {{template "brand"}}
       <h1>Sign Up</h1>
 
+      {{$focus := .Form.FirstError "invite" "name" "email" "password"}}
       <form action="/signup" method="post">
         {{range .Form.NonFieldErrors}}
-        <div class="error">{{.}}</div>
+        <div class="error" role="alert">{{.}}</div>
         {{end}}
         <div class="field">
           <label for="invite">Invite code</label>
-          {{with .Form.FieldErrors.invite}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="text" id="invite" name="invite" value="{{.Form.Invite}}" autocomplete="off" />
+          <input type="text" id="invite" name="invite" value="{{.Form.Invite}}" autocomplete="off"
+            autocapitalize="none" spellcheck="false"
+            {{with .Form.FieldErrors.invite}}aria-invalid="true" aria-describedby="invite-error"{{end}}
+            {{if eq $focus "invite"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.invite}}<p class="error" id="invite-error">{{.}}</p>{{end}}
         </div>
         <div class="field">
           <label for="name">Name</label>
-          {{with .Form.FieldErrors.name}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="text" id="name" name="name" value="{{.Form.Name}}" autocomplete="name" />
+          <input type="text" id="name" name="name" value="{{.Form.Name}}"
+            autocomplete="name" autocapitalize="words"
+            aria-describedby="name-hint{{if .Form.FieldErrors.name}} name-error{{end}}"
+            {{with .Form.FieldErrors.name}}aria-invalid="true"{{end}}
+            {{if eq $focus "name"}}autofocus{{end}} />
+          <p class="hint" id="name-hint">What should we call you? We'll use it in emails.</p>
+          {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
         </div>
         <div class="field">
           <label for="email">Email</label>
-          {{with .Form.FieldErrors.email}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="email" id="email" name="email" value="{{.Form.Email}}" autocomplete="email" />
+          <input type="email" id="email" name="email" value="{{.Form.Email}}"
+            autocomplete="email" autocapitalize="none" spellcheck="false"
+            {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+            {{if eq $focus "email"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
         </div>
         <div class="field">
           <label for="password">Password</label>
-          {{with .Form.FieldErrors.password}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="password" id="password" name="password" autocomplete="new-password" />
+          <input type="password" id="password" name="password" autocomplete="new-password"
+            aria-describedby="password-hint{{if .Form.FieldErrors.password}} password-error{{end}}"
+            {{with .Form.FieldErrors.password}}aria-invalid="true"{{end}}
+            {{if eq $focus "password"}}autofocus{{end}} />
+          <p class="hint" id="password-hint">At least 8 characters.</p>
+          {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
         </div>
         <div>
           <button class="btn-primary btn-block" type="submit">Sign up</button>

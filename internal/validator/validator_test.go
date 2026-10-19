@@ -63,6 +63,41 @@ func TestValidator(t *testing.T) {
 	}
 }
 
+func TestFirstError(t *testing.T) {
+	v := Validator{FieldErrors: map[string]string{"email": "bad", "password": "short"}}
+	tests := []struct {
+		name   string
+		v      Validator
+		fields []string
+		want   string
+	}{
+		{"first in the order given", v, []string{"email", "password"}, "email"},
+		{"order reversed", v, []string{"password", "email"}, "password"},
+		{"skips fields without an error", v, []string{"invite", "name", "password", "email"}, "password"},
+		{"no listed field has an error", v, []string{"invite", "name"}, ""},
+		{"no errors", Validator{}, []string{"email", "password"}, ""},
+		{"no fields", v, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.v.FirstError(tt.fields...); got != tt.want {
+				t.Errorf("FirstError(%q) = %q, want %q", tt.fields, got, tt.want)
+			}
+		})
+	}
+
+	// Templates call it on forms stored by value in an interface, where only
+	// value-receiver methods are in the method set.
+	var form any = struct{ Validator }{v}
+	f, ok := form.(interface{ FirstError(...string) string })
+	if !ok {
+		t.Fatal("FirstError is not in a Validator value's method set")
+	}
+	if got := f.FirstError("password"); got != "password" {
+		t.Errorf("FirstError on a value = %q, want %q", got, "password")
+	}
+}
+
 func TestUUIDRX(t *testing.T) {
 	tests := []struct {
 		name  string

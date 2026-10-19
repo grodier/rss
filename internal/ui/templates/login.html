@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>rss - login</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -18,23 +19,25 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
+      {{$focus := .Form.FirstError "email" "password"}}
       <form action="/login" method="post">
         {{range .Form.NonFieldErrors}}
-        <div class="error">{{.}}</div>
+        <div class="error" role="alert">{{.}}</div>
         {{end}}
         <div class="field">
           <label for="email">Email</label>
-          {{with .Form.FieldErrors.email}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="email" id="email" name="email" value="{{.Form.Email}}" autocomplete="email" />
+          <input type="email" id="email" name="email" value="{{.Form.Email}}"
+            autocomplete="username" autocapitalize="none" spellcheck="false"
+            {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+            {{if eq $focus "email"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
         </div>
         <div class="field">
           <label for="password">Password</label>
-          {{with .Form.FieldErrors.password}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <input type="password" id="password" name="password" autocomplete="current-password" />
+          <input type="password" id="password" name="password" autocomplete="current-password"
+            {{with .Form.FieldErrors.password}}aria-invalid="true" aria-describedby="password-error"{{end}}
+            {{if eq $focus "password"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
         </div>
         <div>
           <button class="btn-primary btn-block" type="submit">Login</button>

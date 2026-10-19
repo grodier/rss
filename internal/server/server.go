@@ -46,7 +46,14 @@ type SiteStore interface {
 type UserStore interface {
 	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
-	Exists(ctx context.Context, id string) (bool, error)
+}
+
+// SessionStore stores logged-in devices (user_sessions rows).
+type SessionStore interface {
+	Create(ctx context.Context, userID string, idleBefore time.Time) (string, error)
+	Get(ctx context.Context, id string) (rss.Session, error)
+	Touch(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
 }
 
 // SearchStore searches sites and feeds already in the database.
@@ -97,6 +104,7 @@ var (
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
 	_ FeedStore         = (*psql.FeedRepository)(nil)
 	_ UserStore         = (*psql.UserRepository)(nil)
+	_ SessionStore      = (*psql.UserSessionRepository)(nil)
 	_ SearchStore       = (*psql.SearchRepository)(nil)
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
@@ -107,6 +115,7 @@ var (
 type Services struct {
 	FeedService         FeedStore
 	UserService         UserStore
+	SessionService      SessionStore
 	SearchService       SearchStore
 	SiteService         SiteStore
 	LookupService       LookupStore

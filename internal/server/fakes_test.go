@@ -39,7 +39,6 @@ func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error
 type fakeUserStore struct {
 	createFn       func(ctx context.Context, name, email, password string) (string, time.Time, error)
 	authenticateFn func(ctx context.Context, email, password string) (string, error)
-	existsFn       func(ctx context.Context, id string) (bool, error)
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -50,8 +49,27 @@ func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string
 	return f.authenticateFn(ctx, email, password)
 }
 
-func (f *fakeUserStore) Exists(ctx context.Context, id string) (bool, error) {
-	return f.existsFn(ctx, id)
+type fakeSessionStore struct {
+	createFn func(ctx context.Context, userID string, idleBefore time.Time) (string, error)
+	getFn    func(ctx context.Context, id string) (rss.Session, error)
+	touchFn  func(ctx context.Context, id string) error
+	deleteFn func(ctx context.Context, id string) error
+}
+
+func (f *fakeSessionStore) Create(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
+	return f.createFn(ctx, userID, idleBefore)
+}
+
+func (f *fakeSessionStore) Get(ctx context.Context, id string) (rss.Session, error) {
+	return f.getFn(ctx, id)
+}
+
+func (f *fakeSessionStore) Touch(ctx context.Context, id string) error {
+	return f.touchFn(ctx, id)
+}
+
+func (f *fakeSessionStore) Delete(ctx context.Context, id string) error {
+	return f.deleteFn(ctx, id)
 }
 
 type fakeSearchStore struct {

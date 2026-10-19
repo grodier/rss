@@ -17,10 +17,17 @@ for the name, email and password), and creates the user with an Argon2id hash. A
 duplicate email gets exactly the same response as a new
 account. Login checks the per-IP limit, validates, then counts the attempt against the
 submitted email *before* checking the password (refunded unless the password was
-wrong), so parallel guesses can't slip past the limit. On success it renews the session
-token, stores `authenticatedUserID` in the session and redirects to the timeline (`/`).
-On every later request, `authenticate` reads that ID, checks the user still exists, and puts it in the
-request context, where handlers read it with `s.authenticatedUserID(r)`.
+wrong), so parallel guesses can't slip past the limit. On success `startSession` renews
+the session token, creates a `user_sessions` row for this device (deleting the user's
+rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler
+redirects to the timeline (`/`). On every later request, `authenticate` loads that row
+with its user in one query. A missing row, or one unused for 90 days
+(`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it
+updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's
+ID and the session in the request context, where handlers read them with
+`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out deletes the row,
+renews the token and removes `sessionID`. A login lasts at most a year (scs's
+`Lifetime`).
 
 Both forms show each field's error under it, tied to the input with `aria-describedby`,
 and signup shows the name and password hints there all the time. After a failed submit
@@ -39,7 +46,7 @@ is set.
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
 2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
-   `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
+   `startSession`, `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
    password with `CheckNewPassword` (`password.go`: length, not the email, not on the
    embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html`
    and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle
@@ -50,9 +57,12 @@ is set.
    `Authenticate` (`dummyHash` for unknown emails).
 5. `internal/password/password.go`: `Hash`, `Verify` (both NFKC-normalize first), the
    `slots` cap.
-6. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and
-   `helpers.go` (`authenticatedUserID`).
-7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings (30-day lifetime).
+6. `internal/server/middleware.go` (`authenticate`, `sessionIdleTimeout`,
+   `sessionTouchInterval`, `requireAuthentication`) and `helpers.go`
+   (`authenticatedUserID`, `authenticatedSession`); `internal/psql/user_sessions.go`
+   (`UserSessionRepository`: `Create`, `Get`, `Touch`, `Delete`).
+7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings
+   (`sessionLifetime`, one year).
 8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
    `Makefile`.
 
@@ -64,9 +74,9 @@ is set.
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
-`internal/psql/users_test.go`; `internal/password/password_test.go`.
+`internal/psql/users_test.go`, `user_sessions_test.go`; `internal/password/password_test.go`.
 
-**Why:** "Security" in decisions.md.
+**Why:** "Security" and "Accounts" in decisions.md.
 
 ## Search, site lookups and discovery
 

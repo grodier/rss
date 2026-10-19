@@ -79,14 +79,4 @@ func TestUserRepository(t *testing.T) {
 			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
 		}
 	})
-
-	t.Run("Exists", func(t *testing.T) {
-		exists, err := repo.Exists(t.Context(), id)
-		if err != nil {
-			t.Fatalf("Exists: %v", err)
-		}
-		if !exists {
-			t.Error("Exists = false; want true")
-		}
-	})
 }

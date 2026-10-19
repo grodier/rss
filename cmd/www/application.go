@@ -51,6 +51,7 @@ func (app *Application) Run() error {
 	services := server.Services{
 		FeedService:         psql.NewFeedRepository(db),
 		UserService:         psql.NewUserRepository(db),
+		SessionService:      psql.NewUserSessionRepository(db),
 		SearchService:       psql.NewSearchRepository(db),
 		SiteService:         psql.NewSiteRepository(db),
 		LookupService:       psql.NewLookupRepository(db),
@@ -140,8 +141,9 @@ func (app *Application) Run() error {
 	return errors.Join(append([]error{err}, errs...)...)
 }
 
-// sessionLifetime is how long a login lasts. See "Security" in docs/decisions.md.
-const sessionLifetime = 30 * 24 * time.Hour
+// sessionLifetime is the most a login lasts, however often it's used; the
+// server ends idle ones sooner. See "Accounts" in docs/decisions.md.
+const sessionLifetime = 365 * 24 * time.Hour
 
 // newSessionManager returns the session manager, storing sessions in db.
 func newSessionManager(db *sql.DB, env string) *scs.SessionManager {

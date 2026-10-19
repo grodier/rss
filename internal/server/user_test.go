@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -341,6 +342,10 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 				}
 				return "", rss.ErrInvalidCredentials
 			},
+		}, SessionService: &fakeSessionStore{
+			createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
+				return "session-1", nil
+			},
 		}})
 		return s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP, &calls
 	}
@@ -550,9 +555,21 @@ func postSignup(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
 }
 
 func TestLoginFormHandlerSuccess(t *testing.T) {
+	var creates int
 	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
 		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
 			return "user-id", nil
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
+			creates++
+			if userID != "user-id" {
+				t.Errorf("Create userID = %q, want user-id", userID)
+			}
+			if d := time.Since(idleBefore) - 90*24*time.Hour; d < 0 || d > time.Minute {
+				t.Errorf("Create idleBefore = %v, want about 90 days ago", idleBefore)
+			}
+			return "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d", nil
 		},
 	}})
 
@@ -568,7 +585,49 @@ func TestLoginFormHandlerSuccess(t *testing.T) {
 	if loc := rr.Header().Get("Location"); loc != "/" {
 		t.Errorf("Location = %q, want %q", loc, "/")
 	}
+	if creates != 1 {
+		t.Errorf("Create called %d times, want 1", creates)
+	}
 	if len(rr.Result().Cookies()) == 0 {
 		t.Error("no session cookie in the response")
+	}
+}
+
+func TestLogoutDeletesSession(t *testing.T) {
+	sess := rss.Session{ID: "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d", User: rss.User{ID: "user-1"}, LastSeenAt: time.Now()}
+
+	tests := []struct {
+		name       string
+		req        *http.Request
+		wantDelete []string
+	}{
+		{"logged in", requestWithSession(sess), []string{sess.ID}},
+		{"anonymous", httptest.NewRequest(http.MethodPost, "/logout", nil), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var deleted []string
+			s := newTestServerWith(t, Services{SessionService: &fakeSessionStore{
+				deleteFn: func(ctx context.Context, id string) error {
+					deleted = append(deleted, id)
+					return nil
+				},
+			}})
+
+			req := tt.req
+			req.Method = http.MethodPost
+			rr := httptest.NewRecorder()
+			s.sessionManager.LoadAndSave(http.HandlerFunc(s.logoutHandler)).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+			}
+			if loc := rr.Header().Get("Location"); loc != "/login" {
+				t.Errorf("Location = %q, want /login", loc)
+			}
+			if !slices.Equal(deleted, tt.wantDelete) {
+				t.Errorf("Delete called with %q, want %q", deleted, tt.wantDelete)
+			}
+		})
 	}
 }

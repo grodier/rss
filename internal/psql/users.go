@@ -83,12 +83,3 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 
 	return id, nil
 }
-
-func (r *UserRepository) Exists(ctx context.Context, id string) (bool, error) {
-	stmt := `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`
-
-	var exists bool
-	err := r.DB.QueryRowContext(ctx, stmt, id).Scan(&exists)
-
-	return exists, err
-}

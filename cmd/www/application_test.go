@@ -37,8 +37,8 @@ func TestNewSessionManager(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {
 			sm := newSessionManager(db, tt.env)
-			if sm.Lifetime != 30*24*time.Hour {
-				t.Errorf("Lifetime = %v, want 30 days", sm.Lifetime)
+			if sm.Lifetime != 365*24*time.Hour {
+				t.Errorf("Lifetime = %v, want 365 days", sm.Lifetime)
 			}
 			if sm.IdleTimeout != 0 {
 				t.Errorf("IdleTimeout = %v, want 0", sm.IdleTimeout)

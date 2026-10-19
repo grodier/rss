@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) error {
@@ -66,6 +67,13 @@ func (s *Server) decodePostForm(w http.ResponseWriter, r *http.Request, dst any)
 func (s *Server) authenticatedUserID(r *http.Request) (id string, ok bool) {
 	id, ok = r.Context().Value(authenticatedUserIDContextKey).(string)
 	return id, ok && id != ""
+}
+
+// authenticatedSession returns the logged-in device's session and user, set
+// by authenticate. ok is false for anonymous requests.
+func (s *Server) authenticatedSession(r *http.Request) (rss.Session, bool) {
+	sess, ok := r.Context().Value(authenticatedSessionContextKey).(rss.Session)
+	return sess, ok
 }
 
 func (s *Server) isAuthenticated(r *http.Request) bool {

@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/grodier/rss/internal/rss"
 )
 
 func TestRecoverPanicRendersHTML(t *testing.T) {
@@ -32,45 +36,185 @@ func TestRecoverPanicRendersHTML(t *testing.T) {
 }
 
 func TestAuthenticate(t *testing.T) {
-	for _, exists := range []bool{false, true} {
-		s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-			existsFn: func(ctx context.Context, id string) (bool, error) {
-				if id != "user-1" {
-					t.Errorf("Exists id = %q, want user-1", id)
-				}
-				return exists, nil
+	const sessID = "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d"
+	user := rss.User{ID: "user-1", Name: "Test User", Email: "user@example.com"}
+	sessionLastSeen := func(ago time.Duration) func(ctx context.Context, id string) (rss.Session, error) {
+		return func(ctx context.Context, id string) (rss.Session, error) {
+			if id != sessID {
+				t.Errorf("Get id = %q, want %q", id, sessID)
+			}
+			return rss.Session{ID: id, User: user, LastSeenAt: time.Now().Add(-ago)}, nil
+		}
+	}
+
+	tests := []struct {
+		name       string
+		sessionID  string // put in the session before authenticate; "" puts nothing
+		getFn      func(ctx context.Context, id string) (rss.Session, error)
+		touchErr   error
+		wantStatus int
+		wantAuth   bool
+		wantKey    bool // sessionID still in the session afterwards
+		wantGet    bool
+		wantTouch  bool
+		wantDelete bool
+	}{
+		{name: "no sessionID", wantStatus: http.StatusOK},
+		{name: "malformed ID", sessionID: "user-1", wantStatus: http.StatusOK},
+		{
+			name:      "no record",
+			sessionID: sessID,
+			getFn: func(ctx context.Context, id string) (rss.Session, error) {
+				return rss.Session{}, rss.ErrNoRecord
 			},
-		}})
+			wantStatus: http.StatusOK,
+			wantGet:    true,
+		},
+		{
+			name:       "last seen 91 days ago",
+			sessionID:  sessID,
+			getFn:      sessionLastSeen(91 * 24 * time.Hour),
+			wantStatus: http.StatusOK,
+			wantGet:    true,
+			wantDelete: true,
+		},
+		{
+			name:       "last seen 2 days ago",
+			sessionID:  sessID,
+			getFn:      sessionLastSeen(2 * 24 * time.Hour),
+			wantStatus: http.StatusOK,
+			wantAuth:   true,
+			wantKey:    true,
+			wantGet:    true,
+			wantTouch:  true,
+		},
+		{
+			name:       "last seen 1 hour ago",
+			sessionID:  sessID,
+			getFn:      sessionLastSeen(time.Hour),
+			wantStatus: http.StatusOK,
+			wantAuth:   true,
+			wantKey:    true,
+			wantGet:    true,
+		},
+		{
+			name:      "Get error",
+			sessionID: sessID,
+			getFn: func(ctx context.Context, id string) (rss.Session, error) {
+				return rss.Session{}, errors.New("db down")
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantKey:    true,
+			wantGet:    true,
+		},
+		{
+			name:       "Touch error",
+			sessionID:  sessID,
+			getFn:      sessionLastSeen(2 * 24 * time.Hour),
+			touchErr:   errors.New("db down"),
+			wantStatus: http.StatusOK,
+			wantAuth:   true,
+			wantKey:    true,
+			wantGet:    true,
+			wantTouch:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotGet, gotTouch, gotDelete bool
+			store := &fakeSessionStore{
+				getFn: func(ctx context.Context, id string) (rss.Session, error) {
+					gotGet = true
+					return tt.getFn(ctx, id)
+				},
+				touchFn: func(ctx context.Context, id string) error {
+					gotTouch = true
+					if id != sessID {
+						t.Errorf("Touch id = %q, want %q", id, sessID)
+					}
+					return tt.touchErr
+				},
+				deleteFn: func(ctx context.Context, id string) error {
+					gotDelete = true
+					if id != sessID {
+						t.Errorf("Delete id = %q, want %q", id, sessID)
+					}
+					return nil
+				},
+			}
+			s := newTestServerWith(t, Services{SessionService: store})
 
-		var got bool
-		var gotID string
-		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			got = s.isAuthenticated(r)
-			gotID, _ = s.authenticatedUserID(r)
+			var called, gotAuth bool
+			var gotID string
+			var gotSess rss.Session
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				gotAuth = s.isAuthenticated(r)
+				gotID, _ = s.authenticatedUserID(r)
+				gotSess, _ = s.authenticatedSession(r)
+			})
+			var gotKey bool
+			h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.sessionID != "" {
+					s.sessionManager.Put(r.Context(), "sessionID", tt.sessionID)
+				}
+				s.authenticate(next).ServeHTTP(w, r)
+				gotKey = s.sessionManager.Exists(r.Context(), "sessionID")
+			}))
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			if rr.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rr.Code, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusInternalServerError {
+				if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+					t.Errorf("Content-Type = %q, want text/html", ct)
+				}
+				if called {
+					t.Error("next handler called after a Get error")
+				}
+			}
+			if gotAuth != tt.wantAuth {
+				t.Errorf("isAuthenticated = %v, want %v", gotAuth, tt.wantAuth)
+			}
+			if tt.wantAuth {
+				if gotID != user.ID {
+					t.Errorf("authenticatedUserID = %q, want %q", gotID, user.ID)
+				}
+				if gotSess.ID != sessID || gotSess.User != user {
+					t.Errorf("authenticatedSession = %+v, want ID %q and user %+v", gotSess, sessID, user)
+				}
+			}
+			if gotKey != tt.wantKey {
+				t.Errorf("sessionID in session = %v, want %v", gotKey, tt.wantKey)
+			}
+			if gotGet != tt.wantGet {
+				t.Errorf("Get called = %v, want %v", gotGet, tt.wantGet)
+			}
+			if gotTouch != tt.wantTouch {
+				t.Errorf("Touch called = %v, want %v", gotTouch, tt.wantTouch)
+			}
+			if gotDelete != tt.wantDelete {
+				t.Errorf("Delete called = %v, want %v", gotDelete, tt.wantDelete)
+			}
 		})
-		h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s.sessionManager.Put(r.Context(), "authenticatedUserID", "user-1")
-			s.authenticate(next).ServeHTTP(w, r)
-		}))
-
-		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
-
-		if got != exists {
-			t.Errorf("exists=%v: isAuthenticated = %v", exists, got)
-		}
-		wantID := ""
-		if exists {
-			wantID = "user-1"
-		}
-		if gotID != wantID {
-			t.Errorf("exists=%v: authenticatedUserID = %q, want %q", exists, gotID, wantID)
-		}
 	}
 }
 
 func requestWithUserID(id string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	return r.WithContext(context.WithValue(r.Context(), authenticatedUserIDContextKey, id))
+}
+
+// requestWithSession returns a request authenticated as sess, as authenticate
+// leaves it.
+func requestWithSession(sess rss.Session) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := context.WithValue(r.Context(), authenticatedUserIDContextKey, sess.User.ID)
+	ctx = context.WithValue(ctx, authenticatedSessionContextKey, sess)
+	return r.WithContext(ctx)
 }
 
 func TestAuthenticatedUserID(t *testing.T) {

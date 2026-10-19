@@ -9,7 +9,6 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 1. Account management (planned in #270), in this order:
    1. #255 Add the account management tables to the schema (then reset production).
-   2. #256 Reject common passwords and passwords that are the account's email.
    3. #257 Make the login and signup forms accessible, with a show-password toggle.
    4. #258 Track logins in user_sessions, with 90-day idle sessions.
    5. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
@@ -26,7 +25,7 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
    14. #268 Delete your account.
    15. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #255, #256 and #257;
+   Issues that can be worked on in parallel sessions, in waves: #255 and #257;
    then #258 and #259; then #260, #261 and #262; then #263, #267 and #269; then #264 and
    #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
@@ -520,7 +519,8 @@ Hosting (once deployed; see Deployment in decisions.md):
 - [ ] **Small instance and database.** The web service is a Render Starter instance (512
   MB, a fraction of a CPU), and Postgres is the smallest paid plan with little storage.
   Argon2 hashing runs at most `GOMAXPROCS` at once (1 here, since Go sizes it to the
-  container's CPU limit). The common-password list (#256) adds a few MB of memory.
+  container's CPU limit). The common-password list (#256) adds about 1 MB (the 450 KB
+  file and its 700 KB index).
   *Signal:* Render's memory and CPU graphs near their limits, restarts for running out of
   memory, slow logins, or database storage above 80%. *Fix:* the next instance or
   database size, or the separate worker process under Feed ingestion.

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/text/unicode/norm"
 )
 
 // ErrInvalidHash is returned when an encoded hash can't be parsed.
@@ -38,9 +39,11 @@ var current = params{
 // logins or signups could exhaust memory. Callers beyond the cap wait.
 var slots = make(chan struct{}, runtime.GOMAXPROCS(0))
 
-// Hash returns an encoded Argon2id hash of pw.
+// Hash returns an encoded Argon2id hash of pw, normalized to Unicode NFKC
+// first so that the same password typed on devices that encode accents
+// differently hashes the same.
 func Hash(pw string) (string, error) {
-	return hashWith(pw, current)
+	return hashWith(norm.NFKC.String(pw), current)
 }
 
 func hashWith(pw string, p params) (string, error) {
@@ -58,9 +61,11 @@ func hashWith(pw string, p params) (string, error) {
 		base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-// Verify reports whether pw matches encoded. A mismatch returns (false, nil).
-// A malformed hash returns ErrInvalidHash.
+// Verify reports whether pw, normalized to Unicode NFKC as Hash does, matches
+// encoded. A mismatch returns (false, nil). A malformed hash returns
+// ErrInvalidHash.
 func Verify(pw, encoded string) (bool, error) {
+	pw = norm.NFKC.String(pw)
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
 		return false, ErrInvalidHash

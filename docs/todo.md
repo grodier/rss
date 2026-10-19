@@ -8,26 +8,23 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #255 Add the account management tables to the schema (then reset production).
-   2. #256 Reject common passwords and passwords that are the account's email.
-   3. #258 Track logins in user_sessions, with 90-day idle sessions.
-   4. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
+   1. #258 Track logins in user_sessions, with 90-day idle sessions.
+   2. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
       `RSS_SMTP_PASSWORD` is set (see "Domain and email" in `infra/README.md`).
-   5. #260 Queue emails in an outbox and send them from a background worker.
-   6. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   7. #262 Say which emails have accounts, log in at signup, and return to the page you
+   3. #260 Queue emails in an outbox and send them from a background worker.
+   4. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   5. #262 Say which emails have accounts, log in at signup, and return to the page you
       wanted.
-   8. #263 Change your password and log out other devices from Settings.
-   9. #264 Confirm email addresses (soft confirmation).
-   10. #265 Reset a forgotten password by email.
-   11. #266 Change your email address.
-   12. #267 Export your subscriptions as OPML.
-   13. #268 Delete your account.
-   14. #269 Add a privacy policy, terms of use and help links.
+   6. #263 Change your password and log out other devices from Settings.
+   7. #264 Confirm email addresses (soft confirmation).
+   8. #265 Reset a forgotten password by email.
+   9. #266 Change your email address.
+   10. #267 Export your subscriptions as OPML.
+   11. #268 Delete your account.
+   12. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #255 and #256;
-   then #258 and #259; then #260, #261 and #262; then #263, #267 and #269; then #264 and
-   #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #258 and #259; then #260,
+   #261 and #262; then #263, #267 and #269; then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -519,7 +516,8 @@ Hosting (once deployed; see Deployment in decisions.md):
 - [ ] **Small instance and database.** The web service is a Render Starter instance (512
   MB, a fraction of a CPU), and Postgres is the smallest paid plan with little storage.
   Argon2 hashing runs at most `GOMAXPROCS` at once (1 here, since Go sizes it to the
-  container's CPU limit). The common-password list (#256) adds a few MB of memory.
+  container's CPU limit). The common-password list (#256) adds about 1 MB (the 450 KB
+  file and its 700 KB index).
   *Signal:* Render's memory and CPU graphs near their limits, restarts for running out of
   memory, slow logins, or database storage above 80%. *Fix:* the next instance or
   database size, or the separate worker process under Feed ingestion.

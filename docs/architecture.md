@@ -88,10 +88,10 @@ It's for local development (`make db/seed`); there's nowhere to run it in produc
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
-| `internal/password` | Argon2id hashing | — |
+| `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded templates and static files | — |
-| `internal/validator` | Form validation helpers | — |
+| `internal/validator` | Form validation helpers; the rules for new passwords, with the embedded common-password list | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
 
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
@@ -115,6 +115,7 @@ adding another):
 | `microcosm-cc/bluemonday` | The HTML allowlist in `internal/sanitize` |
 | `golang.org/x/net/html` | Reading HTML pages (`discovery.ParsePage`) and rewriting article HTML |
 | `golang.org/x/crypto/argon2` | Password hashing |
+| `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords before hashing and checking them |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
 
 ## HTTP
@@ -178,7 +179,11 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               │
                             sites ──< lookups (site_id, once found)
 
+users ──< user_sessions
+users ──< user_tokens
+
 sessions (scs's table: session data keyed by token, no foreign keys)
+emails   (the outbox: no foreign keys)
 ```
 
 - **`sites`**: a website, unique by `host`, its *site key* (lowercase host without
@@ -194,10 +199,22 @@ sessions (scs's table: session data keyed by token, no foreign keys)
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
-- **`users`**: `email` is `citext`, so unique regardless of case.
+- **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
+  is NULL until the address is confirmed; nothing reads it yet (#264).
+- **`user_sessions`**: one row per logged-in device, `last_seen_at` written at most once
+  a day. Not used yet: #258 keeps its `id` in the scs session, so deleting the row logs
+  that device out.
+- **`user_tokens`**: one-time tokens for email links, keyed by the SHA-256 `hash` of the
+  token, with their `purpose`, the `email` they were sent to and `expires_at`. Not used
+  yet (#264).
+- **`emails`**: the outbox. `status` pending → sent or failed, `next_attempt_at` (when
+  it's due, and the claim lease), `attempts`, `last_error` (internal, never shown); the
+  bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
+  email outlives its user. Not used yet (#260).
 
 Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
-clears `lookups.site_id`; deleting a user cascades to their subscriptions and reads.
+clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
+`user_sessions` and `user_tokens`, and leaves their `emails`.
 Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
 subscription row, and scs deletes expired sessions.
 
@@ -251,8 +268,13 @@ CLAUDE.md.
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
   are `SameSite=Lax`, and `Secure` with `-env production`.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most
-  `GOMAXPROCS` hashes run at once and the rest wait. How login and signup avoid revealing
-  which emails have accounts is under "Accounts and sessions" in features.md.
+  `GOMAXPROCS` hashes run at once and the rest wait. `Hash` and `Verify` normalize the
+  password to Unicode NFKC first. Every new password (`validator.CheckNewPassword`) is 8
+  to 256 characters, isn't the account's email and isn't on the common-password list
+  (`internal/validator/common_passwords.txt`: the NCSC's 100,000 most common passwords
+  from Have I Been Pwned, via SecLists, kept to 8 characters or more; lookups are
+  case-insensitive). How login and signup avoid revealing which emails have accounts is
+  under "Accounts and sessions" in features.md.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 

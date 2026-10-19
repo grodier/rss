@@ -39,14 +39,17 @@ is set.
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
 2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
-   `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`;
-   `internal/ui/templates/login.html` and `signup.html` (the field pattern),
-   `Validator.FirstError`, and the password toggle in `internal/ui/static/js/app.js`.
+   `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
+   password with `CheckNewPassword` (`password.go`: length, not the email, not on the
+   embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html`
+   and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle
+   in `internal/ui/static/js/app.js`.
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
    (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
    `Authenticate` (`dummyHash` for unknown emails).
-5. `internal/password/password.go`: `Hash`, `Verify`, the `slots` cap.
+5. `internal/password/password.go`: `Hash`, `Verify` (both NFKC-normalize first), the
+   `slots` cap.
 6. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and
    `helpers.go` (`authenticatedUserID`).
 7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings (30-day lifetime).
@@ -58,6 +61,7 @@ is set.
 `templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
 `TestFormAutofocus`, `TestSignupHints`), `middleware_test.go`, `ratelimit_test.go`,
 `clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`),
+`password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
 `internal/psql/users_test.go`; `internal/password/password_test.go`.

@@ -6,11 +6,12 @@ the database to the Cloudflare R2 bucket `rss-backups` every night, all in Virgi
 State lives in the R2 bucket `rss-tfstate`. Why Render and this setup: "Deployment" in
 [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own three things that change outside it, and ignores them:
+Terraform doesn't own four things that change outside it, and ignores them:
 
 - **The image.** Deploys set it by digest; `apply` never rolls a deploy back.
 - **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
 - **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
+- **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
 
 ## Prerequisites
 
@@ -29,6 +30,7 @@ export RENDER_API_KEY=...
 export RENDER_OWNER_ID=...          # starts with tea- or usr-
 export CLOUDFLARE_API_TOKEN=...     # the rss-terraform token
 export TF_VAR_cloudflare_account_id=...
+export TF_VAR_cloudflare_zone_id=...           # the georgerodier.com zone's ID
 export TF_VAR_backup_r2_access_key_id=...      # the rss-backups R2 token's Access Key ID
 export TF_VAR_backup_r2_secret_access_key=...  # the rss-backups R2 token's Secret Access Key
 ```
@@ -59,7 +61,8 @@ shell, and masks them if Terraform prints one. Set it up once:
      `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
    - `r2-backups`: `access-key-id` (Text), `secret-access-key` (Password)
    - `render`: `api-key` (Password), `owner-id` (Text)
-   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text)
+   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text),
+     `zone-id` (Text)
 3. Outside the repository, create `~/.config/rss/infra.env`. It holds references, not
    secrets:
 
@@ -71,6 +74,7 @@ shell, and masks them if Terraform prints one. Set it up once:
    RENDER_OWNER_ID=op://rss/render/owner-id
    CLOUDFLARE_API_TOKEN=op://rss/cloudflare/api-token
    TF_VAR_cloudflare_account_id=op://rss/cloudflare/account-id
+   TF_VAR_cloudflare_zone_id=op://rss/cloudflare/zone-id
    TF_VAR_backup_r2_access_key_id=op://rss/r2-backups/access-key-id
    TF_VAR_backup_r2_secret_access_key=op://rss/r2-backups/secret-access-key
    ```
@@ -88,7 +92,7 @@ shell, and masks them if Terraform prints one. Set it up once:
 
 Three workflows in `.github/workflows` run production. They read these repository
 secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`,
-`RENDER_SERVICE_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`,
+`RENDER_SERVICE_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`,
 `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and
 `BACKUP_R2_SECRET_ACCESS_KEY`.
 
@@ -247,6 +251,64 @@ apply:
 To rotate the code, edit the variable; to turn signup off, delete it. The code may appear
 in the request logs, which log the URI.
 
+## Domain and email
+
+The app is served at `https://rss.georgerodier.com` and sends its email from it, through
+Resend over SMTP. Why: "Accounts" in [`docs/decisions.md`](../docs/decisions.md). What
+lives where:
+
+- **DNS records** in `domain.tf`, in the `georgerodier.com` zone: the app's CNAME
+  (DNS-only), and Resend's records (CNAMEs on `send.rss` and `rsend.rss`, the DKIM key on
+  `resend._domainkey.rss`), with the names and values Resend's dashboard showed. The
+  service's `custom_domains` makes Render verify the domain and issue its certificate.
+- **The Resend domain** `rss.georgerodier.com`, in region us-east-1, and its API key,
+  which is the SMTP password (`RSS_SMTP_PASSWORD`). The other SMTP settings are in
+  `main.tf`.
+- **Support mail** to `rss-support@georgerodier.com`, an alias in Google, which handles
+  the `georgerodier.com` mail. It isn't on `rss.georgerodier.com`, since
+  the app's CNAME can't share its name with MX records.
+- **DMARC**: no record on `_dmarc.rss`, so mail from `rss.georgerodier.com` falls back to
+  the `p=none` record on `_dmarc.georgerodier.com`. Cloudflare's **DMARC Management**
+  (**`georgerodier.com` → Email → DMARC Management**) created it outside Terraform and
+  shows its reports. It doesn't support subdomains.
+
+Resend's free tier allows 100 emails a day and 3,000 a month. `www send-test-email`
+(#259) checks deliverability.
+
+### Setting up
+
+Done once, in dashboards, for #254:
+
+1. **Cloudflare API token:** on the account-owned `rss-terraform` token, add a policy for
+   the zone `georgerodier.com` with **DNS: Edit**. Add the zone's ID (the zone's
+   **Overview** page) as the repository secret `CLOUDFLARE_ZONE_ID`, and as `zone-id` in
+   1Password.
+2. **Resend:** add the domain `rss.georgerodier.com` in region us-east-1 with **Manual
+   setup**: Terraform owns the records, so don't let Resend configure Cloudflare, and
+   don't add its suggested `_dmarc` record. Leave click and open tracking off, since they
+   would rewrite the links in emails.
+3. **Support address:** add `rss-support@georgerodier.com` as an alias of your Google
+   user.
+4. **DMARC Management:** enable it for the zone; it adds the `_dmarc.georgerodier.com`
+   record.
+5. **Apply** the PR. Then, in Resend, verify the domain, and check that Render shows the
+   custom domain as verified, with a certificate.
+6. **The SMTP password:** in Resend, create an API key with **Sending access** for
+   `rss.georgerodier.com` only (Resend offers only "All domains" until the domain is
+   verified). Save it in 1Password, then set it as `RSS_SMTP_PASSWORD` on the `rss`
+   service's **Environment** page. Only once the apply has run: before it, Terraform
+   didn't ignore the variable, and an apply would have deleted it.
+
+### Rotating the SMTP password
+
+1. In Resend, create a new API key as in step 6 above.
+2. Set `RSS_SMTP_PASSWORD` to it on the service's **Environment** page (saving
+   redeploys), and update 1Password.
+3. Once the deploy is live, delete the old key in Resend.
+
+Render blocks outbound SMTP only on free instances; `rss` is on Starter. If connections
+to port 465 time out anyway, Resend also listens on 2465 (`RSS_SMTP_PORT`).
+
 ## Checking the client IP
 
 The service sets `RSS_PROXY_HOPS=2`: requests reach the app through Cloudflare and then
@@ -255,7 +317,7 @@ Render's proxy, and each appends one `X-Forwarded-For` entry, so a request arriv
 visitors' real addresses, run:
 
 ```sh
-curl -4 -H 'X-Forwarded-For: 203.0.113.9' "$URL/login" >/dev/null
+curl -4 -H 'X-Forwarded-For: 203.0.113.9' https://rss.georgerodier.com/login >/dev/null
 curl -4 https://api.ipify.org    # your public IPv4 address
 ```
 

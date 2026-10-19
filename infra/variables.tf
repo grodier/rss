@@ -16,3 +16,10 @@ variable "backup_r2_secret_access_key" {
   type        = string
   sensitive   = true
 }
+
+variable "cloudflare_zone_id" {
+  description = "ID of the georgerodier.com zone in Cloudflare (TF_VAR_cloudflare_zone_id)."
+  type        = string
+  # A repository secret like the account ID, so plans don't print it either.
+  sensitive = true
+}

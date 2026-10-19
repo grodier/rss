@@ -178,7 +178,11 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               │
                             sites ──< lookups (site_id, once found)
 
+users ──< user_sessions
+users ──< user_tokens
+
 sessions (scs's table: session data keyed by token, no foreign keys)
+emails   (the outbox: no foreign keys)
 ```
 
 - **`sites`**: a website, unique by `host`, its *site key* (lowercase host without
@@ -194,10 +198,22 @@ sessions (scs's table: session data keyed by token, no foreign keys)
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
-- **`users`**: `email` is `citext`, so unique regardless of case.
+- **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
+  is NULL until the address is confirmed; nothing reads it yet (#264).
+- **`user_sessions`**: one row per logged-in device, `last_seen_at` written at most once
+  a day. Not used yet: #258 keeps its `id` in the scs session, so deleting the row logs
+  that device out.
+- **`user_tokens`**: one-time tokens for email links, keyed by the SHA-256 `hash` of the
+  token, with their `purpose`, the `email` they were sent to and `expires_at`. Not used
+  yet (#264).
+- **`emails`**: the outbox. `status` pending → sent or failed, `next_attempt_at` (when
+  it's due, and the claim lease), `attempts`, `last_error` (internal, never shown); the
+  bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
+  email outlives its user. Not used yet (#260).
 
 Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
-clears `lookups.site_id`; deleting a user cascades to their subscriptions and reads.
+clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
+`user_sessions` and `user_tokens`, and leaves their `emails`.
 Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
 subscription row, and scs deletes expired sessions.
 

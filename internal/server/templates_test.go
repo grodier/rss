@@ -55,7 +55,7 @@ func TestPasswordNotEchoed(t *testing.T) {
 		{
 			name:     "signup",
 			template: "signup.html",
-			data: struct{ Form any }{
+			data: signupPage{
 				Form: signupForm{Name: "Ann", Email: "a@b.co", Password: sentinel},
 			},
 		},
@@ -329,7 +329,7 @@ func TestFormFieldErrorsDescribed(t *testing.T) {
 			name:     "signup",
 			template: "signup.html",
 			data: func(errFields ...string) any {
-				return struct{ Form any }{Form: signupForm{Validator: withFieldErrors(errFields...)}}
+				return signupPage{Form: signupForm{Validator: withFieldErrors(errFields...)}}
 			},
 			fields: []string{"invite", "name", "email", "password"},
 		},
@@ -397,7 +397,7 @@ func TestFormAutofocus(t *testing.T) {
 	}
 
 	t.Run("signup errors on email and password", func(t *testing.T) {
-		doc := renderForm(t, "signup.html", struct{ Form any }{
+		doc := renderForm(t, "signup.html", signupPage{
 			Form: signupForm{Validator: withFieldErrors("password", "email")},
 		})
 		if got := autofocused(doc); !slices.Equal(got, []string{"email"}) {
@@ -405,7 +405,7 @@ func TestFormAutofocus(t *testing.T) {
 		}
 	})
 	t.Run("signup without errors", func(t *testing.T) {
-		doc := renderForm(t, "signup.html", struct{ Form any }{Form: signupForm{}})
+		doc := renderForm(t, "signup.html", signupPage{Form: signupForm{}})
 		if got := autofocused(doc); len(got) != 0 {
 			t.Errorf("autofocus on %q, want none", got)
 		}
@@ -418,7 +418,7 @@ func TestFormAutofocus(t *testing.T) {
 	})
 	t.Run("login with only a non-field error", func(t *testing.T) {
 		var v validator.Validator
-		v.AddNonFieldError("Email or password is incorrect")
+		v.AddNonFieldError("Too many attempts. Try again in 1 minute.")
 		doc := renderForm(t, "login.html", loginPage{Form: loginForm{Validator: v}})
 		if got := autofocused(doc); len(got) != 0 {
 			t.Errorf("autofocus on %q, want none", got)
@@ -446,7 +446,7 @@ func TestSignupHints(t *testing.T) {
 		if withErrors {
 			v = withFieldErrors("name", "password")
 		}
-		doc := renderForm(t, "signup.html", struct{ Form any }{Form: signupForm{Validator: v}})
+		doc := renderForm(t, "signup.html", signupPage{Form: signupForm{Validator: v}})
 		for _, tt := range tests {
 			t.Run(fmt.Sprintf("%s errors=%t", tt.field, withErrors), func(t *testing.T) {
 				hint := byID(doc, tt.field+"-hint")

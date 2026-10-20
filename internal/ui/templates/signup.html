@@ -45,6 +45,7 @@
             {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
             {{if eq $focus "email"}}autofocus{{end}} />
           {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+          {{if .DuplicateEmail}}<p class="hint"><a href="/login">Log in instead</a></p>{{end}}
         </div>
         <div class="field">
           <label for="password">Password</label>

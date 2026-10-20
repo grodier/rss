@@ -68,15 +68,15 @@ func TestUserRepository(t *testing.T) {
 
 	t.Run("Authenticate with wrong password", func(t *testing.T) {
 		_, err := repo.Authenticate(t.Context(), email, "wrong-password")
-		if !errors.Is(err, rss.ErrInvalidCredentials) {
-			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
+		if !errors.Is(err, rss.ErrWrongPassword) {
+			t.Errorf("err = %v; want %v", err, rss.ErrWrongPassword)
 		}
 	})
 
 	t.Run("Authenticate with unknown email", func(t *testing.T) {
 		_, err := repo.Authenticate(t.Context(), "unknown-"+email, password)
-		if !errors.Is(err, rss.ErrInvalidCredentials) {
-			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
+		if !errors.Is(err, rss.ErrNoAccount) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoAccount)
 		}
 	})
 

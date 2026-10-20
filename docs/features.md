@@ -13,14 +13,22 @@ in [decisions.md](decisions.md).
 it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
 the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
 (the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
-for the name, email and password, after trimming the name), and creates the user with an Argon2id hash. A
-duplicate email gets exactly the same response as a new
-account. Login checks the per-IP limit, validates, then counts the attempt against the
-submitted email *before* checking the password (refunded unless the password was
-wrong), so parallel guesses can't slip past the limit. On success `startSession` renews
+for the name, email and password, after trimming the name), and creates the user with an
+Argon2id hash. An email that already has an account gets "There's already an account
+with this email." on the email field, with a "Log in instead" link to `/login` under it
+(`DuplicateEmail` on `signupPage`). Login checks the per-IP limit, validates, then counts
+the attempt against the submitted email *before* checking the password (refunded unless
+the password was wrong), so parallel guesses can't slip past the limit. `Authenticate`
+returns `rss.ErrNoAccount` for an unknown email ("There's no account with this email."
+on the email field) and `rss.ErrWrongPassword` for a wrong password ("That password
+isn't right." on the password field). On a successful login or signup, `startSession` renews
 the session token, creates a `user_sessions` row for this device (deleting the user's
 rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler
-redirects to the timeline (`/`). On every later request, `authenticate` loads that row
+redirects to `popReturnTo`: when `requireAuthentication` sends an anonymous GET or HEAD
+to `/login`, it stores the request URI in the session as `returnTo`, and `popReturnTo`
+returns it through `safeReturnPath` (else the timeline, `/`) and removes it. Other
+methods aren't remembered, since replaying one as a GET would give a 405. A logged-in
+user who opens `/login` or `/signup` is sent to the timeline. On every later request, `authenticate` loads that row
 with its user in one query. A missing row, or one unused for 90 days
 (`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it
 updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's
@@ -67,8 +75,8 @@ work" and "Security measures" in [architecture.md](architecture.md).
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginFormHandler`,
-   `startSession`, `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
+2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginHandler`,
+   `loginFormHandler`, `popReturnTo`, `startSession`, `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
    password with `CheckNewPassword` (`password.go`: length, not the email, not on the
    embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html`
    and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle
@@ -76,12 +84,12 @@ work" and "Security measures" in [architecture.md](architecture.md).
 3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
    (`Server.clientIP`, `ipRateLimitKey`).
 4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
-   `Authenticate` (`dummyHash` for unknown emails).
+   `Authenticate` (`rss.ErrNoAccount`, `rss.ErrWrongPassword`).
 5. `internal/password/password.go`: `Hash`, `Verify` (both NFKC-normalize first), the
    `slots` cap.
 6. `internal/server/middleware.go` (`authenticate`, `sessionIdleTimeout`,
-   `sessionTouchInterval`, `requireAuthentication`) and `helpers.go`
-   (`authenticatedUserID`, `authenticatedSession`); `internal/psql/user_sessions.go`
+   `sessionTouchInterval`, `requireAuthentication`, which stores `returnTo`) and
+   `helpers.go` (`authenticatedUserID`, `authenticatedSession`, `safeReturnPath`); `internal/psql/user_sessions.go`
    (`UserSessionRepository`: `Create`, `Get`, `Touch`, `Delete`).
 7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings
    (`sessionLifetime`, one year).
@@ -98,11 +106,14 @@ work" and "Security measures" in [architecture.md](architecture.md).
     runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
-`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`), `router_test.go`
-(`TestSignupRoutes`), `settings_test.go`, `templates_test.go` (`TestNoSignupLinks`,
-`TestFormFieldErrorsDescribed`, `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`),
-`middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`;
-`internal/validator/account_test.go` (`TestCheckNewAccount`, `TestCheckName`),
+`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
+`TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`,
+`TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`,
+`TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`,
+`templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
+`TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`,
+`ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go`
+(`TestCheckNewAccount`, `TestCheckName`),
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),

@@ -50,6 +50,33 @@
         </ul>
       </section>
 
+      <section>
+        <div class="list-head">
+          <h2>Help</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          {{with .SupportEmail}}
+          <li>
+            <a class="settings-row" href="mailto:{{.}}">
+              <span class="settings-text">Questions or problems? Email {{.}}</span>
+            </a>
+          </li>
+          {{end}}
+          <li>
+            <a class="settings-row" href="/privacy">
+              <span class="settings-label">Privacy policy</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          <li>
+            <a class="settings-row" href="/terms">
+              <span class="settings-label">Terms of use</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+        </ul>
+      </section>
+
       <form class="settings-logout" action="/logout" method="post">
         <button type="submit">{{template "icon-logout"}}Log out</button>
       </form>

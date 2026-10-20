@@ -31,7 +31,7 @@ func TestRender(t *testing.T) {
 		}
 		for _, want := range []string{
 			"This is a test email from rss at https://rss.example.com. If you can read it, sending works.",
-			"—\nrss · https://rss.example.com\nQuestions? Reply to this email or write to help@example.com.\n",
+			"—\nrss · https://rss.example.com\nPrivacy: https://rss.example.com/privacy\nQuestions? Reply to this email or write to help@example.com.\n",
 		} {
 			if !strings.Contains(m.Text, want) {
 				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
@@ -87,6 +87,25 @@ func TestRender(t *testing.T) {
 			t.Error(`Render("missing") error = nil, want an error`)
 		}
 	})
+}
+
+// TestEmailFooterLinksPrivacy checks that the layout's footers link to the
+// privacy policy.
+func TestEmailFooterLinksPrivacy(t *testing.T) {
+	ts, err := ParseTemplates(ui.Emails, testApp)
+	if err != nil {
+		t.Fatalf("ParseTemplates() error = %v", err)
+	}
+	m, err := ts.Render("test", nil)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if want := "Privacy: https://rss.example.com/privacy\n"; !strings.Contains(m.Text, want) {
+		t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+	}
+	if want := `<a href="https://rss.example.com/privacy"`; !strings.Contains(m.HTML, want) {
+		t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+	}
 }
 
 // TestEmailTemplates checks that every email parses and defines the three

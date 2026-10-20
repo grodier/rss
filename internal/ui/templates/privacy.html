@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - privacy policy</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <main class="solo">
+    <article class="solo-panel prose">
+      {{template "brand"}}
+      <h1>Privacy policy</h1>
+      <p class="prose-date">Last updated <time datetime="2026-10-20">October 20, 2026</time></p>
+
+      <p>rss is a feed reader. This page says what it keeps about you, why, and who else
+        handles it. In short: only what it needs to run your account, and nothing for ads or
+        tracking.</p>
+
+      <h2>Who runs rss</h2>
+      <p>rss is run by [owner: your legal name, or the business that runs rss], based in
+        [owner: country, and state if in the US]. For anything about your data, write to
+        {{template "support-link" .SupportEmail}}.</p>
+
+      <h2>What we keep and why</h2>
+      <ul>
+        <li><strong>Your name and email address</strong>, to run your account and send you
+          emails about it.</li>
+        <li><strong>A hash of your password</strong>, never the password itself. It lets us
+          check the password you log in with, but not recover it.</li>
+        <li><strong>Your subscriptions and which articles you opened</strong>, to show your
+          timeline and mark what you've read.</li>
+        <li><strong>Your logged-in devices</strong>: a record for each, with when it was last
+          used, so you stay logged in. It's deleted when you log out, or after 90 days
+          without use.</li>
+        <li><strong>The emails we send you</strong>, for up to 7 days after sending. Once an
+          email is sent we keep only its address and subject: its text, with any links, is
+          removed.</li>
+      </ul>
+
+      <h2>What we don't do</h2>
+      <p>No ads, analytics or tracking, and we don't sell or share your data. The app loads
+        no third-party scripts.</p>
+
+      <h2>Who processes data for us</h2>
+      <ul>
+        <li><strong>Render</strong> hosts the app and its database, in the US. Its logs of
+          requests to the app include your IP address and are kept for about 7 days.</li>
+        <li><strong>Cloudflare</strong> runs our DNS and stores the database backups.</li>
+        <li><strong>Resend</strong> sends our emails, from the US.</li>
+      </ul>
+
+      <h2>Images in articles</h2>
+      <p>Images in articles load straight from the publisher's site, which sees your IP
+        address and browser, as it would if you visited it.</p>
+
+      <h2>Cookies</h2>
+      <p>rss sets one cookie, the session cookie, which keeps you logged in. Nothing else,
+        so there's nothing to accept or refuse.</p>
+
+      <h2>How long we keep data</h2>
+      <p>Until you delete your account. Database backups are kept for up to 35 days, so
+        data you delete is gone from them within 35 days.</p>
+
+      <h2>Your choices</h2>
+      <ul>
+        <li>Export your subscriptions: Settings → Export subscriptions.</li>
+        <li>Change your name or email address in Settings.</li>
+        <li>Delete your account: Settings → Delete account.</li>
+        <li>For anything else, such as a copy of your data, write to
+          {{template "support-link" .SupportEmail}}.</li>
+      </ul>
+
+      <h2>Pre-alpha</h2>
+      <p>rss is still being built. Until it's ready, its database may be wiped, accounts
+        and all.</p>
+
+      <h2>Changes to this policy</h2>
+      <p>When this policy changes, we'll update this page and the date at the top.</p>
+
+      <footer class="prose-foot"><a href="/">Back to rss</a> · <a href="/terms">Terms of use</a></footer>
+    </article>
+  </main>
+</body>
+
+</html>

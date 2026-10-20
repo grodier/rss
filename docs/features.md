@@ -58,7 +58,17 @@ small page with one form. Name (`/settings/name`) is the first:
 `settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
 100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
 and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
-to `/settings`. Email is shown as plain text for now.
+to `/settings`. Email is shown as plain text for now. A last "Help" section has a
+`mailto:` row for the support address (`Config.SupportEmail`; left out when it isn't
+set) and rows for the privacy policy and terms.
+
+**Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler`
+in `policy.go`) are logged-out `.solo` pages with a `.prose` column; their text is HTML
+in `privacy.html` and `terms.html`, with a "Last updated" date at the top, and they show
+the support address through the `support-link` partial. They're linked from under the
+signup button, the `policy-links` footer on the login page and the logged-out home page,
+Settings' Help section, and every email's footer (`Privacy: <base URL>/privacy` in
+`layout.tmpl`). When the text changes, change its date too.
 
 **Email.** No page sends email yet. When one does, the handler calls
 `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
@@ -100,6 +110,8 @@ work" and "Security measures" in [architecture.md](architecture.md).
    `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
    `settingsNameFormHandler`); `internal/validator/account.go` (`CheckName`);
    `internal/psql/users.go` (`UpdateName`); `settings.html`, `settings_name.html`.
+   The policy pages: `internal/server/policy.go`, `privacy.html`, `terms.html` and
+   `partials/policy.html` (`policy-links`, `support-link`).
 10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
     (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
     (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
@@ -110,6 +122,7 @@ work" and "Security measures" in [architecture.md](architecture.md).
 `TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`,
 `TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`,
 `TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`,
+`policy_test.go` (`TestPolicyPages`, `TestPolicyLinks`),
 `templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
 `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`,
 `ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go`
@@ -119,7 +132,8 @@ work" and "Security measures" in [architecture.md](architecture.md).
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
 `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
 `emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
-`internal/mail/runner_test.go`, `queue_test.go`.
+`internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
+(`TestEmailFooterLinksPrivacy`).
 
 **Why:** "Security" and "Accounts" in decisions.md.
 

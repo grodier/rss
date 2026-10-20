@@ -11,13 +11,15 @@ import (
 func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 	nav := s.nav(r, "settings")
 	data := struct {
-		Nav   navData
-		User  rss.User
-		Flash string
+		Nav          navData
+		User         rss.User
+		Flash        string
+		SupportEmail string
 	}{
-		Nav:   nav,
-		User:  nav.User,
-		Flash: s.sessionManager.PopString(r.Context(), "flash"),
+		Nav:          nav,
+		User:         nav.User,
+		Flash:        s.sessionManager.PopString(r.Context(), "flash"),
+		SupportEmail: s.config.SupportEmail,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "settings.html", data); err != nil {

@@ -1,0 +1,6 @@
+{{/* policy-links is the small footer of logged-out pages. */}}
+{{define "policy-links"}}<footer class="solo-foot"><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>{{end}}
+
+{{/* support-link is the support address as a mailto: link. Its data is the
+     address (Config.SupportEmail), which only production requires. */}}
+{{define "support-link"}}{{with .}}<a href="mailto:{{.}}">{{.}}</a>{{else}}the support address{{end}}{{end}}

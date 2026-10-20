@@ -14,9 +14,8 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
    4. #266 Change your email address.
    5. #267 Export your subscriptions as OPML.
    6. #268 Delete your account.
-   7. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #263, #267 and #269;
+   Issues that can be worked on in parallel sessions, in waves: #263 and #267;
    then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.

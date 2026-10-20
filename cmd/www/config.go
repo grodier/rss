@@ -16,12 +16,13 @@ import (
 )
 
 type config struct {
-	env     string
-	server  serverConfig
-	db      dbConfig
-	lookup  lookupConfig
-	refresh refreshConfig
-	mail    mailConfig
+	env        string
+	server     serverConfig
+	db         dbConfig
+	lookup     lookupConfig
+	refresh    refreshConfig
+	mailRunner mailRunnerConfig
+	mail       mailConfig
 }
 
 type serverConfig struct {
@@ -38,6 +39,11 @@ type lookupConfig struct {
 }
 
 type refreshConfig struct {
+	workers int
+}
+
+type mailRunnerConfig struct {
+	// workers, when 0, makes this process queue emails without sending them.
 	workers int
 }
 
@@ -83,6 +89,9 @@ func defaultConfig() config {
 		refresh: refreshConfig{
 			workers: 2,
 		},
+		mailRunner: mailRunnerConfig{
+			workers: 1,
+		},
 		mail: mailConfig{
 			smtpPort: 587,
 			from:     defaultMailFrom,
@@ -112,6 +121,9 @@ func (c config) Validate() error {
 	}
 	if c.refresh.workers < 0 || c.refresh.workers > 16 {
 		errs = append(errs, fmt.Errorf("invalid refresh workers %d: must be 0-16", c.refresh.workers))
+	}
+	if c.mailRunner.workers < 0 || c.mailRunner.workers > 4 {
+		errs = append(errs, fmt.Errorf("invalid mail workers %d: must be 0-4", c.mailRunner.workers))
 	}
 	errs = append(errs, c.mail.validate(c.env)...)
 	return errors.Join(errs...)
@@ -216,6 +228,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 
 	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
 	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
+	fs.IntVar(&cfg.mailRunner.workers, "mail-workers", cfg.mailRunner.workers, "Background email workers (0-4; 0 queues emails without sending them)")
 
 	registerMailFlags(fs, &cfg.mail)
 

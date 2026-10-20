@@ -52,6 +52,18 @@ small page with one form. Name (`/settings/name`) is the first:
 and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
 to `/settings`. Email is shown as plain text for now.
 
+**Email.** No page sends email yet. When one does, the handler calls
+`s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+(parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
+links are built with `s.absoluteURL`, never from the request) and queues it with
+`mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
+the queue wakes this process's `mail.Runner`, so the page responds without waiting on the
+provider. Over the per-address cap, the email isn't queued and `sendEmail` logs a warning
+and returns nil. A runner worker claims the email (`ClaimNext`), sends it with the
+configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
+(`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
+work" and "Security measures" in [architecture.md](architecture.md).
+
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
@@ -80,17 +92,23 @@ to `/settings`. Email is shown as plain text for now.
    `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
    `settingsNameFormHandler`); `internal/validator/account.go` (`CheckName`);
    `internal/psql/users.go` (`UpdateName`); `settings.html`, `settings_name.html`.
+10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
+    (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
+    (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
+    runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`), `router_test.go`
 (`TestSignupRoutes`), `settings_test.go`, `templates_test.go` (`TestNoSignupLinks`,
-`TestFormFieldErrorsDescribed`, `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`, `ratelimit_test.go`,
-`clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`,
-`TestCheckName`),
+`TestFormFieldErrorsDescribed`, `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`),
+`middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`;
+`internal/validator/account_test.go` (`TestCheckNewAccount`, `TestCheckName`),
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
-`cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
-`internal/psql/users_test.go`, `user_sessions_test.go`; `internal/password/password_test.go`.
+`cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
+`create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
+`emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
+`internal/mail/runner_test.go`, `queue_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 

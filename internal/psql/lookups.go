@@ -10,8 +10,9 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// maxErrorLen caps the error messages stored by LookupRepository.Fail and
-// FeedRepository.RecordFailure, in bytes.
+// maxErrorLen caps the error messages stored by LookupRepository.Fail,
+// FeedRepository.RecordFailure and EmailRepository's MarkFailed and GiveUp,
+// in bytes.
 const maxErrorLen = 1000
 
 const lookupColumns = `id, site_key, url, status, site_id, error, attempts, requested_at, started_at, finished_at`

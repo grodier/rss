@@ -42,6 +42,18 @@ when the email is taken. `make db/seed` runs it with `RSS_DEV_EMAIL` and
 `RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL`
 is set.
 
+**Email.** No page sends email yet. When one does, the handler calls
+`s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+(parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
+links are built with `s.absoluteURL`, never from the request) and queues it with
+`mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
+the queue wakes this process's `mail.Runner`, so the page responds without waiting on the
+provider. Over the per-address cap, the email isn't queued and `sendEmail` logs a warning
+and returns nil. A runner worker claims the email (`ClaimNext`), sends it with the
+configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
+(`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
+work" and "Security measures" in [architecture.md](architecture.md).
+
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
@@ -65,6 +77,10 @@ is set.
    (`sessionLifetime`, one year).
 8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
    `Makefile`.
+9. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
+   (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
+   (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
+   runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`), `router_test.go` (`TestSignupRoutes`),
@@ -73,8 +89,10 @@ is set.
 `clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`),
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
-`cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
-`internal/psql/users_test.go`, `user_sessions_test.go`; `internal/password/password_test.go`.
+`cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
+`create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
+`emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
+`internal/mail/runner_test.go`, `queue_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 

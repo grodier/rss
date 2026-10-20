@@ -275,9 +275,12 @@ experience.
   `-base-url`, never the request's `Host` header.
 - **An outbox table, sent by a background worker** (#260), so pages don't wait on the
   provider and failures retry. The handler that queues an email wakes its own worker, so
-  it goes out in about a second. Bodies are cleared once sent. At most 20 emails to one
+  it goes out in about a second. Bodies are cleared once sent. About 20 emails to one
   address an hour: a backstop under each flow's own limit, so nobody can use the app to
-  flood an inbox.
+  flood an inbox. It's a count before the insert, so simultaneous requests can slightly
+  exceed it (#260); a backstop doesn't need a per-address lock. On shutdown the mail
+  runner finishes the send in flight instead of aborting it (#260): an aborted send can
+  still be delivered, then sent again on the retry, and it delays the email by the lease.
 - **`rss.georgerodier.com` serves the app and sends its email** (#254) until there's a
   product name. A subdomain keeps the email provider's records away from the personal
   mail on `georgerodier.com`. Its DNS record is DNS-only, since a proxied one would add a

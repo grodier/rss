@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"time"
 
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -184,4 +187,29 @@ func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) (
 		return nil, nil
 	}
 	return f.listByUserFn(ctx, userID)
+}
+
+// fakeEmailQueue records the messages queued to it, unless err is set.
+type fakeEmailQueue struct {
+	err error
+
+	mu   sync.Mutex
+	sent []mail.Message
+}
+
+func (f *fakeEmailQueue) Enqueue(ctx context.Context, m mail.Message) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, m)
+	return nil
+}
+
+// messages returns the messages queued so far.
+func (f *fakeEmailQueue) messages() []mail.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.sent)
 }

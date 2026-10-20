@@ -8,22 +8,20 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #259 Send email over SMTP (internal/mail). Merge it only once #254 is applied and
-      `RSS_SMTP_PASSWORD` is set (see "Domain and email" in `infra/README.md`).
-   2. #260 Queue emails in an outbox and send them from a background worker.
-   3. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   4. #262 Say which emails have accounts, log in at signup, and return to the page you
+   1. #260 Queue emails in an outbox and send them from a background worker.
+   2. #261 Add a Settings page, an account entry in the nav, and editing your name.
+   3. #262 Say which emails have accounts, log in at signup, and return to the page you
       wanted.
-   5. #263 Change your password and log out other devices from Settings.
-   6. #264 Confirm email addresses (soft confirmation).
-   7. #265 Reset a forgotten password by email.
-   8. #266 Change your email address.
-   9. #267 Export your subscriptions as OPML.
-   10. #268 Delete your account.
-   11. #269 Add a privacy policy, terms of use and help links.
+   4. #263 Change your password and log out other devices from Settings.
+   5. #264 Confirm email addresses (soft confirmation).
+   6. #265 Reset a forgotten password by email.
+   7. #266 Change your email address.
+   8. #267 Export your subscriptions as OPML.
+   9. #268 Delete your account.
+   10. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #259; then #260,
-   #261 and #262; then #263, #267 and #269; then #264 and #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #260, #261 and #262; then
+   #263, #267 and #269; then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

@@ -21,13 +21,20 @@ cp .env.example .env
 
 ```
 RSS_DB_DSN=postgres://rssapp:dev-password@localhost:5432/rssapp_dev?sslmode=disable
+RSS_SMTP_HOST=localhost
+RSS_SMTP_PORT=1025
 ```
+
+`make db/start` also starts [Mailpit](https://mailpit.axllent.org), which catches the
+app's email: with the two `RSS_SMTP_` lines above, every email the app sends shows up at
+http://localhost:8025 instead of reaching anyone. Remove them and the app logs each
+email instead, links included.
 
 ## Quick start
 
 ```sh
 cp .env.example .env
-make db/start            # start Postgres in Docker
+make db/start            # start Postgres and Mailpit in Docker
 make db/migrations/up    # apply migrations (asks for confirmation)
 make run                 # http://localhost:8080
 ```
@@ -50,6 +57,15 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-db-max-idle-time` | `RSS_DB_MAX_IDLE_TIME` | `15m` | PostgreSQL max idle time |
 | `-lookup-workers` | `RSS_LOOKUP_WORKERS` | `2` | Background lookup workers (0–16; 0 disables them) |
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
+| `-base-url` | `RSS_BASE_URL` | `http://localhost:<port>` | Public URL of the app, for links in emails: `http` or `https`, no path (a trailing `/` is dropped), query or fragment. Required in production, where it must be `https` |
+| `-support-email` | `RSS_SUPPORT_EMAIL` | _(empty)_ | Where people can get help: shown on pages and used as the Reply-To of emails (required in production) |
+| `-smtp-host` | `RSS_SMTP_HOST` | _(empty: emails are logged, not sent)_ | SMTP server (required in production) |
+| `-smtp-port` | `RSS_SMTP_PORT` | `587` | SMTP port: 465 for implicit TLS, otherwise STARTTLS (required unless the host is `localhost` or `127.0.0.1`) |
+| `-smtp-username` | `RSS_SMTP_USERNAME` | _(empty)_ | SMTP username |
+| `-smtp-password` | `RSS_SMTP_PASSWORD` | _(empty)_ | SMTP password |
+| `-mail-from` | `RSS_MAIL_FROM` | `rss <hello@localhost>` | From address of every email (required in production) |
+
+In production (`-env production`) the app refuses to start without `-base-url`, `-support-email`, `-smtp-host` and `-mail-from`: emails carry one-time links, which must never end up in the logs there.
 
 Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`. Locally, `make db/seed` makes your account without signing up (see [`www create-user`](#www-create-user)).
 
@@ -83,6 +99,22 @@ The name, email and password must pass signup's rules. It's for local developmen
 | `-email` | `RSS_EMAIL` | _(none, required)_ | The account's email |
 
 It exits 0 when the account is created, 1 when it can't be (including when an account with that email already exists), and 2 for an empty DSN or invalid input, before opening the database.
+
+### `www send-test-email`
+
+`www send-test-email -to <address> [flags]` renders the test email and sends it with the mail settings, to check them; with no SMTP host, it logs the email instead. It doesn't open the database:
+
+```sh
+go run ./cmd/www send-test-email -to you@example.com
+```
+
+Locally, with Mailpit's settings from `.env.example`, the email shows up at http://localhost:8025. Its flags are `-to` and the mail flags of `www` (above), with the same environment variables: `-base-url`, `-support-email`, `-smtp-host`, `-smtp-port`, `-smtp-username`, `-smtp-password` and `-mail-from`.
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-to` | `RSS_TO` | _(none, required)_ | Where to send the test email |
+
+It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 after logging it, with no SMTP host), exits 1 when sending fails, and exits 2 for a missing or invalid `-to` or invalid mail flags.
 
 ## Make targets
 

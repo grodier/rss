@@ -47,8 +47,8 @@ run three long-lived components, all stopped by one context:
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
-`cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate` and `www create-user` to
-`runCreateUser` (below). Otherwise it
+`cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate`, `www create-user` to
+`runCreateUser` and `www send-test-email` to `runSendTestEmail` (below). Otherwise it
 parses the configuration (`parseConfig` in `config.go`: each flag,
 or else its `RSS_` environment variable via `setFlagsFromEnv`, or else its default;
 errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
@@ -74,11 +74,18 @@ creates an account with the password on the first line of stdin, validated with
 `validator.CheckNewAccount` like signup, through `psql.UserRepository.Create`, and exits.
 It's for local development (`make db/seed`); there's nowhere to run it in production.
 
+`www send-test-email` (`runSendTestEmail` in `cmd/www/send_test_email.go`) takes the
+mail flags (`registerMailFlags` in `config.go`) and `-to`, renders the `test` email with
+`mail.ParseTemplates` and `Templates.Render`, and sends it with the sender
+`newMailSender` builds: `mail.SMTPSender`, or `mail.LogSender` when there's no SMTP
+host. It doesn't open the database. It checks the mail settings, locally against
+Mailpit (`compose.yml`) and in production against Resend.
+
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate` and `create-user` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `migrations`, `validator`, `rss` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
@@ -87,10 +94,11 @@ It's for local development (`make db/seed`); there's nowhere to run it in produc
 | `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
+| `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); send them over SMTP (`SMTPSender`) or log them (`LogSender`) | — |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
-| `internal/ui` | Embedded templates and static files | — |
+| `internal/ui` | Embedded page templates, email templates (`Emails`) and static files | — |
 | `internal/validator` | Form validation helpers; the rules for new passwords, with the embedded common-password list | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
 
@@ -257,6 +265,9 @@ point to) go through `fetch.Client` (`internal/fetch`):
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest`
 servers; `cmd/www` never sets it.
 
+Email goes over SMTP (`internal/mail`) to the configured provider, a fixed host from the
+configuration that no user can influence, so it doesn't go through `internal/fetch`.
+
 ## Security measures
 
 Where each protection lives. The reasons are in [decisions.md](decisions.md); the rules
@@ -280,6 +291,12 @@ CLAUDE.md.
   from Have I Been Pwned, via SecLists, kept to 8 characters or more; lookups are
   case-insensitive). How login and signup avoid revealing which emails have accounts is
   under "Accounts and sessions" in features.md.
+- **Email:** `SMTPSender` (`internal/mail`) uses implicit TLS on port 465 and otherwise
+  requires STARTTLS, except to `localhost` or `127.0.0.1` (`requireTLS`), and rejects a
+  line break in the recipient or subject. Links in emails are built from `-base-url`
+  (`App.URL`), never from a request's `Host` header. With `-env production`, the app
+  refuses to start without its SMTP and mail settings, so one-time links never fall
+  through to `LogSender`, which writes them to the logs.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 

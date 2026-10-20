@@ -1,0 +1,28 @@
+{{/* Shared by every email. Inline styles are fine here: email clients need
+them, and the CSP only applies to pages. */}}
+
+{{define "text-footer" -}}
+—
+rss · {{appURL}}
+{{with supportEmail}}Questions? Reply to this email or write to {{.}}.{{end}}
+{{- end}}
+
+{{define "html-start" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:24px 16px;background:#ffffff;color:#1f2328;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5">
+<div style="max-width:560px;margin:0 auto">
+{{- end}}
+
+{{define "html-end" -}}
+<hr style="border:0;border-top:1px solid #d0d7de;margin:32px 0 16px">
+<p style="margin:0;color:#59636e;font-size:14px">rss · <a href="{{appURL}}" style="color:#59636e">{{appURL}}</a>
+{{- with supportEmail}}<br>Questions? Reply to this email or write to {{.}}.{{end}}</p>
+</div>
+</body>
+</html>
+{{- end}}

@@ -15,6 +15,7 @@ func TestCheckNewAccount(t *testing.T) {
 	}{
 		{"valid", name, email, password, "", ""},
 		{"blank name", " ", email, password, "name", "Name is required"},
+		{"101-character name", strings.Repeat("a", 101), email, password, "name", "Name must not be more than 100 characters long"},
 		{"blank email", name, "", password, "email", "Email is required"},
 		{"invalid email", name, "not-an-email", password, "email", "Email must be a valid email address"},
 		{"blank password", name, email, "", "password", "Password is required"},
@@ -41,6 +42,41 @@ func TestCheckNewAccount(t *testing.T) {
 			}
 			if got := v.FieldErrors[tt.field]; got != tt.message {
 				t.Errorf("FieldErrors[%q] = %q, want %q", tt.field, got, tt.message)
+			}
+		})
+	}
+}
+
+func TestCheckName(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		message string // empty means valid
+	}{
+		{"valid", "Ada", ""},
+		{"empty", "", "Name is required"},
+		{"blank", "   ", "Name is required"},
+		{"100 characters", strings.Repeat("a", 100), ""},
+		{"100 multibyte characters", strings.Repeat("é", 100), ""},
+		{"101 characters", strings.Repeat("a", 101), "Name must not be more than 100 characters long"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var v Validator
+			v.CheckName(tt.in)
+
+			if tt.message == "" {
+				if !v.Valid() {
+					t.Fatalf("FieldErrors = %v, want none", v.FieldErrors)
+				}
+				return
+			}
+			if len(v.FieldErrors) != 1 {
+				t.Fatalf("FieldErrors = %v, want only name", v.FieldErrors)
+			}
+			if got := v.FieldErrors["name"]; got != tt.message {
+				t.Errorf("FieldErrors[name] = %q, want %q", got, tt.message)
 			}
 		})
 	}

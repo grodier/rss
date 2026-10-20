@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - settings</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Settings</h1>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      <section class="profile">
+        <div class="profile-top">
+          <span class="avatar tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span>
+        </div>
+        <h2 class="profile-name">{{.User.Name}}</h2>
+        <p class="profile-sub">{{.User.Email}}</p>
+      </section>
+
+      <section>
+        <div class="list-head">
+          <h2>Account</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          <li>
+            <a class="settings-row" href="/settings/name">
+              <span class="settings-label">Name</span>
+              <span class="settings-value">{{.User.Name}}</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          <li>
+            <div class="settings-row">
+              <span class="settings-label">Email</span>
+              <span class="settings-value">{{.User.Email}}</span>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <form class="settings-logout" action="/logout" method="post">
+        <button type="submit">{{template "icon-logout"}}Log out</button>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

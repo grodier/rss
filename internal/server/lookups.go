@@ -36,6 +36,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		form.AddFieldError("q", "Enter a website address like example.com")
 		data := searchData{
+			Nav:   s.nav(r, "search"),
 			Form:  searchForm(form),
 			Flash: s.sessionManager.PopString(r.Context(), "flash"),
 		}
@@ -127,12 +128,14 @@ func (s *Server) lookupHandler(w http.ResponseWriter, r *http.Request) {
 
 	// lookup.Error is internal detail and must never reach the template.
 	data := struct {
+		Nav        navData
 		ID         string
 		SiteKey    string
 		InProgress bool
 		Failed     bool
 		Flash      string
 	}{
+		Nav:        s.nav(r, "search"),
 		ID:         lookup.ID,
 		SiteKey:    lookup.SiteKey,
 		InProgress: lookupInProgress(lookup),

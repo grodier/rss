@@ -280,7 +280,7 @@
   }
 
   .rail-links a,
-  .rail-logout button {
+  .rail-account {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -297,11 +297,12 @@
   }
 
   .rail-links a:hover,
-  .rail-logout button:hover {
+  .rail-account:hover {
     background: var(--surface);
   }
 
-  .rail-links a[aria-current="page"] {
+  .rail-links a[aria-current="page"],
+  .rail-account[aria-current="page"] {
     font-weight: 700;
   }
 
@@ -309,12 +310,23 @@
     stroke-width: 2.4;
   }
 
-  .rail-logout {
+  /* The account entry: the user's avatar, labelled Settings, at the bottom
+     of the rail. */
+  .rail-account {
     margin-block-start: auto;
+    padding-block: 0.625rem;
   }
 
-  .rail-logout button {
-    color: var(--text-2);
+  .rail-account .avatar {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    margin-inline-start: -0.125rem;
+    font-size: 0.875rem;
+  }
+
+  .rail-account[aria-current="page"] .avatar {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
   }
 
   .page-head {
@@ -370,15 +382,23 @@
       padding: 0.5rem;
     }
 
-    .rail-links a,
-    .rail-logout button {
+    .rail-links a {
       padding: 0.75rem;
+    }
+
+    .rail-account {
+      inline-size: auto;
+      padding: 0.625rem;
+    }
+
+    .rail-account .avatar {
+      margin: 0;
     }
 
     /* Icons only; the labels stay for screen readers. */
     .brand-name,
     .rail-links span,
-    .rail-logout span {
+    .rail-account > span:not(.avatar) {
       position: absolute;
       inline-size: 1px;
       block-size: 1px;
@@ -471,12 +491,9 @@
       font-weight: 650;
     }
 
-    .rail-logout {
+    .rail-account {
       margin: 0;
-    }
-
-    .rail-logout button {
-      padding: 0.5rem;
+      padding: 0.375rem;
     }
 
     .column {
@@ -888,7 +905,8 @@
     font-size: 1.75rem;
   }
 
-  .profile h1 {
+  .profile h1,
+  .profile-name {
     margin-block-start: 0.875rem;
     font-size: 1.5rem;
     font-weight: 800;
@@ -980,6 +998,62 @@
 
   .list-head > a {
     font-size: 0.8125rem;
+  }
+
+  /* Settings: rows of a label, a value and, on links, a chevron. */
+  .settings-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  a.settings-row:hover {
+    background: var(--surface);
+  }
+
+  .settings-label {
+    font-weight: 600;
+  }
+
+  .settings-value {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-row .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    color: var(--text-3);
+  }
+
+  /* Rows without a chevron keep their values in line with those that have
+     one. */
+  div.settings-row .settings-value {
+    margin-inline-end: 1.875rem;
+  }
+
+  .settings-logout {
+    padding: 1.5rem 1rem;
+  }
+
+  .settings-form {
+    padding: 1.25rem 1rem;
+  }
+
+  .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-block-start: 1.25rem;
   }
 
   /* Feed rows on My feeds and site pages, like a list of accounts. */

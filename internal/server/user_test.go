@@ -114,6 +114,32 @@ func TestSignupFormHandlerInviteCode(t *testing.T) {
 	}
 }
 
+func TestSignupFormHandlerTrimsName(t *testing.T) {
+	var gotName string
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFn: func(ctx context.Context, name, email, password string) (string, time.Time, error) {
+			gotName = name
+			return "id", time.Now(), nil
+		},
+	}})
+	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
+	form := url.Values{
+		"invite":   {testInviteCode},
+		"name":     {"  Ann  "},
+		"email":    {"user@example.com"},
+		"password": {"correct-horse-battery"},
+	}
+
+	rr := postForm(t, h, "/signup", "192.0.2.1:1234", form)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+	}
+	if gotName != "Ann" {
+		t.Errorf("Create got name %q, want %q", gotName, "Ann")
+	}
+}
+
 func TestSignupFormHandlerPasswordTooLong(t *testing.T) {
 	s := newSignupTestServer(t, Services{})
 

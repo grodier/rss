@@ -13,7 +13,7 @@ in [decisions.md](decisions.md).
 it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
 the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
 (the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
-for the name, email and password), and creates the user with an Argon2id hash. A
+for the name, email and password, after trimming the name), and creates the user with an Argon2id hash. A
 duplicate email gets exactly the same response as a new
 account. Login checks the per-IP limit, validates, then counts the attempt against the
 submitted email *before* checking the password (refunded unless the password was
@@ -25,8 +25,8 @@ with its user in one query. A missing row, or one unused for 90 days
 (`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it
 updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's
 ID and the session in the request context, where handlers read them with
-`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out deletes the row,
-renews the token and removes `sessionID`. A login lasts at most a year (scs's
+`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out (the Log out
+button on Settings) deletes the row, renews the token and removes `sessionID`. A login lasts at most a year (scs's
 `Lifetime`).
 
 Both forms show each field's error under it, tied to the input with `aria-describedby`,
@@ -41,6 +41,16 @@ same `CheckNewAccount`, and creates it with the same `Create`. Unlike signup, it
 when the email is taken. `make db/seed` runs it with `RSS_DEV_EMAIL` and
 `RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL`
 is set.
+
+**Settings.** The nav's account entry (the user's letter avatar, labelled Settings) opens
+`/settings` (`settingsHandler`): a header with the avatar, name and email, then an
+"Account" section of rows (`.settings-list`), each a label, a value and, on links, a
+chevron, and a Log out button at the bottom. Each row that can be changed opens its own
+small page with one form. Name (`/settings/name`) is the first:
+`settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
+100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
+and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
+to `/settings`. Email is shown as plain text for now.
 
 **Read:**
 
@@ -65,12 +75,18 @@ is set.
    (`sessionLifetime`, one year).
 8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
    `Makefile`.
+9. Settings: `internal/server/html.go` (`navData`, `nav`) and
+   `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry);
+   `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
+   `settingsNameFormHandler`); `internal/validator/account.go` (`CheckName`);
+   `internal/psql/users.go` (`UpdateName`); `settings.html`, `settings_name.html`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
-`TestSignupFormHandlerInviteCode`), `router_test.go` (`TestSignupRoutes`),
-`templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
-`TestFormAutofocus`, `TestSignupHints`), `middleware_test.go`, `ratelimit_test.go`,
-`clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`),
+`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`), `router_test.go`
+(`TestSignupRoutes`), `settings_test.go`, `templates_test.go` (`TestNoSignupLinks`,
+`TestFormFieldErrorsDescribed`, `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`, `ratelimit_test.go`,
+`clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`,
+`TestCheckName`),
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;

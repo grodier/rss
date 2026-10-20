@@ -30,6 +30,8 @@ func TestRunCreateUserInvalidInput(t *testing.T) {
 		want  string
 	}{
 		{"missing name", []string{"-email", "ada@example.com"}, "correct horse\n", "name: Name is required"},
+		{"blank name", []string{"-name", "  ", "-email", "ada@example.com"}, "correct horse\n", "name: Name is required"},
+		{"101-character name", []string{"-name", strings.Repeat("a", 101), "-email", "ada@example.com"}, "correct horse\n", "name: Name must not be more than 100 characters long"},
 		{"invalid email", []string{"-name", "Ada", "-email", "not-an-email"}, "correct horse\n", "email: Email must be a valid email address"},
 		{"empty stdin", []string{"-name", "Ada", "-email", "ada@example.com"}, "", "password: Password is required"},
 		{"7-character password", []string{"-name", "Ada", "-email", "ada@example.com"}, "1234567\n", "password: Password must be at least 8 characters long"},

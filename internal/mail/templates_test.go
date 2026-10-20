@@ -47,6 +47,32 @@ func TestRender(t *testing.T) {
 		}
 	})
 
+	t.Run("password_changed", func(t *testing.T) {
+		m, err := ts.Render("password_changed", struct{ Name string }{"Ada <3"})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Your rss password was changed"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		for _, want := range []string{
+			"Hi Ada <3,\n\nThe password for your rss account was just changed, and every other device was logged out.",
+			"If it wasn't, reply to this email right away.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			"<p>Hi Ada &lt;3,</p>",
+			"every other device was logged out.</p>",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
 	t.Run("data", func(t *testing.T) {
 		layout, err := fs.ReadFile(ui.Emails, "emails/layout.tmpl")
 		if err != nil {

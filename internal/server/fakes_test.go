@@ -40,9 +40,10 @@ func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error
 }
 
 type fakeUserStore struct {
-	createFn       func(ctx context.Context, name, email, password string) (string, time.Time, error)
-	authenticateFn func(ctx context.Context, email, password string) (string, error)
-	updateNameFn   func(ctx context.Context, id, name string) error
+	createFn         func(ctx context.Context, name, email, password string) (string, time.Time, error)
+	authenticateFn   func(ctx context.Context, email, password string) (string, error)
+	updateNameFn     func(ctx context.Context, id, name string) error
+	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -57,11 +58,16 @@ func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
 	return f.updateNameFn(ctx, id, name)
 }
 
+func (f *fakeUserStore) ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error {
+	return f.changePasswordFn(ctx, userID, keepSessionID, current, next)
+}
+
 type fakeSessionStore struct {
-	createFn func(ctx context.Context, userID string, idleBefore time.Time) (string, error)
-	getFn    func(ctx context.Context, id string) (rss.Session, error)
-	touchFn  func(ctx context.Context, id string) error
-	deleteFn func(ctx context.Context, id string) error
+	createFn       func(ctx context.Context, userID string, idleBefore time.Time) (string, error)
+	getFn          func(ctx context.Context, id string) (rss.Session, error)
+	touchFn        func(ctx context.Context, id string) error
+	deleteFn       func(ctx context.Context, id string) error
+	deleteOthersFn func(ctx context.Context, userID, keepID string) (int64, error)
 }
 
 func (f *fakeSessionStore) Create(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
@@ -78,6 +84,10 @@ func (f *fakeSessionStore) Touch(ctx context.Context, id string) error {
 
 func (f *fakeSessionStore) Delete(ctx context.Context, id string) error {
 	return f.deleteFn(ctx, id)
+}
+
+func (f *fakeSessionStore) DeleteOthers(ctx context.Context, userID, keepID string) (int64, error) {
+	return f.deleteOthersFn(ctx, userID, keepID)
 }
 
 type fakeSearchStore struct {

@@ -100,3 +100,78 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 }
+
+func TestUserRepositoryChangePassword(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewUserRepository(db)
+	sessions := NewUserSessionRepository(db)
+
+	const oldPassword, newPassword = "correct-horse-battery", "staple-tuna-lamp"
+
+	// newUser creates a user with oldPassword and two sessions, and returns
+	// the user's email and the sessions' IDs.
+	newUser := func(t *testing.T) (email, userID, keep, other string) {
+		t.Helper()
+		email = fmt.Sprintf("test-password-%d@example.com", time.Now().UnixNano())
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+				t.Errorf("cleanup user: %v", err)
+			}
+		})
+		userID, _, err := repo.Create(t.Context(), "Password User", email, oldPassword)
+		if err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+		idleBefore := time.Now().Add(-90 * 24 * time.Hour)
+		if keep, err = sessions.Create(t.Context(), userID, idleBefore); err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		if other, err = sessions.Create(t.Context(), userID, idleBefore); err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		return email, userID, keep, other
+	}
+
+	t.Run("wrong current password", func(t *testing.T) {
+		email, userID, keep, other := newUser(t)
+
+		err := repo.ChangePassword(t.Context(), userID, keep, "wrong-password", newPassword)
+		if !errors.Is(err, rss.ErrWrongPassword) {
+			t.Fatalf("err = %v; want %v", err, rss.ErrWrongPassword)
+		}
+		if _, err := repo.Authenticate(t.Context(), email, oldPassword); err != nil {
+			t.Errorf("Authenticate with the old password: %v", err)
+		}
+		if _, err := sessions.Get(t.Context(), other); err != nil {
+			t.Errorf("other session: %v; want it kept", err)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		email, userID, keep, other := newUser(t)
+
+		if err := repo.ChangePassword(t.Context(), userID, keep, oldPassword, newPassword); err != nil {
+			t.Fatalf("ChangePassword: %v", err)
+		}
+		if got, err := repo.Authenticate(t.Context(), email, newPassword); err != nil || got != userID {
+			t.Errorf("Authenticate with the new password = %q, %v; want %q, nil", got, err, userID)
+		}
+		if _, err := repo.Authenticate(t.Context(), email, oldPassword); !errors.Is(err, rss.ErrWrongPassword) {
+			t.Errorf("Authenticate with the old password: err = %v; want %v", err, rss.ErrWrongPassword)
+		}
+		if _, err := sessions.Get(t.Context(), keep); err != nil {
+			t.Errorf("kept session: %v", err)
+		}
+		if _, err := sessions.Get(t.Context(), other); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("other session: err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
+
+	t.Run("unknown user", func(t *testing.T) {
+		err := repo.ChangePassword(t.Context(), "00000000-0000-4000-8000-000000000000",
+			"00000000-0000-4000-8000-000000000001", oldPassword, newPassword)
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
+}

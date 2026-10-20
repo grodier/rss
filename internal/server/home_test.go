@@ -83,6 +83,17 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("nav shows the user's monogram", func(t *testing.T) {
+		result, storeErr = timelineItems(1), nil
+		sess := rss.Session{ID: "session-1", User: rss.User{ID: "user-1", Name: "zoë"}}
+		rr := httptest.NewRecorder()
+		s.sessionManager.LoadAndSave(http.HandlerFunc(s.homeHandler)).ServeHTTP(rr, requestWithSession(sess))
+		want := `aria-hidden="true">Z</span><span>Settings</span>`
+		if body := rr.Body.String(); !strings.Contains(body, want) {
+			t.Errorf("missing %s in: %s", want, body)
+		}
+	})
+
 	t.Run("also in links each other feed", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
 		result[0].AlsoIn = []rss.Feed{{ID: "feed-2", Title: "Feed Two"}, {ID: "feed-3", Url: "https://example.com/three.xml"}}

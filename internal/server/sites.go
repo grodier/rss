@@ -52,6 +52,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		Nav         navData
 		Site        rss.Site
 		Feeds       []rss.Feed
 		Subscribed  map[string]bool
@@ -61,6 +62,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		LookupID    string
 		Flash       string
 	}{
+		Nav:         s.nav(r, ""),
 		Site:        site,
 		Feeds:       feeds,
 		Subscribed:  subscribed,

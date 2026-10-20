@@ -70,3 +70,22 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 
 	return id, nil
 }
+
+// UpdateName sets the name of the user with id. It returns rss.ErrNoRecord if
+// there is no such user.
+func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error {
+	stmt := `UPDATE users SET name = $2 WHERE id = $1`
+
+	res, err := r.DB.ExecContext(ctx, stmt, id, name)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return rss.ErrNoRecord
+	}
+	return nil
+}

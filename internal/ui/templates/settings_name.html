@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - name</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Name</h1>
+      </header>
+
+      {{$focus := .Form.FirstError "name"}}
+      <form class="settings-form" action="/settings/name" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <div class="field">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" value="{{.Form.Name}}"
+            autocomplete="name" autocapitalize="words"
+            aria-describedby="name-hint{{if .Form.FieldErrors.name}} name-error{{end}}"
+            {{with .Form.FieldErrors.name}}aria-invalid="true"{{end}}
+            {{if eq $focus "name"}}autofocus{{end}} />
+          <p class="hint" id="name-hint">What should we call you? We'll use it in emails.</p>
+          {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Save</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

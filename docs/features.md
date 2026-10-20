@@ -13,15 +13,15 @@ in [decisions.md](decisions.md).
 it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
 the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
 (the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
-for the name, email and password), and creates the user with an Argon2id hash. An
-email that already has an account gets "There's already an account with this email." on
-the email field, with a "Log in instead" link to `/login` under it (`DuplicateEmail` on
-`signupPage`). Login checks the per-IP limit, validates, then counts the attempt against
-the submitted email *before* checking the password (refunded unless the password was
-wrong), so parallel guesses can't slip past the limit. `Authenticate` returns
-`rss.ErrNoAccount` for an unknown email ("There's no account with this email." on the
-email field) and `rss.ErrWrongPassword` for a wrong password ("That password isn't
-right." on the password field). On a successful login or signup, `startSession` renews
+for the name, email and password, after trimming the name), and creates the user with an
+Argon2id hash. An email that already has an account gets "There's already an account
+with this email." on the email field, with a "Log in instead" link to `/login` under it
+(`DuplicateEmail` on `signupPage`). Login checks the per-IP limit, validates, then counts
+the attempt against the submitted email *before* checking the password (refunded unless
+the password was wrong), so parallel guesses can't slip past the limit. `Authenticate`
+returns `rss.ErrNoAccount` for an unknown email ("There's no account with this email."
+on the email field) and `rss.ErrWrongPassword` for a wrong password ("That password
+isn't right." on the password field). On a successful login or signup, `startSession` renews
 the session token, creates a `user_sessions` row for this device (deleting the user's
 rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler
 redirects to `popReturnTo`: when `requireAuthentication` sends an anonymous GET or HEAD
@@ -33,8 +33,8 @@ with its user in one query. A missing row, or one unused for 90 days
 (`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it
 updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's
 ID and the session in the request context, where handlers read them with
-`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out deletes the row,
-renews the token and removes `sessionID`. A login lasts at most a year (scs's
+`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out (the Log out
+button on Settings) deletes the row, renews the token and removes `sessionID`. A login lasts at most a year (scs's
 `Lifetime`).
 
 Both forms show each field's error under it, tied to the input with `aria-describedby`,
@@ -49,6 +49,28 @@ same `CheckNewAccount`, and creates it with the same `Create`. Unlike signup, it
 when the email is taken. `make db/seed` runs it with `RSS_DEV_EMAIL` and
 `RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL`
 is set.
+
+**Settings.** The nav's account entry (the user's letter avatar, labelled Settings) opens
+`/settings` (`settingsHandler`): a header with the avatar, name and email, then an
+"Account" section of rows (`.settings-list`), each a label, a value and, on links, a
+chevron, and a Log out button at the bottom. Each row that can be changed opens its own
+small page with one form. Name (`/settings/name`) is the first:
+`settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
+100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
+and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
+to `/settings`. Email is shown as plain text for now.
+
+**Email.** No page sends email yet. When one does, the handler calls
+`s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+(parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
+links are built with `s.absoluteURL`, never from the request) and queues it with
+`mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
+the queue wakes this process's `mail.Runner`, so the page responds without waiting on the
+provider. Over the per-address cap, the email isn't queued and `sendEmail` logs a warning
+and returns nil. A runner worker claims the email (`ClaimNext`), sends it with the
+configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
+(`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
+work" and "Security measures" in [architecture.md](architecture.md).
 
 **Read:**
 
@@ -73,18 +95,31 @@ is set.
    (`sessionLifetime`, one year).
 8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
    `Makefile`.
+9. Settings: `internal/server/html.go` (`navData`, `nav`) and
+   `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry);
+   `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
+   `settingsNameFormHandler`); `internal/validator/account.go` (`CheckName`);
+   `internal/psql/users.go` (`UpdateName`); `settings.html`, `settings_name.html`.
+10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
+    (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
+    (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
+    runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
-`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerLogsIn`,
-`TestSignupFormHandlerDuplicateEmail`, `TestLoginFormHandlerErrors`,
-`TestLoginFormHandlerFailureLimit`, `TestReturnTo`, `TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`),
+`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
+`TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`,
+`TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`,
+`TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`,
 `templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
-`TestFormAutofocus`, `TestSignupHints`), `middleware_test.go`, `ratelimit_test.go`,
-`clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`),
+`TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`,
+`ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go`
+(`TestCheckNewAccount`, `TestCheckName`),
 `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
 `validator_test.go` (`TestFirstError`);
-`cmd/www/config_test.go` (`TestParseConfigInviteCode`), `create_user_test.go`;
-`internal/psql/users_test.go`, `user_sessions_test.go`; `internal/password/password_test.go`.
+`cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
+`create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
+`emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
+`internal/mail/runner_test.go`, `queue_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 

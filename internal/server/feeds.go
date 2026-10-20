@@ -54,10 +54,12 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		Nav              navData
 		Sites            []siteSubscriptions
 		Flash            string
 		FailingThreshold int
 	}{
+		Nav:              s.nav(r, "feeds"),
 		Sites:            sites,
 		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
 		FailingThreshold: failingThreshold,
@@ -147,6 +149,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
+		Nav            navData
 		Feed           rss.Feed
 		Site           rss.Site
 		Rows           []articleRow
@@ -156,6 +159,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		RefreshPending bool
 		Flash          string
 	}{
+		Nav:            s.nav(r, ""),
 		Feed:           feed,
 		Site:           site,
 		Rows:           rows,

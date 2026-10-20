@@ -34,7 +34,7 @@ its text and marks it read.
 ## The process
 
 There is one binary, `www` (`cmd/www`), and one Postgres database. Inside the process
-run three long-lived components, all stopped by one context:
+run four long-lived components, all stopped by one context:
 
 - The **HTTP server** (`internal/server`) handles requests and reads and writes the
   database through the `internal/psql` repositories. Its Refresh button calls
@@ -44,6 +44,9 @@ run three long-lived components, all stopped by one context:
 - The **lookup runner** (`internal/lookup`) claims pending rows from the `lookups` table,
   runs `discovery.Discoverer` to find the site's feeds, and saves them with
   `psql.DiscoveryRepository`.
+- The **mail runner** (`internal/mail`, `mail.Runner`) claims due emails from the
+  `emails` table (the outbox, filled by the server's `sendEmail` through `mail.Queue`) and
+  sends them with the sender `newMailSender` builds.
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
@@ -86,15 +89,15 @@ Mailpit (`compose.yml`) and in production against Resend.
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `password` |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
 | `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
-| `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); send them over SMTP (`SMTPSender`) or log them (`LogSender`) | — |
+| `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); queue them in the outbox (`Queue`) and send them from it (`Runner`) over SMTP (`SMTPSender`) or to the log (`LogSender`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
@@ -167,13 +170,17 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
+| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows and Log out |
+| `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.
 `renderHTML` executes into a buffer first, so a template error becomes a clean 500
 instead of half a page. Template functions: `asset` (a static file's URL with a content
-hash, from `static.go`), `avatarTone` and `monogram`. Errors are HTML pages via
-`errorHTML` (`errors.go`); JSON is only for `/healthcheck`.
+hash, from `static.go`), `avatarTone` and `monogram`. Logged-in pages pass a `navData`
+(the current section and the logged-in user, from `s.nav`) as their `Nav` field for the
+`app-nav` partial. Errors are HTML pages via `errorHTML` (`errors.go`); JSON is only for
+`/healthcheck`.
 
 **Timeouts:** the server's `ReadTimeout` is 5 s and `WriteTimeout` 10 s, so handlers that
 wait on slow work bound it below that: the Refresh button gives a fetch 8 s, and
@@ -221,7 +228,7 @@ emails   (the outbox: no foreign keys)
 - **`emails`**: the outbox. `status` pending → sent or failed, `next_attempt_at` (when
   it's due, and the claim lease), `attempts`, `last_error` (internal, never shown); the
   bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
-  email outlives its user. Not used yet (#260).
+  email outlives its user. The mail runner deletes sent and failed rows after 7 days.
 
 Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
 clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
@@ -236,21 +243,30 @@ Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
 
 ## Background work
 
-Both runners follow the same pattern: N worker goroutines (`-lookup-workers`,
-`-refresh-workers`, default 2, 0 turns a runner off) loop claiming one job at a time from
-a Postgres table with `FOR UPDATE SKIP LOCKED`, so several instances can run side by side.
-When nothing is claimable a worker sleeps for a poll interval. Each job gets a timeout;
-its outcome is recorded with a fresh short context, so a job that timed out still records
-its failure. On shutdown nothing is recorded and the job is retried later.
+The runners follow the same pattern: N worker goroutines (`-lookup-workers`,
+`-refresh-workers`, default 2; `-mail-workers`, default 1; 0 turns a runner off) loop
+claiming one job at a time from a Postgres table with `FOR UPDATE SKIP LOCKED`, so several
+instances can run side by side. When nothing is claimable a worker sleeps for a poll
+interval. Each job gets a timeout; its outcome is recorded with a fresh short context, so
+a job that timed out still records its failure. On shutdown, lookups and refreshes record
+nothing and are retried later; the mail runner instead finishes the email it's sending
+(within its timeout) and records the result, since an aborted send can still be delivered.
+With `-mail-workers 0` the process queues emails without sending them (and logs that at
+startup); another instance's runner sends them.
 
-| | Lookups (`internal/lookup`) | Feed refresh (`internal/refresh`) |
-| --- | --- | --- |
-| Queue | `lookups` rows with `status = 'pending'` | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested |
-| Claim | `ClaimNext`: set `running` | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first |
-| Poll when idle | 500 ms | 15 s |
-| Job timeout | 30 s | 30 s |
-| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | The lease runs out and the feed is due again |
-| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `ingest.Refresher.Refresh` |
+| | Lookups (`internal/lookup`) | Feed refresh (`internal/refresh`) | Email (`mail.Runner`) |
+| --- | --- | --- | --- |
+| Queue | `lookups` rows with `status = 'pending'` | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `emails` that are pending and due (`next_attempt_at <= now()`) |
+| Claim | `ClaimNext`: set `running` | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
+| Poll when idle | 500 ms | 15 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
+| Job timeout | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
+| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the email is due again |
+| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `ingest.Refresher.Refresh` | `Sender.Send` |
+
+A failed email is retried after 1, 2, 4, … minutes (`retryDelay`, capped at an hour) and
+marked `failed` after 8 attempts. Delivery is at least once: a crash between sending and
+recording the result sends the email again. Every hour the mail runner deletes sent and
+failed emails older than 7 days (`DeleteFinished`).
 
 ## Outbound HTTP
 
@@ -296,7 +312,9 @@ CLAUDE.md.
   line break in the recipient or subject. Links in emails are built from `-base-url`
   (`App.URL`), never from a request's `Host` header. With `-env production`, the app
   refuses to start without its SMTP and mail settings, so one-time links never fall
-  through to `LogSender`, which writes them to the logs.
+  through to `LogSender`, which writes them to the logs. An email's bodies are cleared
+  once it's sent or given up on (`MarkSent`, `GiveUp`), and the mail runner logs an
+  email's `id`, never its address or body.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 
@@ -308,13 +326,18 @@ CLAUDE.md.
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
 
+  The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
+  queues about 20 to one address (ignoring case) per hour and returns
+  `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning. It counts, then
+  inserts, so simultaneous requests can slightly exceed 20.
+
 - **Client IP:** `Server.clientIP` (`internal/server/clientip.go`) is the only code that
   reads `RemoteAddr`. With `-proxy-hops` N above 0 it reads `X-Forwarded-For` instead,
   taking the entry N places from the right, and falls back to `RemoteAddr` when the header
   is missing, has fewer than N entries, or that entry doesn't parse. If that entry isn't a
   public address, it logs a warning once per process.
-- **Internal errors** (`lookups.error`, `feeds.last_error`, Go errors) go to the logs,
-  never to pages.
+- **Internal errors** (`lookups.error`, `feeds.last_error`, `emails.last_error`, Go
+  errors) go to the logs, never to pages.
 
 ## Frontend
 
@@ -323,6 +346,11 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`. The `asset` template
   function builds those URLs, so a changed file gets a new URL and can be cached for a
   year.
+- **The nav** (`partials/nav.html`, `app-nav`) has the three section links and an
+  account entry: the user's letter avatar (`monogram` of the name on an `avatarTone` tint
+  of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
+  labelled, at the bottom of the rail; medium screens show the avatar only; phones put
+  it at the right of the top bar. Log out is a button on the Settings page.
 - **`app.js`** has four enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   infinite scroll (fetch the page behind `.pager a[rel=next]` and append its

@@ -13,8 +13,10 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/ingest"
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/ui"
 )
 
 type Config struct {
@@ -28,6 +30,11 @@ type Config struct {
 	// ProxyHops is how many reverse proxies in front of the app append to
 	// X-Forwarded-For. 0 ignores the header.
 	ProxyHops int
+	// BaseURL is the app's public URL, without a trailing slash. Links in
+	// emails are built from it, never from a request's Host header.
+	BaseURL string
+	// SupportEmail is where people can get help; pages show it.
+	SupportEmail string
 }
 
 // FeedStore is the feed persistence the server depends on.
@@ -46,6 +53,7 @@ type SiteStore interface {
 type UserStore interface {
 	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
+	UpdateName(ctx context.Context, id, name string) error
 }
 
 // SessionStore stores logged-in devices (user_sessions rows).
@@ -99,6 +107,12 @@ type ReadStore interface {
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 }
 
+// EmailQueue queues emails for the mail runner to send; satisfied by
+// *mail.Queue.
+type EmailQueue interface {
+	Enqueue(ctx context.Context, m mail.Message) error
+}
+
 var (
 	_ ArticleStore      = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
@@ -110,6 +124,7 @@ var (
 	_ LookupStore       = (*psql.LookupRepository)(nil)
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
 	_ ReadStore         = (*psql.ReadRepository)(nil)
+	_ EmailQueue        = (*mail.Queue)(nil)
 )
 
 type Services struct {
@@ -123,6 +138,7 @@ type Services struct {
 	ArticleService      ArticleStore
 	SubscriptionService SubscriptionStore
 	ReadService         ReadStore
+	EmailQueue          EmailQueue
 }
 
 type Server struct {
@@ -130,6 +146,7 @@ type Server struct {
 	server      *http.Server
 	logger      *slog.Logger
 	templates   map[string]*template.Template
+	emails      *mail.Templates
 	formDecoder *form.Decoder
 
 	sessionManager *scs.SessionManager
@@ -164,11 +181,16 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 	if err != nil {
 		return nil, err
 	}
+	emails, err := mail.ParseTemplates(ui.Emails, mail.App{URL: cfg.BaseURL, SupportEmail: cfg.SupportEmail})
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		logger:              logger,
 		config:              cfg,
 		templates:           templates,
+		emails:              emails,
 		formDecoder:         form.NewDecoder(),
 		services:            services,
 		sessionManager:      sessionManager,

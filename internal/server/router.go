@@ -64,6 +64,9 @@ func (s *Server) router() http.Handler {
 			r.Get("/search", s.searchHandler)
 			r.Post("/lookups", s.lookupCreateHandler)
 			r.Get("/lookups/{id}", s.lookupHandler)
+			r.Get("/settings", s.settingsHandler)
+			r.Get("/settings/name", s.settingsNameHandler)
+			r.Post("/settings/name", s.settingsNameFormHandler)
 		})
 
 		r.Group(func(r chi.Router) {

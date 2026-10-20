@@ -20,6 +20,7 @@ type searchForm struct {
 }
 
 type searchData struct {
+	Nav      navData
 	Form     searchForm
 	Sites    []rss.SiteWithFeeds
 	Searched bool
@@ -37,6 +38,7 @@ type searchData struct {
 // (see feedHandler's RequestRefresh).
 func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	data := searchData{
+		Nav:   s.nav(r, "search"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
 	}

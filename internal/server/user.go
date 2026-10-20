@@ -55,6 +55,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	form.Name = strings.TrimSpace(form.Name)
 	form.CheckField(validator.NotBlank(form.Invite), "invite", "Invite code is required")
 	form.CheckField(subtle.ConstantTimeCompare([]byte(form.Invite), []byte(s.config.InviteCode)) == 1, "invite", "This invite code isn't valid")
 	form.CheckNewAccount(form.Name, form.Email, form.Password)

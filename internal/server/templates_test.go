@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -116,13 +117,15 @@ func TestNoSignupLinks(t *testing.T) {
 	}
 }
 
-// TestAppNav checks the nav partial: the link to /feeds says My feeds, and
-// only the current section's link is marked aria-current.
+// TestAppNav checks the nav partial: the link to /feeds says My feeds, the
+// account link goes to /settings with the user's monogram, there's no logout
+// form, and only the current section's link is marked aria-current.
 func TestAppNav(t *testing.T) {
 	ts, err := parseTemplates()
 	if err != nil {
 		t.Fatal(err)
 	}
+	user := rss.User{ID: "00000000-0000-4000-8000-000000000001", Name: "ada lovelace"}
 	tests := []struct {
 		section string
 		current string // href of the link marked current; "" for none
@@ -130,12 +133,13 @@ func TestAppNav(t *testing.T) {
 		{"home", "/"},
 		{"feeds", "/feeds"},
 		{"search", "/search"},
+		{"settings", "/settings"},
 		{"", ""},
 	}
 	for _, tt := range tests {
 		t.Run("section "+tt.section, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := ts["timeline.html"].ExecuteTemplate(&buf, "app-nav", tt.section); err != nil {
+			if err := ts["timeline.html"].ExecuteTemplate(&buf, "app-nav", navData{Section: tt.section, User: user}); err != nil {
 				t.Fatal(err)
 			}
 			doc, err := html.Parse(&buf)
@@ -146,8 +150,27 @@ func TestAppNav(t *testing.T) {
 			if len(links) != 3 {
 				t.Fatalf("found %d nav links, want 3", len(links))
 			}
+			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })
+			if len(accounts) != 1 {
+				t.Fatalf("found %d account links, want 1", len(accounts))
+			}
+			account := accounts[0]
+			if got := attr(account, "href"); got != "/settings" {
+				t.Errorf("account link href = %q, want /settings", got)
+			}
+			if got := strings.TrimSpace(textContent(account)); !strings.HasSuffix(got, "Settings") {
+				t.Errorf("account link text = %q, want it to end with Settings", got)
+			}
+			avatars := findAll(account, func(n *html.Node) bool { return hasClass(n, "avatar") })
+			if len(avatars) != 1 || textContent(avatars[0]) != "A" {
+				t.Errorf("account link has no avatar with the monogram A")
+			}
+			if forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" }); len(forms) != 0 {
+				t.Errorf("found %d forms in the nav, want none", len(forms))
+			}
+
 			var current []string
-			for _, a := range links {
+			for _, a := range append(links, account) {
 				href := attr(a, "href")
 				if href == "/feeds" {
 					if got := strings.TrimSpace(textContent(a)); got != "My feeds" {
@@ -309,6 +332,14 @@ func TestFormFieldErrorsDescribed(t *testing.T) {
 				return signupPage{Form: signupForm{Validator: withFieldErrors(errFields...)}}
 			},
 			fields: []string{"invite", "name", "email", "password"},
+		},
+		{
+			name:     "settings name",
+			template: "settings_name.html",
+			data: func(errFields ...string) any {
+				return settingsNamePage{Form: nameForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"name"},
 		},
 	}
 	for _, tt := range tests {

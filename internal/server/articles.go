@@ -65,11 +65,13 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		Nav     navData
 		Article rss.Article
 		Feed    rss.Feed
 		Site    rss.Site
 		Body    template.HTML
 	}{
+		Nav:     s.nav(r, ""),
 		Article: article,
 		Feed:    feed,
 		Site:    site,

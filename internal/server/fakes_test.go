@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"time"
 
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -39,6 +42,7 @@ func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error
 type fakeUserStore struct {
 	createFn       func(ctx context.Context, name, email, password string) (string, time.Time, error)
 	authenticateFn func(ctx context.Context, email, password string) (string, error)
+	updateNameFn   func(ctx context.Context, id, name string) error
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -47,6 +51,10 @@ func (f *fakeUserStore) Create(ctx context.Context, name, email, password string
 
 func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string) (string, error) {
 	return f.authenticateFn(ctx, email, password)
+}
+
+func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
+	return f.updateNameFn(ctx, id, name)
 }
 
 type fakeSessionStore struct {
@@ -184,4 +192,29 @@ func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) (
 		return nil, nil
 	}
 	return f.listByUserFn(ctx, userID)
+}
+
+// fakeEmailQueue records the messages queued to it, unless err is set.
+type fakeEmailQueue struct {
+	err error
+
+	mu   sync.Mutex
+	sent []mail.Message
+}
+
+func (f *fakeEmailQueue) Enqueue(ctx context.Context, m mail.Message) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, m)
+	return nil
+}
+
+// messages returns the messages queued so far.
+func (f *fakeEmailQueue) messages() []mail.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.sent)
 }

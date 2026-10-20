@@ -8,18 +8,16 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #260 Queue emails in an outbox and send them from a background worker.
-   2. #261 Add a Settings page, an account entry in the nav, and editing your name.
-   3. #263 Change your password and log out other devices from Settings.
-   4. #264 Confirm email addresses (soft confirmation).
-   5. #265 Reset a forgotten password by email.
-   6. #266 Change your email address.
-   7. #267 Export your subscriptions as OPML.
-   8. #268 Delete your account.
-   9. #269 Add a privacy policy, terms of use and help links.
+   1. #263 Change your password and log out other devices from Settings.
+   2. #264 Confirm email addresses (soft confirmation).
+   3. #265 Reset a forgotten password by email.
+   4. #266 Change your email address.
+   5. #267 Export your subscriptions as OPML.
+   6. #268 Delete your account.
+   7. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #260 and #261; then
-   #263, #267 and #269; then #264 and #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #263, #267 and #269;
+   then #264 and #268; then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

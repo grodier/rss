@@ -7,4 +7,5 @@ var (
 	ErrNoAccount      = errors.New("no account with this email")
 	ErrWrongPassword  = errors.New("wrong password")
 	ErrDuplicateEmail = errors.New("duplicate email")
+	ErrTooManyEmails  = errors.New("too many emails to this address")
 )

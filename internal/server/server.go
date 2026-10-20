@@ -28,11 +28,6 @@ type Config struct {
 	// ProxyHops is how many reverse proxies in front of the app append to
 	// X-Forwarded-For. 0 ignores the header.
 	ProxyHops int
-	// BaseURL is the app's public URL, without a trailing slash. Links in
-	// emails are built from it, never from a request's Host header.
-	BaseURL string
-	// SupportEmail is where people can get help; pages show it.
-	SupportEmail string
 }
 
 // FeedStore is the feed persistence the server depends on.

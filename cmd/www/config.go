@@ -5,11 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	netmail "net/mail"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grodier/rss/internal/mail"
 )
 
 type config struct {
@@ -80,16 +83,10 @@ func defaultConfig() config {
 		refresh: refreshConfig{
 			workers: 2,
 		},
-		mail: defaultMailConfig(8080),
-	}
-}
-
-// defaultMailConfig returns the mail defaults for an app listening on port.
-func defaultMailConfig(port int) mailConfig {
-	return mailConfig{
-		baseURL:  "http://localhost:" + strconv.Itoa(port),
-		smtpPort: 587,
-		from:     defaultMailFrom,
+		mail: mailConfig{
+			smtpPort: 587,
+			from:     defaultMailFrom,
+		},
 	}
 }
 
@@ -175,9 +172,25 @@ func registerMailFlags(fs *flag.FlagSet, c *mailConfig) {
 // and trims a trailing slash.
 func (c *mailConfig) setBaseURLDefault(port int) {
 	if c.baseURL == "" {
-		c.baseURL = defaultMailConfig(port).baseURL
+		c.baseURL = "http://localhost:" + strconv.Itoa(port)
 	}
 	c.baseURL = strings.TrimSuffix(c.baseURL, "/")
+}
+
+// newMailSender returns the sender c describes: SMTP, or the log when there's
+// no SMTP host.
+func newMailSender(c mailConfig, logger *slog.Logger) mail.Sender {
+	if c.smtpHost == "" {
+		return &mail.LogSender{Logger: logger}
+	}
+	return &mail.SMTPSender{
+		Host:     c.smtpHost,
+		Port:     c.smtpPort,
+		Username: c.smtpUsername,
+		Password: c.smtpPassword,
+		From:     c.from,
+		ReplyTo:  c.supportEmail,
+	}
 }
 
 // parseConfig reads the configuration from args and, for flags not on the

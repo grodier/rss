@@ -37,6 +37,7 @@ func TestConfigValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := defaultConfig()
 			c.db.dsn = "postgres://u:p@localhost/db"
+			c.mail.baseURL = "http://localhost:8080"
 			tt.mutate(&c)
 
 			err := c.Validate()

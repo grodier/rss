@@ -19,7 +19,7 @@ import (
 // stderr.
 func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	var to string
-	cfg := defaultConfig()
+	cfg := defaultConfig().mail
 
 	fs := flag.NewFlagSet("rss-www send-test-email", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -28,7 +28,7 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 		fs.PrintDefaults()
 	}
 	fs.StringVar(&to, "to", to, "Where to send the test email")
-	registerMailFlags(fs, &cfg.mail)
+	registerMailFlags(fs, &cfg)
 
 	if err := setFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -41,9 +41,11 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 		}
 		return 2
 	}
-	cfg.mail.setBaseURLDefault(cfg.server.port)
+	// There's no -port or -env: links point at the app on its default port,
+	// and production's requirements don't apply to a test send.
+	cfg.setBaseURLDefault(defaultConfig().server.port)
 
-	errs := cfg.mail.validate(cfg.env)
+	errs := cfg.validate("development")
 	if to == "" {
 		errs = append(errs, errors.New("-to must not be empty"))
 	} else if _, err := netmail.ParseAddress(to); err != nil {
@@ -54,7 +56,7 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 		return 2
 	}
 
-	templates, err := mail.ParseTemplates(ui.Emails, mail.App{URL: cfg.mail.baseURL, SupportEmail: cfg.mail.supportEmail})
+	templates, err := mail.ParseTemplates(ui.Emails, mail.App{URL: cfg.baseURL, SupportEmail: cfg.supportEmail})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -66,7 +68,7 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 	}
 	msg.To = to
 
-	sender := newMailSender(cfg.mail, newLogger(stdout, cfg.env))
+	sender := newMailSender(cfg, newLogger(stdout, "development"))
 	if err := sender.Send(context.Background(), msg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

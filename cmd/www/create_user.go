@@ -52,6 +52,7 @@ func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, s
 		return 1
 	}
 
+	name = strings.TrimSpace(name)
 	var v validator.Validator
 	v.CheckNewAccount(name, email, password)
 	if dsn == "" || !v.Valid() {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -23,8 +24,8 @@ var templateFuncs = template.FuncMap{
 	"monogram":   monogram,
 }
 
-// avatarTone picks the avatar tint for a site ID, from 1 to avatarTones, so
-// a site and its feeds always get the same color.
+// avatarTone picks the avatar tint for an ID, from 1 to avatarTones: a site's
+// ID, so a site and its feeds always get the same color, or a user's.
 func avatarTone(siteID string) int {
 	h := fnv.New32a()
 	h.Write([]byte(siteID))
@@ -44,6 +45,20 @@ func monogram(name string) string {
 		}
 	}
 	return ""
+}
+
+// navData is what the app-nav partial shows: the current section and the
+// logged-in user.
+type navData struct {
+	Section string // "home", "feeds", "search", "settings" or ""
+	User    rss.User
+}
+
+// nav returns the navData for a logged-in page, with the user from
+// authenticatedSession.
+func (s *Server) nav(r *http.Request, section string) navData {
+	sess, _ := s.authenticatedSession(r)
+	return navData{Section: section, User: sess.User}
 }
 
 func parseTemplates() (map[string]*template.Template, error) {

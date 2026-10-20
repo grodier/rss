@@ -53,6 +53,7 @@ type SiteStore interface {
 type UserStore interface {
 	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
+	UpdateName(ctx context.Context, id, name string) error
 }
 
 // SessionStore stores logged-in devices (user_sessions rows).

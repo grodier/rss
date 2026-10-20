@@ -79,4 +79,24 @@ func TestUserRepository(t *testing.T) {
 			t.Errorf("err = %v; want %v", err, rss.ErrInvalidCredentials)
 		}
 	})
+
+	t.Run("UpdateName changes the name", func(t *testing.T) {
+		if err := repo.UpdateName(t.Context(), id, "Renamed User"); err != nil {
+			t.Fatalf("UpdateName: %v", err)
+		}
+		var got string
+		if err := db.QueryRow(`SELECT name FROM users WHERE id = $1`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != "Renamed User" {
+			t.Errorf("name = %q; want %q", got, "Renamed User")
+		}
+	})
+
+	t.Run("UpdateName with unknown id", func(t *testing.T) {
+		err := repo.UpdateName(t.Context(), "00000000-0000-4000-8000-000000000000", "Nobody")
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
 }

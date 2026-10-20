@@ -42,6 +42,7 @@ func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error
 type fakeUserStore struct {
 	createFn       func(ctx context.Context, name, email, password string) (string, time.Time, error)
 	authenticateFn func(ctx context.Context, email, password string) (string, error)
+	updateNameFn   func(ctx context.Context, id, name string) error
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -50,6 +51,10 @@ func (f *fakeUserStore) Create(ctx context.Context, name, email, password string
 
 func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string) (string, error) {
 	return f.authenticateFn(ctx, email, password)
+}
+
+func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
+	return f.updateNameFn(ctx, id, name)
 }
 
 type fakeSessionStore struct {

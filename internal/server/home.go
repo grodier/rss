@@ -47,10 +47,11 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		Nav    navData
 		Rows   []articleRow
 		Before bool
 		Next   string
-	}{Rows: rows, Before: !before.IsZero(), Next: next}
+	}{Nav: s.nav(r, "home"), Rows: rows, Before: !before.IsZero(), Next: next}
 
 	if err := s.renderHTML(w, http.StatusOK, "timeline.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

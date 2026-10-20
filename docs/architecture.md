@@ -169,13 +169,17 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
+| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows and Log out |
+| `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.
 `renderHTML` executes into a buffer first, so a template error becomes a clean 500
 instead of half a page. Template functions: `asset` (a static file's URL with a content
-hash, from `static.go`), `avatarTone` and `monogram`. Errors are HTML pages via
-`errorHTML` (`errors.go`); JSON is only for `/healthcheck`.
+hash, from `static.go`), `avatarTone` and `monogram`. Logged-in pages pass a `navData`
+(the current section and the logged-in user, from `s.nav`) as their `Nav` field for the
+`app-nav` partial. Errors are HTML pages via `errorHTML` (`errors.go`); JSON is only for
+`/healthcheck`.
 
 **Timeouts:** the server's `ReadTimeout` is 5 s and `WriteTimeout` 10 s, so handlers that
 wait on slow work bound it below that: the Refresh button gives a fetch 8 s, and
@@ -342,6 +346,11 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`. The `asset` template
   function builds those URLs, so a changed file gets a new URL and can be cached for a
   year.
+- **The nav** (`partials/nav.html`, `app-nav`) has the three section links and an
+  account entry: the user's letter avatar (`monogram` of the name on an `avatarTone` tint
+  of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
+  labelled, at the bottom of the rail; medium screens show the avatar only; phones put
+  it at the right of the top bar. Log out is a button on the Settings page.
 - **`app.js`** has four enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   infinite scroll (fetch the page behind `.pager a[rel=next]` and append its

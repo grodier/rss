@@ -1,20 +1,22 @@
 {{define "brand"}}<a class="brand" href="/"><span class="brand-mark">{{template "icon-rss"}}</span><span class="brand-name">rss</span></a>{{end}}
 
 {{/* app-nav is the logged-in navigation: a rail on wide screens, a top bar
-     and tab bar on narrow ones. Its data is the current section ("home",
-     "feeds" or "search"), or "" on pages outside them. */}}
+     and tab bar on narrow ones, with an account entry (the user's avatar,
+     labelled Settings) at the bottom of the rail or the right of the top
+     bar. Its data is a navData: the current section ("home", "feeds",
+     "search", "settings", or "" on pages outside them) and the user. */}}
 {{define "app-nav"}}
 <header class="rail">
   {{template "brand"}}
   <nav aria-label="Main">
     <ul class="rail-links" role="list">
-      <li><a href="/"{{if eq . "home"}} aria-current="page"{{end}}>{{template "icon-home"}}<span>Home</span></a></li>
-      <li><a href="/feeds"{{if eq . "feeds"}} aria-current="page"{{end}}>{{template "icon-feeds"}}<span>My feeds</span></a></li>
-      <li><a href="/search"{{if eq . "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>
+      <li><a href="/"{{if eq .Section "home"}} aria-current="page"{{end}}>{{template "icon-home"}}<span>Home</span></a></li>
+      <li><a href="/feeds"{{if eq .Section "feeds"}} aria-current="page"{{end}}>{{template "icon-feeds"}}<span>My feeds</span></a></li>
+      <li><a href="/search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>
     </ul>
   </nav>
-  <form class="rail-logout" action="/logout" method="post">
-    <button type="submit">{{template "icon-logout"}}<span>Logout</span></button>
-  </form>
+  <a class="rail-account" href="/settings"{{if eq .Section "settings"}} aria-current="page"{{end}}>
+    <span class="avatar tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
+  </a>
 </header>
 {{end}}

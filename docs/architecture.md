@@ -44,11 +44,9 @@ run four long-lived components, all stopped by one context:
 - The **lookup runner** (`internal/lookup`) claims pending rows from the `lookups` table,
   runs `discovery.Discoverer` to find the site's feeds, and saves them with
   `psql.DiscoveryRepository`.
-- The **mail runner** (`mail.Runner`) claims due emails from the `emails` table (the
-  outbox, filled by the server's `sendEmail` through `mail.Queue`) and sends them with
-  the sender `newMailSender` builds. `-mail-workers` (default 1, 0 to 4) sets its
-  workers; with 0 the process queues emails without sending them, and another instance
-  sends them.
+- The **mail runner** (`internal/mail`, `mail.Runner`) claims due emails from the
+  `emails` table (the outbox, filled by the server's `sendEmail` through `mail.Queue`) and
+  sends them with the sender `newMailSender` builds.
 
 `ingest` and `discovery` make every outbound request through `internal/fetch`.
 
@@ -245,15 +243,18 @@ The runners follow the same pattern: N worker goroutines (`-lookup-workers`,
 claiming one job at a time from a Postgres table with `FOR UPDATE SKIP LOCKED`, so several
 instances can run side by side. When nothing is claimable a worker sleeps for a poll
 interval. Each job gets a timeout; its outcome is recorded with a fresh short context, so
-a job that timed out still records its failure. On shutdown a failure isn't recorded and
-the job is retried later (an email that was sent is still marked sent).
+a job that timed out still records its failure. On shutdown, lookups and refreshes record
+nothing and are retried later; the mail runner instead finishes the email it's sending
+(within its timeout) and records the result, since an aborted send can still be delivered.
+With `-mail-workers 0` the process queues emails without sending them (and logs that at
+startup); another instance's runner sends them.
 
 | | Lookups (`internal/lookup`) | Feed refresh (`internal/refresh`) | Email (`mail.Runner`) |
 | --- | --- | --- | --- |
 | Queue | `lookups` rows with `status = 'pending'` | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `emails` that are pending and due (`next_attempt_at <= now()`) |
 | Claim | `ClaimNext`: set `running` | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
 | Poll when idle | 500 ms | 15 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
-| Job timeout | 30 s | 30 s | 30 s |
+| Job timeout | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
 | Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the email is due again |
 | Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `ingest.Refresher.Refresh` | `Sender.Send` |
 
@@ -322,8 +323,9 @@ CLAUDE.md.
   | `refreshLimiter` | user | 10 per 10 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
-  queues at most 20 to one address (ignoring case) per hour and returns
-  `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
+  queues about 20 to one address (ignoring case) per hour and returns
+  `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning. It counts, then
+  inserts, so simultaneous requests can slightly exceed 20.
 
 - **Client IP:** `Server.clientIP` (`internal/server/clientip.go`) is the only code that
   reads `RemoteAddr`. With `-proxy-hops` N above 0 it reads `X-Forwarded-For` instead,

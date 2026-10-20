@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -53,5 +55,17 @@ func TestNewSessionManager(t *testing.T) {
 				t.Errorf("Cookie.Secure = %v, want %v", sm.Cookie.Secure, tt.wantSecure)
 			}
 		})
+	}
+}
+
+func TestNamed(t *testing.T) {
+	boom := errors.New("boom")
+	err := named("mail runner", func(context.Context) error { return boom })(t.Context())
+	if !errors.Is(err, boom) || err.Error() != "mail runner: boom" {
+		t.Errorf("error = %v, want %q wrapping boom", err, "mail runner: boom")
+	}
+
+	if err := named("mail runner", func(context.Context) error { return nil })(t.Context()); err != nil {
+		t.Errorf("error = %v, want nil", err)
 	}
 }

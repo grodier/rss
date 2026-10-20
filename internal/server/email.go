@@ -25,7 +25,8 @@ func (s *Server) sendEmail(ctx context.Context, to, name string, data any) error
 	return err
 }
 
-// absoluteURL returns path on the app's base URL, for links in emails.
+// absoluteURL returns path, which must start with "/", on the app's base URL,
+// for links in emails.
 func (s *Server) absoluteURL(path string) string {
 	return s.config.BaseURL + path
 }

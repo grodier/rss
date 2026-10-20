@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -187,32 +188,34 @@ func TestRunRetriesFailedSends(t *testing.T) {
 		{7, time.Hour},
 	}
 	for _, tt := range tests {
-		store := newFakeStore(Queued{ID: "a", Attempts: tt.attempts})
-		r := &Runner{
-			Store: store,
-			Sender: &fakeSender{send: func(ctx context.Context, m Message) error {
-				return errors.New("421 try again later")
-			}},
-			PollInterval: 10 * time.Millisecond,
-		}
-		before := time.Now()
-		stop := start(t, r)
+		t.Run(fmt.Sprintf("attempt %d", tt.attempts), func(t *testing.T) {
+			store := newFakeStore(Queued{ID: "a", Attempts: tt.attempts})
+			r := &Runner{
+				Store: store,
+				Sender: &fakeSender{send: func(ctx context.Context, m Message) error {
+					return errors.New("421 try again later")
+				}},
+				PollInterval: 10 * time.Millisecond,
+			}
+			before := time.Now()
+			stop := start(t, r)
 
-		f := receive(t, store.failed, "MarkFailed")
-		after := time.Now()
-		stop()
+			f := receive(t, store.failed, "MarkFailed")
+			after := time.Now()
+			stop()
 
-		if f.id != "a" || f.msg != "421 try again later" {
-			t.Errorf("attempt %d: MarkFailed(%q, %q), want a and the send error", tt.attempts, f.id, f.msg)
-		}
-		if f.retryAt.Before(before.Add(tt.wantDelay)) || f.retryAt.After(after.Add(tt.wantDelay)) {
-			t.Errorf("attempt %d: retryAt is %s from now, want %s", tt.attempts, f.retryAt.Sub(before), tt.wantDelay)
-		}
-		select {
-		case g := <-store.gaveUp:
-			t.Errorf("attempt %d: GiveUp(%q), want MarkFailed only", tt.attempts, g.id)
-		default:
-		}
+			if f.id != "a" || f.msg != "421 try again later" {
+				t.Errorf("MarkFailed(%q, %q), want a and the send error", f.id, f.msg)
+			}
+			if f.retryAt.Before(before.Add(tt.wantDelay)) || f.retryAt.After(after.Add(tt.wantDelay)) {
+				t.Errorf("retryAt is %s from now, want %s", f.retryAt.Sub(before), tt.wantDelay)
+			}
+			select {
+			case g := <-store.gaveUp:
+				t.Errorf("GiveUp(%q), want MarkFailed only", g.id)
+			default:
+			}
+		})
 	}
 }
 
@@ -270,6 +273,58 @@ func TestRunKeepsWorkingAfterFailure(t *testing.T) {
 
 	if id := receive(t, store.sent, "the next email's MarkSent"); id != "good" {
 		t.Errorf("MarkSent(%q), want good", id)
+	}
+}
+
+func TestRunFinishesSendInFlightOnShutdown(t *testing.T) {
+	tests := []struct {
+		name    string
+		sendErr error
+	}{
+		{"sent", nil},
+		{"failed", errors.New("421 try again later")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newFakeStore(Queued{ID: "a", Attempts: 1})
+			sending := make(chan struct{})
+			release := make(chan struct{})
+			r := &Runner{
+				Store: store,
+				Sender: &fakeSender{send: func(ctx context.Context, m Message) error {
+					close(sending)
+					<-release
+					if err := ctx.Err(); err != nil {
+						t.Errorf("send ctx error = %v after shutdown, want nil", err)
+					}
+					return tt.sendErr
+				}},
+				Workers:      1,
+				PollInterval: time.Hour,
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			stopped := make(chan error, 1)
+			go func() { stopped <- r.Run(ctx) }()
+			receive(t, sending, "the send")
+
+			cancel()
+			select {
+			case <-stopped:
+				t.Fatal("Run returned while an email was being sent")
+			case <-time.After(50 * time.Millisecond):
+			}
+			close(release)
+
+			if tt.sendErr == nil {
+				receive(t, store.sent, "MarkSent")
+			} else {
+				receive(t, store.failed, "MarkFailed")
+			}
+			if err := receive(t, stopped, "Run to return"); err != nil {
+				t.Errorf("Run() error = %v, want nil", err)
+			}
+		})
 	}
 }
 

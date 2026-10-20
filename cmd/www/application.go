@@ -49,8 +49,29 @@ func (app *Application) Run() error {
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
 
-	// The handlers queue emails and wake this process's mail runner, if it
-	// has one; the runner sends them.
+	// Background components run alongside the server until ctx is canceled.
+	var background []func(context.Context) error
+	if app.config.lookup.workers > 0 {
+		runner := &lookup.Runner{
+			Store:      psql.NewLookupRepository(db),
+			Saver:      psql.NewDiscoveryRepository(db),
+			Discoverer: &discovery.Discoverer{Fetcher: fetcher},
+			Logger:     app.logger,
+			Workers:    app.config.lookup.workers,
+		}
+		background = append(background, named("lookup runner", runner.Run))
+	}
+	if app.config.refresh.workers > 0 {
+		runner := &refresh.Runner{
+			Store:     psql.NewFeedRepository(db),
+			Refresher: refresher,
+			Logger:    app.logger,
+			Workers:   app.config.refresh.workers,
+		}
+		background = append(background, named("refresh runner", runner.Run))
+	}
+	// The server queues emails and wakes this process's mail runner, which
+	// sends them. Without one, another instance's runner sends them.
 	emails := psql.NewEmailRepository(db)
 	var mailRunner *mail.Runner
 	if app.config.mailRunner.workers > 0 {
@@ -60,6 +81,9 @@ func (app *Application) Run() error {
 			Logger:  app.logger,
 			Workers: app.config.mailRunner.workers,
 		}
+		background = append(background, named("mail runner", mailRunner.Run))
+	} else {
+		app.logger.Info("mail runner off (-mail-workers 0): emails are queued but not sent by this instance")
 	}
 
 	services := server.Services{
@@ -99,46 +123,6 @@ func (app *Application) Run() error {
 	// Ctrl-C kills the process if graceful shutdown hangs.
 	context.AfterFunc(sigCtx, stop)
 
-	// Background components run alongside the server until ctx is canceled.
-	var background []func(context.Context) error
-	if app.config.lookup.workers > 0 {
-		runner := &lookup.Runner{
-			Store:      psql.NewLookupRepository(db),
-			Saver:      psql.NewDiscoveryRepository(db),
-			Discoverer: &discovery.Discoverer{Fetcher: fetcher},
-			Logger:     app.logger,
-			Workers:    app.config.lookup.workers,
-		}
-		background = append(background, func(ctx context.Context) error {
-			if err := runner.Run(ctx); err != nil {
-				return fmt.Errorf("lookup runner: %w", err)
-			}
-			return nil
-		})
-	}
-	if app.config.refresh.workers > 0 {
-		runner := &refresh.Runner{
-			Store:     psql.NewFeedRepository(db),
-			Refresher: refresher,
-			Logger:    app.logger,
-			Workers:   app.config.refresh.workers,
-		}
-		background = append(background, func(ctx context.Context) error {
-			if err := runner.Run(ctx); err != nil {
-				return fmt.Errorf("refresh runner: %w", err)
-			}
-			return nil
-		})
-	}
-	if mailRunner != nil {
-		background = append(background, func(ctx context.Context) error {
-			if err := mailRunner.Run(ctx); err != nil {
-				return fmt.Errorf("mail runner: %w", err)
-			}
-			return nil
-		})
-	}
-
 	// ctx is also canceled when any component fails, stopping the others.
 	ctx, cancel := context.WithCancel(sigCtx)
 	defer cancel()
@@ -164,6 +148,16 @@ func (app *Application) Run() error {
 	wg.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
+}
+
+// named wraps the error a background component returns with its name.
+func named(name string, run func(context.Context) error) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if err := run(ctx); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		return nil
+	}
 }
 
 // sessionLifetime is the most a login lasts, however often it's used; the

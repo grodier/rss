@@ -15,6 +15,11 @@ import (
 
 const testLease = 2 * time.Minute
 
+// emailsDueAt is when this test's emails are due: other tests and a database
+// shared with the app (make test/db) can hold due emails too, so this test's
+// are due longest and claimed first.
+var emailsDueAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // newEmailAddress returns a unique address whose emails are deleted when the
 // test ends.
 func newEmailAddress(t *testing.T, repo *EmailRepository) string {
@@ -58,7 +63,7 @@ func claimOwn(t *testing.T, repo *EmailRepository, addr string) mail.Queued {
 	if err := repo.Enqueue(t.Context(), m); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	dueFirst(t, repo, addr)
+	setEmailsDue(t, repo, addr, emailsDueAt)
 
 	q, err := repo.ClaimNext(t.Context(), testLease)
 	if err != nil {
@@ -70,11 +75,10 @@ func claimOwn(t *testing.T, repo *EmailRepository, addr string) mail.Queued {
 	return q
 }
 
-// dueFirst makes addr's pending emails due before any other, which a database
-// shared with the app (make test/db) may also hold.
-func dueFirst(t *testing.T, repo *EmailRepository, addr string) {
+// setEmailsDue makes addr's emails due at at.
+func setEmailsDue(t *testing.T, repo *EmailRepository, addr string, at time.Time) {
 	t.Helper()
-	execEmailSQL(t, repo, `UPDATE emails SET next_attempt_at = '-infinity' WHERE to_address = $1 AND status = 'pending'`, addr)
+	execEmailSQL(t, repo, `UPDATE emails SET next_attempt_at = $2 WHERE to_address = $1`, addr, at)
 }
 
 func execEmailSQL(t *testing.T, repo *EmailRepository, stmt string, args ...any) {
@@ -89,13 +93,17 @@ func TestEmailRepository(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewEmailRepository(db)
 
-	t.Run("Enqueue then ClaimNext returns the email, leased", func(t *testing.T) {
-		addr := newEmailAddress(t, repo)
+	t.Run("Enqueue then ClaimNext returns the email due longest, leased", func(t *testing.T) {
+		addr, other := newEmailAddress(t, repo), newEmailAddress(t, repo)
 		m := mail.Message{To: addr, Subject: "Subject", Text: "text body", HTML: "<p>html body</p>"}
 		if err := repo.Enqueue(t.Context(), m); err != nil {
 			t.Fatalf("Enqueue: %v", err)
 		}
-		dueFirst(t, repo, addr)
+		if err := repo.Enqueue(t.Context(), mail.Message{To: other, Subject: "Other"}); err != nil {
+			t.Fatalf("Enqueue other: %v", err)
+		}
+		setEmailsDue(t, repo, addr, emailsDueAt)
+		setEmailsDue(t, repo, other, emailsDueAt.Add(time.Hour))
 
 		before := time.Now()
 		q, err := repo.ClaimNext(t.Context(), testLease)
@@ -113,16 +121,13 @@ func TestEmailRepository(t *testing.T) {
 			t.Errorf("next_attempt_at is %s from now, want about the lease (%s)", e.nextAttemptAt.Sub(before), testLease)
 		}
 
-		// Leased, so no worker claims it again until the lease runs out.
+		// The claimed email is leased, so the next claim takes the other one.
 		again, err := repo.ClaimNext(t.Context(), testLease)
-		switch {
-		case errors.Is(err, rss.ErrNoRecord):
-		case err != nil:
+		if err != nil {
 			t.Fatalf("ClaimNext again: %v", err)
-		case again.ID == q.ID:
-			t.Fatal("ClaimNext claimed the leased email again")
-		default:
-			t.Fatalf("ClaimNext again = %+v, want ErrNoRecord", again)
+		}
+		if again.Message.To != other {
+			t.Errorf("second claim got an email to %q, want %q", again.Message.To, other)
 		}
 	})
 
@@ -276,39 +281,32 @@ func TestEmailRepository(t *testing.T) {
 				t.Fatalf("Enqueue: %v", err)
 			}
 		}
-		dueFirst(t, repo, addr)
+		setEmailsDue(t, repo, addr, emailsDueAt)
 
-		var (
-			mu      sync.Mutex
-			claimed = map[string]int{}
-			wg      sync.WaitGroup
-		)
-		for range count {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				q, err := repo.ClaimNext(t.Context(), testLease)
-				if err != nil {
-					t.Errorf("ClaimNext: %v", err)
-					return
-				}
-				if q.Message.To != addr {
-					t.Errorf("claimed an email to %q, want %q", q.Message.To, addr)
-				}
-				mu.Lock()
-				claimed[q.ID]++
-				mu.Unlock()
-			}()
+		var wg sync.WaitGroup
+		got := make([]mail.Queued, count)
+		errs := make([]error, count)
+		for i := range count {
+			wg.Go(func() {
+				got[i], errs[i] = repo.ClaimNext(t.Context(), testLease)
+			})
 		}
 		wg.Wait()
 
-		for id, n := range claimed {
-			if n != 1 {
-				t.Errorf("email %s claimed %d times, want once", id, n)
+		claimed := map[string]bool{}
+		for i, q := range got {
+			if errs[i] != nil {
+				t.Fatalf("ClaimNext %d: %v", i, errs[i])
 			}
-		}
-		if len(claimed) != count {
-			t.Errorf("claimed %d distinct emails, want %d", len(claimed), count)
+			if claimed[q.ID] {
+				t.Errorf("email %s claimed more than once", q.ID)
+			}
+			claimed[q.ID] = true
+			// Hand back anything claimed that this test didn't queue, so
+			// other emails aren't left leased.
+			if q.Message.To != addr {
+				execEmailSQL(t, repo, `UPDATE emails SET next_attempt_at = now(), attempts = attempts - 1 WHERE id = $1`, q.ID)
+			}
 		}
 	})
 }

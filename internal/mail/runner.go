@@ -65,7 +65,8 @@ type Runner struct {
 
 // Run deletes finished emails, then runs Workers goroutines and deletes
 // finished emails again every SweepInterval until ctx is canceled, and
-// returns after they have all stopped.
+// returns after they have all stopped. A worker sending an email when ctx is
+// canceled finishes it first, within SendTimeout.
 func (r *Runner) Run(ctx context.Context) error {
 	r.setDefaults()
 	if r.Lease <= r.SendTimeout {
@@ -197,14 +198,11 @@ func (r *Runner) wait(ctx context.Context) bool {
 }
 
 // send sends one email and records the outcome: sent, failed with a retry
-// time, or given up on after MaxAttempts. If ctx is canceled during a failed
-// send, nothing is recorded and the lease retries the email.
+// time, or given up on after MaxAttempts. Shutting down (ctx canceled) doesn't
+// interrupt it: aborting a send can deliver the email anyway, and then again
+// on the retry.
 func (r *Runner) send(ctx context.Context, q Queued) {
-	err := r.deliver(ctx, q.Message)
-	if err != nil && ctx.Err() != nil {
-		r.Logger.Info("email interrupted by shutdown", "id", q.ID)
-		return
-	}
+	err := r.deliver(context.WithoutCancel(ctx), q.Message)
 
 	recCtx, cancel := context.WithTimeout(context.Background(), recordTimeout)
 	defer cancel()

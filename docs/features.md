@@ -48,11 +48,11 @@ is set.
 links are built with `s.absoluteURL`, never from the request) and queues it with
 `mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
 the queue wakes this process's `mail.Runner`, so the page responds without waiting on the
-provider. Past 20 emails to one address in an hour, the email isn't queued and
-`sendEmail` logs a warning and returns nil. A runner worker claims the email
-(`ClaimNext`, with a 2-minute lease), sends it with the configured sender, and records the
-outcome: `MarkSent`, or `MarkFailed` with a retry time (`retryDelay`), or `GiveUp` after 8
-attempts. Sent and given-up emails lose their bodies, and are deleted after 7 days.
+provider. Over the per-address cap, the email isn't queued and `sendEmail` logs a warning
+and returns nil. A runner worker claims the email (`ClaimNext`), sends it with the
+configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
+(`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
+work" and "Security measures" in [architecture.md](architecture.md).
 
 **Read:**
 

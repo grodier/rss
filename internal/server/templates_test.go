@@ -289,8 +289,11 @@ func withFieldErrors(fields ...string) validator.Validator {
 	return v
 }
 
+// formInputs returns the inputs a user fills in: not hidden or read-only ones.
 func formInputs(doc *html.Node) []*html.Node {
-	return findAll(doc, func(n *html.Node) bool { return n.Data == "input" && attr(n, "type") != "hidden" })
+	return findAll(doc, func(n *html.Node) bool {
+		return n.Data == "input" && attr(n, "type") != "hidden" && !hasAttr(n, "readonly")
+	})
 }
 
 func hasAttr(n *html.Node, key string) bool {
@@ -340,6 +343,14 @@ func TestFormFieldErrorsDescribed(t *testing.T) {
 				return settingsNamePage{Form: nameForm{Validator: withFieldErrors(errFields...)}}
 			},
 			fields: []string{"name"},
+		},
+		{
+			name:     "settings password",
+			template: "settings_password.html",
+			data: func(errFields ...string) any {
+				return settingsPasswordPage{Form: passwordForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"current_password", "new_password"},
 		},
 	}
 	for _, tt := range tests {

@@ -159,6 +159,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
+| `GET /.well-known/change-password` | no | `changePasswordWellKnownHandler` | 302 to `/settings/password`, for password managers |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
 | `GET /feeds/{id}` | yes | `feedHandler` | Feed page; queues a refresh if the feed is stale |
 | `POST /feeds/{id}/refresh` | yes | `feedRefreshHandler` | Refresh button: fetches now |
@@ -170,8 +171,10 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
-| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows and Log out |
+| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows, Devices and Log out |
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
+| `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
+| `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.
@@ -325,6 +328,7 @@ CLAUDE.md.
   | `signupLimiter` | client IP (IPv6 by /64) | 10 per hour |
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
+  | `passwordChangeLimiter` | user | 10 per 10 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
   queues about 20 to one address (ignoring case) per hour and returns

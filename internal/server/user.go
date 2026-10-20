@@ -20,10 +20,22 @@ type signupForm struct {
 }
 
 func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
-	data := struct {
-		Form any
-	}{Form: signupForm{Invite: r.URL.Query().Get("invite")}}
-	if err := s.renderHTML(w, http.StatusOK, "signup.html", data); err != nil {
+	if s.isAuthenticated(r) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	s.renderSignup(w, r, http.StatusOK, signupPage{Form: signupForm{Invite: r.URL.Query().Get("invite")}})
+}
+
+type signupPage struct {
+	Form signupForm
+	// DuplicateEmail adds a link to /login under the email field's error.
+	DuplicateEmail bool
+}
+
+// renderSignup renders signup.html with status.
+func (s *Server) renderSignup(w http.ResponseWriter, r *http.Request, status int, data signupPage) {
+	if err := s.renderHTML(w, status, "signup.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
@@ -39,12 +51,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	if ok, retryAfter := s.signupLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
-		data := struct {
-			Form any
-		}{Form: form}
-		if err := s.renderHTML(w, http.StatusTooManyRequests, "signup.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-		}
+		s.renderSignup(w, r, http.StatusTooManyRequests, signupPage{Form: form})
 		return
 	}
 
@@ -53,30 +60,35 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	form.CheckNewAccount(form.Name, form.Email, form.Password)
 
 	if !form.Valid() {
-		data := struct {
-			Form any
-		}{Form: form}
+		s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form})
+		return
+	}
 
-		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "signup.html", data); err != nil {
+	id, _, err := s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, rss.ErrDuplicateEmail):
+			form.AddFieldError("email", "There's already an account with this email.")
+			s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form, DuplicateEmail: true})
+		default:
 			s.serverErrorHTML(w, r, err)
 		}
 		return
 	}
 
-	_, _, err = s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
-	// A duplicate email gets the same response as a new account, so signup
-	// doesn't reveal which emails have one.
-	if err != nil && !errors.Is(err, rss.ErrDuplicateEmail) {
+	if err := s.startSession(r, id); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	s.sessionManager.Put(r.Context(), "flash", "Your signup was successful. Please log in.")
-
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, s.popReturnTo(r), http.StatusSeeOther)
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	if s.isAuthenticated(r) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 	s.renderLogin(w, r, http.StatusOK, loginForm{}, flash)
 }
@@ -125,11 +137,10 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Failures are counted per submitted email, whether or not it has an
-	// account, so a 429 doesn't reveal which emails do. Lowercased because
-	// users.email is citext. Counted before Authenticate, so concurrent
-	// attempts can't all get past the limit; refunded below unless the
-	// password was wrong.
+	// Failures are counted per email, to slow password guessing against an
+	// account. Lowercased because users.email is citext. Counted before
+	// Authenticate, so concurrent attempts can't all get past the limit;
+	// refunded below unless the password was wrong.
 	emailKey := strings.ToLower(form.Email)
 	if ok, retryAfter := s.loginFailureLimiter.AllowWithRetry(emailKey); !ok {
 		setRetryAfter(w, retryAfter)
@@ -139,13 +150,16 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id, err := s.services.UserService.Authenticate(r.Context(), form.Email, form.Password)
-	if !errors.Is(err, rss.ErrInvalidCredentials) {
+	if !errors.Is(err, rss.ErrWrongPassword) {
 		s.loginFailureLimiter.Refund(emailKey)
 	}
 	if err != nil {
 		switch {
-		case errors.Is(err, rss.ErrInvalidCredentials):
-			form.AddNonFieldError("Email or password is incorrect")
+		case errors.Is(err, rss.ErrNoAccount):
+			form.AddFieldError("email", "There's no account with this email.")
+			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
+		case errors.Is(err, rss.ErrWrongPassword):
+			form.AddFieldError("password", "That password isn't right.")
 			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
 		default:
 			s.serverErrorHTML(w, r, err)
@@ -158,7 +172,13 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, s.popReturnTo(r), http.StatusSeeOther)
+}
+
+// popReturnTo returns the page requireAuthentication sent the user away
+// from, if it's a local path, else "/", and forgets it.
+func (s *Server) popReturnTo(r *http.Request) string {
+	return safeReturnPath(s.sessionManager.PopString(r.Context(), "returnTo"), "/")
 }
 
 // startSession logs userID in on this device: it renews the session token

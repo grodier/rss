@@ -56,6 +56,11 @@ func (s *Server) logRequest(next http.Handler) http.Handler {
 func (s *Server) requireAuthentication(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.isAuthenticated(r) {
+			// Remembered for popReturnTo after login. Other methods aren't:
+			// replaying one as a GET would give a 405.
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				s.sessionManager.Put(r.Context(), "returnTo", r.URL.RequestURI())
+			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}

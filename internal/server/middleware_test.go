@@ -246,9 +246,9 @@ func TestAuthenticatedUserID(t *testing.T) {
 func TestRequireAuthentication(t *testing.T) {
 	s := newTestServer(t)
 	called := false
-	h := s.requireAuthentication(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := s.sessionManager.LoadAndSave(s.requireAuthentication(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
-	}))
+	})))
 
 	t.Run("anonymous", func(t *testing.T) {
 		called = false

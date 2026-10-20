@@ -142,7 +142,8 @@ Then routes are split into groups. `/static/*` and `/healthcheck` have no sessio
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
 loads the device's `user_sessions` row with its user and puts both in the request
 context, unless the row is gone or idle for 90 days.
-Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set
+Routes in the `requireAuthentication` group redirect anonymous users to `/login`
+(remembering a GET or HEAD's URI as `returnTo`, for after login or signup) and set
 `Cache-Control: no-store`.
 
 **Routes:**
@@ -289,8 +290,7 @@ CLAUDE.md.
   to 256 characters, isn't the account's email and isn't on the common-password list
   (`internal/validator/common_passwords.txt`: the NCSC's 100,000 most common passwords
   from Have I Been Pwned, via SecLists, kept to 8 characters or more; lookups are
-  case-insensitive). How login and signup avoid revealing which emails have accounts is
-  under "Accounts and sessions" in features.md.
+  case-insensitive).
 - **Email:** `SMTPSender` (`internal/mail`) uses implicit TLS on port 465 and otherwise
   requires STARTTLS, except to `localhost` or `127.0.0.1` (`requireTLS`), and rejects a
   line break in the recipient or subject. Links in emails are built from `-base-url`

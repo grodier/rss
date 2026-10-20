@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/grodier/rss/internal/rss"
 	"io"
-	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"slices"
@@ -16,10 +16,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/alexedwards/scs/v2"
-	"github.com/grodier/rss/internal/psql"
-	"github.com/grodier/rss/internal/psql/psqltest"
 )
 
 // testInviteCode is the invite code signup tests run the server with.
@@ -79,7 +75,11 @@ func TestSignupFormHandlerInviteCode(t *testing.T) {
 			s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
 				createFn: func(context.Context, string, string, string) (string, time.Time, error) {
 					calls++
-					return "id", time.Now(), nil
+					return "user-1", time.Now(), nil
+				},
+			}, SessionService: &fakeSessionStore{
+				createFn: func(context.Context, string, time.Time) (string, error) {
+					return testSessionID, nil
 				},
 			}})
 			h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
@@ -96,8 +96,8 @@ func TestSignupFormHandlerInviteCode(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
 			}
 			if tt.wantStatus == http.StatusSeeOther {
-				if loc := rr.Header().Get("Location"); loc != "/login" {
-					t.Errorf("Location = %q, want /login", loc)
+				if loc := rr.Header().Get("Location"); loc != "/" {
+					t.Errorf("Location = %q, want /", loc)
 				}
 				if calls != 1 {
 					t.Errorf("Create called %d times, want 1", calls)
@@ -158,77 +158,83 @@ func TestLoginFormHandlerPasswordTooLong(t *testing.T) {
 	}
 }
 
-func TestSignupFormHandlerSuccessFlash(t *testing.T) {
-	db := psqltest.NewDB(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s, err := NewServer(logger, Config{Port: 4000, Env: "development", InviteCode: testInviteCode},
-		Services{UserService: psql.NewUserRepository(db)}, scs.New())
-	if err != nil {
-		t.Fatal(err)
-	}
+// testSessionID is the user_sessions ID fake session stores return.
+const testSessionID = "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d"
 
-	email := fmt.Sprintf("signup-%d@example.com", time.Now().UnixNano())
-	t.Cleanup(func() {
-		if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
-			t.Errorf("cleanup user: %v", err)
-		}
-	})
+func TestSignupFormHandlerLogsIn(t *testing.T) {
+	var calls []string
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+			calls = append(calls, "user Create")
+			return "user-1", time.Now(), nil
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
+			calls = append(calls, "session Create "+userID)
+			return testSessionID, nil
+		},
+	}})
 
-	var flash string
-	h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var sessionID string
+	rr := postSignup(t, s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.signupFormHandler(w, r)
-		flash = s.sessionManager.GetString(r.Context(), "flash")
-	}))
-
-	form := url.Values{
-		"invite":   {testInviteCode},
-		"name":     {"Test User"},
-		"email":    {email},
-		"password": {"correct-horse-battery"},
-	}
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signup", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+		sessionID = s.sessionManager.GetString(r.Context(), "sessionID")
+	})))
 
 	if rr.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
 	}
-	if loc := rr.Header().Get("Location"); loc != "/login" {
-		t.Errorf("Location = %q, want /login", loc)
+	if loc := rr.Header().Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want /", loc)
 	}
-	const want = "Your signup was successful. Please log in."
-	if flash != want {
-		t.Errorf("flash = %q, want %q", flash, want)
+	if want := []string{"user Create", "session Create user-1"}; !slices.Equal(calls, want) {
+		t.Errorf("calls = %q, want %q", calls, want)
 	}
-
-	var id string
-	if err := db.QueryRow(`SELECT id FROM users WHERE email = $1`, email).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(flash, id) {
-		t.Errorf("flash %q contains user ID %s", flash, id)
+	if sessionID != testSessionID {
+		t.Errorf("sessionID = %q, want %q", sessionID, testSessionID)
 	}
 }
 
-func TestLoginFormHandlerInvalidCredentials(t *testing.T) {
-	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
-			return "", rss.ErrInvalidCredentials
-		},
-	}})
-
-	form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
-	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rr := httptest.NewRecorder()
-	s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+func TestLoginFormHandlerErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantError string
+	}{
+		{"no account", rss.ErrNoAccount, `<p class="error" id="email-error">There&#39;s no account with this email.</p>`},
+		{"wrong password", rss.ErrWrongPassword, `<p class="error" id="password-error">That password isn&#39;t right.</p>`},
 	}
-	if !strings.Contains(rr.Body.String(), "Email or password is incorrect") {
-		t.Errorf("body does not contain credentials error: %s", rr.Body.String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var creates int
+			s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+				authenticateFn: func(ctx context.Context, email, password string) (string, error) {
+					return "", tt.err
+				},
+			}, SessionService: &fakeSessionStore{
+				createFn: func(context.Context, string, time.Time) (string, error) {
+					creates++
+					return testSessionID, nil
+				},
+			}})
+
+			form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
+			rr := postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP, "/login", "192.0.2.1:1234", form)
+
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+			}
+			body := rr.Body.String()
+			if !strings.Contains(body, tt.wantError) {
+				t.Errorf("body does not contain %q: %s", tt.wantError, body)
+			}
+			if want := `name="email" value="user@example.com"`; !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q", want)
+			}
+			if creates != 0 {
+				t.Errorf("session Create called %d times, want 0", creates)
+			}
+		})
 	}
 }
 
@@ -265,7 +271,7 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 	s := newTestServerWith(t, Services{UserService: &fakeUserStore{
 		authenticateFn: func(ctx context.Context, email, password string) (string, error) {
 			calls++
-			return "", rss.ErrInvalidCredentials
+			return "", rss.ErrWrongPassword
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP
@@ -295,7 +301,7 @@ func TestLoginLimitPerForwardedClient(t *testing.T) {
 		Config{Port: 4000, Env: "development", ProxyHops: 1},
 		Services{UserService: &fakeUserStore{
 			authenticateFn: func(ctx context.Context, email, password string) (string, error) {
-				return "", rss.ErrInvalidCredentials
+				return "", rss.ErrWrongPassword
 			},
 		}})
 	h := s.router()
@@ -337,10 +343,12 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 				switch {
 				case p == "db-down":
 					return "", errors.New("db down")
-				case strings.EqualFold(e, email) && p == password:
+				case !strings.EqualFold(e, email):
+					return "", rss.ErrNoAccount
+				case p == password:
 					return "user-1", nil
 				}
-				return "", rss.ErrInvalidCredentials
+				return "", rss.ErrWrongPassword
 			},
 		}, SessionService: &fakeSessionStore{
 			createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
@@ -407,14 +415,16 @@ func TestLoginFormHandlerFailureLimit(t *testing.T) {
 		}
 	})
 
-	t.Run("email with no account", func(t *testing.T) {
+	t.Run("emails with no account don't count", func(t *testing.T) {
 		h, calls := newServer(t)
-		fail10(t, h, "nobody@example.com")
-
-		rr := post(t, h, "nobody@example.com", "wrong-password")
-		assertRateLimitedForm(t, rr, "nobody@example.com")
-		if *calls != 10 {
-			t.Errorf("Authenticate called %d times, want 10", *calls)
+		for i := 1; i <= 15; i++ {
+			rr := post(t, h, "nobody@example.com", "wrong-password")
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("attempt %d: status = %d, want %d", i, rr.Code, http.StatusUnprocessableEntity)
+			}
+		}
+		if *calls != 15 {
+			t.Errorf("Authenticate called %d times, want 15", *calls)
 		}
 	})
 }
@@ -427,7 +437,7 @@ func TestLoginFormHandlerFailureLimitConcurrent(t *testing.T) {
 		authenticateFn: func(ctx context.Context, e, p string) (string, error) {
 			calls.Add(1)
 			<-release
-			return "", rss.ErrInvalidCredentials
+			return "", rss.ErrWrongPassword
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.loginFormHandler)).ServeHTTP
@@ -496,32 +506,39 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 }
 
 func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
+	var creates int
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
 		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
 			return "", time.Time{}, rss.ErrDuplicateEmail
 		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) {
+			creates++
+			return testSessionID, nil
+		},
 	}})
 
-	var flash string
-	h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.signupFormHandler(w, r)
-		flash = s.sessionManager.GetString(r.Context(), "flash")
-	}))
+	rr := postSignup(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)))
 
-	rr := postSignup(t, h)
-
-	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 	}
-	if loc := rr.Header().Get("Location"); loc != "/login" {
-		t.Errorf("Location = %q, want /login", loc)
+	body := rr.Body.String()
+	for _, want := range []string{
+		`<p class="error" id="email-error">There&#39;s already an account with this email.</p>`,
+		`<a href="/login">Log in instead</a>`,
+		`name="name" value="Test User"`,
+		`name="email" value="dup@example.com"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
 	}
-	const want = "Your signup was successful. Please log in."
-	if flash != want {
-		t.Errorf("flash = %q, want %q", flash, want)
+	if strings.Contains(body, "correct-horse-battery") {
+		t.Error("body echoes the password")
 	}
-	if strings.Contains(rr.Body.String(), "already in use") {
-		t.Error("body reveals that the email is in use")
+	if creates != 0 {
+		t.Errorf("session Create called %d times, want 0", creates)
 	}
 }
 
@@ -627,6 +644,136 @@ func TestLogoutDeletesSession(t *testing.T) {
 			}
 			if !slices.Equal(deleted, tt.wantDelete) {
 				t.Errorf("Delete called with %q, want %q", deleted, tt.wantDelete)
+			}
+		})
+	}
+}
+
+func TestReturnTo(t *testing.T) {
+	const feedPath = "/feeds/" + testFeedID
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+			return "user-1", time.Now(), nil
+		},
+		authenticateFn: func(context.Context, string, string) (string, error) {
+			return "user-1", nil
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) {
+			return testSessionID, nil
+		},
+		getFn: func(context.Context, string) (rss.Session, error) {
+			return rss.Session{ID: testSessionID, User: rss.User{ID: "user-1"}, LastSeenAt: time.Now()}, nil
+		},
+	}})
+	ts := httptest.NewServer(s.router())
+	t.Cleanup(ts.Close)
+
+	// newClient returns a client with its own cookie jar that doesn't follow
+	// redirects.
+	newClient := func(t *testing.T) *http.Client {
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+	}
+	// do sends a request and returns its Location header, checking for a 303.
+	do := func(t *testing.T, c *http.Client, method, target string, form url.Values) string {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), method, ts.URL+target, strings.NewReader(form.Encode()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("%s %s: status = %d, want %d", method, target, resp.StatusCode, http.StatusSeeOther)
+		}
+		return resp.Header.Get("Location")
+	}
+	login := url.Values{"email": {"user@example.com"}, "password": {"correct-horse-battery"}}
+
+	tests := []struct {
+		name   string
+		method string
+		target string
+		want   string
+	}{
+		{"GET", http.MethodGet, feedPath, feedPath},
+		{"GET with a query", http.MethodGet, "/search?q=go", "/search?q=go"},
+		{"HEAD", http.MethodHead, feedPath, feedPath},
+		{"POST isn't remembered", http.MethodPost, feedPath + "/subscribe", "/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newClient(t)
+			if loc := do(t, c, tt.method, tt.target, nil); loc != "/login" {
+				t.Fatalf("%s %s: Location = %q, want /login", tt.method, tt.target, loc)
+			}
+			if loc := do(t, c, http.MethodPost, "/login", login); loc != tt.want {
+				t.Errorf("login: Location = %q, want %q", loc, tt.want)
+			}
+			if loc := do(t, c, http.MethodPost, "/login", login); loc != "/" {
+				t.Errorf("second login: Location = %q, want / (returnTo should be forgotten)", loc)
+			}
+		})
+	}
+
+	t.Run("signup", func(t *testing.T) {
+		c := newClient(t)
+		do(t, c, http.MethodGet, feedPath, nil)
+		signup := url.Values{
+			"invite":   {testInviteCode},
+			"name":     {"Test User"},
+			"email":    {"new@example.com"},
+			"password": {"correct-horse-battery"},
+		}
+		if loc := do(t, c, http.MethodPost, "/signup", signup); loc != feedPath {
+			t.Errorf("signup: Location = %q, want %q", loc, feedPath)
+		}
+	})
+
+	t.Run("not a local path", func(t *testing.T) {
+		h := s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.sessionManager.Put(r.Context(), "returnTo", "//evil.example")
+			s.loginFormHandler(w, r)
+		}))
+		rr := postForm(t, h.ServeHTTP, "/login", "192.0.2.1:1234", login)
+		if loc := rr.Header().Get("Location"); loc != "/" {
+			t.Errorf("Location = %q, want /", loc)
+		}
+	})
+}
+
+func TestLoggedInRedirect(t *testing.T) {
+	sess := rss.Session{ID: testSessionID, User: rss.User{ID: "user-1"}, LastSeenAt: time.Now()}
+	s := newSignupTestServer(t, Services{})
+
+	for _, tt := range []struct {
+		path    string
+		handler http.HandlerFunc
+	}{
+		{"/login", s.loginHandler},
+		{"/signup", s.signupHandler},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			req := requestWithSession(sess)
+			req.URL.Path = tt.path
+			rr := httptest.NewRecorder()
+			tt.handler(rr, req)
+
+			if rr.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+			}
+			if loc := rr.Header().Get("Location"); loc != "/" {
+				t.Errorf("Location = %q, want /", loc)
 			}
 		})
 	}

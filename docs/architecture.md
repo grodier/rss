@@ -172,6 +172,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
 | `GET /settings` | yes | `settingsHandler` | Settings: the account's rows and Log out |
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
+| `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.

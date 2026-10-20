@@ -50,6 +50,23 @@
         </ul>
       </section>
 
+      <section>
+        <div class="list-head">
+          <h2>Your data</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          <li>
+            <a class="settings-row" href="/settings/subscriptions.opml" download aria-describedby="export-hint">
+              <span class="settings-text">
+                <span class="settings-label">Export subscriptions</span>
+                <span class="hint" id="export-hint">An OPML file you can import into another reader.</span>
+              </span>
+              {{template "icon-download"}}
+            </a>
+          </li>
+        </ul>
+      </section>
+
       <form class="settings-logout" action="/logout" method="post">
         <button type="submit">{{template "icon-logout"}}Log out</button>
       </form>

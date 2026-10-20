@@ -266,6 +266,10 @@ experience.
   it's rare and deliberate, and a pending state adds a scheduled job and doubt about
   whether the data is gone. Feeds and articles stay, since they're shared. Backups keep
   the data up to 35 days, which the privacy policy says.
+- **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): a
+  flat list, one `<outline>` per feed, with no nesting by site, since most readers turn
+  nested outlines into folders and would make one per site. Gone feeds are included:
+  they're still your subscriptions. Import is a todo item.
 - **Security emails:** password changed, email changed (to the old address), and account
   deleted. No "new login" alerts: they're noisy, and people learn to ignore them.
 - **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by

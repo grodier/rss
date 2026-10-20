@@ -58,7 +58,8 @@ small page with one form. Name (`/settings/name`) is the first:
 `settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
 100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
 and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
-to `/settings`. Email is shown as plain text for now.
+to `/settings`. Email is shown as plain text for now. A "Your data" section below has
+the subscriptions export (under "Subscriptions").
 
 **Email.** No page sends email yet. When one does, the handler calls
 `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
@@ -234,6 +235,14 @@ mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`)
 Subscriptions also decide which feeds are refreshed in the background and what's in the
 timeline.
 
+**Export.** "Export subscriptions", under "Your data" in Settings, downloads
+`/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription from
+`ListByUser`, gone feeds included, as a flat OPML 2.0 list with one `<outline>` per
+feed (`type="rss"`, `text` the feed's title or else its URL, `xmlUrl`, and `htmlUrl` the
+feed's site URL or else its site's). It's encoded into a buffer first, so a store or
+encoding error is an HTML 500 instead of half a file, and sent as
+`rss-subscriptions-YYYY-MM-DD.opml` (UTC).
+
 **Read:**
 
 1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
@@ -242,11 +251,13 @@ timeline.
 3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
    `ListByUser`.
 4. Templates: `feed.html`, `site.html`, `feeds.html`.
+5. Export: `internal/server/settings.go` (`opmlDoc`, `exportOPMLHandler`); the "Your
+   data" section of `settings.html`.
 
-**Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`;
-`internal/psql/subscriptions_test.go`.
+**Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`,
+`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`.
 
-**Why:** "Subscriptions" in decisions.md.
+**Why:** "Subscriptions" and "Accounts" in decisions.md.
 
 ## Reading: timeline, article pages and read state
 

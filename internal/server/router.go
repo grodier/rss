@@ -67,6 +67,7 @@ func (s *Server) router() http.Handler {
 			r.Get("/settings", s.settingsHandler)
 			r.Get("/settings/name", s.settingsNameHandler)
 			r.Post("/settings/name", s.settingsNameFormHandler)
+			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
 		})
 
 		r.Group(func(r chi.Router) {

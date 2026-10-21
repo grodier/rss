@@ -263,6 +263,9 @@ apply:
    the code can also be typed into the "Invite code" field. Each person chooses their
    own password.
 
+Someone who forgets their password resets it themselves with "Forgot password?" on the
+login page, which emails them a link; nothing needs changing in the database.
+
 To rotate the code, edit the variable; to turn signup off, delete it. The code may appear
 in the request logs, which log the URI.
 

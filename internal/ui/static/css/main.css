@@ -1443,6 +1443,27 @@
     text-align: center;
   }
 
+  /* A button in a sentence, styled as a link. */
+  .link-button {
+    display: inline;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    white-space: normal;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
+    cursor: pointer;
+  }
+
+  .link-button:hover {
+    background: none;
+    text-decoration-thickness: 2px;
+  }
+
   .solo-foot {
     margin-block-start: 2rem;
     color: var(--text-3);

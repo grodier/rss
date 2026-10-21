@@ -48,7 +48,8 @@ func TestRender(t *testing.T) {
 	})
 
 	t.Run("password_changed", func(t *testing.T) {
-		m, err := ts.Render("password_changed", struct{ Name string }{"Ada <3"})
+		resetURL := "https://rss.example.com/password/forgot"
+		m, err := ts.Render("password_changed", struct{ Name, ResetURL string }{"Ada <3", resetURL})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
@@ -57,7 +58,7 @@ func TestRender(t *testing.T) {
 		}
 		for _, want := range []string{
 			"Hi Ada <3,\n\nThe password for your rss account was just changed, and every other device was logged out.",
-			"If it wasn't, reply to this email right away.",
+			"If it wasn't, reset your password now (" + resetURL + ") and reply to this email.",
 		} {
 			if !strings.Contains(m.Text, want) {
 				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
@@ -66,6 +67,7 @@ func TestRender(t *testing.T) {
 		for _, want := range []string{
 			"<p>Hi Ada &lt;3,</p>",
 			"every other device was logged out.</p>",
+			`If it wasn't, <a href="` + resetURL + `">reset your password now</a> and reply to this email.</p>`,
 		} {
 			if !strings.Contains(m.HTML, want) {
 				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
@@ -119,6 +121,34 @@ func TestRender(t *testing.T) {
 			`<a href="` + url + `"`,
 			">Confirm email address</a>",
 			"The link works for 7 days.",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
+	t.Run("reset_password", func(t *testing.T) {
+		url := "https://rss.example.com/password/reset?token=abc_-123"
+		m, err := ts.Render("reset_password", struct{ Name, URL string }{"Ada", url})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Reset your rss password"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		for _, want := range []string{
+			"Hi Ada,\n\nSomeone, hopefully you, asked to reset the password for your rss account. Choose a new one here:\n\n" + url + "\n\n",
+			"The link works for 1 hour and only once. If you didn't ask for this, ignore this email; your password hasn't changed.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			`<a href="` + url + `"`,
+			">Choose a new password</a>",
+			"The link works for 1 hour and only once.",
 		} {
 			if !strings.Contains(m.HTML, want) {
 				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)

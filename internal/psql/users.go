@@ -177,6 +177,77 @@ func (r *UserRepository) ConfirmEmail(ctx context.Context, hash []byte) (string,
 	return userID, nil
 }
 
+// GetByEmail returns the user with email, ignoring case. rss.ErrNoRecord if
+// there is none.
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (rss.User, error) {
+	stmt := `SELECT id, name, email, email_confirmed_at, created_at FROM users WHERE email = $1`
+
+	var u rss.User
+	var confirmedAt sql.NullTime
+	err := r.DB.QueryRowContext(ctx, stmt, email).Scan(&u.ID, &u.Name, &u.Email, &confirmedAt, &u.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.User{}, rss.ErrNoRecord
+		}
+		return rss.User{}, err
+	}
+	u.EmailConfirmedAt = confirmedAt.Time
+	return u, nil
+}
+
+// ResetPassword uses a reset_password token: it sets the new password,
+// confirms the email, and deletes the user's reset tokens and every session.
+// ErrNoRecord if the token is unknown, expired, or for an address the
+// account no longer has.
+func (r *UserRepository) ResetPassword(ctx context.Context, hash []byte, newPassword string) (rss.User, error) {
+	// Hashed before the transaction starts, since Argon2 is slow.
+	newHash, err := password.Hash(newPassword)
+	if err != nil {
+		return rss.User{}, err
+	}
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.User{}, err
+	}
+	defer tx.Rollback()
+
+	stmt := `DELETE FROM user_tokens t USING users u
+		WHERE t.hash = $1 AND t.purpose = 'reset_password' AND t.expires_at > now()
+			AND u.id = t.user_id AND u.email = t.email
+		RETURNING u.id, u.name, u.email, u.created_at`
+	var u rss.User
+	if err := tx.QueryRowContext(ctx, stmt, hash).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.User{}, rss.ErrNoRecord
+		}
+		return rss.User{}, err
+	}
+
+	stmt = `UPDATE users
+		SET hashed_password = $2, email_confirmed_at = COALESCE(email_confirmed_at, now())
+		WHERE id = $1
+		RETURNING email_confirmed_at`
+	if err := tx.QueryRowContext(ctx, stmt, u.ID, []byte(newHash)).Scan(&u.EmailConfirmedAt); err != nil {
+		return rss.User{}, err
+	}
+
+	stmt = `DELETE FROM user_tokens WHERE user_id = $1 AND purpose = 'reset_password'`
+	if _, err := tx.ExecContext(ctx, stmt, u.ID); err != nil {
+		return rss.User{}, err
+	}
+
+	stmt = `DELETE FROM user_sessions WHERE user_id = $1`
+	if _, err := tx.ExecContext(ctx, stmt, u.ID); err != nil {
+		return rss.User{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return rss.User{}, err
+	}
+	return u, nil
+}
+
 // Delete verifies password and deletes the user, which cascades to their
 // subscriptions, reads, user_sessions and user_tokens. It returns the user as
 // they were, for the confirmation email. ErrWrongPassword if the password

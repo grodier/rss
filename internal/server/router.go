@@ -93,6 +93,12 @@ func (s *Server) router() http.Handler {
 			r.Get("/confirm-email", s.confirmEmailHandler)
 			r.Post("/confirm-email", s.confirmEmailFormHandler)
 
+			r.Get("/password/forgot", s.forgotPasswordHandler)
+			r.Post("/password/forgot", s.forgotPasswordFormHandler)
+			r.Get("/password/forgot/sent", s.forgotPasswordSentHandler)
+			r.Get("/password/reset", s.resetPasswordHandler)
+			r.Post("/password/reset", s.resetPasswordFormHandler)
+
 			// Lets password managers send people to the change-password page
 			// (https://w3c.github.io/webappsec-change-password-url/).
 			// Outside requireAuthentication, so it redirects before any login,

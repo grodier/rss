@@ -325,6 +325,7 @@ func TestLoginFormHandlerRateLimited(t *testing.T) {
 	form := url.Values{"email": {"user@example.com"}, "password": {"wrong-password"}}
 	rr := postForm(t, h, "/login", "192.0.2.1:1234", form)
 	assertRateLimitedForm(t, rr, "user@example.com")
+	assertBodyContains(t, rr.Body.String(), `Forgot your password? <a href="/password/forgot?email=user%40example.com">Reset it</a>.`)
 	if calls != 20 {
 		t.Errorf("Authenticate called %d times, want 20", calls)
 	}
@@ -564,7 +565,7 @@ func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<p class="error" id="email-error">There&#39;s already an account with this email.</p>`,
-		`<a href="/login">Log in instead</a>`,
+		`<a href="/login">Log in instead</a>, or <a href="/password/forgot?email=dup%40example.com">reset your password</a>.`,
 		`name="name" value="Test User"`,
 		`name="email" value="dup@example.com"`,
 	} {

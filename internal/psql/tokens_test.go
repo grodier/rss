@@ -216,3 +216,112 @@ func TestConfirmEmail(t *testing.T) {
 		}
 	})
 }
+
+func TestResetPassword(t *testing.T) {
+	db := psqltest.NewDB(t)
+	users := NewUserRepository(db)
+	tokens := NewTokenRepository(db)
+	sessions := NewUserSessionRepository(db)
+	hour := time.Now().Add(time.Hour)
+	idleBefore := time.Now().Add(-90 * 24 * time.Hour)
+	const oldPassword, newPassword = "correct-horse-battery", "staple-tuna-lamp"
+
+	newSession := func(t *testing.T, userID string) string {
+		t.Helper()
+		id, err := sessions.Create(t.Context(), userID, idleBefore)
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		return id
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		hash := createToken(t, tokens, userID, rss.TokenResetPassword, email, hour)
+		otherReset := createToken(t, tokens, userID, rss.TokenResetPassword, email, hour)
+		confirm := createToken(t, tokens, userID, rss.TokenConfirmEmail, email, hour)
+		sess1, sess2 := newSession(t, userID), newSession(t, userID)
+
+		otherID, otherEmail := newTokenUser(t, users)
+		otherUsersReset := createToken(t, tokens, otherID, rss.TokenResetPassword, otherEmail, hour)
+		otherUsersSession := newSession(t, otherID)
+
+		u, err := users.ResetPassword(t.Context(), hash, newPassword)
+		if err != nil {
+			t.Fatalf("ResetPassword: %v", err)
+		}
+		if u.ID != userID || u.Email != email || u.Name != "Token User" {
+			t.Errorf("ResetPassword = %+v, want user %s, %s", u, userID, email)
+		}
+		if u.EmailConfirmedAt.IsZero() {
+			t.Error("returned EmailConfirmedAt is zero")
+		}
+
+		if got, err := users.Authenticate(t.Context(), email, newPassword); err != nil || got != userID {
+			t.Errorf("Authenticate with the new password = %q, %v; want %q, nil", got, err, userID)
+		}
+		if _, err := users.Authenticate(t.Context(), email, oldPassword); !errors.Is(err, rss.ErrWrongPassword) {
+			t.Errorf("Authenticate with the old password: err = %v; want %v", err, rss.ErrWrongPassword)
+		}
+		got, err := users.GetByEmail(t.Context(), email)
+		if err != nil {
+			t.Fatalf("GetByEmail: %v", err)
+		}
+		if got.EmailConfirmedAt.IsZero() {
+			t.Error("email_confirmed_at is NULL")
+		}
+
+		for name, h := range map[string][]byte{"used": hash, "other reset": otherReset} {
+			if tokenExists(t, tokens, h) {
+				t.Errorf("the %s token is still there", name)
+			}
+		}
+		if !tokenExists(t, tokens, confirm) {
+			t.Error("the user's confirm token was deleted")
+		}
+		for _, id := range []string{sess1, sess2} {
+			if _, err := sessions.Get(t.Context(), id); !errors.Is(err, rss.ErrNoRecord) {
+				t.Errorf("session %s: err = %v; want %v", id, err, rss.ErrNoRecord)
+			}
+		}
+
+		if !tokenExists(t, tokens, otherUsersReset) {
+			t.Error("another user's reset token was deleted")
+		}
+		if _, err := sessions.Get(t.Context(), otherUsersSession); err != nil {
+			t.Errorf("another user's session: %v", err)
+		}
+	})
+
+	t.Run("not valid", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		used := createToken(t, tokens, userID, rss.TokenResetPassword, email, hour)
+		if _, err := users.ResetPassword(t.Context(), used, oldPassword); err != nil {
+			t.Fatalf("ResetPassword: %v", err)
+		}
+		otherAddress := createToken(t, tokens, userID, rss.TokenResetPassword, "old-"+email, hour)
+		confirm := createToken(t, tokens, userID, rss.TokenConfirmEmail, email, hour)
+		// Last, since Create deletes the user's expired tokens.
+		expired := createToken(t, tokens, userID, rss.TokenResetPassword, email, time.Now().Add(-time.Minute))
+		if !tokenExists(t, tokens, expired) {
+			t.Fatal("the expired token wasn't stored")
+		}
+
+		for name, hash := range map[string][]byte{
+			"unknown":                           token.Hash("unknown"),
+			"expired":                           expired,
+			"used":                              used,
+			"the account's email changed since": otherAddress,
+			"wrong purpose":                     confirm,
+		} {
+			t.Run(name, func(t *testing.T) {
+				if _, err := users.ResetPassword(t.Context(), hash, newPassword); !errors.Is(err, rss.ErrNoRecord) {
+					t.Errorf("ResetPassword error = %v, want ErrNoRecord", err)
+				}
+			})
+		}
+		if _, err := users.Authenticate(t.Context(), email, oldPassword); err != nil {
+			t.Errorf("Authenticate with the old password: %v", err)
+		}
+	})
+}

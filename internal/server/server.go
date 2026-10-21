@@ -53,9 +53,11 @@ type SiteStore interface {
 type UserStore interface {
 	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
+	GetByEmail(ctx context.Context, email string) (rss.User, error)
 	UpdateName(ctx context.Context, id, name string) error
 	ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error
 	ConfirmEmail(ctx context.Context, hash []byte) (string, error)
+	ResetPassword(ctx context.Context, hash []byte, newPassword string) (rss.User, error)
 	Delete(ctx context.Context, userID, password string) (rss.User, error)
 }
 
@@ -192,6 +194,14 @@ type Server struct {
 	// (keyed by user ID).
 	confirmResendLimiter *rateLimiter
 
+	// resetIPLimiter caps password reset requests per client IP (keyed by
+	// ipRateLimitKey).
+	resetIPLimiter *rateLimiter
+
+	// resetEmailLimiter caps password reset requests per submitted email
+	// (lowercased).
+	resetEmailLimiter *rateLimiter
+
 	// deleteAccountLimiter caps account deletion attempts per user (keyed by
 	// user ID).
 	deleteAccountLimiter *rateLimiter
@@ -227,6 +237,8 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		signupLimiter:         newRateLimiter(10, time.Hour),
 		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
 		confirmResendLimiter:  newRateLimiter(3, time.Hour),
+		resetIPLimiter:        newRateLimiter(10, time.Hour),
+		resetEmailLimiter:     newRateLimiter(3, time.Hour),
 		deleteAccountLimiter:  newRateLimiter(10, 10*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),

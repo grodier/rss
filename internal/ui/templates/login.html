@@ -24,6 +24,9 @@
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
+        {{if .RateLimited}}
+        <p class="hint">Forgot your password? <a href="/password/forgot{{with .Form.Email}}?email={{.}}{{end}}">Reset it</a>.</p>
+        {{end}}
         <div class="field">
           <label for="email">Email</label>
           <input type="email" id="email" name="email" value="{{.Form.Email}}"
@@ -38,6 +41,7 @@
             {{with .Form.FieldErrors.password}}aria-invalid="true" aria-describedby="password-error"{{end}}
             {{if eq $focus "password"}}autofocus{{end}} />
           {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
+          <p class="hint"><a href="/password/forgot{{with .Form.Email}}?email={{.}}{{end}}">Forgot password?</a></p>
         </div>
         <div>
           <button class="btn-primary btn-block" type="submit">Login</button>

@@ -75,6 +75,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/settings/password", s.settingsPasswordFormHandler)
 			r.Post("/settings/log-out-others", s.logOutOthersHandler)
 			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
+			r.Post("/confirm-email/resend", s.confirmResendHandler)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -85,6 +86,10 @@ func (s *Server) router() http.Handler {
 			r.Get("/login", s.loginHandler)
 			r.Post("/login", s.loginFormHandler)
 			r.Post("/logout", s.logoutHandler)
+
+			// Email links work in any browser, logged in or not.
+			r.Get("/confirm-email", s.confirmEmailHandler)
+			r.Post("/confirm-email", s.confirmEmailFormHandler)
 
 			// Lets password managers send people to the change-password page
 			// (https://w3c.github.io/webappsec-change-password-url/).

@@ -82,6 +82,12 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The account works without a confirmed address, and the notice offers
+	// Resend, so a failure here doesn't fail signup.
+	if err := s.sendConfirmation(r.Context(), rss.User{ID: id, Name: form.Name, Email: form.Email}); err != nil {
+		s.logError(r, err)
+	}
+
 	http.Redirect(w, r, s.popReturnTo(r), http.StatusSeeOther)
 }
 

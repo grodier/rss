@@ -73,6 +73,34 @@ func TestRender(t *testing.T) {
 		}
 	})
 
+	t.Run("confirm_email", func(t *testing.T) {
+		url := "https://rss.example.com/confirm-email?token=abc_-123"
+		m, err := ts.Render("confirm_email", struct{ Name, URL string }{"Ada", url})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Confirm your email address for rss"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		for _, want := range []string{
+			"Hi Ada,\n\nWelcome to rss! Confirm your email address by opening this link:\n\n" + url + "\n\nThe link works for 7 days.",
+			"If you didn't sign up for rss, you can ignore this email.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			`<a href="` + url + `"`,
+			">Confirm email address</a>",
+			"The link works for 7 days.",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
 	t.Run("data", func(t *testing.T) {
 		layout, err := fs.ReadFile(ui.Emails, "emails/layout.tmpl")
 		if err != nil {

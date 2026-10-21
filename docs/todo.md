@@ -8,13 +8,12 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Account management (planned in #270), in this order:
-   1. #264 Confirm email addresses (soft confirmation).
-   2. #265 Reset a forgotten password by email.
-   3. #266 Change your email address.
-   4. #268 Delete your account.
+   1. #265 Reset a forgotten password by email.
+   2. #266 Change your email address.
+   3. #268 Delete your account.
 
-   Issues that can be worked on in parallel sessions, in waves: #264 and #268;
-   then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #268 and #265;
+   then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

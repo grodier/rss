@@ -58,7 +58,8 @@ small page with one form. Name (`/settings/name`) is the first:
 `settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
 100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
 and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
-to `/settings`. Email is shown as plain text for now. A "Your data" section below has
+to `/settings`. Email is shown as plain text for now, with a "Not confirmed" tag
+(`.chip`) until the address is confirmed. A "Your data" section below has
 the subscriptions export (under "Subscriptions").
 
 **Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler`
@@ -97,7 +98,7 @@ A last "Help" section has a `mailto:` row for the support address
 (`Config.SupportEmail`; left out when it isn't set) and rows for the privacy policy and
 terms.
 
-**Email.** A handler that sends email (so far only the password change) calls
+**Email.** A handler that sends email (the password change and email confirmation) calls
 `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
 (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
 links are built with `s.absoluteURL`, never from the request) and queues it with
@@ -108,6 +109,42 @@ and returns nil. A runner worker claims the email (`ClaimNext`), sends it with t
 configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
 (`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
 work" and "Security measures" in [architecture.md](architecture.md).
+
+**Email confirmation.** Confirmation is soft: nothing requires it yet. After signup's
+`startSession`, `signupFormHandler` calls `sendConfirmation`, which makes a token with
+`token.New` (32 random bytes, base64url; only its SHA-256 is stored), saves it with
+`TokenRepository.Create` (purpose `confirm_email`, the address it's sent to, a 7-day
+expiry; `Create` first deletes the user's expired tokens), and queues the `confirm_email`
+email with the link `<base URL>/confirm-email?token=<token>`. If that fails, signup still
+succeeds and the error is logged: the notice offers Resend. Asking again doesn't cancel
+earlier links, since emails arrive out of order.
+
+Until the address is confirmed, the timeline and Settings show the `confirm-notice`
+partial (`.notice`; its data is `s.confirmNotice(r)`, nil for anonymous or confirmed
+users): "Confirm your email address: we sent a link to <address>." with a Resend button,
+which posts to `/confirm-email/resend` with the page as `return_to`.
+`confirmResendHandler` flashes "Your email address is already confirmed." for a
+confirmed user, refuses past `confirmResendLimiter` (3 per user per hour) with "We've
+already sent you several links. …", and otherwise calls `sendConfirmation` and flashes
+"We sent a new link to <address>."; then it redirects to `safeReturnPath(return_to,
+"/settings")`. The timeline shows flash messages, like other pages.
+
+The link works in any browser, logged in or not. `GET /confirm-email`
+(`confirmEmailHandler`) sets `Referrer-Policy: no-referrer` and `Cache-Control:
+no-store`, and looks the token up with `TokenRepository.Get`, which only returns an
+unexpired token whose address is still the account's. A valid one gets
+`confirm_email.html`: "Confirm <address> for your rss account." and a Confirm email
+address button that posts the token back; the GET never writes, so a mail scanner that
+opens the link can't confirm. `POST /confirm-email` (`confirmEmailFormHandler`) calls
+`UserRepository.ConfirmEmail`, which in one transaction deletes the token (checking the
+same conditions), sets `email_confirmed_at` (keeping an earlier time), and deletes the
+user's other `confirm_email` tokens; then it flashes "Thanks, your email address is
+confirmed." and redirects to the timeline, or to `/login` when not logged in. An unknown,
+expired, used or outdated token gets `link_expired.html` with a 410: "This link has
+expired" and "Confirmation links work for 7 days and only once.", then a Send a new link
+button (logged in, unconfirmed), "Your email address is already confirmed." and a link to
+Settings (confirmed), or "Log in to get a new link" (anonymous). The page takes its
+title, text and action from `linkExpiredPage`, so other email links can reuse it.
 
 **Read:**
 
@@ -146,6 +183,13 @@ work" and "Security measures" in [architecture.md](architecture.md).
     (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
     (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
     runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
+11. Email confirmation: `internal/token/token.go` (`New`, `Hash`);
+    `internal/server/confirm.go` (`sendConfirmation`, `confirmNotice`,
+    `confirmEmailHandler`, `confirmEmailFormHandler`, `confirmResendHandler`,
+    `confirmLinkExpired`, `linkExpiredPage`); `internal/psql/tokens.go`
+    (`TokenRepository`: `Create`, `Get`) and `users.go` (`ConfirmEmail`);
+    `confirm_email.html`, `link_expired.html`, `partials/confirm_notice.html`;
+    `internal/ui/emails/confirm_email.tmpl`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
@@ -161,7 +205,11 @@ work" and "Security measures" in [architecture.md](architecture.md).
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
 `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
-`emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
+`emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`);
+`internal/token/token_test.go`; `internal/server/confirm_test.go`
+(`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`,
+`TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`,
+`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `internal/password/password_test.go`; `internal/server/email_test.go`;
 `internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
 (`TestEmailFooterLinksPrivacy`).
 

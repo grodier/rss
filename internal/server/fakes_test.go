@@ -44,6 +44,7 @@ type fakeUserStore struct {
 	authenticateFn   func(ctx context.Context, email, password string) (string, error)
 	updateNameFn     func(ctx context.Context, id, name string) error
 	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
+	confirmEmailFn   func(ctx context.Context, hash []byte) (string, error)
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -60,6 +61,30 @@ func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
 
 func (f *fakeUserStore) ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error {
 	return f.changePasswordFn(ctx, userID, keepSessionID, current, next)
+}
+
+func (f *fakeUserStore) ConfirmEmail(ctx context.Context, hash []byte) (string, error) {
+	return f.confirmEmailFn(ctx, hash)
+}
+
+// fakeTokenStore records the tokens created in it, unless createErr is set.
+type fakeTokenStore struct {
+	createErr error
+	getFn     func(ctx context.Context, hash []byte, purpose string) (rss.Token, error)
+
+	created []rss.Token
+}
+
+func (f *fakeTokenStore) Create(ctx context.Context, t rss.Token) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	f.created = append(f.created, t)
+	return nil
+}
+
+func (f *fakeTokenStore) Get(ctx context.Context, hash []byte, purpose string) (rss.Token, error) {
+	return f.getFn(ctx, hash, purpose)
 }
 
 type fakeSessionStore struct {

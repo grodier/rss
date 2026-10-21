@@ -89,7 +89,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
@@ -100,6 +100,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); queue them in the outbox (`Queue`) and send them from it (`Runner`) over SMTP (`SMTPSender`) or to the log (`LogSender`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
+| `internal/token` | One-time tokens for email links: `New` (32 random bytes, base64url, and its SHA-256) and `Hash` | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates, email templates (`Emails`) and static files | — |
 | `internal/validator` | Form validation helpers; the rules for new passwords, with the embedded common-password list | — |
@@ -162,6 +163,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
+| `GET /confirm-email` | no | `confirmEmailHandler` | A confirmation link: a page with a Confirm button, or the expired-link page (410) |
+| `POST /confirm-email` | no | `confirmEmailFormHandler` | Confirm the address; flash, then the timeline or `/login` |
 | `GET /.well-known/change-password` | no | `changePasswordWellKnownHandler` | 302 to `/settings/password`, for password managers |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
 | `GET /feeds/{id}` | yes | `feedHandler` | Feed page; queues a refresh if the feed is stale |
@@ -179,6 +182,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
+| `POST /confirm-email/resend` | yes | `confirmResendHandler` | Email a new confirmation link; back to `return_to` (else `/settings`) |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.
@@ -224,14 +228,16 @@ emails   (the outbox: no foreign keys)
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
 - **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
-  is NULL until the address is confirmed; nothing reads it yet (#264).
+  is NULL until the address is confirmed (`ConfirmEmail`); while it is, logged-in pages
+  with the confirm notice show it.
 - **`user_sessions`**: one row per logged-in device, created at login, its `id` kept in
   the scs session under `sessionID`; deleting the row logs that device out.
   `last_seen_at` is written at most once a day. There's no sweeper: `authenticate`
   deletes an idle row when it sees it, and login deletes the user's idle rows.
 - **`user_tokens`**: one-time tokens for email links, keyed by the SHA-256 `hash` of the
-  token, with their `purpose`, the `email` they were sent to and `expires_at`. Not used
-  yet (#264).
+  token, with their `purpose`, the `email` they were sent to and `expires_at`
+  (`TokenRepository`). Using a token deletes it and the user's other tokens of its kind.
+  There's no sweeper: `TokenRepository.Create` deletes the user's expired tokens first.
 - **`emails`**: the outbox. `status` pending → sent or failed, `next_attempt_at` (when
   it's due, and the claim lease), `attempts`, `last_error` (internal, never shown); the
   bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
@@ -241,8 +247,8 @@ Deleting a site cascades to its feeds and their articles, subscriptions and read
 clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
 `user_sessions` and `user_tokens`, and leaves their `emails`.
 Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
-subscription row, logging out deletes the `user_sessions` row, and scs deletes expired
-sessions.
+subscription row, logging out deletes the `user_sessions` row, confirming an address
+deletes the user's `confirm_email` tokens, and scs deletes expired sessions.
 
 Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
 `schema_fingerprint` (one row: the fingerprint of the migrations last applied), which
@@ -322,6 +328,13 @@ CLAUDE.md.
   through to `LogSender`, which writes them to the logs. An email's bodies are cleared
   once it's sent or given up on (`MarkSent`, `GiveUp`), and the mail runner logs an
   email's `id`, never its address or body.
+- **Email links:** tokens are 32 random bytes (`internal/token`); `user_tokens` stores
+  only their SHA-256, so a database leak gives no working links. A token works once, until
+  it expires, and (except `change_email`) only while the account's email is still the
+  address it was sent to. Opening a link shows a page with a button and only the POST
+  uses the token, so mail scanners that open links can't use it. The link's page is served
+  with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in
+  its URL.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 
@@ -333,6 +346,7 @@ CLAUDE.md.
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
   | `passwordChangeLimiter` | user | 10 per 10 min |
+  | `confirmResendLimiter` | user | 3 confirmation emails (Resend) per hour |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
   queues about 20 to one address (ignoring case) per hour and returns

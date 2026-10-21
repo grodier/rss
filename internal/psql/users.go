@@ -138,3 +138,41 @@ func (r *UserRepository) ChangePassword(ctx context.Context, userID, keepSession
 
 	return tx.Commit()
 }
+
+// ConfirmEmail uses a confirm_email token: it marks the account's email
+// confirmed and deletes the user's other confirm_email tokens. ErrNoRecord if
+// the token is unknown, expired, or for an address the account no longer has.
+func (r *UserRepository) ConfirmEmail(ctx context.Context, hash []byte) (string, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	stmt := `DELETE FROM user_tokens t USING users u
+		WHERE t.hash = $1 AND t.purpose = 'confirm_email' AND t.expires_at > now()
+			AND u.id = t.user_id AND u.email = t.email
+		RETURNING t.user_id`
+	var userID string
+	if err := tx.QueryRowContext(ctx, stmt, hash).Scan(&userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", rss.ErrNoRecord
+		}
+		return "", err
+	}
+
+	stmt = `UPDATE users SET email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE id = $1`
+	if _, err := tx.ExecContext(ctx, stmt, userID); err != nil {
+		return "", err
+	}
+
+	stmt = `DELETE FROM user_tokens WHERE user_id = $1 AND purpose = 'confirm_email'`
+	if _, err := tx.ExecContext(ctx, stmt, userID); err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return userID, nil
+}

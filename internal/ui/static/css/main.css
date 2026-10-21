@@ -861,7 +861,7 @@
     text-decoration: underline;
   }
 
-  /* Read rows: a tinted card, quieter text and a "Read" tag. Still a timeline, not an inbox. */
+  /* Read rows: a tinted card, quieter text and image. Still a timeline, not an inbox. */
   .article-row.read .article-card {
     background: var(--surface);
   }
@@ -878,10 +878,6 @@
   .article-row.read .article-image {
     opacity: 0.65;
     filter: saturate(0.6);
-  }
-
-  .article-read-mark {
-    margin-inline-start: auto;
   }
 
   .article-also-in {

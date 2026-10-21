@@ -156,6 +156,61 @@ func TestRender(t *testing.T) {
 		}
 	})
 
+	t.Run("confirm_new_email", func(t *testing.T) {
+		url := "https://rss.example.com/email-change?token=abc_-123"
+		m, err := ts.Render("confirm_new_email", struct{ Name, NewEmail, URL string }{"Ada", "new@example.com", url})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Confirm your new email address for rss"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		for _, want := range []string{
+			"Hi Ada,\n\nOpen this link to make new@example.com the email address for your rss account:\n\n" + url + "\n\n",
+			"The link works for 24 hours. If you didn't ask for this, ignore this email.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			"<p>Open this link to make new@example.com the email address for your rss account:</p>",
+			`<a href="` + url + `"`,
+			"The link works for 24 hours. If you didn't ask for this, ignore this email.",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
+	t.Run("email_changed", func(t *testing.T) {
+		m, err := ts.Render("email_changed", struct{ Name, OldEmail, NewEmail string }{"Ada", "old@example.com", "new@example.com"})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Your rss email address was changed"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		const changed = "The email address for your rss account was changed from old@example.com to new@example.com. From now on, log in with new@example.com."
+		for _, want := range []string{
+			"Hi Ada,\n\n" + changed,
+			"If you didn't make this change, reply to this email right away.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			"<p>" + changed + "</p>",
+			"<p>If you didn't make this change, reply to this email right away.</p>",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
 	t.Run("data", func(t *testing.T) {
 		layout, err := fs.ReadFile(ui.Emails, "emails/layout.tmpl")
 		if err != nil {

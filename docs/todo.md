@@ -7,10 +7,9 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. Account management (planned in #270): #266 Change your email address.
-2. **Plan** the error-state walkthrough and run the first pass; then repeat it
+1. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-3. Before production or a few thousand feeds, **plan** load and performance testing.
+2. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

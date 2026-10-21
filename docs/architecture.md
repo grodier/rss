@@ -165,6 +165,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `POST /logout` | no | `logoutHandler` | |
 | `GET /confirm-email` | no | `confirmEmailHandler` | A confirmation link: a page with a Confirm button, or the expired-link page (410) |
 | `POST /confirm-email` | no | `confirmEmailFormHandler` | Confirm the address; flash, then the timeline or `/login` |
+| `GET /email-change` | no | `emailChangeHandler` | A change-email link: a page with a Change button, or the expired-link page (410) |
+| `POST /email-change` | no | `emailChangeFormHandler` | Switch to the new address (confirmed); notice to the old one; flash, then `/settings` or `/login` (409 if the address was taken) |
 | `GET, POST /password/forgot` | no | `forgotPasswordHandler`, `forgotPasswordFormHandler` | Ask for a reset link (`?email=` prefills); emails it, then the sent page |
 | `GET /password/forgot/sent` | no | `forgotPasswordSentHandler` | "Check your email", with a button to send another link; else 303 to `/password/forgot` |
 | `GET /password/reset` | no | `resetPasswordHandler` | A reset link: the new-password form, or the expired-link page (410) |
@@ -184,6 +186,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /settings` | yes | `settingsHandler` | Settings: the account's rows, Devices, Log out and the Delete account link |
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
 | `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
+| `GET, POST /settings/email` | yes | `settingsEmailHandler`, `settingsEmailFormHandler` | Change your email (with your password); emails a link to the new address |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 | `GET, POST /settings/delete` | yes | `settingsDeleteHandler`, `settingsDeleteFormHandler` | Delete your account (with your password); emails a notice, logs out, flash on `/` |
@@ -357,6 +360,7 @@ CLAUDE.md.
   | `resetIPLimiter` | client IP (IPv6 by /64) | 10 password reset requests per hour |
   | `resetEmailLimiter` | submitted email | 3 password reset requests per hour |
   | `deleteAccountLimiter` | user | 10 per 10 min |
+  | `emailChangeLimiter` | user | 5 email change requests per hour |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
   queues about 20 to one address (ignoring case) per hour and returns

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - change email</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Change email</h1>
+      </header>
+
+      {{$focus := .Form.FirstError "email" "password"}}
+      <form class="settings-form" action="/settings/email" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <p class="form-intro">Your email address is {{.Nav.User.Email}}.</p>
+        <div class="field">
+          <label for="email">New email</label>
+          <input type="email" id="email" name="email" value="{{.Form.Email}}"
+            autocomplete="email" autocapitalize="none" spellcheck="false"
+            {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+            {{if eq $focus "email"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+        </div>
+        <div class="field">
+          <label for="password">Current password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password"
+            {{with .Form.FieldErrors.password}}aria-invalid="true" aria-describedby="password-error"{{end}}
+            {{if eq $focus "password"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
+        </div>
+        <p class="form-intro">We'll send a link to your new address. Your email won't change until you open it.</p>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Send link</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

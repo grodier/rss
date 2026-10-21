@@ -368,6 +368,7 @@ func TestConfirmNotice(t *testing.T) {
 				`<form action="/confirm-email/resend" method="post">`,
 				`<input type="hidden" name="return_to" value="`+p.target+`" />`,
 				"Resend</button>",
+				`<a href="/settings/email">Wrong address?</a>`,
 			)
 
 			if body := get(confirmedSession); strings.Contains(body, "confirm-email/resend") {

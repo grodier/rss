@@ -44,11 +44,12 @@
             </a>
           </li>
           <li>
-            <div class="settings-row">
+            <a class="settings-row" href="/settings/email">
               <span class="settings-label">Email</span>
               <span class="settings-value">{{.User.Email}}</span>
               {{if .User.EmailConfirmedAt.IsZero}}<span class="chip">Not confirmed</span>{{end}}
-            </div>
+              {{template "icon-chevron"}}
+            </a>
           </li>
           <li>
             <a class="settings-row" href="/settings/password">

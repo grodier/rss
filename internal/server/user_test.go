@@ -22,8 +22,16 @@ import (
 const testInviteCode = "test-invite-code-0123"
 
 // newSignupTestServer is newTestServerWith with signup open to testInviteCode.
+// Signup sends a confirmation email, so a nil TokenService or EmailQueue gets
+// a fake.
 func newSignupTestServer(t *testing.T, svc Services) *Server {
 	t.Helper()
+	if svc.TokenService == nil {
+		svc.TokenService = &fakeTokenStore{}
+	}
+	if svc.EmailQueue == nil {
+		svc.EmailQueue = &fakeEmailQueue{}
+	}
 	return newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: testInviteCode}, svc)
 }
 

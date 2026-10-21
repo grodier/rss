@@ -47,6 +47,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
+- `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates, emails and static files
 - `internal/validator`: form validation
 - `infra`: Terraform for production (Render); its README is the runbook

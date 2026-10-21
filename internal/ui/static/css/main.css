@@ -661,6 +661,31 @@
     background: var(--info-bg);
   }
 
+  /* A quiet request, like confirming your email address, with a small
+     form beside it. */
+  .notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin: 0.75rem 1rem 0;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--info-bg);
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .notice p {
+    flex: 1;
+    min-inline-size: 12rem;
+    overflow-wrap: anywhere;
+  }
+
+  .notice strong {
+    color: var(--text);
+  }
+
   .fetch-error {
     color: var(--danger);
   }
@@ -1066,6 +1091,16 @@
     margin-inline-end: 1.875rem;
   }
 
+  /* A tag after a value, like "Not confirmed", takes the chevron's place. */
+  .settings-row .chip {
+    flex: none;
+    margin-inline-end: 1.875rem;
+  }
+
+  div.settings-row .settings-value:has(+ .chip) {
+    margin-inline-end: 0;
+  }
+
   .settings-logout {
     padding: 1.5rem 1rem;
   }
@@ -1352,6 +1387,11 @@
 
   .solo-panel form > div:last-child {
     margin-block-start: 1.25rem;
+  }
+
+  .solo-text {
+    color: var(--text-2);
+    text-align: center;
   }
 
   .solo-panel .alt {

@@ -17,6 +17,8 @@
         <h1>Settings</h1>
       </header>
 
+      {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
+
       {{with .Flash}}
       <div class="flash">{{.}}</div>
       {{end}}
@@ -45,6 +47,7 @@
             <div class="settings-row">
               <span class="settings-label">Email</span>
               <span class="settings-value">{{.User.Email}}</span>
+              {{if .User.EmailConfirmedAt.IsZero}}<span class="chip">Not confirmed</span>{{end}}
             </div>
           </li>
           <li>

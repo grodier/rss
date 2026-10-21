@@ -19,6 +19,12 @@
         {{if .Before}}<a href="/">Back to newest</a>{{end}}
       </header>
 
+      {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
       {{if .Rows}}
       <div class="article-list">
         {{range .Rows}}

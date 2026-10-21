@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - {{.Title}}</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel hero">
+      <h1>{{.Title}}</h1>
+      <p>{{.Text}}</p>
+      {{with .Note}}<p>{{.}}</p>{{end}}
+      <div class="hero-actions">
+        {{with .Form}}
+        <form action="{{.URL}}" method="post">
+          <button class="btn-primary" type="submit">{{.Label}}</button>
+        </form>
+        {{end}}
+        {{with .Link}}<a class="btn" href="{{.URL}}">{{.Label}}</a>{{end}}
+      </div>
+    </div>
+  </main>
+</body>
+
+</html>

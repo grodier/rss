@@ -90,6 +90,7 @@ func (app *Application) Run() error {
 		FeedService:         psql.NewFeedRepository(db),
 		UserService:         psql.NewUserRepository(db),
 		SessionService:      psql.NewUserSessionRepository(db),
+		TokenService:        psql.NewTokenRepository(db),
 		SearchService:       psql.NewSearchRepository(db),
 		SiteService:         psql.NewSiteRepository(db),
 		LookupService:       psql.NewLookupRepository(db),

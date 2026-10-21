@@ -192,6 +192,22 @@ type User struct {
 	CreatedAt        time.Time
 }
 
+// Token is a one-time email link (a user_tokens row).
+type Token struct {
+	Hash      []byte
+	UserID    string
+	Purpose   string // TokenConfirmEmail, TokenResetPassword or TokenChangeEmail
+	Email     string // the address it was sent to
+	ExpiresAt time.Time
+}
+
+// Token purposes.
+const (
+	TokenConfirmEmail  = "confirm_email"
+	TokenResetPassword = "reset_password"
+	TokenChangeEmail   = "change_email"
+)
+
 // Session is one logged-in device (a user_sessions row) with its user.
 type Session struct {
 	ID         string

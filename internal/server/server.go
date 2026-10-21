@@ -55,6 +55,14 @@ type UserStore interface {
 	Authenticate(ctx context.Context, email, password string) (string, error)
 	UpdateName(ctx context.Context, id, name string) error
 	ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error
+	ConfirmEmail(ctx context.Context, hash []byte) (string, error)
+}
+
+// TokenStore stores the one-time tokens sent in email links (user_tokens
+// rows).
+type TokenStore interface {
+	Create(ctx context.Context, t rss.Token) error
+	Get(ctx context.Context, hash []byte, purpose string) (rss.Token, error)
 }
 
 // SessionStore stores logged-in devices (user_sessions rows).
@@ -121,6 +129,7 @@ var (
 	_ FeedStore         = (*psql.FeedRepository)(nil)
 	_ UserStore         = (*psql.UserRepository)(nil)
 	_ SessionStore      = (*psql.UserSessionRepository)(nil)
+	_ TokenStore        = (*psql.TokenRepository)(nil)
 	_ SearchStore       = (*psql.SearchRepository)(nil)
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
@@ -133,6 +142,7 @@ type Services struct {
 	FeedService         FeedStore
 	UserService         UserStore
 	SessionService      SessionStore
+	TokenService        TokenStore
 	SearchService       SearchStore
 	SiteService         SiteStore
 	LookupService       LookupStore
@@ -177,6 +187,10 @@ type Server struct {
 	// user ID).
 	passwordChangeLimiter *rateLimiter
 
+	// confirmResendLimiter caps confirmation emails sent with Resend per user
+	// (keyed by user ID).
+	confirmResendLimiter *rateLimiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
@@ -207,6 +221,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		loginFailureLimiter:   newRateLimiter(10, 15*time.Minute),
 		signupLimiter:         newRateLimiter(10, time.Hour),
 		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
+		confirmResendLimiter:  newRateLimiter(3, time.Hour),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - confirm your email address</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel">
+      {{template "brand"}}
+      <h1>Confirm your email address</h1>
+
+      <form action="/confirm-email" method="post">
+        <p class="solo-text">Confirm {{.Email}} for your rss account.</p>
+        <input type="hidden" name="token" value="{{.Token}}" />
+        <div>
+          <button class="btn-primary btn-block" type="submit">Confirm email address</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</body>
+
+</html>

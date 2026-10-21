@@ -1,0 +1,26 @@
+{{define "subject"}}Confirm your email address for rss{{end}}
+
+{{define "text" -}}
+Hi {{.Name}},
+
+Welcome to rss! Confirm your email address by opening this link:
+
+{{.URL}}
+
+The link works for 7 days. Confirming makes sure we can reach you if you ever need to reset your password.
+
+If you didn't sign up for rss, you can ignore this email.
+
+{{template "text-footer"}}
+{{- end}}
+
+{{define "html" -}}
+{{template "html-start"}}
+<p>Hi {{.Name}},</p>
+<p>Welcome to rss! Confirm your email address by opening this link:</p>
+<p style="margin:24px 0"><a href="{{.URL}}" style="display:inline-block;padding:10px 20px;border-radius:999px;background:#111318;color:#ffffff;font-weight:600;text-decoration:none">Confirm email address</a></p>
+<p style="color:#59636e;font-size:14px;word-break:break-all">Or paste this link into your browser: {{.URL}}</p>
+<p>The link works for 7 days. Confirming makes sure we can reach you if you ever need to reset your password.</p>
+<p>If you didn't sign up for rss, you can ignore this email.</p>
+{{template "html-end"}}
+{{- end}}

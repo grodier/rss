@@ -47,7 +47,24 @@
               <span class="settings-value">{{.User.Email}}</span>
             </div>
           </li>
+          <li>
+            <a class="settings-row" href="/settings/password">
+              <span class="settings-label">Password</span>
+              <span class="settings-value"></span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
         </ul>
+      </section>
+
+      <section>
+        <div class="list-head">
+          <h2>Devices</h2>
+        </div>
+        <form class="settings-devices" action="/settings/log-out-others" method="post">
+          <p>Logged in somewhere you shouldn't be?</p>
+          <button type="submit">Log out of all other devices</button>
+        </form>
       </section>
 
       <section>

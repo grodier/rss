@@ -198,6 +198,11 @@
     color: var(--text);
   }
 
+  input[readonly] {
+    background: var(--surface);
+    color: var(--text-2);
+  }
+
   input:not([type="hidden"]):focus {
     outline: none;
     border-color: var(--accent);
@@ -1055,6 +1060,21 @@
 
   .settings-form {
     padding: 1.25rem 1rem;
+  }
+
+  .settings-devices {
+    padding: 0.875rem 1rem 0;
+  }
+
+  .settings-devices p {
+    margin-block-end: 0.75rem;
+    color: var(--text-2);
+  }
+
+  .form-note {
+    margin-block-start: 1.25rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   .form-actions {

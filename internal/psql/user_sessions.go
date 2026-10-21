@@ -79,3 +79,14 @@ func (r *UserSessionRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.DB.ExecContext(ctx, stmt, id)
 	return err
 }
+
+// DeleteOthers logs userID out of every device except keepID and returns how
+// many sessions it deleted.
+func (r *UserSessionRepository) DeleteOthers(ctx context.Context, userID, keepID string) (int64, error) {
+	stmt := `DELETE FROM user_sessions WHERE user_id = $1 AND id <> $2`
+	res, err := r.DB.ExecContext(ctx, stmt, userID, keepID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

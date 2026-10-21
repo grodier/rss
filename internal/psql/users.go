@@ -89,3 +89,52 @@ func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error 
 	}
 	return nil
 }
+
+// ChangePassword replaces the password of the user with userID, if current
+// is right, and logs out every other device: it deletes the user's sessions
+// except keepSessionID. A wrong current password returns
+// rss.ErrWrongPassword with nothing changed; an unknown user,
+// rss.ErrNoRecord.
+func (r *UserRepository) ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error {
+	// Verified before the transaction starts, since Argon2 is slow.
+	var hashedPassword []byte
+	stmt := `SELECT hashed_password FROM users WHERE id = $1`
+	err := r.DB.QueryRowContext(ctx, stmt, userID).Scan(&hashedPassword)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.ErrNoRecord
+		}
+		return err
+	}
+
+	match, err := password.Verify(current, string(hashedPassword))
+	if err != nil {
+		return fmt.Errorf("verify password for user %s: %w", userID, err)
+	}
+	if !match {
+		return rss.ErrWrongPassword
+	}
+
+	newHash, err := password.Hash(next)
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt = `UPDATE users SET hashed_password = $2 WHERE id = $1`
+	if _, err := tx.ExecContext(ctx, stmt, userID, []byte(newHash)); err != nil {
+		return err
+	}
+
+	stmt = `DELETE FROM user_sessions WHERE user_id = $1 AND id <> $2`
+	if _, err := tx.ExecContext(ctx, stmt, userID, keepSessionID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}

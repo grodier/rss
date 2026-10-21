@@ -11,10 +11,9 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
    1. #264 Confirm email addresses (soft confirmation).
    2. #265 Reset a forgotten password by email.
    3. #266 Change your email address.
-   4. #267 Export your subscriptions as OPML.
-   5. #268 Delete your account.
+   4. #268 Delete your account.
 
-   Issues that can be worked on in parallel sessions, in waves: #264, #267 and #268;
+   Issues that can be worked on in parallel sessions, in waves: #264 and #268;
    then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
@@ -85,7 +84,7 @@ decisions.md.
   and links can be split between two hosts. Redirect requests for any other host to
   `-base-url`'s, except `/healthcheck`, which Render's health checks call.
 - [ ] **Full data export.** A JSON file with your account, subscriptions and reading
-  history, next to the OPML export (#267).
+  history, next to the OPML export.
 - [ ] **Clean up abandoned unconfirmed accounts**, e.g. delete accounts never confirmed
   and unused for 30 days after signup. Only if they pile up.
 - [ ] **Support tools.** `www` commands can't run in production, so the self-service flows
@@ -213,7 +212,7 @@ Each with when it pays off:
   that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
   browsing a site's feeds in context. It isn't a way to organise subscriptions (no
   folders or pinned feeds). Open question: how it relates to the standalone feed page.
-- [ ] **OPML import.** Import subscriptions from another reader. Export is #267.
+- [ ] **OPML import.** Import subscriptions from another reader. Export exists (#267).
 
 ## Reading
 

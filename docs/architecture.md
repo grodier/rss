@@ -178,6 +178,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
 | `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
+| `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
 parsed together with all of `templates/partials/*.html` into one template per page.

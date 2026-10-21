@@ -74,6 +74,7 @@ func (s *Server) router() http.Handler {
 			r.Get("/settings/password", s.settingsPasswordHandler)
 			r.Post("/settings/password", s.settingsPasswordFormHandler)
 			r.Post("/settings/log-out-others", s.logOutOthersHandler)
+			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
 		})
 
 		r.Group(func(r chi.Router) {

@@ -69,6 +69,23 @@
 
       <section>
         <div class="list-head">
+          <h2>Your data</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          <li>
+            <a class="settings-row" href="/settings/subscriptions.opml" download aria-describedby="export-hint">
+              <span class="settings-stack">
+                <span class="settings-label">Export subscriptions</span>
+                <span class="hint" id="export-hint">An OPML file you can import into another reader.</span>
+              </span>
+              {{template "icon-download"}}
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="list-head">
           <h2>Help</h2>
         </div>
         <ul class="settings-list" role="list">

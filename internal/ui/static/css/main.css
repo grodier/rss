@@ -886,13 +886,23 @@
     text-decoration: underline;
   }
 
+  /* Read rows: a tinted card, quieter text and image. Still a timeline, not an inbox. */
+  .article-row.read .article-card {
+    background: var(--surface);
+  }
+
   .article-row.read .article-title a {
     color: var(--text-2);
     font-weight: 550;
   }
 
+  .article-row.read .article-excerpt {
+    color: var(--text-3);
+  }
+
   .article-row.read .article-image {
-    opacity: 0.8;
+    opacity: 0.65;
+    filter: saturate(0.6);
   }
 
   .article-also-in {

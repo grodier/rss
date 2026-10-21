@@ -101,7 +101,7 @@ Planned in #139 (issues #135–#138).
 Planned in #163 (issues #147–#162).
 
 - **A timeline, not an inbox.** Read state is recorded but only shown as a quiet marker on
-  read rows (dimmed, like a visited link). No unread counts, badges, "N new" indicators,
+  read rows (tinted card, dimmed text and image). No unread counts, badges, "N new" indicators,
   "mark all read", or manual mark read/unread. No unread filter for now.
 - **What counts as read:** opening the article page, or clicking through to the original
   from a row. Scrolling past doesn't; "seen" isn't recorded. Reads are per user and

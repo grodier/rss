@@ -328,7 +328,7 @@ summary) through `sanitize.HTML`, with relative URLs resolved against the articl
 through to the original from a row: the link has `ping="/articles/{id}/read"`, which
 `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`. List pages
 ask `ReadArticleIDs` which rows are read (matching any copy with the same
-`canonical_url`) and the `article-row` partial dims them.
+`canonical_url`) and the `article-row` partial marks them (tinted card, dimmed text and image, a "✓ Read" tag).
 
 **Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the
 viewport it fetches that page, appends its rows, and swaps in the new pager. It keeps the

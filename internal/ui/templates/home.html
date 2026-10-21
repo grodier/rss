@@ -11,6 +11,9 @@
 <body>
   <main class="solo">
     <div class="solo-panel hero">
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
       <span class="brand-mark">{{template "icon-rss"}}</span>
       <h1>rss</h1>
       <p>One quiet timeline for the sites you follow.</p>

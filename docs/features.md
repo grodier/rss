@@ -98,8 +98,26 @@ A last "Help" section has a `mailto:` row for the support address
 (`Config.SupportEmail`; left out when it isn't set) and rows for the privacy policy and
 terms.
 
-**Email.** A handler that sends email (the password change and email confirmation) calls
-`s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+**Deleting an account.** At the very bottom of Settings, under Log out, a "Delete
+account" link in danger text opens `/settings/delete` (`settingsDeleteHandler`). The page
+says what goes (the account, subscriptions and reading history) and what stays (feeds and
+articles, which are shared), offers the OPML export first ("Export them first"), and has
+a read-only email field (`autocomplete="username"`), a password field and a "Delete my
+account" button (`.btn-danger`). `settingsDeleteFormHandler` checks the per-user limit
+(`deleteAccountLimiter`, 429), that the password isn't blank ("Enter your password."),
+then calls `UserRepository.Delete`, which reads the user and verifies the password
+outside any transaction (a wrong one is `rss.ErrWrongPassword`: "That password isn't
+right.", 422) and deletes the `users` row; the foreign keys cascade to the user's
+subscriptions, reads, `user_sessions` and `user_tokens`. Deletion is immediate. `Delete`
+returns the user as they were, and the handler queues the `account_deleted` email ("Your
+rss account was deleted", which says backup copies go within 35 days) to the old address
+(the outbox has no foreign key to users), logging an error rather than failing if it
+can't. Then it renews the session token, removes `sessionID`, flashes "Your account was
+deleted. Thanks for trying rss." and redirects to `/`, whose logged-out page shows the
+flash.
+
+**Email.** A handler that sends email (the password change, email confirmation and
+account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
 (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
 links are built with `s.absoluteURL`, never from the request) and queues it with
 `mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
@@ -173,10 +191,12 @@ title, text and action from `linkExpiredPage`, so other email links can reuse it
    `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry);
    `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
    `settingsNameFormHandler`, `settingsPasswordFormHandler`, `logOutOthersHandler`,
-   `changePasswordWellKnownHandler`); `internal/validator/account.go` (`CheckName`);
-   `internal/psql/users.go` (`UpdateName`, `ChangePassword`) and `user_sessions.go`
-   (`DeleteOthers`); `settings.html`, `settings_name.html`, `settings_password.html`;
-   `internal/ui/emails/password_changed.tmpl`.
+   `changePasswordWellKnownHandler`, `settingsDeleteFormHandler`);
+   `internal/validator/account.go` (`CheckName`); `internal/psql/users.go`
+   (`UpdateName`, `ChangePassword`, `Delete`) and `user_sessions.go` (`DeleteOthers`);
+   `settings.html`, `settings_name.html`, `settings_password.html`,
+   `settings_delete.html`; `home.go` (`homeHandler`'s logged-out flash) and `home.html`;
+   `internal/ui/emails/password_changed.tmpl`, `account_deleted.tmpl`.
    The policy pages: `internal/server/policy.go`, `privacy.html`, `terms.html` and
    `partials/policy.html` (`policy-links`, `support-link`).
 10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
@@ -209,7 +229,8 @@ title, text and action from `linkExpiredPage`, so other email links can reuse it
 `internal/token/token_test.go`; `internal/server/confirm_test.go`
 (`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`,
 `TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`,
-`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `internal/password/password_test.go`; `internal/server/email_test.go`;
+`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `settings_test.go` (`TestSettingsDeleteForm`,
+`TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`); `internal/password/password_test.go`; `internal/server/email_test.go`;
 `internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
 (`TestEmailFooterLinksPrivacy`).
 

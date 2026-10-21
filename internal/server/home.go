@@ -12,7 +12,8 @@ const timelinePageSize = 30
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
-		if err := s.renderHTML(w, http.StatusOK, "home.html", nil); err != nil {
+		data := struct{ Flash string }{Flash: s.sessionManager.PopString(r.Context(), "flash")}
+		if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 			s.serverErrorHTML(w, r, err)
 		}
 		return

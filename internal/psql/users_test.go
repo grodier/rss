@@ -175,3 +175,118 @@ func TestUserRepositoryChangePassword(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteUser(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewUserRepository(db)
+	sessions := NewUserSessionRepository(db)
+	tokens := NewTokenRepository(db)
+	subs := NewSubscriptionRepository(db)
+	reads := NewReadRepository(db)
+
+	const password = "correct-horse-battery"
+
+	count := func(t *testing.T, query string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		return n
+	}
+
+	// newUser creates a user with password who subscribes to the feed of
+	// articleID, has read it, and has a session and a token. It returns the
+	// user's ID and email.
+	newUser := func(t *testing.T, articleID string) (string, string) {
+		t.Helper()
+		email := fmt.Sprintf("test-delete-%d@example.com", time.Now().UnixNano())
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+				t.Errorf("cleanup user: %v", err)
+			}
+		})
+		userID, _, err := repo.Create(t.Context(), "Delete User", email, password)
+		if err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+		var feedID string
+		if err := db.QueryRow(`SELECT feed_id FROM articles WHERE id = $1`, articleID).Scan(&feedID); err != nil {
+			t.Fatal(err)
+		}
+		if err := subs.Subscribe(t.Context(), userID, feedID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		if err := reads.MarkRead(t.Context(), userID, articleID); err != nil {
+			t.Fatalf("MarkRead: %v", err)
+		}
+		if _, err := sessions.Create(t.Context(), userID, time.Now().Add(-90*24*time.Hour)); err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		createToken(t, tokens, userID, rss.TokenConfirmEmail, email, time.Now().Add(time.Hour))
+		return userID, email
+	}
+
+	// rows counts the user's rows in each table the delete cascades to.
+	rows := func(t *testing.T, userID string) map[string]int {
+		t.Helper()
+		got := map[string]int{}
+		for _, table := range []string{"users", "subscriptions", "reads", "user_sessions", "user_tokens"} {
+			col := "user_id"
+			if table == "users" {
+				col = "id"
+			}
+			got[table] = count(t, `SELECT count(*) FROM `+table+` WHERE `+col+` = $1`, userID)
+		}
+		return got
+	}
+
+	t.Run("wrong password", func(t *testing.T) {
+		articleID := newTestArticles(t, db, 1)[0]
+		userID, _ := newUser(t, articleID)
+
+		_, err := repo.Delete(t.Context(), userID, "wrong-password")
+		if !errors.Is(err, rss.ErrWrongPassword) {
+			t.Fatalf("err = %v; want %v", err, rss.ErrWrongPassword)
+		}
+		for table, n := range rows(t, userID) {
+			if n != 1 {
+				t.Errorf("%s: %d rows; want 1", table, n)
+			}
+		}
+	})
+
+	t.Run("right password", func(t *testing.T) {
+		articleID := newTestArticles(t, db, 1)[0]
+		userID, email := newUser(t, articleID)
+		otherID, _ := newUser(t, articleID)
+
+		got, err := repo.Delete(t.Context(), userID, password)
+		if err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+		if got.ID != userID || got.Name != "Delete User" || got.Email != email || got.CreatedAt.IsZero() {
+			t.Errorf("Delete returned %+v; want the user as they were", got)
+		}
+		for table, n := range rows(t, userID) {
+			if n != 0 {
+				t.Errorf("%s: %d rows left; want 0", table, n)
+			}
+		}
+		if n := count(t, `SELECT count(*) FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE a.id = $1`, articleID); n != 1 {
+			t.Errorf("the article and its feed: %d rows; want 1", n)
+		}
+		for table, n := range rows(t, otherID) {
+			if n != 1 {
+				t.Errorf("other user's %s: %d rows; want 1", table, n)
+			}
+		}
+	})
+
+	t.Run("unknown user", func(t *testing.T) {
+		_, err := repo.Delete(t.Context(), "00000000-0000-4000-8000-000000000000", password)
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
+}

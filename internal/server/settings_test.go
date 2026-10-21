@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
@@ -38,6 +40,7 @@ func TestSettingsHandler(t *testing.T) {
 			`<a class="settings-row" href="/settings/subscriptions.opml" download`,
 			"An OPML file you can import into another reader.",
 			`<form class="settings-logout" action="/logout" method="post">`,
+			`<a href="/settings/delete">Delete account</a>`,
 			`<a class="rail-account" href="/settings" aria-current="page">`,
 		)
 	})
@@ -93,6 +96,8 @@ func TestSettingsRoutesRequireAuthentication(t *testing.T) {
 		{http.MethodPost, "/settings/password"},
 		{http.MethodPost, "/settings/log-out-others"},
 		{http.MethodGet, "/settings/subscriptions.opml"},
+		{http.MethodGet, "/settings/delete"},
+		{http.MethodPost, "/settings/delete"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
@@ -576,4 +581,288 @@ func TestExportOPML(t *testing.T) {
 			t.Errorf("Content-Disposition = %q, want none", got)
 		}
 	})
+}
+
+func TestSettingsDeleteHandler(t *testing.T) {
+	s := newTestServer(t)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsDeleteHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body,
+		"<h1>Delete your account</h1>",
+		"This permanently deletes your account, your subscriptions and your reading history. Feeds and articles stay, because other readers share them. You can't undo this.",
+		`Want to keep your subscriptions? <a href="/settings/subscriptions.opml" download>Export them first</a>.`,
+		`<input type="email" id="email" value="ada@example.com" autocomplete="username" readonly />`,
+		`<input type="password" id="password" name="password" autocomplete="current-password"`,
+		`<button class="btn-danger" type="submit">Delete my account</button>`,
+		`<a class="rail-account" href="/settings" aria-current="page">`,
+	)
+	if strings.Contains(body, "autofocus") {
+		t.Error("the form has autofocus without an error")
+	}
+}
+
+// postSettingsDelete posts password to POST /settings/delete as
+// settingsSession. It returns the response, the flash message left in the
+// session and whether the session still holds a sessionID.
+func postSettingsDelete(t *testing.T, s *Server, password string) (rr *httptest.ResponseRecorder, flash string, loggedIn bool) {
+	t.Helper()
+	form := url.Values{"password": {password}}
+	req := httptest.NewRequest(http.MethodPost, "/settings/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(requestWithSession(settingsSession).Context())
+	rr = httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.sessionManager.Put(r.Context(), "sessionID", settingsSession.ID)
+		s.settingsDeleteFormHandler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+		loggedIn = s.sessionManager.Exists(r.Context(), "sessionID")
+	})).ServeHTTP(rr, req)
+	return rr, flash, loggedIn
+}
+
+func TestSettingsDeleteForm(t *testing.T) {
+	const password = "correct-horse-battery"
+	const wantFlash = "Your account was deleted. Thanks for trying rss."
+
+	tests := []struct {
+		name      string
+		password  string
+		storeErr  error
+		wantError string
+	}{
+		{"blank password", "", nil, "Enter your password."},
+		{"wrong password", password, rss.ErrWrongPassword, "That password isn&#39;t right."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue := &fakeEmailQueue{}
+			s := newTestServerWith(t, Services{
+				UserService: &fakeUserStore{
+					deleteFn: func(context.Context, string, string) (rss.User, error) {
+						if tt.storeErr == nil {
+							t.Error("Delete must not be called")
+						}
+						return rss.User{}, tt.storeErr
+					},
+				},
+				EmailQueue: queue,
+			})
+
+			rr, flash, loggedIn := postSettingsDelete(t, s, tt.password)
+
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+			}
+			body := rr.Body.String()
+			assertBodyContains(t, body,
+				`<p class="error" id="password-error">`+tt.wantError+`</p>`,
+				`aria-invalid="true"`,
+				"autofocus",
+			)
+			if tt.password != "" && strings.Contains(body, tt.password) {
+				t.Errorf("the page echoes the password back")
+			}
+			if n := len(queue.messages()); n != 0 {
+				t.Errorf("queued %d emails, want 0", n)
+			}
+			if flash != "" {
+				t.Errorf("flash = %q, want none", flash)
+			}
+			if !loggedIn {
+				t.Error("the session lost its sessionID")
+			}
+		})
+	}
+
+	t.Run("success", func(t *testing.T) {
+		var gotUserID, gotPassword string
+		queue := &fakeEmailQueue{}
+		s := newTestServerWith(t, Services{
+			UserService: &fakeUserStore{
+				deleteFn: func(ctx context.Context, userID, pw string) (rss.User, error) {
+					gotUserID, gotPassword = userID, pw
+					return settingsSession.User, nil
+				},
+			},
+			EmailQueue: queue,
+		})
+
+		rr, flash, loggedIn := postSettingsDelete(t, s, password)
+
+		assertRedirect(t, rr, "/")
+		if gotUserID != settingsSession.User.ID || gotPassword != password {
+			t.Errorf("Delete(%q, %q), want (%q, %q)", gotUserID, gotPassword, settingsSession.User.ID, password)
+		}
+		msgs := queue.messages()
+		if len(msgs) != 1 {
+			t.Fatalf("queued %d emails, want 1", len(msgs))
+		}
+		if msgs[0].To != settingsSession.User.Email {
+			t.Errorf("To = %q, want %q", msgs[0].To, settingsSession.User.Email)
+		}
+		if want := "Your rss account was deleted"; msgs[0].Subject != want {
+			t.Errorf("Subject = %q, want %q", msgs[0].Subject, want)
+		}
+		if want := "Hi Ada Lovelace,"; !strings.Contains(msgs[0].Text, want) {
+			t.Errorf("Text = %q, want it to contain %q", msgs[0].Text, want)
+		}
+		if flash != wantFlash {
+			t.Errorf("flash = %q, want %q", flash, wantFlash)
+		}
+		if loggedIn {
+			t.Error("the session still holds a sessionID")
+		}
+	})
+
+	t.Run("email fails to queue", func(t *testing.T) {
+		deleted := false
+		s := newTestServerWith(t, Services{
+			UserService: &fakeUserStore{
+				deleteFn: func(context.Context, string, string) (rss.User, error) {
+					deleted = true
+					return settingsSession.User, nil
+				},
+			},
+			EmailQueue: &fakeEmailQueue{err: errors.New("boom")},
+		})
+
+		rr, flash, loggedIn := postSettingsDelete(t, s, password)
+
+		assertRedirect(t, rr, "/")
+		if !deleted {
+			t.Error("Delete was not called")
+		}
+		if flash != wantFlash {
+			t.Errorf("flash = %q, want %q", flash, wantFlash)
+		}
+		if loggedIn {
+			t.Error("the session still holds a sessionID")
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := newTestServerWith(t, Services{
+			UserService: &fakeUserStore{
+				deleteFn: func(context.Context, string, string) (rss.User, error) {
+					return rss.User{}, errors.New("boom")
+				},
+			},
+			EmailQueue: &fakeEmailQueue{},
+		})
+
+		rr, _, _ := postSettingsDelete(t, s, password)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("over the limit", func(t *testing.T) {
+		calls := 0
+		s := newTestServerWith(t, Services{
+			UserService: &fakeUserStore{
+				deleteFn: func(context.Context, string, string) (rss.User, error) {
+					calls++
+					return rss.User{}, rss.ErrWrongPassword
+				},
+			},
+			EmailQueue: &fakeEmailQueue{},
+		})
+
+		for i := range 10 {
+			if rr, _, _ := postSettingsDelete(t, s, password); rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("attempt %d: status = %d, want %d", i+1, rr.Code, http.StatusUnprocessableEntity)
+			}
+		}
+		rr, _, _ := postSettingsDelete(t, s, password)
+
+		if rr.Code != http.StatusTooManyRequests {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusTooManyRequests)
+		}
+		if secs, err := strconv.Atoi(rr.Header().Get("Retry-After")); err != nil || secs < 1 {
+			t.Errorf("Retry-After = %q, want a positive number of seconds", rr.Header().Get("Retry-After"))
+		}
+		assertBodyContains(t, rr.Body.String(), `<div class="error" role="alert">Too many attempts. Try again in 10 minutes.</div>`)
+		if calls != 10 {
+			t.Errorf("Delete called %d times, want 10", calls)
+		}
+	})
+}
+
+// TestDeleteAccountLogsOut logs in, deletes the account and checks that the
+// next request through the same cookie jar is anonymous and shows the flash on
+// the home page.
+func TestDeleteAccountLogsOut(t *testing.T) {
+	user := rss.User{ID: "user-1", Name: "Ada", Email: "ada@example.com"}
+	deleted := false
+	s := newTestServerWith(t, Services{
+		UserService: &fakeUserStore{
+			authenticateFn: func(context.Context, string, string) (string, error) {
+				return user.ID, nil
+			},
+			deleteFn: func(context.Context, string, string) (rss.User, error) {
+				deleted = true
+				return user, nil
+			},
+		},
+		SessionService: &fakeSessionStore{
+			createFn: func(context.Context, string, time.Time) (string, error) {
+				return testSessionID, nil
+			},
+			getFn: func(context.Context, string) (rss.Session, error) {
+				// The cascade deletes the user_sessions row with the user.
+				if deleted {
+					return rss.Session{}, rss.ErrNoRecord
+				}
+				return rss.Session{ID: testSessionID, User: user, LastSeenAt: time.Now()}, nil
+			},
+		},
+		EmailQueue: &fakeEmailQueue{},
+	})
+	ts := httptest.NewServer(s.router())
+	t.Cleanup(ts.Close)
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	post := func(target string, form url.Values) {
+		t.Helper()
+		resp, err := c.PostForm(ts.URL+target, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("POST %s: status = %d, want %d", target, resp.StatusCode, http.StatusSeeOther)
+		}
+	}
+
+	post("/login", url.Values{"email": {user.Email}, "password": {"correct-horse-battery"}})
+	post("/settings/delete", url.Values{"password": {"correct-horse-battery"}})
+
+	resp, err := c.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /: status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	assertBodyContains(t, string(b),
+		`<a class="btn btn-primary" href="/login">Login</a>`,
+		`<div class="flash">Your account was deleted. Thanks for trying rss.</div>`,
+	)
 }

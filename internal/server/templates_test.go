@@ -352,6 +352,14 @@ func TestFormFieldErrorsDescribed(t *testing.T) {
 			},
 			fields: []string{"current_password", "new_password"},
 		},
+		{
+			name:     "settings delete",
+			template: "settings_delete.html",
+			data: func(errFields ...string) any {
+				return settingsDeletePage{Form: deleteAccountForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"password"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+" with errors", func(t *testing.T) {

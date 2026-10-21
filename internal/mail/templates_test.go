@@ -73,6 +73,31 @@ func TestRender(t *testing.T) {
 		}
 	})
 
+	t.Run("account_deleted", func(t *testing.T) {
+		m, err := ts.Render("account_deleted", struct{ Name string }{"Ada <3"})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if want := "Your rss account was deleted"; m.Subject != want {
+			t.Errorf("Subject = %q, want %q", m.Subject, want)
+		}
+		for _, want := range []string{
+			"Hi Ada <3,\n\nYour rss account, your subscriptions and your reading history were deleted, as you asked. Copies in our backups are deleted within 35 days.\n\nThanks for trying rss.",
+		} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
+			}
+		}
+		for _, want := range []string{
+			"<p>Hi Ada &lt;3,</p>",
+			"<p>Thanks for trying rss.</p>",
+		} {
+			if !strings.Contains(m.HTML, want) {
+				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
+			}
+		}
+	})
+
 	t.Run("confirm_email", func(t *testing.T) {
 		url := "https://rss.example.com/confirm-email?token=abc_-123"
 		m, err := ts.Render("confirm_email", struct{ Name, URL string }{"Ada", url})

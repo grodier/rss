@@ -45,6 +45,7 @@ type fakeUserStore struct {
 	updateNameFn     func(ctx context.Context, id, name string) error
 	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
 	confirmEmailFn   func(ctx context.Context, hash []byte) (string, error)
+	deleteFn         func(ctx context.Context, userID, password string) (rss.User, error)
 }
 
 func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
@@ -65,6 +66,10 @@ func (f *fakeUserStore) ChangePassword(ctx context.Context, userID, keepSessionI
 
 func (f *fakeUserStore) ConfirmEmail(ctx context.Context, hash []byte) (string, error) {
 	return f.confirmEmailFn(ctx, hash)
+}
+
+func (f *fakeUserStore) Delete(ctx context.Context, userID, password string) (rss.User, error) {
+	return f.deleteFn(ctx, userID, password)
 }
 
 // fakeTokenStore records the tokens created in it, unless createErr is set.

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - delete your account</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Delete your account</h1>
+      </header>
+
+      {{$focus := .Form.FirstError "password"}}
+      <form class="settings-form" action="/settings/delete" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <p class="form-intro">This permanently deletes your account, your subscriptions and your reading history. Feeds and articles stay, because other readers share them. You can't undo this.</p>
+        <p class="form-intro">Want to keep your subscriptions? <a href="/settings/subscriptions.opml" download>Export them first</a>.</p>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" value="{{.Nav.User.Email}}" autocomplete="username" readonly />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password"
+            {{with .Form.FieldErrors.password}}aria-invalid="true" aria-describedby="password-error"{{end}}
+            {{if eq $focus "password"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
+        </div>
+        <div class="form-actions">
+          <button class="btn-danger" type="submit">Delete my account</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

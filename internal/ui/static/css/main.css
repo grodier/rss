@@ -533,6 +533,17 @@
     opacity: 0.86;
   }
 
+  .btn-danger {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--bg);
+  }
+
+  .btn-danger:hover {
+    background: var(--danger);
+    opacity: 0.86;
+  }
+
   .btn-sm {
     padding: 0.375rem 0.875rem;
     font-size: 0.875rem;
@@ -1113,6 +1124,20 @@
 
   .settings-logout {
     padding: 1.5rem 1rem;
+  }
+
+  .settings-delete {
+    padding: 0 1rem 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .settings-delete a {
+    color: var(--danger);
+  }
+
+  .settings-form .form-intro {
+    margin-block-end: 1.25rem;
+    color: var(--text-2);
   }
 
   .settings-form {

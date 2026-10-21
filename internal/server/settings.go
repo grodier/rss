@@ -168,6 +168,82 @@ func (s *Server) logOutOthersHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
+type deleteAccountForm struct {
+	Password            string `form:"password"`
+	validator.Validator `form:"-"`
+}
+
+type settingsDeletePage struct {
+	Nav  navData
+	Form deleteAccountForm
+}
+
+// renderSettingsDelete renders settings_delete.html with status. It never
+// echoes the password back.
+func (s *Server) renderSettingsDelete(w http.ResponseWriter, r *http.Request, status int, form deleteAccountForm) {
+	form.Password = ""
+	data := settingsDeletePage{Nav: s.nav(r, "settings"), Form: form}
+	if err := s.renderHTML(w, status, "settings_delete.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+func (s *Server) settingsDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	s.renderSettingsDelete(w, r, http.StatusOK, deleteAccountForm{})
+}
+
+func (s *Server) settingsDeleteFormHandler(w http.ResponseWriter, r *http.Request) {
+	var form deleteAccountForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+
+	if ok, retryAfter := s.deleteAccountLimiter.AllowWithRetry(userID); !ok {
+		setRetryAfter(w, retryAfter)
+		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		s.renderSettingsDelete(w, r, http.StatusTooManyRequests, form)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Password), "password", "Enter your password.")
+	if !form.Valid() {
+		s.renderSettingsDelete(w, r, http.StatusUnprocessableEntity, form)
+		return
+	}
+
+	old, err := s.services.UserService.Delete(r.Context(), userID, form.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, rss.ErrWrongPassword):
+			form.AddFieldError("password", "That password isn't right.")
+			s.renderSettingsDelete(w, r, http.StatusUnprocessableEntity, form)
+		default:
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	// The account is gone either way, so a failure to queue the notice
+	// doesn't fail the page. The outbox has no foreign key to users, so the
+	// email outlives the account.
+	if err := s.sendEmail(r.Context(), old.Email, "account_deleted", struct{ Name string }{old.Name}); err != nil {
+		s.logError(r, err)
+	}
+
+	// The user_sessions row went with the account; this forgets it in the
+	// browser too.
+	if err := s.sessionManager.RenewToken(r.Context()); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	s.sessionManager.Remove(r.Context(), "sessionID")
+	s.sessionManager.Put(r.Context(), "flash", "Your account was deleted. Thanks for trying rss.")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 func (s *Server) changePasswordWellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings/password", http.StatusFound)
 }

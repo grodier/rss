@@ -73,6 +73,8 @@ func (s *Server) router() http.Handler {
 			r.Post("/settings/name", s.settingsNameFormHandler)
 			r.Get("/settings/password", s.settingsPasswordHandler)
 			r.Post("/settings/password", s.settingsPasswordFormHandler)
+			r.Get("/settings/email", s.settingsEmailHandler)
+			r.Post("/settings/email", s.settingsEmailFormHandler)
 			r.Post("/settings/log-out-others", s.logOutOthersHandler)
 			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
 			r.Get("/settings/delete", s.settingsDeleteHandler)
@@ -92,6 +94,8 @@ func (s *Server) router() http.Handler {
 			// Email links work in any browser, logged in or not.
 			r.Get("/confirm-email", s.confirmEmailHandler)
 			r.Post("/confirm-email", s.confirmEmailFormHandler)
+			r.Get("/email-change", s.emailChangeHandler)
+			r.Post("/email-change", s.emailChangeFormHandler)
 
 			r.Get("/password/forgot", s.forgotPasswordHandler)
 			r.Post("/password/forgot", s.forgotPasswordFormHandler)

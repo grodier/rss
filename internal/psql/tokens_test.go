@@ -325,3 +325,131 @@ func TestResetPassword(t *testing.T) {
 		}
 	})
 }
+
+func TestChangeEmail(t *testing.T) {
+	db := psqltest.NewDB(t)
+	users := NewUserRepository(db)
+	tokens := NewTokenRepository(db)
+	day := time.Now().Add(24 * time.Hour)
+
+	// newAddress returns an address no account has, deleting any account
+	// that has it when the test ends.
+	newAddress := func(t *testing.T) string {
+		t.Helper()
+		email := fmt.Sprintf("test-new-%d@example.com", time.Now().UnixNano())
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+				t.Errorf("cleanup user: %v", err)
+			}
+		})
+		return email
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		newEmail := newAddress(t)
+		hash := createToken(t, tokens, userID, rss.TokenChangeEmail, newEmail, day)
+		other := createToken(t, tokens, userID, rss.TokenChangeEmail, "other-"+newEmail, day)
+
+		otherID, otherEmail := newTokenUser(t, users)
+		otherUsers := createToken(t, tokens, otherID, rss.TokenChangeEmail, "other-user-"+otherEmail, day)
+
+		old, gotEmail, err := users.ChangeEmail(t.Context(), hash)
+		if err != nil {
+			t.Fatalf("ChangeEmail: %v", err)
+		}
+		if old.ID != userID || old.Email != email || old.Name != "Token User" {
+			t.Errorf("old = %+v, want user %s, %s", old, userID, email)
+		}
+		if gotEmail != newEmail {
+			t.Errorf("newEmail = %q, want %q", gotEmail, newEmail)
+		}
+
+		u, err := users.GetByEmail(t.Context(), newEmail)
+		if err != nil {
+			t.Fatalf("GetByEmail(new): %v", err)
+		}
+		if u.ID != userID {
+			t.Errorf("GetByEmail(new) = user %s, want %s", u.ID, userID)
+		}
+		if u.EmailConfirmedAt.IsZero() {
+			t.Error("email_confirmed_at is NULL")
+		}
+		if _, err := users.GetByEmail(t.Context(), email); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("GetByEmail(old): err = %v, want ErrNoRecord", err)
+		}
+
+		for name, h := range map[string][]byte{"used": hash, "other": other} {
+			if tokenExists(t, tokens, h) {
+				t.Errorf("the %s change_email token is still there", name)
+			}
+		}
+		if !tokenExists(t, tokens, otherUsers) {
+			t.Error("another user's change_email token was deleted")
+		}
+	})
+
+	t.Run("not valid", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		used := createToken(t, tokens, userID, rss.TokenChangeEmail, newAddress(t), day)
+		if _, _, err := users.ChangeEmail(t.Context(), used); err != nil {
+			t.Fatalf("ChangeEmail: %v", err)
+		}
+		confirm := createToken(t, tokens, userID, rss.TokenConfirmEmail, email, day)
+		// Last, since Create deletes the user's expired tokens.
+		expired := createToken(t, tokens, userID, rss.TokenChangeEmail, newAddress(t), time.Now().Add(-time.Minute))
+		if !tokenExists(t, tokens, expired) {
+			t.Fatal("the expired token wasn't stored")
+		}
+
+		for name, hash := range map[string][]byte{
+			"unknown":       token.Hash("unknown"),
+			"expired":       expired,
+			"used":          used,
+			"wrong purpose": confirm,
+		} {
+			t.Run(name, func(t *testing.T) {
+				if _, _, err := users.ChangeEmail(t.Context(), hash); !errors.Is(err, rss.ErrNoRecord) {
+					t.Errorf("ChangeEmail error = %v, want ErrNoRecord", err)
+				}
+			})
+		}
+	})
+
+	t.Run("address taken in the meantime", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		_, takenEmail := newTokenUser(t, users)
+		hash := createToken(t, tokens, userID, rss.TokenChangeEmail, takenEmail, day)
+
+		old, gotEmail, err := users.ChangeEmail(t.Context(), hash)
+		if !errors.Is(err, rss.ErrDuplicateEmail) {
+			t.Fatalf("ChangeEmail error = %v, want ErrDuplicateEmail", err)
+		}
+		if old.Email != email || gotEmail != takenEmail {
+			t.Errorf("ChangeEmail = %q, %q; want %q, %q", old.Email, gotEmail, email, takenEmail)
+		}
+		u, err := users.GetByEmail(t.Context(), email)
+		if err != nil {
+			t.Fatalf("GetByEmail: %v", err)
+		}
+		if u.ID != userID {
+			t.Errorf("GetByEmail = user %s, want %s", u.ID, userID)
+		}
+	})
+
+	t.Run("links sent to the old address stop working", func(t *testing.T) {
+		userID, email := newTokenUser(t, users)
+		confirm := createToken(t, tokens, userID, rss.TokenConfirmEmail, email, day)
+		reset := createToken(t, tokens, userID, rss.TokenResetPassword, email, day)
+		hash := createToken(t, tokens, userID, rss.TokenChangeEmail, newAddress(t), day)
+
+		if _, _, err := users.ChangeEmail(t.Context(), hash); err != nil {
+			t.Fatalf("ChangeEmail: %v", err)
+		}
+		for purpose, h := range map[string][]byte{rss.TokenConfirmEmail: confirm, rss.TokenResetPassword: reset} {
+			if _, err := tokens.Get(t.Context(), h, purpose); !errors.Is(err, rss.ErrNoRecord) {
+				t.Errorf("Get(%s): err = %v, want ErrNoRecord", purpose, err)
+			}
+		}
+	})
+}

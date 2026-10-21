@@ -289,3 +289,77 @@ func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.Use
 	}
 	return u, nil
 }
+
+// CheckPassword returns nil if password is the user's. ErrWrongPassword if it
+// doesn't match; ErrNoRecord if there is no such user.
+func (r *UserRepository) CheckPassword(ctx context.Context, userID, pw string) error {
+	var hashedPassword []byte
+	stmt := `SELECT hashed_password FROM users WHERE id = $1`
+	err := r.DB.QueryRowContext(ctx, stmt, userID).Scan(&hashedPassword)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.ErrNoRecord
+		}
+		return err
+	}
+
+	match, err := password.Verify(pw, string(hashedPassword))
+	if err != nil {
+		return fmt.Errorf("verify password for user %s: %w", userID, err)
+	}
+	if !match {
+		return rss.ErrWrongPassword
+	}
+	return nil
+}
+
+// ChangeEmail uses a change_email token: it sets the account's email to the
+// token's address, marks it confirmed, and deletes the user's other
+// change_email tokens. It returns the user as they were before. ErrNoRecord
+// if the token is unknown or expired; ErrDuplicateEmail, with old and
+// newEmail set and nothing changed, if another account took the address
+// meanwhile.
+func (r *UserRepository) ChangeEmail(ctx context.Context, hash []byte) (old rss.User, newEmail string, err error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.User{}, "", err
+	}
+	defer tx.Rollback()
+
+	stmt := `DELETE FROM user_tokens
+		WHERE hash = $1 AND purpose = 'change_email' AND expires_at > now()
+		RETURNING user_id, email`
+	var userID string
+	if err := tx.QueryRowContext(ctx, stmt, hash).Scan(&userID, &newEmail); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.User{}, "", rss.ErrNoRecord
+		}
+		return rss.User{}, "", err
+	}
+
+	stmt = `SELECT id, name, email, email_confirmed_at, created_at FROM users WHERE id = $1 FOR UPDATE`
+	var confirmedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, stmt, userID).Scan(&old.ID, &old.Name, &old.Email, &confirmedAt, &old.CreatedAt); err != nil {
+		return rss.User{}, "", err
+	}
+	old.EmailConfirmedAt = confirmedAt.Time
+
+	stmt = `UPDATE users SET email = $2, email_confirmed_at = now() WHERE id = $1`
+	if _, err := tx.ExecContext(ctx, stmt, userID, newEmail); err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return old, newEmail, rss.ErrDuplicateEmail
+		}
+		return rss.User{}, "", err
+	}
+
+	stmt = `DELETE FROM user_tokens WHERE user_id = $1 AND purpose = 'change_email'`
+	if _, err := tx.ExecContext(ctx, stmt, userID); err != nil {
+		return rss.User{}, "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return rss.User{}, "", err
+	}
+	return old, newEmail, nil
+}

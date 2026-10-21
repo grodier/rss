@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - change your email address</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel">
+      {{template "brand"}}
+      {{if .Taken}}
+      <h1>That address is taken</h1>
+      <p class="solo-text">Another account started using {{.NewEmail}} in the meantime. Your email is still {{.OldEmail}}.</p>
+      {{else}}
+      <h1>Change your email address</h1>
+
+      <form action="/email-change" method="post">
+        <p class="solo-text">Make {{.NewEmail}} the email for your rss account?</p>
+        <input type="hidden" name="token" value="{{.Token}}" />
+        <div>
+          <button class="btn-primary btn-block" type="submit">Change email address</button>
+        </div>
+      </form>
+      {{end}}
+    </div>
+  </main>
+</body>
+
+</html>

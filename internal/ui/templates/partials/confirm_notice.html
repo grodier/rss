@@ -1,5 +1,5 @@
 {{/* Asks a user who hasn't confirmed their address to, with a Resend
-button. Data: a *confirmNotice. */}}
+button and a link to change it. Data: a *confirmNotice. */}}
 {{define "confirm-notice"}}
 <div class="notice">
   <p>Confirm your email address: we sent a link to <strong>{{.Email}}</strong>.</p>
@@ -7,5 +7,6 @@ button. Data: a *confirmNotice. */}}
     <input type="hidden" name="return_to" value="{{.ReturnTo}}" />
     <button class="btn-sm" type="submit">Resend</button>
   </form>
+  <a href="/settings/email">Wrong address?</a>
 </div>
 {{end}}

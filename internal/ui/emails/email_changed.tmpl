@@ -1,0 +1,19 @@
+{{define "subject"}}Your rss email address was changed{{end}}
+
+{{define "text" -}}
+Hi {{.Name}},
+
+The email address for your rss account was changed from {{.OldEmail}} to {{.NewEmail}}. From now on, log in with {{.NewEmail}}.
+
+If you didn't make this change, reply to this email right away.
+
+{{template "text-footer"}}
+{{- end}}
+
+{{define "html" -}}
+{{template "html-start"}}
+<p>Hi {{.Name}},</p>
+<p>The email address for your rss account was changed from {{.OldEmail}} to {{.NewEmail}}. From now on, log in with {{.NewEmail}}.</p>
+<p>If you didn't make this change, reply to this email right away.</p>
+{{template "html-end"}}
+{{- end}}

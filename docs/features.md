@@ -62,8 +62,8 @@ small page with one form. Name (`/settings/name`) is the first:
 `settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
 100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
 and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
-to `/settings`. Email is shown as plain text for now, with a "Not confirmed" tag
-(`.chip`) until the address is confirmed. A "Your data" section below has
+to `/settings`. The Email row links to `/settings/email` (under "Changing email") and
+has a "Not confirmed" tag (`.chip`) until the address is confirmed. A "Your data" section below has
 the subscriptions export (under "Subscriptions").
 
 **Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler`
@@ -122,7 +122,7 @@ deleted. Thanks for trying rss." and redirects to `/`, whose logged-out page sho
 flash.
 
 **Email.** A handler that sends email (the password change and reset, email
-confirmation and account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+confirmation and change, and account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
 (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
 links are built with `s.absoluteURL`, never from the request) and queues it with
 `mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
@@ -144,8 +144,8 @@ earlier links, since emails arrive out of order.
 
 Until the address is confirmed, the timeline and Settings show the `confirm-notice`
 partial (`.notice`; its data is `s.confirmNotice(r)`, nil for anonymous or confirmed
-users): "Confirm your email address: we sent a link to <address>." with a Resend button,
-which posts to `/confirm-email/resend` with the page as `return_to`.
+users): "Confirm your email address: we sent a link to <address>." with a Resend button
+and a "Wrong address?" link to `/settings/email`. Resend posts to `/confirm-email/resend` with the page as `return_to`.
 `confirmResendHandler` flashes "Your email address is already confirmed." for a
 confirmed user, refuses past `confirmResendLimiter` (3 per user per hour) with "We've
 already sent you several links. …", and otherwise calls `sendConfirmation` and flashes
@@ -200,6 +200,41 @@ in." and redirects to the timeline. An unknown, expired, used or outdated token 
 `link_expired.html` (410) with "Reset links work for 1 hour and only once." and a Send a
 new link link to `/password/forgot`.
 
+**Changing email.** `GET /settings/email` (`settingsEmailHandler`,
+`settings_email.html`) shows the current address, a new-email field, the current
+password, and "We'll send a link to your new address. Your email won't change until you
+open it." `settingsEmailFormHandler` checks `emailChangeLimiter` (5 per user per hour,
+429), then the new address's format, that it isn't the current one ignoring case
+("That's already your email address."), and that the password isn't blank, re-rendering
+with 422 (never echoing the password). `UserRepository.CheckPassword` verifies the
+password (`rss.ErrWrongPassword`: "That password isn't right."), and `GetByEmail` checks
+the address is free ("There's already an account with this email."). Then it makes a
+token (purpose `change_email`, the **new** address, a 24-hour expiry), queues the
+`confirm_new_email` email to the new address with the link
+`<base URL>/email-change?token=<token>`, flashes "We sent a link to <new>. Open it to
+finish changing your email." and redirects to `/settings`. Nothing changes until the link
+is used: you keep logging in with the old address, and asking again doesn't cancel
+earlier links.
+
+The link works in any browser. `GET /email-change` (`emailChangeHandler`) sets the
+no-referrer and no-store headers and checks the token with `TokenRepository.Get` (for
+`change_email` it skips the address check, since the address is the new one). A valid
+one gets `confirm_email_change.html`: "Make <new> the email for your rss account?" and a
+Change email address button that posts the token. `POST /email-change`
+(`emailChangeFormHandler`) calls `UserRepository.ChangeEmail`, which in one transaction
+deletes the token, reads the user, sets the email to the new address and
+`email_confirmed_at` to now, and deletes the user's other `change_email` tokens. If
+another account took the address in the meantime (`23505`, `rss.ErrDuplicateEmail`)
+nothing changes and the page re-renders with 409, "That address is taken". On success
+the handler queues `email_changed` to the **old** address (logging rather than failing
+if it can't), flashes "Your email address is now <new>." and redirects to `/settings`,
+or, when not logged in, adds "Log in with it to continue." and redirects to `/login`.
+Sessions stay. Confirmation and reset links sent to the old address stop working by
+themselves, since `Get` and the repositories only accept them while the account still
+has the address they were sent to. An unknown, expired or used token gets
+`link_expired.html` (410) with "Links to change your email work for 24 hours and only
+once." and a Try again link to `/settings/email`.
+
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
@@ -252,6 +287,11 @@ new link link to `/password/forgot`.
     `resetLinkExpired`); `internal/psql/users.go` (`GetByEmail`, `ResetPassword`);
     `forgot_password.html`, `forgot_password_sent.html`, `reset_password.html`;
     `internal/ui/emails/reset_password.tmpl`.
+13. Changing email: `internal/server/email_change.go` (`settingsEmailFormHandler`,
+    `emailChangeHandler`, `emailChangeFormHandler`, `changeEmailLinkExpired`);
+    `internal/psql/users.go` (`CheckPassword`, `ChangeEmail`); `settings_email.html`,
+    `confirm_email_change.html`; `internal/ui/emails/confirm_new_email.tmpl`,
+    `email_changed.tmpl`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
@@ -268,15 +308,17 @@ new link link to `/password/forgot`.
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
 `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
 `emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`,
-`TestResetPassword`);
+`TestResetPassword`, `TestChangeEmail`);
 `internal/token/token_test.go`; `internal/server/confirm_test.go`
 (`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`,
 `TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`,
 `TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `password_reset_test.go`
 (`TestForgotPasswordHandler`, `TestForgotPasswordFormHandler`,
 `TestForgotPasswordSentHandlerWithoutEmail`, `TestResetPasswordHandler`,
-`TestResetPasswordFormHandler`, `TestLoginLinksToReset`); `settings_test.go` (`TestSettingsDeleteForm`,
-`TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`); `internal/password/password_test.go`; `internal/server/email_test.go`;
+`TestResetPasswordFormHandler`, `TestLoginLinksToReset`); `email_change_test.go`
+(`TestSettingsEmailHandler`, `TestSettingsEmailForm`, `TestEmailChangeHandler`,
+`TestEmailChangeFormHandler`); `settings_test.go` (`TestSettingsDeleteForm`,
+`TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`, `TestUserRepositoryCheckPassword`); `internal/password/password_test.go`; `internal/server/email_test.go`;
 `internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
 (`TestEmailFooterLinksPrivacy`).
 

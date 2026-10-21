@@ -193,6 +193,30 @@ func TestUserRepositoryChangePassword(t *testing.T) {
 	})
 }
 
+func TestUserRepositoryCheckPassword(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewUserRepository(db)
+	userID, _ := newTokenUser(t, repo)
+
+	tests := []struct {
+		name     string
+		userID   string
+		password string
+		want     error
+	}{
+		{"right password", userID, "correct-horse-battery", nil},
+		{"wrong password", userID, "wrong-password", rss.ErrWrongPassword},
+		{"unknown user", "00000000-0000-4000-8000-000000000000", "correct-horse-battery", rss.ErrNoRecord},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := repo.CheckPassword(t.Context(), tt.userID, tt.password); !errors.Is(err, tt.want) {
+				t.Errorf("CheckPassword error = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestDeleteUser(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)

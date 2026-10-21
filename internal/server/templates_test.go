@@ -64,6 +64,11 @@ func TestPasswordNotEchoed(t *testing.T) {
 			template: "reset_password.html",
 			data:     resetPasswordPage{Email: "a@b.co", Form: resetPasswordForm{Password: sentinel}},
 		},
+		{
+			name:     "settings email",
+			template: "settings_email.html",
+			data:     settingsEmailPage{Form: emailForm{Email: "a@b.co", Password: sentinel}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -372,6 +377,14 @@ func TestFormFieldErrorsDescribed(t *testing.T) {
 				return settingsPasswordPage{Form: passwordForm{Validator: withFieldErrors(errFields...)}}
 			},
 			fields: []string{"current_password", "new_password"},
+		},
+		{
+			name:     "settings email",
+			template: "settings_email.html",
+			data: func(errFields ...string) any {
+				return settingsEmailPage{Form: emailForm{Validator: withFieldErrors(errFields...)}}
+			},
+			fields: []string{"email", "password"},
 		},
 		{
 			name:     "settings delete",

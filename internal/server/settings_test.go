@@ -345,8 +345,10 @@ func TestSettingsPasswordForm(t *testing.T) {
 		if want := "Your rss password was changed"; msgs[0].Subject != want {
 			t.Errorf("Subject = %q, want %q", msgs[0].Subject, want)
 		}
-		if want := "Hi Ada Lovelace,"; !strings.Contains(msgs[0].Text, want) {
-			t.Errorf("Text = %q, want it to contain %q", msgs[0].Text, want)
+		for _, want := range []string{"Hi Ada Lovelace,", "reset your password now (/password/forgot)"} {
+			if !strings.Contains(msgs[0].Text, want) {
+				t.Errorf("Text = %q, want it to contain %q", msgs[0].Text, want)
+			}
 		}
 		if want := "Your password was changed. Other devices were logged out."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)

@@ -15,13 +15,17 @@ the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates 
 (the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
 for the name, email and password, after trimming the name), and creates the user with an
 Argon2id hash. An email that already has an account gets "There's already an account
-with this email." on the email field, with a "Log in instead" link to `/login` under it
-(`DuplicateEmail` on `signupPage`). Login checks the per-IP limit, validates, then counts
+with this email." on the email field, with "Log in instead, or reset your password."
+under it, linking to `/login` and `/password/forgot?email=…` (`DuplicateEmail` on
+`signupPage`). Login checks the per-IP limit, validates, then counts
 the attempt against the submitted email *before* checking the password (refunded unless
 the password was wrong), so parallel guesses can't slip past the limit. `Authenticate`
 returns `rss.ErrNoAccount` for an unknown email ("There's no account with this email."
 on the email field) and `rss.ErrWrongPassword` for a wrong password ("That password
-isn't right." on the password field). On a successful login or signup, `startSession` renews
+isn't right." on the password field). Under the password field, "Forgot password?" links
+to `/password/forgot`, with `?email=` and the address typed when re-rendered after a
+failed attempt; a rate-limited login page also says "Forgot your password? Reset it."
+(`RateLimited` on `loginPage`). On a successful login or signup, `startSession` renews
 the session token, creates a `user_sessions` row for this device (deleting the user's
 rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler
 redirects to `popReturnTo`: when `requireAuthentication` sends an anonymous GET or HEAD
@@ -81,7 +85,8 @@ current password before starting a transaction (Argon2 is slow; a wrong one is
 `rss.ErrWrongPassword`, "That password isn't right." on the current password field), and
 in one transaction stores the new hash and deletes the user's other `user_sessions` rows,
 keeping this device's. The handler queues the `password_changed` email ("Your rss
-password was changed") to the account's address, logging an error rather than failing if
+password was changed", with a link to `/password/forgot` in case it wasn't them;
+`sendPasswordChanged`) to the account's address, logging an error rather than failing if
 it can't, flashes "Your password was changed. Other devices were logged out." and
 redirects to `/settings`. `/.well-known/change-password` redirects there, so password
 managers can link to it; it's outside the login group, so an anonymous visitor logs in
@@ -116,8 +121,8 @@ can't. Then it renews the session token, removes `sessionID`, flashes "Your acco
 deleted. Thanks for trying rss." and redirects to `/`, whose logged-out page shows the
 flash.
 
-**Email.** A handler that sends email (the password change, email confirmation and
-account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
+**Email.** A handler that sends email (the password change and reset, email
+confirmation and account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
 (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
 links are built with `s.absoluteURL`, never from the request) and queues it with
 `mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
@@ -163,6 +168,37 @@ expired" and "Confirmation links work for 7 days and only once.", then a Send a 
 button (logged in, unconfirmed), "Your email address is already confirmed." and a link to
 Settings (confirmed), or "Log in to get a new link" (anonymous). The page takes its
 title, text and action from `linkExpiredPage`, so other email links can reuse it.
+
+**Password reset.** `GET /password/forgot` (`forgotPasswordHandler`,
+`forgot_password.html`) asks for the email you signed up with, prefilled from `?email=`.
+`forgotPasswordFormHandler` validates the address's format, then checks
+`resetIPLimiter` (10 per client IP per hour) and `resetEmailLimiter` (3 per lowercased
+email per hour), re-rendering with 429 past either. `UserRepository.GetByEmail` finds
+the account (none: "There's no account with this email.", 422), and
+`sendPasswordReset` makes a token (purpose `reset_password`, 1-hour expiry) and queues
+the `reset_password` email ("Reset your rss password") with the link
+`<base URL>/password/reset?token=<token>`. The handler puts the address in the session
+as `resetSentTo` and redirects to `/password/forgot/sent`
+(`forgotPasswordSentHandler`, `forgot_password_sent.html`): "We sent a link to
+<address>. It works for 1 hour.", with a button that posts the address to
+`/password/forgot` again; without `resetSentTo` it redirects to the form. Both pages
+show the support address for people who can't get into their email. Asking again
+doesn't cancel earlier links.
+
+`GET /password/reset` (`resetPasswordHandler`) sets the same no-referrer and no-store
+headers as confirmation (`resetToken`), and `TokenRepository.Get` checks the token. A
+valid one gets `reset_password.html`: a read-only email field with the token's address
+(`autocomplete="username"`), a new-password field with its hint, and the token hidden; the
+GET never writes. `POST /password/reset` (`resetPasswordFormHandler`) checks the token
+again, then the password with `CheckNewPassword` (422 without using the token).
+`UserRepository.ResetPassword` hashes the password, then in one transaction deletes the
+token (unexpired, and its address still the account's), sets the new hash, confirms the
+email (receiving the link proves the address), and deletes the user's other
+`reset_password` tokens and every `user_sessions` row. The handler then `startSession`s
+here, queues `password_changed`, flashes "Your password was changed, and you're logged
+in." and redirects to the timeline. An unknown, expired, used or outdated token gets
+`link_expired.html` (410) with "Reset links work for 1 hour and only once." and a Send a
+new link link to `/password/forgot`.
 
 **Read:**
 
@@ -210,6 +246,12 @@ title, text and action from `linkExpiredPage`, so other email links can reuse it
     (`TokenRepository`: `Create`, `Get`) and `users.go` (`ConfirmEmail`);
     `confirm_email.html`, `link_expired.html`, `partials/confirm_notice.html`;
     `internal/ui/emails/confirm_email.tmpl`.
+12. Password reset: `internal/server/password_reset.go` (`sendPasswordReset`,
+    `sendPasswordChanged`, `forgotPasswordFormHandler`, `forgotPasswordSentHandler`,
+    `resetToken`, `resetPasswordHandler`, `resetPasswordFormHandler`,
+    `resetLinkExpired`); `internal/psql/users.go` (`GetByEmail`, `ResetPassword`);
+    `forgot_password.html`, `forgot_password_sent.html`, `reset_password.html`;
+    `internal/ui/emails/reset_password.tmpl`.
 
 **Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
 `TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
@@ -225,11 +267,15 @@ title, text and action from `linkExpiredPage`, so other email links can reuse it
 `validator_test.go` (`TestFirstError`);
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
 `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
-`emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`);
+`emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`,
+`TestResetPassword`);
 `internal/token/token_test.go`; `internal/server/confirm_test.go`
 (`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`,
 `TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`,
-`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `settings_test.go` (`TestSettingsDeleteForm`,
+`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `password_reset_test.go`
+(`TestForgotPasswordHandler`, `TestForgotPasswordFormHandler`,
+`TestForgotPasswordSentHandlerWithoutEmail`, `TestResetPasswordHandler`,
+`TestResetPasswordFormHandler`, `TestLoginLinksToReset`); `settings_test.go` (`TestSettingsDeleteForm`,
 `TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`); `internal/password/password_test.go`; `internal/server/email_test.go`;
 `internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
 (`TestEmailFooterLinksPrivacy`).

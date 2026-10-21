@@ -42,9 +42,11 @@ func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error
 type fakeUserStore struct {
 	createFn         func(ctx context.Context, name, email, password string) (string, time.Time, error)
 	authenticateFn   func(ctx context.Context, email, password string) (string, error)
+	getByEmailFn     func(ctx context.Context, email string) (rss.User, error)
 	updateNameFn     func(ctx context.Context, id, name string) error
 	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
 	confirmEmailFn   func(ctx context.Context, hash []byte) (string, error)
+	resetPasswordFn  func(ctx context.Context, hash []byte, newPassword string) (rss.User, error)
 	deleteFn         func(ctx context.Context, userID, password string) (rss.User, error)
 }
 
@@ -54,6 +56,10 @@ func (f *fakeUserStore) Create(ctx context.Context, name, email, password string
 
 func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string) (string, error) {
 	return f.authenticateFn(ctx, email, password)
+}
+
+func (f *fakeUserStore) GetByEmail(ctx context.Context, email string) (rss.User, error) {
+	return f.getByEmailFn(ctx, email)
 }
 
 func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
@@ -66,6 +72,10 @@ func (f *fakeUserStore) ChangePassword(ctx context.Context, userID, keepSessionI
 
 func (f *fakeUserStore) ConfirmEmail(ctx context.Context, hash []byte) (string, error) {
 	return f.confirmEmailFn(ctx, hash)
+}
+
+func (f *fakeUserStore) ResetPassword(ctx context.Context, hash []byte, newPassword string) (rss.User, error) {
+	return f.resetPasswordFn(ctx, hash, newPassword)
 }
 
 func (f *fakeUserStore) Delete(ctx context.Context, userID, password string) (rss.User, error) {

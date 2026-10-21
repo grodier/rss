@@ -144,7 +144,7 @@ func (s *Server) settingsPasswordFormHandler(w http.ResponseWriter, r *http.Requ
 
 	// The password has changed either way, so a failure to queue the notice
 	// doesn't fail the page.
-	if err := s.sendEmail(r.Context(), user.Email, "password_changed", struct{ Name string }{user.Name}); err != nil {
+	if err := s.sendPasswordChanged(r.Context(), user); err != nil {
 		s.logError(r, err)
 	}
 

@@ -56,6 +56,23 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("GetByEmail ignores case", func(t *testing.T) {
+		u, err := repo.GetByEmail(t.Context(), strings.ToUpper(email))
+		if err != nil {
+			t.Fatalf("GetByEmail: %v", err)
+		}
+		if u.ID != id || u.Name != "Test User" || u.Email != email {
+			t.Errorf("GetByEmail = %+v; want %s, Test User, %s", u, id, email)
+		}
+	})
+
+	t.Run("GetByEmail with unknown email", func(t *testing.T) {
+		_, err := repo.GetByEmail(t.Context(), "unknown-"+email)
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
+
 	t.Run("Authenticate with correct password", func(t *testing.T) {
 		got, err := repo.Authenticate(t.Context(), email, password)
 		if err != nil {

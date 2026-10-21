@@ -165,6 +165,10 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `POST /logout` | no | `logoutHandler` | |
 | `GET /confirm-email` | no | `confirmEmailHandler` | A confirmation link: a page with a Confirm button, or the expired-link page (410) |
 | `POST /confirm-email` | no | `confirmEmailFormHandler` | Confirm the address; flash, then the timeline or `/login` |
+| `GET, POST /password/forgot` | no | `forgotPasswordHandler`, `forgotPasswordFormHandler` | Ask for a reset link (`?email=` prefills); emails it, then the sent page |
+| `GET /password/forgot/sent` | no | `forgotPasswordSentHandler` | "Check your email", with a button to send another link; else 303 to `/password/forgot` |
+| `GET /password/reset` | no | `resetPasswordHandler` | A reset link: the new-password form, or the expired-link page (410) |
+| `POST /password/reset` | no | `resetPasswordFormHandler` | Set the new password, log out everywhere, log in here; flash, then the timeline |
 | `GET /.well-known/change-password` | no | `changePasswordWellKnownHandler` | 302 to `/settings/password`, for password managers |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
 | `GET /feeds/{id}` | yes | `feedHandler` | Feed page; queues a refresh if the feed is stale |
@@ -234,7 +238,8 @@ emails   (the outbox: no foreign keys)
 - **`user_sessions`**: one row per logged-in device, created at login, its `id` kept in
   the scs session under `sessionID`; deleting the row logs that device out.
   `last_seen_at` is written at most once a day. There's no sweeper: `authenticate`
-  deletes an idle row when it sees it, and login deletes the user's idle rows.
+  deletes an idle row when it sees it, and login deletes the user's idle rows. A
+  password reset deletes all of the user's rows.
 - **`user_tokens`**: one-time tokens for email links, keyed by the SHA-256 `hash` of the
   token, with their `purpose`, the `email` they were sent to and `expires_at`
   (`TokenRepository`). Using a token deletes it and the user's other tokens of its kind.
@@ -349,6 +354,8 @@ CLAUDE.md.
   | `refreshLimiter` | user | 10 per 10 min |
   | `passwordChangeLimiter` | user | 10 per 10 min |
   | `confirmResendLimiter` | user | 3 confirmation emails (Resend) per hour |
+  | `resetIPLimiter` | client IP (IPv6 by /64) | 10 password reset requests per hour |
+  | `resetEmailLimiter` | submitted email | 3 password reset requests per hour |
   | `deleteAccountLimiter` | user | 10 per 10 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`

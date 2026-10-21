@@ -29,7 +29,8 @@ func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 type signupPage struct {
 	Form signupForm
-	// DuplicateEmail adds a link to /login under the email field's error.
+	// DuplicateEmail adds links to /login and to reset the password under
+	// the email field's error.
 	DuplicateEmail bool
 }
 
@@ -97,17 +98,18 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flash := s.sessionManager.PopString(r.Context(), "flash")
-	s.renderLogin(w, r, http.StatusOK, loginForm{}, flash)
+	s.renderLogin(w, r, http.StatusOK, loginPage{Flash: flash})
 }
 
 type loginPage struct {
 	Form  loginForm
 	Flash string
+	// RateLimited adds a link to reset the password under the alert.
+	RateLimited bool
 }
 
 // renderLogin renders login.html with status.
-func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, form loginForm, flash string) {
-	data := loginPage{Form: form, Flash: flash}
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int, data loginPage) {
 	if err := s.renderHTML(w, status, "login.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
@@ -130,7 +132,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
-		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")
+		s.renderLogin(w, r, http.StatusTooManyRequests, loginPage{Form: form, RateLimited: true})
 		return
 	}
 
@@ -140,7 +142,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	form.CheckField(validator.MaxChars(form.Password, 256), "password", "Password is too long")
 
 	if !form.Valid() {
-		s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
+		s.renderLogin(w, r, http.StatusUnprocessableEntity, loginPage{Form: form})
 		return
 	}
 
@@ -152,7 +154,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	if ok, retryAfter := s.loginFailureLimiter.AllowWithRetry(emailKey); !ok {
 		setRetryAfter(w, retryAfter)
 		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
-		s.renderLogin(w, r, http.StatusTooManyRequests, form, "")
+		s.renderLogin(w, r, http.StatusTooManyRequests, loginPage{Form: form, RateLimited: true})
 		return
 	}
 
@@ -164,10 +166,10 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, rss.ErrNoAccount):
 			form.AddFieldError("email", "There's no account with this email.")
-			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
+			s.renderLogin(w, r, http.StatusUnprocessableEntity, loginPage{Form: form})
 		case errors.Is(err, rss.ErrWrongPassword):
 			form.AddFieldError("password", "That password isn't right.")
-			s.renderLogin(w, r, http.StatusUnprocessableEntity, form, "")
+			s.renderLogin(w, r, http.StatusUnprocessableEntity, loginPage{Form: form})
 		default:
 			s.serverErrorHTML(w, r, err)
 		}

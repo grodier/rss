@@ -31,6 +31,12 @@ Running it locally for yourself needs none of this.
 - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
   them. Only once people we don't know personally are invited. When the code comes in
   the link, show "Invited" instead of the text field.
+- [ ] **Review the privacy policy and terms** (`privacy.html`, `terms.html`, #269). They
+  were drafted without legal review and name George Rodier, in the United States, as
+  who runs rss. Before launch: put in the product's name, and a business if one runs it;
+  name a state for governing law (the terms only say "the United States"); check each
+  section against what the app then does (processors, retention, the Settings features
+  it mentions); have them reviewed; and bump "Last updated".
 
 ## Accounts
 

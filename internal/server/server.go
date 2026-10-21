@@ -56,6 +56,7 @@ type UserStore interface {
 	UpdateName(ctx context.Context, id, name string) error
 	ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error
 	ConfirmEmail(ctx context.Context, hash []byte) (string, error)
+	Delete(ctx context.Context, userID, password string) (rss.User, error)
 }
 
 // TokenStore stores the one-time tokens sent in email links (user_tokens
@@ -191,6 +192,10 @@ type Server struct {
 	// (keyed by user ID).
 	confirmResendLimiter *rateLimiter
 
+	// deleteAccountLimiter caps account deletion attempts per user (keyed by
+	// user ID).
+	deleteAccountLimiter *rateLimiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
@@ -222,6 +227,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		signupLimiter:         newRateLimiter(10, time.Hour),
 		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
 		confirmResendLimiter:  newRateLimiter(3, time.Hour),
+		deleteAccountLimiter:  newRateLimiter(10, 10*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

@@ -75,6 +75,8 @@ func (s *Server) router() http.Handler {
 			r.Post("/settings/password", s.settingsPasswordFormHandler)
 			r.Post("/settings/log-out-others", s.logOutOthersHandler)
 			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
+			r.Get("/settings/delete", s.settingsDeleteHandler)
+			r.Post("/settings/delete", s.settingsDeleteFormHandler)
 			r.Post("/confirm-email/resend", s.confirmResendHandler)
 		})
 

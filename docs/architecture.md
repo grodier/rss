@@ -159,7 +159,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /static/*` | no | file server | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
 | `GET /privacy` | no | `privacyHandler` | Privacy policy |
 | `GET /terms` | no | `termsHandler` | Terms of use |
-| `GET /` | no | `homeHandler` | Landing page; the timeline when logged in |
+| `GET /` | no | `homeHandler` | Landing page (shows a flash); the timeline when logged in |
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
@@ -177,11 +177,12 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
-| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows, Devices and Log out |
+| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows, Devices, Log out and the Delete account link |
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
 | `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
+| `GET, POST /settings/delete` | yes | `settingsDeleteHandler`, `settingsDeleteFormHandler` | Delete your account (with your password); emails a notice, logs out, flash on `/` |
 | `POST /confirm-email/resend` | yes | `confirmResendHandler` | Email a new confirmation link; back to `return_to` (else `/settings`) |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
@@ -246,8 +247,9 @@ emails   (the outbox: no foreign keys)
 Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
 clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
 `user_sessions` and `user_tokens`, and leaves their `emails`.
-Nothing deletes users, sites, feeds or articles yet; unsubscribing deletes the
-subscription row, logging out deletes the `user_sessions` row, confirming an address
+Deleting an account (`UserRepository.Delete`) deletes the user, with that cascade;
+feeds and articles stay, even when no one subscribes to them anymore. Nothing deletes
+sites, feeds or articles yet; unsubscribing deletes the subscription row, logging out deletes the `user_sessions` row, confirming an address
 deletes the user's `confirm_email` tokens, and scs deletes expired sessions.
 
 Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
@@ -347,6 +349,7 @@ CLAUDE.md.
   | `refreshLimiter` | user | 10 per 10 min |
   | `passwordChangeLimiter` | user | 10 per 10 min |
   | `confirmResendLimiter` | user | 3 confirmation emails (Resend) per hour |
+  | `deleteAccountLimiter` | user | 10 per 10 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
   queues about 20 to one address (ignoring case) per hour and returns

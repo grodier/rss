@@ -176,3 +176,45 @@ func (r *UserRepository) ConfirmEmail(ctx context.Context, hash []byte) (string,
 	}
 	return userID, nil
 }
+
+// Delete verifies password and deletes the user, which cascades to their
+// subscriptions, reads, user_sessions and user_tokens. It returns the user as
+// they were, for the confirmation email. ErrWrongPassword if the password
+// doesn't match; ErrNoRecord if there is no such user.
+func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.User, error) {
+	// Verified before deleting, outside any transaction, since Argon2 is slow.
+	var u rss.User
+	var confirmedAt sql.NullTime
+	var hashedPassword []byte
+	stmt := `SELECT id, name, email, email_confirmed_at, created_at, hashed_password
+		FROM users WHERE id = $1`
+	err := r.DB.QueryRowContext(ctx, stmt, userID).Scan(&u.ID, &u.Name, &u.Email, &confirmedAt, &u.CreatedAt, &hashedPassword)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.User{}, rss.ErrNoRecord
+		}
+		return rss.User{}, err
+	}
+	u.EmailConfirmedAt = confirmedAt.Time
+
+	match, err := password.Verify(pw, string(hashedPassword))
+	if err != nil {
+		return rss.User{}, fmt.Errorf("verify password for user %s: %w", userID, err)
+	}
+	if !match {
+		return rss.User{}, rss.ErrWrongPassword
+	}
+
+	res, err := r.DB.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return rss.User{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return rss.User{}, err
+	}
+	if n == 0 {
+		return rss.User{}, rss.ErrNoRecord
+	}
+	return u, nil
+}

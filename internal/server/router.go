@@ -47,6 +47,10 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 
+	// The policy pages need no session: they're the same for everyone.
+	router.Get("/privacy", s.privacyHandler)
+	router.Get("/terms", s.termsHandler)
+
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
 		r.Use(s.authenticate)
@@ -67,6 +71,9 @@ func (s *Server) router() http.Handler {
 			r.Get("/settings", s.settingsHandler)
 			r.Get("/settings/name", s.settingsNameHandler)
 			r.Post("/settings/name", s.settingsNameFormHandler)
+			r.Get("/settings/password", s.settingsPasswordHandler)
+			r.Post("/settings/password", s.settingsPasswordFormHandler)
+			r.Post("/settings/log-out-others", s.logOutOthersHandler)
 			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
 		})
 
@@ -78,6 +85,12 @@ func (s *Server) router() http.Handler {
 			r.Get("/login", s.loginHandler)
 			r.Post("/login", s.loginFormHandler)
 			r.Post("/logout", s.logoutHandler)
+
+			// Lets password managers send people to the change-password page
+			// (https://w3c.github.io/webappsec-change-password-url/).
+			// Outside requireAuthentication, so it redirects before any login,
+			// and login's returnTo brings people back.
+			r.Get("/.well-known/change-password", s.changePasswordWellKnownHandler)
 
 			r.Get("/", s.homeHandler)
 		})

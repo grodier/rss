@@ -141,7 +141,8 @@ adding another):
    `X-Frame-Options: deny`, `Referrer-Policy`.
 5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
-Then routes are split into groups. `/static/*` and `/healthcheck` have no session. All
+Then routes are split into groups. `/static/*`, `/healthcheck`, `/privacy` and `/terms`
+have no session. All
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
 loads the device's `user_sessions` row with its user and puts both in the request
 context, unless the row is gone or idle for 90 days.
@@ -155,10 +156,13 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | --- | --- | --- | --- |
 | `GET /healthcheck` | no | `healthcheckHandler` | JSON status, environment and build version, for health checks |
 | `GET /static/*` | no | file server | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
+| `GET /privacy` | no | `privacyHandler` | Privacy policy |
+| `GET /terms` | no | `termsHandler` | Terms of use |
 | `GET /` | no | `homeHandler` | Landing page; the timeline when logged in |
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
+| `GET /.well-known/change-password` | no | `changePasswordWellKnownHandler` | 302 to `/settings/password`, for password managers |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
 | `GET /feeds/{id}` | yes | `feedHandler` | Feed page; queues a refresh if the feed is stale |
 | `POST /feeds/{id}/refresh` | yes | `feedRefreshHandler` | Refresh button: fetches now |
@@ -170,8 +174,10 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
 | `GET /lookups/{id}` | yes | `lookupHandler` | Lookup status page |
-| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows and Log out |
+| `GET /settings` | yes | `settingsHandler` | Settings: the account's rows, Devices and Log out |
 | `GET, POST /settings/name` | yes | `settingsNameHandler`, `settingsNameFormHandler` | Change your name |
+| `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
+| `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 
 **Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is
@@ -326,6 +332,7 @@ CLAUDE.md.
   | `signupLimiter` | client IP (IPv6 by /64) | 10 per hour |
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
+  | `passwordChangeLimiter` | user | 10 per 10 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue`
   queues about 20 to one address (ignoring case) per hour and returns

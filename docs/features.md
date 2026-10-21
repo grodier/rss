@@ -61,7 +61,43 @@ and otherwise saves it with `UpdateName`, flashes "Your name was updated." and r
 to `/settings`. Email is shown as plain text for now. A "Your data" section below has
 the subscriptions export (under "Subscriptions").
 
-**Email.** No page sends email yet. When one does, the handler calls
+**Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler`
+in `policy.go`) are logged-out `.solo` pages with a `.prose` column; their text is HTML
+in `privacy.html` and `terms.html`, with a "Last updated" date at the top, and they show
+the support address through the `support-link` partial. They're linked from under the
+signup button, the `policy-links` footer on the login page and the logged-out home page,
+Settings' Help section, and every email's footer (`Privacy: <base URL>/privacy` in
+`layout.tmpl`). When the text changes, change its date too.
+
+Password (`/settings/password`) changes the password. Its form has a read-only email
+field (`autocomplete="username"`, so password managers update the right entry), the
+current password and the new one, and says beforehand that every other device will be
+logged out. `settingsPasswordFormHandler` checks the per-user limit
+(`passwordChangeLimiter`), that the current password isn't blank, the new one with
+`CheckNewPassword`, and that the two differ, re-rendering with 422 (never echoing the
+passwords) when something is wrong. `UserRepository.ChangePassword` then verifies the
+current password before starting a transaction (Argon2 is slow; a wrong one is
+`rss.ErrWrongPassword`, "That password isn't right." on the current password field), and
+in one transaction stores the new hash and deletes the user's other `user_sessions` rows,
+keeping this device's. The handler queues the `password_changed` email ("Your rss
+password was changed") to the account's address, logging an error rather than failing if
+it can't, flashes "Your password was changed. Other devices were logged out." and
+redirects to `/settings`. `/.well-known/change-password` redirects there, so password
+managers can link to it; it's outside the login group, so an anonymous visitor logs in
+first and `returnTo` brings them back. Another device finds its row gone on its next
+request and continues as anonymous.
+
+A "Devices" section under Account has a "Log out of all other devices" button
+(`logOutOthersHandler`), which needs no password since it can only protect:
+`UserSessionRepository.DeleteOthers` deletes the user's other sessions and returns how
+many, and the flash says "You're logged out on every other device." or, when there were
+none, "There were no other devices to log out."
+
+A last "Help" section has a `mailto:` row for the support address
+(`Config.SupportEmail`; left out when it isn't set) and rows for the privacy policy and
+terms.
+
+**Email.** A handler that sends email (so far only the password change) calls
 `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
 (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
 links are built with `s.absoluteURL`, never from the request) and queues it with
@@ -99,8 +135,13 @@ work" and "Security measures" in [architecture.md](architecture.md).
 9. Settings: `internal/server/html.go` (`navData`, `nav`) and
    `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry);
    `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
-   `settingsNameFormHandler`); `internal/validator/account.go` (`CheckName`);
-   `internal/psql/users.go` (`UpdateName`); `settings.html`, `settings_name.html`.
+   `settingsNameFormHandler`, `settingsPasswordFormHandler`, `logOutOthersHandler`,
+   `changePasswordWellKnownHandler`); `internal/validator/account.go` (`CheckName`);
+   `internal/psql/users.go` (`UpdateName`, `ChangePassword`) and `user_sessions.go`
+   (`DeleteOthers`); `settings.html`, `settings_name.html`, `settings_password.html`;
+   `internal/ui/emails/password_changed.tmpl`.
+   The policy pages: `internal/server/policy.go`, `privacy.html`, `terms.html` and
+   `partials/policy.html` (`policy-links`, `support-link`).
 10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
     (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
     (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
@@ -111,6 +152,7 @@ work" and "Security measures" in [architecture.md](architecture.md).
 `TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`,
 `TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`,
 `TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`,
+`policy_test.go` (`TestPolicyPages`, `TestPolicyLinks`),
 `templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
 `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`,
 `ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go`
@@ -120,7 +162,8 @@ work" and "Security measures" in [architecture.md](architecture.md).
 `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
 `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
 `emails_test.go`; `internal/password/password_test.go`; `internal/server/email_test.go`;
-`internal/mail/runner_test.go`, `queue_test.go`.
+`internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
+(`TestEmailFooterLinksPrivacy`).
 
 **Why:** "Security" and "Accounts" in decisions.md.
 

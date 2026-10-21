@@ -156,6 +156,47 @@ func TestUserSessionRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("DeleteOthers", func(t *testing.T) {
+		userID, _ := newUser(t)
+		otherUserID, _ := newUser(t)
+
+		create := func(userID string) string {
+			t.Helper()
+			id, err := repo.Create(t.Context(), userID, idleBefore())
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			return id
+		}
+		keep, other1, other2 := create(userID), create(userID), create(userID)
+		otherUsers := create(otherUserID)
+
+		n, err := repo.DeleteOthers(t.Context(), userID, keep)
+		if err != nil {
+			t.Fatalf("DeleteOthers: %v", err)
+		}
+		if n != 2 {
+			t.Errorf("deleted = %d, want 2", n)
+		}
+		if !exists(t, keep) {
+			t.Error("kept session was deleted")
+		}
+		if exists(t, other1) || exists(t, other2) {
+			t.Error("another session of the user still exists")
+		}
+		if !exists(t, otherUsers) {
+			t.Error("another user's session was deleted")
+		}
+
+		n, err = repo.DeleteOthers(t.Context(), userID, keep)
+		if err != nil {
+			t.Fatalf("second DeleteOthers: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("second deleted = %d, want 0", n)
+		}
+	})
+
 	t.Run("deleting the user cascades", func(t *testing.T) {
 		userID, _ := newUser(t)
 		id, err := repo.Create(t.Context(), userID, idleBefore())

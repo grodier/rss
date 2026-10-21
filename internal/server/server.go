@@ -54,6 +54,7 @@ type UserStore interface {
 	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
 	UpdateName(ctx context.Context, id, name string) error
+	ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error
 }
 
 // SessionStore stores logged-in devices (user_sessions rows).
@@ -62,6 +63,7 @@ type SessionStore interface {
 	Get(ctx context.Context, id string) (rss.Session, error)
 	Touch(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
+	DeleteOthers(ctx context.Context, userID, keepID string) (int64, error)
 }
 
 // SearchStore searches sites and feeds already in the database.
@@ -171,6 +173,10 @@ type Server struct {
 	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
 	signupLimiter *rateLimiter
 
+	// passwordChangeLimiter caps password change attempts per user (keyed by
+	// user ID).
+	passwordChangeLimiter *rateLimiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
@@ -187,19 +193,20 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 	}
 
 	s := &Server{
-		logger:              logger,
-		config:              cfg,
-		templates:           templates,
-		emails:              emails,
-		formDecoder:         form.NewDecoder(),
-		services:            services,
-		sessionManager:      sessionManager,
-		lookupWait:          3 * time.Second,
-		lookupLimiter:       newRateLimiter(10, 10*time.Minute),
-		refreshLimiter:      newRateLimiter(10, 10*time.Minute),
-		loginLimiter:        newRateLimiter(20, 10*time.Minute),
-		loginFailureLimiter: newRateLimiter(10, 15*time.Minute),
-		signupLimiter:       newRateLimiter(10, time.Hour),
+		logger:                logger,
+		config:                cfg,
+		templates:             templates,
+		emails:                emails,
+		formDecoder:           form.NewDecoder(),
+		services:              services,
+		sessionManager:        sessionManager,
+		lookupWait:            3 * time.Second,
+		lookupLimiter:         newRateLimiter(10, 10*time.Minute),
+		refreshLimiter:        newRateLimiter(10, 10*time.Minute),
+		loginLimiter:          newRateLimiter(20, 10*time.Minute),
+		loginFailureLimiter:   newRateLimiter(10, 15*time.Minute),
+		signupLimiter:         newRateLimiter(10, time.Hour),
+		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

@@ -166,6 +166,10 @@ const sessionLifetime = 365 * 24 * time.Hour
 
 // newSessionManager returns the session manager, storing sessions in db.
 func newSessionManager(db *sql.DB, env string) *scs.SessionManager {
+	// The session cookie is the only cookie the app sets, and it's essential,
+	// so there's no cookie banner (see "Accounts" in docs/decisions.md).
+	// Adding a non-essential cookie, analytics or third-party scripts means
+	// revisiting that, and the privacy policy (privacy.html).
 	sessionManager := scs.New()
 	sessionManager.Store = postgresstore.New(db)
 	sessionManager.Lifetime = sessionLifetime

@@ -13,10 +13,9 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
    3. #266 Change your email address.
    4. #267 Export your subscriptions as OPML.
    5. #268 Delete your account.
-   6. #269 Add a privacy policy, terms of use and help links.
 
-   Issues that can be worked on in parallel sessions, in waves: #267 and #269;
-   then #264 and #268; then #265; then #266.
+   Issues that can be worked on in parallel sessions, in waves: #264, #267 and #268;
+   then #265; then #266.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -31,6 +30,12 @@ Running it locally for yourself needs none of this.
 - [ ] **Single-use invites.** A table of invites with expiry and a CLI command to make
   them. Only once people we don't know personally are invited. When the code comes in
   the link, show "Invited" instead of the text field.
+- [ ] **Review the privacy policy and terms** (`privacy.html`, `terms.html`, #269). They
+  were drafted without legal review and name George Rodier, in the United States, as
+  who runs rss. Before launch: put in the product's name, and a business if one runs it;
+  name a state for governing law (the terms only say "the United States"); check each
+  section against what the app then does (processors, retention, the Settings features
+  it mentions); have them reviewed; and bump "Last updated".
 
 ## Accounts
 

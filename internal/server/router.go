@@ -47,6 +47,10 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 
+	// The policy pages need no session: they're the same for everyone.
+	router.Get("/privacy", s.privacyHandler)
+	router.Get("/terms", s.termsHandler)
+
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
 		r.Use(s.authenticate)

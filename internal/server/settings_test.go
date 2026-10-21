@@ -38,6 +38,29 @@ func TestSettingsHandler(t *testing.T) {
 		)
 	})
 
+	t.Run("help shows the support address", func(t *testing.T) {
+		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SupportEmail: "help@example.com"}, Services{})
+		rr := httptest.NewRecorder()
+		s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+
+		assertBodyContains(t, rr.Body.String(),
+			`<a class="settings-row" href="mailto:help@example.com">`,
+			"Questions or problems? Email help@example.com",
+		)
+	})
+
+	t.Run("help without a support address", func(t *testing.T) {
+		s := newTestServer(t)
+		rr := httptest.NewRecorder()
+		s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+
+		body := rr.Body.String()
+		if strings.Contains(body, "mailto:") || strings.Contains(body, "Questions or problems?") {
+			t.Errorf("body has a support row without a support address: %s", body)
+		}
+		assertBodyContains(t, body, `href="/privacy"`, `href="/terms"`)
+	})
+
 	t.Run("flash is shown once", func(t *testing.T) {
 		s := newTestServer(t)
 		rr := httptest.NewRecorder()

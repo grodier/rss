@@ -1,6 +1,7 @@
 package sanitize
 
 import (
+	stdhtml "html"
 	"net/url"
 	"strings"
 	"testing"
@@ -157,6 +158,107 @@ func TestHTML(t *testing.T) {
 			name: "figure and image alt kept",
 			raw:  `<figure><img src="https://example.com/i.png" alt="A cat"><figcaption>A cat</figcaption></figure>`,
 			want: ptr(`<figure><img src="https://example.com/i.png" alt="A cat" loading="lazy" referrerpolicy="no-referrer"/><figcaption>A cat</figcaption></figure>`),
+		},
+		{
+			name: "plain text split into paragraphs",
+			raw:  "one\n\ntwo",
+			want: ptr(`<p>one</p><p>two</p>`),
+		},
+		{
+			name: "single line breaks become br",
+			raw:  "one\ntwo\n\n\nthree",
+			want: ptr(`<p>one<br/>two</p><p>three</p>`),
+		},
+		{
+			name: "CRLF line breaks",
+			raw:  "one\r\n\r\ntwo",
+			want: ptr(`<p>one</p><p>two</p>`),
+		},
+		{
+			name: "blank line with spaces and tabs",
+			raw:  "  one \n \t\ntwo\n",
+			want: ptr(`<p>one</p><p>two</p>`),
+		},
+		{
+			name: "inline elements stay in their paragraph",
+			raw:  "a <em>b</em>\n\nc",
+			want: ptr(`<p>a <em>b</em></p><p>c</p>`),
+		},
+		{
+			name: "single p wrapper reflowed",
+			raw:  "<p>one\n\ntwo</p>",
+			want: ptr(`<p>one</p><p>two</p>`),
+		},
+		{
+			name: "single div wrapper reflowed",
+			raw:  "\n<div>one\n\n<strong>two</strong></div>\n",
+			want: ptr(`<p>one</p><p><strong>two</strong></p>`),
+		},
+		{
+			name: "paragraphs left as they are",
+			raw:  "<p>one</p>\n\n<p>two</p>",
+			want: ptr("<p>one</p>\n\n<p>two</p>"),
+		},
+		{
+			name: "text with br left as it is",
+			raw:  "one<br>two\n\nthree",
+			want: ptr("one<br/>two\n\nthree"),
+		},
+		{
+			name: "wrapper containing a block left as it is",
+			raw:  "<div>one\n\n<p>two</p></div>",
+			want: ptr("<div>one\n\n<p>two</p></div>"),
+		},
+		{
+			name: "text without line breaks left as it is",
+			raw:  "just text",
+			want: ptr("just text"),
+		},
+		{
+			name: "whitespace-only paragraphs dropped",
+			raw:  "one\n\n \n\ntwo",
+			want: ptr(`<p>one</p><p>two</p>`),
+		},
+		{
+			name: "escaped JSON Feed text shows tags as text",
+			raw:  stdhtml.EscapeString("<b>not bold</b>\n\nnext"),
+			want: ptr(`<p>&lt;b&gt;not bold&lt;/b&gt;</p><p>next</p>`),
+		},
+		{
+			name: "bare URL linked without the trailing period",
+			raw:  "see https://example.com/a.",
+			want: ptr(`see <a href="https://example.com/a" rel="nofollow noreferrer noopener" target="_blank">https://example.com/a</a>.`),
+		},
+		{
+			name: "bare URL keeps its matching parenthesis",
+			raw:  "(https://en.wikipedia.org/wiki/Go_(language))",
+			want: ptr(`(<a href="https://en.wikipedia.org/wiki/Go_(language)" rel="nofollow noreferrer noopener" target="_blank">https://en.wikipedia.org/wiki/Go_(language)</a>)`),
+		},
+		{
+			name: "bare URLs linked in plain text paragraphs",
+			raw:  "one http://example.com/x?a=1&b=2, two\n\nhttps://example.com/y!",
+			want: ptr(`<p>one <a href="http://example.com/x?a=1&amp;b=2" rel="nofollow noreferrer noopener" target="_blank">http://example.com/x?a=1&amp;b=2</a>, two</p>` +
+				`<p><a href="https://example.com/y" rel="nofollow noreferrer noopener" target="_blank">https://example.com/y</a>!</p>`),
+		},
+		{
+			name: "bare URL linked inside HTML",
+			raw:  "<p>Read <em>https://example.com/a</em></p>",
+			has:  []string{`<em><a href="https://example.com/a"`},
+		},
+		{
+			name: "URL in a link not wrapped again",
+			raw:  `<a href="https://example.com/a">https://example.com/a</a>`,
+			want: ptr(`<a href="https://example.com/a" rel="nofollow noreferrer noopener" target="_blank">https://example.com/a</a>`),
+		},
+		{
+			name: "URL in pre and code not linked",
+			raw:  `<pre>https://example.com/a</pre><p><code>https://example.com/b</code></p>`,
+			want: ptr(`<pre>https://example.com/a</pre><p><code>https://example.com/b</code></p>`),
+		},
+		{
+			name: "other schemes not linked",
+			raw:  "ftp://x javascript:alert(1) https://",
+			want: ptr("ftp://x javascript:alert(1) https://"),
 		},
 		{
 			name: "empty input",

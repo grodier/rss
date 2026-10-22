@@ -7,6 +7,33 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
+Reading features, planned in #309 (issues #293–#308), in merge order:
+
+1. #293 Add the tables for saved articles, imports, site icons and enrichment (one
+   production reset)
+2. #294 Turn plain-text article content into paragraphs and links
+3. #298 Read Open Graph tags and icon links from web pages
+4. #295 Make article pages easier to read: wide content and a lead image (after #294)
+5. #297 Record which articles carry audio or video (after #293)
+6. #299 Save articles (after #293; draft PR with layout options first)
+7. #302 Import subscriptions from OPML: the import queue (after #293)
+8. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+9. #300 Add a Saved page to the nav (after #299)
+10. #303 Import subscriptions from OPML: upload and results pages (after #302)
+11. #304 Find and store site icons (after #293, #298)
+12. #301 Search your saved articles (after #300)
+13. #305 Show site icons as avatars (after #304)
+14. #306 Fetch missing article images and titles from their web pages (after #293, #298)
+15. #307 Show article images and titles fetched from their web pages (after #306)
+16. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+    with placement options first)
+
+These can run in parallel sessions, one wave after another: #293, #294 and #298; then
+#295, #297, #299 and #302; then #296, #300, #303 and #304; then #301, #305 and #306; then
+#307 and #308.
+
+Then:
+
 1. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 2. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -75,16 +102,16 @@ decisions.md.
 - [ ] **One canonical host.** The app also answers on its `onrender.com` URL, so sessions
   and links can be split between two hosts. Redirect requests for any other host to
   `-base-url`'s, except `/healthcheck`, which Render's health checks call.
-- [ ] **Full data export.** A JSON file with your account, subscriptions and reading
-  history, next to the OPML export.
+- [ ] **Full data export.** A JSON file with your account, subscriptions, reading
+  history and saved articles (#299), next to the OPML export.
 - [ ] **Clean up abandoned unconfirmed accounts**, e.g. delete accounts never confirmed
   and unused for 30 days after signup. Only if they pile up.
 - [ ] **Support tools.** `www` commands can't run in production, so the self-service flows
   are the support path. If support requests need more (looking up an account, resending
   a confirmation for someone), plan an owner-only admin page.
 - [ ] **First-run experience (needs planning).** What a new account sees after signup:
-  today, an empty timeline pointing to Search. Perhaps suggested sites, OPML import, or a
-  short tour.
+  today, an empty timeline pointing to Search and, from #303, to OPML import. Perhaps
+  suggested sites or a short tour.
 
 ## Deployment
 
@@ -194,7 +221,8 @@ Each with when it pays off:
   weigh deleting against keeping: storage and backup cost and the "Articles grow without
   bound" watchlist entry on one side; the value of a long article archive (search,
   history, business uses of the data) and its copyright and privacy implications on the
-  other. Saved articles (see Reading) must survive whatever rule is chosen.
+  other. Saved articles (#299) must survive whatever rule is chosen: deleting an article
+  cascades to its `saves` rows.
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand.
 
@@ -204,19 +232,60 @@ Each with when it pays off:
   that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
   browsing a site's feeds in context. It isn't a way to organise subscriptions (no
   folders or pinned feeds). Open question: how it relates to the standalone feed page.
-- [ ] **OPML import.** Import subscriptions from another reader. Export exists (#267).
 
 ## Reading
 
-- [ ] **Saved articles.** Save or star articles to keep and find later. Must be exempt
-  from article retention.
-- [ ] **Enrich articles from their page.** One background fetch of the article's web page
-  (through `internal/fetch`, its own queue, polite to publishers) could provide:
-  `og:image` when the feed has no image; a better title for untitled items (`og:title`,
-  `<h1>`, or eventually AI-assisted heuristics over headings, URL path, images and text);
-  and the full text when the feed only sends a summary (needs heuristics for when it's
-  worth fetching, and readability-style extraction). Costs an extra request per article,
-  some sites block bots, and it needs a retry and failure story.
+- [ ] **Enrich older articles (low priority).** #306 only enriches a feed's 20 newest
+  articles on its first save, then new arrivals. A second, lowest-priority queue could
+  work back through older articles that are missing an image, title or excerpt, when
+  nothing else is waiting. Worth it once something reads the old archive: searching all
+  articles, related articles, or saved articles from far back that look bare.
+- [ ] **Load full article (on demand).** A "Load full article" button on the article page
+  when the feed only sends a summary: a POST that fetches the page once, extracts the
+  text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it
+  like feed HTML and keeps it on the article for every reader. Never automatic: it costs
+  storage, extraction fails on paywalls and cookie walls, and storing publishers' full
+  text is a copyright question for a public product. Needs a failure story ("Couldn't
+  load the article; read it on {site}").
+- [ ] **AI-assisted titles and summaries.** For untitled items, or alongside enrichment:
+  heuristics over headings, URL path, images and text, or a model. Deferred from #306.
+- [ ] **Generic `og:image` detection.** Some sites use one fallback `og:image` (their
+  logo) for every page, so enrichment (#306) would give every card the same picture.
+  If that shows up, ignore a page image that a feed's recent articles share.
+- [ ] **Measure embeds and media.** Before building more embeds or a player, see what
+  articles carry. Embedded iframes by host:
+  ```sql
+  SELECT substring(m[1] from '^(?:https?:)?//([^/?#]+)') AS host, count(DISTINCT id)
+  FROM articles, regexp_matches(content || summary, '<iframe[^>]*\ssrc=["'']([^"'']+)', 'gi') AS m
+  GROUP BY host ORDER BY 2 DESC;
+  ```
+  Embedded social posts (their markup arrives as a blockquote with a class):
+  ```sql
+  SELECT count(*) FILTER (WHERE content || summary ~* 'class="twitter-tweet') AS x,
+         count(*) FILTER (WHERE content || summary ~* 'bluesky-embed') AS bluesky,
+         count(*) FILTER (WHERE content || summary ~* 'mastodon-embed') AS mastodon,
+         count(*) FILTER (WHERE content || summary ~* 'instagram-media') AS instagram
+  FROM articles;
+  ```
+  Audio and video items, from #297:
+  ```sql
+  SELECT split_part(media_type, '/', 1) AS kind, count(*), count(DISTINCT feed_id) AS feeds
+  FROM articles WHERE media_type <> '' GROUP BY 1;
+  ```
+  Use the numbers to order the next three items.
+- [ ] **Podcast and video player.** Keep the enclosure's URL, type and length (#297 only
+  keeps the type), show the browser's own `<audio>` / `<video>` player on the article
+  page, and an "Audio" or "Video" label on the card. Media loads from the publisher, so
+  the CSP needs `media-src https:`.
+- [ ] **Music embeds.** Spotify, SoundCloud and Bandcamp players as click-to-play
+  previews, like YouTube and Vimeo (#296).
+- [ ] **Embedded social posts.** Style the blockquote that X, Bluesky and Mastodon embeds
+  arrive as into a quote card with the author and a link, without loading their scripts.
+- [ ] **Share button.** In the row's action bar next to Save (#299): the Web Share API on
+  phones, else copy the article's link. Its own small issue once Save's layout is settled.
+- [ ] **Filters and muting (needs planning).** Muting a feed on the timeline (kept
+  subscribed, still on its feed page), keyword filters, and how they relate to hiding
+  single articles (#308). The owner wants to think through what filters mean first.
 - [ ] **Measure untitled articles.** Before investing in better titles, query the share of
   articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 /
   count(*) FROM articles`).
@@ -234,11 +303,9 @@ Each with when it pays off:
   - Bandwidth, caching, size limits and timeouts for every image.
   - Our server may get rate-limited or blocked by hosts; caching publishers' images raises
     copyright questions.
-- [ ] **Sandboxed embeds.** Allow selected iframes (e.g. `youtube-nocookie.com`) with the
-  `sandbox` attribute instead of replacing every embed with a link.
-- [ ] **First `<img>` as the card image.** Fall back to the first content image when the
-  feed declares none, filtering out tracking pixels, avatars and emoji (size attributes,
-  known hosts). Or rely on `og:image` from enrichment instead.
+
+  Site icons (#304, #305) are already served from our domain: they're small, one per
+  site, and checked and stored once a month.
 - [ ] **Keyboard shortcuts.** E.g. `j`/`k` to move between rows, `o` to open, `v` to open
   the original.
 - [ ] **"You were here" divider.** A subtle marker in the timeline at your last visit
@@ -249,17 +316,18 @@ Each with when it pays off:
 
 ## Design
 
-- [ ] **Site icons (favicons) as avatars.** Show the site's icon instead of its letter.
-  Find it during lookup (`<link rel="icon">` or `apple-touch-icon`, preferring one that
-  is sharp at 40px, else `/favicon.ico`) through `internal/fetch`, store its URL on
-  `sites`, and keep the letter as the fallback when there is none or it fails to load.
-  Loading icons from publishers has the same privacy cost as article images; the image
-  proxy (see Reading) would cover both.
+- [ ] **Generated avatars for sites without a usable icon.** Sites whose only icon is a
+  small favicon keep their letter (#304). Explore generating something better, possibly
+  with AI: the site's colors on the tile, an upscaled or redrawn logo. Ideas only so far.
+- [ ] **Icons a feed declares.** RSS `<image>`, Atom `<icon>` / `<logo>` and JSON Feed
+  `icon` as extra candidates for #304, if many sites end up without an icon.
 - [ ] **Themes, including dark mode (needs planning).** A theme choice (light, dark,
   follow the system) on the Settings page (#261), applied as a `data-theme` attribute
   on `<html>` that redefines the color tokens. Stored as a typed column on `users`, not
   a key-value table ("Accounts" in decisions.md). The avatar tints (`.tone-1` to
-  `.tone-6`) need dark variants too.
+  `.tone-6`) and the icon tile (#305) need dark variants too. Reading preferences go
+  here as well: text size, serif or sans, and line width on the article page (deferred
+  from #295).
 - [ ] **Asset build step (needs planning).** Bundle and minify the CSS and JavaScript
   for production, writing content-hashed file names. Templates link assets through
   `asset` (#199), so only `asset` changes: it looks names up in the build's manifest
@@ -421,6 +489,30 @@ Background refresh:
 - Also listed under Feed ingestion: adaptive refresh interval, per-host politeness,
   separate worker process, giving up on long-dead feeds.
 
+Other background work (#302, #304, #306):
+
+- [ ] **Enrichment request volume** (#306). Every new article missing an image, title or
+  excerpt costs one page fetch, and a feed's first save queues up to 20. One worker
+  fetches one page at a time (about one a second), so a large OPML import (#302) of
+  feeds without images queues thousands of jobs that take hours to drain, and many of
+  them hit the same few hosts back to back. *Signal:* `SELECT priority, count(*),
+  min(next_attempt_at) FROM enrich_jobs GROUP BY 1` growing or the oldest due job
+  getting older; 429s from one host in the `article enriched` logs. *Fix:* per-host
+  pacing (skip jobs whose host was fetched in the last few seconds), more
+  `-enrich-workers`, or a lower first-save count.
+- [ ] **Enrichment and icon claims skip unsubscribed work** (#304, #306). Like
+  `ClaimDue`, `ClaimNext` and `ClaimIconCheck` filter on an `EXISTS` subscription check
+  the index can't serve, so jobs for feeds nobody subscribes to (looked up, never
+  followed) stay at the front and every claim walks past them. *Signal:* `EXPLAIN
+  ANALYZE` of either claim reading far more rows than it returns. *Fix:* the
+  `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without
+  subscribers after a while.
+- [ ] **One import at a time** (#302). The import queue takes the oldest import's feeds
+  first, so a 1,000-feed import delays a small one started after it, up to an hour with
+  two workers. *Signal:* imports reported slow, or pending `import_feeds` rows waiting
+  long behind another user's import. *Fix:* round-robin between imports (claim the
+  lowest position across imports, oldest import first), or a per-import worker cap.
+
 Pages and queries:
 
 - [ ] **My feeds is unpaginated** (#136). It loads every subscription with a `LATERAL`
@@ -457,9 +549,29 @@ Pages and queries:
   *Signal:* `MarkRead` in `pg_stat_statements` totals, or lock waits on `reads`.
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161). One query per timeline or feed
-  page, matching reads across copies by `canonical_url` (#161). *Signal:* it shows up in
-  `pg_stat_statements`, or slows for users with many reads. *Fix:* fold it into the
-  page's main query, or store the canonical URL on `reads`.
+  page, matching reads across copies by `canonical_url` (#161). Saves add
+  `SavedArticleIDs` (#299), icons add `IconHashes` (#305), and feed pages add
+  `HiddenArticleIDs` (#308), each one more query per page with the same shape. *Signal:*
+  they show up in `pg_stat_statements`, or slow for users with many reads or saves.
+  *Fix:* fold them into the page's main query, or store the canonical URL on `reads`,
+  `saves` and `hides`.
+- [ ] **Hidden articles in the timeline query** (#308). `ListTimeline` leaves out hidden
+  articles and their copies with a `NOT EXISTS` over `hides` joined to `articles` by
+  `canonical_url`, for every subscribed article it considers. *Signal:* `/` p95 rising
+  for users who hide often, or `EXPLAIN ANALYZE` showing the anti-join as a large part of
+  the timeline query. *Fix:* store the hidden article's dedup key on `hides` so the check
+  is one index lookup, or fold hiding into the per-user timeline table (see "Timeline
+  query merges many feeds").
+- [ ] **Saved search scans with `ILIKE`** (#301). Search within Saved matches `%q%`
+  against each of the user's saved articles. Fine for hundreds of saves. *Signal:*
+  `/saved?q=` latency rising for users with thousands of saves. *Fix:* `pg_trgm` or
+  full-text search, with the site search ("Better search ranking").
+- [ ] **Site icons served from Postgres** (#305). Each icon request that misses the
+  browser's cache reads its `bytea` row. URLs carry the icon's hash and are cached for a
+  year, so repeat views cost nothing, but every new visitor's first timeline asks for up
+  to 30 icons. *Signal:* `GetIcon` in `pg_stat_statements` totals, or icon requests in
+  the logs dominating traffic. *Fix:* an in-memory cache keyed by hash, or a CDN in
+  front of `/sites/*/icon`.
 
 Data growth:
 
@@ -474,6 +586,10 @@ Data growth:
 - [ ] **`reads` grows with every article read** (#156). One row per user per article
   opened, kept until the article is deleted. *Signal:* `reads` table and index size.
   *Fix:* article retention (deleting articles cascades to `reads`).
+- [ ] **Imports are kept forever** (#302). Every upload keeps its `imports` row and a row
+  per feed in the file, only shown on the results page and the last five in Settings.
+  *Signal:* `import_feeds` table size. *Fix:* delete imports older than 90 days (the
+  results page then says the import is no longer available).
 - [ ] **Sessions in Postgres.** scs reads the `sessions` row on every request in the
   session group and writes it whenever the session changes (flash messages, login).
   `authenticate` then reads the `user_sessions` row joined to `users` (#258, in place of

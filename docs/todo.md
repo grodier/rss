@@ -11,24 +11,23 @@ Reading features, planned in #309 (issues #293–#308), in merge order:
 
 1. #293 Add the tables for saved articles, imports, site icons and enrichment (one
    production reset)
-2. #294 Turn plain-text article content into paragraphs and links
-3. #298 Read Open Graph tags and icon links from web pages
-4. #295 Make article pages easier to read: wide content and a lead image (after #294)
-5. #297 Record which articles carry audio or video (after #293)
-6. #299 Save articles (after #293; draft PR with layout options first)
-7. #302 Import subscriptions from OPML: the import queue (after #293)
-8. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-9. #300 Add a Saved page to the nav (after #299)
-10. #303 Import subscriptions from OPML: upload and results pages (after #302)
-11. #304 Find and store site icons (after #293, #298)
-12. #301 Search your saved articles (after #300)
-13. #305 Show site icons as avatars (after #304)
-14. #306 Fetch missing article images and titles from their web pages (after #293, #298)
-15. #307 Show article images and titles fetched from their web pages (after #306)
-16. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+2. #298 Read Open Graph tags and icon links from web pages
+3. #295 Make article pages easier to read: wide content and a lead image (after #294)
+4. #297 Record which articles carry audio or video (after #293)
+5. #299 Save articles (after #293; draft PR with layout options first)
+6. #302 Import subscriptions from OPML: the import queue (after #293)
+7. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+8. #300 Add a Saved page to the nav (after #299)
+9. #303 Import subscriptions from OPML: upload and results pages (after #302)
+10. #304 Find and store site icons (after #293, #298)
+11. #301 Search your saved articles (after #300)
+12. #305 Show site icons as avatars (after #304)
+13. #306 Fetch missing article images and titles from their web pages (after #293, #298)
+14. #307 Show article images and titles fetched from their web pages (after #306)
+15. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #293, #294 and #298; then
+These can run in parallel sessions, one wave after another: #293 and #298; then
 #295, #297, #299 and #302; then #296, #300, #303 and #304; then #301, #305 and #306; then
 #307 and #308.
 

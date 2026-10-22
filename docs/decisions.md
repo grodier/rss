@@ -38,6 +38,11 @@ section names; how the code works is in [architecture.md](architecture.md) and
 - **Testers' data isn't kept**: schema changes keep editing the initial migration and
   wipe the database, and testers are told so. The rule and its scope are under "Prototype
   stage" in CLAUDE.md. (#180)
+- **A planned batch lands its schema in one change**, so production is reset once per
+  batch rather than once per feature: the account tables (#255), then the reading
+  features' tables (#293). A prototype that may be dropped adds its own table instead
+  (`hides`, #308). Before a reset, export your OPML; once import exists (#303), import it
+  afterwards.
 
 ## Feed discovery
 
@@ -96,6 +101,28 @@ Planned in #139 (issues #135–#138).
   they survive restarts and work across instances.
 - **Subscriptions are private:** no subscriber counts.
 
+### OPML import
+
+Planned in #309 (issues #302, #303).
+
+- **Everything in the file is imported**, with no preview or checklist; unsubscribing is
+  one click if something unwanted came in. Folders are flattened, since the app has no
+  folders.
+- **Import is a background queue**, one `import_feeds` row per feed in the file, worked by
+  its own runner: an unknown feed has to be fetched and checked first, since feeds are
+  only created by discovery. The `lookups` table can't be reused: it's keyed by site key,
+  and feeds on a shared host would collide. A known feed is subscribed to directly; an
+  unknown or gone one goes through discovery and is saved like a lookup's. A URL that
+  turns out to be a web page subscribes to the first feed it advertises.
+- **The results page reports every feed**: subscribed, already subscribed, or couldn't
+  add, with a plain reason ("Not a valid web address.", "Couldn't reach the site.",
+  "There's no feed at this address.") and a link to search for the site. Failures aren't
+  retried automatically and there's no "Try again"; uploading the file again retries
+  them. While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.
+- **Offered in Settings, next to Export, and on the empty timeline.**
+- **Files up to 1 MiB and 1,000 feeds, 5 imports per user an hour.** The upload is a
+  multipart form with its own size cap, not `decodePostForm`'s 64 KiB.
+
 ## Reading
 
 Planned in #163 (issues #147–#162).
@@ -116,17 +143,36 @@ Planned in #163 (issues #147–#162).
   collapsed at query time on `canonical_url`, keeping the earliest arrival, with "Also in"
   on the row. Feed pages show every copy. (#154, #162)
 - **Rows are divided sections with a preview card**, one design for the timeline and feed
-  pages: the feed's avatar and name with the time, then a card with the optional
-  feed-declared image, title, two-line excerpt and a small link to the original. The
-  whole card links to the in-app article page. Feed pages leave out the avatar and name.
-  Untitled articles use the start of the excerpt. (#181)
+  pages: the feed's avatar and name with the time, then a card with the optional image,
+  title, two-line excerpt and a small link to the original. The whole card links to the
+  in-app article page. Feed pages leave out the avatar and name. Untitled articles use
+  the start of the excerpt. (#181) The image, title and excerpt are the feed's, else the
+  article page's (see "Enrichment", #307); the feed's own values always win.
 - **Article page:** sanitized content, else summary, plus "Read on {site}". No
-  previous/next. Any logged-in user can open any article. (#152)
+  previous/next. Any logged-in user can open any article. (#152) The card image shows
+  above the text as a lead image unless the content already shows it: the content starts
+  with an image, has one right after its first paragraph, or contains the same image
+  anywhere (#295). With no content or summary, the page's description from enrichment is
+  shown (#307).
 - **Article HTML is sanitized at render time** with bluemonday: relative URLs resolved,
   iframes replaced by a link, links opened in a new tab with `noopener noreferrer`. Images
   load from the publisher with `referrerpolicy="no-referrer"` and lazy loading; the CSP
   allows `img-src https:`. No image proxy yet (a todo item, with why it's its own
-  project). (#151)
+  project). (#151) Changed in #309 for two cases:
+  - Content with no block-level markup (plain text, such as JSON Feed's `content_text`)
+    is split into paragraphs at blank lines, with `<br>` for single line breaks, and bare
+    URLs become links everywhere (#294). Stored HTML is unchanged.
+  - YouTube and Vimeo iframes become click-to-play previews (#296): nothing loads from
+    them but YouTube's thumbnail until the reader clicks, then a sandboxed player from
+    `youtube-nocookie.com` or `player.vimeo.com` (the CSP's only `frame-src` hosts).
+    Without JavaScript the preview links to the video. Every other iframe stays a link;
+    more embed types wait for the measurements in todo.md.
+- **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the
+  article page gets better defaults first: wide tables scroll inside the column, styled
+  code, lists and rules (#295).
+- **Audio and video are measured before they're built** (#297): only the media type of an
+  item's first audio or video enclosure is stored, so the owner can see how common they
+  are, alongside queries over stored HTML for embeds. No player yet.
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor);
   infinite scroll enhances it. Logged-in pages keep `Cache-Control: no-store`; the script
   keeps the URL on the visible row so Back and reload land nearby. (#155, #159)
@@ -134,6 +180,64 @@ Planned in #163 (issues #147–#162).
   dates show just the date and aren't localized. No day headers or relative times.
   (#157, #160)
 - **New articles don't appear live** while you scroll; a reload shows them on top.
+
+### Saved articles
+
+Planned in #309 (issues #299–#301).
+
+- **Saved means bookmarked, kept until you remove it**, not a read-later queue: no
+  archive, no "done", no counts. A queue you work through to empty is an inbox, which
+  the timeline deliberately isn't.
+- **Called Save / Saved, with a bookmark icon**, not a star or heart, which read as
+  "like". Saving is quiet (no flash) and doesn't mark the article read.
+- **Saving covers every copy** (same `canonical_url`), like read state: `saves` keys on
+  `article_id`, and copies are matched at query time. Saving a copy of an already saved
+  article adds nothing; unsaving removes them all.
+- **Saved has its own nav entry**: Home, Saved, My feeds, Search. Newest saved first,
+  paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt
+  and feed title; a user's saves are a small set).
+- **Saved articles must survive article retention**, and go into the full data export.
+
+### Hiding articles (prototype)
+
+Planned in #309 (issue #308). Low priority, and a prototype the owner may drop after
+seeing it.
+
+- **Hiding only affects your timeline.** The article stays on its feed page, marked
+  "Hidden from timeline", with an Unhide button; there's no Hidden list, so hiding
+  doesn't become archiving. Unhiding puts it back at its original position, since
+  positions never change. Hiding covers every copy, and doesn't mark the article read.
+- **Undo right away:** with JavaScript the row collapses to "Hidden · Undo"; without it,
+  a flash says where the article went.
+- **Its own table, outside the batch's schema change**, so dropping the prototype leaves
+  nothing behind.
+- **Muting feeds and keyword filters are a separate planning item**, not part of hiding.
+
+## Enrichment
+
+Planned in #309 (issues #298, #306, #307).
+
+- **Articles missing an image, title or excerpt get their web page fetched once**, in the
+  background, for its `og:image` (else `twitter:image`), `og:title` (else `<title>`) and
+  description. Articles complete from their feed cost nothing. No full text (an
+  on-demand "Load full article" is a todo item, never automatic: storage, failed
+  extractions, and the copyright question of storing publishers' text) and no AI.
+- **Enriched values have their own `page_*` columns** and only fill gaps: the feed's own
+  image, title and excerpt always win. `saveArticles` overwrites the feed's fields on
+  every changed fetch, so enrichment never writes them.
+- **How far back:** a feed's first save (a lookup or an import) queues only its 20 newest
+  articles, at a lower priority than new arrivals; after that, every new article that
+  qualifies. Older articles wait for a low-priority backlog queue (a todo item, for
+  future search and related-article features).
+- **Its own queue table (`enrich_jobs`) and runner**, one worker by default. Jobs are only
+  claimed for feeds someone subscribes to, as refresh only fetches subscribed feeds, so a
+  looked-up site nobody follows costs no page fetches.
+- **Polite, with a retry story:** one request at a time through `internal/fetch`; a
+  network error, 429 or 5xx is retried after 1 hour, then 6, then given up; any other
+  4xx or a non-HTML response is given up at once. `robots.txt` isn't consulted: it's one
+  fetch of a page a reader is about to see, like a link preview.
+- **One page parser:** `discovery.ParsePage` reads Open Graph tags and icon links too
+  (#298), for both enrichment and site icons.
 
 ## Design
 
@@ -145,10 +249,34 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Lists are sections separated by dividers, not boxes.** A card is only for a preview of
   something elsewhere: an article now, Open Graph data later.
 - **Avatars are letters on a tint chosen by site** (`avatarTone`), so a site's feeds share
-  a color, until there are site icons.
+  a color, for sites without a usable icon (below).
+- **Site icons replace the letter where a site has a usable one** (planned in #309,
+  issues #304, #305):
+  - We keep our own copy and serve it from `/sites/{id}/icon?v={hash}`, rather than
+    loading it from the publisher: publishers don't see who's reading, hotlink blocking
+    doesn't break it, and we have to download it anyway to know its real size.
+  - Only PNG, JPEG, GIF and ICO up to 256 KiB, served with a sandboxing CSP and
+    `nosniff`. Never SVG, which could run script from our origin; no WebP for now (its
+    size needs `golang.org/x/image`).
+  - At least 32 px on the shorter side and roughly square, else the letter stays: a
+    16 px favicon stretched to 40 px looks worse than the letter. Generated avatars for
+    those sites are a todo item.
+  - Checked by their own runner soon after a site is created, then about every 30 days
+    for sites with subscribers, with a conditional request so an unchanged icon costs
+    almost nothing. A failed check keeps the current icon; it's removed only when the
+    site's page loads and none of its icons is usable.
+  - Site and feed avatars become rounded squares, icon or letter, since most icons are
+    designed as squares. The user's own avatar stays a circle: people are circles, sites
+    squares.
 - **Light theme only for now.** Colors are custom properties on `:root` in `main.css`, so
   a theme can redefine them in one place. System font stack; icons are inline SVG
   partials (`templates/partials/icons.html`), not an icon font or library.
+- **When a layout is an open question, the implementer proposes options before
+  finishing** (#309, for #299 and #308): a draft PR with two or three layouts behind one
+  switch, screenshots at desktop and phone widths (committed under `.screenshots/` while
+  the PR is a draft), and a stop until the owner picks one in a PR comment. Each control
+  must work on its own and next to the others planned for the same place, since not all
+  of them may ship.
 
 ## Security
 
@@ -269,7 +397,7 @@ experience.
 - **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): a
   flat list, one `<outline>` per feed, with no nesting by site, since most readers turn
   nested outlines into folders and would make one per site. Gone feeds are included:
-  they're still your subscriptions. Import is a todo item.
+  they're still your subscriptions. Import: see "OPML import" under Subscriptions.
 - **Security emails:** password changed, email changed (to the old address), and account
   deleted. No "new login" alerts: they're noisy, and people learn to ignore them.
 - **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by

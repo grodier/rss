@@ -931,6 +931,116 @@
     text-decoration: underline;
   }
 
+  /* Article actions: Save for now, in one row so Share or hide can join it.
+     saveLayout (internal/server/html.go) picks where the row goes. */
+  .article-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .save-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+  }
+
+  .save-button:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .save-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .save-button .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    stroke-width: 2;
+  }
+
+  .save-button .icon-bookmark-fill {
+    fill: currentColor;
+  }
+
+  .save-button[aria-pressed="true"] {
+    color: var(--accent);
+  }
+
+  .save-button[aria-pressed="true"] .icon-bookmark,
+  .save-button[aria-pressed="false"] .icon-bookmark-fill {
+    display: none;
+  }
+
+  .save-button[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  /* bar: under the card, left-aligned, icon and label. */
+  .actions-bar {
+    margin-block-start: 0.375rem;
+    margin-inline-start: -0.375rem;
+  }
+
+  .actions-bar .save-button {
+    padding-inline-end: 0.625rem;
+  }
+
+  /* corner: icon-only, on the card's top right corner. */
+  .actions-corner {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0.5rem;
+    inset-inline-end: 0.5rem;
+  }
+
+  .actions-corner .save-button {
+    background: var(--bg-glass);
+    backdrop-filter: var(--blur);
+  }
+
+  .actions-corner .save-button:hover {
+    background: var(--bg);
+  }
+
+  .article-card:has(.actions-corner) .article-title {
+    padding-inline-end: 2rem;
+  }
+
+  .article-card:has(.actions-corner > :nth-child(2)) .article-title {
+    padding-inline-end: 4rem;
+  }
+
+  /* meta: icon-only, at the end of the meta line. Out of the line's flow,
+     so it stays on the first line however the rest wraps. */
+  .article-meta:has(.actions-meta) {
+    position: relative;
+    padding-inline-end: 2rem;
+  }
+
+  .article-meta:has(.actions-meta > :nth-child(2)) {
+    padding-inline-end: 4rem;
+  }
+
+  .actions-meta {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: -0.375rem;
+    translate: 0 -50%;
+  }
+
   /* Profile headers on feed and site pages. */
   .profile {
     padding: 1.25rem 1rem 1rem;
@@ -1318,6 +1428,34 @@
 
   .reader-meta a:hover {
     text-decoration: underline;
+  }
+
+  /* On the article page the corner and meta layouts both sit at the end
+     of the meta line, out of its flow so they stay on its first line; bar
+     sits under the title. */
+  .reader-meta:has(.article-actions) {
+    position: relative;
+    padding-inline-end: 2rem;
+  }
+
+  .reader-meta:has(.article-actions > :nth-child(2)) {
+    padding-inline-end: 4rem;
+  }
+
+  .reader-meta .article-actions {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: -0.375rem;
+    translate: 0 -50%;
+  }
+
+  .reader-meta .actions-corner .save-button {
+    background: none;
+    backdrop-filter: none;
+  }
+
+  .reader .actions-bar {
+    margin-block-start: 0.75rem;
   }
 
   .reader h1 {

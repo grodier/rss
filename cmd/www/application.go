@@ -97,6 +97,7 @@ func (app *Application) Run() error {
 		ArticleService:      psql.NewArticleRepository(db),
 		SubscriptionService: psql.NewSubscriptionRepository(db),
 		ReadService:         psql.NewReadRepository(db),
+		SaveService:         psql.NewSaveRepository(db),
 		Refresher:           refresher,
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},
 	}

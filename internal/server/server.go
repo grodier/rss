@@ -122,6 +122,13 @@ type ReadStore interface {
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 }
 
+// SaveStore records which articles a user has saved.
+type SaveStore interface {
+	Save(ctx context.Context, userID, articleID string) error
+	Unsave(ctx context.Context, userID, articleID string) error
+	SavedArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
 // EmailQueue queues emails for the mail runner to send; satisfied by
 // *mail.Queue.
 type EmailQueue interface {
@@ -140,6 +147,7 @@ var (
 	_ LookupStore       = (*psql.LookupRepository)(nil)
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
 	_ ReadStore         = (*psql.ReadRepository)(nil)
+	_ SaveStore         = (*psql.SaveRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
 )
 
@@ -155,6 +163,7 @@ type Services struct {
 	ArticleService      ArticleStore
 	SubscriptionService SubscriptionStore
 	ReadService         ReadStore
+	SaveService         SaveStore
 	EmailQueue          EmailQueue
 }
 

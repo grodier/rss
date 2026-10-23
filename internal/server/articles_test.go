@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +38,7 @@ func articleServer(t *testing.T, article rss.Article, articleErr, feedErr, siteE
 	article.FeedID = testFeedID
 	return newTestServerWith(t, Services{
 		ReadService: &fakeReadStore{},
+		SaveService: &fakeSaveStore{},
 		ArticleService: &fakeArticleStore{getByIDFn: func(ctx context.Context, id string) (rss.Article, error) {
 			if articleErr != nil {
 				return rss.Article{}, articleErr
@@ -406,6 +410,192 @@ func TestArticleReadHandler(t *testing.T) {
 
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+	})
+}
+
+// assertSaveButtons checks that body has a Save form for savedID showing it
+// saved and one for unsavedID showing it not saved, both returning to
+// returnTo.
+func assertSaveButtons(t *testing.T, body, returnTo, savedID, unsavedID string) {
+	t.Helper()
+	forms := saveForms(t, body)
+	want := map[string]saveFormMarkup{
+		savedID:   {Action: "/articles/" + savedID + "/unsave", Pressed: "true", ReturnTo: returnTo},
+		unsavedID: {Action: "/articles/" + unsavedID + "/save", Pressed: "false", ReturnTo: returnTo},
+	}
+	for id, w := range want {
+		if got, ok := forms[id]; !ok {
+			t.Errorf("no Save form for %s: %s", id, body)
+		} else if got != w {
+			t.Errorf("Save form for %s = %+v, want %+v", id, got, w)
+		}
+	}
+}
+
+// saveStoreReporting returns a SaveStore whose SavedArticleIDs records its
+// arguments and reports savedIDs as saved.
+func saveStoreReporting(gotUser *string, gotIDs *[]string, savedIDs ...string) *fakeSaveStore {
+	return &fakeSaveStore{savedArticleIDsFn: func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+		*gotUser, *gotIDs = userID, articleIDs
+		saved := map[string]bool{}
+		for _, id := range savedIDs {
+			saved[id] = true
+		}
+		return saved, nil
+	}}
+}
+
+func TestArticleHandlerSaved(t *testing.T) {
+	for _, saved := range []bool{true, false} {
+		t.Run(fmt.Sprintf("saved=%v", saved), func(t *testing.T) {
+			s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
+			var gotUser string
+			var gotIDs []string
+			var ids []string
+			if saved {
+				ids = []string{testArticleID}
+			}
+			s.services.SaveService = saveStoreReporting(&gotUser, &gotIDs, ids...)
+
+			rr := serveArticle(t, s, testArticleID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if !slices.Equal(gotIDs, []string{testArticleID}) {
+				t.Errorf("SavedArticleIDs(%q, %v), want [%s]", gotUser, gotIDs, testArticleID)
+			}
+			want := saveFormMarkup{Action: "/articles/" + testArticleID + "/save", Pressed: "false", ReturnTo: "/articles/x"}
+			if saved {
+				want.Action, want.Pressed = "/articles/"+testArticleID+"/unsave", "true"
+			}
+			forms := saveForms(t, rr.Body.String())
+			if got := forms[testArticleID]; len(forms) != 1 || got != want {
+				t.Errorf("Save forms = %+v, want only %+v", forms, want)
+			}
+		})
+	}
+
+	t.Run("SavedArticleIDs error is 500", func(t *testing.T) {
+		s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
+		s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("db down")
+		}}
+
+		if rr := serveArticle(t, s, testArticleID); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func postSave(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, returnTo string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{"return_to": {returnTo}}
+	req := httptest.NewRequest(http.MethodPost, "/articles/x/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(handler).ServeHTTP(rr, req.WithContext(ctx))
+	return rr
+}
+
+func TestArticleSaveHandler(t *testing.T) {
+	testSaveAction(t, "save", func(s *Server) http.HandlerFunc { return s.articleSaveHandler },
+		func(f *fakeSaveStore, fn func(ctx context.Context, userID, articleID string) error) { f.saveFn = fn })
+}
+
+func TestArticleUnsaveHandler(t *testing.T) {
+	testSaveAction(t, "unsave", func(s *Server) http.HandlerFunc { return s.articleUnsaveHandler },
+		func(f *fakeSaveStore, fn func(ctx context.Context, userID, articleID string) error) { f.unsaveFn = fn })
+}
+
+// testSaveAction tests the save or unsave handler (path is "save" or
+// "unsave"); setFn sets the store method the handler should call.
+func testSaveAction(t *testing.T, path string, handler func(*Server) http.HandlerFunc, setFn func(*fakeSaveStore, func(ctx context.Context, userID, articleID string) error)) {
+	t.Helper()
+	newServer := func(fn func(ctx context.Context, userID, articleID string) error) *Server {
+		store := &fakeSaveStore{}
+		setFn(store, fn)
+		return newTestServerWith(t, Services{SaveService: store})
+	}
+
+	t.Run("redirects to return_to at the row", func(t *testing.T) {
+		var gotUser, gotArticle string
+		calls := 0
+		s := newServer(func(ctx context.Context, userID, articleID string) error {
+			calls++
+			gotUser, gotArticle = userID, articleID
+			return nil
+		})
+
+		rr := postSave(t, s, handler(s), "user-1", testArticleID, "/feeds/"+testFeedID+"?before=abc")
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+		}
+		if want := "/feeds/" + testFeedID + "?before=abc#article-" + testArticleID; rr.Header().Get("Location") != want {
+			t.Errorf("Location = %q, want %q", rr.Header().Get("Location"), want)
+		}
+		if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
+			t.Errorf("store called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
+		}
+		// Saving is quiet: a flash would have written the session cookie.
+		if c := rr.Header().Get("Set-Cookie"); c != "" {
+			t.Errorf("Set-Cookie = %q, want none (no flash)", c)
+		}
+	})
+
+	for _, returnTo := range []string{"https://evil.example/", "//evil.example/", ""} {
+		t.Run("off-site return_to "+returnTo, func(t *testing.T) {
+			s := newServer(nil)
+			rr := postSave(t, s, handler(s), "user-1", testArticleID, returnTo)
+			if loc := rr.Header().Get("Location"); rr.Code != http.StatusSeeOther || loc != "/#article-"+testArticleID {
+				t.Errorf("status %d, Location = %q, want 303 to /#article-%s", rr.Code, loc, testArticleID)
+			}
+		})
+	}
+
+	t.Run("a fragment in return_to is replaced", func(t *testing.T) {
+		s := newServer(nil)
+		rr := postSave(t, s, handler(s), "user-1", testArticleID, "/#article-other")
+		if loc := rr.Header().Get("Location"); loc != "/#article-"+testArticleID {
+			t.Errorf("Location = %q, want /#article-%s", loc, testArticleID)
+		}
+	})
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t) // nil stores: any store call would panic
+		assertNotFoundHTML(t, postSave(t, s, handler(s), "user-1", "abc", "/"))
+	})
+
+	t.Run("unknown article", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return rss.ErrNoRecord })
+		assertNotFoundHTML(t, postSave(t, s, handler(s), "user-1", testArticleID, "/"))
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return errors.New("db down") })
+		if rr := postSave(t, s, handler(s), "user-1", testArticleID, "/"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("logged out", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/"+path, nil)
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
 		}
 	})
 }

@@ -81,6 +81,14 @@ func (s *Server) isAuthenticated(r *http.Request) bool {
 	return ok
 }
 
+// returnForm is a form whose only field says where to go back to: the
+// subscribe, unsubscribe, save and unsave buttons post it.
+type returnForm struct {
+	// ReturnTo is the local path to redirect back to, usually the page the
+	// form was posted from.
+	ReturnTo string `form:"return_to"`
+}
+
 // safeReturnPath returns p if it is a local path (for redirecting back to the
 // page a form was posted from), else fallback. Prevents open redirects.
 func safeReturnPath(p, fallback string) string {

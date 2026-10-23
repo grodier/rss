@@ -278,3 +278,30 @@ func (f *fakeEmailQueue) messages() []mail.Message {
 	defer f.mu.Unlock()
 	return slices.Clone(f.sent)
 }
+
+type fakeSaveStore struct {
+	saveFn            func(ctx context.Context, userID, articleID string) error
+	unsaveFn          func(ctx context.Context, userID, articleID string) error
+	savedArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
+func (f *fakeSaveStore) Save(ctx context.Context, userID, articleID string) error {
+	if f.saveFn == nil {
+		return nil
+	}
+	return f.saveFn(ctx, userID, articleID)
+}
+
+func (f *fakeSaveStore) Unsave(ctx context.Context, userID, articleID string) error {
+	if f.unsaveFn == nil {
+		return nil
+	}
+	return f.unsaveFn(ctx, userID, articleID)
+}
+
+func (f *fakeSaveStore) SavedArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+	if f.savedArticleIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.savedArticleIDsFn(ctx, userID, articleIDs)
+}

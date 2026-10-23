@@ -209,7 +209,8 @@ Planned in #163 (issues #147–#162).
 - **"Read on" names where the link goes** (planned in #344, issues #340–#343): the
   article's domain when its URL is on another site than the feed's (aggregators such as
   Hacker News), else the reader's name for the feed, else the site's title, else its
-  host. Hosts on a subdomain of each other count as one site, without the public-suffix
+  host. A name the reader gave the feed beats the site's title: it's theirs to choose,
+  and an off-site article still shows its domain. Hosts on a subdomain of each other count as one site, without the public-suffix
   list (a dependency for a rare case). The domain needs no fetching and is always
   accurate; `og:site_name` from enrichment is deferred, since enrichment doesn't run for
   every article. A long name is cut with "…" so the button stays on one line, and its

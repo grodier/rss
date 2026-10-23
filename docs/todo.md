@@ -8,16 +8,14 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. #330 Debug mode: inspect article pages and site discovery live.
-2. #337 Show feed status times and list dates in the reader's time zone. Independent
-   of #330: either order.
-3. #340 Cut long site names on the "Read on" button with "…" (overflows on phones).
-4. #341 Name the article's own domain on "Read on" for aggregator feeds. After #340, or
+2. #340 Cut long site names on the "Read on" button with "…" (overflows on phones).
+3. #341 Name the article's own domain on "Read on" for aggregator feeds. After #340, or
    merge #340's markup into it.
-5. #342 Rename a subscription. Independent of #340 and #341.
-6. #343 Show the reader's name for a feed everywhere they read it. After #341 and #342.
-7. **Plan** the error-state walkthrough and run the first pass; then repeat it
+4. #342 Rename a subscription. Independent of #340 and #341.
+5. #343 Show the reader's name for a feed everywhere they read it. After #341 and #342.
+6. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-8. Before production or a few thousand feeds, **plan** load and performance testing.
+7. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

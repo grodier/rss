@@ -161,6 +161,34 @@ func TestArticleHandlerRelativeURLsUseFeedURLWithoutArticleURL(t *testing.T) {
 	assertBodyContains(t, rr.Body.String(), `src="https://example.com/pic.png"`)
 }
 
+func TestArticleHandlerLeadImage(t *testing.T) {
+	const image = "https://example.com/lead.jpg"
+	tests := []struct {
+		name    string
+		article rss.Article
+		want    bool
+	}{
+		{name: "image only in metadata", article: rss.Article{Title: "T", ImageURL: image, Content: "<p>Text</p>"}, want: true},
+		{name: "content starts with the image", article: rss.Article{Title: "T", ImageURL: image, Content: `<img src="/lead.jpg"><p>Text</p>`}, want: false},
+		{name: "no image", article: rss.Article{Title: "T", Content: "<p>Text</p>"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := serveArticle(t, articleServer(t, tt.article, nil, nil, nil), testArticleID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			body := rr.Body.String()
+			if tt.want {
+				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" referrerpolicy="no-referrer">`)
+			} else if strings.Contains(body, "reader-image") {
+				t.Errorf("body has a lead image: %s", body)
+			}
+		})
+	}
+}
+
 func TestArticleHandlerUntitled(t *testing.T) {
 	t.Run("excerpt", func(t *testing.T) {
 		rr := serveArticle(t, articleServer(t, rss.Article{Excerpt: "Microblog post start"}, nil, nil, nil), testArticleID)

@@ -288,3 +288,62 @@ func TestHTML(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+func TestShowsImage(t *testing.T) {
+	base, err := url.Parse("https://example.com/posts/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const other = "https://cdn.example.org/other.jpg"
+
+	tests := []struct {
+		name     string
+		raw      string
+		base     *url.URL
+		imageURL string
+		want     bool
+	}{
+		// The content starts with an image.
+		{name: "leading img", raw: `<img src="a.jpg"><p>text</p>`, imageURL: other, want: true},
+		{name: "leading figure with caption", raw: `<figure><img src="a.jpg"><figcaption>c</figcaption></figure><p>t</p>`, imageURL: other, want: true},
+		{name: "leading linked image in a paragraph", raw: `<p><a href="x"><img src="a.jpg"></a></p><p>t</p>`, imageURL: other, want: true},
+		{name: "leading picture", raw: "<!-- c -->\n<picture><img src=\"a.jpg\"></picture><p>t</p>", imageURL: other, want: true},
+		{name: "leading image in one wrapper", raw: `<div><img src="a.jpg"><p>t</p></div>`, imageURL: other, want: true},
+		{name: "only one wrapper level", raw: `<div><div><img src="a.jpg"></div><p>t</p></div>`, imageURL: other, want: false},
+		{name: "image with text in a paragraph", raw: `<p><img src="a.jpg"> text</p><p>t</p>`, imageURL: other, want: false},
+
+		// The block after the first paragraph is an image.
+		{name: "image after first paragraph", raw: `<p>intro</p><figure><img src="b.jpg"></figure><p>more</p>`, imageURL: other, want: true},
+		{name: "image after first paragraph after a heading", raw: `<h2>h</h2><p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
+		{name: "image later on", raw: `<p>one</p><p>two</p><img src="b.jpg">`, imageURL: other, want: false},
+
+		// The same image anywhere.
+		{name: "same URL", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "different query", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg?w=600">`, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "www and host case", raw: `<p>one</p><p>two</p><img src="https://WWW.Example.com/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "relative src", raw: `<p>one</p><p>two</p><img src="/photo.jpg">`, base: base, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "WordPress size suffix", raw: `<p>one</p><p>two</p><img src="https://example.com/wp/photo-1024x768.jpg">`, imageURL: "https://example.com/wp/photo.jpg", want: true},
+		{name: "nested in a table", raw: `<p>one</p><table><tr><td><img src="https://example.com/photo.jpg"></td></tr></table>`, imageURL: "https://example.com/photo.jpg", want: true},
+
+		// No match.
+		{name: "different file", raw: `<p>one</p><p>two</p><img src="https://example.com/photo2.jpg">`, imageURL: "https://example.com/photo.jpg", want: false},
+		{name: "relative src without base", raw: `<p>one</p><p>two</p><img src="/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: false},
+		{name: "unparseable imageURL", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "https://example.com/%zz", want: false},
+		{name: "empty content", raw: ``, imageURL: "https://example.com/photo.jpg", want: false},
+		{name: "text only", raw: `<p>one</p><p>two</p>`, imageURL: "https://example.com/photo.jpg", want: false},
+
+		// An empty imageURL only checks the position rules.
+		{name: "empty imageURL, leading image", raw: `<img src="a.jpg"><p>t</p>`, want: true},
+		{name: "empty imageURL, image after first paragraph", raw: `<p>intro</p><img src="a.jpg">`, want: true},
+		{name: "empty imageURL, image later on", raw: `<p>one</p><p>two</p><img src="a.jpg">`, want: false},
+		{name: "empty imageURL, img with empty src later on", raw: `<p>one</p><p>two</p><img src="">`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShowsImage(tt.raw, tt.base, tt.imageURL); got != tt.want {
+				t.Errorf("ShowsImage(%q, %v, %q) = %v, want %v", tt.raw, tt.base, tt.imageURL, got, tt.want)
+			}
+		})
+	}
+}

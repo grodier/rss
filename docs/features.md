@@ -486,7 +486,12 @@ doesn't.
 **Article page.** `articleHandler` records the read, then renders the content (else the
 summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
 (else the feed's). Plain text (no block-level markup) is split into paragraphs at blank
-lines, with `<br>` for single line breaks, and bare http(s) URLs become links.
+lines, with `<br>` for single line breaks, and bare http(s) URLs become links. The
+article's card image (`image_url`) shows above the text as a lead image unless
+`sanitize.ShowsImage` finds the content already shows it: the content starts with an
+image, the block after its first paragraph is one, or any image in it is the same file
+(ignoring host case, `www.`, the query and WordPress size suffixes). Wide tables scroll
+inside the column.
 
 **Read state.** An article is read when its page is opened, or when the reader clicks
 through to the original from a row: the link has `ping="/articles/{id}/read"`, which
@@ -508,7 +513,7 @@ nearby. Without JavaScript the link just works.
    `fillRead`.
 4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
 5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
-   `newPolicy`.
+   `newPolicy`, then `ShowsImage` and `imageKey`.
 6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
 7. `internal/ui/static/js/app.js`.
 8. Also: `rss.Article.DisplayTitle` (untitled articles) and `FeedSortAt` in

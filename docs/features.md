@@ -553,6 +553,20 @@ through to the original from a row: the link has `ping="/articles/{id}/read"`, w
 ask `ReadArticleIDs` which rows are read (matching any copy with the same
 `canonical_url`) and the `article-row` partial marks them (tinted card, dimmed text and image).
 
+**Hiding** (a prototype, #308). Timeline rows have a hide control (the `hide-form`
+partial: `form[data-hide]` posting to `/articles/{id}/hide` with a `return_to`, its
+button named "Hide from timeline"); only rows with `articleRow.Hideable`, which
+`homeHandler` sets, show it. `articleHideHandler` calls `HideRepository.Hide`, sets the
+flash "Hidden from your timeline. It's still on its feed page." and redirects to
+`return_to`, which no longer lists the row. With JavaScript, `app.js` posts the form
+with `fetch` and collapses the row in place to "Hidden · Undo"; Undo posts to
+`/articles/{id}/unhide` and puts the row back. Hiding covers every copy (same
+`canonical_url`), like saves; `ListTimeline` leaves out hidden articles and their
+copies, and since positions never change, unhiding puts an entry back where it was.
+Hiding doesn't mark the article read or unsave it. Feed pages ask `HiddenArticleIDs`
+(`fillHidden`) and mark hidden rows "Hidden from timeline" with an Unhide button
+(`articleUnhideHandler`, back to `return_to#article-{id}`). There's no Hidden list.
+
 **Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the
 viewport it fetches that page, appends its rows, and swaps in the new pager. It keeps the
 address bar on the topmost visible row (`history.replaceState`), so reload and Back land
@@ -564,18 +578,24 @@ nearby. Without JavaScript the link just works.
 2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`,
    `articleListColumns`, then `timelineAt`.
 3. `internal/server/articles.go`: `articleHandler`, `articleReadHandler`, `articleRow`,
-   `fillRead`.
-4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
+   `fillRead`; for hiding, `articleHideHandler`, `articleUnhideHandler`, `hideAction`
+   and `fillHidden`.
+4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`; `internal/psql/hides.go`:
+   `Hide`, `Unhide`, `HiddenArticleIDs`.
 5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
    `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
-6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
-7. `internal/ui/static/js/app.js`.
+6. Templates: `timeline.html`, `article.html`, `partials/article_row.html` (with
+   `hide-form`); `icon-close` and `icon-more` in `partials/icons.html`.
+7. `internal/ui/static/js/app.js` ("Hide buttons" for hiding).
 8. Also: `rss.Article.CardImageURL`, `DisplayTitle`, `DisplayExcerpt` and `FeedSortAt`
    in `internal/rss/rss.go`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`,
-`scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`;
-`internal/sanitize/sanitize_test.go`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go` (with
+`TestArticleHideHandler`, `TestArticleUnhideHandler`), `cursor_test.go`, `feeds_test.go`
+(`TestFeedHandlerHidden`), `scroll_test.go` (with `TestHideFormMarkup`);
+`internal/psql/articles_test.go` (with `TestListTimelineLeavesOutHidden`),
+`reads_test.go`, `hides_test.go`; `internal/sanitize/sanitize_test.go`;
+`internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 

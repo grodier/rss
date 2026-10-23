@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -117,6 +118,71 @@ func TestSaveButtonMarkup(t *testing.T) {
 			t.Errorf("Save form for %s = %+v, want %+v", id, got, w)
 		}
 	}
+}
+
+// TestHideFormMarkup checks the markup app.js's Hide buttons rely on: each
+// timeline row has a form[data-hide] posting to /articles/{id}/hide, with a
+// return_to input and a submit button named "Hide from timeline". Saved and
+// feed page rows have none.
+func TestHideFormMarkup(t *testing.T) {
+	items := timelineItems(2)
+	timeline := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
+		listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			return items, nil
+		},
+	}})
+	saved := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{
+		listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+			return savedItems(2), nil
+		},
+	}})
+	feed := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return feedArticles(2), nil
+		},
+	})
+
+	hideForms := func(t *testing.T, body string) []*html.Node {
+		t.Helper()
+		doc, err := html.Parse(strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-hide") })
+	}
+
+	t.Run("timeline", func(t *testing.T) {
+		forms := hideForms(t, getHome(t, timeline, "/?before="+encodeCursor(rss.ArticleCursor{At: items[0].Article.TimelineAt.Add(time.Hour), ID: items[0].Article.ID}), true).Body.String())
+		if len(forms) != len(items) {
+			t.Fatalf("found %d hide forms, want %d", len(forms), len(items))
+		}
+		for i, f := range forms {
+			id := items[i].Article.ID
+			if attr(f, "method") != "post" || attr(f, "action") != "/articles/"+id+"/hide" {
+				t.Errorf("hide form method=%q action=%q, want post to /articles/%s/hide", attr(f, "method"), attr(f, "action"), id)
+			}
+			inputs := findAll(f, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "return_to" })
+			if len(inputs) != 1 || attr(inputs[0], "type") != "hidden" || !strings.HasPrefix(attr(inputs[0], "value"), "/?before=") {
+				t.Errorf("hide form %s: want one hidden return_to input with the page's URL", id)
+			}
+			buttons := findAll(f, func(n *html.Node) bool { return n.Data == "button" && attr(n, "type") == "submit" })
+			if len(buttons) != 1 || attr(buttons[0], "aria-label") != "Hide from timeline" {
+				t.Errorf("hide form %s: want one submit button named \"Hide from timeline\"", id)
+			}
+		}
+	})
+
+	t.Run("saved", func(t *testing.T) {
+		if forms := hideForms(t, getSaved(t, saved, "/saved").Body.String()); len(forms) != 0 {
+			t.Errorf("found %d hide forms, want none", len(forms))
+		}
+	})
+
+	t.Run("feed page", func(t *testing.T) {
+		if forms := hideForms(t, serveFeed(t, feed, testFeedID).Body.String()); len(forms) != 0 {
+			t.Errorf("found %d hide forms, want none", len(forms))
+		}
+	})
 }
 
 // saveFormMarkup is what app.js reads from a Save form.

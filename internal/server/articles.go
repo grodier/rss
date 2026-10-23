@@ -174,6 +174,63 @@ func (s *Server) saveAction(w http.ResponseWriter, r *http.Request, save bool) {
 	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
 }
 
+// articleHideHandler hides an article, and every copy of it, from the
+// user's timeline. It stays on its feed page. Hiding doesn't mark it read or
+// unsave it. Without JavaScript the row is gone when the page reloads, so a
+// flash says where it went; app.js posts the same form with fetch and
+// collapses the row instead.
+func (s *Server) articleHideHandler(w http.ResponseWriter, r *http.Request) {
+	form, ok := s.hideAction(w, r, true)
+	if !ok {
+		return
+	}
+	s.sessionManager.Put(r.Context(), "flash", "Hidden from your timeline. It's still on its feed page.")
+	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/"), http.StatusSeeOther)
+}
+
+// articleUnhideHandler puts an article, and every copy of it, back on the
+// user's timeline, at its original position. Unhiding an article that isn't
+// hidden is a no-op.
+func (s *Server) articleUnhideHandler(w http.ResponseWriter, r *http.Request) {
+	form, ok := s.hideAction(w, r, false)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
+}
+
+// hideAction runs what the hide and unhide handlers share: it hides (or, if
+// hide is false, unhides) the article named in the URL and returns the
+// posted form. On failure it has written the response and ok is false.
+func (s *Server) hideAction(w http.ResponseWriter, r *http.Request, hide bool) (form returnForm, ok bool) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return returnForm{}, false
+	}
+
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return returnForm{}, false
+	}
+
+	action := s.services.HideService.Unhide
+	if hide {
+		action = s.services.HideService.Hide
+	}
+	userID, _ := s.authenticatedUserID(r)
+	if err := action(r.Context(), userID, id); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return returnForm{}, false
+	}
+	return form, true
+}
+
 // withFragment returns path with its fragment, if any, replaced by fragment.
 func withFragment(path, fragment string) string {
 	if i := strings.IndexByte(path, '#'); i >= 0 {
@@ -189,8 +246,10 @@ type articleRow struct {
 	AlsoIn   []rss.Feed // other subscribed feeds with a copy; timeline only
 	Read     bool       // this user has opened the article
 	Saved    bool       // this user has saved the article (or a copy)
+	Hideable bool       // the row is on the timeline, so it has a hide control
+	Hidden   bool       // this user hid the article (or a copy) from their timeline; feed pages only
 	Icon     string     // the URL of Feed's site icon, or "" for its letter
-	ReturnTo string     // where the row's Save button sends the user back to
+	ReturnTo string     // where the row's buttons send the user back to
 }
 
 // fillIcons sets Icon on each row whose feed's site has an icon. Icons are
@@ -223,6 +282,22 @@ func (s *Server) fillRead(ctx context.Context, userID string, rows []articleRow)
 	}
 	for i := range rows {
 		rows[i].Read = read[rows[i].Article.ID]
+	}
+	return nil
+}
+
+// fillHidden sets Hidden on each row userID has hidden from their timeline.
+func (s *Server) fillHidden(ctx context.Context, userID string, rows []articleRow) error {
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Article.ID
+	}
+	hidden, err := s.services.HideService.HiddenArticleIDs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Hidden = hidden[rows[i].Article.ID]
 	}
 	return nil
 }

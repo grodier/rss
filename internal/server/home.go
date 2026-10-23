@@ -40,7 +40,7 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([]articleRow, len(items))
 	for i, item := range items {
-		rows[i] = articleRow{Article: item.Article, Feed: item.Feed, AlsoIn: item.AlsoIn, ReturnTo: r.URL.RequestURI()}
+		rows[i] = articleRow{Article: item.Article, Feed: item.Feed, AlsoIn: item.AlsoIn, Hideable: true, ReturnTo: r.URL.RequestURI()}
 	}
 	if err := s.fillRead(r.Context(), userID, rows); err != nil {
 		s.serverErrorHTML(w, r, err)

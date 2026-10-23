@@ -150,6 +150,10 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	if err := s.fillHidden(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 
 	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, []string{feed.ID})
 	if err != nil {

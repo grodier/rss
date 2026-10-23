@@ -349,3 +349,30 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 	}
 	return f.listSavedFn(ctx, userID, q, before, limit)
 }
+
+type fakeHideStore struct {
+	hideFn             func(ctx context.Context, userID, articleID string) error
+	unhideFn           func(ctx context.Context, userID, articleID string) error
+	hiddenArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
+func (f *fakeHideStore) Hide(ctx context.Context, userID, articleID string) error {
+	if f.hideFn == nil {
+		return nil
+	}
+	return f.hideFn(ctx, userID, articleID)
+}
+
+func (f *fakeHideStore) Unhide(ctx context.Context, userID, articleID string) error {
+	if f.unhideFn == nil {
+		return nil
+	}
+	return f.unhideFn(ctx, userID, articleID)
+}
+
+func (f *fakeHideStore) HiddenArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+	if f.hiddenArticleIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.hiddenArticleIDsFn(ctx, userID, articleIDs)
+}

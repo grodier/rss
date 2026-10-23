@@ -134,6 +134,7 @@ func (app *Application) Run() error {
 		SubscriptionService: psql.NewSubscriptionRepository(db),
 		ReadService:         psql.NewReadRepository(db),
 		SaveService:         psql.NewSaveRepository(db),
+		HideService:         psql.NewHideRepository(db),
 		ImportService:       psql.NewImportRepository(db),
 		Refresher:           refresher,
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},

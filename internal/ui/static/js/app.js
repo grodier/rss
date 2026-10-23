@@ -56,6 +56,87 @@
     }
   });
 
+  // Hide buttons: form[data-hide] posts to /articles/{id}/hide. Post it with
+  // fetch instead and collapse the row in place to "Hidden · Undo", keeping
+  // its contents in memory. Undo posts to /articles/{id}/unhide the same way
+  // and puts the contents back. On any failure, submit the form normally:
+  // the page reloads without the row (or with it, for Undo). Delegated, so
+  // rows added by infinite scroll work too.
+  const hiddenRows = new WeakMap(); // Undo form → the row's original children
+  const post = async (form) => {
+    const res = await fetch(form.action, {
+      method: "POST",
+      body: new URLSearchParams(new FormData(form)),
+      redirect: "manual",
+    });
+    if (res.type !== "opaqueredirect" && !res.ok) throw new Error(`status ${res.status}`);
+  };
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-hide]")) return;
+    const row = form.closest(".article-row");
+    if (!row) return;
+    e.preventDefault();
+    const button = form.querySelector("button");
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await post(form);
+    } catch {
+      form.submit();
+      return;
+    }
+    button.disabled = false;
+    const menu = form.closest("details");
+    if (menu) menu.open = false;
+
+    const original = document.createDocumentFragment();
+    original.append(...row.childNodes);
+
+    const line = document.createElement("p");
+    line.className = "hidden-row";
+    const undo = document.createElement("form");
+    undo.method = "post";
+    undo.action = form.action.replace(/\/hide$/, "/unhide");
+    const returnTo = form.querySelector("input[name=return_to]");
+    if (returnTo) undo.append(returnTo.cloneNode());
+    const undoButton = document.createElement("button");
+    undoButton.type = "submit";
+    undoButton.textContent = "Undo";
+    undo.append(undoButton);
+    const dot = document.createElement("span");
+    dot.setAttribute("aria-hidden", "true");
+    dot.textContent = "·";
+    line.append("Hidden", dot, undo);
+
+    hiddenRows.set(undo, original);
+    row.classList.add("is-hidden");
+    row.append(line);
+    undoButton.focus();
+  });
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    const original = form instanceof HTMLFormElement && hiddenRows.get(form);
+    if (!original) return;
+    e.preventDefault();
+    const button = form.querySelector("button");
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await post(form);
+    } catch {
+      form.submit();
+      return;
+    }
+    const row = form.closest(".article-row");
+    hiddenRows.delete(form);
+    row.replaceChildren(original);
+    row.classList.remove("is-hidden");
+    // Back on the control that hid it: the ⋯ menu's button, if there is one.
+    const control = row.querySelector(".row-menu summary") || row.querySelector("form[data-hide] button");
+    if (control) control.focus();
+  });
+
   // Video embeds: figure.embed[data-embed] (sanitize's videoEmbed) holds a
   // link to the video. On a plain click, swap the link for the player, built
   // from the validated data-embed-id, never from a URL in the feed.

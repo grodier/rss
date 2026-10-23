@@ -126,16 +126,32 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 // then ID), at that copy's position, with AlsoIn listing the other feeds
 // that have a copy, ordered by title.
 //
+// Articles the user hid, or any copy of which they hid, are left out (see
+// HideRepository). Positions don't depend on hides, so unhiding puts an
+// entry back where it was.
+//
 // Summary and Content are left empty.
 func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	// Articles with no canonical URL key on their own ID, so they're never
-	// collapsed.
+	// collapsed. Hides are checked with NOT IN rather than NOT EXISTS: each
+	// becomes a hashed subplan, the user's hides read once, and the plan
+	// stays the one without hides. NOT EXISTS made the planner estimate the
+	// query 50 times costlier, switch to a nested loop and JIT-compile it
+	// (5x slower). Neither column is nullable, so NOT IN is safe.
 	stmt := `WITH mine AS (
 			SELECT ` + qualifiedListArticleColumns + `,
 				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
 			FROM subscriptions sub
 			JOIN articles a ON a.feed_id = sub.feed_id
 			WHERE sub.user_id = $1
+			  AND a.id NOT IN (SELECT h.article_id FROM hides h WHERE h.user_id = $1)
+			  AND a.canonical_url NOT IN (
+			      SELECT b.canonical_url
+			      FROM hides h
+			      JOIN articles b ON b.id = h.article_id
+			      WHERE h.user_id = $1
+			        AND b.canonical_url <> ''
+			  )
 		), firsts AS (
 			SELECT DISTINCT ON (dedup_key) *
 			FROM mine

@@ -7,13 +7,6 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-Reading features, planned in #309 (issues #293–#308), in merge order:
-
-1. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
-   with placement options first)
-
-Then:
-
 1. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 2. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -542,10 +535,12 @@ Pages and queries:
   *Fix:* fold them into the page's main query, or store the canonical URL on `reads`,
   `saves` and `hides`.
 - [ ] **Hidden articles in the timeline query** (#308). `ListTimeline` leaves out hidden
-  articles and their copies with a `NOT EXISTS` over `hides` joined to `articles` by
-  `canonical_url`, for every subscribed article it considers. *Signal:* `/` p95 rising
-  for users who hide often, or `EXPLAIN ANALYZE` showing the anti-join as a large part of
-  the timeline query. *Fix:* store the hidden article's dedup key on `hides` so the check
+  articles and their copies with two `NOT IN`s over the user's `hides` (the second joined
+  to `articles` for `canonical_url`), checked for every subscribed article it considers.
+  Postgres hashes each subquery once while it fits in `work_mem`; past that, it re-runs
+  it per article. (`NOT EXISTS` was 5x slower: the planner overestimated its cost,
+  switched plans and JIT-compiled the query.) *Signal:* `/` p95 rising for users who hide
+  often, or `EXPLAIN ANALYZE` showing a SubPlan that isn't `hashed`. *Fix:* store the hidden article's dedup key on `hides` so the check
   is one index lookup, or fold hiding into the per-user timeline table (see "Timeline
   query merges many feeds").
 - [ ] **Saved search scans with `ILIKE`** (#301). Search within Saved matches `%q%`

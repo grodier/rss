@@ -1091,3 +1091,141 @@ func TestGetByIDReadsPageColumns(t *testing.T) {
 		t.Errorf("page columns = %q, %q, %q", a.PageImageURL, a.PageTitle, a.PageDescription)
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineLeavesOutHidden(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	hides := NewHideRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	// The reader and other both subscribe to A and B. x has a copy in each.
+	feedA, feedB := newTestFeed(t, db), newTestFeed(t, db)
+	reader, other := newTestUser(t, db), newTestUser(t, db)
+	for _, user := range []string{reader, other} {
+		for _, f := range []rss.Feed{feedA, feedB} {
+			if err := subs.Subscribe(ctx, user, f.ID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+	}
+
+	postX := fmt.Sprintf("https://example.com/hidden-x-%d", time.Now().UnixNano())
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ids := map[string]string{} // key → article ID; each article's title is its key
+	for _, c := range []struct {
+		feed     rss.Feed
+		key, ext string
+		url      string
+		offset   time.Duration
+	}{
+		{feedA, "a1", "a1", "", time.Hour},
+		{feedA, "a2", "a2", "", 2 * time.Hour},
+		{feedA, "a3", "a3", "", 3 * time.Hour},
+		{feedA, "ax", "x", postX, 4 * time.Hour},
+		{feedB, "bx", "x", postX, 5 * time.Hour},
+		{feedB, "b1", "b1", "", 6 * time.Hour},
+	} {
+		a := rss.Article{ExternalID: c.ext, CanonicalURL: c.url, Title: c.key}
+		if _, err := feeds.SaveFetch(ctx, c.feed, []rss.Article{a}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		var id string
+		if err := db.QueryRow(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3 RETURNING id`, base.Add(c.offset), c.feed.ID, c.ext).Scan(&id); err != nil {
+			t.Fatalf("set timeline_at: %v", err)
+		}
+		ids[c.key] = id
+	}
+
+	// titles lists the entries of userID's timeline by title, paging by
+	// pageSize.
+	titles := func(t *testing.T, userID string, pageSize int) []string {
+		t.Helper()
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 20 {
+			page, err := articles.ListTimeline(ctx, userID, cursor, pageSize)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			if len(page) == 0 {
+				break
+			}
+			for _, item := range page {
+				got = append(got, item.Article.Title)
+			}
+			last := page[len(page)-1].Article
+			cursor = rss.ArticleCursor{At: last.TimelineAt, ID: last.ID}
+		}
+		return got
+	}
+	hide := func(t *testing.T, userID, key string) {
+		t.Helper()
+		if err := hides.Hide(ctx, userID, ids[key]); err != nil {
+			t.Fatalf("Hide: %v", err)
+		}
+		t.Cleanup(func() {
+			if err := hides.Unhide(ctx, userID, ids[key]); err != nil {
+				t.Errorf("Unhide: %v", err)
+			}
+		})
+	}
+
+	// x collapses to A's copy, the earlier one.
+	full := []string{"b1", "ax", "a3", "a2", "a1"}
+	if got := titles(t, reader, 100); !slices.Equal(got, full) {
+		t.Fatalf("timeline = %v, want %v", got, full)
+	}
+
+	t.Run("a hidden article isn't listed", func(t *testing.T) {
+		hide(t, reader, "a2")
+		want := []string{"b1", "ax", "a3", "a1"}
+		if got := titles(t, reader, 100); !slices.Equal(got, want) {
+			t.Errorf("timeline = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("hiding a copy in another subscribed feed leaves out the entry", func(t *testing.T) {
+		hide(t, reader, "bx")
+		want := []string{"b1", "a3", "a2", "a1"}
+		if got := titles(t, reader, 100); !slices.Equal(got, want) {
+			t.Errorf("timeline = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("unhiding brings it back at its original position", func(t *testing.T) {
+		if err := hides.Hide(ctx, reader, ids["a3"]); err != nil {
+			t.Fatalf("Hide: %v", err)
+		}
+		if err := hides.Unhide(ctx, reader, ids["a3"]); err != nil {
+			t.Fatalf("Unhide: %v", err)
+		}
+		if got := titles(t, reader, 100); !slices.Equal(got, full) {
+			t.Errorf("timeline = %v, want %v", got, full)
+		}
+	})
+
+	t.Run("another user's hides don't affect this user's timeline", func(t *testing.T) {
+		hide(t, other, "a1")
+		hide(t, other, "ax")
+		if got := titles(t, reader, 100); !slices.Equal(got, full) {
+			t.Errorf("reader's timeline = %v, want %v", got, full)
+		}
+		want := []string{"b1", "a3", "a2"}
+		if got := titles(t, other, 100); !slices.Equal(got, want) {
+			t.Errorf("other's timeline = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("paging across a hidden article has no gap or repeat", func(t *testing.T) {
+		hide(t, reader, "a3")
+		want := []string{"b1", "ax", "a2", "a1"}
+		for _, size := range []int{1, 2, 3} {
+			if got := titles(t, reader, size); !slices.Equal(got, want) {
+				t.Errorf("pages of %d = %v, want %v", size, got, want)
+			}
+		}
+	})
+}

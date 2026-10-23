@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/net/html"
+
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -76,6 +78,7 @@ func feedServerWithArticles(t *testing.T, siteErr error, articles ArticleStore) 
 		SubscriptionService: &fakeSubscriptionStore{},
 		ReadService:         &fakeReadStore{},
 		SaveService:         &fakeSaveStore{},
+		HideService:         &fakeHideStore{},
 		ArticleService:      articles,
 		FeedService: &fakeFeedStore{
 			getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
@@ -690,6 +693,7 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 				SubscriptionService: &fakeSubscriptionStore{},
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
+				HideService:         &fakeHideStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched}, nil
@@ -735,6 +739,7 @@ func TestFeedHandlerFetchStatus(t *testing.T) {
 				SubscriptionService: &fakeSubscriptionStore{},
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
+				HideService:         &fakeHideStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{
@@ -767,6 +772,7 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 		SubscriptionService: &fakeSubscriptionStore{},
 		ReadService:         &fakeReadStore{},
 		SaveService:         &fakeSaveStore{},
+		HideService:         &fakeHideStore{},
 		ArticleService:      &fakeArticleStore{},
 		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 			return rss.Feed{
@@ -804,6 +810,7 @@ func TestFeedHandlerEmptyTitleShowsURL(t *testing.T) {
 				SubscriptionService: &fakeSubscriptionStore{},
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
+				HideService:         &fakeHideStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: tt.title, Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
@@ -848,6 +855,7 @@ func TestFeedHandlerRefreshRequest(t *testing.T) {
 				SubscriptionService: &fakeSubscriptionStore{},
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
+				HideService:         &fakeHideStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{
 					getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
@@ -1406,6 +1414,7 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 			s.services.ArticleService = &fakeArticleStore{}
 			s.services.ReadService = &fakeReadStore{}
 			s.services.SaveService = &fakeSaveStore{}
+			s.services.HideService = &fakeHideStore{}
 			s.services.SiteService = &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
 				return rss.Site{ID: id, Host: "example.com"}, nil
 			}}
@@ -1489,4 +1498,72 @@ func TestFeedsHandlerSiteIcons(t *testing.T) {
 		}
 		return rr.Body.String()
 	})
+}
+
+// TestFeedHandlerHidden checks feed page rows: none has a hide control, and
+// an article the user hid from their timeline shows the note and an Unhide
+// form.
+func TestFeedHandlerHidden(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return feedArticles(2), nil
+		},
+	})
+	ids := []string{feedArticles(2)[0].ID, feedArticles(2)[1].ID}
+	var gotUser string
+	var gotIDs []string
+	s.services.HideService = &fakeHideStore{hiddenArticleIDsFn: func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+		gotUser, gotIDs = userID, articleIDs
+		return map[string]bool{ids[1]: true}, nil
+	}}
+
+	rr := serveFeedAs(t, s, "user-1", testFeedID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if gotUser != "user-1" || !slices.Equal(gotIDs, ids) {
+		t.Errorf("HiddenArticleIDs(%q, %v), want (user-1, %v)", gotUser, gotIDs, ids)
+	}
+	doc, err := html.Parse(strings.NewReader(rr.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-hide") }); len(forms) != 0 {
+		t.Errorf("found %d hide forms, want none on a feed page", len(forms))
+	}
+	for i, id := range ids {
+		rows := findAll(doc, func(n *html.Node) bool { return n.Data == "article" && attr(n, "id") == "article-"+id })
+		if len(rows) != 1 {
+			t.Fatalf("found %d rows for %s, want 1", len(rows), id)
+		}
+		notes := findAll(rows[0], func(n *html.Node) bool { return hasClass(n, "hidden-note") })
+		unhide := findAll(rows[0], func(n *html.Node) bool {
+			return n.Data == "form" && attr(n, "method") == "post" && attr(n, "action") == "/articles/"+id+"/unhide"
+		})
+		hidden := i == 1
+		if hidden != (len(notes) == 1 && strings.TrimSpace(textContent(notes[0])) == "Hidden from timeline") {
+			t.Errorf("row %s: %d hidden notes, want hidden = %v", id, len(notes), hidden)
+		}
+		if hidden != (len(unhide) == 1) {
+			t.Errorf("row %s: %d Unhide forms, want hidden = %v", id, len(unhide), hidden)
+		}
+		if hidden {
+			inputs := findAll(unhide[0], func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "return_to" })
+			if len(inputs) != 1 || attr(inputs[0], "value") != "/feeds/"+testFeedID {
+				t.Errorf("Unhide form: want one return_to input with /feeds/%s", testFeedID)
+			}
+		}
+	}
+}
+
+func TestFeedHandlerHiddenArticleIDsError(t *testing.T) {
+	s := feedServer(t, nil)
+	s.services.HideService = &fakeHideStore{hiddenArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+		return nil, errors.New("db down")
+	}}
+
+	if rr := serveFeed(t, s, testFeedID); rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
 }

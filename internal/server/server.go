@@ -137,6 +137,14 @@ type SaveStore interface {
 	ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
 }
 
+// HideStore records and reports which articles a user hid from their
+// timeline.
+type HideStore interface {
+	Hide(ctx context.Context, userID, articleID string) error
+	Unhide(ctx context.Context, userID, articleID string) error
+	HiddenArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
 // ImportStore stores OPML imports and reads their results.
 type ImportStore interface {
 	Create(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error)
@@ -164,6 +172,7 @@ var (
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
 	_ ReadStore         = (*psql.ReadRepository)(nil)
 	_ SaveStore         = (*psql.SaveRepository)(nil)
+	_ HideStore         = (*psql.HideRepository)(nil)
 	_ ImportStore       = (*psql.ImportRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
 )
@@ -181,6 +190,7 @@ type Services struct {
 	SubscriptionService SubscriptionStore
 	ReadService         ReadStore
 	SaveService         SaveStore
+	HideService         HideStore
 	ImportService       ImportStore
 	EmailQueue          EmailQueue
 }

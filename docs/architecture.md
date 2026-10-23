@@ -199,6 +199,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
 | `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |
 | `POST /articles/{id}/unsave` | yes | `articleUnsaveHandler` | Unsaves the article and its copies; 303 to `return_to#article-{id}` |
+| `POST /articles/{id}/hide` | yes | `articleHideHandler` | Hide control on timeline rows: hides the article and its copies from the timeline; flash; 303 to `return_to` |
+| `POST /articles/{id}/unhide` | yes | `articleUnhideHandler` | Unhide on feed pages (and app.js's Undo): unhides the article and its copies; 303 to `return_to#article-{id}` |
 | `GET /sites/{id}` | yes | `siteHandler` | A site and its feeds |
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
@@ -239,6 +241,7 @@ CLAUDE.md).
 users ──< subscriptions >── feeds ──< articles ──< reads >── users
                               │          │
                               │          ├──< saves >── users
+                              │          ├──< hides >── users
                               │          └──< enrich_jobs
                               │
                             sites ──< lookups (site_id, once found)
@@ -279,6 +282,9 @@ emails   (the outbox: no foreign keys)
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
   at query time.
+- **`hides`**: `(user_id, article_id)` with `hidden_at`; an article a user hid from their
+  timeline. Like `saves`, every copy of the article counts as hidden, matched at query
+  time. `ListTimeline` leaves hidden articles out; feed pages mark them.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,
@@ -310,10 +316,10 @@ emails   (the outbox: no foreign keys)
   bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
   email outlives its user. The mail runner deletes sent and failed rows after 7 days.
 
-Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves
-and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and
-`import_feeds.feed_id`; deleting an article deletes its saves, reads and enrich job;
-deleting a user cascades to their subscriptions, reads, saves, imports (and their
+Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves,
+hides and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and
+`import_feeds.feed_id`; deleting an article deletes its saves, hides, reads and enrich job;
+deleting a user cascades to their subscriptions, reads, saves, hides, imports (and their
 `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
 Deleting an account (`UserRepository.Delete`) deletes the user, with that cascade;
 feeds and articles stay, even when no one subscribes to them anymore. Nothing deletes
@@ -470,11 +476,14 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the
   site's icon on a white tile (`--avatar-icon-bg`, `.avatar-icon`), else its letter on
   its tint. People's avatars (the nav, Settings) stay circles.
-- **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
+- **`app.js`** has seven enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then
   flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` action; on any
-  failure it submits the form normally), video embeds (a delegated `click` listener
+  failure it submits the form normally), Hide buttons (a delegated `submit` listener
+  posts `form[data-hide]` with `fetch` and collapses the row in place to "Hidden ·
+  Undo", keeping its contents in memory; Undo posts to `/unhide` the same way and puts
+  them back; on any failure the form is submitted normally), video embeds (a delegated `click` listener
   swaps the link in `figure.embed[data-embed]` for a sandboxed player built from
   `data-embed-id`; modified clicks follow the link), infinite scroll (fetch the page behind
   `.pager a[rel=next]` and append its `.article-row`s), and a show/hide toggle on every

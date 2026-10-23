@@ -161,6 +161,24 @@ CREATE TABLE saves (
 CREATE INDEX saves_user_saved_at_idx ON saves (user_id, saved_at DESC, article_id DESC);
 CREATE INDEX saves_article_id_idx ON saves (article_id);
 
+-- Articles a user hid from their timeline. Hiding covers every copy of an
+-- article (same canonical_url); see psql.HideRepository.
+CREATE TABLE hides (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    hidden_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX hides_article_id_idx ON hides (article_id);
+
 -- The enrichment queue: articles whose web page should be fetched for a
 -- missing image, title or excerpt. A row is deleted once its work is done
 -- or given up on.
@@ -300,6 +318,7 @@ DROP TABLE import_feeds;
 DROP TABLE imports;
 DROP TABLE site_icons;
 DROP TABLE enrich_jobs;
+DROP TABLE hides;
 DROP TABLE saves;
 DROP TABLE reads;
 DROP TABLE subscriptions;

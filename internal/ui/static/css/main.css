@@ -1038,6 +1038,154 @@
     margin-inline: auto -0.375rem;
   }
 
+  /* The row's head: the meta line, and on timeline rows the hide control
+     at its end (the "corner" and "menu" placements, #308). */
+  .article-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .article-head .article-meta {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  /* Hide (#308). An icon alone in the corner; with its label in the menu. */
+  .hide-button,
+  .unhide-button,
+  .row-menu-button,
+  .hidden-row button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+  }
+
+  .hide-button:hover,
+  .unhide-button:hover,
+  .row-menu-button:hover,
+  .hidden-row button:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .hide-button:focus-visible,
+  .unhide-button:focus-visible,
+  .row-menu-button:focus-visible,
+  .hidden-row button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .hide-button .icon,
+  .row-menu-button .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    stroke-width: 2;
+  }
+
+  .hide-button[disabled],
+  .hidden-row button[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  .hide-label {
+    display: none;
+  }
+
+  /* "corner": ✕ alone at the top right, opposite the feed name. */
+  .article-head > .hide-form .hide-button {
+    padding: 0.375rem;
+    margin-inline-end: -0.375rem;
+  }
+
+  /* "menu": a ⋯ button at the top right opening a small menu. A <details>,
+     so it needs no JavaScript. */
+  .row-menu {
+    position: relative;
+  }
+
+  .row-menu-button {
+    padding: 0.375rem;
+    margin-inline-end: -0.375rem;
+    list-style: none;
+  }
+
+  .row-menu-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .row-menu[open] .row-menu-button {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .row-menu-panel {
+    position: absolute;
+    inset-inline-end: -0.375rem;
+    inset-block-start: calc(100% + 0.25rem);
+    z-index: 2;
+    min-inline-size: 12rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent);
+  }
+
+  .row-menu .hide-button {
+    inline-size: 100%;
+    padding: 0.5rem 0.625rem;
+    border-radius: calc(var(--radius-sm) - 0.25rem);
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+
+  .row-menu .hide-label {
+    display: inline;
+  }
+
+  /* A hidden article on its feed page: a quiet note in the meta line and an
+     Unhide button in the foot. The row isn't dimmed: dimming means read. */
+  .hidden-note {
+    color: var(--text-2);
+  }
+
+  .unhide-button {
+    padding: 0.375rem 0.625rem;
+    margin-inline-start: -0.625rem;
+  }
+
+  /* A row app.js collapsed after hiding it: one short muted line with Undo,
+     its divider kept. */
+  .article-row.is-hidden {
+    padding-block: 0.375rem;
+  }
+
+  .hidden-row {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .hidden-row button {
+    margin-inline-start: -0.5rem;
+    padding: 0.375rem 0.5rem;
+    color: var(--accent);
+  }
+
   /* Profile headers on feed and site pages. */
   .profile {
     padding: 1.25rem 1rem 1rem;

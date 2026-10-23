@@ -652,3 +652,135 @@ func TestArticleHandlerSiteIcon(t *testing.T) {
 		return rr.Body.String()
 	})
 }
+
+const hiddenFlash = "Hidden from your timeline. It's still on its feed page."
+
+func TestArticleHideHandler(t *testing.T) {
+	testHideAction(t, hideActionTest{
+		path:    "hide",
+		handler: func(s *Server) http.HandlerFunc { return s.articleHideHandler },
+		setFn:   func(f *fakeHideStore, fn func(ctx context.Context, userID, articleID string) error) { f.hideFn = fn },
+		// The row is gone from the page, so there's nothing to anchor on.
+		location: func(path string) string { return path },
+		flash:    hiddenFlash,
+	})
+}
+
+func TestArticleUnhideHandler(t *testing.T) {
+	testHideAction(t, hideActionTest{
+		path:     "unhide",
+		handler:  func(s *Server) http.HandlerFunc { return s.articleUnhideHandler },
+		setFn:    func(f *fakeHideStore, fn func(ctx context.Context, userID, articleID string) error) { f.unhideFn = fn },
+		location: func(path string) string { return withFragment(path, "article-"+testArticleID) },
+	})
+}
+
+type hideActionTest struct {
+	path     string // "hide" or "unhide"
+	handler  func(*Server) http.HandlerFunc
+	setFn    func(*fakeHideStore, func(ctx context.Context, userID, articleID string) error) // sets the store method the handler calls
+	location func(path string) string                                                        // the redirect for a return_to of path
+	flash    string                                                                          // the flash it leaves, if any
+}
+
+func testHideAction(t *testing.T, tt hideActionTest) {
+	t.Helper()
+	newServer := func(fn func(ctx context.Context, userID, articleID string) error) *Server {
+		store := &fakeHideStore{}
+		tt.setFn(store, fn)
+		return newTestServerWith(t, Services{HideService: store})
+	}
+
+	t.Run("redirects to return_to", func(t *testing.T) {
+		var gotUser, gotArticle string
+		calls := 0
+		s := newServer(func(ctx context.Context, userID, articleID string) error {
+			calls++
+			gotUser, gotArticle = userID, articleID
+			return nil
+		})
+
+		returnTo := "/?before=abc"
+		rr, flash := postHide(t, s, tt.handler(s), "user-1", testArticleID, returnTo)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+		}
+		if want := tt.location(returnTo); rr.Header().Get("Location") != want {
+			t.Errorf("Location = %q, want %q", rr.Header().Get("Location"), want)
+		}
+		if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
+			t.Errorf("store called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
+		}
+		if flash != tt.flash {
+			t.Errorf("flash = %q, want %q", flash, tt.flash)
+		}
+	})
+
+	for _, returnTo := range []string{"https://evil.example/", "//evil.example/", ""} {
+		t.Run("off-site return_to "+returnTo, func(t *testing.T) {
+			s := newServer(nil)
+			rr, _ := postHide(t, s, tt.handler(s), "user-1", testArticleID, returnTo)
+			if loc, want := rr.Header().Get("Location"), tt.location("/"); rr.Code != http.StatusSeeOther || loc != want {
+				t.Errorf("status %d, Location = %q, want 303 to %s", rr.Code, loc, want)
+			}
+		})
+	}
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t) // nil stores: any store call would panic
+		rr, _ := postHide(t, s, tt.handler(s), "user-1", "abc", "/")
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("unknown article", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return rss.ErrNoRecord })
+		rr, flash := postHide(t, s, tt.handler(s), "user-1", testArticleID, "/")
+		assertNotFoundHTML(t, rr)
+		if flash != "" {
+			t.Errorf("flash = %q, want none", flash)
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return errors.New("db down") })
+		if rr, _ := postHide(t, s, tt.handler(s), "user-1", testArticleID, "/"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("logged out", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/"+tt.path, nil)
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
+		}
+	})
+}
+
+// postHide posts return_to to a hide or unhide handler as userID and returns
+// the response and the flash message left in the session.
+func postHide(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, returnTo string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	form := url.Values{"return_to": {returnTo}}
+	req := httptest.NewRequest(http.MethodPost, "/articles/x/hide", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, userID)
+	rr := httptest.NewRecorder()
+	var flash string
+	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	})).ServeHTTP(rr, req.WithContext(ctx))
+	return rr, flash
+}

@@ -1,11 +1,28 @@
 {{define "article-row"}}
+{{/* PROTOTYPE (#308): how timeline rows show the hide control at the top
+     right of the meta line, opposite the feed name. One of "corner" (a ✕)
+     or "menu" (a ⋯ menu holding "Hide from timeline"). Only one stays once
+     the owner picks. */}}
+{{$hideAt := "corner"}}
 <article class="article-row{{if .Read}} read{{end}}" id="article-{{.Article.ID}}">
   {{if .Feed.ID}}{{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) .Icon)}}{{end}}
   <div class="article-main">
-    <p class="article-meta">
-      {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
-      {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
-    </p>
+    <div class="article-head">
+      <p class="article-meta">
+        {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
+        {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
+        {{if .Hidden}}{{if or .Feed.ID (not .Article.PublishedAt.IsZero)}}<span aria-hidden="true">·</span>{{end}}<span class="hidden-note">Hidden from timeline</span>{{end}}
+      </p>
+      {{if .Hideable}}
+      {{if eq $hideAt "corner"}}{{template "hide-form" .}}{{end}}
+      {{if eq $hideAt "menu"}}
+      <details class="row-menu">
+        <summary class="row-menu-button" aria-label="More actions">{{template "icon-more"}}</summary>
+        <div class="row-menu-panel">{{template "hide-form" .}}</div>
+      </details>
+      {{end}}
+      {{end}}
+    </div>
     <div class="article-card">
       {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
       <div class="article-text">
@@ -16,8 +33,24 @@
     </div>
     <div class="article-foot">
       {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
+      {{if .Hidden}}
+      <form class="unhide-form" method="post" action="/articles/{{.Article.ID}}/unhide">
+        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+        <button class="unhide-button" type="submit">Unhide</button>
+      </form>
+      {{end}}
       {{template "article-actions" .}}
     </div>
   </div>
 </article>
+{{end}}
+
+{{/* The hide control on a timeline row: data is an articleRow. app.js's
+     "Hide buttons" relies on this markup: form[data-hide], its /hide action
+     and the return_to input. */}}
+{{define "hide-form"}}
+<form class="hide-form" method="post" action="/articles/{{.Article.ID}}/hide" data-hide>
+  <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+  <button class="hide-button" type="submit" aria-label="Hide from timeline">{{template "icon-close"}}<span class="hide-label">Hide from timeline</span></button>
+</form>
 {{end}}

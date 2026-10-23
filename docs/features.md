@@ -519,7 +519,9 @@ nearby. Without JavaScript the link just works.
 ## Saved articles
 
 **Flow.** Every article row (timeline and feed pages) and the article page has a Save
-button with a bookmark icon: the `save-button` partial, a form posting to
+button with a bookmark icon, in the `article-actions` group: on rows it's right-aligned
+under the card (the row's `article-foot`, with "Also in" on the left), on the article
+page under the title. The button is the `save-button` partial, a form posting to
 `/articles/{id}/save`, or `/unsave` when the article is saved, with a `return_to` of the
 page's request URI. `articleSaveHandler` and `articleUnsaveHandler` (both `saveAction`)
 call `SaveRepository.Save` or `Unsave` and redirect to `return_to` with

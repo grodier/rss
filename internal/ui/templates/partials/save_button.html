@@ -6,12 +6,12 @@
 {{define "save-button"}}
 <form class="save-form" method="post" action="/articles/{{.Article.ID}}/{{if .Saved}}unsave{{else}}save{{end}}" data-save>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="save-button" type="submit" aria-pressed="{{.Saved}}">{{template "icon-bookmark"}}{{template "icon-bookmark-fill"}}<span class="save-label{{if ne saveLayout "bar"}} visually-hidden{{end}}">Save</span></button>
+  <button class="save-button" type="submit" aria-pressed="{{.Saved}}">{{template "icon-bookmark"}}{{template "icon-bookmark-fill"}}<span class="save-label">Save</span></button>
 </form>
 {{end}}
 
 {{/* The actions on an article: Save for now. One group, so more actions
-     (Share, hide) can join it. */}}
+     (Share) can join it. */}}
 {{define "article-actions"}}
-<div class="article-actions actions-{{saveLayout}}">{{template "save-button" .}}</div>
+<div class="article-actions">{{template "save-button" .}}</div>
 {{end}}

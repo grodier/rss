@@ -197,6 +197,11 @@ Planned in #309 (issues #299–#301).
   paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt
   and feed title; a user's saves are a small set).
 - **Saved articles must survive article retention**, and go into the full data export.
+- **The Save button sits under the card, right-aligned, with icon and label** (owner's
+  pick in #316, from three layouts: this bar, an icon on the card's corner, an icon in
+  the meta line). The card's left edge stays clean, and it's under the thumb on phones.
+  "Also in" shares its line, on the left. More actions (Share) join it to Save's left.
+  On the article page it sits under the title, left-aligned with the heading.
 
 ### Hiding articles (prototype)
 
@@ -212,6 +217,8 @@ seeing it.
 - **Its own table, outside the batch's schema change**, so dropping the prototype leaves
   nothing behind.
 - **Muting feeds and keyword filters are a separate planning item**, not part of hiding.
+- **The hide ✕ goes at the row's top right**, on the meta line, not in Save's action bar
+  (#316): next to Save, a mis-tap would hide the article you meant to keep.
 
 ## Enrichment
 

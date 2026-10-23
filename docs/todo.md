@@ -275,8 +275,8 @@ Each with when it pays off:
   previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.** Style the blockquote that X, Bluesky and Mastodon embeds
   arrive as into a quote card with the author and a link, without loading their scripts.
-- [ ] **Share button.** In the row's action bar next to Save (#299): the Web Share API on
-  phones, else copy the article's link. Its own small issue once Save's layout is settled.
+- [ ] **Share button.** In the row's action bar, to Save's left (#299): the Web Share API on
+  phones, else copy the article's link. Its own small issue.
 - [ ] **Filters and muting (needs planning).** Muting a feed on the timeline (kept
   subscribed, still on its feed page), keyword filters, and how they relate to hiding
   single articles (#308). The owner wants to think through what filters mean first.

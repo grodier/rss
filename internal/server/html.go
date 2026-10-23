@@ -18,17 +18,10 @@ import (
 // avatarTones is how many avatar tints main.css defines (.tone-1 … .tone-6).
 const avatarTones = 6
 
-// saveLayout picks where article rows and the article page put the Save
-// button, while the owner chooses (#299): "bar", a right-aligned action bar
-// under the card with icon and label; "corner", icon-only at the card's top
-// right; or "meta", icon-only at the end of the meta line.
-const saveLayout = "bar"
-
 var templateFuncs = template.FuncMap{
 	"asset":      asset,
 	"avatarTone": avatarTone,
 	"monogram":   monogram,
-	"saveLayout": func() string { return saveLayout },
 }
 
 // avatarTone picks the avatar tint for an ID, from 1 to avatarTones: a site's

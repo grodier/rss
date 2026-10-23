@@ -15,14 +15,13 @@
 
     <main class="column">
       <article class="reader">
-        <div class="reader-meta">
+        <p class="reader-meta">
           {{template "feed-avatar" .Feed}}
           <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
           {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
-          {{if ne saveLayout "bar"}}{{template "article-actions" .}}{{end}}
-        </div>
+        </p>
         <h1>{{.Article.DisplayTitle}}</h1>
-        {{if eq saveLayout "bar"}}{{template "article-actions" .}}{{end}}
+        {{template "article-actions" .}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>
         {{else}}

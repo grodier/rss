@@ -392,11 +392,13 @@ Refresh button, and the refresh workers. The last two share one path,
 
 Turning items into articles (`ingest.Articles`): each item's identity within its feed is
 its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are
-kept. Each article gets a plain-text excerpt and a `canonical_url` (tracking parameters
-removed) for matching copies across feeds. Saving (`saveArticles`) locks the feed row,
-computes each new article's `timeline_at` (see Reading), and upserts by
-`(feed_id, external_id)`: unchanged articles aren't written, and an existing
-`published_at` is kept because some feeds bump it on every edit.
+kept. Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters
+removed) for matching copies across feeds, and the MIME type of the item's first audio or
+video enclosure or `media:content` (`feedparse.Item.MediaType`, set by `itemMediaType`),
+which nothing displays yet. Saving (`saveArticles`) locks the feed row, computes each new
+article's `timeline_at` (see Reading), and upserts by `(feed_id, external_id)`: unchanged
+articles aren't written, and an existing `published_at` is kept because some feeds bump
+it on every edit.
 
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
 pending refresh request, requested ones first. A request is made when someone views a
@@ -409,17 +411,19 @@ the result in a flash message. It refuses gone feeds, feeds fetched successfully
 
 1. `internal/refresh/refresh.go`: `Runner.work`, `refresh`.
 2. `internal/psql/feeds.go`: `ClaimDue`, `RequestRefresh`.
-3. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
+3. `internal/feedparse/feedparse.go`: `itemImage`, `itemMediaType`.
+4. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
    `externalID`.
-4. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `retryAfter`, `freshness`) and
+5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `retryAfter`, `freshness`) and
    `canonical.go` (`CanonicalURL`).
-5. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
+6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
    `MarkGone`.
-6. `internal/psql/articles.go`: `saveArticles`, `timelineAt`.
-7. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the
+7. `internal/psql/articles.go`: `saveArticles`, `timelineAt`.
+8. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the
    `RequestRefresh` call in `feedHandler`.
 
-**Tests:** `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
+**Tests:** `internal/feedparse/feedparse_test.go` (`TestParseItemImage`,
+`TestParseItemMediaType`); `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
 `internal/psql/feeds_test.go`, `articles_test.go`; `internal/server/feeds_test.go`.
 
 **Why:** "Feed ingestion" in decisions.md.
@@ -503,7 +507,12 @@ doesn't.
 **Article page.** `articleHandler` records the read, then renders the content (else the
 summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
 (else the feed's). Plain text (no block-level markup) is split into paragraphs at blank
-lines, with `<br>` for single line breaks, and bare http(s) URLs become links.
+lines, with `<br>` for single line breaks, and bare http(s) URLs become links. The
+article's card image (`image_url`) shows above the text as a lead image unless
+`sanitize.ShowsImage` finds the content already shows it: the content starts with an
+image, the block after its first paragraph is one, or any image in it is the same file
+(ignoring host case, `www.`, the query and WordPress size suffixes). Wide tables scroll
+inside the column.
 
 **Read state.** An article is read when its page is opened, or when the reader clicks
 through to the original from a row: the link has `ping="/articles/{id}/read"`, which
@@ -525,7 +534,7 @@ nearby. Without JavaScript the link just works.
    `fillRead`.
 4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
 5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
-   `newPolicy`.
+   `newPolicy`, then `ShowsImage` and `imageKey`.
 6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
 7. `internal/ui/static/js/app.js`.
 8. Also: `rss.Article.DisplayTitle` (untitled articles) and `FeedSortAt` in

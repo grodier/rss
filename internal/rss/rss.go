@@ -39,6 +39,7 @@ type Article struct {
 	URL          string
 	CanonicalURL string // see ingest.CanonicalURL; "" if the article has no usable URL
 	ImageURL     string // feed-declared image; "" if none
+	MediaType    string // see feedparse.Item.MediaType
 	Title        string
 	Summary      string
 	Content      string

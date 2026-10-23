@@ -203,9 +203,6 @@ Each with when it pays off:
   history, business uses of the data) and its copyright and privacy implications on the
   other. Saved articles (#299) must survive whatever rule is chosen: deleting an article
   cascades to its `saves` rows.
-- [ ] **Thumbnails inside `media:group`.** `itemImage` reads `media:thumbnail` only at
-  the item's top level, so YouTube channel feeds (which nest it in `media:group`) get no
-  image. `itemMediaType` already looks inside `media:group`; do the same for images.
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand. An admin page would
   build on debug mode's allowlist (#327).

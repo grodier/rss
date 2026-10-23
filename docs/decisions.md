@@ -220,7 +220,9 @@ Planned in #163 (issues #147–#162).
   keeps the URL on the visible row so Back and reload land nearby. (#155, #159)
 - **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed
   dates show just the date and aren't localized. No day headers or relative times.
-  (#157, #160)
+  (#157, #160) This covers every user-visible time, not just articles: feed and site
+  status times ("Last fetched", "Next check around") and list dates ("Latest article")
+  too, still absolute, with no time zone setting. (#337)
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 
 ### Saved articles

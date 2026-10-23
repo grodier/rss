@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - inspect feed</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    {{/* Everything from the fetched document is untrusted: it is only ever
+         shown as escaped text. */}}
+    <main class="column inspect">
+      <section class="inspect-head">
+        <h1>Inspect feed</h1>
+        <p>{{or .Feed.Title .Feed.Url}} · <a href="/feeds/{{.Feed.ID}}">Back to the feed</a></p>
+        <p class="debug-note">Fetched {{.FetchedAt}}. Nothing was saved.</p>
+      </section>
+
+      <section class="debug">
+        <h2 class="debug-sub">Request</h2>
+        {{template "debug-fields" .Request}}
+      </section>
+
+      {{with .Error}}<p class="fetch-error" role="alert">{{.}}</p>{{end}}
+
+      {{with .Response}}
+      <section class="debug">
+        <h2 class="debug-sub">Response</h2>
+        <dl class="debug-fields">
+          <div><dt>final url</dt><dd>{{.URL}}</dd></div>
+          <div><dt>status</dt><dd>{{.Status}}</dd></div>
+          <div><dt>duration</dt><dd>{{.Duration}}</dd></div>
+          <div><dt>size</dt><dd>{{.Size}}</dd></div>
+          <div><dt>Content-Type</dt><dd>{{or .ContentType "—"}}</dd></div>
+          <div><dt>Sniff</dt><dd>{{.Sniff}}</dd></div>
+        </dl>
+        <h3 class="debug-sub">headers</h3>
+        {{template "debug-fields" .Headers}}
+        <details>
+          <summary>Body</summary>
+          {{with .BodyNote}}<p class="debug-note">{{.}}</p>{{end}}
+          <pre class="debug-pre">{{.Body}}</pre>
+        </details>
+      </section>
+      {{end}}
+
+      {{if .Meta}}
+      <section class="debug">
+        <h2 class="debug-sub">Channel</h2>
+        <table class="debug-table">
+          <thead><tr><th scope="col">Field</th><th scope="col">Fetched</th><th scope="col">Stored</th></tr></thead>
+          <tbody>
+            {{range .Meta}}<tr><th scope="row">{{.Name}}</th><td>{{or .Fetched "—"}}</td><td>{{or .Stored "—"}}</td></tr>{{end}}
+          </tbody>
+        </table>
+        <table class="debug-table">
+          <thead><tr><th scope="col">Path</th><th scope="col">Used</th><th scope="col">Sample</th></tr></thead>
+          <tbody>
+            {{range .Channel}}<tr{{if not .Used}} class="debug-ignored"{{end}}><th scope="row">{{.Path}}</th><td>{{if .Used}}used{{else}}ignored{{end}}</td><td>{{.Sample}}</td></tr>{{end}}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="debug">
+        <h2 class="debug-sub">Item fields</h2>
+        <table class="debug-table">
+          <thead><tr><th scope="col">Path</th><th scope="col">Count</th><th scope="col">Used</th><th scope="col">Sample</th></tr></thead>
+          <tbody>
+            {{range .ItemFields}}<tr{{if not .Used}} class="debug-ignored"{{end}}><th scope="row">{{.Path}}</th><td>{{.Count}}/{{$.ItemTotal}}</td><td>{{if .Used}}used{{else}}ignored{{end}}</td><td>{{.Sample}}</td></tr>{{end}}
+          </tbody>
+        </table>
+      </section>
+
+      {{with .Focus}}
+      <section class="debug">
+        <h2 class="debug-sub">This article's item</h2>
+        {{template "inspect-item" .}}
+      </section>
+      {{end}}
+
+      <section class="debug">
+        <h2 class="debug-sub">Items</h2>
+        {{range .Items}}{{template "inspect-item" .}}{{else}}<p class="debug-note">No items.</p>{{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{define "inspect-item"}}
+<details class="inspect-item"{{if .Open}} open{{end}}>
+  <summary>{{.Outcome}} · {{or .Title "(no title)"}}</summary>
+  <dl class="debug-fields">
+    <div><dt>external_id</dt><dd>{{or .ExternalID "—"}}</dd></div>
+  </dl>
+  <h3 class="debug-sub">parsed</h3>
+  {{template "debug-fields" .Fields}}
+  {{with .Stored}}
+  <h3 class="debug-sub">stored values that differ</h3>
+  {{template "debug-fields" .}}
+  {{end}}
+  <h3 class="debug-sub">raw</h3>
+  <pre class="debug-pre">{{or .Raw "(couldn't match this item to the document)"}}</pre>
+  <h3 class="debug-sub">gofeed</h3>
+  <pre class="debug-pre">{{.Gofeed}}</pre>
+</details>
+{{end}}

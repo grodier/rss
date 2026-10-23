@@ -1,16 +1,25 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/feedparse"
+	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -406,6 +415,9 @@ func TestFeedHandlerDebugPanel(t *testing.T) {
 			"<dt>enrich jobs</dt><dd>3",
 			`<dt>last_error</dt><dd>&lt;script&gt;alert(1)&lt;/script&gt; <span class="debug-note">internal; only debug mode shows it</span></dd>`,
 			"<dt>etag</dt><dd>—</dd>",
+			`<form class="debug-inspect" action="/debug/feeds/`+testFeedID+`/inspect" method="post">`,
+			`<input type="checkbox" name="conditional" value="1"> Send the stored ETag and Last-Modified`,
+			"Fetch and inspect</button>",
 		)
 		if strings.Contains(body, "<script>alert(1)") {
 			t.Error("last_error is not escaped")
@@ -466,4 +478,390 @@ func TestSettingsHandlerDebug(t *testing.T) {
 			t.Errorf("settings shows debug mode to a user who isn't allowed: %s", body)
 		}
 	})
+}
+
+func TestRequireDebug(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		debugOn bool
+		want    bool
+	}{
+		{"on", debugConfig, true, true},
+		{"off", debugConfig, false, false},
+		{"not allowed", Config{Port: 4000, Env: "development", DebugEmails: []string{"someone@example.com"}}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerConfig(t, tt.cfg, Services{})
+			ran := false
+			h := s.requireDebug(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true }))
+			rr, _, _ := serveDebug(t, s, h.ServeHTTP, httptest.NewRequest(http.MethodPost, "/debug/feeds/"+testFeedID+"/inspect", nil), &debugSession, tt.debugOn)
+			if ran != tt.want {
+				t.Errorf("handler ran = %v, want %v", ran, tt.want)
+			}
+			if !tt.want {
+				assertNotFoundHTML(t, rr)
+			}
+		})
+	}
+
+	t.Run("anonymous, through the router", func(t *testing.T) {
+		s := newTestServerConfig(t, debugConfig, Services{})
+		req := httptest.NewRequest(http.MethodPost, "/debug/feeds/"+testFeedID+"/inspect", strings.NewReader(""))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, req)
+		if rr.Code != http.StatusSeeOther || !strings.HasPrefix(rr.Header().Get("Location"), "/login") {
+			t.Errorf("got %d %q, want a redirect to /login", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+}
+
+func TestCompareArticle(t *testing.T) {
+	base := rss.Article{
+		URL: "https://example.com/a", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg",
+		MediaType: "audio/mpeg", Title: "A", Summary: "<p>s</p>", Content: "<p>c</p>", Excerpt: "s",
+		PublishedAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+	}
+	tests := []struct {
+		name   string
+		change func(a *rss.Article)
+		want   []string
+	}{
+		{"equal", func(*rss.Article) {}, nil},
+		{"url", func(a *rss.Article) { a.URL = "https://example.com/b" }, []string{"url"}},
+		{"canonical_url", func(a *rss.Article) { a.CanonicalURL = "" }, []string{"canonical_url"}},
+		{"image_url", func(a *rss.Article) { a.ImageURL = "" }, []string{"image_url"}},
+		{"media_type", func(a *rss.Article) { a.MediaType = "video/mp4" }, []string{"media_type"}},
+		{"title", func(a *rss.Article) { a.Title = "B" }, []string{"title"}},
+		{"summary", func(a *rss.Article) { a.Summary = "<p>longer</p>" }, []string{"summary (13 → 8 bytes)"}},
+		{"content", func(a *rss.Article) { a.Content = "" }, []string{"content (0 → 8 bytes)"}},
+		{"excerpt", func(a *rss.Article) { a.Excerpt = "x" }, []string{"excerpt"}},
+		{"published_at", func(a *rss.Article) { a.PublishedAt = a.PublishedAt.Add(time.Hour) }, []string{"published_at"}},
+		{"published_at in another zone", func(a *rss.Article) { a.PublishedAt = a.PublishedAt.In(time.FixedZone("X", 3600)) }, nil},
+		{"published_date_only", func(a *rss.Article) { a.PublishedDateOnly = true }, []string{"published_date_only"}},
+		{"several, in column order", func(a *rss.Article) { a.Excerpt = "x"; a.URL = "u" }, []string{"url", "excerpt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := base
+			tt.change(&stored)
+			if got := compareArticle(base, stored); !slices.Equal(got, tt.want) {
+				t.Errorf("compareArticle = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// inspectRSS is an RSS feed for the feed inspector tests: items "n" (new),
+// "u" (unchanged), "d" (whose stored title differs), a second "u", and "x"
+// with a script in its description.
+const inspectRSS = `<?xml version="1.0"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Inspected</title>
+    <link>https://example.com/</link>
+    <item><guid>n</guid><title>New post</title><dc:creator>Ada</dc:creator></item>
+    <item><guid>u</guid><title>Same post</title><description>Same</description></item>
+    <item><guid>d</guid><title>Fetched title</title></item>
+    <item><guid>u</guid><title>Same again</title></item>
+    <item><guid>x</guid><title>Script</title><description><![CDATA[<script>alert(1)</script>]]></description></item>
+  </channel>
+</rss>`
+
+// inspectStored are the stored articles of inspectRSS: "u" and "x" as a
+// refresh would store them, and "d" with another title.
+func inspectStored(t *testing.T) map[string]rss.Article {
+	t.Helper()
+	parsed, err := feedparse.Parse(mustURL(t, "https://example.com/feed.xml"), []byte(inspectRSS))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := map[string]rss.Article{}
+	for _, a := range ingest.Articles(parsed.Items) {
+		switch a.ExternalID {
+		case "u", "x":
+			stored[a.ExternalID] = a
+		case "d":
+			a.Title = "Stored title"
+			stored[a.ExternalID] = a
+		}
+	}
+	return stored
+}
+
+func mustURL(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+// inspectServer is a server for the feed inspector with fetcher, the stored
+// articles of inspectStored, and stores that fail the test if they write.
+func inspectServer(t *testing.T, fetcher *fakeFetcher) (*Server, *fakeRefresher) {
+	t.Helper()
+	stored := inspectStored(t)
+	refresher := &fakeRefresher{refreshFn: func(context.Context, rss.Feed) (rss.FetchResult, error) {
+		t.Error("Refresh called")
+		return rss.FetchResult{}, nil
+	}}
+	s := newTestServerConfig(t, debugConfig, Services{
+		FeedService: &fakeFeedStore{
+			getByIDFn: func(_ context.Context, id string) (rss.Feed, error) {
+				if id != testFeedID {
+					return rss.Feed{}, rss.ErrNoRecord
+				}
+				return rss.Feed{ID: id, SiteID: testSiteID, Url: "https://example.com/feed.xml", Title: "Stored feed title",
+					ETag: `"v1"`, LastModified: "Mon, 05 Oct 2026 09:30:00 GMT"}, nil
+			},
+			requestRefreshFn: func(context.Context, string) error {
+				t.Error("RequestRefresh called")
+				return nil
+			},
+		},
+		DebugService: &fakeDebugStore{articlesByExternalIDFn: func(_ context.Context, feedID string, ids []string) (map[string]rss.Article, error) {
+			if feedID != testFeedID {
+				t.Errorf("ArticlesByExternalID(%q), want the feed's ID", feedID)
+			}
+			out := map[string]rss.Article{}
+			for _, id := range ids {
+				if a, ok := stored[id]; ok {
+					out[id] = a
+				}
+			}
+			return out, nil
+		}},
+		Refresher: refresher,
+		Fetcher:   fetcher,
+	})
+	return s, refresher
+}
+
+// rssResponse is a 200 response with body.
+func rssResponse(t *testing.T, body string) *fakeFetcher {
+	return &fakeFetcher{resp: &fetch.Response{
+		URL:        mustURL(t, "https://example.com/feed.xml"),
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/rss+xml"}, "Etag": {`"v2"`}},
+		Body:       []byte(body),
+	}}
+}
+
+// serveInspect posts form to the feed inspector of feed id and returns the
+// response.
+func serveInspect(t *testing.T, s *Server, id string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/debug/feeds/"+id+"/inspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr, _, _ := serveDebug(t, s, s.feedInspectHandler, withRouteID(req, id), &debugSession, true)
+	return rr
+}
+
+func TestFeedInspectHandler(t *testing.T) {
+	t.Run("rss", func(t *testing.T) {
+		fetcher := rssResponse(t, inspectRSS)
+		s, refresher := inspectServer(t, fetcher)
+		rr := serveInspect(t, s, testFeedID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			"<title>rss - inspect feed</title>",
+			"<h1>Inspect feed</h1>",
+			`<a href="/feeds/`+testFeedID+`">Back to the feed</a>`,
+			"<dt>conditional headers</dt><dd>none</dd>",
+			"<dt>status</dt><dd>200 OK</dd>",
+			"<dt>Sniff</dt><dd>feed</dd>",
+			`<dt>Etag</dt><dd>&#34;v2&#34;</dd>`,
+			"<th scope=\"row\">title</th><td>Inspected</td><td>Stored feed title</td>",
+			"Item fields",
+			`<tr class="debug-ignored"><th scope="row">dc:creator</th><td>1/5</td><td>ignored</td><td>Ada</td></tr>`,
+			`<th scope="row">guid</th><td>5/5</td><td>used</td>`,
+			"<summary>new · New post</summary>",
+			"<summary>unchanged · Same post</summary>",
+			"<summary>differs: title · Fetched title</summary>",
+			"<dt>title</dt><dd>Stored title</dd>",
+			"<summary>dropped: duplicate of an earlier item · Same again</summary>",
+			"<dt>external_id</dt><dd>n</dd>",
+		)
+		if strings.Contains(body, "This article's item") {
+			t.Error("shows an article's item without item")
+		}
+		if len(fetcher.urls) != 1 || fetcher.urls[0] != "https://example.com/feed.xml" {
+			t.Errorf("fetched %v, want the feed's URL once", fetcher.urls)
+		}
+		if len(refresher.calls) != 0 {
+			t.Errorf("Refresh called %d times", len(refresher.calls))
+		}
+	})
+
+	t.Run("raw items are escaped", func(t *testing.T) {
+		s, _ := inspectServer(t, rssResponse(t, inspectRSS))
+		body := serveInspect(t, s, testFeedID, nil).Body.String()
+		if strings.Contains(body, "<script>alert(1)") {
+			t.Error("the item's script is not escaped")
+		}
+		assertBodyContains(t, body, "&lt;script&gt;alert(1)&lt;/script&gt;", "&lt;item&gt;&lt;guid&gt;x&lt;/guid&gt;")
+	})
+
+	t.Run("item first", func(t *testing.T) {
+		s, _ := inspectServer(t, rssResponse(t, inspectRSS))
+		body := serveInspect(t, s, testFeedID, url.Values{"item": {"d"}}).Body.String()
+		focus := strings.Index(body, "This article's item")
+		items := strings.Index(body, ">Items</h2>")
+		item := strings.Index(body, `<details class="inspect-item" open>
+  <summary>differs: title · Fetched title</summary>`)
+		if focus < 0 || items < 0 || item < 0 || !(focus < item && item < items) {
+			t.Errorf("item d is not shown open under This article's item, before Items (at %d, %d, %d): %s", focus, item, items, body)
+		}
+		if n := strings.Count(body, "differs: title · Fetched title"); n != 1 {
+			t.Errorf("item d is shown %d times, want once", n)
+		}
+	})
+
+	t.Run("conditional", func(t *testing.T) {
+		fetcher := rssResponse(t, inspectRSS)
+		s, _ := inspectServer(t, fetcher)
+		body := serveInspect(t, s, testFeedID, url.Values{"conditional": {"1"}}).Body.String()
+		h := fetcher.headers[0]
+		if h.Get("If-None-Match") != `"v1"` || h.Get("If-Modified-Since") != "Mon, 05 Oct 2026 09:30:00 GMT" {
+			t.Errorf("sent %v, want the stored validators", h)
+		}
+		assertBodyContains(t, body, "<dt>If-None-Match</dt><dd>&#34;v1&#34;</dd>")
+	})
+
+	t.Run("not conditional", func(t *testing.T) {
+		fetcher := rssResponse(t, inspectRSS)
+		s, _ := inspectServer(t, fetcher)
+		serveInspect(t, s, testFeedID, nil)
+		if h := fetcher.headers[0]; len(h) != 0 {
+			t.Errorf("sent %v, want no headers", h)
+		}
+	})
+
+	t.Run("304", func(t *testing.T) {
+		s, _ := inspectServer(t, &fakeFetcher{resp: &fetch.Response{URL: mustURL(t, "https://example.com/feed.xml"), StatusCode: http.StatusNotModified, Header: http.Header{}}})
+		rr := serveInspect(t, s, testFeedID, url.Values{"conditional": {"1"}})
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertBodyContains(t, rr.Body.String(), `<p class="fetch-error" role="alert">304 Not Modified</p>`)
+		if strings.Contains(rr.Body.String(), "Item fields") {
+			t.Error("shows item fields without a body")
+		}
+	})
+
+	t.Run("fetch error", func(t *testing.T) {
+		s, _ := inspectServer(t, &fakeFetcher{err: errors.New("dial tcp: connection refused")})
+		rr := serveInspect(t, s, testFeedID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertBodyContains(t, rr.Body.String(), "Fetch failed: dial tcp: connection refused")
+	})
+
+	t.Run("not a feed", func(t *testing.T) {
+		fetcher := rssResponse(t, "<!doctype html><html><body><p>Hello</p></body></html>")
+		fetcher.resp.Header.Set("Content-Type", "text/html")
+		s, _ := inspectServer(t, fetcher)
+		rr := serveInspect(t, s, testFeedID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertBodyContains(t, rr.Body.String(), "Not a feed: ", "<dt>Sniff</dt><dd>not a feed</dd>", "&lt;p&gt;Hello&lt;/p&gt;")
+	})
+
+	t.Run("large body", func(t *testing.T) {
+		big := `<rss version="2.0"><channel><title>Big</title><!-- ` + strings.Repeat("é", inspectBodyMax) + ` --></channel></rss>`
+		s, _ := inspectServer(t, rssResponse(t, big))
+		body := serveInspect(t, s, testFeedID, nil).Body.String()
+		assertBodyContains(t, body, "Showing the first 256 KiB of "+debugBytes(len(big))+".")
+		if strings.Contains(body, "</channel>") || strings.Contains(body, "&lt;/channel&gt;") {
+			t.Error("the body is not cut")
+		}
+		if !utf8.ValidString(body) {
+			t.Error("the body is not cut on a UTF-8 boundary")
+		}
+	})
+
+	t.Run("unknown feed", func(t *testing.T) {
+		fetcher := rssResponse(t, inspectRSS)
+		s, _ := inspectServer(t, fetcher)
+		assertNotFoundHTML(t, serveInspect(t, s, "99999999-9999-4999-8999-999999999999", nil))
+		if len(fetcher.urls) != 0 {
+			t.Errorf("fetched %v for an unknown feed", fetcher.urls)
+		}
+	})
+}
+
+// TestExtendWriteDeadline posts to the feed inspector through the router,
+// logged in with debug mode on, on a server whose WriteTimeout is shorter
+// than the fetch: the page still arrives.
+func TestExtendWriteDeadline(t *testing.T) {
+	var logs bytes.Buffer
+	fetcher := &slowFetcher{delay: 300 * time.Millisecond, fakeFetcher: rssResponse(t, inspectRSS)}
+	s, _ := inspectServer(t, nil)
+	s.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	s.services.Fetcher = fetcher
+	s.services.UserService = &fakeUserStore{authenticateFn: func(context.Context, string, string) (string, error) {
+		return debugSession.User.ID, nil
+	}}
+	s.services.SessionService = &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
+		getFn: func(context.Context, string) (rss.Session, error) {
+			return rss.Session{ID: testSessionID, User: debugSession.User, LastSeenAt: time.Now()}, nil
+		},
+	}
+
+	ts := httptest.NewUnstartedServer(s.router())
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	post := func(target string, form url.Values) *http.Response {
+		t.Helper()
+		resp, err := c.PostForm(ts.URL+target, form)
+		if err != nil {
+			t.Fatalf("POST %s: %v", target, err)
+		}
+		return resp
+	}
+
+	post("/login", url.Values{"email": {debugSession.User.Email}, "password": {"correct-horse-battery"}}).Body.Close()
+	post("/settings/debug", url.Values{"on": {"1"}}).Body.Close()
+	resp := post("/debug/feeds/"+testFeedID+"/inspect", nil)
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read the page: %v (the write deadline wasn't extended?)", err)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(b), "Item fields") {
+		t.Errorf("got %d, want the inspector page: %s", resp.StatusCode, b)
+	}
+	if strings.Contains(logs.String(), "extend write deadline") {
+		t.Errorf("extendWriteDeadline failed: %s", logs.String())
+	}
+}
+
+// slowFetcher is a fakeFetcher that takes delay to answer.
+type slowFetcher struct {
+	*fakeFetcher
+	delay time.Duration
+}
+
+func (f *slowFetcher) Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error) {
+	time.Sleep(f.delay)
+	return f.fakeFetcher.Get(ctx, rawURL, header)
 }

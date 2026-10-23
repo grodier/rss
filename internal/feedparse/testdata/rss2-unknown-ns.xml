@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:x="https://example.com/ns/x" xmlns:m="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Unknown namespace</title>
+    <link>https://example.com/</link>
+    <x:rating>5</x:rating>
+    <item>
+      <title>One</title>
+      <guid>1</guid>
+      <x:mood level="high">happy</x:mood>
+      <m:thumbnail url="https://example.com/1.jpg"/>
+    </item>
+  </channel>
+</rss>

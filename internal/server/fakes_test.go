@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -351,8 +353,9 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 }
 
 type fakeDebugStore struct {
-	siteDebugFn func(ctx context.Context, siteID string) (rss.SiteDebug, error)
-	feedDebugFn func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+	siteDebugFn            func(ctx context.Context, siteID string) (rss.SiteDebug, error)
+	feedDebugFn            func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+	articlesByExternalIDFn func(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error)
 }
 
 func (f *fakeDebugStore) SiteDebug(ctx context.Context, siteID string) (rss.SiteDebug, error) {
@@ -361,4 +364,29 @@ func (f *fakeDebugStore) SiteDebug(ctx context.Context, siteID string) (rss.Site
 
 func (f *fakeDebugStore) FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error) {
 	return f.feedDebugFn(ctx, feedIDs)
+}
+
+// ArticlesByExternalID reports no stored articles when articlesByExternalIDFn
+// is nil.
+func (f *fakeDebugStore) ArticlesByExternalID(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error) {
+	if f.articlesByExternalIDFn == nil {
+		return map[string]rss.Article{}, nil
+	}
+	return f.articlesByExternalIDFn(ctx, feedID, externalIDs)
+}
+
+// fakeFetcher answers with resp or err, and records the URLs and headers
+// it was asked for.
+type fakeFetcher struct {
+	resp *fetch.Response
+	err  error
+
+	urls    []string
+	headers []http.Header
+}
+
+func (f *fakeFetcher) Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error) {
+	f.urls = append(f.urls, rawURL)
+	f.headers = append(f.headers, header.Clone())
+	return f.resp, f.err
 }

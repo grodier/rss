@@ -100,7 +100,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `siteicon`, `enrich`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `opml` (import uploads), `psql` (interface checks only) |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors; `Articles` and `ExternalID` for the feed inspector), `feedparse` and `fetch` (the feed inspector), `opml` (import uploads), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
@@ -110,7 +110,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | `internal/enrich` | Article enrichment workers: fetch an article's web page and store its image, title and description | `discovery`, `fetch`, `ingest` (`ExcerptLen`, `RetryAfter`), `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
 | `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
-| `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
+| `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed); `Inspect` lists a document's fields (used or ignored by `Parse`) and items' source, for the feed inspector | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); queue them in the outbox (`Queue`) and send them from it (`Runner`) over SMTP (`SMTPSender`) or to the log (`LogSender`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
@@ -171,7 +171,9 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 request: `debugAllowed` (the logged-in user's email is in `-debug-emails`, ignoring case)
 and `debugEnabled` (allowed, and `"debug"` is set in the device's scs session).
 `POST /settings/debug` is a 404 unless `debugAllowed`. Pages only query
-`DebugStore` (`psql.DebugRepository`) when `debugEnabled`.
+`DebugStore` (`psql.DebugRepository`) when `debugEnabled`. Routes under `/debug/` are a
+group inside `requireAuthentication` with `requireDebug`, which answers 404 unless
+`debugEnabled`; they're POSTs, since they fetch URLs.
 
 **Routes:**
 
@@ -215,6 +217,7 @@ and `debugEnabled` (allowed, and `"debug"` is set in the device's scs session).
 | `GET, POST /settings/email` | yes | `settingsEmailHandler`, `settingsEmailFormHandler` | Change your email (with your password); emails a link to the new address |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `POST /settings/debug` | yes | `settingsDebugFormHandler` | Turn debug mode on (`on=1`) or off for this device; 404 unless the account is on `-debug-emails` |
+| `POST /debug/feeds/{id}/inspect` | yes | `feedInspectHandler` | Debug mode only (`requireDebug`): fetch the feed live and show the response, its fields and what a refresh would do with each item; saves nothing |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 | `GET, POST /settings/import` | yes | `settingsImportHandler`, `settingsImportFormHandler` | Upload an OPML file to import (multipart), and your last 5 imports; 303 to the import's results |
 | `GET /settings/imports/{id}` | yes | `importHandler` | An import's progress (refreshes itself every 2 s), then its results; 404 for another user's |
@@ -236,7 +239,9 @@ site avatars pass the icon URLs from `siteIconURLs` (rows carry theirs in
 
 **Timeouts:** the server's `ReadTimeout` is 5 s and `WriteTimeout` 10 s, so handlers that
 wait on slow work bound it below that: the Refresh button gives a fetch 8 s, and
-`POST /lookups` waits at most 3 s before redirecting to the status page.
+`POST /lookups` waits at most 3 s before redirecting to the status page. Inspectors are
+the exception: `extendWriteDeadline` moves their response's write deadline to 35 s from
+when they start.
 
 ## Data model
 
@@ -380,6 +385,10 @@ point to, articles' web pages) go through `fetch.Client` (`internal/fetch`):
 
 Site icons are downloaded through their own `fetch.Client`, with bodies capped at
 256 KiB (`siteicon.MaxBytes`); the home page they're found on goes through the shared one.
+
+Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.Fetcher`),
+synchronously in the request, with a 30 s budget (`inspectTimeout`) and an extended write
+deadline; they save nothing.
 
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest`
 servers; `cmd/www` never sets it.

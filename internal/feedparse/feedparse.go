@@ -91,7 +91,17 @@ func Sniff(contentType string, body []byte) bool {
 // and is used to resolve a relative SiteURL and item URLs. Returns
 // ErrNotFeed (wrapped is fine) if body isn't a recognizable feed, including
 // HTML pages.
+//
+// When Parse starts or stops reading a field, update usedChannelFields and
+// usedItemFields in inspect.go.
 func Parse(feedURL *url.URL, body []byte) (Feed, error) {
+	feed, _, _, err := parse(feedURL, body)
+	return feed, err
+}
+
+// parse is Parse, also returning gofeed's feed and, for each returned item,
+// its index in the gofeed feed's Items.
+func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 	var format string
 	switch root := rootElement(body); {
 	case root == "rss":
@@ -103,7 +113,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 	case root == "" && isJSONFeed(body):
 		format = "json"
 	default:
-		return Feed{}, ErrNotFeed
+		return Feed{}, nil, nil, ErrNotFeed
 	}
 
 	p := gofeed.NewParser()
@@ -114,7 +124,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 	p.RSSTranslator = &gofeed.DefaultRSSTranslator{DisableContentImageScan: true}
 	f, err := p.Parse(bytes.NewReader(body))
 	if err != nil {
-		return Feed{}, fmt.Errorf("%w: %w", ErrNotFeed, err)
+		return Feed{}, nil, nil, fmt.Errorf("%w: %w", ErrNotFeed, err)
 	}
 
 	title, desc := collapseSpace(f.Title), collapseSpace(f.Description)
@@ -150,6 +160,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 	}
 
 	items := make([]Item, 0, len(f.Items))
+	indexes := make([]int, 0, len(f.Items))
 	for i, it := range f.Items {
 		if it == nil {
 			continue
@@ -194,6 +205,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 			item.PublishedDateOnly = !strings.Contains(it.Updated, ":")
 		}
 		items = append(items, item)
+		indexes = append(indexes, i)
 	}
 
 	return Feed{
@@ -204,7 +216,7 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 			SiteURL:     resolveHTTP(feedURL, link),
 		},
 		Items: items,
-	}, nil
+	}, f, indexes, nil
 }
 
 // itemImage returns the URL of the image an item declares, unresolved, from

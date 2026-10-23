@@ -76,7 +76,7 @@ app doesn't use yet.
   - their queries only run when it's on;
   - the line on list rows uses columns the lists already load. (#327, #329)
 - **"Used" and "ignored" come from lists kept by hand next to the parsers:**
-  - `usedFields` beside `feedparse.Parse`;
+  - `usedChannelFields` and `usedItemFields` beside `feedparse.Parse`;
   - `usedPageKeys` beside `discovery.ParsePage`.
 
   A PR that changes what a parser reads updates its list. (#328, #330)

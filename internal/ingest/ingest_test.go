@@ -29,19 +29,19 @@ func TestExternalID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := externalID(tt.item); got != tt.want {
-				t.Errorf("externalID = %q, want %q", got, tt.want)
+			if got := ExternalID(tt.item); got != tt.want {
+				t.Errorf("ExternalID = %q, want %q", got, tt.want)
 			}
 		})
 	}
 
 	t.Run("hash when no ID or URL", func(t *testing.T) {
 		base := feedparse.Item{Title: "T", Summary: "S", Content: "C"}
-		got := externalID(base)
+		got := ExternalID(base)
 		if !strings.HasPrefix(got, "sha256:") || len(got) != len("sha256:")+64 {
-			t.Fatalf("externalID = %q, want sha256: and 64 hex digits", got)
+			t.Fatalf("ExternalID = %q, want sha256: and 64 hex digits", got)
 		}
-		if again := externalID(base); again != got {
+		if again := ExternalID(base); again != got {
 			t.Errorf("same input gave %q, then %q", got, again)
 		}
 
@@ -51,7 +51,7 @@ func TestExternalID(t *testing.T) {
 			"content": {Title: "T", Summary: "S", Content: "C2"},
 		}
 		for field, it := range changed {
-			if id := externalID(it); id == got {
+			if id := ExternalID(it); id == got {
 				t.Errorf("changing the %s didn't change the hash", field)
 			}
 		}

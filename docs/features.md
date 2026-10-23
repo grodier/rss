@@ -395,7 +395,10 @@ its ID, else its URL, else a hash of its text; duplicates are dropped and at mos
 kept. Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters
 removed) for matching copies across feeds, and the MIME type of the item's first audio or
 video enclosure or `media:content` (`feedparse.Item.MediaType`, set by `itemMediaType`),
-which nothing displays yet. Saving (`saveArticles`) locks the feed row, computes each new
+which nothing displays yet. Which elements `Parse` reads, directly or through gofeed's
+translators, is also kept by hand in `usedChannelFields` and `usedItemFields`
+(`feedparse/inspect.go`), for the feed inspector (see "Debug mode"): a change to what
+`Parse` reads updates them too. Saving (`saveArticles`) locks the feed row, computes each new
 article's `timeline_at` (see Reading), and upserts by `(feed_id, external_id)`: unchanged
 articles aren't written, and an existing `published_at` is kept because some feeds bump
 it on every edit. A newly inserted article missing an image, title or excerpt gets an
@@ -414,7 +417,7 @@ the result in a flash message. It refuses gone feeds, feeds fetched successfully
 2. `internal/psql/feeds.go`: `ClaimDue`, `RequestRefresh`.
 3. `internal/feedparse/feedparse.go`: `itemImage`, `itemMediaType`.
 4. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
-   `externalID`.
+   `ExternalID`.
 5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `RetryAfter`, `freshness`) and
    `canonical.go` (`CanonicalURL`).
 6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
@@ -792,6 +795,23 @@ listed in `-debug-emails` only.
    `<details class="debug">` after the page header. The site panel also has one line
    per feed (`siteFeedDebugLine`: status, last attempt, articles). Off, none of these
    queries run.
+5. **Feed inspector.** Under the feed panel, a form (`Send the stored ETag and
+   Last-Modified`, `Fetch and inspect`) posts `POST /debug/feeds/{id}/inspect`. Routes
+   under `/debug/` are behind `requireDebug` (404 unless `debugEnabled`).
+   `feedInspectHandler` loads the feed, extends its write deadline past the server's
+   `WriteTimeout` (`extendWriteDeadline`), and fetches the feed through
+   `Services.Fetcher` within 30 s (`inspectTimeout`), sending the stored validators only
+   when asked. Nothing is saved. On a 2xx it calls `feedparse.Inspect`: what `Parse`
+   returns, every field of the channel and of the items (marked used or ignored from
+   `usedChannelFields` / `usedItemFields`, with a count and a sample), and each item's
+   raw source (cut out of the document with `xml.Decoder.InputOffset`, or re-indented
+   JSON) and gofeed item. Then `ingest.Articles` and
+   `DebugStore.ArticlesByExternalID` give each item its outcome: `new`, `unchanged`,
+   `differs: <columns>` (`compareArticle`), or dropped (no ID, a duplicate, over the
+   200-article limit). The form's `item` (an external ID) shows that item first, open.
+   A fetch error, a non-2xx or a body that isn't a feed is shown as text on the same
+   page (`debug_feed.html`); the body is cut at 256 KiB, items' source at 20 000 bytes,
+   all as escaped text.
 
 **Read:**
 
@@ -801,14 +821,20 @@ listed in `-debug-emails` only.
    `siteFeedDebugLine`.
 3. `internal/server/sites.go`: `siteHandler`, `siteDebug`; `feeds.go`: `feedHandler`;
    `settings.go`: `settingsHandler`; `html.go`: `nav`.
-4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`.
+4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`, `ArticlesByExternalID`.
 5. `internal/ui/templates/partials/debug.html`, `partials/nav.html` (the badge),
    `settings.html` (`#debug`); `.debug…` in `main.css`.
+6. The feed inspector: `internal/server/debug.go` (`requireDebug`,
+   `extendWriteDeadline`, `feedInspectHandler`, `inspectFeed`, `compareArticle`);
+   `internal/feedparse/inspect.go` (`Inspect`, `usedChannelFields`, `usedItemFields`,
+   `inspectXML`, `inspectJSON`); `internal/ingest/ingest.go` (`ExternalID`);
+   `templates/debug_feed.html` and the form in `feed.html`.
 
 **Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`);
 `internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the
-field builders, and the site, feed and settings pages with debug mode on, off and not
-allowed).
+field builders, the site, feed and settings pages with debug mode on, off and not
+allowed, `requireDebug`, `compareArticle`, the feed inspector's outcomes and errors, and
+`TestExtendWriteDeadline` through the router); `internal/feedparse/inspect_test.go`.
 
 **Why:** "Debug mode" in decisions.md.
 

@@ -46,15 +46,9 @@ func HTML(raw string, base *url.URL) template.HTML {
 // back. If raw can't be parsed or rendered it is returned as is;
 // the policy still makes it safe, it just misses the rewrites.
 func prepare(raw string, base *url.URL) string {
-	root := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
-	nodes, err := html.ParseFragment(strings.NewReader(raw), root)
+	root, err := parse(raw)
 	if err != nil {
 		return raw
-	}
-	for _, n := range nodes {
-		// ParseFragment returns detached nodes; attach them so rewrite can
-		// replace or remove top-level iframes too.
-		root.AppendChild(n)
 	}
 	rewrite(root, base)
 	reflow(root)
@@ -66,6 +60,148 @@ func prepare(raw string, base *url.URL) string {
 		}
 	}
 	return b.String()
+}
+
+// parse parses raw as the children of a <div>, which it returns.
+func parse(raw string) (*html.Node, error) {
+	root := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := html.ParseFragment(strings.NewReader(raw), root)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range nodes {
+		// ParseFragment returns detached nodes; attach them so rewrite can
+		// replace or remove top-level iframes too.
+		root.AppendChild(n)
+	}
+	return root, nil
+}
+
+// ShowsImage reports whether the article HTML raw already shows an image
+// where a lead image would go, so the page shouldn't add imageURL above it:
+// its first block is an image, or the block right after its first paragraph
+// is one, or any <img> in it is the same image as imageURL. Relative URLs
+// resolve against base (nil leaves them as they are). An empty imageURL only
+// checks the first two.
+//
+// Blocks are root's children, or the children of its only element if that
+// is a <div>, <article> or <section> wrapper (see blocks).
+func ShowsImage(raw string, base *url.URL, imageURL string) bool {
+	root, err := parse(raw)
+	if err != nil {
+		return false
+	}
+
+	bs := blocks(root)
+	if len(bs) == 1 {
+		switch bs[0].DataAtom {
+		case atom.Div, atom.Article, atom.Section:
+			bs = blocks(bs[0])
+		}
+	}
+	if len(bs) > 0 && isImageBlock(bs[0]) {
+		return true
+	}
+	for i, b := range bs {
+		if b.DataAtom == atom.P && !isImageBlock(b) {
+			if i+1 < len(bs) && isImageBlock(bs[i+1]) {
+				return true
+			}
+			break
+		}
+	}
+
+	if imageURL == "" {
+		return false
+	}
+	want, ok := imageKey(imageURL, base)
+	if !ok {
+		return false
+	}
+	return hasImage(root, base, want)
+}
+
+// blocks returns the children of n that aren't comments or whitespace-only
+// text.
+func blocks(n *html.Node) []*html.Node {
+	var bs []*html.Node
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == html.CommentNode:
+		case c.Type == html.TextNode && strings.Trim(c.Data, htmlSpace) == "":
+		default:
+			bs = append(bs, c)
+		}
+	}
+	return bs
+}
+
+// isImageBlock reports whether n is an <img> or <picture>, or a <figure>,
+// <p>, <a> or <span> whose only content (besides whitespace, comments and,
+// in a <figure>, a <figcaption>) is an image block.
+func isImageBlock(n *html.Node) bool {
+	if n.Type != html.ElementNode {
+		return false
+	}
+	switch n.DataAtom {
+	case atom.Img, atom.Picture:
+		return true
+	case atom.Figure, atom.P, atom.A, atom.Span:
+	default:
+		return false
+	}
+	var content []*html.Node
+	for _, c := range blocks(n) {
+		if n.DataAtom == atom.Figure && c.DataAtom == atom.Figcaption {
+			continue
+		}
+		content = append(content, c)
+	}
+	return len(content) == 1 && isImageBlock(content[0])
+}
+
+// hasImage reports whether an <img> under n has a src with the image key
+// want.
+func hasImage(n *html.Node, base *url.URL, want string) bool {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode {
+			continue
+		}
+		if c.DataAtom == atom.Img {
+			if src, ok := attr(c, "src"); ok {
+				if key, ok := imageKey(src, base); ok && key == want {
+					return true
+				}
+			}
+		}
+		if hasImage(c, base, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// sizeSuffix matches the size WordPress adds to the resized copies of an
+// image, before the extension: photo-1024x768.jpg is a copy of photo.jpg.
+var sizeSuffix = regexp.MustCompile(`-\d+x\d+(\.[^./]+)$`)
+
+// imageKey returns rawURL, resolved against base, in a form that is the same
+// for copies of one image: the host lowercased and without "www.", no query
+// or fragment, and no WordPress size suffix. ok is false if rawURL doesn't
+// parse.
+func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", false
+	}
+	if base != nil {
+		u = base.ResolveReference(u)
+	}
+	u.Host = strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+	u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
+	u.Path = sizeSuffix.ReplaceAllString(u.Path, "$1")
+	u.RawPath = ""
+	return u.String(), true
 }
 
 // rewrite walks the children of n: it resolves href and src against base,

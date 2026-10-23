@@ -39,6 +39,7 @@ type Article struct {
 	URL          string
 	CanonicalURL string // see ingest.CanonicalURL; "" if the article has no usable URL
 	ImageURL     string // feed-declared image; "" if none
+	MediaType    string // see feedparse.Item.MediaType
 	Title        string
 	Summary      string
 	Content      string
@@ -165,6 +166,48 @@ type Lookup struct {
 	RequestedAt time.Time
 	StartedAt   time.Time // zero if never started
 	FinishedAt  time.Time // zero if not finished
+}
+
+// Import is an OPML file a user uploaded.
+type Import struct {
+	ID        string
+	UserID    string
+	Filename  string
+	CreatedAt time.Time
+}
+
+// ImportStatus is the state of one feed of an import.
+type ImportStatus string
+
+const (
+	ImportPending           ImportStatus = "pending"
+	ImportRunning           ImportStatus = "running"
+	ImportSubscribed        ImportStatus = "subscribed"
+	ImportAlreadySubscribed ImportStatus = "already_subscribed"
+	ImportFailed            ImportStatus = "failed"
+)
+
+// ImportFailure says why a feed couldn't be imported; "" unless failed.
+type ImportFailure string
+
+const (
+	ImportInvalidURL  ImportFailure = "invalid_url"
+	ImportUnreachable ImportFailure = "unreachable"
+	ImportNotFeed     ImportFailure = "not_feed"
+)
+
+// ImportFeed is one feed of an import: a job in the import queue and its result.
+type ImportFeed struct {
+	ImportID string
+	UserID   string // the import's user; set by ClaimNext
+	Position int
+	URL      string
+	Title    string
+	Status   ImportStatus
+	Failure  ImportFailure
+	FeedID   string // "" until known
+	Error    string // internal detail; never shown to users
+	Attempts int
 }
 
 // ArticleCursor is a position in a sorted list of articles: the sort time

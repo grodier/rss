@@ -92,12 +92,12 @@ func TestArticles(t *testing.T) {
 	t.Run("fields copied, order preserved", func(t *testing.T) {
 		published := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 		items := []feedparse.Item{
-			{ID: "b", URL: "https://Example.com/b#c", ImageURL: "https://example.com/b.jpg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Published: published},
+			{ID: "b", URL: "https://Example.com/b#c", ImageURL: "https://example.com/b.jpg", MediaType: "audio/mpeg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Published: published},
 			{ID: "a", URL: "https://example.com/a", Title: "A"},
 			{ID: "d", Title: "D", Published: published.Truncate(24 * time.Hour), PublishedDateOnly: true},
 		}
 		want := []rss.Article{
-			{ExternalID: "b", URL: "https://Example.com/b#c", CanonicalURL: "https://example.com/b", ImageURL: "https://example.com/b.jpg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Excerpt: "sb", PublishedAt: published},
+			{ExternalID: "b", URL: "https://Example.com/b#c", CanonicalURL: "https://example.com/b", ImageURL: "https://example.com/b.jpg", MediaType: "audio/mpeg", Title: "B", Summary: "<p>sb</p>", Content: "<p>cb</p>", Excerpt: "sb", PublishedAt: published},
 			{ExternalID: "a", URL: "https://example.com/a", CanonicalURL: "https://example.com/a", Title: "A"},
 			{ExternalID: "d", Title: "D", PublishedAt: published.Truncate(24 * time.Hour), PublishedDateOnly: true},
 		}

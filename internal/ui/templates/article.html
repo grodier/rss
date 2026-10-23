@@ -22,6 +22,7 @@
         </p>
         <h1>{{.Article.DisplayTitle}}</h1>
         {{template "article-actions" .}}
+        {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>
         {{else}}

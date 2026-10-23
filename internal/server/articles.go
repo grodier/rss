@@ -65,6 +65,12 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		raw = article.Summary
 	}
 
+	// The card image goes above the text unless the text already shows it.
+	var leadImage string
+	if article.ImageURL != "" && !sanitize.ShowsImage(raw, base, article.ImageURL) {
+		leadImage = article.ImageURL
+	}
+
 	saved, err := s.services.SaveService.SavedArticleIDs(r.Context(), userID, []string{article.ID})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -72,21 +78,23 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Nav      navData
-		Article  rss.Article
-		Feed     rss.Feed
-		Site     rss.Site
-		Body     template.HTML
-		Saved    bool
-		ReturnTo string
+		Nav       navData
+		Article   rss.Article
+		Feed      rss.Feed
+		Site      rss.Site
+		LeadImage string
+		Body      template.HTML
+		Saved     bool
+		ReturnTo  string
 	}{
-		Nav:      s.nav(r, ""),
-		Article:  article,
-		Feed:     feed,
-		Site:     site,
-		Body:     sanitize.HTML(raw, base),
-		Saved:    saved[article.ID],
-		ReturnTo: r.URL.RequestURI(),
+		Nav:       s.nav(r, ""),
+		Article:   article,
+		Feed:      feed,
+		Site:      site,
+		LeadImage: leadImage,
+		Body:      sanitize.HTML(raw, base),
+		Saved:     saved[article.ID],
+		ReturnTo:  r.URL.RequestURI(),
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {

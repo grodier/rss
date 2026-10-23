@@ -1414,6 +1414,13 @@
     text-align: start;
   }
 
+  .reader-image {
+    inline-size: 100%;
+    block-size: auto;
+    margin-block-start: 1.25rem;
+    border-radius: var(--radius-sm);
+  }
+
   .article-body {
     margin-block-start: 1.5rem;
     font-size: 1.0625rem;
@@ -1428,6 +1435,13 @@
   .article-body h3 {
     margin-block-start: 1.75em;
     font-size: 1.3rem;
+  }
+
+  .article-body h4,
+  .article-body h5,
+  .article-body h6 {
+    margin-block: 1.5em 0;
+    font-size: 1.125rem;
   }
 
   .article-body img {
@@ -1457,6 +1471,50 @@
     line-height: 1.6;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* Inline code; code blocks are styled by pre. */
+  .article-body :not(pre) > code {
+    padding: 0.1em 0.35em;
+    border-radius: 0.3em;
+    background: var(--surface);
+    font-size: 0.875em;
+    overflow-wrap: anywhere;
+  }
+
+  .article-body :is(ul, ol) {
+    padding-inline-start: 1.5rem;
+  }
+
+  .article-body li :is(ul, ol) {
+    margin-block: 0;
+  }
+
+  .article-body hr {
+    margin-block: 2em;
+    border: 0;
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* Wide tables scroll inside the column instead of widening the page. */
+  .article-body table {
+    display: block;
+    max-inline-size: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  .article-body :is(th, td) {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    text-align: start;
+    vertical-align: top;
+  }
+
+  .article-body th {
+    background: var(--surface);
   }
 
   .reader-foot {

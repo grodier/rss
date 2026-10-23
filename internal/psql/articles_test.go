@@ -64,7 +64,7 @@ func TestSaveFetch(t *testing.T) {
 	date := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	first := []rss.Article{
-		{ExternalID: "a", URL: "https://example.com/a#x", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
+		{ExternalID: "a", URL: "https://example.com/a#x", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", MediaType: "audio/mpeg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
 		{ExternalID: "b", URL: "https://example.com/b", Title: "B", PublishedAt: date.Add(time.Hour)},
 		{ExternalID: "c", URL: "https://example.com/c", Title: "C"},
 	}
@@ -86,15 +86,15 @@ func TestSaveFetch(t *testing.T) {
 			t.Fatalf("got %d articles, want 3", len(got))
 		}
 		a := articleByExternalID(t, got, "a")
-		if a.FeedID != feed.ID || a.URL != "https://example.com/a#x" || a.CanonicalURL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.Title != "A" || a.Summary != "" || a.Content != "" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
+		if a.FeedID != feed.ID || a.URL != "https://example.com/a#x" || a.CanonicalURL != "https://example.com/a" || a.ImageURL != "https://example.com/a.jpg" || a.MediaType != "audio/mpeg" || a.Title != "A" || a.Summary != "" || a.Content != "" || a.Excerpt != "a" || !a.PublishedAt.Equal(date) {
 			t.Errorf("article a: got %+v", a)
 		}
 		byID, err := articles.GetByID(ctx, a.ID)
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)
 		}
-		if byID.Summary != "<p>a</p>" || byID.Content != "<p>A</p>" {
-			t.Errorf("article a by ID: got Summary %q, Content %q, want %q, %q", byID.Summary, byID.Content, "<p>a</p>", "<p>A</p>")
+		if byID.Summary != "<p>a</p>" || byID.Content != "<p>A</p>" || byID.MediaType != "audio/mpeg" {
+			t.Errorf("article a by ID: got Summary %q, Content %q, MediaType %q, want %q, %q, %q", byID.Summary, byID.Content, byID.MediaType, "<p>a</p>", "<p>A</p>", "audio/mpeg")
 		}
 		if c := articleByExternalID(t, got, "c"); !c.PublishedAt.IsZero() {
 			t.Errorf("article c: got PublishedAt %v, want zero", c.PublishedAt)
@@ -159,6 +159,24 @@ func TestSaveFetch(t *testing.T) {
 		}
 		if d := articleByExternalID(t, got, "d"); d.ImageURL != "https://example.com/d.jpg" {
 			t.Errorf("article d: got ImageURL %q, want %q", d.ImageURL, "https://example.com/d.jpg")
+		}
+	})
+
+	t.Run("changed media type", func(t *testing.T) {
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg", MediaType: "video/mp4"}})
+		if err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if want := (rss.FetchResult{Updated: 1}); res != want {
+			t.Errorf("got %+v, want %+v", res, want)
+		}
+
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		if d := articleByExternalID(t, got, "d"); d.MediaType != "video/mp4" {
+			t.Errorf("article d: got MediaType %q, want %q", d.MediaType, "video/mp4")
 		}
 	})
 

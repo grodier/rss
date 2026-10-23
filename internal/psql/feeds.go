@@ -257,3 +257,17 @@ func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, erro
 
 	return feed, nil
 }
+
+// GetByURL returns the feed whose url is exactly url (a CanonicalFeedURL),
+// or rss.ErrNoRecord.
+func (r *FeedRepository) GetByURL(ctx context.Context, url string) (rss.Feed, error) {
+	stmt := `SELECT ` + feedColumns + `
+		FROM feeds
+		WHERE url = $1`
+
+	feed, err := scanFeed(r.DB.QueryRowContext(ctx, stmt, url))
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.Feed{}, rss.ErrNoRecord
+	}
+	return feed, err
+}

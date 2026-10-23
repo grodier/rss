@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -972,4 +973,121 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		}
 		assertEntries(t, entries(got), []entry{{"x", feedB.ID, at(3 * time.Hour), nil}})
 	})
+}
+
+// enrichJobs returns the priority of each of feedID's articles' enrichment
+// jobs, by external ID.
+func enrichJobs(t *testing.T, db *sql.DB, feedID string) map[string]int {
+	t.Helper()
+	rows, err := db.Query(`SELECT a.external_id, j.priority FROM enrich_jobs j
+		JOIN articles a ON a.id = j.article_id WHERE a.feed_id = $1`, feedID)
+	if err != nil {
+		t.Fatalf("select enrich_jobs: %v", err)
+	}
+	defer rows.Close()
+	jobs := map[string]int{}
+	for rows.Next() {
+		var id string
+		var priority int
+		if err := rows.Scan(&id, &priority); err != nil {
+			t.Fatalf("scan enrich_jobs: %v", err)
+		}
+		jobs[id] = priority
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("enrich_jobs rows: %v", err)
+	}
+	return jobs
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchQueuesEnrichment(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	ctx := t.Context()
+	date := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("first save queues the 20 latest at priority 1", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		// Backlog, so each is placed at its published date: n29 is latest.
+		items := make([]rss.Article, 30)
+		for i := range items {
+			items[i] = rss.Article{
+				ExternalID:  fmt.Sprintf("n%02d", i),
+				URL:         fmt.Sprintf("https://example.com/%d", i),
+				Title:       "Title",
+				Excerpt:     "Excerpt",
+				PublishedAt: date.Add(time.Duration(i) * time.Hour),
+			}
+		}
+		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		jobs := enrichJobs(t, db, feed.ID)
+		if len(jobs) != enrichFirstSave {
+			t.Errorf("got %d jobs, want %d: %v", len(jobs), enrichFirstSave, jobs)
+		}
+		for i := range items {
+			id := items[i].ExternalID
+			priority, ok := jobs[id]
+			if want := i >= 30-enrichFirstSave; ok != want {
+				t.Errorf("article %s queued = %v, want %v", id, ok, want)
+			}
+			if ok && priority != 1 {
+				t.Errorf("article %s priority = %d, want 1", id, priority)
+			}
+		}
+	})
+
+	t.Run("later saves", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		first := rss.Article{ExternalID: "old", URL: "https://example.com/old", Title: "Old"}
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{first}); err != nil {
+			t.Fatalf("first SaveFetch: %v", err)
+		}
+		if jobs := enrichJobs(t, db, feed.ID); len(jobs) != 1 {
+			t.Fatalf("after first save: jobs = %v, want old only", jobs)
+		}
+		// The job of "old" is done.
+		if _, err := db.Exec(`DELETE FROM enrich_jobs j USING articles a WHERE a.id = j.article_id AND a.feed_id = $1`, feed.ID); err != nil {
+			t.Fatalf("delete jobs: %v", err)
+		}
+
+		updated := first
+		updated.Title = "Old, edited"
+		items := []rss.Article{
+			updated,
+			{ExternalID: "no-image", URL: "https://example.com/1", Title: "T", Excerpt: "E"},
+			{ExternalID: "no-title", URL: "https://example.com/2", ImageURL: "https://example.com/i.jpg", Excerpt: "E"},
+			{ExternalID: "no-excerpt", URL: "https://example.com/3", ImageURL: "https://example.com/i.jpg", Title: "T"},
+			{ExternalID: "complete", URL: "https://example.com/4", ImageURL: "https://example.com/i.jpg", Title: "T", Excerpt: "E"},
+			{ExternalID: "no-url", Title: "T"},
+		}
+		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		want := map[string]int{"no-image": 0, "no-title": 0, "no-excerpt": 0}
+		if jobs := enrichJobs(t, db, feed.ID); !maps.Equal(jobs, want) {
+			t.Errorf("jobs = %v, want %v", jobs, want)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestGetByIDReadsPageColumns(t *testing.T) {
+	db := psqltest.NewDB(t)
+	id := newTestArticles(t, db, 1)[0]
+	if _, err := db.Exec(`UPDATE articles SET page_image_url = 'https://example.com/p.jpg', page_title = 'Page title', page_description = 'Page description' WHERE id = $1`, id); err != nil {
+		t.Fatalf("update page columns: %v", err)
+	}
+
+	a, err := NewArticleRepository(db).GetByID(t.Context(), id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a.PageImageURL != "https://example.com/p.jpg" || a.PageTitle != "Page title" || a.PageDescription != "Page description" {
+		t.Errorf("page columns = %q, %q, %q", a.PageImageURL, a.PageTitle, a.PageDescription)
+	}
 }

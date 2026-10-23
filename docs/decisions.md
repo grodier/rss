@@ -241,8 +241,10 @@ Planned in #309 (issues #298, #306, #307).
   looked-up site nobody follows costs no page fetches.
 - **Polite, with a retry story:** one request at a time through `internal/fetch`; a
   network error, 429 or 5xx is retried after 1 hour, then 6, then given up; any other
-  4xx or a non-HTML response is given up at once. `robots.txt` isn't consulted: it's one
-  fetch of a page a reader is about to see, like a link preview.
+  4xx or a non-HTML response is given up at once, as is a fetch `internal/fetch` refuses
+  (a blocked address, a body over 5 MiB, too many redirects), which a retry wouldn't
+  change (#306). `robots.txt` isn't consulted: it's one fetch of a page a reader is about
+  to see, like a link preview.
 - **One page parser:** `discovery.ParsePage` reads Open Graph tags and icon links too
   (#298), for both enrichment and site icons.
 

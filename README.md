@@ -59,6 +59,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
 | `-import-workers` | `RSS_IMPORT_WORKERS` | `2` | Background OPML import workers (0–16; 0 disables them) |
 | `-icon-workers` | `RSS_ICON_WORKERS` | `1` | Background workers that find and store site icons (0–4; 0 disables them) |
+| `-enrich-workers` | `RSS_ENRICH_WORKERS` | `1` | Background workers that fetch articles' web pages for a missing image, title or excerpt (0–4; 0 disables them) |
 | `-mail-workers` | `RSS_MAIL_WORKERS` | `1` | Background workers that send queued emails (0–4; with 0 this instance queues emails but doesn't send them) |
 | `-base-url` | `RSS_BASE_URL` | `http://localhost:<port>` | Public URL of the app, for links in emails: `http` or `https`, no path (a trailing `/` is dropped), query or fragment. Required in production, where it must be `https` |
 | `-support-email` | `RSS_SUPPORT_EMAIL` | _(empty)_ | Where people can get help: shown on pages and used as the Reply-To of emails (required in production) |

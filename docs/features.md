@@ -398,7 +398,8 @@ video enclosure or `media:content` (`feedparse.Item.MediaType`, set by `itemMedi
 which nothing displays yet. Saving (`saveArticles`) locks the feed row, computes each new
 article's `timeline_at` (see Reading), and upserts by `(feed_id, external_id)`: unchanged
 articles aren't written, and an existing `published_at` is kept because some feeds bump
-it on every edit.
+it on every edit. A newly inserted article missing an image, title or excerpt gets an
+enrichment job in the same transaction (see "Article enrichment").
 
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
 pending refresh request, requested ones first. A request is made when someone views a
@@ -414,7 +415,7 @@ the result in a flash message. It refuses gone feeds, feeds fetched successfully
 3. `internal/feedparse/feedparse.go`: `itemImage`, `itemMediaType`.
 4. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
    `externalID`.
-5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `retryAfter`, `freshness`) and
+5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `RetryAfter`, `freshness`) and
    `canonical.go` (`CanonicalURL`).
 6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
    `MarkGone`.
@@ -697,6 +698,61 @@ the `…SiteIcons` page tests (built on `testSiteIcons` in `testutils_test.go`) 
 `templates_test.go` (`TestAvatarPartial`).
 
 **Why:** "Design" in decisions.md.
+
+## Article enrichment
+
+**Flow.** Many feed items arrive without an image, a title or any text; enrichment
+fetches their web page in the background and stores what its meta tags say. #307 shows
+it.
+
+1. **Queuing.** `saveArticles` (see "Feed ingestion") gets each upserted article's ID
+   and whether it was inserted (`RETURNING id, (xmax = 0)`). A newly inserted article
+   that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets
+   an `enrich_jobs` row (`ON CONFLICT DO NOTHING`), if `enrichCandidates` allows it: on
+   a feed's first save (a lookup or an import: no previous fetch) only the 20 articles
+   with the latest `timeline_at` (`enrichFirstSave`), at priority 1; on later saves every
+   one, at priority 0. Updated articles aren't queued again, and older articles never.
+2. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`, one worker by
+   default) claims one job at a time with `EnrichRepository.ClaimNext`: a due job
+   (`next_attempt_at <= now()`) whose article's feed has a subscriber, priority 0 first,
+   then by `next_attempt_at`. The claim moves `next_attempt_at` 2 minutes ahead as a lease
+   and counts the attempt. A looked-up site nobody subscribes to costs no page fetches;
+   its jobs wait.
+3. **Fetching.** `Runner.attempt` fetches the article's URL with the shared
+   `fetch.Client` (20 s per job):
+   - **network error, 429 or 5xx:** `Retry` 1 hour after the first attempt, 6 hours after
+     the second (or later if a 429's or 503's `Retry-After` says so, capped at 24 h),
+     and `GiveUp` after the third;
+   - **any other non-2xx, a body that isn't HTML, or a fetch the client refuses** (a
+     blocked address, too large, too many redirects): `GiveUp` at once;
+   - **an HTML page:** `discovery.ParsePage` reads its `og:image` (else
+     `twitter:image`), `og:title` (else `<title>`) and description, collapsed and
+     shortened like an excerpt (`ingest.ExcerptLen`), and `SavePage` stores them in the
+     article's `page_image_url`, `page_title` and `page_description` and deletes the
+     job, in one transaction. A page with none of the tags saves empty values.
+4. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and
+   the lease retries the job. Each job logs one `article enriched` line with the
+   article ID, the URL's host, the outcome (`saved`, `retry` or `gave up`), the attempt
+   and the duration.
+
+The `page_*` columns are never the feed's values: `saveArticles` overwrites `image_url`,
+`title` and `excerpt` on every changed fetch and leaves `page_*` alone.
+
+**Read:**
+
+1. `internal/psql/articles.go`: `saveArticles`, `needsEnrichment`, `enrichCandidates`.
+2. `internal/psql/enrich.go`: `ClaimNext`, `SavePage`, `Retry`, `GiveUp`.
+3. `internal/enrich/enrich.go`: `Runner.work`, `process`, `attempt`, `retry`, `retryAt`.
+4. `internal/discovery/page.go`: `ParsePage`.
+5. `cmd/www/application.go`: the runner.
+
+**Tests:** `internal/psql/articles_test.go` (`TestSaveFetchQueuesEnrichment`,
+`TestGetByIDReadsPageColumns`); `internal/psql/enrich_test.go`
+(`TestEnrichRepositoryClaimNext`, `TestEnrichRepositoryRecord`);
+`internal/enrich/enrich_test.go` (an `httptest` server); `cmd/www/config_test.go`
+(`TestParseConfigEnrichWorkers`).
+
+**Why:** "Enrichment" in decisions.md.
 
 ## Adding a feature
 

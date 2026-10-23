@@ -43,8 +43,13 @@ type Article struct {
 	Title        string
 	Summary      string
 	Content      string
-	Excerpt      string    // plain text, at most ingest.ExcerptLen runes plus "…"
-	PublishedAt  time.Time // zero if unknown
+	Excerpt      string // plain text, at most ingest.ExcerptLen runes plus "…"
+	// Set by enrichment (internal/enrich) from the article's web page, when
+	// the feed left out its image, title or excerpt; never the feed's values.
+	PageImageURL    string    // og:image of the article's web page; "" if none or not fetched
+	PageTitle       string    // og:title, else <title>, of the article's web page
+	PageDescription string    // the page's description, shortened like Excerpt
+	PublishedAt     time.Time // zero if unknown
 	// PublishedDateOnly reports that the feed's date had no time of day:
 	// PublishedAt is midnight UTC and only its date is meaningful.
 	PublishedDateOnly bool
@@ -103,6 +108,20 @@ func Shorten(s string, n int) string {
 		}
 	}
 	return strings.TrimSpace(string(r[:cut])) + "…"
+}
+
+// ArticlePage is what enrichment read from an article's web page.
+type ArticlePage struct {
+	ImageURL    string
+	Title       string
+	Description string
+}
+
+// EnrichJob is an article whose web page is to be fetched.
+type EnrichJob struct {
+	ArticleID string
+	URL       string
+	Attempts  int // including this one
 }
 
 // FeedWithArticles is a feed and articles to save for it.

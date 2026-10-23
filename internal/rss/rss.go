@@ -130,6 +130,20 @@ type Site struct {
 	UpdatedAt   time.Time
 }
 
+// SiteIcon is a site's icon as stored (a site_icons row).
+type SiteIcon struct {
+	SiteID       string
+	SourceURL    string
+	ContentType  string // image/png, image/jpeg, image/gif or image/x-icon
+	Width        int
+	Height       int
+	Data         []byte
+	Hash         string // hex SHA-256 of Data
+	ETag         string
+	LastModified string
+	FetchedAt    time.Time
+}
+
 // Subscription is a feed a user follows, with its site.
 type Subscription struct {
 	Feed            Feed

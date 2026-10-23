@@ -606,6 +606,50 @@ the same query shape as `ReadArticleIDs`; the article page asks it for its one a
 
 **Why:** "Reading" in decisions.md.
 
+## Site icons
+
+**Flow.** The site icon runner (`siteicon.Runner`, `-icon-workers`) claims one site at a
+time with `SiteRepository.ClaimIconCheck`: a site whose `icon_next_check_at` has passed
+and that has never been checked (`icon_checked_at IS NULL`, so a site created by a
+lookup or an import gets its first check soon, subscribed or not) or has a subscribed
+feed. The claim moves `icon_next_check_at` 5 minutes ahead as a lease, and returns the
+current icon's `source_url` and validators.
+
+`Runner.check` fetches the site's home page with the shared `fetch.Client`; an error or
+a non-2xx keeps the icon (`KeepIcon`, not checked) and retries in a day. Otherwise it
+reads the icons the page declares (`discovery.ParsePage(...).Icons`; a non-HTML body
+declares none) and builds the candidates (`candidates`), deduplicated and at most four:
+apple-touch icons, then `rel="icon"` links that aren't SVG, each largest declared size
+first and unknown sizes last; then `/apple-touch-icon.png` and `/favicon.ico` on the
+page's origin. An icon declaring a size under 32 isn't downloaded.
+
+Each candidate is downloaded with a second `fetch.Client` capped at 256 KiB. The current
+icon's URL gets `If-None-Match` / `If-Modified-Since`, and a 304 keeps it (`KeepIcon`,
+checked). `usable` recognizes PNG, JPEG and GIF from the bytes (`http.DetectContentType`)
+and reads their size with `image.DecodeConfig`; an ICO by its signature, its size from
+its directory (`icoSize`, largest entry). The first icon at least 32 px on its shorter
+side and at most twice as long as wide is stored (`SaveIcon`, with its SHA-256 `hash`,
+`ETag` and `Last-Modified`). If none is usable, the icon is removed (`RemoveIcon`),
+unless a candidate failed with a network error, a 429 or a 5xx: then it's kept, not
+checked, and retried in a day. A check that reached the site schedules the next one in
+30 days ±10% (`nextCheck`). Each check logs one `site icon checked` line with the
+outcome (`saved`, `unchanged`, `removed` or `failed`).
+
+**Read:**
+
+1. `internal/siteicon/siteicon.go`: `Runner.work`, `check`, `find`, `candidates`,
+   `usable`, `nextCheck`; `ico.go`: `icoSize`.
+2. `internal/psql/sites.go`: `ClaimIconCheck`, `SaveIcon`, `RemoveIcon`, `KeepIcon`.
+3. `internal/discovery/page.go`: `Icon`, `ParsePage`.
+4. `cmd/www/application.go`: the runner and its two `fetch.Client`s.
+
+**Tests:** `internal/siteicon/siteicon_test.go` (an `httptest` site with generated PNG,
+JPEG, GIF and ICO fixtures), `ico_test.go`; `internal/psql/sites_test.go`
+(`TestSiteRepositoryClaimIconCheck`, `TestSiteRepositoryIcons`); `cmd/www/config_test.go`
+(`TestParseConfigIconWorkers`).
+
+**Why:** "Design" in decisions.md.
+
 ## Adding a feature
 
 The usual path for a new page or action, following the conventions in CLAUDE.md:

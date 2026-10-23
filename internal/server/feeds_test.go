@@ -457,6 +457,46 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerPageMetadata(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
+			return []rss.Article{
+				{ID: "art-1", PageImageURL: "https://example.com/page.jpg", PageTitle: "Page title", PageDescription: "Page description"},
+				{ID: "art-2", Title: "Feed title", ImageURL: "https://example.com/feed.jpg", Excerpt: "Feed excerpt",
+					PageImageURL: "https://example.com/other.jpg", PageTitle: "Other title", PageDescription: "Other description"},
+			}, nil
+		},
+	})
+
+	body := serveFeed(t, s, testFeedID).Body.String()
+
+	first := body[strings.Index(body, `id="article-art-1"`):strings.Index(body, `id="article-art-2"`)]
+	for _, want := range []string{
+		`src="https://example.com/page.jpg"`,
+		`<a href="/articles/art-1">Page title</a>`,
+		`<p class="article-excerpt">Page description</p>`,
+	} {
+		if !strings.Contains(first, want) {
+			t.Errorf("row with only page values does not contain %q: %s", want, first)
+		}
+	}
+	second := body[strings.Index(body, `id="article-art-2"`):]
+	for _, want := range []string{
+		`src="https://example.com/feed.jpg"`,
+		`<a href="/articles/art-2">Feed title</a>`,
+		`<p class="article-excerpt">Feed excerpt</p>`,
+	} {
+		if !strings.Contains(second, want) {
+			t.Errorf("row with feed values does not contain %q: %s", want, second)
+		}
+	}
+	for _, bad := range []string{"other.jpg", "Other title", "Other description"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("page value %q shown over the feed's: %s", bad, body)
+		}
+	}
+}
+
 func TestFeedHandlerNoArticles(t *testing.T) {
 	rr := serveFeed(t, feedServer(t, nil), testFeedID)
 

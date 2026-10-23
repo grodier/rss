@@ -518,6 +518,12 @@ and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCu
 the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
 
+**Card values.** Rows and the article page show an article through accessors on
+`rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's),
+`DisplayTitle` (the title, else the page's title, else the start of the excerpt, else
+"(untitled)") and `DisplayExcerpt` (the excerpt, else the page's description). The
+page's values come from enrichment (see "Article enrichment") and only fill gaps.
+
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first
 saved. *News* (undated, or published since a day before the feed's previous successful
 fetch) goes at the save time, 1 µs apart, newest-published first. *Backlog* (every dated
@@ -527,9 +533,10 @@ doesn't.
 
 **Article page.** `articleHandler` records the read, then renders the content (else the
 summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
-(else the feed's). Plain text (no block-level markup) is split into paragraphs at blank
+(else the feed's); with neither, the page's description (plain text, escaped by the
+template), else "This article has no text in its feed." Plain text (no block-level markup) is split into paragraphs at blank
 lines, with `<br>` for single line breaks, and bare http(s) URLs become links. The
-article's card image (`image_url`) shows above the text as a lead image unless
+article's card image (`CardImageURL`) shows above the text as a lead image unless
 `sanitize.ShowsImage` finds the content already shows it: the content starts with an
 image, the block after its first paragraph is one, or any image in it is the same file
 (ignoring host case, `www.`, the query and WordPress size suffixes). Wide tables scroll
@@ -563,12 +570,12 @@ nearby. Without JavaScript the link just works.
    `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
 6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
 7. `internal/ui/static/js/app.js`.
-8. Also: `rss.Article.DisplayTitle` (untitled articles) and `FeedSortAt` in
-   `internal/rss/rss.go`.
+8. Also: `rss.Article.CardImageURL`, `DisplayTitle`, `DisplayExcerpt` and `FeedSortAt`
+   in `internal/rss/rss.go`.
 
 **Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`,
 `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`;
-`internal/sanitize/sanitize_test.go`.
+`internal/sanitize/sanitize_test.go`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 
@@ -702,8 +709,7 @@ the `…SiteIcons` page tests (built on `testSiteIcons` in `testutils_test.go`) 
 ## Article enrichment
 
 **Flow.** Many feed items arrive without an image, a title or any text; enrichment
-fetches their web page in the background and stores what its meta tags say. #307 shows
-it.
+fetches their web page in the background and stores what its meta tags say.
 
 1. **Queuing.** `saveArticles` (see "Feed ingestion") gets each upserted article's ID
    and whether it was inserted (`RETURNING id, (xmax = 0)`). A newly inserted article
@@ -737,6 +743,12 @@ it.
 
 The `page_*` columns are never the feed's values: `saveArticles` overwrites `image_url`,
 `title` and `excerpt` on every changed fetch and leaves `page_*` alone.
+
+**Showing.** Pages read the values only through `rss.Article`'s `CardImageURL`,
+`DisplayTitle` and `DisplayExcerpt`, where the feed's own values win and the page's fill
+gaps (see "Card values" under "Reading"): the card image, the title of untitled items,
+the excerpt of empty ones and the article page's lead image. An article page with no
+content or summary shows the page's description as its body.
 
 **Read:**
 

@@ -13,15 +13,55 @@ func TestArticleDisplayTitle(t *testing.T) {
 		a    Article
 		want string
 	}{
-		{"title wins", Article{Title: "T", Excerpt: "e"}, "T"},
-		{"short excerpt", Article{Excerpt: "short text"}, "short text"},
+		{"title wins", Article{Title: "T", PageTitle: "P", Excerpt: "e"}, "T"},
+		{"page title when untitled", Article{PageTitle: "P", Excerpt: "e"}, "P"},
+		{"short excerpt", Article{Excerpt: "short text", PageDescription: "d"}, "short text"},
 		{"long excerpt cut at word", Article{Excerpt: long}, strings.TrimSpace(strings.Repeat("word ", 16)) + "…"},
+		{"page description when no excerpt", Article{PageDescription: long}, strings.TrimSpace(strings.Repeat("word ", 16)) + "…"},
 		{"neither", Article{}, "(untitled)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.a.DisplayTitle(); got != tt.want {
 				t.Errorf("DisplayTitle = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticleDisplayExcerpt(t *testing.T) {
+	tests := []struct {
+		name string
+		a    Article
+		want string
+	}{
+		{"excerpt wins", Article{Excerpt: "e", PageDescription: "d"}, "e"},
+		{"page description", Article{PageDescription: "d"}, "d"},
+		{"neither", Article{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.a.DisplayExcerpt(); got != tt.want {
+				t.Errorf("DisplayExcerpt = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticleCardImageURL(t *testing.T) {
+	tests := []struct {
+		name string
+		a    Article
+		want string
+	}{
+		{"feed image wins", Article{ImageURL: "https://a/feed.jpg", PageImageURL: "https://a/page.jpg"}, "https://a/feed.jpg"},
+		{"page image", Article{PageImageURL: "https://a/page.jpg"}, "https://a/page.jpg"},
+		{"neither", Article{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.a.CardImageURL(); got != tt.want {
+				t.Errorf("CardImageURL = %q, want %q", got, tt.want)
 			}
 		})
 	}

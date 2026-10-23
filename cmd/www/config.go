@@ -22,6 +22,7 @@ type config struct {
 	lookup     lookupConfig
 	refresh    refreshConfig
 	importer   importerConfig
+	icons      iconsConfig
 	mailRunner mailRunnerConfig
 	mail       mailConfig
 }
@@ -44,6 +45,10 @@ type refreshConfig struct {
 }
 
 type importerConfig struct {
+	workers int
+}
+
+type iconsConfig struct {
 	workers int
 }
 
@@ -97,6 +102,9 @@ func defaultConfig() config {
 		importer: importerConfig{
 			workers: 2,
 		},
+		icons: iconsConfig{
+			workers: 1,
+		},
 		mailRunner: mailRunnerConfig{
 			workers: 1,
 		},
@@ -132,6 +140,9 @@ func (c config) Validate() error {
 	}
 	if c.importer.workers < 0 || c.importer.workers > 16 {
 		errs = append(errs, fmt.Errorf("invalid import workers %d: must be 0-16", c.importer.workers))
+	}
+	if c.icons.workers < 0 || c.icons.workers > 4 {
+		errs = append(errs, fmt.Errorf("invalid icon workers %d: must be 0-4", c.icons.workers))
 	}
 	if c.mailRunner.workers < 0 || c.mailRunner.workers > 4 {
 		errs = append(errs, fmt.Errorf("invalid mail workers %d: must be 0-4", c.mailRunner.workers))
@@ -240,6 +251,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.lookup.workers, "lookup-workers", cfg.lookup.workers, "Background lookup workers (0 disables them)")
 	fs.IntVar(&cfg.refresh.workers, "refresh-workers", cfg.refresh.workers, "Background feed refresh workers (0 disables them)")
 	fs.IntVar(&cfg.importer.workers, "import-workers", cfg.importer.workers, "Background OPML import workers (0-16; 0 disables them)")
+	fs.IntVar(&cfg.icons.workers, "icon-workers", cfg.icons.workers, "Background site icon workers (0-4; 0 disables them)")
 	fs.IntVar(&cfg.mailRunner.workers, "mail-workers", cfg.mailRunner.workers, "Background email workers (0-4; 0 queues emails without sending them)")
 
 	registerMailFlags(fs, &cfg.mail)

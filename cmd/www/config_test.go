@@ -35,6 +35,10 @@ func TestConfigValidate(t *testing.T) {
 		{"import workers max", func(c *config) { c.importer.workers = 16 }, false},
 		{"import workers negative", func(c *config) { c.importer.workers = -1 }, true},
 		{"import workers too high", func(c *config) { c.importer.workers = 17 }, true},
+		{"icon workers zero", func(c *config) { c.icons.workers = 0 }, false},
+		{"icon workers max", func(c *config) { c.icons.workers = 4 }, false},
+		{"icon workers negative", func(c *config) { c.icons.workers = -1 }, true},
+		{"icon workers too high", func(c *config) { c.icons.workers = 5 }, true},
 		{"mail workers zero", func(c *config) { c.mailRunner.workers = 0 }, false},
 		{"mail workers max", func(c *config) { c.mailRunner.workers = 4 }, false},
 		{"mail workers negative", func(c *config) { c.mailRunner.workers = -1 }, true},
@@ -123,6 +127,48 @@ func TestParseConfigImportWorkers(t *testing.T) {
 		t.Run("invalid "+n, func(t *testing.T) {
 			_, err := parseConfig(append(dsn, "-import-workers", n), noEnv, io.Discard)
 			want := "invalid import workers " + n + ": must be 0-16"
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("parseConfig() error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+func TestParseConfigIconWorkers(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
+
+	t.Run("default", func(t *testing.T) {
+		cfg, err := parseConfig(dsn, noEnv, io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		if cfg.icons.workers != 1 {
+			t.Errorf("icons.workers = %d, want 1", cfg.icons.workers)
+		}
+	})
+
+	t.Run("from the environment", func(t *testing.T) {
+		cfg, err := parseConfig(dsn, envFrom(map[string]string{"RSS_ICON_WORKERS": "3"}), io.Discard)
+		if err != nil {
+			t.Fatalf("parseConfig() error = %v", err)
+		}
+		if cfg.icons.workers != 3 {
+			t.Errorf("icons.workers = %d, want 3", cfg.icons.workers)
+		}
+	})
+
+	for _, n := range []string{"0", "4"} {
+		t.Run("valid "+n, func(t *testing.T) {
+			if _, err := parseConfig(append(dsn, "-icon-workers", n), noEnv, io.Discard); err != nil {
+				t.Fatalf("parseConfig() error = %v, want nil", err)
+			}
+		})
+	}
+
+	for _, n := range []string{"-1", "5"} {
+		t.Run("invalid "+n, func(t *testing.T) {
+			_, err := parseConfig(append(dsn, "-icon-workers", n), noEnv, io.Discard)
+			want := "invalid icon workers " + n + ": must be 0-4"
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("parseConfig() error = %v, want %q", err, want)
 			}

@@ -9,16 +9,15 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
-1. #304 Find and store site icons
-2. #301 Search your saved articles
-3. #305 Show site icons as avatars (after #304)
-4. #306 Fetch missing article images and titles from their web pages
-5. #307 Show article images and titles fetched from their web pages (after #306)
-6. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+1. #301 Search your saved articles
+2. #305 Show site icons as avatars
+3. #306 Fetch missing article images and titles from their web pages
+4. #307 Show article images and titles fetched from their web pages (after #306)
+5. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
    with placement options first)
 
-These can run in parallel sessions, one wave after another: #301, #304 and #306;
-then #305, #307 and #308.
+These can run in parallel sessions, one wave after another: #301, #305 and #306;
+then #307 and #308.
 
 Then:
 

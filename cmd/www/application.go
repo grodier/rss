@@ -24,6 +24,7 @@ import (
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/refresh"
 	"github.com/grodier/rss/internal/server"
+	"github.com/grodier/rss/internal/siteicon"
 )
 
 type Application struct {
@@ -45,7 +46,8 @@ func (app *Application) Run() error {
 	}
 	defer db.Close()
 
-	// One client serves lookups, imports and refreshes; it is safe for concurrent use.
+	// One client serves lookups, imports, refreshes and home pages for site
+	// icons; it is safe for concurrent use.
 	fetcher := fetch.New(fetch.Options{})
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
@@ -82,6 +84,17 @@ func (app *Application) Run() error {
 			Workers:   app.config.refresh.workers,
 		}
 		background = append(background, named("refresh runner", runner.Run))
+	}
+	if app.config.icons.workers > 0 {
+		runner := &siteicon.Runner{
+			Store:   psql.NewSiteRepository(db),
+			Fetcher: fetcher,
+			// Its own client, so icon downloads are capped at siteicon.MaxBytes.
+			IconFetcher: fetch.New(fetch.Options{MaxBodyBytes: siteicon.MaxBytes}),
+			Logger:      app.logger,
+			Workers:     app.config.icons.workers,
+		}
+		background = append(background, named("site icon runner", runner.Run))
 	}
 	// The server queues emails and wakes this process's mail runner, which
 	// sends them. Without one, another instance's runner sends them.

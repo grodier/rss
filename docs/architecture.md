@@ -34,7 +34,7 @@ its text and marks it read.
 ## The process
 
 There is one binary, `www` (`cmd/www`), and one Postgres database. Inside the process
-run five long-lived components, all stopped by one context:
+run six long-lived components, all stopped by one context:
 
 - The **HTTP server** (`internal/server`) handles requests and reads and writes the
   database through the `internal/psql` repositories. Its Refresh button calls
@@ -47,11 +47,15 @@ run five long-lived components, all stopped by one context:
 - The **import runner** (`internal/importer`) claims pending rows from the `import_feeds`
   table (one per feed of an uploaded OPML file), finds the feed by URL or discovers and
   saves it as the lookup runner does, and subscribes the import's user to it.
+- The **site icon runner** (`internal/siteicon`) claims sites whose icon check is due
+  from the `sites` table, fetches each site's home page, downloads the icons it declares
+  (or `/apple-touch-icon.png` and `/favicon.ico`) until one is usable, and stores it in
+  `site_icons`, keeps the current one, or removes it.
 - The **mail runner** (`internal/mail`, `mail.Runner`) claims due emails from the
   `emails` table (the outbox, filled by the server's `sendEmail` through `mail.Queue`) and
   sends them with the sender `newMailSender` builds.
 
-`ingest` and `discovery` make every outbound request through `internal/fetch`.
+`ingest`, `discovery` and `siteicon` make every outbound request through `internal/fetch`.
 
 `cmd/www/main.go` (`run`) hands `www migrate` to `runMigrate`, `www create-user` to
 `runCreateUser` and `www send-test-email` to `runSendTestEmail` (below). Otherwise it
@@ -59,7 +63,7 @@ parses the configuration (`parseConfig` in `config.go`: each flag,
 or else its `RSS_` environment variable via `setFlagsFromEnv`, or else its default;
 errors go to stderr) and builds the slog logger on stdout (`newLogger`: JSON in
 production, text otherwise), which also reports the error `Run` returns.
-`cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` and one `ingest.Refresher` (shared by the
+`cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the
 Refresh button and the background workers), the repositories, the scs session manager
 (sessions in Postgres, one-year lifetime) and the server, then starts the runners next to
 `Server.Serve`. On SIGINT or SIGTERM, or when any component fails, the context is
@@ -91,13 +95,14 @@ Mailpit (`compose.yml`) and in production against Resend.
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `siteicon`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `opml` (import uploads), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file (`Parse`), folders flattened | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
+| `internal/siteicon` | Site icon workers: find a site's icon on its home page, check its type and size, store it | `discovery`, `fetch`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
 | `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
@@ -114,7 +119,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct
 that holds them are in `internal/server/server.go`, with compile-time checks that the
-`psql` repositories satisfy them. `lookup`, `importer`, `refresh`, `ingest` and
+`psql` repositories satisfy them. `lookup`, `importer`, `refresh`, `siteicon`, `ingest` and
 `discovery` each declare their own small interfaces (`Store`, `Fetcher`, `Saver`, …).
 That's what lets every package be tested with fakes (see Testing).
 
@@ -241,12 +246,12 @@ emails   (the outbox: no foreign keys)
 - **`sites`**: a website, unique by `host`, its *site key* (lowercase host without
   `www.`, `discovery.SiteKey`). `icon_checked_at` is when the icon worker last looked
   for its icon, and `icon_next_check_at` when it should look next (also the claim
-  lease); nothing uses them yet (#304).
+  lease).
 - **`site_icons`**: at most one per site, the icon downloaded from `source_url`: its
   `content_type` (PNG, JPEG, GIF or ICO), `width` / `height`, the bytes in `data` (at
   most 256 KiB), `hash` (hex SHA-256 of `data`, the `?v=` of icon URLs) and `etag` /
-  `last_modified` for conditional GET. No row: the site shows its letter avatar. Nothing
-  uses it yet (#304, #305).
+  `last_modified` for conditional GET. No row: the site shows its letter avatar. Written by
+  the site icon runner; nothing serves it yet (#305).
 - **`feeds`**: unique by canonical `url`; `site_id` is the site it was first discovered
   from. Also the refresh queue: `next_fetch_at` (when it's due, and the claim lease),
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
@@ -311,24 +316,27 @@ Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
 ## Background work
 
 The runners follow the same pattern: N worker goroutines (`-lookup-workers`,
-`-import-workers`, `-refresh-workers`, default 2; `-mail-workers`, default 1; 0 turns a
+`-import-workers`, `-refresh-workers`, default 2; `-icon-workers`, `-mail-workers`, default 1; 0 turns a
 runner off) loop claiming one job at a time from a Postgres table with `FOR UPDATE SKIP
 LOCKED`, so several instances can run side by side. When nothing is claimable a worker
 sleeps for a poll interval. Each job gets a timeout; its outcome is recorded with a fresh
 short context, so a job that timed out still records its failure. On shutdown, lookups,
-imports and refreshes record nothing and are retried later; the mail runner instead
+imports, refreshes and icon checks record nothing and are retried later; the mail runner instead
 finishes the email it's sending (within its timeout) and records the result, since an
 aborted send can still be delivered. With `-mail-workers 0` the process queues emails
 without sending them (and logs that at startup); another instance's runner sends them.
 
-| | Lookups (`internal/lookup`) | Imports (`internal/importer`) | Feed refresh (`internal/refresh`) | Email (`mail.Runner`) |
-| --- | --- | --- | --- | --- |
-| Queue | `lookups` rows with `status = 'pending'` | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `emails` that are pending and due (`next_attempt_at <= now()`) |
-| Claim | `ClaimNext`: set `running` | `ClaimNext`: set `running` and count the attempt | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
-| Poll when idle | 500 ms | 1 s | 15 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
-| Job timeout | 30 s | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
-| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | `ResetStale` every minute: running for over 2 min → pending, failed (`unreachable`) after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the email is due again |
-| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `FeedRepository.GetByURL`, else (or if gone) discovery and `DiscoveryRepository.Save`; then `SubscriptionRepository.Subscribe` | `ingest.Refresher.Refresh` | `Sender.Send` |
+| | Lookups (`internal/lookup`) | Imports (`internal/importer`) | Feed refresh (`internal/refresh`) | Site icons (`internal/siteicon`) | Email (`mail.Runner`) |
+| --- | --- | --- | --- | --- | --- |
+| Queue | `lookups` rows with `status = 'pending'` | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `sites` with `icon_next_check_at <= now()` that are new (`icon_checked_at IS NULL`) or have a subscribed feed | `emails` that are pending and due (`next_attempt_at <= now()`) |
+| Claim | `ClaimNext`: set `running` | `ClaimNext`: set `running` and count the attempt | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimIconCheck`: move `icon_next_check_at` 5 min ahead (the lease) | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
+| Poll when idle | 500 ms | 1 s | 15 s | 5 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
+| Job timeout | 30 s | 30 s | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
+| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | `ResetStale` every minute: running for over 2 min → pending, failed (`unreachable`) after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the site is due again | The lease runs out and the email is due again |
+| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `FeedRepository.GetByURL`, else (or if gone) discovery and `DiscoveryRepository.Save`; then `SubscriptionRepository.Subscribe` | `ingest.Refresher.Refresh` | `Runner.check`: home page, `discovery.ParsePage` icons, downloads; then `SaveIcon`, `KeepIcon` or `RemoveIcon` | `Sender.Send` |
+
+A site's icon is checked again about 30 days (±10%) after a check that reached the site,
+and a day after one that didn't (see "Site icons" in [features.md](features.md)).
 
 A failed email is retried after 1, 2, 4, … minutes (`retryDelay`, capped at an hour) and
 marked `failed` after 8 attempts. Delivery is at least once: a crash between sending and
@@ -345,6 +353,9 @@ point to) go through `fetch.Client` (`internal/fetch`):
   link-local, multicast and other special ranges and so also defeats DNS rebinding;
 - 10 s for the whole request, bodies capped at 5 MiB, no environment proxy;
 - a fixed `User-Agent` and `Accept`.
+
+Site icons are downloaded through their own `fetch.Client`, with bodies capped at
+256 KiB (`siteicon.MaxBytes`); the home page they're found on goes through the shared one.
 
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest`
 servers; `cmd/www` never sets it.

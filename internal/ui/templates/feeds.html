@@ -29,7 +29,7 @@
         <ul role="list">
           {{range .Subs}}
           <li class="feed-row">
-            {{template "feed-avatar" .Feed}}
+            {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
             <div>
               <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
               {{if .LatestArticleAt.IsZero}}

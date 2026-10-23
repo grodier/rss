@@ -627,3 +627,14 @@ func testSaveAction(t *testing.T, path string, handler func(*Server) http.Handle
 		}
 	})
 }
+
+func TestArticleHandlerSiteIcon(t *testing.T) {
+	s := articleServer(t, rss.Article{Title: "Hello"}, nil, nil, nil)
+	testSiteIcons(t, s, testSiteID, "E", func(t *testing.T) string {
+		rr := serveArticle(t, s, testArticleID)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

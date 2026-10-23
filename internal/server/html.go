@@ -20,8 +20,24 @@ const avatarTones = 6
 
 var templateFuncs = template.FuncMap{
 	"asset":      asset,
+	"avatar":     avatar,
 	"avatarTone": avatarTone,
 	"monogram":   monogram,
+}
+
+// avatarView is what the avatar partial shows: the site's icon, else its
+// letter on its tint.
+type avatarView struct {
+	Tone    int
+	Letter  string
+	IconURL string
+}
+
+// avatar builds the avatar of a site, or of a feed from its site: id is the
+// site's ID, name what the letter comes from, iconURL the site's icon URL
+// (from siteIconURLs) or "".
+func avatar(id, name, iconURL string) avatarView {
+	return avatarView{Tone: avatarTone(id), Letter: monogram(name), IconURL: iconURL}
 }
 
 // avatarTone picks the avatar tint for an ID, from 1 to avatarTones: a site's

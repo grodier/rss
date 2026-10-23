@@ -48,7 +48,7 @@
       {{range .Sites}}
       <section class="result">
         <div class="result-head">
-          {{template "site-avatar" .Site}}
+          {{template "avatar" (avatar .Site.ID (or .Site.Title .Site.Host) (index $.Icons .Site.ID))}}
           <div>
             <h2><a href="/sites/{{.Site.ID}}">{{if .Site.Title}}{{.Site.Title}}{{else}}{{.Site.Host}}{{end}}</a></h2>
             <p>{{.Site.Host}}</p>

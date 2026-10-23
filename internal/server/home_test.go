@@ -269,3 +269,23 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 }
+
+func TestHomeHandlerSiteIcons(t *testing.T) {
+	items := timelineItems(2)
+	for i := range items {
+		items[i].Feed.SiteID = testSiteID
+	}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, SiteService: &fakeSiteStore{},
+		ArticleService: &fakeArticleStore{
+			listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				return items, nil
+			},
+		}})
+	testSiteIcons(t, s, testSiteID, "F", func(t *testing.T) string {
+		rr := getHome(t, s, "/", true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

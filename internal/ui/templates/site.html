@@ -19,7 +19,7 @@
 
       <section class="profile">
         <div class="profile-top">
-          {{template "site-avatar" .Site}}
+          {{template "avatar" (avatar .Site.ID (or .Site.Title .Site.Host) (index .Icons .Site.ID))}}
           {{if .CanRecheck}}
           <form action="/lookups" method="post">
             <input type="hidden" name="q" value="{{.Site.URL}}">
@@ -52,7 +52,7 @@
         <ul role="list">
           {{range .Feeds}}
           <li class="feed-row" id="feed-{{.ID}}">
-            {{template "feed-avatar" .}}
+            {{template "avatar" (avatar .SiteID (or .Title .Url) (index $.Icons .SiteID))}}
             <div>
               <a class="feed-row-title" href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="chip">Subscribed ✓</span>{{end}}
               {{with .Description}}<p class="feed-desc">{{.}}</p>{{end}}

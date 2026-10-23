@@ -1,8 +1,13 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -54,6 +59,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Nav         navData
 		Site        rss.Site
+		Icons       map[string]string
 		Feeds       []rss.Feed
 		Subscribed  map[string]bool
 		LastChecked time.Time
@@ -64,6 +70,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Nav:         s.nav(r, ""),
 		Site:        site,
+		Icons:       s.pageIcons(r, []string{site.ID}),
 		Feeds:       feeds,
 		Subscribed:  subscribed,
 		LastChecked: lookup.FinishedAt,
@@ -93,4 +100,83 @@ func canRecheck(l rss.Lookup, now time.Time) bool {
 	default:
 		return false
 	}
+}
+
+// siteIconHandler serves a site's stored icon. Icons are fetched from other
+// sites, so they're locked down like any untrusted content: a CSP that
+// allows nothing and sandboxes the response, and nosniff (from
+// commonHeaders). Icon URLs carry the icon's hash as ?v=, so a request for
+// the current hash can be cached for good.
+func (s *Server) siteIconHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	icon, err := s.services.SiteService.GetIcon(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	h := w.Header()
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("ETag", `"`+icon.Hash+`"`)
+	if r.URL.Query().Get("v") == icon.Hash {
+		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		h.Set("Cache-Control", "public, max-age=3600")
+	}
+	if etagMatches(r.Header.Get("If-None-Match"), icon.Hash) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	h.Set("Content-Type", icon.ContentType)
+	h.Set("Content-Length", strconv.Itoa(len(icon.Data)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(icon.Data)
+}
+
+// etagMatches reports whether an If-None-Match header lists the entity tag
+// "hash" (weak or strong) or is "*".
+func etagMatches(header, hash string) bool {
+	for tag := range strings.SplitSeq(header, ",") {
+		tag = strings.TrimPrefix(strings.TrimSpace(tag), "W/")
+		if tag == "*" || tag == `"`+hash+`"` {
+			return true
+		}
+	}
+	return false
+}
+
+// siteIconURLs returns the icon URL (/sites/{id}/icon?v={hash}) of each of
+// siteIDs that has an icon.
+func (s *Server) siteIconURLs(ctx context.Context, siteIDs []string) (map[string]string, error) {
+	ids := slices.Compact(slices.Sorted(slices.Values(siteIDs)))
+	hashes, err := s.services.SiteService.IconHashes(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	urls := make(map[string]string, len(hashes))
+	for id, hash := range hashes {
+		urls[id] = "/sites/" + id + "/icon?v=" + url.QueryEscape(hash)
+	}
+	return urls, nil
+}
+
+// pageIcons is siteIconURLs for a page, where icons are decoration: an error
+// is logged and the page shows letters instead.
+func (s *Server) pageIcons(r *http.Request, siteIDs []string) map[string]string {
+	urls, err := s.siteIconURLs(r.Context(), siteIDs)
+	if err != nil {
+		s.logError(r, err)
+		return map[string]string{}
+	}
+	return urls
 }

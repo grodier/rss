@@ -20,7 +20,7 @@
 
       <section class="profile">
         <div class="profile-top">
-          {{template "feed-avatar" .Feed}}
+          {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index .Icons .Feed.SiteID))}}
           {{if .Subscribed}}
           <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
             <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">

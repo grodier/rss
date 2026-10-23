@@ -32,11 +32,25 @@ func (f *fakeFeedStore) RequestRefresh(ctx context.Context, id string) error {
 }
 
 type fakeSiteStore struct {
-	getByIDFn func(ctx context.Context, id string) (rss.Site, error)
+	getByIDFn    func(ctx context.Context, id string) (rss.Site, error)
+	getIconFn    func(ctx context.Context, siteID string) (rss.SiteIcon, error)
+	iconHashesFn func(ctx context.Context, siteIDs []string) (map[string]string, error)
 }
 
 func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error) {
 	return f.getByIDFn(ctx, id)
+}
+
+func (f *fakeSiteStore) GetIcon(ctx context.Context, siteID string) (rss.SiteIcon, error) {
+	return f.getIconFn(ctx, siteID)
+}
+
+// IconHashes reports no icons when iconHashesFn is nil.
+func (f *fakeSiteStore) IconHashes(ctx context.Context, siteIDs []string) (map[string]string, error) {
+	if f.iconHashesFn == nil {
+		return map[string]string{}, nil
+	}
+	return f.iconHashesFn(ctx, siteIDs)
 }
 
 type fakeUserStore struct {

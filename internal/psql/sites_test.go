@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -413,6 +414,46 @@ func TestSiteRepositoryIcons(t *testing.T) {
 			t.Errorf("icon_next_check_at %v; want %v", gotNext, next)
 		}
 		wantIcon(t, getIcon(t, id), icon(id, 1))
+	})
+
+	t.Run("GetIcon", func(t *testing.T) {
+		id := newTestSite(t, db)
+		if _, err := repo.GetIcon(t.Context(), id); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("GetIcon without an icon: err = %v; want rss.ErrNoRecord", err)
+		}
+
+		if err := repo.SaveIcon(t.Context(), icon(id, 2), next); err != nil {
+			t.Fatalf("SaveIcon: %v", err)
+		}
+		got, err := repo.GetIcon(t.Context(), id)
+		if err != nil {
+			t.Fatalf("GetIcon: %v", err)
+		}
+		wantIcon(t, got, icon(id, 2))
+	})
+
+	t.Run("IconHashes", func(t *testing.T) {
+		with1, with2, without := newTestSite(t, db), newTestSite(t, db), newTestSite(t, db)
+		if err := repo.SaveIcon(t.Context(), icon(with1, 1), next); err != nil {
+			t.Fatalf("SaveIcon: %v", err)
+		}
+		if err := repo.SaveIcon(t.Context(), icon(with2, 2), next); err != nil {
+			t.Fatalf("SaveIcon: %v", err)
+		}
+
+		got, err := repo.IconHashes(t.Context(), []string{with1, without, with2, with1, missing})
+		if err != nil {
+			t.Fatalf("IconHashes: %v", err)
+		}
+		want := map[string]string{with1: "hash-1", with2: "hash-2"}
+		if !maps.Equal(got, want) {
+			t.Errorf("IconHashes = %v; want %v", got, want)
+		}
+
+		got, err = repo.IconHashes(t.Context(), nil)
+		if err != nil || len(got) != 0 {
+			t.Errorf("IconHashes(nil) = %v, %v; want empty, nil", got, err)
+		}
 	})
 
 	t.Run("missing site", func(t *testing.T) {

@@ -53,14 +53,21 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		sites = append(sites, siteSubscriptions{Site: sub.Site, Subs: []rss.Subscription{sub}})
 	}
 
+	siteIDs := make([]string, len(sites))
+	for i, site := range sites {
+		siteIDs[i] = site.Site.ID
+	}
+
 	data := struct {
 		Nav              navData
 		Sites            []siteSubscriptions
+		Icons            map[string]string
 		Flash            string
 		FailingThreshold int
 	}{
 		Nav:              s.nav(r, "feeds"),
 		Sites:            sites,
+		Icons:            s.pageIcons(r, siteIDs),
 		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
 		FailingThreshold: failingThreshold,
 	}
@@ -156,6 +163,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Nav            navData
 		Feed           rss.Feed
 		Site           rss.Site
+		Icons          map[string]string
 		Rows           []articleRow
 		Before         bool
 		Next           string
@@ -166,6 +174,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Nav:            s.nav(r, ""),
 		Feed:           feed,
 		Site:           site,
+		Icons:          s.pageIcons(r, []string{site.ID}),
 		Rows:           rows,
 		Before:         !before.IsZero(),
 		Next:           next,

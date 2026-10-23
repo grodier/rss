@@ -45,6 +45,9 @@ func (s *Server) router() http.Handler {
 		fileServer.ServeHTTP(w, r)
 	}))
 
+	// Icons need no session, like /static: they aren't private.
+	router.Get("/sites/{id}/icon", s.siteIconHandler)
+
 	router.Get("/healthcheck", s.healthcheckHandler)
 
 	// The policy pages need no session: they're the same for everyone.

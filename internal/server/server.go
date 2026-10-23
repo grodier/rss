@@ -47,6 +47,10 @@ type FeedStore interface {
 // SiteStore is the site persistence the server depends on.
 type SiteStore interface {
 	GetByID(ctx context.Context, id string) (rss.Site, error)
+	// GetIcon returns the site's stored icon, or rss.ErrNoRecord.
+	GetIcon(ctx context.Context, siteID string) (rss.SiteIcon, error)
+	// IconHashes returns the icon hash of each of siteIDs that has an icon.
+	IconHashes(ctx context.Context, siteIDs []string) (map[string]string, error)
 }
 
 // UserStore is the user persistence the server depends on.

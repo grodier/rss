@@ -42,9 +42,9 @@ func jitter(d time.Duration) time.Duration {
 // allows, so converting them to a time.Duration can't overflow.
 const maxDeltaSeconds = 1<<31 - 1
 
-// retryAfter parses a Retry-After header (delta-seconds or HTTP-date) and
+// RetryAfter parses a Retry-After header (delta-seconds or HTTP-date) and
 // returns how long to wait from now; 0 if absent, invalid or in the past.
-func retryAfter(h http.Header, now time.Time) time.Duration {
+func RetryAfter(h http.Header, now time.Time) time.Duration {
 	v := strings.TrimSpace(h.Get("Retry-After"))
 	if v == "" {
 		return 0

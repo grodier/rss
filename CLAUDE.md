@@ -48,6 +48,7 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)
 - `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/siteicon`: finds, checks and stores sites' icons in the background (`Runner`)
+- `internal/enrich`: fetches the web pages of articles missing an image, title or excerpt and stores their Open Graph metadata in the background (`Runner`)
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)

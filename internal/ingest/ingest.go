@@ -143,7 +143,7 @@ func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult
 	if err != nil {
 		next := RetryAt(now, feed.ConsecutiveFailures+1)
 		if resp != nil && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) {
-			next = notBefore(next, now, retryAfter(resp.Header, now))
+			next = notBefore(next, now, RetryAfter(resp.Header, now))
 		}
 		return rss.FetchResult{}, r.record(ctx, err, func(ctx context.Context) error {
 			return r.Store.RecordFailure(ctx, feed.ID, err.Error(), next)

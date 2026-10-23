@@ -74,8 +74,8 @@ func TestRetryAfter(t *testing.T) {
 			if tt.value != "" {
 				h.Set("Retry-After", tt.value)
 			}
-			if got := retryAfter(h, now); got != tt.want {
-				t.Errorf("retryAfter(%q) = %v, want %v", tt.value, got, tt.want)
+			if got := RetryAfter(h, now); got != tt.want {
+				t.Errorf("RetryAfter(%q) = %v, want %v", tt.value, got, tt.want)
 			}
 		})
 	}

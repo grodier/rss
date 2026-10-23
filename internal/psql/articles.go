@@ -16,7 +16,7 @@ import (
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
 	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "title", "summary", "content",
-	"excerpt", "published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
+	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
 }
 
 var (
@@ -52,7 +52,7 @@ func articleListColumns(prefix string) string {
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
 	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
@@ -288,12 +288,56 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 	return positions
 }
 
+// enrichFirstSave is how many articles of a feed's first save, by latest
+// timeline position, may get an enrichment job.
+const enrichFirstSave = 20
+
+// Priorities of enrichment jobs; lower goes first.
+const (
+	enrichPriorityNew     = 0 // new arrivals
+	enrichPriorityBacklog = 1 // a feed's first save
+)
+
+// needsEnrichment reports whether an article should have its web page
+// fetched: it has a URL and lacks an image, a title or an excerpt.
+func needsEnrichment(a rss.Article) bool {
+	return a.URL != "" && (a.ImageURL == "" || a.Title == "" || a.Excerpt == "")
+}
+
+// enrichCandidates returns which of articles may get an enrichment job when
+// newly inserted, and at what priority. On a feed's first save (prevFetched
+// zero) only the enrichFirstSave articles with the latest positions may, at
+// enrichPriorityBacklog; on later saves every article may, at
+// enrichPriorityNew.
+func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched time.Time) (eligible []bool, priority int) {
+	eligible = make([]bool, len(articles))
+	if !prevFetched.IsZero() {
+		for i := range eligible {
+			eligible[i] = true
+		}
+		return eligible, enrichPriorityNew
+	}
+
+	order := make([]int, len(articles))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(x, y int) bool {
+		return positions[order[x]].After(positions[order[y]])
+	})
+	for _, i := range order[:min(len(order), enrichFirstSave)] {
+		eligible[i] = true
+	}
+	return eligible, enrichPriorityBacklog
+}
+
 // saveArticles upserts articles for feedID by (feed_id, external_id) and
 // records a successful fetch of the feed: sets last_fetched_at and
 // last_attempt_at to now() and clears last_error and consecutive_failures.
 // A new article's timeline_at is set on insert (see timelineAt) and never
-// changes. It locks the feed row so concurrent saves of a feed are ordered.
-// Callers dedupe external IDs.
+// changes. A newly inserted article that needsEnrichment and is among
+// enrichCandidates gets an enrich_jobs row. It locks the feed row so
+// concurrent saves of a feed are ordered. Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
 	var prevFetched sql.NullTime
 	var now time.Time
@@ -301,6 +345,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		return rss.FetchResult{}, err
 	}
 	positions := timelineAt(articles, prevFetched.Time, now)
+	enrichable, priority := enrichCandidates(articles, positions, prevFetched.Time)
 
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
@@ -324,14 +369,18 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		WHERE (articles.url, articles.image_url, articles.media_type, articles.title, articles.summary, articles.content, articles.excerpt)
 				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.image_url, EXCLUDED.media_type, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
 			OR (articles.published_at IS NULL AND EXCLUDED.published_at IS NOT NULL)
-		RETURNING (xmax = 0) AS inserted`
+		RETURNING id, (xmax = 0) AS inserted`
+	enrichStmt := `INSERT INTO enrich_jobs (article_id, priority) VALUES ($1, $2) ON CONFLICT DO NOTHING`
 
 	var res rss.FetchResult
 	for i, a := range articles {
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
-		var inserted bool
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&inserted)
+		var (
+			id       string
+			inserted bool
+		)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&id, &inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.
@@ -339,6 +388,11 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			return rss.FetchResult{}, err
 		case inserted:
 			res.New++
+			if enrichable[i] && needsEnrichment(a) {
+				if _, err := q.ExecContext(ctx, enrichStmt, id, priority); err != nil {
+					return rss.FetchResult{}, err
+				}
+			}
 		default:
 			res.Updated++
 		}

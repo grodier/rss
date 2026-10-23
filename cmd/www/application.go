@@ -16,6 +16,7 @@ import (
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/enrich"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/importer"
 	"github.com/grodier/rss/internal/ingest"
@@ -46,8 +47,8 @@ func (app *Application) Run() error {
 	}
 	defer db.Close()
 
-	// One client serves lookups, imports, refreshes and home pages for site
-	// icons; it is safe for concurrent use.
+	// One client serves lookups, imports, refreshes, home pages for site
+	// icons and article pages for enrichment; it is safe for concurrent use.
 	fetcher := fetch.New(fetch.Options{})
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
@@ -95,6 +96,15 @@ func (app *Application) Run() error {
 			Workers:     app.config.icons.workers,
 		}
 		background = append(background, named("site icon runner", runner.Run))
+	}
+	if app.config.enrich.workers > 0 {
+		runner := &enrich.Runner{
+			Store:   psql.NewEnrichRepository(db),
+			Fetcher: fetcher,
+			Logger:  app.logger,
+			Workers: app.config.enrich.workers,
+		}
+		background = append(background, named("enrich runner", runner.Run))
 	}
 	// The server queues emails and wakes this process's mail runner, which
 	// sends them. Without one, another instance's runner sends them.

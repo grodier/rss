@@ -48,7 +48,7 @@
             <a class="settings-row" href="/settings/imports/{{.Import.ID}}">
               <span class="settings-stack">
                 <span class="settings-label">{{.Import.Filename}}</span>
-                <span class="hint"><time datetime="{{.Import.CreatedAt.UTC.Format "2006-01-02"}}">{{.Import.CreatedAt.UTC.Format "2 Jan 2006"}}</time> · {{.Total}} {{if eq .Total 1}}feed{{else}}feeds{{end}}{{if .Pending}} · importing…{{else if .Failed}} · {{.Failed}} couldn't be added{{end}}</span>
+                <span class="hint">{{template "local-date" .Import.CreatedAt}} · {{.Total}} {{if eq .Total 1}}feed{{else}}feeds{{end}}{{if .Pending}} · importing…{{else if .Failed}} · {{.Failed}} couldn't be added{{end}}</span>
               </span>
               {{template "icon-chevron"}}
             </a>

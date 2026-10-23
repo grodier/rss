@@ -18,7 +18,7 @@
         <p class="reader-meta">
           {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index .Icons .Feed.SiteID))}}
           <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-          {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
+          {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
         </p>
         <h1>{{.Article.DisplayTitle}}</h1>
         {{template "article-actions" .}}

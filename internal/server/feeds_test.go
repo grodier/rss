@@ -216,6 +216,19 @@ func TestFeedHandlerDateOnlyRows(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerRowTimeInOtherZone(t *testing.T) {
+	at := time.Date(2024, time.March, 2, 6, 0, 0, 0, time.FixedZone("EST", -5*60*60)) // 11:00 UTC
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return []rss.Article{{ID: "art-1", Title: "Timed", PublishedAt: at}}, nil
+		},
+	})
+
+	body := serveFeed(t, s, testFeedID).Body.String()
+
+	assertBodyContains(t, body, `<time data-local datetime="2024-03-02T11:00:00Z">2 Mar 2024 11:00 UTC</time>`)
+}
+
 func TestFeedHandlerSourceLinks(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
@@ -614,7 +627,16 @@ func TestFeedsHandler(t *testing.T) {
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
 		))
-		assertContains(t, body, "Latest article 4 Mar 2026", "No articles yet.")
+		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time>`, "No articles yet.")
+	})
+
+	t.Run("latest article in another zone", func(t *testing.T) {
+		// 23:30 EST on 4 Mar is 5 Mar in UTC.
+		late := time.Date(2026, 3, 4, 23, 30, 0, 0, time.FixedZone("EST", -5*60*60))
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: late},
+		))
+		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-05T04:30:00Z">5 Mar 2026</time>`)
 	})
 
 	health := []struct {
@@ -682,7 +704,8 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 		want        []string
 	}{
 		{"never fetched", time.Time{}, []string{"Never fetched."}},
-		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{"Last fetched 2 Jan 2026 15:04 UTC."}},
+		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}},
+		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -711,22 +734,22 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 }
 
 func TestFeedHandlerFetchStatus(t *testing.T) {
-	attempt := time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC)
-	next := time.Date(2099, 1, 3, 9, 30, 0, 0, time.UTC) // future, so no refresh is requested
+	attempt := time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)) // 15:04 UTC
+	next := time.Date(2099, 1, 3, 9, 30, 0, 0, time.UTC)                           // future, so no refresh is requested
 	tests := []struct {
 		name     string
 		failures int
 		want     []string
 		notWant  []string
 	}{
-		{"no failures", 0, []string{"Next check around 3 Jan 2099 09:30 UTC."}, []string{"fetch-error"}},
+		{"no failures", 0, []string{`Next check around <time data-local datetime="2099-01-03T09:30:00Z">3 Jan 2099 09:30 UTC</time>.`}, []string{"fetch-error"}},
 		{"one failure", 1, []string{
-			"The last attempt to fetch this feed failed (2 Jan 2026 15:04 UTC). We'll keep trying.",
-			"Next check around 3 Jan 2099 09:30 UTC.",
+			`The last attempt to fetch this feed failed (<time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>). We'll keep trying.`,
+			`Next check around <time data-local datetime="2099-01-03T09:30:00Z">3 Jan 2099 09:30 UTC</time>.`,
 		}, []string{"The last 1 attempts"}},
 		{"three failures", 3, []string{
-			"The last 3 attempts to fetch this feed failed, most recently 2 Jan 2026 15:04 UTC.",
-			"Next check around 3 Jan 2099 09:30 UTC.",
+			`The last 3 attempts to fetch this feed failed, most recently <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`,
+			`Next check around <time data-local datetime="2099-01-03T09:30:00Z">3 Jan 2099 09:30 UTC</time>.`,
 		}, nil},
 	}
 	for _, tt := range tests {

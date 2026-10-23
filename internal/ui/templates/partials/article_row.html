@@ -4,7 +4,7 @@
   <div class="article-main">
     <p class="article-meta">
       {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
-      {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
+      {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
     </p>
     <div class="article-card">
       {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}

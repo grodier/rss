@@ -346,7 +346,9 @@ Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse. The w
 turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds
 and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed
 has articles right away. The site page lists the feeds with subscribe
-buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
+buttons and offers "Check for new feeds" once the last lookup's TTL has passed. Its
+"Feeds last checked" time is rendered with the `local-time` partial
+(`partials/time.html`), so `app.js` shows it in the reader's time zone.
 
 **Read:**
 
@@ -519,6 +521,9 @@ subscriptions to their feeds' articles, collapses copies of one article (same
 and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry. Feed pages work
 the same way with `ListByFeed`, but in publication order and without collapsing copies.
+The feed page's status times ("Last fetched", failed attempt, "Next check around") use the
+`local-time` partial, like article times; "Latest article" on Feeds and the import date use
+`local-date`. Both render UTC for `app.js` to localize.
 List queries never load `summary` or `content`.
 
 **Card values.** Rows and the article page show an article through accessors on

@@ -35,7 +35,7 @@
         {{if or (not .LastChecked.IsZero) .Checking}}
         <p class="facts">
           {{if not .LastChecked.IsZero}}
-          <span>{{template "icon-clock"}}Feeds last checked {{.LastChecked.Format "2 Jan 2006 15:04 MST"}}.</span>
+          <span>{{template "icon-clock"}}Feeds last checked {{template "local-time" .LastChecked}}.</span>
           {{end}}
           {{if .Checking}}
           <span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span>

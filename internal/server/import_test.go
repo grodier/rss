@@ -275,7 +275,7 @@ func TestSettingsImportHandler(t *testing.T) {
 		"Recent imports",
 		`href="/settings/imports/imp-running"`,
 		"running.opml",
-		"1 Oct 2026",
+		`<time data-local="date" datetime="2026-10-01T12:00:00Z">1 Oct 2026</time>`,
 		"12 feeds · importing…",
 		`href="/settings/imports/imp-failed"`,
 		"8 feeds · 2 couldn't be added",

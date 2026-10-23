@@ -44,16 +44,16 @@
           {{if .Feed.LastFetched.IsZero}}
           <span>{{template "icon-clock"}}Never fetched.</span>
           {{else}}
-          <span>{{template "icon-clock"}}Last fetched {{.Feed.LastFetched.Format "2 Jan 2006 15:04 MST"}}.</span>
+          <span>{{template "icon-clock"}}Last fetched {{template "local-time" .Feed.LastFetched}}.</span>
           {{end}}
         </p>
         {{if not .Feed.GoneAt.IsZero}}
         <p class="fetch-error">This feed no longer exists: its publisher removed it. We've stopped checking it.</p>
         {{else}}
         {{if eq .Feed.ConsecutiveFailures 1}}
-        <p class="fetch-error">The last attempt to fetch this feed failed ({{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}). We'll keep trying.</p>
+        <p class="fetch-error">The last attempt to fetch this feed failed ({{template "local-time" .Feed.LastAttempt}}). We'll keep trying.</p>
         {{else if gt .Feed.ConsecutiveFailures 1}}
-        <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{.Feed.LastAttempt.Format "2 Jan 2006 15:04 MST"}}. We'll keep trying.</p>
+        <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{template "local-time" .Feed.LastAttempt}}. We'll keep trying.</p>
         {{end}}
         <div class="profile-actions">
           <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
@@ -62,7 +62,7 @@
           {{if .RefreshPending}}
           <p class="quiet">Checking for new articles…</p>
           {{else if not .Feed.NextFetch.IsZero}}
-          <p class="quiet">Next check around {{.Feed.NextFetch.Format "2 Jan 2006 15:04 MST"}}.</p>
+          <p class="quiet">Next check around {{template "local-time" .Feed.NextFetch}}.</p>
           {{end}}
         </div>
         {{end}}

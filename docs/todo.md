@@ -7,9 +7,18 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. **Plan** the error-state walkthrough and run the first pass; then repeat it
+1. Debug mode, in merge order:
+   1. #327 Debug mode: allowlist, Settings toggle, and site and feed panels
+   2. #328 Debug mode: inspect a feed live (fields used and ignored, items from raw to
+      stored); depends on #327
+   3. #329 Debug mode: article panel and a debug line on list rows; depends on #328
+   4. #330 Debug mode: inspect article pages and site discovery live; depends on #328,
+      and merges after #329
+
+   Waves: #327, then #328, then #329 and #330 in parallel.
+2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-2. Before production or a few thousand feeds, **plan** load and performance testing.
+3. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 
@@ -81,7 +90,9 @@ decisions.md.
   and unused for 30 days after signup. Only if they pile up.
 - [ ] **Support tools.** `www` commands can't run in production, so the self-service flows
   are the support path. If support requests need more (looking up an account, resending
-  a confirmation for someone), plan an owner-only admin page.
+  a confirmation for someone), plan an owner-only admin page. It would build on debug
+  mode's allowlist (#327), and is where cross-user data such as subscriber counts
+  belongs.
 - [ ] **First-run experience (needs planning).** What a new account sees after signup:
   today, an empty timeline pointing to Search and to OPML import. Perhaps
   suggested sites or a short tour.
@@ -200,7 +211,13 @@ Each with when it pays off:
   the item's top level, so YouTube channel feeds (which nest it in `media:group`) get no
   image. `itemMediaType` already looks inside `media:group`; do the same for images.
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
-  304 rate). When the app runs somewhere the logs aren't at hand.
+  304 rate). When the app runs somewhere the logs aren't at hand. An admin page would
+  build on debug mode's allowlist (#327).
+- [ ] **Fetch history.** Keep the last N fetch attempts per feed, with status, bytes,
+  items, new and updated counts, and duration, but no bodies. Show them in the feed's
+  debug panel. Debug mode (#327–#330) deliberately stores nothing and inspects live.
+  Add this only if a problem comes and goes, so that a live fetch can't show it. Cap it
+  per feed, since it's a table that grows with every fetch.
 
 ## Subscriptions
 
@@ -510,6 +527,12 @@ Pages and queries:
   hundreds of feeds. *Signal:* a site page or search response with hundreds of feeds, or
   slow ones in the logs. *Fix:* limit feeds per site in search (with a "more" link to the
   site page) and paginate the site page.
+- [ ] **Debug panels count a feed's articles on every view** (#327). `FeedDebug` runs
+  `count(*)` and `max()` over a feed's articles, for every feed on a site page, while
+  debug mode is on. Only allowed accounts pay for it. *Signal:* site or feed pages are
+  noticeably slower with debug mode on, for feeds with many thousands of articles.
+  *Fix:* drop the counts from the site page's per-feed lines, or use the
+  `articles_feed_timeline_idx` for the newest time and stop counting.
 - [ ] **`SubscribedFeedIDs` on every page** (#135, #138). One extra indexed query per site,
   feed and search page. Unlikely to matter. *Signal:* it shows up in
   `pg_stat_statements` totals. *Fix:* fold it into the page's main query.

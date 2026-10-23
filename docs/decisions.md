@@ -31,7 +31,8 @@ section names; how the code works is in [architecture.md](architecture.md) and
   user opened an article, and updating a session's `last_seen_at` at most once a day.
   (#50, #137, #156, #258)
 - **Errors stored for debugging are never shown to users** (`lookups.error`,
-  `feeds.last_error`). Pages say what happened in plain words. (#50, #129)
+  `feeds.last_error`). Pages say what happened in plain words. Debug mode's panels show
+  them, to allowed accounts only (see "Debug mode"). (#50, #129, #327)
 
 ## Pre-alpha testing
 
@@ -43,6 +44,47 @@ section names; how the code works is in [architecture.md](architecture.md) and
   features' tables (#293). A prototype that may be dropped adds its own table instead,
   so dropping it leaves nothing behind. Before a reset, export your OPML, and import it
   afterwards (#303).
+
+## Debug mode
+
+Planned with issues #327–#330. Its purpose is exploration more than bug fixing: showing
+how pages are put together from stored data, and what feeds and pages publish that the
+app doesn't use yet.
+
+- **Allowed accounts are listed in a flag** (`-debug-emails`). It's empty by default,
+  and then nothing about debug mode shows and its routes are 404s. This was chosen over:
+  - a request header, which needs a browser extension and doesn't work on a phone;
+  - a user role, which needs a schema change. (#327)
+- **It's turned on per device, from Settings.** It's a flag in the scs session, so
+  logging out turns it off. The allowlist is checked on every request, so removing an
+  account turns debug mode off at once. (#327)
+- **Nothing new is stored.** There's no schema change, no fetch history and no copies of
+  raw responses. Panels read existing rows, and inspectors fetch live. A fetch history
+  is a todo item. (#327, #328)
+- **Inspectors are read-only POSTs:**
+  - they fetch through `internal/fetch` (GET handlers never fetch URLs);
+  - they render their result directly;
+  - they save nothing;
+  - they get a 30 s budget, like a lookup job, by extending their own write deadline
+    instead of raising the server's `WriteTimeout`;
+  - they only take IDs, so every URL they fetch is one already in the database.
+  (#328, #330)
+- **Panels show internal details**, such as `last_error` and the `lookups` error, to
+  allowed accounts. Untrusted text (raw XML, JSON, article HTML, page tags) is only
+  ever shown as escaped text, never rendered. (#327, #328, #329)
+- **Panels cost nothing when debug mode is off:**
+  - their queries only run when it's on;
+  - the line on list rows uses columns the lists already load. (#327, #329)
+- **"Used" and "ignored" come from lists kept by hand next to the parsers:**
+  - `usedFields` beside `feedparse.Parse`;
+  - `usedPageKeys` beside `discovery.ParsePage`.
+
+  A PR that changes what a parser reads updates its list. (#328, #330)
+- **Discovery records every candidate it checks** (`Result.Checked`), and returns what
+  it has so far when its deadline passes. The lookup and import runners ignore both.
+  (#330)
+- **No subscriber counts or other cross-user data.** Those belong to an owner admin
+  page, which would build on the same allowlist (todo). (#327)
 
 ## Feed discovery
 

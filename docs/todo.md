@@ -9,20 +9,19 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
-1. #299 Save articles (draft PR with layout options first)
-2. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-3. #300 Add a Saved page to the nav (after #299)
-4. #303 Import subscriptions from OPML: upload and results pages
-5. #304 Find and store site icons
-6. #301 Search your saved articles (after #300)
-7. #305 Show site icons as avatars (after #304)
-8. #306 Fetch missing article images and titles from their web pages
-9. #307 Show article images and titles fetched from their web pages (after #306)
-10. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+1. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+2. #300 Add a Saved page to the nav (after #299)
+3. #303 Import subscriptions from OPML: upload and results pages
+4. #304 Find and store site icons
+5. #301 Search your saved articles (after #300)
+6. #305 Show site icons as avatars (after #304)
+7. #306 Fetch missing article images and titles from their web pages
+8. #307 Show article images and titles fetched from their web pages (after #306)
+9. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #299;
-then #296, #300, #303 and #304; then #301, #305 and #306; then #307 and #308.
+These can run in parallel sessions, one wave after another: #296, #300, #303 and #304;
+then #301, #305 and #306; then #307 and #308.
 
 Then:
 
@@ -276,8 +275,8 @@ Each with when it pays off:
   previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.** Style the blockquote that X, Bluesky and Mastodon embeds
   arrive as into a quote card with the author and a link, without loading their scripts.
-- [ ] **Share button.** In the row's action bar next to Save (#299): the Web Share API on
-  phones, else copy the article's link. Its own small issue once Save's layout is settled.
+- [ ] **Share button.** In the row's action bar, to Save's left (#299): the Web Share API on
+  phones, else copy the article's link. Its own small issue.
 - [ ] **Filters and muting (needs planning).** Muting a feed on the timeline (kept
   subscribed, still on its feed page), keyword filters, and how they relate to hiding
   single articles (#308). The owner wants to think through what filters mean first.

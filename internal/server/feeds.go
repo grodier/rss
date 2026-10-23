@@ -131,11 +131,15 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([]articleRow, len(articles))
 	for i, a := range articles {
-		rows[i] = articleRow{Article: a}
+		rows[i] = articleRow{Article: a, ReturnTo: r.URL.RequestURI()}
 	}
 
 	userID, _ := s.authenticatedUserID(r)
 	if err := s.fillRead(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	if err := s.fillSaved(r.Context(), userID, rows); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
@@ -173,12 +177,6 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
-}
-
-type subscriptionForm struct {
-	// ReturnTo is the local path to redirect back to, usually the page the
-	// form was posted from.
-	ReturnTo string `form:"return_to"`
 }
 
 // feedSubscribeHandler subscribes the user to a feed. Subscribing again is a
@@ -226,16 +224,16 @@ func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 // subscriptionTarget reads what the subscribe and unsubscribe handlers share:
 // the feed named in the URL and the posted form. If ok is false it has already
 // written the response.
-func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (feed rss.Feed, form subscriptionForm, ok bool) {
+func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (feed rss.Feed, form returnForm, ok bool) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
-		return rss.Feed{}, subscriptionForm{}, false
+		return rss.Feed{}, returnForm{}, false
 	}
 
 	if err := s.decodePostForm(w, r, &form); err != nil {
 		s.formErrorResponse(w, r, err)
-		return rss.Feed{}, subscriptionForm{}, false
+		return rss.Feed{}, returnForm{}, false
 	}
 
 	feed, err := s.services.FeedService.GetByID(r.Context(), id)
@@ -245,14 +243,14 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (fee
 		} else {
 			s.serverErrorHTML(w, r, err)
 		}
-		return rss.Feed{}, subscriptionForm{}, false
+		return rss.Feed{}, returnForm{}, false
 	}
 	return feed, form, true
 }
 
 // redirectWithFlash flashes msg and sends the user back to the page they
 // posted from, or to the feed page if that isn't a local path.
-func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form subscriptionForm, feed rss.Feed, msg string) {
+func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form returnForm, feed rss.Feed, msg string) {
 	s.sessionManager.Put(r.Context(), "flash", msg)
 	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID), http.StatusSeeOther)
 }

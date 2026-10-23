@@ -353,7 +353,7 @@ func TestConfirmNotice(t *testing.T) {
 	}
 	for _, p := range pages {
 		t.Run(p.name, func(t *testing.T) {
-			s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{}, ReadService: &fakeReadStore{}})
+			s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{}, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
 			get := func(sess rss.Session) string {
 				rr, _ := serveConfirm(t, s, p.handler(s), httptest.NewRequest(http.MethodGet, p.target, nil), &sess)
 				if rr.Code != http.StatusOK {
@@ -398,7 +398,7 @@ func TestSettingsNotConfirmedTag(t *testing.T) {
 }
 
 func TestTimelineFlash(t *testing.T) {
-	s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{}, ReadService: &fakeReadStore{}})
+	s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{}, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
 	rr := httptest.NewRecorder()
 	var flashLeft bool
 	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

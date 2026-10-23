@@ -468,7 +468,7 @@ published dates.
 
 1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
    `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler`.
-2. `internal/server/helpers.go`: `safeReturnPath`.
+2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
 3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
    `ListByUser`.
 4. Templates: `feed.html`, `site.html`, `feeds.html`.
@@ -545,6 +545,46 @@ nearby. Without JavaScript the link just works.
 `internal/sanitize/sanitize_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
+
+## Saved articles
+
+**Flow.** Every article row (timeline and feed pages) and the article page has a Save
+button with a bookmark icon, in the `article-actions` group: on rows it's right-aligned
+under the card (the row's `article-foot`, with "Also in" on the left), on the article
+page under the title. The button is the `save-button` partial, a form posting to
+`/articles/{id}/save`, or `/unsave` when the article is saved, with a `return_to` of the
+page's request URI. `articleSaveHandler` and `articleUnsaveHandler` (both `saveAction`)
+call `SaveRepository.Save` or `Unsave` and redirect to `return_to` with
+`#article-{id}` appended, so without JavaScript the page comes back at the same row.
+Saving is quiet: no flash, and it doesn't mark the article read. With JavaScript,
+`app.js` posts the form with `fetch` and flips the button in place; the accessible name
+stays "Save" and `aria-pressed` carries the state, from which `main.css` shows the
+outline or the filled icon.
+
+**Copies.** Saving covers every copy of an article (same non-empty `canonical_url`),
+like read state. `Save` inserts nothing when the user already saved a copy, and reports
+`rss.ErrNoRecord` for an unknown article; `Unsave` deletes the saves of the article and
+of every copy. List pages ask `SavedArticleIDs` which rows are saved (`fillSaved`), with
+the same query shape as `ReadArticleIDs`; the article page asks it for its one article.
+
+**Read:**
+
+1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`,
+   `saveAction`, `withFragment`, then `articleRow` and `fillSaved`; `articleHandler`'s
+   `Saved`.
+2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
+3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`.
+4. Templates: `partials/save_button.html` (`save-button`, `article-actions`),
+   `partials/article_row.html`, `article.html`; `icon-bookmark` and
+   `icon-bookmark-fill` in `partials/icons.html`.
+5. `internal/ui/static/js/app.js`: "Save buttons".
+
+**Tests:** `internal/server/articles_test.go` (`TestArticleSaveHandler`,
+`TestArticleUnsaveHandler`, `TestArticleHandlerSaved`), `home_test.go`, `feeds_test.go`
+(`TestFeedHandlerSavedRows`), `scroll_test.go` (`TestSaveButtonMarkup`);
+`internal/psql/saves_test.go`.
+
+**Why:** "Reading" in decisions.md.
 
 ## Adding a feature
 

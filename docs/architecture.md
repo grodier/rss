@@ -184,6 +184,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `POST /feeds/{id}/unsubscribe` | yes | `feedUnsubscribeHandler` | |
 | `GET /articles/{id}` | yes | `articleHandler` | Article page; records the read |
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
+| `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |
+| `POST /articles/{id}/unsave` | yes | `articleUnsaveHandler` | Unsaves the article and its copies; 303 to `return_to#article-{id}` |
 | `GET /sites/{id}` | yes | `siteHandler` | A site and its feeds |
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
@@ -257,7 +259,7 @@ emails   (the outbox: no foreign keys)
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
-  at query time. Nothing uses it yet (#299).
+  at query time.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,
@@ -425,11 +427,13 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
   of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
   labelled, at the bottom of the rail; medium screens show the avatar only; phones put
   it at the right of the top bar. Log out is a button on the Settings page.
-- **`app.js`** has four enhancements, each hooked onto server-rendered markup: local
+- **`app.js`** has five enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
-  infinite scroll (fetch the page behind `.pager a[rel=next]` and append its
-  `.article-row`s), and a show/hide toggle on every `input[type=password]` (set back to
-  `password` before its form submits). `internal/server/scroll_test.go` pins the markup the script relies on.
+  Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then
+  flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` action; on any
+  failure it submits the form normally), infinite scroll (fetch the page behind
+  `.pager a[rel=next]` and append its `.article-row`s), and a show/hide toggle on every
+  `input[type=password]` (set back to `password` before its form submits). `internal/server/scroll_test.go` pins the markup the script relies on.
 
 ## Testing
 

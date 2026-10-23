@@ -28,6 +28,34 @@
   };
   enhancePings(document);
 
+  // Save buttons: form[data-save] posts to /articles/{id}/save or /unsave.
+  // Post it with fetch instead, then flip aria-pressed (main.css swaps the
+  // icon) and the action, so the page doesn't reload. On any failure, submit
+  // the form normally so the round trip shows what happened. Delegated, so
+  // rows added by infinite scroll work too.
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-save]")) return;
+    e.preventDefault();
+    const button = form.querySelector("button[aria-pressed]");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const res = await fetch(form.action, {
+        method: "POST",
+        body: new URLSearchParams(new FormData(form)),
+        redirect: "manual",
+      });
+      if (res.type !== "opaqueredirect" && !res.ok) throw new Error(`status ${res.status}`);
+      const saved = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", String(saved));
+      form.setAttribute("action", form.getAttribute("action").replace(/\/(un)?save$/, saved ? "/unsave" : "/save"));
+      button.disabled = false;
+    } catch {
+      form.submit();
+    }
+  });
+
   // Password toggle: a Show/Hide button inside every password input. Before
   // its form submits, revealed inputs go back to type=password so browsers
   // still offer to save the password and don't keep it in autofill history.

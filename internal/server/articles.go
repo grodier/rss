@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
@@ -70,6 +71,12 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		leadImage = article.ImageURL
 	}
 
+	saved, err := s.services.SaveService.SavedArticleIDs(r.Context(), userID, []string{article.ID})
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	data := struct {
 		Nav       navData
 		Article   rss.Article
@@ -77,6 +84,8 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Site      rss.Site
 		LeadImage string
 		Body      template.HTML
+		Saved     bool
+		ReturnTo  string
 	}{
 		Nav:       s.nav(r, ""),
 		Article:   article,
@@ -84,6 +93,8 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Site:      site,
 		LeadImage: leadImage,
 		Body:      sanitize.HTML(raw, base),
+		Saved:     saved[article.ID],
+		ReturnTo:  r.URL.RequestURI(),
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {
@@ -115,12 +126,68 @@ func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// articleSaveHandler saves an article for the user, and every copy of it
+// with it. Saving is quiet: no flash, and it doesn't mark the article read.
+func (s *Server) articleSaveHandler(w http.ResponseWriter, r *http.Request) {
+	s.saveAction(w, r, true)
+}
+
+// articleUnsaveHandler removes the user's save of an article and of every
+// copy of it. Unsaving an article that isn't saved is a no-op.
+func (s *Server) articleUnsaveHandler(w http.ResponseWriter, r *http.Request) {
+	s.saveAction(w, r, false)
+}
+
+// saveAction runs what the save and unsave handlers share: it saves (or, if
+// save is false, unsaves) the article named in the URL, then sends the user back to the row they
+// posted from (return_to, anchored on #article-{id}). app.js posts the same
+// form with fetch and ignores the redirect.
+func (s *Server) saveAction(w http.ResponseWriter, r *http.Request, save bool) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	var form returnForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+
+	action := s.services.SaveService.Unsave
+	if save {
+		action = s.services.SaveService.Save
+	}
+	userID, _ := s.authenticatedUserID(r)
+	if err := action(r.Context(), userID, id); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
+}
+
+// withFragment returns path with its fragment, if any, replaced by fragment.
+func withFragment(path, fragment string) string {
+	if i := strings.IndexByte(path, '#'); i >= 0 {
+		path = path[:i]
+	}
+	return path + "#" + fragment
+}
+
 // articleRow is one article in a list of articles.
 type articleRow struct {
-	Article rss.Article
-	Feed    rss.Feed   // links the row to its feed; zero on the feed's own page
-	AlsoIn  []rss.Feed // other subscribed feeds with a copy; timeline only
-	Read    bool       // this user has opened the article
+	Article  rss.Article
+	Feed     rss.Feed   // links the row to its feed; zero on the feed's own page
+	AlsoIn   []rss.Feed // other subscribed feeds with a copy; timeline only
+	Read     bool       // this user has opened the article
+	Saved    bool       // this user has saved the article (or a copy)
+	ReturnTo string     // where the row's Save button sends the user back to
 }
 
 // fillRead sets Read on each row userID has read.
@@ -135,6 +202,22 @@ func (s *Server) fillRead(ctx context.Context, userID string, rows []articleRow)
 	}
 	for i := range rows {
 		rows[i].Read = read[rows[i].Article.ID]
+	}
+	return nil
+}
+
+// fillSaved sets Saved on each row userID has saved.
+func (s *Server) fillSaved(ctx context.Context, userID string, rows []articleRow) error {
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Article.ID
+	}
+	saved, err := s.services.SaveService.SavedArticleIDs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Saved = saved[rows[i].Article.ID]
 	}
 	return nil
 }

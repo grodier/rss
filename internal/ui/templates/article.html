@@ -21,6 +21,7 @@
           {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}<time data-local datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}{{end}}
         </p>
         <h1>{{.Article.DisplayTitle}}</h1>
+        {{template "article-actions" .}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>

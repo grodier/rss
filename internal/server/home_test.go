@@ -50,7 +50,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	calls := 0
 	var result []rss.ArticleWithFeed
 	var storeErr error
-	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, ArticleService: &fakeArticleStore{
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
 		listTimelineFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			calls++
 			gotUser, gotBefore, gotLimit = userID, before, limit
@@ -218,6 +218,38 @@ func TestHomeHandlerTimeline(t *testing.T) {
 			return nil, errors.New("boom")
 		}}
 		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+
+		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	t.Run("saved rows show a pressed Save button", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		var gotUser string
+		var gotIDs []string
+		s.services.SaveService = saveStoreReporting(&gotUser, &gotIDs, result[0].Article.ID)
+		t.Cleanup(func() { s.services.SaveService = &fakeSaveStore{} })
+
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		target := "/?before=" + url.QueryEscape(cur)
+		rr := getHome(t, s, target, true)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if gotUser != "user-1" || !slices.Equal(gotIDs, []string{result[0].Article.ID, result[1].Article.ID}) {
+			t.Errorf("SavedArticleIDs(%q, %v)", gotUser, gotIDs)
+		}
+		assertSaveButtons(t, rr.Body.String(), target, result[0].Article.ID, result[1].Article.ID)
+	})
+
+	t.Run("save store error is 500", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("boom")
+		}}
+		t.Cleanup(func() { s.services.SaveService = &fakeSaveStore{} })
 
 		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want 500", rr.Code)

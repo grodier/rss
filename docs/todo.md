@@ -7,11 +7,7 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. Debug mode, in merge order:
-   1. #329 Debug mode: article panel and a debug line on list rows
-   2. #330 Debug mode: inspect article pages and site discovery live; merges after #329
-
-   #329 and #330 can be worked on in parallel.
+1. #330 Debug mode: inspect article pages and site discovery live.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

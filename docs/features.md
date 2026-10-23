@@ -525,7 +525,9 @@ List queries never load `summary` or `content`.
 `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's),
 `DisplayTitle` (the title, else the page's title, else the start of the excerpt, else
 "(untitled)") and `DisplayExcerpt` (the excerpt, else the page's description). The
-page's values come from enrichment (see "Article enrichment") and only fill gaps.
+page's values come from enrichment (see "Article enrichment") and only fill gaps. Debug
+mode shows where each shown value came from (see "Debug mode": the article panel and the
+list line).
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first
 saved. *News* (undated, or published since a day before the feed's previous successful
@@ -771,8 +773,8 @@ content or summary shows the page's description as its body.
 
 ## Debug mode
 
-**Flow.** Debug mode shows the stored data behind site and feed pages, for the accounts
-listed in `-debug-emails` only.
+**Flow.** Debug mode shows the stored data behind site, feed and article pages and
+article rows, for the accounts listed in `-debug-emails` only.
 
 1. **Flag.** `parseConfig` splits `-debug-emails` on commas, trims and lowercases each
    entry (`parseDebugEmails`), and `Validate` rejects anything that isn't a bare address.
@@ -812,18 +814,44 @@ listed in `-debug-emails` only.
    A fetch error, a non-2xx or a body that isn't a feed is shown as text on the same
    page (`debug_feed.html`); the body is cut at 256 KiB, items' source at 20 000 bytes,
    all as escaped text.
+6. **Article panel.** When `debugEnabled`, `articleHandler` loads
+   `DebugStore.ArticleDebug` (the article's `enrich_jobs` row, up to 20 copies in other
+   feeds by `canonical_url`, oldest first, and this user's `read_at` and `saved_at`) and
+   `newArticleDebugView` builds an `id="debug"` panel after the article's actions:
+   `articleDebugFields` (every column in schema order, `summary` and `content` as their
+   lengths; the shown title, excerpt and image with where each came from; timeline
+   placement; `external_id` kind; the enrich job, or why there's none; this user's
+   rows), the sanitized body's length and the lead image decision, the copies as links,
+   the raw `summary` and `content` (cut at 20 000 bytes) in `<pre>`, and a **Source
+   item** form posting to the feed inspector with the article's `external_id` as
+   `item`. `?debug=1` renders the panel open; it changes rendering only.
+7. **Provenance.** `articleProvenance` is a pure function of the article that says where
+   each shown value comes from: title `feed`, `page`, `excerpt` or `none`; excerpt and
+   image `feed`, `page` or `none`; timeline `backlog` (`timeline_at` equals
+   `published_at`) or `news` (a backlog item clamped to its arrival time reads as news);
+   external ID `hash`, `link` or `guid`. Its rules mirror `DisplayTitle`,
+   `DisplayExcerpt` and `CardImageURL`, whose comments point to it.
+8. **List line.** `feedHandler`, `homeHandler` and `savedHandler` call `fillDebug` after
+   building their rows; when `debugEnabled` it sets each `articleRow.Debug`
+   (`newArticleRowDebug`, from columns the lists already load, so no queries) and the
+   `article-row` partial adds a `.debug-line`: the short ID, timeline placement and
+   time, published date, title and image provenance, and a `debug` link to
+   `/articles/{id}?debug=1#debug` (which marks the article read, like any visit).
 
 **Read:**
 
 1. `cmd/www/config.go`: `-debug-emails`, `parseDebugEmails`, `Validate`.
 2. `internal/server/debug.go`: `debugAllowed`, `debugEnabled`,
    `settingsDebugFormHandler`, `debugTime`, `siteDebugFields`, `feedDebugFields`,
-   `siteFeedDebugLine`.
+   `siteFeedDebugLine`, `articleProvenance`, `articleDebugFields`,
+   `newArticleDebugView`, `newArticleRowDebug`, `fillDebug`.
 3. `internal/server/sites.go`: `siteHandler`, `siteDebug`; `feeds.go`: `feedHandler`;
-   `settings.go`: `settingsHandler`; `html.go`: `nav`.
-4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`, `ArticlesByExternalID`.
+   `settings.go`: `settingsHandler`; `html.go`: `nav`; `articles.go`: `articleHandler`.
+4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`, `ArticleDebug`,
+   `ArticlesByExternalID`.
 5. `internal/ui/templates/partials/debug.html`, `partials/nav.html` (the badge),
-   `settings.html` (`#debug`); `.debug…` in `main.css`.
+   `settings.html` (`#debug`), the panel in `article.html`, the line in
+   `partials/article_row.html`; `.debug…` in `main.css`.
 6. The feed inspector: `internal/server/debug.go` (`requireDebug`,
    `extendWriteDeadline`, `feedInspectHandler`, `inspectFeed`, `compareArticle`);
    `internal/feedparse/inspect.go` (`Inspect`, `usedChannelFields`, `usedItemFields`,
@@ -832,8 +860,9 @@ listed in `-debug-emails` only.
 
 **Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`);
 `internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the
-field builders, the site, feed and settings pages with debug mode on, off and not
-allowed, `requireDebug`, `compareArticle`, the feed inspector's outcomes and errors, and
+field builders, the site, feed, article and settings pages with debug mode on, off and
+not allowed, `articleProvenance`, the list rows' debug lines, `requireDebug`,
+`compareArticle`, the feed inspector's outcomes and errors, and
 `TestExtendWriteDeadline` through the router); `internal/feedparse/inspect_test.go`.
 
 **Why:** "Debug mode" in decisions.md.

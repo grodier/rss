@@ -171,7 +171,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 request: `debugAllowed` (the logged-in user's email is in `-debug-emails`, ignoring case)
 and `debugEnabled` (allowed, and `"debug"` is set in the device's scs session).
 `POST /settings/debug` is a 404 unless `debugAllowed`. Pages only query
-`DebugStore` (`psql.DebugRepository`) when `debugEnabled`. Routes under `/debug/` are a
+`DebugStore` (`psql.DebugRepository`) when `debugEnabled`; article rows' debug lines
+(`fillDebug`) make no queries. Routes under `/debug/` are a
 group inside `requireAuthentication` with `requireDebug`, which answers 404 unless
 `debugEnabled`; they're POSTs, since they fetch URLs.
 

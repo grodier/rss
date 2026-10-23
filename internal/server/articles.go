@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
@@ -71,10 +72,24 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		leadImage = img
 	}
 
+	body := sanitize.HTML(raw, base)
+
 	saved, err := s.services.SaveService.SavedArticleIDs(r.Context(), userID, []string{article.ID})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
+	}
+
+	var debug *articleDebugView
+	if s.debugEnabled(r) {
+		d, err := s.services.DebugService.ArticleDebug(r.Context(), userID, article.ID)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		debug = newArticleDebugView(article, d, body, leadImage, time.Now())
+		// Rendering only: the list line's link opens the panel.
+		debug.Open = r.URL.Query().Get("debug") == "1"
 	}
 
 	data := struct {
@@ -87,6 +102,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Body      template.HTML
 		Saved     bool
 		ReturnTo  string
+		Debug     *articleDebugView
 	}{
 		Nav:       s.nav(r, ""),
 		Article:   article,
@@ -94,9 +110,10 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Site:      site,
 		Icons:     s.pageIcons(r, []string{site.ID}),
 		LeadImage: leadImage,
-		Body:      sanitize.HTML(raw, base),
+		Body:      body,
 		Saved:     saved[article.ID],
 		ReturnTo:  r.URL.RequestURI(),
+		Debug:     debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {
@@ -185,12 +202,13 @@ func withFragment(path, fragment string) string {
 // articleRow is one article in a list of articles.
 type articleRow struct {
 	Article  rss.Article
-	Feed     rss.Feed   // links the row to its feed; zero on the feed's own page
-	AlsoIn   []rss.Feed // other subscribed feeds with a copy; timeline only
-	Read     bool       // this user has opened the article
-	Saved    bool       // this user has saved the article (or a copy)
-	Icon     string     // the URL of Feed's site icon, or "" for its letter
-	ReturnTo string     // where the row's Save button sends the user back to
+	Feed     rss.Feed         // links the row to its feed; zero on the feed's own page
+	AlsoIn   []rss.Feed       // other subscribed feeds with a copy; timeline only
+	Read     bool             // this user has opened the article
+	Saved    bool             // this user has saved the article (or a copy)
+	Icon     string           // the URL of Feed's site icon, or "" for its letter
+	ReturnTo string           // where the row's Save button sends the user back to
+	Debug    *articleRowDebug // the row's debug line; nil unless debug mode is on
 }
 
 // fillIcons sets Icon on each row whose feed's site has an icon. Icons are

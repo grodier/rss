@@ -1,7 +1,9 @@
 package psql
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -166,6 +168,162 @@ func TestDebugRepositoryArticlesByExternalID(t *testing.T) {
 		}
 		if got == nil || len(got) != 0 {
 			t.Errorf("got %v; want an empty map", got)
+		}
+	})
+}
+
+// insertDebugArticle inserts an article in feedID with canonicalURL, created
+// at createdAt, and returns its ID. It's deleted along with the feed's site.
+func insertDebugArticle(t *testing.T, db *sql.DB, feedID, externalID, canonicalURL string, createdAt time.Time) string {
+	t.Helper()
+	var id string
+	err := db.QueryRow(`INSERT INTO articles (feed_id, external_id, canonical_url, timeline_at, created_at)
+		VALUES ($1, $2, $3, $4, $4) RETURNING id`, feedID, externalID, canonicalURL, createdAt).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert article: %v", err)
+	}
+	return id
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDebugRepositoryArticleDebug(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDebugRepository(db)
+	at := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("enrich job", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", "", at)
+		if _, err := db.Exec(`INSERT INTO enrich_jobs (article_id, priority, attempts, next_attempt_at, last_error, created_at)
+			VALUES ($1, 1, 2, $2, 'timeout', $3)`, id, at.Add(time.Hour), at); err != nil {
+			t.Fatalf("insert enrich job: %v", err)
+		}
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		want := rss.EnrichJobState{Exists: true, Priority: 1, Attempts: 2, NextAttemptAt: at.Add(time.Hour), LastError: "timeout", CreatedAt: at}
+		j := got.EnrichJob
+		if j.Exists != want.Exists || j.Priority != want.Priority || j.Attempts != want.Attempts || !j.NextAttemptAt.Equal(want.NextAttemptAt) ||
+			j.LastError != want.LastError || !j.CreatedAt.Equal(want.CreatedAt) {
+			t.Errorf("got EnrichJob %+v; want %+v", j, want)
+		}
+	})
+
+	t.Run("no enrich job, no reads or saves", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", "", at)
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if got.EnrichJob != (rss.EnrichJobState{}) {
+			t.Errorf("got EnrichJob %+v; want zero", got.EnrichJob)
+		}
+		if !got.ReadAt.IsZero() || !got.SavedAt.IsZero() {
+			t.Errorf("got ReadAt %v, SavedAt %v; want zero", got.ReadAt, got.SavedAt)
+		}
+		if got.Copies != nil {
+			t.Errorf("got copies %+v; want none", got.Copies)
+		}
+	})
+
+	t.Run("copies in other feeds", func(t *testing.T) {
+		canonical := fmt.Sprintf("https://example.com/copies-%d", time.Now().UnixNano())
+		feed, second, third := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", canonical, at.Add(time.Minute))
+		later := insertDebugArticle(t, db, third.ID, "a", canonical, at.Add(2*time.Minute))
+		earlier := insertDebugArticle(t, db, second.ID, "a", canonical, at)
+		insertDebugArticle(t, db, second.ID, "b", canonical+"/other", at)
+
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if len(got.Copies) != 2 {
+			t.Fatalf("got %d copies (%+v); want 2", len(got.Copies), got.Copies)
+		}
+		c := got.Copies[0]
+		if c.ArticleID != earlier || c.FeedID != second.ID || c.FeedTitle != second.Title || !c.CreatedAt.Equal(at) || !c.TimelineAt.Equal(at) {
+			t.Errorf("got first copy %+v; want the earlier one in the second feed", c)
+		}
+		if got.Copies[1].ArticleID != later {
+			t.Errorf("got second copy %+v; want %s", got.Copies[1], later)
+		}
+	})
+
+	t.Run("feed title falls back to its URL", func(t *testing.T) {
+		canonical := fmt.Sprintf("https://example.com/untitled-%d", time.Now().UnixNano())
+		feed, untitled := newTestFeed(t, db), newTestFeed(t, db)
+		if _, err := db.Exec(`UPDATE feeds SET title = '' WHERE id = $1`, untitled.ID); err != nil {
+			t.Fatalf("update feed: %v", err)
+		}
+		id := insertDebugArticle(t, db, feed.ID, "a", canonical, at)
+		insertDebugArticle(t, db, untitled.ID, "a", canonical, at)
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if len(got.Copies) != 1 || got.Copies[0].FeedTitle != untitled.Url {
+			t.Errorf("got copies %+v; want one titled %q", got.Copies, untitled.Url)
+		}
+	})
+
+	t.Run("empty canonical URL has no copies", func(t *testing.T) {
+		feed, other := newTestFeed(t, db), newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", "", at)
+		insertDebugArticle(t, db, other.ID, "a", "", at)
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if len(got.Copies) != 0 {
+			t.Errorf("got copies %+v; want none", got.Copies)
+		}
+	})
+
+	t.Run("copies are capped", func(t *testing.T) {
+		canonical := fmt.Sprintf("https://example.com/capped-%d", time.Now().UnixNano())
+		feed, other := newTestFeed(t, db), newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", canonical, at)
+		for i := range maxArticleCopies + 1 {
+			insertDebugArticle(t, db, other.ID, fmt.Sprint(i), canonical, at.Add(time.Duration(i)*time.Second))
+		}
+		got, err := repo.ArticleDebug(t.Context(), newTestUser(t, db), id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if len(got.Copies) != maxArticleCopies {
+			t.Errorf("got %d copies; want %d", len(got.Copies), maxArticleCopies)
+		}
+	})
+
+	t.Run("this user's read and save", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		id := insertDebugArticle(t, db, feed.ID, "a", "", at)
+		user, other := newTestUser(t, db), newTestUser(t, db)
+		readTime, savedTime := at.Add(time.Hour), at.Add(2*time.Hour)
+		if _, err := db.Exec(`INSERT INTO reads (user_id, article_id, read_at) VALUES ($1, $2, $3)`, user, id, readTime); err != nil {
+			t.Fatalf("insert read: %v", err)
+		}
+		if _, err := db.Exec(`INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, user, id, savedTime); err != nil {
+			t.Fatalf("insert save: %v", err)
+		}
+
+		got, err := repo.ArticleDebug(t.Context(), user, id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if !got.ReadAt.Equal(readTime) || !got.SavedAt.Equal(savedTime) {
+			t.Errorf("got ReadAt %v, SavedAt %v; want %v, %v", got.ReadAt, got.SavedAt, readTime, savedTime)
+		}
+
+		got, err = repo.ArticleDebug(t.Context(), other, id)
+		if err != nil {
+			t.Fatalf("ArticleDebug: %v", err)
+		}
+		if !got.ReadAt.IsZero() || !got.SavedAt.IsZero() {
+			t.Errorf("another user got ReadAt %v, SavedAt %v; want zero", got.ReadAt, got.SavedAt)
 		}
 	})
 }

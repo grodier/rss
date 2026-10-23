@@ -355,6 +355,7 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 type fakeDebugStore struct {
 	siteDebugFn            func(ctx context.Context, siteID string) (rss.SiteDebug, error)
 	feedDebugFn            func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+	articleDebugFn         func(ctx context.Context, userID, articleID string) (rss.ArticleDebug, error)
 	articlesByExternalIDFn func(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error)
 }
 
@@ -364,6 +365,10 @@ func (f *fakeDebugStore) SiteDebug(ctx context.Context, siteID string) (rss.Site
 
 func (f *fakeDebugStore) FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error) {
 	return f.feedDebugFn(ctx, feedIDs)
+}
+
+func (f *fakeDebugStore) ArticleDebug(ctx context.Context, userID, articleID string) (rss.ArticleDebug, error) {
+	return f.articleDebugFn(ctx, userID, articleID)
 }
 
 // ArticlesByExternalID reports no stored articles when articlesByExternalIDFn

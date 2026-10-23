@@ -50,6 +50,7 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.fillIcons(r, rows)
+	s.fillDebug(r, rows)
 
 	data := struct {
 		Nav    navData

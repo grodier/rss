@@ -251,6 +251,13 @@ type ArticleWithFeed struct {
 	AlsoIn  []Feed // other subscribed feeds with a copy of the article; timeline only
 }
 
+// SavedArticle is an article a user saved, with its feed.
+type SavedArticle struct {
+	Article Article
+	Feed    Feed
+	SavedAt time.Time
+}
+
 // User is an account.
 type User struct {
 	ID               string

@@ -122,11 +122,14 @@ type ReadStore interface {
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 }
 
-// SaveStore records which articles a user has saved.
+// SaveStore records and lists which articles a user has saved.
 type SaveStore interface {
 	Save(ctx context.Context, userID, articleID string) error
 	Unsave(ctx context.Context, userID, articleID string) error
 	SavedArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+	// ListSaved returns a page of the user's saved articles, newest saved
+	// first. Summary and Content are left empty.
+	ListSaved(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
 }
 
 // ImportStore stores OPML imports and reads their results.

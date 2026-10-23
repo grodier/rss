@@ -50,7 +50,7 @@ func monogram(name string) string {
 // navData is what the app-nav partial shows: the current section and the
 // logged-in user.
 type navData struct {
-	Section string // "home", "feeds", "search", "settings" or ""
+	Section string // "home", "saved", "feeds", "search", "settings" or ""
 	User    rss.User
 }
 

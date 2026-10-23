@@ -592,22 +592,33 @@ like read state. `Save` inserts nothing when the user already saved a copy, and 
 of every copy. List pages ask `SavedArticleIDs` which rows are saved (`fillSaved`), with
 the same query shape as `ReadArticleIDs`; the article page asks it for its one article.
 
+**Saved page** (`/saved`, "Saved" in the nav, after Home). `savedHandler` is modelled on
+the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest
+saved first, paged with a `?before=` cursor whose time is the `saved_at` (infinite
+scroll with JavaScript, "Older saved articles" without). `ListSaved` joins `saves` to
+`articles` and `feeds` with keyset paging on `(saved_at, article_id)`, served by
+`saves_user_saved_at_idx`. Each row is an `articleRow` with its feed, `Saved: true` and
+`fillRead`'s read marker. Unsaving from the page comes back to `/saved`; with
+JavaScript the row stays (its button flips) until the page is reloaded, so an
+accidental unsave can be undone in place. There's no count anywhere.
+
 **Read:**
 
 1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`,
    `saveAction`, `withFragment`, then `articleRow` and `fillSaved`; `articleHandler`'s
-   `Saved`.
+   `Saved`; `internal/server/saved.go`: `savedHandler`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
-3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`.
+3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`.
 4. Templates: `partials/save_button.html` (`save-button`, `article-actions`),
-   `partials/article_row.html`, `article.html`; `icon-bookmark` and
+   `partials/article_row.html`, `article.html`, `saved.html`, `partials/nav.html`; `icon-bookmark` and
    `icon-bookmark-fill` in `partials/icons.html`.
 5. `internal/ui/static/js/app.js`: "Save buttons".
 
 **Tests:** `internal/server/articles_test.go` (`TestArticleSaveHandler`,
-`TestArticleUnsaveHandler`, `TestArticleHandlerSaved`), `home_test.go`, `feeds_test.go`
-(`TestFeedHandlerSavedRows`), `scroll_test.go` (`TestSaveButtonMarkup`);
-`internal/psql/saves_test.go`.
+`TestArticleUnsaveHandler`, `TestArticleHandlerSaved`), `saved_test.go`
+(`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`),
+`scroll_test.go` (`TestSaveButtonMarkup`, `TestInfiniteScrollMarkup`),
+`templates_test.go` (`TestAppNav`); `internal/psql/saves_test.go` (`TestListSaved`).
 
 **Why:** "Reading" in decisions.md.
 

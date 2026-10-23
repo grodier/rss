@@ -183,6 +183,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET /password/reset` | no | `resetPasswordHandler` | A reset link: the new-password form, or the expired-link page (410) |
 | `POST /password/reset` | no | `resetPasswordFormHandler` | Set the new password, log out everywhere, log in here; flash, then the timeline |
 | `GET /.well-known/change-password` | no | `changePasswordWellKnownHandler` | 302 to `/settings/password`, for password managers |
+| `GET /saved` | yes | `savedHandler` | Saved: the user's saved articles, newest saved first, paged with `?before=` |
 | `GET /feeds` | yes | `feedsHandler` | My feeds: the user's subscriptions by site |
 | `GET /feeds/{id}` | yes | `feedHandler` | Feed page; queues a refresh if the feed is stale |
 | `POST /feeds/{id}/refresh` | yes | `feedRefreshHandler` | Refresh button: fetches now |
@@ -441,7 +442,7 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`. The `asset` template
   function builds those URLs, so a changed file gets a new URL and can be cached for a
   year.
-- **The nav** (`partials/nav.html`, `app-nav`) has the three section links and an
+- **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an
   account entry: the user's letter avatar (`monogram` of the name on an `avatarTone` tint
   of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
   labelled, at the bottom of the rail; medium screens show the avatar only; phones put

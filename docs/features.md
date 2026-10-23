@@ -532,7 +532,12 @@ article's card image (`image_url`) shows above the text as a lead image unless
 `sanitize.ShowsImage` finds the content already shows it: the content starts with an
 image, the block after its first paragraph is one, or any image in it is the same file
 (ignoring host case, `www.`, the query and WordPress size suffixes). Wide tables scroll
-inside the column.
+inside the column. YouTube and Vimeo player iframes (`/embed/{id}` on a YouTube host,
+`player.vimeo.com/video/{id}`) become a `figure.embed` preview linking to the video,
+with YouTube's thumbnail; clicking it makes `app.js` swap in the player
+(`youtube-nocookie.com` or `player.vimeo.com`, sandboxed, autoplaying). Without
+JavaScript the link opens the video in a new tab. Any other iframe becomes an "Open
+embedded content" link.
 
 **Read state.** An article is read when its page is opened, or when the reader clicks
 through to the original from a row: the link has `ping="/articles/{id}/read"`, which
@@ -554,7 +559,7 @@ nearby. Without JavaScript the link just works.
    `fillRead`.
 4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
 5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
-   `newPolicy`, then `ShowsImage` and `imageKey`.
+   `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
 6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
 7. `internal/ui/static/js/app.js`.
 8. Also: `rss.Article.DisplayTitle` (untitled articles) and `FeedSortAt` in

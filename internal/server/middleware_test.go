@@ -285,7 +285,7 @@ func TestCommonHeadersCSP(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
 
-	want := "default-src 'self'; img-src 'self' https:"
+	want := "default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com"
 	if got := rr.Header().Get("Content-Security-Policy"); got != want {
 		t.Errorf("Content-Security-Policy = %q, want %q", got, want)
 	}

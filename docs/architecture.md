@@ -143,7 +143,8 @@ adding another):
 2. `recoverPanic`: a panic becomes the 500 page.
 3. `http.CrossOriginProtection`: rejects cross-origin non-GET browser requests
    (`Sec-Fetch-Site` / `Origin`) with the 403 page. There are no CSRF tokens.
-4. `commonHeaders`: CSP `default-src 'self'; img-src 'self' https:`, `nosniff`,
+4. `commonHeaders`: CSP `default-src 'self'; img-src 'self' https:; frame-src
+   https://www.youtube-nocookie.com https://player.vimeo.com`, `nosniff`,
    `X-Frame-Options: deny`, `Referrer-Policy`.
 5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
@@ -360,7 +361,10 @@ CLAUDE.md.
 - **Cross-site requests:** `CrossOriginProtection` in the middleware (see HTTP); there
   are no CSRF tokens.
 - **Untrusted HTML:** `sanitize.HTML` (see Reading in features.md). The CSP blocks inline
-  scripts and styles; images may load from any `https:` host.
+  scripts and styles; images may load from any `https:` host. YouTube and Vimeo iframes
+  become click-to-play previews; the players load only from the two `frame-src` hosts
+  (`www.youtube-nocookie.com`, `player.vimeo.com`), sandboxed, with URLs `app.js` builds
+  from the validated video ID. Every other iframe becomes a link.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
   are `SameSite=Lax`, and `Secure` with `-env production`. Each login is a
@@ -432,11 +436,13 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
   of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
   labelled, at the bottom of the rail; medium screens show the avatar only; phones put
   it at the right of the top bar. Log out is a button on the Settings page.
-- **`app.js`** has five enhancements, each hooked onto server-rendered markup: local
+- **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then
   flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` action; on any
-  failure it submits the form normally), infinite scroll (fetch the page behind
+  failure it submits the form normally), video embeds (a delegated `click` listener
+  swaps the link in `figure.embed[data-embed]` for a sandboxed player built from
+  `data-embed-id`; modified clicks follow the link), infinite scroll (fetch the page behind
   `.pager a[rel=next]` and append its `.article-row`s), and a show/hide toggle on every
   `input[type=password]` (set back to `password` before its form submits). `internal/server/scroll_test.go` pins the markup the script relies on.
 

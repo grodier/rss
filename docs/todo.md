@@ -8,9 +8,11 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. #330 Debug mode: inspect article pages and site discovery live.
-2. **Plan** the error-state walkthrough and run the first pass; then repeat it
+2. #337 Show feed status times and list dates in the reader's time zone. Independent
+   of #330: either order.
+3. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-3. Before production or a few thousand feeds, **plan** load and performance testing.
+4. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 

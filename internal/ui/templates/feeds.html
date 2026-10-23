@@ -35,7 +35,7 @@
               {{if .LatestArticleAt.IsZero}}
               <p>No articles yet.</p>
               {{else}}
-              <p>Latest article {{.LatestArticleAt.Format "2 Jan 2006"}}</p>
+              <p>Latest article {{template "local-date" .LatestArticleAt}}</p>
               {{end}}
               {{if not .Feed.GoneAt.IsZero}}
               <p class="fetch-error">This feed no longer exists.</p>

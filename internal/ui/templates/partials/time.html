@@ -1,0 +1,2 @@
+{{define "local-time"}}<time data-local datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
+{{define "local-date"}}<time data-local="date" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}

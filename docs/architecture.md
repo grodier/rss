@@ -493,7 +493,7 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
   site's icon on a white tile (`--avatar-icon-bg`, `.avatar-icon`), else its letter on
   its tint. People's avatars (the nav, Settings) stay circles.
 - **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
-  times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
+  times (`<time data-local>`, from the `local-time` and `local-date` partials; `data-local="date"` shows the date only), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then
   flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` action; on any
   failure it submits the form normally), video embeds (a delegated `click` listener

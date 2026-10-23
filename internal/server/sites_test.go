@@ -228,7 +228,7 @@ func TestSiteHandlerRecheck(t *testing.T) {
 				t.Errorf("last checked shown = %v, want %v: %s", got, tt.wantChecked, body)
 			}
 			if tt.wantChecked {
-				want := "Feeds last checked " + tt.lookup.FinishedAt.Format("2 Jan 2006 15:04 MST")
+				want := "Feeds last checked " + `<time data-local datetime="` + tt.lookup.FinishedAt.UTC().Format("2006-01-02T15:04:05Z07:00") + `">` + tt.lookup.FinishedAt.UTC().Format("2 Jan 2006 15:04 UTC") + "</time>"
 				if !strings.Contains(body, want) {
 					t.Errorf("body does not contain %q: %s", want, body)
 				}

@@ -34,7 +34,7 @@ its text and marks it read.
 ## The process
 
 There is one binary, `www` (`cmd/www`), and one Postgres database. Inside the process
-run four long-lived components, all stopped by one context:
+run five long-lived components, all stopped by one context:
 
 - The **HTTP server** (`internal/server`) handles requests and reads and writes the
   database through the `internal/psql` repositories. Its Refresh button calls
@@ -44,6 +44,9 @@ run four long-lived components, all stopped by one context:
 - The **lookup runner** (`internal/lookup`) claims pending rows from the `lookups` table,
   runs `discovery.Discoverer` to find the site's feeds, and saves them with
   `psql.DiscoveryRepository`.
+- The **import runner** (`internal/importer`) claims pending rows from the `import_feeds`
+  table (one per feed of an uploaded OPML file), finds the feed by URL or discovers and
+  saves it as the lookup runner does, and subscribes the import's user to it.
 - The **mail runner** (`internal/mail`, `mail.Runner`) claims due emails from the
   `emails` table (the outbox, filled by the server's `sendEmail` through `mail.Queue`) and
   sends them with the sender `newMailSender` builds.
@@ -88,10 +91,12 @@ Mailpit (`compose.yml`) and in production against Resend.
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
+| `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
+| `internal/opml` | Read the feeds listed in an OPML file (`Parse`), folders flattened | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
 | `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
@@ -109,9 +114,9 @@ Mailpit (`compose.yml`) and in production against Resend.
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct
 that holds them are in `internal/server/server.go`, with compile-time checks that the
-`psql` repositories satisfy them. `lookup`, `refresh`, `ingest` and `discovery` each
-declare their own small interfaces (`Store`, `Fetcher`, `Saver`, …). That's what lets
-every package be tested with fakes (see Testing).
+`psql` repositories satisfy them. `lookup`, `importer`, `refresh`, `ingest` and
+`discovery` each declare their own small interfaces (`Store`, `Fetcher`, `Saver`, …).
+That's what lets every package be tested with fakes (see Testing).
 
 Third-party modules and what they're for (CLAUDE.md asks for a justification before
 adding another):
@@ -125,7 +130,7 @@ adding another):
 | `go-playground/form` | Decoding POST forms into structs |
 | `mmcdole/gofeed` | Parsing RSS, Atom and JSON Feed (`internal/feedparse`) |
 | `microcosm-cc/bluemonday` | The HTML allowlist in `internal/sanitize` |
-| `golang.org/x/net/html` | Reading HTML pages (`discovery.ParsePage`) and rewriting article HTML |
+| `golang.org/x/net/html` | Reading HTML pages (`discovery.ParsePage`) and rewriting article HTML; its `charset` package decodes OPML files in legacy encodings (`opml.Parse`) |
 | `golang.org/x/crypto/argon2` | Password hashing |
 | `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords before hashing and checking them |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
@@ -300,24 +305,24 @@ Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and
 ## Background work
 
 The runners follow the same pattern: N worker goroutines (`-lookup-workers`,
-`-refresh-workers`, default 2; `-mail-workers`, default 1; 0 turns a runner off) loop
-claiming one job at a time from a Postgres table with `FOR UPDATE SKIP LOCKED`, so several
-instances can run side by side. When nothing is claimable a worker sleeps for a poll
-interval. Each job gets a timeout; its outcome is recorded with a fresh short context, so
-a job that timed out still records its failure. On shutdown, lookups and refreshes record
-nothing and are retried later; the mail runner instead finishes the email it's sending
-(within its timeout) and records the result, since an aborted send can still be delivered.
-With `-mail-workers 0` the process queues emails without sending them (and logs that at
-startup); another instance's runner sends them.
+`-import-workers`, `-refresh-workers`, default 2; `-mail-workers`, default 1; 0 turns a
+runner off) loop claiming one job at a time from a Postgres table with `FOR UPDATE SKIP
+LOCKED`, so several instances can run side by side. When nothing is claimable a worker
+sleeps for a poll interval. Each job gets a timeout; its outcome is recorded with a fresh
+short context, so a job that timed out still records its failure. On shutdown, lookups,
+imports and refreshes record nothing and are retried later; the mail runner instead
+finishes the email it's sending (within its timeout) and records the result, since an
+aborted send can still be delivered. With `-mail-workers 0` the process queues emails
+without sending them (and logs that at startup); another instance's runner sends them.
 
-| | Lookups (`internal/lookup`) | Feed refresh (`internal/refresh`) | Email (`mail.Runner`) |
-| --- | --- | --- | --- |
-| Queue | `lookups` rows with `status = 'pending'` | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `emails` that are pending and due (`next_attempt_at <= now()`) |
-| Claim | `ClaimNext`: set `running` | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
-| Poll when idle | 500 ms | 15 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
-| Job timeout | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
-| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the email is due again |
-| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `ingest.Refresher.Refresh` | `Sender.Send` |
+| | Lookups (`internal/lookup`) | Imports (`internal/importer`) | Feed refresh (`internal/refresh`) | Email (`mail.Runner`) |
+| --- | --- | --- | --- | --- |
+| Queue | `lookups` rows with `status = 'pending'` | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `emails` that are pending and due (`next_attempt_at <= now()`) |
+| Claim | `ClaimNext`: set `running` | `ClaimNext`: set `running` and count the attempt | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
+| Poll when idle | 500 ms | 1 s | 15 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
+| Job timeout | 30 s | 30 s | 30 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
+| Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | `ResetStale` every minute: running for over 2 min → pending, failed (`unreachable`) after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the email is due again |
+| Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `FeedRepository.GetByURL`, else (or if gone) discovery and `DiscoveryRepository.Save`; then `SubscriptionRepository.Subscribe` | `ingest.Refresher.Refresh` | `Sender.Send` |
 
 A failed email is retried after 1, 2, 4, … minutes (`retryDelay`, capped at an hour) and
 marked `failed` after 8 attempts. Delivery is at least once: a crash between sending and

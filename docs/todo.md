@@ -10,19 +10,18 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
 1. #299 Save articles (draft PR with layout options first)
-2. #302 Import subscriptions from OPML: the import queue
-3. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-4. #300 Add a Saved page to the nav (after #299)
-5. #303 Import subscriptions from OPML: upload and results pages (after #302)
-6. #304 Find and store site icons
-7. #301 Search your saved articles (after #300)
-8. #305 Show site icons as avatars (after #304)
-9. #306 Fetch missing article images and titles from their web pages
-10. #307 Show article images and titles fetched from their web pages (after #306)
-11. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+2. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+3. #300 Add a Saved page to the nav (after #299)
+4. #303 Import subscriptions from OPML: upload and results pages
+5. #304 Find and store site icons
+6. #301 Search your saved articles (after #300)
+7. #305 Show site icons as avatars (after #304)
+8. #306 Fetch missing article images and titles from their web pages
+9. #307 Show article images and titles fetched from their web pages (after #306)
+10. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #299 and #302;
+These can run in parallel sessions, one wave after another: #299;
 then #296, #300, #303 and #304; then #301, #305 and #306; then #307 and #308.
 
 Then:

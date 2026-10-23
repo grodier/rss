@@ -595,3 +595,22 @@ func TestDeletingSiteDeletesItsFeeds(t *testing.T) {
 		t.Errorf("GetByID after site delete: got %v, want rss.ErrNoRecord", err)
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryGetByURL(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	f := newTestFeed(t, db)
+
+	got, err := repo.GetByURL(t.Context(), f.Url)
+	if err != nil {
+		t.Fatalf("GetByURL: %v", err)
+	}
+	if got.ID != f.ID || got.Url != f.Url || got.SiteID != f.SiteID || got.Title != f.Title {
+		t.Errorf("GetByURL = %+v; want %+v", got, f)
+	}
+
+	if _, err := repo.GetByURL(t.Context(), f.Url+"?missing"); !errors.Is(err, rss.ErrNoRecord) {
+		t.Errorf("GetByURL missing = %v; want ErrNoRecord", err)
+	}
+}

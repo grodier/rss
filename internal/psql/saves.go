@@ -125,23 +125,28 @@ func (r *SaveRepository) SavedArticleIDs(ctx context.Context, userID string, art
 	return saved, nil
 }
 
-// ListSaved returns up to limit of userID's saved articles, newest saved
-// first (saved_at, then article ID), starting after before (from the start
-// if before is zero; its At is a saved_at). Summary and Content are left
-// empty.
-func (r *SaveRepository) ListSaved(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+// ListSaved returns up to limit of userID's saved articles whose title,
+// page title, excerpt or feed title contains q (ignoring case; every saved
+// article if q is ""), newest saved first (saved_at, then article ID),
+// starting after before (from the start if before is zero; its At is a
+// saved_at). Summary and Content are left empty.
+func (r *SaveRepository) ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+	// A scan of the user's saves, filtered with ILIKE: a user's saves are a
+	// small set (see the Performance watchlist in docs/todo.md).
 	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumns + `, s.saved_at
 		FROM saves s
 		JOIN articles a ON a.id = s.article_id
 		JOIN feeds f ON f.id = a.feed_id
 		WHERE s.user_id = $1
 		  AND ($2::timestamptz IS NULL OR (s.saved_at, s.article_id) < ($2, $3::uuid))
+		  AND ($5 = '' OR a.title ILIKE $6 ESCAPE '\' OR a.page_title ILIKE $6 ESCAPE '\'
+		       OR a.excerpt ILIKE $6 ESCAPE '\' OR f.title ILIKE $6 ESCAPE '\')
 		ORDER BY s.saved_at DESC, s.article_id DESC
 		LIMIT $4`
 
 	at, id := cursorArgs(before)
 
-	rows, err := r.DB.QueryContext(ctx, stmt, userID, at, id, limit)
+	rows, err := r.DB.QueryContext(ctx, stmt, userID, at, id, limit, q, likePattern(q))
 	if err != nil {
 		return nil, err
 	}

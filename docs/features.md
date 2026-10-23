@@ -602,11 +602,21 @@ scroll with JavaScript, "Older saved articles" without). `ListSaved` joins `save
 JavaScript the row stays (its button flips) until the page is reloaded, so an
 accidental unsave can be undone in place. There's no count anywhere.
 
+**Search** (`/saved?q=…`). A GET form above the list (`saved-search`), shown when there
+are saves or a query, so a search with no results can be changed. `savedHandler` trims
+`q` and cuts it to 200 runes (`savedSearchMaxRunes`), passes it to `ListSaved`, and keeps
+it in the pager and "Back to newest" links (`savedURL`) and in each row's `ReturnTo`.
+`ListSaved` matches `q` against the article's title, page title and excerpt and the
+feed's title with `ILIKE` (`likePattern` escapes `\`, `%` and `_`), on the same order
+and paging; an empty `q` matches everything. With a query, "Clear" links back to
+`/saved`, and an empty page says "No saved articles match “…”." (or "No older matches."
+on a later page).
+
 **Read:**
 
 1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`,
    `saveAction`, `withFragment`, then `articleRow` and `fillSaved`; `articleHandler`'s
-   `Saved`; `internal/server/saved.go`: `savedHandler`.
+   `Saved`; `internal/server/saved.go`: `savedHandler`, `savedURL`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
 3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`.
 4. Templates: `partials/save_button.html` (`save-button`, `article-actions`),
@@ -618,7 +628,8 @@ accidental unsave can be undone in place. There's no count anywhere.
 `TestArticleUnsaveHandler`, `TestArticleHandlerSaved`), `saved_test.go`
 (`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`),
 `scroll_test.go` (`TestSaveButtonMarkup`, `TestInfiniteScrollMarkup`),
-`templates_test.go` (`TestAppNav`); `internal/psql/saves_test.go` (`TestListSaved`).
+`templates_test.go` (`TestAppNav`); `internal/psql/saves_test.go` (`TestListSaved`,
+`TestListSavedSearch`).
 
 **Why:** "Reading" in decisions.md.
 

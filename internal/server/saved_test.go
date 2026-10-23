@@ -39,16 +39,16 @@ func getSaved(t *testing.T, s *Server, target string) *httptest.ResponseRecorder
 }
 
 func TestSavedHandler(t *testing.T) {
-	var gotUser string
+	var gotUser, gotQ string
 	var gotBefore rss.ArticleCursor
 	var gotLimit int
 	calls := 0
 	var result []rss.SavedArticle
 	var storeErr error
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{
-		listSavedFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+		listSavedFn: func(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
 			calls++
-			gotUser, gotBefore, gotLimit = userID, before, limit
+			gotUser, gotQ, gotBefore, gotLimit = userID, q, before, limit
 			return result, storeErr
 		},
 	}})
@@ -60,8 +60,8 @@ func TestSavedHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}
-		if gotUser != "user-1" || gotLimit != 31 || !gotBefore.IsZero() {
-			t.Errorf("store called with (%q, %+v, %d)", gotUser, gotBefore, gotLimit)
+		if gotUser != "user-1" || gotQ != "" || gotLimit != 31 || !gotBefore.IsZero() {
+			t.Errorf("store called with (%q, %q, %+v, %d)", gotUser, gotQ, gotBefore, gotLimit)
 		}
 		assertBodyContains(t, body, "<title>Saved</title>", "<h1>Saved</h1>", `href="/feeds/feed-1"`, "Feed One", `href="/saved" aria-current="page"`)
 		i0, i1 := strings.Index(body, "Article 0"), strings.Index(body, "Article 1")
@@ -138,6 +138,75 @@ func TestSavedHandler(t *testing.T) {
 		result, storeErr = nil, nil
 		body := getSaved(t, s, "/saved").Body.String()
 		assertBodyContains(t, body, "Nothing saved yet. Use the bookmark on any article to keep it here.")
+		if strings.Contains(body, `class="saved-search"`) {
+			t.Errorf("search form shown with nothing to search: %s", body)
+		}
+	})
+
+	t.Run("search form shows when there are saves", func(t *testing.T) {
+		result, storeErr = savedItems(2), nil
+		body := getSaved(t, s, "/saved").Body.String()
+		assertBodyContains(t, body,
+			`<form class="saved-search" role="search" method="get" action="/saved">`,
+			`<label for="saved-q" class="visually-hidden">Search saved articles</label>`,
+			`<input type="search" id="saved-q" name="q" value="" placeholder="Search saved articles" />`)
+		if strings.Contains(body, ">Clear</a>") {
+			t.Errorf("Clear shown without a query: %s", body)
+		}
+	})
+
+	t.Run("q is trimmed and passed through", func(t *testing.T) {
+		result, storeErr = savedItems(2), nil
+		body := getSaved(t, s, "/saved?q="+url.QueryEscape("  zebra crossing \t")).Body.String()
+		if gotQ != "zebra crossing" {
+			t.Errorf("store q = %q, want %q", gotQ, "zebra crossing")
+		}
+		assertBodyContains(t, body, `value="zebra crossing"`, `<a href="/saved">Clear</a>`)
+		forms := saveForms(t, body)
+		want := "/saved?q=" + url.QueryEscape("  zebra crossing \t")
+		if got := forms[result[0].Article.ID].ReturnTo; got != want {
+			t.Errorf("ReturnTo = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a 300-rune q is cut to 200", func(t *testing.T) {
+		result, storeErr = savedItems(2), nil
+		getSaved(t, s, "/saved?q="+url.QueryEscape(strings.Repeat("é", 300)))
+		if want := strings.Repeat("é", 200); gotQ != want {
+			t.Errorf("store q has %d runes, want 200", len([]rune(gotQ)))
+		}
+	})
+
+	t.Run("the pager links keep q", func(t *testing.T) {
+		result, storeErr = savedItems(31), nil
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		body := getSaved(t, s, "/saved?q=a%26b&before="+url.QueryEscape(cur)).Body.String()
+		next := encodeCursor(rss.ArticleCursor{At: result[29].SavedAt, ID: result[29].Article.ID})
+		wantNext := url.Values{"q": {"a&b"}, "before": {next}}.Encode()
+		assertBodyContains(t, body,
+			`rel="next" href="/saved?`+strings.ReplaceAll(wantNext, "&", "&amp;")+`"`,
+			`<a href="/saved?q=a%26b">Back to newest</a>`)
+	})
+
+	t.Run("no matches", func(t *testing.T) {
+		result, storeErr = nil, nil
+		body := getSaved(t, s, "/saved?q="+url.QueryEscape(`<b>"x"</b>`)).Body.String()
+		assertBodyContains(t, body,
+			`No saved articles match “&lt;b&gt;&#34;x&#34;&lt;/b&gt;”.`,
+			`<a href="/saved">Clear</a>`,
+			`class="saved-search"`)
+		if strings.Contains(body, "<b>") || strings.Contains(body, "Nothing saved yet") {
+			t.Errorf("wrong or unescaped empty message: %s", body)
+		}
+	})
+
+	t.Run("no older matches", func(t *testing.T) {
+		result, storeErr = nil, nil
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		body := getSaved(t, s, "/saved?q=zebra&before="+url.QueryEscape(cur)).Body.String()
+		if !strings.Contains(body, "No older matches.") || strings.Contains(body, "No older saved articles.") {
+			t.Errorf("wrong empty message: %s", body)
+		}
 	})
 
 	t.Run("empty later page", func(t *testing.T) {
@@ -180,7 +249,7 @@ func TestSavedHandlerSiteIcons(t *testing.T) {
 		items[i].Feed.SiteID = testSiteID
 	}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SiteService: &fakeSiteStore{},
-		SaveService: &fakeSaveStore{listSavedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+		SaveService: &fakeSaveStore{listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
 			return items, nil
 		}}})
 	testSiteIcons(t, s, testSiteID, "F", func(t *testing.T) string {

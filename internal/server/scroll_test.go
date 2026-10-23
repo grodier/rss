@@ -23,7 +23,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 		},
 	}})
 	saved := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{
-		listSavedFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+		listSavedFn: func(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
 			return savedItems(31), nil
 		},
 	}})

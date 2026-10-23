@@ -16,11 +16,25 @@
     <main class="column">
       <header class="page-head">
         <h1>Saved</h1>
-        {{if .Before}}<a href="/saved">Back to newest</a>{{end}}
+        {{if .Before}}<a href="{{.Newest}}">Back to newest</a>{{end}}
       </header>
 
       {{with .Flash}}
       <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{if .Search}}
+      <form class="saved-search" role="search" method="get" action="/saved">
+        <label for="saved-q" class="visually-hidden">Search saved articles</label>
+        <div class="search-row">
+          <div class="search-field">
+            {{template "icon-search"}}
+            <input type="search" id="saved-q" name="q" value="{{.Q}}" placeholder="Search saved articles" />
+          </div>
+          <button class="btn-primary" type="submit">Search</button>
+        </div>
+        {{if .Q}}<a href="/saved">Clear</a>{{end}}
+      </form>
       {{end}}
 
       {{if .Rows}}
@@ -29,8 +43,12 @@
         {{template "article-row" .}}
         {{end}}
       </div>
+      {{else if and .Before .Q}}
+      <p class="empty">No older matches.</p>
       {{else if .Before}}
       <p class="empty">No older saved articles.</p>
+      {{else if .Q}}
+      <p class="empty">No saved articles match “{{.Q}}”.</p>
       {{else}}
       <div class="empty">
         {{template "icon-bookmark"}}
@@ -39,7 +57,7 @@
       {{end}}
 
       {{if .Next}}
-      <nav class="pager"><a class="btn" rel="next" href="/saved?before={{.Next}}">Older saved articles</a></nav>
+      <nav class="pager"><a class="btn" rel="next" href="{{.Next}}">Older saved articles</a></nav>
       {{end}}
     </main>
   </div>

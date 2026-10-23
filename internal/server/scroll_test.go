@@ -184,3 +184,36 @@ func attr(n *html.Node, key string) string {
 func hasClass(n *html.Node, class string) bool {
 	return slices.Contains(strings.Fields(attr(n, "class")), class)
 }
+
+// TestVideoEmbedMarkup checks the markup app.js's video embeds rely on: an
+// article page whose content has a YouTube iframe renders
+// figure.embed[data-embed="youtube"][data-embed-id] with an <a> inside.
+func TestVideoEmbedMarkup(t *testing.T) {
+	s := articleServer(t, rss.Article{
+		Title:   "A video",
+		URL:     "https://example.com/posts/a",
+		Content: `<p>Watch:</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>`,
+	}, nil, nil, nil)
+	rr := serveArticle(t, s, testArticleID)
+	doc, err := html.Parse(strings.NewReader(rr.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	figures := findAll(doc, func(n *html.Node) bool {
+		return n.Data == "figure" && hasClass(n, "embed") && attr(n, "data-embed") == "youtube"
+	})
+	if len(figures) != 1 {
+		t.Fatalf("found %d figure.embed[data-embed=youtube], want 1", len(figures))
+	}
+	if id := attr(figures[0], "data-embed-id"); id != "dQw4w9WgXcQ" {
+		t.Errorf("data-embed-id = %q, want dQw4w9WgXcQ", id)
+	}
+	links := findAll(figures[0], func(n *html.Node) bool { return n.Data == "a" })
+	if len(links) != 1 {
+		t.Fatalf("found %d <a> in the figure, want 1", len(links))
+	}
+	if href := attr(links[0], "href"); href != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+		t.Errorf("href = %q, want https://www.youtube.com/watch?v=dQw4w9WgXcQ", href)
+	}
+}

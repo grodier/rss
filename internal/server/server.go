@@ -155,6 +155,9 @@ type DebugStore interface {
 	SiteDebug(ctx context.Context, siteID string) (rss.SiteDebug, error)
 	// FeedDebug returns the debug counts of each of feedIDs.
 	FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+	// ArticleDebug returns the article's enrich job, copies, and userID's
+	// read and save times.
+	ArticleDebug(ctx context.Context, userID, articleID string) (rss.ArticleDebug, error)
 	// ArticlesByExternalID returns the feed's stored articles with these
 	// external IDs, by external ID.
 	ArticlesByExternalID(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error)

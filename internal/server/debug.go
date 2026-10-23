@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"slices"
 	"strconv"
@@ -629,4 +630,220 @@ func storedDiffFields(stored rss.Article, diffs []string) []debugField {
 		fields = append(fields, debugField{Name: name, Value: v})
 	}
 	return fields
+}
+
+// provenance says where an article's shown values come from.
+type provenance struct {
+	Title      string // "feed", "page" (enrichment's page_title), "excerpt" (start of the shown excerpt) or "none"
+	Excerpt    string // "feed", "page" (page_description) or "none"
+	Image      string // "feed", "page" (page_image_url) or "none"
+	Timeline   string // "backlog" (timeline_at is its published date) or "news" (placed when it arrived)
+	ExternalID string // "hash", "link" (equal to the article's URL; may be a guid equal to it) or "guid"
+}
+
+// articleProvenance says where a's shown values come from. Its rules mirror
+// rss.Article's DisplayTitle, DisplayExcerpt and CardImageURL. A backlog
+// article clamped to its arrival time (published in the future) reads as
+// news, since timeline_at then isn't its published date.
+func articleProvenance(a rss.Article) provenance {
+	var p provenance
+	switch {
+	case a.Title != "":
+		p.Title = "feed"
+	case a.PageTitle != "":
+		p.Title = "page"
+	case a.DisplayExcerpt() != "":
+		p.Title = "excerpt"
+	default:
+		p.Title = "none"
+	}
+	switch {
+	case a.Excerpt != "":
+		p.Excerpt = "feed"
+	case a.PageDescription != "":
+		p.Excerpt = "page"
+	default:
+		p.Excerpt = "none"
+	}
+	switch {
+	case a.ImageURL != "":
+		p.Image = "feed"
+	case a.PageImageURL != "":
+		p.Image = "page"
+	default:
+		p.Image = "none"
+	}
+	p.Timeline = "news"
+	if !a.PublishedAt.IsZero() && a.TimelineAt.Equal(a.PublishedAt) {
+		p.Timeline = "backlog"
+	}
+	switch {
+	case strings.HasPrefix(a.ExternalID, "sha256:"):
+		p.ExternalID = "hash"
+	case a.URL != "" && a.ExternalID == a.URL:
+		p.ExternalID = "link"
+	default:
+		p.ExternalID = "guid"
+	}
+	return p
+}
+
+// noEnrichJobNote explains an article without an enrich_jobs row.
+const noEnrichJobNote = "never queued (complete from its feed, no URL, or not among a first save's 20 newest) or finished"
+
+// articleDebugFields are the rows of an article's debug panel: every column
+// of the article in schema order (summary and content by their length),
+// derived values, its enrich job and this user's read and save.
+func articleDebugFields(a rss.Article, d rss.ArticleDebug, now time.Time) []debugField {
+	prov := articleProvenance(a)
+	fields := []debugField{
+		{Name: "id", Value: a.ID},
+		{Name: "feed_id", Value: a.FeedID},
+		{Name: "external_id", Value: a.ExternalID},
+		{Name: "url", Value: a.URL},
+		{Name: "canonical_url", Value: a.CanonicalURL, Note: "matches copies in other feeds"},
+		{Name: "image_url", Value: a.ImageURL},
+		{Name: "title", Value: a.Title},
+		{Name: "summary", Value: fmt.Sprintf("%d bytes", len(a.Summary)), Note: "raw HTML below"},
+		{Name: "content", Value: fmt.Sprintf("%d bytes", len(a.Content)), Note: "raw HTML below"},
+		{Name: "excerpt", Value: a.Excerpt},
+		{Name: "page_image_url", Value: a.PageImageURL},
+		{Name: "page_title", Value: a.PageTitle},
+		{Name: "page_description", Value: a.PageDescription},
+		{Name: "media_type", Value: a.MediaType},
+		{Name: "published_at", Value: debugTime(a.PublishedAt, now)},
+		{Name: "published_date_only", Value: strconv.FormatBool(a.PublishedDateOnly)},
+		{Name: "timeline_at", Value: debugTime(a.TimelineAt, now)},
+		{Name: "created_at", Value: debugTime(a.CreatedAt, now)},
+		{Name: "updated_at", Value: debugTime(a.UpdatedAt, now)},
+	}
+
+	excerptNote := "from: " + prov.Excerpt
+	if prov.Excerpt == "feed" {
+		if feedparse.HTMLToText(a.Summary) != "" {
+			excerptNote += "; excerpt from: summary"
+		} else {
+			excerptNote += "; excerpt from: content"
+		}
+	}
+	fields = append(fields,
+		debugField{Name: "shown title", Value: a.DisplayTitle(), Note: "from: " + prov.Title},
+		debugField{Name: "shown excerpt", Value: a.DisplayExcerpt(), Note: excerptNote},
+		debugField{Name: "shown image", Value: a.CardImageURL(), Note: "from: " + prov.Image},
+		debugField{Name: "timeline placement", Value: prov.Timeline},
+		debugField{Name: "external_id kind", Value: prov.ExternalID},
+	)
+
+	if j := d.EnrichJob; j.Exists {
+		fields = append(fields,
+			debugField{Name: "enrich priority", Value: strconv.Itoa(j.Priority)},
+			debugField{Name: "enrich attempts", Value: strconv.Itoa(j.Attempts)},
+			debugField{Name: "enrich next_attempt_at", Value: debugTime(j.NextAttemptAt, now)},
+			debugField{Name: "enrich last_error", Value: j.LastError, Note: internalNote},
+			debugField{Name: "enrich created_at", Value: debugTime(j.CreatedAt, now)},
+		)
+	} else {
+		fields = append(fields, debugField{Name: "enrich job", Value: "none", Note: noEnrichJobNote})
+	}
+
+	fields = append(fields,
+		debugField{Name: "read_at", Value: debugTime(d.ReadAt, now), Note: "yours"},
+		debugField{Name: "saved_at", Value: debugTime(d.SavedAt, now), Note: "yours"},
+	)
+	return fields
+}
+
+// articleRawMax is how much of an article's raw summary and content its
+// debug panel shows.
+const articleRawMax = 20000
+
+// articleCopyLine is a copy of an article in its debug panel.
+type articleCopyLine struct {
+	ArticleID string
+	Line      string // FeedTitle · created_at · timeline_at
+}
+
+// articleDebugView is the article page's debug panel.
+type articleDebugView struct {
+	Fields      []debugField
+	Page        []debugField // what the article page did: its body's length and lead image
+	Copies      []articleCopyLine
+	RawSummary  string // cut at articleRawMax
+	RawContent  string // likewise
+	SummarySize string
+	ContentSize string
+	Open        bool // ?debug=1: render the panel open
+}
+
+// newArticleDebugView builds the article page's debug panel; body and
+// leadImage are what the page renders.
+func newArticleDebugView(a rss.Article, d rss.ArticleDebug, body template.HTML, leadImage string, now time.Time) *articleDebugView {
+	lead := leadImage
+	if lead == "" && a.CardImageURL() != "" {
+		lead = "none (the body already shows the card image)"
+	}
+	v := &articleDebugView{
+		Fields: articleDebugFields(a, d, now),
+		Page: []debugField{
+			{Name: "sanitized body", Value: fmt.Sprintf("%d bytes", len(body))},
+			{Name: "lead image", Value: lead},
+		},
+		RawSummary:  cutText(a.Summary, articleRawMax),
+		RawContent:  cutText(a.Content, articleRawMax),
+		SummarySize: debugBytes(len(a.Summary)),
+		ContentSize: debugBytes(len(a.Content)),
+	}
+	for _, c := range d.Copies {
+		v.Copies = append(v.Copies, articleCopyLine{
+			ArticleID: c.ArticleID,
+			Line:      c.FeedTitle + " · " + debugLineTime(c.CreatedAt) + " · " + debugLineTime(c.TimelineAt),
+		})
+	}
+	return v
+}
+
+// articleRowDebug is what an article row's debug line shows.
+type articleRowDebug struct {
+	ShortID     string // the first 8 characters of the article's ID
+	Timeline    string // provenance.Timeline
+	TimelineAt  string
+	PublishedAt string // "" if unknown
+	Title       string // provenance.Title
+	Image       string // provenance.Image
+}
+
+// debugLineTime formats t for a debug line: UTC to the minute.
+func debugLineTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04Z")
+}
+
+// newArticleRowDebug builds a row's debug line from columns lists load.
+func newArticleRowDebug(a rss.Article) *articleRowDebug {
+	prov := articleProvenance(a)
+	d := &articleRowDebug{
+		ShortID:    a.ID[:min(8, len(a.ID))],
+		Timeline:   prov.Timeline,
+		TimelineAt: debugLineTime(a.TimelineAt),
+		Title:      prov.Title,
+		Image:      prov.Image,
+	}
+	switch {
+	case a.PublishedAt.IsZero():
+	case a.PublishedDateOnly:
+		d.PublishedAt = a.PublishedAt.UTC().Format("2006-01-02")
+	default:
+		d.PublishedAt = debugLineTime(a.PublishedAt)
+	}
+	return d
+}
+
+// fillDebug sets Debug on each row when debug mode is on. It makes no
+// queries.
+func (s *Server) fillDebug(r *http.Request, rows []articleRow) {
+	if !s.debugEnabled(r) {
+		return
+	}
+	for i := range rows {
+		rows[i].Debug = newArticleRowDebug(rows[i].Article)
+	}
 }

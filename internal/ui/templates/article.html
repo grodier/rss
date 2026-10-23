@@ -22,6 +22,29 @@
         </p>
         <h1>{{.Article.DisplayTitle}}</h1>
         {{template "article-actions" .}}
+        {{with .Debug}}
+        <details class="debug" id="debug"{{if .Open}} open{{end}}>
+          <summary>Debug: article</summary>
+          {{template "debug-fields" .Fields}}
+          <h3 class="debug-sub">article page</h3>
+          {{template "debug-fields" .Page}}
+          <h3 class="debug-sub">copies</h3>
+          {{with .Copies}}<ul class="debug-copies">{{range .}}<li><a href="/articles/{{.ArticleID}}">{{.Line}}</a></li>{{end}}</ul>{{else}}<p class="debug-note">No copies in other feeds.</p>{{end}}
+          <details class="debug-raw">
+            <summary>Raw summary ({{.SummarySize}})</summary>
+            <pre class="debug-pre">{{.RawSummary}}</pre>
+          </details>
+          <details class="debug-raw">
+            <summary>Raw content ({{.ContentSize}})</summary>
+            <pre class="debug-pre">{{.RawContent}}</pre>
+          </details>
+          <form class="debug-inspect" action="/debug/feeds/{{$.Feed.ID}}/inspect" method="post">
+            <input type="hidden" name="item" value="{{$.Article.ExternalID}}">
+            <button class="btn-sm" type="submit">Source item</button>
+          </form>
+          <p class="debug-note">Fetches the feed now and shows this article's item, if the feed still lists it.</p>
+        </details>
+        {{end}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>

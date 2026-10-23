@@ -81,7 +81,8 @@ const displayTitleLen = 80
 
 // DisplayTitle returns Title; else the title of the article's web page; else
 // the start of DisplayExcerpt (at most 80 runes, cut at a word boundary, with
-// "…" if cut); else "(untitled)".
+// "…" if cut); else "(untitled)". A change here updates
+// server.articleProvenance too.
 func (a Article) DisplayTitle() string {
 	if a.Title != "" {
 		return a.Title
@@ -95,7 +96,8 @@ func (a Article) DisplayTitle() string {
 	return "(untitled)"
 }
 
-// DisplayExcerpt returns Excerpt, else PageDescription.
+// DisplayExcerpt returns Excerpt, else PageDescription. A change here updates
+// server.articleProvenance too.
 func (a Article) DisplayExcerpt() string {
 	if a.Excerpt != "" {
 		return a.Excerpt
@@ -104,7 +106,8 @@ func (a Article) DisplayExcerpt() string {
 }
 
 // CardImageURL returns the feed's image for the article, else the image of
-// its web page; "" if neither.
+// its web page; "" if neither. A change here updates server.articleProvenance
+// too.
 func (a Article) CardImageURL() string {
 	if a.ImageURL != "" {
 		return a.ImageURL
@@ -197,6 +200,33 @@ type FeedDebug struct {
 	NewestCreatedAt  time.Time // zero if the feed has no articles
 	NewestTimelineAt time.Time // likewise
 	EnrichJobs       int       // enrich_jobs rows of the feed's articles
+}
+
+// ArticleDebug is what an article's debug panel shows beyond Article.
+type ArticleDebug struct {
+	EnrichJob EnrichJobState // Exists is false if the article has no enrich_jobs row
+	Copies    []ArticleCopy  // other articles with the same non-empty canonical_url, oldest first, at most 20
+	ReadAt    time.Time      // this user's reads row for this article; zero if none
+	SavedAt   time.Time      // this user's saves row for this article; zero if none
+}
+
+// EnrichJobState is an article's enrich_jobs row.
+type EnrichJobState struct {
+	Exists        bool
+	Priority      int
+	Attempts      int
+	NextAttemptAt time.Time
+	LastError     string
+	CreatedAt     time.Time
+}
+
+// ArticleCopy is a copy of an article in another feed.
+type ArticleCopy struct {
+	ArticleID  string
+	FeedID     string
+	FeedTitle  string // the feed's title, else its URL
+	CreatedAt  time.Time
+	TimelineAt time.Time
 }
 
 // Subscription is a feed a user follows, with its site.

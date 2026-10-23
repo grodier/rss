@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -295,6 +296,14 @@ func unusedDebugStore(t *testing.T) *fakeDebugStore {
 		},
 		feedDebugFn: func(context.Context, []string) (map[string]rss.FeedDebug, error) {
 			t.Error("FeedDebug called with debug mode off")
+			return nil, nil
+		},
+		articleDebugFn: func(context.Context, string, string) (rss.ArticleDebug, error) {
+			t.Error("ArticleDebug called with debug mode off")
+			return rss.ArticleDebug{}, nil
+		},
+		articlesByExternalIDFn: func(context.Context, string, []string) (map[string]rss.Article, error) {
+			t.Error("ArticlesByExternalID called with debug mode off")
 			return nil, nil
 		},
 	}
@@ -864,4 +873,315 @@ type slowFetcher struct {
 func (f *slowFetcher) Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error) {
 	time.Sleep(f.delay)
 	return f.fakeFetcher.Get(ctx, rawURL, header)
+}
+
+func TestArticleProvenance(t *testing.T) {
+	published := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		a    rss.Article
+		want provenance
+	}{
+		{
+			name: "all from the feed, backlog, guid",
+			a: rss.Article{Title: "T", PageTitle: "PT", Excerpt: "E", PageDescription: "PD", ImageURL: "https://example.com/a.png", PageImageURL: "https://example.com/b.png",
+				ExternalID: "tag:example.com,2026:1", URL: "https://example.com/1", PublishedAt: published, TimelineAt: published},
+			want: provenance{Title: "feed", Excerpt: "feed", Image: "feed", Timeline: "backlog", ExternalID: "guid"},
+		},
+		{
+			name: "all from the page, news (undated), link",
+			a: rss.Article{PageTitle: "PT", PageDescription: "PD", PageImageURL: "https://example.com/b.png",
+				ExternalID: "https://example.com/1", URL: "https://example.com/1", TimelineAt: published},
+			want: provenance{Title: "page", Excerpt: "page", Image: "page", Timeline: "news", ExternalID: "link"},
+		},
+		{
+			name: "title from the excerpt, news (dated but placed later), hash",
+			a:    rss.Article{Excerpt: "E", ExternalID: "sha256:abc", PublishedAt: published, TimelineAt: published.Add(time.Hour)},
+			want: provenance{Title: "excerpt", Excerpt: "feed", Image: "none", Timeline: "news", ExternalID: "hash"},
+		},
+		{
+			name: "title from the page description",
+			a:    rss.Article{PageDescription: "PD", ExternalID: "x", TimelineAt: published},
+			want: provenance{Title: "excerpt", Excerpt: "page", Image: "none", Timeline: "news", ExternalID: "guid"},
+		},
+		{
+			name: "nothing",
+			a:    rss.Article{ExternalID: "x", TimelineAt: published},
+			want: provenance{Title: "none", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
+		},
+		{
+			name: "empty URL is not a link",
+			a:    rss.Article{ExternalID: "id-1", TimelineAt: published},
+			want: provenance{Title: "none", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := articleProvenance(tt.a); got != tt.want {
+				t.Errorf("articleProvenance = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticleDebugFields(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+
+	t.Run("summary and content as lengths, excerpt from summary", func(t *testing.T) {
+		a := rss.Article{Summary: "<p>Hello</p>", Content: "<p>Hello, world</p>", Excerpt: "Hello", TimelineAt: now}
+		fields := articleDebugFields(a, rss.ArticleDebug{}, now)
+		if got, _ := fieldValue(fields, "summary"); got != "12 bytes" {
+			t.Errorf("summary = %q, want 12 bytes", got)
+		}
+		if got, _ := fieldValue(fields, "content"); got != "19 bytes" {
+			t.Errorf("content = %q, want 19 bytes", got)
+		}
+		if got := fieldNote(fields, "shown excerpt"); got != "from: feed; excerpt from: summary" {
+			t.Errorf("shown excerpt note = %q", got)
+		}
+	})
+
+	t.Run("excerpt from content", func(t *testing.T) {
+		a := rss.Article{Summary: "<img src=x>", Content: "<p>Hello</p>", Excerpt: "Hello", TimelineAt: now}
+		fields := articleDebugFields(a, rss.ArticleDebug{}, now)
+		if got := fieldNote(fields, "shown excerpt"); got != "from: feed; excerpt from: content" {
+			t.Errorf("shown excerpt note = %q", got)
+		}
+	})
+
+	t.Run("no enrich job", func(t *testing.T) {
+		fields := articleDebugFields(rss.Article{TimelineAt: now}, rss.ArticleDebug{}, now)
+		if got, _ := fieldValue(fields, "enrich job"); got != "none" {
+			t.Errorf("enrich job = %q, want none", got)
+		}
+		if got := fieldNote(fields, "enrich job"); got != noEnrichJobNote {
+			t.Errorf("enrich job note = %q", got)
+		}
+		if _, ok := fieldValue(fields, "enrich attempts"); ok {
+			t.Error("enrich attempts shown without a job")
+		}
+	})
+
+	t.Run("enrich job", func(t *testing.T) {
+		d := rss.ArticleDebug{EnrichJob: rss.EnrichJobState{Exists: true, Priority: 1, Attempts: 2, LastError: "timeout", NextAttemptAt: now, CreatedAt: now}}
+		fields := articleDebugFields(rss.Article{TimelineAt: now}, d, now)
+		if got, _ := fieldValue(fields, "enrich attempts"); got != "2" {
+			t.Errorf("enrich attempts = %q, want 2", got)
+		}
+		if got := fieldNote(fields, "enrich last_error"); got != internalNote {
+			t.Errorf("enrich last_error note = %q", got)
+		}
+		if _, ok := fieldValue(fields, "enrich job"); ok {
+			t.Error(`"enrich job: none" shown with a job`)
+		}
+	})
+}
+
+func fieldNote(fields []debugField, name string) string {
+	for _, f := range fields {
+		if f.Name == name {
+			return f.Note
+		}
+	}
+	return ""
+}
+
+func TestNewArticleRowDebug(t *testing.T) {
+	timeline := time.Date(2026, 3, 2, 9, 5, 30, 0, time.UTC)
+	t.Run("dated", func(t *testing.T) {
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, PageTitle: "PT", ImageURL: "https://example.com/a.png",
+			PublishedAt: time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC), TimelineAt: timeline})
+		want := articleRowDebug{ShortID: "22222222", Timeline: "news", TimelineAt: "2026-03-02 09:05Z", PublishedAt: "2026-03-01 08:00Z", Title: "page", Image: "feed"}
+		if *got != want {
+			t.Errorf("newArticleRowDebug = %+v, want %+v", *got, want)
+		}
+	})
+	t.Run("date only", func(t *testing.T) {
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, PublishedAt: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), PublishedDateOnly: true, TimelineAt: timeline})
+		if got.PublishedAt != "2026-03-01" {
+			t.Errorf("PublishedAt = %q, want 2026-03-01", got.PublishedAt)
+		}
+	})
+	t.Run("undated", func(t *testing.T) {
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, TimelineAt: timeline})
+		if got.PublishedAt != "" {
+			t.Errorf("PublishedAt = %q, want empty", got.PublishedAt)
+		}
+	})
+}
+
+func TestArticleHandlerDebugPanel(t *testing.T) {
+	article := rss.Article{
+		ExternalID: "tag:example.com,2026:<1>",
+		URL:        "https://example.com/1",
+		Title:      "Title",
+		Summary:    "<p>Short</p>",
+		Content:    "<p>Body</p><script>alert(1)</script>",
+		TimelineAt: time.Now(),
+	}
+	serve := func(t *testing.T, cfg Config, debugOn bool, target string, store DebugStore) string {
+		t.Helper()
+		s := articleServer(t, article, nil, nil, nil)
+		s.config.DebugEmails = cfg.DebugEmails
+		s.services.DebugService = store
+		req := withRouteID(httptest.NewRequest(http.MethodGet, target, nil), testArticleID)
+		rr, _, _ := serveDebug(t, s, s.articleHandler, req, &debugSession, debugOn)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		return rr.Body.String()
+	}
+	copies := &fakeDebugStore{articleDebugFn: func(_ context.Context, userID, id string) (rss.ArticleDebug, error) {
+		if userID != debugSession.User.ID || id != testArticleID {
+			t.Errorf("ArticleDebug(%q, %q), want the user and the article", userID, id)
+		}
+		return rss.ArticleDebug{Copies: []rss.ArticleCopy{{ArticleID: "33333333-3333-4333-8333-333333333333", FeedTitle: "Other Feed",
+			CreatedAt: time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC), TimelineAt: time.Date(2026, 1, 2, 3, 5, 0, 0, time.UTC)}}}, nil
+	}}
+
+	t.Run("on", func(t *testing.T) {
+		body := serve(t, debugConfig, true, "/articles/"+testArticleID, copies)
+		assertBodyContains(t, body,
+			`<details class="debug" id="debug">`,
+			"<summary>Debug: article</summary>",
+			"<dt>summary</dt><dd>12 bytes",
+			"<dt>shown title</dt><dd>Title <span class=\"debug-note\">from: feed</span>",
+			"<dt>enrich job</dt><dd>none",
+			`<a href="/articles/33333333-3333-4333-8333-333333333333">Other Feed · 2026-01-02 03:04Z · 2026-01-02 03:05Z</a>`,
+			"&lt;p&gt;Body&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;",
+			`<form class="debug-inspect" action="/debug/feeds/`+testFeedID+`/inspect" method="post">`,
+			`<input type="hidden" name="item" value="tag:example.com,2026:&lt;1&gt;">`,
+			"Source item</button>",
+		)
+		if strings.Contains(body, "<script>alert") {
+			t.Error("raw content is not escaped")
+		}
+	})
+
+	t.Run("debug=1 opens the panel", func(t *testing.T) {
+		body := serve(t, debugConfig, true, "/articles/"+testArticleID+"?debug=1", copies)
+		assertBodyContains(t, body, `<details class="debug" id="debug" open>`)
+	})
+
+	t.Run("no copies", func(t *testing.T) {
+		body := serve(t, debugConfig, true, "/articles/"+testArticleID, &fakeDebugStore{articleDebugFn: func(context.Context, string, string) (rss.ArticleDebug, error) {
+			return rss.ArticleDebug{}, nil
+		}})
+		assertBodyContains(t, body, "No copies in other feeds.")
+	})
+
+	t.Run("off", func(t *testing.T) {
+		body := serve(t, debugConfig, false, "/articles/"+testArticleID+"?debug=1", unusedDebugStore(t))
+		if strings.Contains(body, `class="debug`) {
+			t.Errorf("body has debug markup with debug mode off: %s", body)
+		}
+	})
+
+	t.Run("not allowed", func(t *testing.T) {
+		body := serve(t, Config{}, true, "/articles/"+testArticleID, unusedDebugStore(t))
+		if strings.Contains(body, `class="debug`) {
+			t.Errorf("body has debug markup for a user who isn't allowed: %s", body)
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := articleServer(t, article, nil, nil, nil)
+		s.config.DebugEmails = debugConfig.DebugEmails
+		s.services.DebugService = &fakeDebugStore{articleDebugFn: func(context.Context, string, string) (rss.ArticleDebug, error) {
+			return rss.ArticleDebug{}, context.DeadlineExceeded
+		}}
+		req := withRouteID(httptest.NewRequest(http.MethodGet, "/articles/"+testArticleID, nil), testArticleID)
+		rr, _, _ := serveDebug(t, s, s.articleHandler, req, &debugSession, true)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestNewArticleDebugViewLeadImage(t *testing.T) {
+	now := time.Now()
+	a := rss.Article{ImageURL: "https://example.com/a.png", Summary: strings.Repeat("x", articleRawMax+10)}
+	v := newArticleDebugView(a, rss.ArticleDebug{}, "<p>x</p>", "", now)
+	if got, _ := fieldValue(v.Page, "lead image"); got != "none (the body already shows the card image)" {
+		t.Errorf("lead image = %q", got)
+	}
+	if got, _ := fieldValue(v.Page, "sanitized body"); got != "8 bytes" {
+		t.Errorf("sanitized body = %q, want 8 bytes", got)
+	}
+	if len(v.RawSummary) != articleRawMax {
+		t.Errorf("len(RawSummary) = %d, want %d", len(v.RawSummary), articleRawMax)
+	}
+	v = newArticleDebugView(a, rss.ArticleDebug{}, "", a.ImageURL, now)
+	if got, _ := fieldValue(v.Page, "lead image"); got != a.ImageURL {
+		t.Errorf("lead image = %q, want %q", got, a.ImageURL)
+	}
+	v = newArticleDebugView(rss.Article{}, rss.ArticleDebug{}, "", "", now)
+	if got, _ := fieldValue(v.Page, "lead image"); got != "" {
+		t.Errorf("lead image = %q, want empty", got)
+	}
+}
+
+// TestArticleRowsDebugLine checks the feed, timeline and saved pages: each
+// row has a debug line only in debug mode, and the lines make no queries.
+func TestArticleRowsDebugLine(t *testing.T) {
+	timeline := timelineItems(2)
+	saved := savedItems(2)
+	feedArticles := []rss.Article{timeline[0].Article, timeline[1].Article}
+	pages := []struct {
+		name    string
+		handler func(*Server) http.HandlerFunc
+		target  string
+		server  func(t *testing.T) *Server
+	}{
+		{"feed", func(s *Server) http.HandlerFunc { return s.feedHandler }, "/feeds/" + testFeedID, func(t *testing.T) *Server {
+			return feedServerWithArticles(t, nil, &fakeArticleStore{listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+				return feedArticles, nil
+			}})
+		}},
+		{"timeline", func(s *Server) http.HandlerFunc { return s.homeHandler }, "/", func(t *testing.T) *Server {
+			return newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
+				listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+					return timeline, nil
+				},
+			}})
+		}},
+		{"saved", func(s *Server) http.HandlerFunc { return s.savedHandler }, "/saved", func(t *testing.T) *Server {
+			return newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{
+				listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+					return saved, nil
+				},
+			}})
+		}},
+	}
+	for _, p := range pages {
+		for _, on := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s debug %v", p.name, on), func(t *testing.T) {
+				s := p.server(t)
+				s.config.DebugEmails = debugConfig.DebugEmails
+				store := unusedDebugStore(t)
+				req := httptest.NewRequest(http.MethodGet, p.target, nil)
+				if p.name == "feed" {
+					req = withRouteID(req, testFeedID)
+					// The feed's own panel; not the rows.
+					store.feedDebugFn = func(context.Context, []string) (map[string]rss.FeedDebug, error) { return nil, nil }
+				}
+				s.services.DebugService = store
+				rr, _, _ := serveDebug(t, s, p.handler(s), req, &debugSession, on)
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+				}
+				body := rr.Body.String()
+				got := strings.Count(body, `<p class="debug-line">`)
+				want := 0
+				if on {
+					want = 2
+					id := timeline[0].Article.ID
+					assertBodyContains(t, body, `<p class="debug-line">`+id[:8]+` · news `, `title: feed · image: none · <a href="/articles/`+id+`?debug=1#debug">debug</a></p>`)
+				}
+				if got != want {
+					t.Errorf("%d debug lines, want %d", got, want)
+				}
+			})
+		}
+	}
 }

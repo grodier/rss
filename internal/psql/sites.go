@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 type SiteRepository struct {
@@ -69,6 +70,53 @@ func (r *SiteRepository) get(ctx context.Context, stmt string, arg any) (rss.Sit
 	}
 
 	return s, nil
+}
+
+// GetIcon returns the site's stored icon, or rss.ErrNoRecord.
+func (r *SiteRepository) GetIcon(ctx context.Context, siteID string) (rss.SiteIcon, error) {
+	stmt := `SELECT site_id, source_url, content_type, width, height, data, hash, etag, last_modified, fetched_at
+		FROM site_icons
+		WHERE site_id = $1`
+
+	var icon rss.SiteIcon
+	err := r.DB.QueryRowContext(ctx, stmt, siteID).Scan(&icon.SiteID, &icon.SourceURL, &icon.ContentType,
+		&icon.Width, &icon.Height, &icon.Data, &icon.Hash, &icon.ETag, &icon.LastModified, &icon.FetchedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.SiteIcon{}, rss.ErrNoRecord
+		}
+		return rss.SiteIcon{}, err
+	}
+	return icon, nil
+}
+
+// IconHashes returns the icon hash of each of siteIDs that has an icon.
+func (r *SiteRepository) IconHashes(ctx context.Context, siteIDs []string) (map[string]string, error) {
+	hashes := map[string]string{}
+	if len(siteIDs) == 0 {
+		return hashes, nil
+	}
+
+	stmt := `SELECT site_id, hash FROM site_icons WHERE site_id = ANY($1)`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(siteIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, hash string
+		if err := rows.Scan(&id, &hash); err != nil {
+			return nil, err
+		}
+		hashes[id] = hash
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return hashes, nil
 }
 
 // ClaimIconCheck claims a site whose icon check is due (icon_next_check_at

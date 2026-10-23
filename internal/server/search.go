@@ -30,6 +30,8 @@ type searchData struct {
 	LookupQ string
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
+	// Icons holds the icon URLs of the result sites that have one.
+	Icons map[string]string
 }
 
 // searchHandler searches the database only. GET requests are not covered by
@@ -61,8 +63,9 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		data.Sites = sites
 		data.Searched = true
 
-		var feedIDs []string
+		var feedIDs, siteIDs []string
 		for _, site := range sites {
+			siteIDs = append(siteIDs, site.Site.ID)
 			for _, f := range site.Feeds {
 				feedIDs = append(feedIDs, f.ID)
 			}
@@ -74,6 +77,9 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 				s.serverErrorHTML(w, r, err)
 				return
 			}
+		}
+		if len(siteIDs) > 0 {
+			data.Icons = s.pageIcons(r, siteIDs)
 		}
 	}
 

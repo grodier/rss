@@ -82,6 +82,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Article   rss.Article
 		Feed      rss.Feed
 		Site      rss.Site
+		Icons     map[string]string
 		LeadImage string
 		Body      template.HTML
 		Saved     bool
@@ -91,6 +92,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Article:   article,
 		Feed:      feed,
 		Site:      site,
+		Icons:     s.pageIcons(r, []string{site.ID}),
 		LeadImage: leadImage,
 		Body:      sanitize.HTML(raw, base),
 		Saved:     saved[article.ID],
@@ -187,7 +189,26 @@ type articleRow struct {
 	AlsoIn   []rss.Feed // other subscribed feeds with a copy; timeline only
 	Read     bool       // this user has opened the article
 	Saved    bool       // this user has saved the article (or a copy)
+	Icon     string     // the URL of Feed's site icon, or "" for its letter
 	ReturnTo string     // where the row's Save button sends the user back to
+}
+
+// fillIcons sets Icon on each row whose feed's site has an icon. Icons are
+// decoration: on a store error it logs and leaves the letters.
+func (s *Server) fillIcons(r *http.Request, rows []articleRow) {
+	var siteIDs []string
+	for _, row := range rows {
+		if row.Feed.ID != "" {
+			siteIDs = append(siteIDs, row.Feed.SiteID)
+		}
+	}
+	if len(siteIDs) == 0 {
+		return
+	}
+	icons := s.pageIcons(r, siteIDs)
+	for i := range rows {
+		rows[i].Icon = icons[rows[i].Feed.SiteID]
+	}
 }
 
 // fillRead sets Read on each row userID has read.

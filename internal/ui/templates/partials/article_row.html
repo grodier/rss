@@ -1,6 +1,6 @@
 {{define "article-row"}}
 <article class="article-row{{if .Read}} read{{end}}" id="article-{{.Article.ID}}">
-  {{if .Feed.ID}}{{template "feed-avatar" .Feed}}{{end}}
+  {{if .Feed.ID}}{{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) .Icon)}}{{end}}
   <div class="article-main">
     <p class="article-meta">
       {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}

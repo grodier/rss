@@ -183,6 +183,8 @@ func TestAppNav(t *testing.T) {
 			avatars := findAll(account, func(n *html.Node) bool { return hasClass(n, "avatar") })
 			if len(avatars) != 1 || textContent(avatars[0]) != "A" {
 				t.Errorf("account link has no avatar with the monogram A")
+			} else if !hasClass(avatars[0], "avatar-person") {
+				t.Errorf("the account avatar isn't an avatar-person")
 			}
 			if forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" }); len(forms) != 0 {
 				t.Errorf("found %d forms in the nav, want none", len(forms))
@@ -528,5 +530,40 @@ func TestSignupHints(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAvatarPartial(t *testing.T) {
+	ts, err := parseTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const siteID = "22222222-2222-4222-8222-222222222222"
+	tests := []struct {
+		name string
+		view avatarView
+		want string
+	}{
+		{
+			"icon",
+			avatar(siteID, "Example", "/sites/"+siteID+"/icon?v=abc"),
+			`<span class="avatar avatar-icon" aria-hidden="true"><img src="/sites/` + siteID + `/icon?v=abc" alt="" width="40" height="40" loading="lazy"></span>`,
+		},
+		{
+			"letter",
+			avatar(siteID, "https://www.example.com/feed", ""),
+			fmt.Sprintf(`<span class="avatar tone-%d" aria-hidden="true">E</span>`, avatarTone(siteID)),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := ts["timeline.html"].ExecuteTemplate(&buf, "avatar", tt.view); err != nil {
+				t.Fatal(err)
+			}
+			if got := buf.String(); got != tt.want {
+				t.Errorf("avatar =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
 	}
 }

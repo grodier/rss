@@ -1421,3 +1421,32 @@ func serveFeedAs(t *testing.T, s *Server, userID, id string) *httptest.ResponseR
 	s.sessionManager.LoadAndSave(http.HandlerFunc(s.feedHandler)).ServeHTTP(rr, req)
 	return rr
 }
+
+func TestFeedHandlerSiteIcon(t *testing.T) {
+	s := feedServer(t, nil)
+	testSiteIcons(t, s, testSiteID, "E", func(t *testing.T) string {
+		rr := serveFeed(t, s, testFeedID)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}
+
+func TestFeedsHandlerSiteIcons(t *testing.T) {
+	subs := listing(rss.Subscription{
+		Site: rss.Site{ID: testSiteID, Host: "example.com", Title: "Example Site"},
+		Feed: rss.Feed{ID: testFeedID, SiteID: testSiteID, Title: "Daily", Url: "https://example.com/feed.xml"},
+	})
+	s := newTestServerWith(t, Services{SubscriptionService: subs, SiteService: &fakeSiteStore{}})
+	testSiteIcons(t, s, testSiteID, "D", func(t *testing.T) string {
+		req := httptest.NewRequest(http.MethodGet, "/feeds", nil)
+		req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
+		rr := httptest.NewRecorder()
+		s.sessionManager.LoadAndSave(http.HandlerFunc(s.feedsHandler)).ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

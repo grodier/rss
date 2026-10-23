@@ -17,7 +17,7 @@
     </ul>
   </nav>
   <a class="rail-account" href="/settings"{{if eq .Section "settings"}} aria-current="page"{{end}}>
-    <span class="avatar tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
+    <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
   </a>
 </header>
 {{end}}

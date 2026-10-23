@@ -224,3 +224,17 @@ func TestSearchHandlerSubscribedMarker(t *testing.T) {
 		}
 	})
 }
+
+func TestSearchSiteIcons(t *testing.T) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: testSiteID, Host: "one.example", Title: "One"}}}, nil
+	}}
+	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}, SiteService: &fakeSiteStore{}})
+	testSiteIcons(t, s, testSiteID, "O", func(t *testing.T) string {
+		rr := searchRequest(t, s, "one")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

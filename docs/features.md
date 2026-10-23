@@ -651,18 +651,39 @@ checked, and retried in a day. A check that reached the site schedules the next 
 30 days ±10% (`nextCheck`). Each check logs one `site icon checked` line with the
 outcome (`saved`, `unchanged`, `removed` or `failed`).
 
+**Serving and showing.** `GET /sites/{id}/icon` (`siteIconHandler`, no session) serves
+the stored bytes (`SiteRepository.GetIcon`) with the stored `Content-Type`, an `ETag` of
+the hash (a matching `If-None-Match` is a 304) and a CSP of `default-src 'none';
+sandbox`; it's cached for a year when `?v=` is the current hash, else for an hour. A site
+without an icon is a 404.
+
+Pages build icon URLs with `siteIconURLs`: one `IconHashes` query for the page's
+deduplicated site IDs, giving `/sites/{id}/icon?v={hash}` for each site with an icon.
+Article rows get theirs from `fillIcons` (`articleRow.Icon`); the feed, article, site,
+My feeds and search pages pass an `Icons` map. Templates call the `avatar` partial with
+`(avatar siteID name iconURL)`: an `<img>` of the icon on a white tile, else the letter on
+its tint. Icons are decoration: if `IconHashes` fails, `pageIcons` logs the error and the
+page shows letters.
+
 **Read:**
 
 1. `internal/siteicon/siteicon.go`: `Runner.work`, `check`, `find`, `candidates`,
    `usable`, `nextCheck`; `ico.go`: `icoSize`.
-2. `internal/psql/sites.go`: `ClaimIconCheck`, `SaveIcon`, `RemoveIcon`, `KeepIcon`.
+2. `internal/psql/sites.go`: `ClaimIconCheck`, `SaveIcon`, `RemoveIcon`, `KeepIcon`,
+   `GetIcon`, `IconHashes`.
 3. `internal/discovery/page.go`: `Icon`, `ParsePage`.
 4. `cmd/www/application.go`: the runner and its two `fetch.Client`s.
+5. `internal/server/sites.go`: `siteIconHandler`, `siteIconURLs`, `pageIcons`;
+   `articles.go`: `fillIcons`; `html.go`: `avatar`.
+6. `internal/ui/templates/partials/avatar.html`; `.avatar` and `.avatar-icon` in
+   `main.css`.
 
 **Tests:** `internal/siteicon/siteicon_test.go` (an `httptest` site with generated PNG,
 JPEG, GIF and ICO fixtures), `ico_test.go`; `internal/psql/sites_test.go`
 (`TestSiteRepositoryClaimIconCheck`, `TestSiteRepositoryIcons`); `cmd/www/config_test.go`
-(`TestParseConfigIconWorkers`).
+(`TestParseConfigIconWorkers`); `internal/server/sites_test.go` (`TestSiteIconHandler`),
+the `…SiteIcons` page tests (built on `testSiteIcons` in `testutils_test.go`) and
+`templates_test.go` (`TestAvatarPartial`).
 
 **Why:** "Design" in decisions.md.
 

@@ -153,8 +153,8 @@ adding another):
    `X-Frame-Options: deny`, `Referrer-Policy`.
 5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
-Then routes are split into groups. `/static/*`, `/healthcheck`, `/privacy` and `/terms`
-have no session. All
+Then routes are split into groups. `/static/*`, `/sites/{id}/icon`, `/healthcheck`,
+`/privacy` and `/terms` have no session. All
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
 loads the device's `user_sessions` row with its user and puts both in the request
 context, unless the row is gone or idle for 90 days.
@@ -168,6 +168,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | --- | --- | --- | --- |
 | `GET /healthcheck` | no | `healthcheckHandler` | JSON status, environment and build version, for health checks |
 | `GET /static/*` | no | file server | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
+| `GET /sites/{id}/icon` | no | `siteIconHandler` | A site's stored icon; `?v=<hash>` URLs are cached for a year; 404 when it has none |
 | `GET /privacy` | no | `privacyHandler` | Privacy policy |
 | `GET /terms` | no | `termsHandler` | Terms of use |
 | `GET /` | no | `homeHandler` | Landing page (shows a flash); the timeline when logged in |
@@ -212,7 +213,10 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 parsed together with all of `templates/partials/*.html` into one template per page.
 `renderHTML` executes into a buffer first, so a template error becomes a clean 500
 instead of half a page. Template functions: `asset` (a static file's URL with a content
-hash, from `static.go`), `avatarTone` and `monogram`. Logged-in pages pass a `navData`
+hash, from `static.go`), `avatar` (a site's or feed's `avatarView` for the `avatar`
+partial: its icon URL, else its letter and tint), `avatarTone` and `monogram`. Pages with
+site avatars pass the icon URLs from `siteIconURLs` (rows carry theirs in
+`articleRow.Icon`). Logged-in pages pass a `navData`
 (the current section and the logged-in user, from `s.nav`) as their `Nav` field for the
 `app-nav` partial. Errors are HTML pages via `errorHTML` (`errors.go`); JSON is only for
 `/healthcheck`.
@@ -251,7 +255,7 @@ emails   (the outbox: no foreign keys)
   `content_type` (PNG, JPEG, GIF or ICO), `width` / `height`, the bytes in `data` (at
   most 256 KiB), `hash` (hex SHA-256 of `data`, the `?v=` of icon URLs) and `etag` /
   `last_modified` for conditional GET. No row: the site shows its letter avatar. Written by
-  the site icon runner; nothing serves it yet (#305).
+  the site icon runner, served by `GET /sites/{id}/icon`.
 - **`feeds`**: unique by canonical `url`; `site_id` is the site it was first discovered
   from. Also the refresh queue: `next_fetch_at` (when it's due, and the claim lease),
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
@@ -376,6 +380,10 @@ CLAUDE.md.
   become click-to-play previews; the players load only from the two `frame-src` hosts
   (`www.youtube-nocookie.com`, `player.vimeo.com`), sandboxed, with URLs `app.js` builds
   from the validated video ID. Every other iframe becomes a link.
+- **Site icons:** served from our own domain (`siteIconHandler`), so pages never load
+  them from the site. Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO)
+  are served, with their stored `Content-Type`, `nosniff`, and
+  `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies
   are `SameSite=Lax`, and `Secure` with `-env production`. Each login is a
@@ -444,9 +452,12 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
   year.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an
   account entry: the user's letter avatar (`monogram` of the name on an `avatarTone` tint
-  of the user ID), labelled Settings and linking to `/settings`. Wide screens put it,
-  labelled, at the bottom of the rail; medium screens show the avatar only; phones put
-  it at the right of the top bar. Log out is a button on the Settings page.
+  of the user ID, in a circle: `.avatar-person`), labelled Settings and linking to
+  `/settings`. Wide screens put it, labelled, at the bottom of the rail; medium screens
+  show the avatar only; phones put it at the right of the top bar. Log out is a button on the Settings page.
+- **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the
+  site's icon on a white tile (`--avatar-icon-bg`, `.avatar-icon`), else its letter on
+  its tint. People's avatars (the nav, Settings) stay circles.
 - **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then

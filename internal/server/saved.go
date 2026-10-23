@@ -38,6 +38,7 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	s.fillIcons(r, rows)
 
 	data := struct {
 		Nav    navData

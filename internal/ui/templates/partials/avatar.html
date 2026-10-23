@@ -1,4 +1,5 @@
-{{/* Avatars: a letter on a tint chosen by site, so a site's feeds match.
-     Decorative: the name is always shown next to them. */}}
-{{define "feed-avatar"}}<span class="avatar tone-{{avatarTone .SiteID}}" aria-hidden="true">{{monogram (or .Title .Url)}}</span>{{end}}
-{{define "site-avatar"}}<span class="avatar tone-{{avatarTone .ID}}" aria-hidden="true">{{monogram (or .Title .Host)}}</span>{{end}}
+{{/* The avatar of a site, or of a feed from its site (built by the avatar
+     template function): the site's icon on a white tile, else its letter on
+     a tint chosen by site, so a site's feeds match. Decorative: the name is
+     always shown next to it. */}}
+{{define "avatar"}}{{if .IconURL}}<span class="avatar avatar-icon" aria-hidden="true"><img src="{{.IconURL}}" alt="" width="40" height="40" loading="lazy"></span>{{else}}<span class="avatar tone-{{.Tone}}" aria-hidden="true">{{.Letter}}</span>{{end}}{{end}}

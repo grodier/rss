@@ -173,3 +173,21 @@ func TestSavedHandler(t *testing.T) {
 		assertRedirect(t, rr, "/login")
 	})
 }
+
+func TestSavedHandlerSiteIcons(t *testing.T) {
+	items := savedItems(2)
+	for i := range items {
+		items[i].Feed.SiteID = testSiteID
+	}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SiteService: &fakeSiteStore{},
+		SaveService: &fakeSaveStore{listSavedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+			return items, nil
+		}}})
+	testSiteIcons(t, s, testSiteID, "F", func(t *testing.T) string {
+		rr := getSaved(t, s, "/saved")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

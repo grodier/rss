@@ -111,6 +111,7 @@
     --tone-5-bg: #fbe2e7;
     --tone-6: #22666a;
     --tone-6-bg: #def3f3;
+    --avatar-icon-bg: #fff;
     --radius: 16px;
     --radius-sm: 10px;
     --column: 40rem;
@@ -732,19 +733,35 @@
     text-align: center;
   }
 
-  /* Avatars: a feed's or site's letter, on a tint picked by site (see
-     avatarTone). */
+  /* Avatars: a feed's or site's icon, else its letter on a tint picked by
+     site (see avatarTone), in a rounded square. People are circles. */
   .avatar {
     display: grid;
     place-items: center;
     flex: none;
     inline-size: 2.5rem;
     block-size: 2.5rem;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--text-2);
     font-size: 1rem;
     font-weight: 700;
+  }
+
+  .avatar-person {
+    border-radius: 50%;
+  }
+
+  .avatar-icon {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--avatar-icon-bg);
+  }
+
+  .avatar-icon img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
   }
 
   .tone-1 {
@@ -1430,6 +1447,7 @@
     inline-size: 1.5rem;
     block-size: 1.5rem;
     font-size: 0.6875rem;
+    border-radius: 6px;
   }
 
   .reader-meta a {

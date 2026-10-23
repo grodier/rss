@@ -25,6 +25,8 @@
         {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>
+        {{else if .Article.PageDescription}}
+        <div class="article-body"><p>{{.Article.PageDescription}}</p></div>
         {{else}}
         <p class="empty">This article has no text in its feed.</p>
         {{end}}

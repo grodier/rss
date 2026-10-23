@@ -148,6 +148,19 @@ func TestArticleHandlerNoText(t *testing.T) {
 	}
 }
 
+func TestArticleHandlerPageDescriptionWhenNoText(t *testing.T) {
+	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", PageDescription: "From the <page> & more"}, nil, nil, nil), testArticleID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body, `<div class="article-body"><p>From the &lt;page&gt; &amp; more</p></div>`)
+	if strings.Contains(body, "This article has no text in its feed.") {
+		t.Errorf("body shows the no-text message: %s", body)
+	}
+}
+
 func TestArticleHandlerNoURL(t *testing.T) {
 	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", Content: "<p>x</p>"}, nil, nil, nil), testArticleID)
 
@@ -174,6 +187,7 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 	}{
 		{name: "image only in metadata", article: rss.Article{Title: "T", ImageURL: image, Content: "<p>Text</p>"}, want: true},
 		{name: "content starts with the image", article: rss.Article{Title: "T", ImageURL: image, Content: `<img src="/lead.jpg"><p>Text</p>`}, want: false},
+		{name: "page image when the feed has none", article: rss.Article{Title: "T", PageImageURL: image, Content: "<p>Text</p>"}, want: true},
 		{name: "no image", article: rss.Article{Title: "T", Content: "<p>Text</p>"}, want: false},
 	}
 	for _, tt := range tests {

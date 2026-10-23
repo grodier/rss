@@ -9,11 +9,8 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
-1. #307 Show article images and titles fetched from their web pages
-2. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+1. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
    with placement options first)
-
-#307 and #308 can run in parallel sessions.
 
 Then:
 

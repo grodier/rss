@@ -79,17 +79,37 @@ func (a Article) URLHost() string {
 // displayTitleLen is the most runes of an excerpt DisplayTitle uses.
 const displayTitleLen = 80
 
-// DisplayTitle returns Title; for an untitled article, the start of its
-// excerpt (at most 80 runes, cut at a word boundary, with "…" if cut);
-// else "(untitled)".
+// DisplayTitle returns Title; else the title of the article's web page; else
+// the start of DisplayExcerpt (at most 80 runes, cut at a word boundary, with
+// "…" if cut); else "(untitled)".
 func (a Article) DisplayTitle() string {
 	if a.Title != "" {
 		return a.Title
 	}
-	if a.Excerpt != "" {
-		return Shorten(a.Excerpt, displayTitleLen)
+	if a.PageTitle != "" {
+		return a.PageTitle
+	}
+	if e := a.DisplayExcerpt(); e != "" {
+		return Shorten(e, displayTitleLen)
 	}
 	return "(untitled)"
+}
+
+// DisplayExcerpt returns Excerpt, else PageDescription.
+func (a Article) DisplayExcerpt() string {
+	if a.Excerpt != "" {
+		return a.Excerpt
+	}
+	return a.PageDescription
+}
+
+// CardImageURL returns the feed's image for the article, else the image of
+// its web page; "" if neither.
+func (a Article) CardImageURL() string {
+	if a.ImageURL != "" {
+		return a.ImageURL
+	}
+	return a.PageImageURL
 }
 
 // Shorten returns s unchanged if it has at most n runes. Otherwise it cuts

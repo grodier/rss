@@ -107,6 +107,37 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("page values fill gaps", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		result[0].Article.Title = ""
+		result[0].Article.PageTitle = "Page title"
+		result[0].Article.PageImageURL = "https://example.com/page.jpg"
+		result[0].Article.PageDescription = "Page description"
+		result[1].Article.ImageURL = "https://example.com/feed.jpg"
+		result[1].Article.Excerpt = "Feed excerpt"
+		result[1].Article.PageTitle = "Other title"
+		result[1].Article.PageImageURL = "https://example.com/other.jpg"
+		result[1].Article.PageDescription = "Other description"
+		body := getHome(t, s, "/", true).Body.String()
+		for _, want := range []string{
+			`src="https://example.com/page.jpg"`,
+			">Page title</a>",
+			`<p class="article-excerpt">Page description</p>`,
+			`src="https://example.com/feed.jpg"`,
+			">Article 1</a>",
+			`<p class="article-excerpt">Feed excerpt</p>`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("missing %s in: %s", want, body)
+			}
+		}
+		for _, bad := range []string{"other.jpg", "Other title", "Other description"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("page value %q shown over the feed's: %s", bad, body)
+			}
+		}
+	})
+
 	t.Run("no also in renders nothing", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
 		body := getHome(t, s, "/", true).Body.String()

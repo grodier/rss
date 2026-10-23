@@ -67,8 +67,8 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 
 	// The card image goes above the text unless the text already shows it.
 	var leadImage string
-	if article.ImageURL != "" && !sanitize.ShowsImage(raw, base, article.ImageURL) {
-		leadImage = article.ImageURL
+	if img := article.CardImageURL(); img != "" && !sanitize.ShowsImage(raw, base, img) {
+		leadImage = img
 	}
 
 	saved, err := s.services.SaveService.SavedArticleIDs(r.Context(), userID, []string{article.ID})

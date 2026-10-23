@@ -19,9 +19,9 @@ import (
 const avatarTones = 6
 
 // saveLayout picks where article rows and the article page put the Save
-// button, while the owner chooses (#299): "bar", an action bar under the
-// card with icon and label; "corner", icon-only at the card's top right; or
-// "meta", icon-only at the end of the meta line.
+// button, while the owner chooses (#299): "bar", a right-aligned action bar
+// under the card with icon and label; "corner", icon-only at the card's top
+// right; or "meta", icon-only at the end of the meta line.
 const saveLayout = "bar"
 
 var templateFuncs = template.FuncMap{

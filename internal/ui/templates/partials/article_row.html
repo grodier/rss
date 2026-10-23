@@ -16,8 +16,14 @@
         {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
       </div>
     </div>
-    {{if eq saveLayout "bar"}}{{template "article-actions" .}}{{end}}
+    {{if eq saveLayout "bar"}}
+    <div class="article-foot">
+      {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
+      {{template "article-actions" .}}
+    </div>
+    {{else}}
     {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
+    {{end}}
   </div>
 </article>
 {{end}}

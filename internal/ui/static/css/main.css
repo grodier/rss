@@ -988,10 +988,23 @@
     cursor: progress;
   }
 
-  /* bar: under the card, left-aligned, icon and label. */
-  .actions-bar {
+  /* bar: under the card, right-aligned, icon and label. "Also in" shares
+     its line, on the left. */
+  .article-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     margin-block-start: 0.375rem;
-    margin-inline-start: -0.375rem;
+  }
+
+  .article-foot .article-also-in {
+    flex: 1;
+    min-inline-size: 0;
+    margin-block-start: 0;
+  }
+
+  .article-foot .actions-bar {
+    margin-inline: auto -0.375rem;
   }
 
   .actions-bar .save-button {
@@ -1456,6 +1469,7 @@
 
   .reader .actions-bar {
     margin-block-start: 0.75rem;
+    margin-inline-start: -0.375rem;
   }
 
   .reader h1 {

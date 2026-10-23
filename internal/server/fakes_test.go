@@ -305,6 +305,7 @@ type fakeSaveStore struct {
 	saveFn            func(ctx context.Context, userID, articleID string) error
 	unsaveFn          func(ctx context.Context, userID, articleID string) error
 	savedArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+	listSavedFn       func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
 }
 
 func (f *fakeSaveStore) Save(ctx context.Context, userID, articleID string) error {
@@ -326,4 +327,11 @@ func (f *fakeSaveStore) SavedArticleIDs(ctx context.Context, userID string, arti
 		return map[string]bool{}, nil
 	}
 	return f.savedArticleIDsFn(ctx, userID, articleIDs)
+}
+
+func (f *fakeSaveStore) ListSaved(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+	if f.listSavedFn == nil {
+		return nil, nil
+	}
+	return f.listSavedFn(ctx, userID, before, limit)
 }

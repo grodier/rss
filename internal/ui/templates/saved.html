@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Saved</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Saved</h1>
+        {{if .Before}}<a href="/saved">Back to newest</a>{{end}}
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{if .Rows}}
+      <div class="article-list">
+        {{range .Rows}}
+        {{template "article-row" .}}
+        {{end}}
+      </div>
+      {{else if .Before}}
+      <p class="empty">No older saved articles.</p>
+      {{else}}
+      <div class="empty">
+        {{template "icon-bookmark"}}
+        <p>Nothing saved yet. Use the bookmark on any article to keep it here.</p>
+      </div>
+      {{end}}
+
+      {{if .Next}}
+      <nav class="pager"><a class="btn" rel="next" href="/saved?before={{.Next}}">Older saved articles</a></nav>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

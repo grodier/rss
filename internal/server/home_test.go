@@ -173,9 +173,11 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	t.Run("empty timeline", func(t *testing.T) {
 		result, storeErr = nil, nil
 		body := getHome(t, s, "/", true).Body.String()
-		if !strings.Contains(body, "Your timeline is empty.") {
-			t.Errorf("missing empty message: %s", body)
-		}
+		assertBodyContains(t, body,
+			"Your timeline is empty.",
+			`<a href="/search">Search</a>`,
+			`<a href="/settings/import">import your subscriptions</a>`,
+		)
 	})
 
 	t.Run("empty with a cursor", func(t *testing.T) {

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - import subscriptions</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Import subscriptions</h1>
+      </header>
+
+      {{$focus := .Form.FirstError "file"}}
+      <form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <div class="field">
+          <label for="file">OPML file</label>
+          <input type="file" id="file" name="file" accept=".opml,.xml,text/x-opml,text/xml,application/xml" required
+            aria-describedby="file-hint{{if .Form.FieldErrors.file}} file-error{{end}}"
+            {{with .Form.FieldErrors.file}}aria-invalid="true"{{end}}
+            {{if eq $focus "file"}}autofocus{{end}} />
+          {{with .Form.FieldErrors.file}}<p class="error" id="file-error">{{.}}</p>{{end}}
+          <p class="hint" id="file-hint">An OPML file exported from another reader. Folders aren't kept: every feed goes into your timeline.</p>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Import</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+
+      {{with .Imports}}
+      <section>
+        <div class="list-head">
+          <h2>Recent imports</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          {{range .}}
+          <li>
+            <a class="settings-row" href="/settings/imports/{{.Import.ID}}">
+              <span class="settings-stack">
+                <span class="settings-label">{{.Import.Filename}}</span>
+                <span class="hint"><time datetime="{{.Import.CreatedAt.UTC.Format "2006-01-02"}}">{{.Import.CreatedAt.UTC.Format "2 Jan 2006"}}</time> · {{.Total}} {{if eq .Total 1}}feed{{else}}feeds{{end}}{{if .Pending}} · importing…{{else if .Failed}} · {{.Failed}} couldn't be added{{end}}</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

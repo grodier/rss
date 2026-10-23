@@ -41,8 +41,8 @@ section names; how the code works is in [architecture.md](architecture.md) and
 - **A planned batch lands its schema in one change**, so production is reset once per
   batch rather than once per feature: the account tables (#255), then the reading
   features' tables (#293). A prototype that may be dropped adds its own table instead
-  (`hides`, #308). Before a reset, export your OPML; once import exists (#303), import it
-  afterwards.
+  (`hides`, #308). Before a reset, export your OPML, and import it
+  afterwards (#303).
 
 ## Feed discovery
 

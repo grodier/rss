@@ -58,7 +58,8 @@ func (r *ImportRepository) Create(ctx context.Context, userID, filename string, 
 	return id, nil
 }
 
-// Get returns the import id and its feeds by position, or rss.ErrNoRecord.
+// Get returns the import id and its feeds by position, with their feeds'
+// titles, or rss.ErrNoRecord.
 func (r *ImportRepository) Get(ctx context.Context, id string) (rss.Import, []rss.ImportFeed, error) {
 	var imp rss.Import
 	err := r.DB.QueryRowContext(ctx, `SELECT id, user_id, filename, created_at FROM imports WHERE id = $1`, id).
@@ -70,9 +71,10 @@ func (r *ImportRepository) Get(ctx context.Context, id string) (rss.Import, []rs
 		return rss.Import{}, nil, err
 	}
 
-	stmt := `SELECT ` + importFeedColumns + `
+	stmt := `SELECT ` + importFeedColumns + `, COALESCE(fd.title, '')
 		FROM import_feeds f
 		JOIN imports i ON i.id = f.import_id
+		LEFT JOIN feeds fd ON fd.id = f.feed_id
 		WHERE f.import_id = $1
 		ORDER BY f.position`
 	rows, err := r.DB.QueryContext(ctx, stmt, id)
@@ -83,16 +85,54 @@ func (r *ImportRepository) Get(ctx context.Context, id string) (rss.Import, []rs
 
 	feeds := []rss.ImportFeed{}
 	for rows.Next() {
-		f, err := scanImportFeed(rows)
+		var feedTitle string
+		f, err := scanImportFeed(rows, &feedTitle)
 		if err != nil {
 			return rss.Import{}, nil, err
 		}
+		f.FeedTitle = feedTitle
 		feeds = append(feeds, f)
 	}
 	if err := rows.Err(); err != nil {
 		return rss.Import{}, nil, err
 	}
 	return imp, feeds, nil
+}
+
+// ListByUser returns userID's newest limit imports, newest first, with their
+// feeds counted by status.
+func (r *ImportRepository) ListByUser(ctx context.Context, userID string, limit int) ([]rss.ImportSummary, error) {
+	stmt := `SELECT i.id, i.user_id, i.filename, i.created_at,
+			count(f.position),
+			count(f.position) FILTER (WHERE f.status IN ('pending', 'running')),
+			count(f.position) FILTER (WHERE f.status = 'failed')
+		FROM (
+			SELECT * FROM imports WHERE user_id = $1
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2
+		) i
+		LEFT JOIN import_feeds f ON f.import_id = i.id
+		GROUP BY i.id, i.user_id, i.filename, i.created_at
+		ORDER BY i.created_at DESC, i.id DESC`
+	rows, err := r.DB.QueryContext(ctx, stmt, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	imports := []rss.ImportSummary{}
+	for rows.Next() {
+		var s rss.ImportSummary
+		err := rows.Scan(&s.Import.ID, &s.Import.UserID, &s.Import.Filename, &s.Import.CreatedAt, &s.Total, &s.Pending, &s.Failed)
+		if err != nil {
+			return nil, err
+		}
+		imports = append(imports, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return imports, nil
 }
 
 // ClaimNext marks the next pending feed running and returns it with its
@@ -149,11 +189,13 @@ func (r *ImportRepository) ResetStale(ctx context.Context, olderThan time.Durati
 	return res.RowsAffected()
 }
 
-// scanImportFeed scans a row selected with importFeedColumns.
-func scanImportFeed(row interface{ Scan(...any) error }) (rss.ImportFeed, error) {
+// scanImportFeed scans a row selected with importFeedColumns, then any
+// columns after them into extra.
+func scanImportFeed(row interface{ Scan(...any) error }, extra ...any) (rss.ImportFeed, error) {
 	var f rss.ImportFeed
 	var feedID sql.NullString
-	err := row.Scan(&f.ImportID, &f.UserID, &f.Position, &f.URL, &f.Title, &f.Status, &f.Failure, &feedID, &f.Error, &f.Attempts)
+	dest := append([]any{&f.ImportID, &f.UserID, &f.Position, &f.URL, &f.Title, &f.Status, &f.Failure, &feedID, &f.Error, &f.Attempts}, extra...)
+	err := row.Scan(dest...)
 	if err != nil {
 		return rss.ImportFeed{}, err
 	}

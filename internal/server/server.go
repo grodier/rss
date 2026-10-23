@@ -129,6 +129,14 @@ type SaveStore interface {
 	SavedArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 }
 
+// ImportStore stores OPML imports and reads their results.
+type ImportStore interface {
+	Create(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error)
+	Get(ctx context.Context, id string) (rss.Import, []rss.ImportFeed, error)
+	// ListByUser returns the user's newest limit imports, newest first.
+	ListByUser(ctx context.Context, userID string, limit int) ([]rss.ImportSummary, error)
+}
+
 // EmailQueue queues emails for the mail runner to send; satisfied by
 // *mail.Queue.
 type EmailQueue interface {
@@ -148,6 +156,7 @@ var (
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
 	_ ReadStore         = (*psql.ReadRepository)(nil)
 	_ SaveStore         = (*psql.SaveRepository)(nil)
+	_ ImportStore       = (*psql.ImportRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
 )
 
@@ -164,6 +173,7 @@ type Services struct {
 	SubscriptionService SubscriptionStore
 	ReadService         ReadStore
 	SaveService         SaveStore
+	ImportService       ImportStore
 	EmailQueue          EmailQueue
 }
 
@@ -184,6 +194,9 @@ type Server struct {
 
 	// lookupLimiter caps distinct lookups per user (keyed by user ID).
 	lookupLimiter *rateLimiter
+
+	// importLimiter caps OPML imports per user (keyed by user ID).
+	importLimiter *rateLimiter
 
 	// refreshLimiter caps feed refreshes per user (keyed by user ID).
 	refreshLimiter *rateLimiter
@@ -246,6 +259,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		sessionManager:        sessionManager,
 		lookupWait:            3 * time.Second,
 		lookupLimiter:         newRateLimiter(10, 10*time.Minute),
+		importLimiter:         newRateLimiter(5, time.Hour),
 		refreshLimiter:        newRateLimiter(10, 10*time.Minute),
 		loginLimiter:          newRateLimiter(20, 10*time.Minute),
 		loginFailureLimiter:   newRateLimiter(10, 15*time.Minute),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/psql"
@@ -154,6 +155,14 @@ type DebugStore interface {
 	SiteDebug(ctx context.Context, siteID string) (rss.SiteDebug, error)
 	// FeedDebug returns the debug counts of each of feedIDs.
 	FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+	// ArticlesByExternalID returns the feed's stored articles with these
+	// external IDs, by external ID.
+	ArticlesByExternalID(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error)
+}
+
+// URLFetcher fetches user-influenced URLs; satisfied by *fetch.Client.
+type URLFetcher interface {
+	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
 // EmailQueue queues emails for the mail runner to send; satisfied by
@@ -178,6 +187,7 @@ var (
 	_ ImportStore       = (*psql.ImportRepository)(nil)
 	_ DebugStore        = (*psql.DebugRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
+	_ URLFetcher        = (*fetch.Client)(nil)
 )
 
 type Services struct {
@@ -196,6 +206,7 @@ type Services struct {
 	ImportService       ImportStore
 	DebugService        DebugStore
 	EmailQueue          EmailQueue
+	Fetcher             URLFetcher
 }
 
 type Server struct {

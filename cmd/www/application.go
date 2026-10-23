@@ -138,6 +138,7 @@ func (app *Application) Run() error {
 		DebugService:        psql.NewDebugRepository(db),
 		Refresher:           refresher,
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},
+		Fetcher:             fetcher,
 	}
 
 	srvConfig := server.Config{

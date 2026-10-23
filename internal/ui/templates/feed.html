@@ -68,7 +68,13 @@
         {{end}}
       </section>
 
-      {{with .Debug}}{{template "debug-panel" (debugPanel "feed" .)}}{{end}}
+      {{with .Debug}}
+      {{template "debug-panel" (debugPanel "feed" .)}}
+      <form class="debug-inspect" action="/debug/feeds/{{$.Feed.ID}}/inspect" method="post">
+        <label><input type="checkbox" name="conditional" value="1"> Send the stored ETag and Last-Modified</label>
+        <button class="btn-sm" type="submit">Fetch and inspect</button>
+      </form>
+      {{end}}
 
       <div class="list-head">
         <h2>Articles</h2>

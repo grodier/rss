@@ -33,7 +33,7 @@ func excerpt(summary, content string) string {
 }
 
 // Articles converts parsed items to articles, in document order: each gets
-// an ExternalID (see externalID), items with a duplicate ExternalID after
+// an ExternalID (see ExternalID), items with a duplicate ExternalID after
 // the first are dropped, and at most MaxArticles are returned. FeedID, ID
 // and the timestamps are left for the caller and the database.
 func Articles(items []feedparse.Item) []rss.Article {
@@ -43,7 +43,7 @@ func Articles(items []feedparse.Item) []rss.Article {
 		if len(articles) == MaxArticles {
 			break
 		}
-		id := externalID(it)
+		id := ExternalID(it)
 		if id == "" || seen[id] {
 			continue
 		}
@@ -66,10 +66,10 @@ func Articles(items []feedparse.Item) []rss.Article {
 	return articles
 }
 
-// externalID returns an item's identity within its feed: its ID, else its
+// ExternalID returns an item's identity within its feed: its ID, else its
 // URL, else "sha256:" and the hex SHA-256 of its title, summary and content
 // joined with "\x00". It returns "" for an item with none of these.
-func externalID(it feedparse.Item) string {
+func ExternalID(it feedparse.Item) string {
 	switch {
 	case it.ID != "":
 		return it.ID

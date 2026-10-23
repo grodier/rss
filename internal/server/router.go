@@ -90,6 +90,11 @@ func (s *Server) router() http.Handler {
 			r.Get("/settings/delete", s.settingsDeleteHandler)
 			r.Post("/settings/delete", s.settingsDeleteFormHandler)
 			r.Post("/confirm-email/resend", s.confirmResendHandler)
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireDebug)
+				r.Post("/debug/feeds/{id}/inspect", s.feedInspectHandler)
+			})
 		})
 
 		r.Group(func(r chi.Router) {

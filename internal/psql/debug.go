@@ -100,3 +100,35 @@ func (r *DebugRepository) FeedDebug(ctx context.Context, feedIDs []string) (map[
 
 	return out, nil
 }
+
+// ArticlesByExternalID returns the feed's stored articles with these
+// external IDs, by external ID. IDs with no article are absent from the map.
+func (r *DebugRepository) ArticlesByExternalID(ctx context.Context, feedID string, externalIDs []string) (map[string]rss.Article, error) {
+	out := map[string]rss.Article{}
+	if len(externalIDs) == 0 {
+		return out, nil
+	}
+
+	stmt := `SELECT ` + articleColumns + `
+		FROM articles
+		WHERE feed_id = $1 AND external_id = ANY($2)`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, feedID, pq.Array(externalIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		a, err := scanArticle(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[a.ExternalID] = a
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+  <title>A Channel</title>
+  <link rel="alternate" href="https://www.youtube.com/channel/UC123"/>
+  <yt:channelId>UC123</yt:channelId>
+  <entry>
+    <id>yt:video:abc</id>
+    <yt:videoId>abc</yt:videoId>
+    <title>A video</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=abc"/>
+    <published>2026-10-01T10:00:00+00:00</published>
+    <media:group>
+      <media:title>A video</media:title>
+      <media:content url="https://www.youtube.com/v/abc?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+      <media:thumbnail url="https://i.ytimg.com/vi/abc/hqdefault.jpg" width="480" height="360"/>
+      <media:description>About the video.</media:description>
+    </media:group>
+  </entry>
+</feed>

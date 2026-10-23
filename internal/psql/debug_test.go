@@ -128,3 +128,44 @@ func TestDebugRepositoryFeedDebug(t *testing.T) {
 		}
 	})
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDebugRepositoryArticlesByExternalID(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDebugRepository(db)
+	feeds := NewFeedRepository(db)
+
+	feed := newTestFeed(t, db)
+	other := newTestFeed(t, db)
+	if _, err := feeds.SaveFetch(t.Context(), feed, []rss.Article{
+		{ExternalID: "a", URL: "https://example.com/a", Title: "A", Summary: "<p>sa</p>"},
+		{ExternalID: "b", Title: "B"},
+	}); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	if _, err := feeds.SaveFetch(t.Context(), other, []rss.Article{{ExternalID: "c", Title: "Other C"}, {ExternalID: "a", Title: "Other A"}}); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+
+	got, err := repo.ArticlesByExternalID(t.Context(), feed.ID, []string{"a", "c", "missing"})
+	if err != nil {
+		t.Fatalf("ArticlesByExternalID: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %v; want only a", got)
+	}
+	a := got["a"]
+	if a.FeedID != feed.ID || a.Title != "A" || a.URL != "https://example.com/a" || a.Summary != "<p>sa</p>" || a.ID == "" {
+		t.Errorf("got %+v; want the feed's article a with its columns", a)
+	}
+
+	t.Run("empty slice", func(t *testing.T) {
+		got, err := repo.ArticlesByExternalID(t.Context(), feed.ID, nil)
+		if err != nil {
+			t.Fatalf("ArticlesByExternalID: %v", err)
+		}
+		if got == nil || len(got) != 0 {
+			t.Errorf("got %v; want an empty map", got)
+		}
+	})
+}

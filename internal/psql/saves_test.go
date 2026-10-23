@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -176,6 +177,120 @@ func TestSaveRepository(t *testing.T) {
 		}
 		if got == nil || len(got) != 0 {
 			t.Errorf("SavedArticleIDs = %#v, want empty map", got)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListSaved(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSaveRepository(db)
+	ctx := t.Context()
+
+	// One feed's articles, with a summary and content that ListSaved must
+	// leave out.
+	feed := newTestFeed(t, db)
+	items := make([]rss.Article, 4)
+	for i := range items {
+		items[i] = rss.Article{ExternalID: string(rune('a' + i)), Title: "Article", Summary: "<p>summary</p>", Content: "<p>content</p>"}
+	}
+	if _, err := NewFeedRepository(db).SaveFetch(ctx, feed, items); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	articles, err := NewArticleRepository(db).ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, len(items))
+	if err != nil {
+		t.Fatalf("ListByFeed: %v", err)
+	}
+	if len(articles) != len(items) {
+		t.Fatalf("saved %d articles, want %d", len(articles), len(items))
+	}
+
+	// saveAt saves articleID for userID at savedAt.
+	saveAt := func(t *testing.T, userID, articleID string, savedAt time.Time) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, userID, articleID, savedAt); err != nil {
+			t.Fatalf("insert save: %v", err)
+		}
+	}
+
+	user := newTestUser(t, db)
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	// Two saves share the newest saved_at, so the article ID breaks the tie.
+	saveAt(t, user, articles[0].ID, base)
+	saveAt(t, user, articles[1].ID, base.Add(2*time.Hour))
+	saveAt(t, user, articles[2].ID, base.Add(2*time.Hour))
+	saveAt(t, user, articles[3].ID, base.Add(time.Hour))
+
+	// Another user's save isn't listed.
+	other := newTestUser(t, db)
+	saveAt(t, other, articles[0].ID, base.Add(3*time.Hour))
+
+	hi, lo := articles[1].ID, articles[2].ID
+	if hi < lo {
+		hi, lo = lo, hi
+	}
+	want := []string{hi, lo, articles[3].ID, articles[0].ID}
+
+	all, err := repo.ListSaved(ctx, user, rss.ArticleCursor{}, 100)
+	if err != nil {
+		t.Fatalf("ListSaved: %v", err)
+	}
+
+	t.Run("newest saved first, only this user's", func(t *testing.T) {
+		var got []string
+		for _, item := range all {
+			got = append(got, item.Article.ID)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("ListSaved IDs = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("each item has its feed and saved_at, without summary or content", func(t *testing.T) {
+		for _, item := range all {
+			if item.Feed.ID != feed.ID || item.Feed.Title != feed.Title {
+				t.Errorf("article %s: feed = %q (%s), want %q (%s)", item.Article.ID, item.Feed.Title, item.Feed.ID, feed.Title, feed.ID)
+			}
+			if item.Article.Summary != "" || item.Article.Content != "" {
+				t.Errorf("article %s: Summary = %q, Content = %q, want both empty", item.Article.ID, item.Article.Summary, item.Article.Content)
+			}
+			if item.Article.Title != "Article" {
+				t.Errorf("article %s: Title = %q, want %q", item.Article.ID, item.Article.Title, "Article")
+			}
+		}
+		if len(all) > 0 && !all[0].SavedAt.Equal(base.Add(2*time.Hour)) {
+			t.Errorf("first SavedAt = %v, want %v", all[0].SavedAt, base.Add(2*time.Hour))
+		}
+	})
+
+	t.Run("paging has no overlap or gap", func(t *testing.T) {
+		// Pages of one walk every boundary, including between the two
+		// saves with the same saved_at.
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range len(want) + 1 {
+			page, err := repo.ListSaved(ctx, user, cursor, 1)
+			if err != nil {
+				t.Fatalf("ListSaved: %v", err)
+			}
+			if len(page) == 0 {
+				break
+			}
+			got = append(got, page[0].Article.ID)
+			cursor = rss.ArticleCursor{At: page[0].SavedAt, ID: page[0].Article.ID}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("paged IDs = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("no saves", func(t *testing.T) {
+		got, err := repo.ListSaved(ctx, newTestUser(t, db), rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListSaved: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("ListSaved = %v, want none", got)
 		}
 	})
 }

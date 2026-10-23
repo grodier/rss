@@ -127,7 +127,8 @@ func TestNoSignupLinks(t *testing.T) {
 	}
 }
 
-// TestAppNav checks the nav partial: the link to /feeds says My feeds, the
+// TestAppNav checks the nav partial: there are links to /, /saved, /feeds
+// and /search in that order, the link to /feeds says My feeds, the
 // account link goes to /settings with the user's monogram, there's no logout
 // form, and only the current section's link is marked aria-current.
 func TestAppNav(t *testing.T) {
@@ -141,6 +142,7 @@ func TestAppNav(t *testing.T) {
 		current string // href of the link marked current; "" for none
 	}{
 		{"home", "/"},
+		{"saved", "/saved"},
 		{"feeds", "/feeds"},
 		{"search", "/search"},
 		{"settings", "/settings"},
@@ -157,8 +159,15 @@ func TestAppNav(t *testing.T) {
 				t.Fatal(err)
 			}
 			links := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && n.Parent != nil && n.Parent.Data == "li" })
-			if len(links) != 3 {
-				t.Fatalf("found %d nav links, want 3", len(links))
+			if len(links) != 4 {
+				t.Fatalf("found %d nav links, want 4", len(links))
+			}
+			var hrefs []string
+			for _, a := range links {
+				hrefs = append(hrefs, attr(a, "href"))
+			}
+			if want := []string{"/", "/saved", "/feeds", "/search"}; !slices.Equal(hrefs, want) {
+				t.Errorf("nav links = %q, want %q", hrefs, want)
 			}
 			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })
 			if len(accounts) != 1 {
@@ -182,9 +191,9 @@ func TestAppNav(t *testing.T) {
 			var current []string
 			for _, a := range append(links, account) {
 				href := attr(a, "href")
-				if href == "/feeds" {
-					if got := strings.TrimSpace(textContent(a)); got != "My feeds" {
-						t.Errorf("the nav link to /feeds says %q, want My feeds", got)
+				if want, ok := map[string]string{"/feeds": "My feeds", "/saved": "Saved"}[href]; ok {
+					if got := strings.TrimSpace(textContent(a)); got != want {
+						t.Errorf("the nav link to %s says %q, want %s", href, got, want)
 					}
 				}
 				if attr(a, "aria-current") == "page" {

@@ -124,3 +124,51 @@ func (r *SaveRepository) SavedArticleIDs(ctx context.Context, userID string, art
 
 	return saved, nil
 }
+
+// ListSaved returns up to limit of userID's saved articles, newest saved
+// first (saved_at, then article ID), starting after before (from the start
+// if before is zero; its At is a saved_at). Summary and Content are left
+// empty.
+func (r *SaveRepository) ListSaved(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumns + `, s.saved_at
+		FROM saves s
+		JOIN articles a ON a.id = s.article_id
+		JOIN feeds f ON f.id = a.feed_id
+		WHERE s.user_id = $1
+		  AND ($2::timestamptz IS NULL OR (s.saved_at, s.article_id) < ($2, $3::uuid))
+		ORDER BY s.saved_at DESC, s.article_id DESC
+		LIMIT $4`
+
+	at, id := cursorArgs(before)
+
+	rows, err := r.DB.QueryContext(ctx, stmt, userID, at, id, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []rss.SavedArticle{}
+	for rows.Next() {
+		var item rss.SavedArticle
+		// Nest scanArticle and scanFeed as ListTimeline does, with saved_at
+		// after the feed's columns.
+		article, err := scanArticle(scanFunc(func(articleDests ...any) error {
+			var feedErr error
+			item.Feed, feedErr = scanFeed(scanFunc(func(feedDests ...any) error {
+				dests := append(articleDests, feedDests...)
+				return rows.Scan(append(dests, &item.SavedAt)...)
+			}))
+			return feedErr
+		}))
+		if err != nil {
+			return nil, err
+		}
+		item.Article = article
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}

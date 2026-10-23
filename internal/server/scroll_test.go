@@ -22,6 +22,11 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 			return timelineItems(31), nil
 		},
 	}})
+	saved := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{
+		listSavedFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
+			return savedItems(31), nil
+		},
+	}})
 	feed := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 			return feedArticles(31), nil
@@ -34,6 +39,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 		nextPath string
 	}{
 		{"timeline", getHome(t, timeline, "/", true).Body.String(), "/"},
+		{"saved", getSaved(t, saved, "/saved").Body.String(), "/saved"},
 		{"feed page", serveFeed(t, feed, testFeedID).Body.String(), "/feeds/" + testFeedID},
 	}
 	for _, tt := range tests {

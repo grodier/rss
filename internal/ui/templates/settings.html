@@ -77,6 +77,15 @@
         </div>
         <ul class="settings-list" role="list">
           <li>
+            <a class="settings-row" href="/settings/import" aria-describedby="import-hint">
+              <span class="settings-stack">
+                <span class="settings-label">Import subscriptions</span>
+                <span class="hint" id="import-hint">Bring your feeds from another reader with an OPML file.</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          <li>
             <a class="settings-row" href="/settings/subscriptions.opml" download aria-describedby="export-hint">
               <span class="settings-stack">
                 <span class="settings-label">Export subscriptions</span>

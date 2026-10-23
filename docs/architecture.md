@@ -92,7 +92,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `psql` (interface checks only) |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors), `opml` (import uploads), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
@@ -196,6 +196,8 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /settings/email` | yes | `settingsEmailHandler`, `settingsEmailFormHandler` | Change your email (with your password); emails a link to the new address |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
+| `GET, POST /settings/import` | yes | `settingsImportHandler`, `settingsImportFormHandler` | Upload an OPML file to import (multipart), and your last 5 imports; 303 to the import's results |
+| `GET /settings/imports/{id}` | yes | `importHandler` | An import's progress (refreshes itself every 2 s), then its results; 404 for another user's |
 | `GET, POST /settings/delete` | yes | `settingsDeleteHandler`, `settingsDeleteFormHandler` | Delete your account (with your password); emails a notice, logs out, flash on `/` |
 | `POST /confirm-email/resend` | yes | `confirmResendHandler` | Email a new confirmation link; back to `return_to` (else `/settings`) |
 
@@ -270,7 +272,7 @@ emails   (the outbox: no foreign keys)
   `title`. `import_feeds` is also the import queue: `status` pending → running →
   subscribed, already_subscribed or failed, with `failure` (`invalid_url`,
   `unreachable`, `not_feed`) and `error` (internal, never shown); `feed_id` is the feed
-  subscribed to, once known. Nothing uses them yet (#302, #303).
+  subscribed to, once known.
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
 - **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
@@ -386,6 +388,7 @@ CLAUDE.md.
   with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in
   its URL.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
+- **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form. A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
 
   | Limiter | Key | Limit |
@@ -395,6 +398,7 @@ CLAUDE.md.
   | `signupLimiter` | client IP (IPv6 by /64) | 10 per hour |
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
+  | `importLimiter` | user | 5 OPML imports per hour |
   | `passwordChangeLimiter` | user | 10 per 10 min |
   | `confirmResendLimiter` | user | 3 confirmation emails (Resend) per hour |
   | `resetIPLimiter` | client IP (IPv6 by /64) | 10 password reset requests per hour |

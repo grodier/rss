@@ -208,6 +208,17 @@ type ImportFeed struct {
 	FeedID   string // "" until known
 	Error    string // internal detail; never shown to users
 	Attempts int
+	// FeedTitle is the title of the feed FeedID names, "" if none; set by
+	// ImportRepository.Get.
+	FeedTitle string
+}
+
+// ImportSummary is an import with its feeds counted by status, for lists.
+type ImportSummary struct {
+	Import  Import
+	Total   int
+	Pending int // pending or running
+	Failed  int
 }
 
 // ArticleCursor is a position in a sorted list of articles: the sort time

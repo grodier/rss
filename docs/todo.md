@@ -11,16 +11,15 @@ Reading features, planned in #309 (issues #293–#308), in merge order:
 
 1. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
 2. #300 Add a Saved page to the nav (after #299)
-3. #303 Import subscriptions from OPML: upload and results pages
-4. #304 Find and store site icons
-5. #301 Search your saved articles (after #300)
-6. #305 Show site icons as avatars (after #304)
-7. #306 Fetch missing article images and titles from their web pages
-8. #307 Show article images and titles fetched from their web pages (after #306)
-9. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
-    with placement options first)
+3. #304 Find and store site icons
+4. #301 Search your saved articles (after #300)
+5. #305 Show site icons as avatars (after #304)
+6. #306 Fetch missing article images and titles from their web pages
+7. #307 Show article images and titles fetched from their web pages (after #306)
+8. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+   with placement options first)
 
-These can run in parallel sessions, one wave after another: #296, #300, #303 and #304;
+These can run in parallel sessions, one wave after another: #296, #300 and #304;
 then #301, #305 and #306; then #307 and #308.
 
 Then:
@@ -101,7 +100,7 @@ decisions.md.
   are the support path. If support requests need more (looking up an account, resending
   a confirmation for someone), plan an owner-only admin page.
 - [ ] **First-run experience (needs planning).** What a new account sees after signup:
-  today, an empty timeline pointing to Search and, from #303, to OPML import. Perhaps
+  today, an empty timeline pointing to Search and to OPML import. Perhaps
   suggested sites or a short tour.
 
 ## Deployment
@@ -372,6 +371,9 @@ feature adds a failure mode. Nothing here is built yet.
     scheme), a site that is unreachable, times out, redirects too often, returns a non-HTML
     or huge body, has no feeds, or has a feed that fails to parse; a lookup that is
     pending, running, failed or done; the status page after the lookup row is gone.
+  - OPML import: an upload with no file, over 1 MiB, that isn't OPML, with no feeds or
+    over 1,000, or over the hourly limit; an import still running; an import with
+    failures (invalid URL, unreachable, no feed); another user's import.
   - Feeds: a refresh that fails (and the backoff / failure display from #129), a feed
     that has never been fetched, a feed with no articles, the Refresh button during a
     refresh, 410 Gone feeds (#132).

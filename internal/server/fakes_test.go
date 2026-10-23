@@ -166,6 +166,28 @@ func (f *fakeLookupStore) GetBySiteKey(ctx context.Context, siteKey string) (rss
 	return f.getBySiteKeyFn(ctx, siteKey)
 }
 
+type fakeImportStore struct {
+	createFn     func(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error)
+	getFn        func(ctx context.Context, id string) (rss.Import, []rss.ImportFeed, error)
+	listByUserFn func(ctx context.Context, userID string, limit int) ([]rss.ImportSummary, error)
+}
+
+func (f *fakeImportStore) Create(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error) {
+	return f.createFn(ctx, userID, filename, feeds)
+}
+
+func (f *fakeImportStore) Get(ctx context.Context, id string) (rss.Import, []rss.ImportFeed, error) {
+	return f.getFn(ctx, id)
+}
+
+// ListByUser returns no imports when listByUserFn is nil.
+func (f *fakeImportStore) ListByUser(ctx context.Context, userID string, limit int) ([]rss.ImportSummary, error) {
+	if f.listByUserFn == nil {
+		return nil, nil
+	}
+	return f.listByUserFn(ctx, userID, limit)
+}
+
 type fakeRefresher struct {
 	refreshFn func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
 	calls     []rss.Feed

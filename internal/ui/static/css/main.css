@@ -1242,6 +1242,49 @@
     margin-block-start: 1.25rem;
   }
 
+  /* An import's progress or outcome, above its feeds. */
+  .import-status {
+    padding: 1.25rem 1rem;
+    color: var(--text-2);
+  }
+
+  .import-status > * + * {
+    margin-block-start: 0.5rem;
+  }
+
+  .import-status .spinner {
+    margin-inline: 0;
+  }
+
+  /* One feed of an import's results. */
+  .import-row {
+    padding: 0.875rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .import-title {
+    color: var(--text);
+    font-weight: 650;
+    font-size: 1rem;
+  }
+
+  .import-row .import-url {
+    margin-block-start: 0.125rem;
+    color: var(--text-3);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .import-row .import-url + p {
+    margin-block-start: 0.25rem;
+  }
+
+  .import-row .feed-row-title {
+    font-size: 1rem;
+  }
+
   /* Feed rows on My feeds and site pages, like a list of accounts. */
   .feed-row {
     display: grid;

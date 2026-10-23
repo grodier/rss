@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  {{if .InProgress}}
+  <meta http-equiv="refresh" content="2" />
+  {{end}}
+  <title>rss - {{if .InProgress}}importing {{.Filename}}{{else}}import finished{{end}}</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>{{if .InProgress}}Importing {{.Filename}}…{{else}}Import finished{{end}}</h1>
+      </header>
+
+      <section class="import-status">
+        {{if .InProgress}}
+        <div class="spinner"></div>
+        <p>Checked {{.Done}} of {{.Total}} feeds.</p>
+        {{else}}
+        <p>{{.Summary}}</p>
+        <p><a href="/">Go to your timeline</a></p>
+        {{end}}
+      </section>
+
+      {{with .Subscribed}}
+      <section>
+        <div class="list-head">
+          <h2>Subscribed</h2>
+        </div>
+        <ul role="list">
+          {{range .}}
+          <li class="import-row"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+
+      {{with .AlreadySubscribed}}
+      <section>
+        <div class="list-head">
+          <h2>Already subscribed</h2>
+        </div>
+        <ul role="list">
+          {{range .}}
+          <li class="import-row"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+
+      {{with .Failed}}
+      <section>
+        <div class="list-head">
+          <h2>Couldn't add</h2>
+        </div>
+        <ul role="list">
+          {{range .}}
+          <li class="import-row">
+            <p class="import-title">{{.Title}}</p>
+            <p class="import-url">{{.URL}}</p>
+            <p>{{.Reason}}{{with .Host}} <a href="/search?q={{.}}">Search for {{.}}</a>{{end}}</p>
+          </li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

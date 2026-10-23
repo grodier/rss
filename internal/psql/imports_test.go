@@ -244,10 +244,10 @@ func TestImportRepositoryFinish(t *testing.T) {
 		t.Fatalf("Finish failed: %v", err)
 	}
 
-	if got := getImportFeed(t, repo, id, 0); got.Status != rss.ImportSubscribed || got.FeedID != feed.ID || got.Failure != "" || got.Error != "" {
-		t.Errorf("subscribed: got %+v; want subscribed to %s", got, feed.ID)
+	if got := getImportFeed(t, repo, id, 0); got.Status != rss.ImportSubscribed || got.FeedID != feed.ID || got.FeedTitle != feed.Title || got.Failure != "" || got.Error != "" {
+		t.Errorf("subscribed: got %+v; want subscribed to %s, titled %q", got, feed.ID, feed.Title)
 	}
-	if got := getImportFeed(t, repo, id, 1); got.Status != rss.ImportFailed || got.Failure != rss.ImportUnreachable || got.FeedID != "" || got.Error != "dial tcp: timeout" {
+	if got := getImportFeed(t, repo, id, 1); got.Status != rss.ImportFailed || got.Failure != rss.ImportUnreachable || got.FeedID != "" || got.FeedTitle != "" || got.Error != "dial tcp: timeout" {
 		t.Errorf("failed: got %+v; want failed, unreachable, with the error", got)
 	}
 	var unfinished int
@@ -262,6 +262,80 @@ func TestImportRepositoryFinish(t *testing.T) {
 		err := repo.Finish(t.Context(), rss.ImportFeed{ImportID: id, Position: 9, Status: rss.ImportSubscribed})
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("Finish = %v; want ErrNoRecord", err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestImportRepositoryListByUser(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewImportRepository(db)
+	userID := newTestUser(t, db)
+	otherID := newTestUser(t, db)
+	feed := newTestFeed(t, db)
+
+	oldest := newTestImport(t, repo, userID, "https://a.example.com/feed")
+	setImportCreatedAt(t, db, oldest, "2026-01-01T00:00:00Z")
+	middle := newTestImport(t, repo, userID, "https://a.example.com/feed", "https://b.example.com/feed", "https://c.example.com/feed", "https://d.example.com/feed")
+	setImportCreatedAt(t, db, middle, "2026-01-02T00:00:00Z")
+	newest := newTestImport(t, repo, userID, "https://a.example.com/feed", "https://b.example.com/feed")
+	setImportCreatedAt(t, db, newest, "2026-01-03T00:00:00Z")
+	newTestImport(t, repo, otherID, "https://a.example.com/feed")
+
+	// middle: one subscribed, one failed, one running, one pending.
+	finish := func(f rss.ImportFeed) {
+		t.Helper()
+		if err := repo.Finish(t.Context(), f); err != nil {
+			t.Fatalf("Finish: %v", err)
+		}
+	}
+	finish(rss.ImportFeed{ImportID: middle, Position: 0, Status: rss.ImportSubscribed, FeedID: feed.ID})
+	finish(rss.ImportFeed{ImportID: middle, Position: 1, Status: rss.ImportFailed, Failure: rss.ImportNotFeed})
+	if _, err := db.Exec(`UPDATE import_feeds SET status = 'running', started_at = now() WHERE import_id = $1 AND position = 2`, middle); err != nil {
+		t.Fatal(err)
+	}
+	// newest: both done, one failed.
+	finish(rss.ImportFeed{ImportID: newest, Position: 0, Status: rss.ImportAlreadySubscribed, FeedID: feed.ID})
+	finish(rss.ImportFeed{ImportID: newest, Position: 1, Status: rss.ImportFailed, Failure: rss.ImportUnreachable})
+
+	got, err := repo.ListByUser(t.Context(), userID, 10)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	type counts struct {
+		ID                     string
+		Total, Pending, Failed int
+	}
+	var gotCounts []counts
+	for _, s := range got {
+		if s.Import.UserID != userID || s.Import.Filename != "subs.opml" || s.Import.CreatedAt.IsZero() {
+			t.Errorf("import = %+v; want user %s's, with filename and created_at", s.Import, userID)
+		}
+		gotCounts = append(gotCounts, counts{s.Import.ID, s.Total, s.Pending, s.Failed})
+	}
+	want := []counts{
+		{newest, 2, 0, 1},
+		{middle, 4, 2, 1},
+		{oldest, 1, 1, 0},
+	}
+	if !reflect.DeepEqual(gotCounts, want) {
+		t.Errorf("ListByUser = %+v; want %+v", gotCounts, want)
+	}
+
+	t.Run("limit", func(t *testing.T) {
+		got, err := repo.ListByUser(t.Context(), userID, 2)
+		if err != nil {
+			t.Fatalf("ListByUser: %v", err)
+		}
+		if len(got) != 2 || got[0].Import.ID != newest || got[1].Import.ID != middle {
+			t.Errorf("ListByUser(2) = %+v; want newest, middle", got)
+		}
+	})
+
+	t.Run("no imports", func(t *testing.T) {
+		got, err := repo.ListByUser(t.Context(), newTestUser(t, db), 5)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Errorf("ListByUser = %v, %v; want empty", got, err)
 		}
 	})
 }

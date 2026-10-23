@@ -38,6 +38,8 @@ func TestSettingsHandler(t *testing.T) {
 			`href="/settings/password"`,
 			`<a class="settings-row" href="/settings/email">`,
 			`<form class="settings-devices" action="/settings/log-out-others" method="post">`,
+			`<a class="settings-row" href="/settings/import" aria-describedby="import-hint">`,
+			"Bring your feeds from another reader with an OPML file.",
 			`<a class="settings-row" href="/settings/subscriptions.opml" download`,
 			"An OPML file you can import into another reader.",
 			`<form class="settings-logout" action="/logout" method="post">`,
@@ -99,6 +101,9 @@ func TestSettingsRoutesRequireAuthentication(t *testing.T) {
 		{http.MethodPost, "/settings/email"},
 		{http.MethodPost, "/settings/log-out-others"},
 		{http.MethodGet, "/settings/subscriptions.opml"},
+		{http.MethodGet, "/settings/import"},
+		{http.MethodPost, "/settings/import"},
+		{http.MethodGet, "/settings/imports/44444444-4444-4444-8444-444444444444"},
 		{http.MethodGet, "/settings/delete"},
 		{http.MethodPost, "/settings/delete"},
 	}

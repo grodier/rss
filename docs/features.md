@@ -449,8 +449,25 @@ feed's site URL or else its site's). It's encoded into a buffer first, so a stor
 encoding error is an HTML 500 instead of half a file, and sent as
 `rss-subscriptions-YYYY-MM-DD.opml` (UTC).
 
-**Import.** Importing an OPML file is a queue worked in the background (#303 adds the
-upload and results pages). `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any
+**Import.** "Import subscriptions", under "Your data" in Settings and linked from the
+empty timeline, opens `/settings/import` (`settingsImportHandler`): an upload form and
+the user's last 5 imports from `ImportRepository.ListByUser`, each with its date,
+filename, feed count and "importing…" or how many couldn't be added. The form posts the
+file as multipart to `settingsImportFormHandler`, which caps the body with
+`http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and
+re-renders the form with the error on the `file` field for no file (422), a file over
+1 MiB (413), a file that isn't OPML, has no feeds or has more than 1,000 (422), or a
+sixth import within the hour (`importLimiter`, 429 with `Retry-After`). Otherwise it
+creates the import, with the file's base name, and redirects to `/settings/imports/{id}`
+(`importHandler`; another user's import is a 404). While any feed is pending or running
+that page shows "Checked {done} of {total} feeds." and refreshes itself with
+`<meta http-equiv="refresh">`; then "Import finished" and a one-line summary. Feeds
+finished so far are listed in three groups: Subscribed and Already subscribed (the
+outline's title, else the feed's from `Get`, linking to the feed), and Couldn't add,
+with the URL, a plain reason for its `Failure` (`importReasons`) and a link to search
+for its host.
+
+The import itself is a queue worked in the background. `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any
 depth (folders are flattened), in file order and without repeats; it parses non-strictly
 and decodes legacy charsets, since older readers' exports are sloppy.
 `ImportRepository.Create` stores the import and one pending `import_feeds` row per feed.
@@ -474,14 +491,17 @@ published dates.
 4. Templates: `feed.html`, `site.html`, `feeds.html`.
 5. Export: `internal/server/settings.go` (`opmlDoc`, `exportOPMLHandler`); the "Your
    data" section of `settings.html`.
-6. Import: `internal/opml/opml.go` (`Parse`); `internal/psql/imports.go`
-   (`ImportRepository`); `internal/importer/importer.go` (`Runner.process`, `run`,
-   `discover`); `internal/lookup/lookup.go` (`ToSave`); `FeedRepository.GetByURL` in
-   `internal/psql/feeds.go`.
+6. Import: `internal/server/import.go` (`settingsImportHandler`,
+   `settingsImportFormHandler`, `importFilename`, `importHandler`, `importSummary`);
+   templates `settings_import.html`, `import.html`; `internal/opml/opml.go` (`Parse`);
+   `internal/psql/imports.go` (`ImportRepository`); `internal/importer/importer.go`
+   (`Runner.process`, `run`, `discover`); `internal/lookup/lookup.go` (`ToSave`);
+   `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
 **Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`,
 `settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`; import:
-`internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
+`internal/server/import_test.go` (`TestSettingsImportForm`, `TestSettingsImportHandler`,
+`TestImportHandler`), `internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
 `internal/importer/importer_test.go`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.

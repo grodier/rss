@@ -340,10 +340,12 @@ be reached.
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL;
 if it is itself a feed, that's the result. Otherwise read the HTML page's title,
 description and `<link rel="alternate">` feeds, or, if there are none, try
-`CommonFeedPaths`. Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that
-parse. The worker turns each feed's items into articles (`ingest.Articles`) and saves the
-site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so
-a looked-up feed has articles right away. The site page lists the feeds with subscribe
+`CommonFeedPaths`. (`ParsePage` also reads a page's own title, Open Graph image and
+icon links, for the icon worker and article enrichment; discovery doesn't use them.)
+Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse. The worker
+turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds
+and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed
+has articles right away. The site page lists the feeds with subscribe
 buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
 
 **Read:**

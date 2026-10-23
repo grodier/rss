@@ -9,25 +9,23 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
-1. #298 Read Open Graph tags and icon links from web pages
-2. #295 Make article pages easier to read: wide content and a lead image (after #294)
-3. #297 Record which articles carry audio or video
-4. #299 Save articles (draft PR with layout options first)
-5. #302 Import subscriptions from OPML: the import queue
-6. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-7. #300 Add a Saved page to the nav (after #299)
-8. #303 Import subscriptions from OPML: upload and results pages (after #302)
-9. #304 Find and store site icons (after #298)
-10. #301 Search your saved articles (after #300)
-11. #305 Show site icons as avatars (after #304)
-12. #306 Fetch missing article images and titles from their web pages (after #298)
-13. #307 Show article images and titles fetched from their web pages (after #306)
-14. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+1. #295 Make article pages easier to read: wide content and a lead image (after #294)
+2. #297 Record which articles carry audio or video
+3. #299 Save articles (draft PR with layout options first)
+4. #302 Import subscriptions from OPML: the import queue
+5. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+6. #300 Add a Saved page to the nav (after #299)
+7. #303 Import subscriptions from OPML: upload and results pages (after #302)
+8. #304 Find and store site icons
+9. #301 Search your saved articles (after #300)
+10. #305 Show site icons as avatars (after #304)
+11. #306 Fetch missing article images and titles from their web pages
+12. #307 Show article images and titles fetched from their web pages (after #306)
+13. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #298; then
-#295, #297, #299 and #302; then #296, #300, #303 and #304; then #301, #305 and #306; then
-#307 and #308.
+These can run in parallel sessions, one wave after another: #295, #297, #299 and #302;
+then #296, #300, #303 and #304; then #301, #305 and #306; then #307 and #308.
 
 Then:
 

@@ -17,9 +17,13 @@ CREATE TABLE sites (
     url TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
+    icon_checked_at TIMESTAMPTZ,                         -- last time the icon worker looked for the site's icon; NULL if never
+    icon_next_check_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when the icon worker should next look; also its claim lease
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX sites_icon_next_check_at_idx ON sites (icon_next_check_at);
 
 CREATE TABLE feeds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,6 +91,10 @@ CREATE TABLE articles (
     summary TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
     content TEXT NOT NULL DEFAULT '', -- raw HTML from the feed; sanitize before rendering as HTML
     excerpt TEXT NOT NULL DEFAULT '', -- plain text from summary, else content; computed by internal/ingest
+    page_image_url TEXT NOT NULL DEFAULT '',   -- og:image (else twitter:image) of the article's web page; set by internal/enrich
+    page_title TEXT NOT NULL DEFAULT '',       -- og:title, else <title>, of the article's web page; plain text
+    page_description TEXT NOT NULL DEFAULT '', -- <meta name="description">, else og:description; plain text
+    media_type TEXT NOT NULL DEFAULT '',       -- MIME type of the item's first audio or video enclosure; "" if none
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     published_date_only BOOLEAN NOT NULL DEFAULT false, -- the feed's date had no time of day
@@ -133,6 +141,96 @@ CREATE TABLE reads (
 );
 
 CREATE INDEX reads_article_id_idx ON reads (article_id);
+
+-- Articles a user saved to keep. Saving covers every copy of an article
+-- (same canonical_url); see psql.SaveRepository.
+CREATE TABLE saves (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX saves_user_saved_at_idx ON saves (user_id, saved_at DESC, article_id DESC);
+CREATE INDEX saves_article_id_idx ON saves (article_id);
+
+-- The enrichment queue: articles whose web page should be fetched for a
+-- missing image, title or excerpt. A row is deleted once its work is done
+-- or given up on.
+CREATE TABLE enrich_jobs (
+    article_id UUID PRIMARY KEY
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+    priority SMALLINT NOT NULL DEFAULT 0, -- 0: new arrivals; 1: backlog from a feed's first save; lower goes first
+    attempts INT NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when a worker may claim it; also the claim lease
+    last_error TEXT NOT NULL DEFAULT '', -- internal detail for logs; never shown to users
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX enrich_jobs_due_idx ON enrich_jobs (priority, next_attempt_at);
+
+-- A site's icon, downloaded and checked by the icon worker and served
+-- from /sites/{id}/icon. No row: the site shows its letter avatar.
+CREATE TABLE site_icons (
+    site_id UUID PRIMARY KEY
+        REFERENCES sites(id)
+        ON DELETE CASCADE,
+    source_url TEXT NOT NULL,    -- where it was downloaded from
+    content_type TEXT NOT NULL
+        CHECK (content_type IN ('image/png', 'image/jpeg', 'image/gif', 'image/x-icon')),
+    width INT NOT NULL,          -- pixels; for an ICO, its largest image
+    height INT NOT NULL,
+    data BYTEA NOT NULL,         -- at most 256 KiB
+    hash TEXT NOT NULL,          -- hex SHA-256 of data; the ?v= of icon URLs
+    etag TEXT NOT NULL DEFAULT '',          -- of the download, sent back as If-None-Match
+    last_modified TEXT NOT NULL DEFAULT '', -- of the download, sent back as If-Modified-Since
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One OPML file a user uploaded. Its feeds are import_feeds rows, which
+-- are also the import queue.
+CREATE TABLE imports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    filename TEXT NOT NULL DEFAULT '', -- as uploaded; shown on the results page
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX imports_user_id_idx ON imports (user_id, created_at DESC);
+
+CREATE TABLE import_feeds (
+    import_id UUID NOT NULL
+        REFERENCES imports(id)
+        ON DELETE CASCADE,
+    position INT NOT NULL,           -- order in the file, from 0
+    url TEXT NOT NULL,               -- the outline's xmlUrl, trimmed
+    title TEXT NOT NULL DEFAULT '',  -- the outline's title, else its text
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'running', 'subscribed', 'already_subscribed', 'failed')),
+    failure TEXT NOT NULL DEFAULT ''
+        CHECK (failure IN ('', 'invalid_url', 'unreachable', 'not_feed')),
+    feed_id UUID REFERENCES feeds(id) ON DELETE SET NULL, -- the feed subscribed to, once known
+    error TEXT NOT NULL DEFAULT '',  -- internal detail for logs; never shown to users
+    attempts INT NOT NULL DEFAULT 0,
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+
+    PRIMARY KEY (import_id, position)
+);
+
+CREATE INDEX import_feeds_pending_idx ON import_feeds (started_at) WHERE status = 'pending';
 
 -- One row per logged-in device. Its id is kept in the scs session; deleting
 -- the row logs that device out.
@@ -198,6 +296,11 @@ CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 DROP TABLE emails;
 DROP TABLE user_tokens;
 DROP TABLE user_sessions;
+DROP TABLE import_feeds;
+DROP TABLE imports;
+DROP TABLE site_icons;
+DROP TABLE enrich_jobs;
+DROP TABLE saves;
 DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;

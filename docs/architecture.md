@@ -212,9 +212,14 @@ CLAUDE.md).
 
 ```
 users ──< subscriptions >── feeds ──< articles ──< reads >── users
+                              │          │
+                              │          ├──< saves >── users
+                              │          └──< enrich_jobs
                               │
                             sites ──< lookups (site_id, once found)
+                              └──< site_icons
 
+users ──< imports ──< import_feeds (feed_id, once known)
 users ──< user_sessions
 users ──< user_tokens
 
@@ -223,7 +228,14 @@ emails   (the outbox: no foreign keys)
 ```
 
 - **`sites`**: a website, unique by `host`, its *site key* (lowercase host without
-  `www.`, `discovery.SiteKey`).
+  `www.`, `discovery.SiteKey`). `icon_checked_at` is when the icon worker last looked
+  for its icon, and `icon_next_check_at` when it should look next (also the claim
+  lease); nothing uses them yet (#304).
+- **`site_icons`**: at most one per site, the icon downloaded from `source_url`: its
+  `content_type` (PNG, JPEG, GIF or ICO), `width` / `height`, the bytes in `data` (at
+  most 256 KiB), `hash` (hex SHA-256 of `data`, the `?v=` of icon URLs) and `etag` /
+  `last_modified` for conditional GET. No row: the site shows its letter avatar. Nothing
+  uses it yet (#304, #305).
 - **`feeds`**: unique by canonical `url`; `site_id` is the site it was first discovered
   from. Also the refresh queue: `next_fetch_at` (when it's due, and the claim lease),
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
@@ -231,8 +243,26 @@ emails   (the outbox: no foreign keys)
   feed again), and `refresh_requested_at` (a page view asked for a fetch).
 - **`articles`**: unique by `(feed_id, external_id)`. `summary` and `content` are raw HTML
   from the feed; `excerpt` is plain text; `canonical_url` matches copies of one article
-  across feeds; `timeline_at` is set once on insert and never updated.
+  across feeds; `timeline_at` is set once on insert and never updated. `page_image_url`,
+  `page_title` and `page_description` hold what enrichment reads from the article's web
+  page, kept apart from the feed's own `image_url`, `title` and `excerpt`, which
+  `saveArticles` overwrites; `media_type` is the MIME type of the item's first audio or
+  video enclosure. Nothing writes them yet (#297, #306).
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
+- **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
+  Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
+  at query time. Nothing uses it yet (#299).
+- **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
+  fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
+  lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,
+  `last_error` (internal, never shown). A row is deleted once its work is done or given
+  up on. Nothing uses it yet (#306).
+- **`imports`** and **`import_feeds`**: an OPML file a user uploaded (`filename`) and its
+  feeds, keyed by `(import_id, position)` in file order, with the outline's `url` and
+  `title`. `import_feeds` is also the import queue: `status` pending → running →
+  subscribed, already_subscribed or failed, with `failure` (`invalid_url`,
+  `unreachable`, `not_feed`) and `error` (internal, never shown); `feed_id` is the feed
+  subscribed to, once known. Nothing uses them yet (#302, #303).
 - **`lookups`**: one row per site key. It is both the lookup queue (`status` pending →
   running → done or failed) and the cache of the result (`site_id`).
 - **`users`**: `email` is `citext`, so unique regardless of case. `email_confirmed_at`
@@ -252,9 +282,11 @@ emails   (the outbox: no foreign keys)
   bodies are cleared once sent or given up on. `to_address` isn't a foreign key, so an
   email outlives its user. The mail runner deletes sent and failed rows after 7 days.
 
-Deleting a site cascades to its feeds and their articles, subscriptions and reads, and
-clears `lookups.site_id`; deleting a user cascades to their subscriptions, reads,
-`user_sessions` and `user_tokens`, and leaves their `emails`.
+Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves
+and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and
+`import_feeds.feed_id`; deleting an article deletes its saves, reads and enrich job;
+deleting a user cascades to their subscriptions, reads, saves, imports (and their
+`import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
 Deleting an account (`UserRepository.Delete`) deletes the user, with that cascade;
 feeds and articles stay, even when no one subscribes to them anymore. Nothing deletes
 sites, feeds or articles yet; unsubscribing deletes the subscription row, logging out deletes the `user_sessions` row, confirming an address

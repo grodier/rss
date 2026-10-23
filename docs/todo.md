@@ -10,9 +10,14 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 1. #330 Debug mode: inspect article pages and site discovery live.
 2. #337 Show feed status times and list dates in the reader's time zone. Independent
    of #330: either order.
-3. **Plan** the error-state walkthrough and run the first pass; then repeat it
+3. #340 Cut long site names on the "Read on" button with "…" (overflows on phones).
+4. #341 Name the article's own domain on "Read on" for aggregator feeds. After #340, or
+   merge #340's markup into it.
+5. #342 Rename a subscription. Independent of #340 and #341.
+6. #343 Show the reader's name for a feed everywhere they read it. After #341 and #342.
+7. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
-4. Before production or a few thousand feeds, **plan** load and performance testing.
+8. Before production or a few thousand feeds, **plan** load and performance testing.
 
 Merge one PR at a time; each branch merges the latest `main` before its PR.
 
@@ -216,6 +221,11 @@ Each with when it pays off:
   that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`). This is for
   browsing a site's feeds in context. It isn't a way to organise subscriptions (no
   folders or pinned feeds). Open question: how it relates to the standalone feed page.
+- [ ] **Names from OPML imports.** Other readers' exports carry each feed's name as the
+  outline's `text`/`title`; an import could set it as the subscription's name (#342)
+  when it differs from the feed's title. Deferred from #344.
+- [ ] **Tags or categories on subscriptions** (needs planning). They'd go on the "Edit
+  subscription" page (#342).
 
 ## Reading
 
@@ -304,6 +314,13 @@ Each with when it pays off:
 - [ ] **Unread filter.** Maybe never; it pulls toward the inbox model.
 - [ ] **Timezone setting and day headers.** Only if local times via JavaScript aren't
   enough (e.g. "Today"/"Yesterday" groups rendered server-side).
+- [ ] **Site names from `og:site_name`.** For articles on another site than their
+  feed's, enrichment could store the page's `og:site_name` ("The New York Times") so
+  "Read on" shows it instead of the domain (#341). Enrichment doesn't run for every
+  article, so the domain stays the fallback. Deferred from #344.
+- [ ] **"Discussion on Hacker News".** For aggregator items, a second link on the article
+  page to the item's own page (the feed's `comments` link), next to "Read on {domain}".
+  Deferred from #344.
 
 ## Design
 

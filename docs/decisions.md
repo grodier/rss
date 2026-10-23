@@ -142,6 +142,16 @@ Planned in #139 (issues #135–#138).
   worked by the existing refresh workers, never a goroutine or an in-memory queue, so
   they survive restarts and work across instances.
 - **Subscriptions are private:** no subscriber counts.
+- **Readers can rename their subscriptions** (planned in #344, issues #342 and #343). The
+  name is per subscription (user and feed), not per site, since one site can have many
+  feeds and future tags will be per subscription too. It's edited on "Edit subscription"
+  (`/feeds/{id}/edit`), where tags would also go. `""` means the feed's title, so a
+  feed's new title still reaches readers who didn't rename it; a blank name or the
+  feed's own title stores `""`. At most 100 characters. Unsubscribing drops the name.
+- **The name shows wherever the reader's own reading shows the feed** (timeline, "Also
+  in", saved list, article and feed pages, "Read on", OPML export); search results, site
+  pages and debug panels keep the feed's own title, since they describe the feed. Per-user
+  list queries put the name into `Feed.Title` in SQL, so templates don't change. (#343)
 
 ### OPML import
 
@@ -196,6 +206,14 @@ Planned in #163 (issues #147–#162).
   with an image, has one right after its first paragraph, or contains the same image
   anywhere (#295). With no content or summary, the page's description from enrichment is
   shown (#307).
+- **"Read on" names where the link goes** (planned in #344, issues #340–#343): the
+  article's domain when its URL is on another site than the feed's (aggregators such as
+  Hacker News), else the reader's name for the feed, else the site's title, else its
+  host. Hosts on a subdomain of each other count as one site, without the public-suffix
+  list (a dependency for a rare case). The domain needs no fetching and is always
+  accurate; `og:site_name` from enrichment is deferred, since enrichment doesn't run for
+  every article. A long name is cut with "…" so the button stays on one line, and its
+  `title` and link text keep the full label. (#340, #341, #343)
 - **Article HTML is sanitized at render time** with bluemonday: relative URLs resolved,
   iframes replaced by a link, links opened in a new tab with `noopener noreferrer`. Images
   load from the publisher with `referrerpolicy="no-referrer"` and lazy loading; the CSP

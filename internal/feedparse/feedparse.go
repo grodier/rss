@@ -43,6 +43,7 @@ type Item struct {
 	ID        string    // RSS <guid>, Atom <id>, JSON "id"; whitespace-trimmed; "" if missing
 	URL       string    // absolute http(s) link to the article, resolved against the feed URL; "" if missing or not http(s)
 	ImageURL  string    // absolute http(s) URL of the item's declared image, resolved against the feed URL; "" if none
+	MediaType string    // lowercase MIME type (without parameters) of the item's first audio/* or video/* enclosure or media:content; "" if none
 	Title     string    // plain text, trimmed and collapsed; may be ""
 	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
 	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
@@ -160,6 +161,8 @@ func Parse(feedURL *url.URL, body []byte) (Feed, error) {
 			Summary:  it.Description,
 			Content:  it.Content,
 			ImageURL: resolveHTTP(feedURL, itemImage(it)),
+
+			MediaType: itemMediaType(it),
 		}
 		for _, l := range it.Links {
 			if item.URL != "" {
@@ -222,6 +225,55 @@ func itemImage(it *gofeed.Item) string {
 		if e != nil && strings.HasPrefix(e.Type, "image/") {
 			return e.URL
 		}
+	}
+	return ""
+}
+
+// itemMediaType returns the media type of an item's audio or video, from the
+// first of: an audio/* or video/* enclosure (which covers Atom
+// <link rel="enclosure">), a media:content (directly or in a media:group)
+// with such a type, and a media:content without a type whose medium is
+// "audio" or "video" ("audio/*" or "video/*"). "" if none.
+func itemMediaType(it *gofeed.Item) string {
+	for _, e := range it.Enclosures {
+		if e == nil {
+			continue
+		}
+		if mt := avMediaType(e.Type); mt != "" {
+			return mt
+		}
+	}
+	media := it.Extensions["media"]
+	contents := media["content"]
+	for _, g := range media["group"] {
+		contents = append(contents, g.Children["content"]...)
+	}
+	for _, c := range contents {
+		if mt := avMediaType(c.Attrs["type"]); mt != "" {
+			return mt
+		}
+	}
+	for _, c := range contents {
+		if strings.TrimSpace(c.Attrs["type"]) != "" {
+			continue
+		}
+		switch medium := strings.ToLower(strings.TrimSpace(c.Attrs["medium"])); medium {
+		case "audio", "video":
+			return medium + "/*"
+		}
+	}
+	return ""
+}
+
+// avMediaType returns the lowercase media type of the MIME type t without
+// its parameters if it is audio/* or video/*, else "".
+func avMediaType(t string) string {
+	mt, _, err := mime.ParseMediaType(t)
+	if err != nil {
+		return ""
+	}
+	if strings.HasPrefix(mt, "audio/") || strings.HasPrefix(mt, "video/") {
+		return mt
 	}
 	return ""
 }

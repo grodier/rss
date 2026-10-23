@@ -9,21 +9,20 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 Reading features, planned in #309 (issues #293–#308), in merge order:
 
-1. #297 Record which articles carry audio or video
-2. #299 Save articles (draft PR with layout options first)
-3. #302 Import subscriptions from OPML: the import queue
-4. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-5. #300 Add a Saved page to the nav (after #299)
-6. #303 Import subscriptions from OPML: upload and results pages (after #302)
-7. #304 Find and store site icons
-8. #301 Search your saved articles (after #300)
-9. #305 Show site icons as avatars (after #304)
-10. #306 Fetch missing article images and titles from their web pages
-11. #307 Show article images and titles fetched from their web pages (after #306)
-12. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+1. #299 Save articles (draft PR with layout options first)
+2. #302 Import subscriptions from OPML: the import queue
+3. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+4. #300 Add a Saved page to the nav (after #299)
+5. #303 Import subscriptions from OPML: upload and results pages (after #302)
+6. #304 Find and store site icons
+7. #301 Search your saved articles (after #300)
+8. #305 Show site icons as avatars (after #304)
+9. #306 Fetch missing article images and titles from their web pages
+10. #307 Show article images and titles fetched from their web pages (after #306)
+11. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #297, #299 and #302;
+These can run in parallel sessions, one wave after another: #299 and #302;
 then #296, #300, #303 and #304; then #301, #305 and #306; then #307 and #308.
 
 Then:
@@ -217,6 +216,9 @@ Each with when it pays off:
   history, business uses of the data) and its copyright and privacy implications on the
   other. Saved articles (#299) must survive whatever rule is chosen: deleting an article
   cascades to its `saves` rows.
+- [ ] **Thumbnails inside `media:group`.** `itemImage` reads `media:thumbnail` only at
+  the item's top level, so YouTube channel feeds (which nest it in `media:group`) get no
+  image. `itemMediaType` already looks inside `media:group`; do the same for images.
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand.
 
@@ -261,7 +263,7 @@ Each with when it pays off:
          count(*) FILTER (WHERE content || summary ~* 'instagram-media') AS instagram
   FROM articles;
   ```
-  Audio and video items, from #297:
+  Audio and video items:
   ```sql
   SELECT split_part(media_type, '/', 1) AS kind, count(*), count(DISTINCT feed_id) AS feeds
   FROM articles WHERE media_type <> '' GROUP BY 1;

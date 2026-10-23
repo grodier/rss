@@ -246,8 +246,9 @@ emails   (the outbox: no foreign keys)
   across feeds; `timeline_at` is set once on insert and never updated. `page_image_url`,
   `page_title` and `page_description` hold what enrichment reads from the article's web
   page, kept apart from the feed's own `image_url`, `title` and `excerpt`, which
-  `saveArticles` overwrites; `media_type` is the MIME type of the item's first audio or
-  video enclosure. Nothing writes them yet (#297, #306).
+  `saveArticles` overwrites; nothing writes them yet (#306). `media_type` is the MIME type
+  of the item's first audio or video enclosure (`""` if none), written by `saveArticles`
+  and not displayed yet.
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched

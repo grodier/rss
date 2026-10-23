@@ -405,6 +405,102 @@ func TestParseItemImage(t *testing.T) {
 	}
 }
 
+func TestParseItemMediaType(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	const mediaNS = ` xmlns:media="http://search.yahoo.com/mrss/"`
+	rssItem := func(ns, item string) string {
+		return `<rss version="2.0"` + ns + `><channel><title>F</title><item><title>A</title>` + item + `</item></channel></rss>`
+	}
+	atomEntry := func(entry string) string {
+		return `<feed xmlns="http://www.w3.org/2005/Atom"` + mediaNS + `><title>F</title><entry><title>A</title>` + entry + `</entry></feed>`
+	}
+	tests := []struct {
+		name      string
+		body      string
+		want      string
+		wantImage string
+	}{
+		{
+			name: "rss audio enclosure",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.mp3" type="audio/mpeg" length="1"/>`),
+			want: "audio/mpeg",
+		},
+		{
+			name: "parameters dropped",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.mp3" type="audio/mpeg; charset=binary" length="1"/>`),
+			want: "audio/mpeg",
+		},
+		{
+			name: "uppercase lowered",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.mp4" type="Video/MP4" length="1"/>`),
+			want: "video/mp4",
+		},
+		{
+			name:      "image enclosure then video",
+			body:      rssItem("", `<enclosure url="https://cdn.example.com/a.jpg" type="image/jpeg" length="1"/><enclosure url="https://cdn.example.com/a.mp4" type="video/mp4" length="1"/>`),
+			want:      "video/mp4",
+			wantImage: "https://cdn.example.com/a.jpg",
+		},
+		{
+			name: "youtube media:group flash",
+			body: atomEntry(`<media:group><media:title>A</media:title><media:content url="https://www.youtube.com/v/abc?version=3" type="application/x-shockwave-flash" width="640" height="390"/></media:group>`),
+			want: "",
+		},
+		{
+			name: "media:group video content",
+			body: atomEntry(`<media:group><media:content url="https://cdn.example.com/a.webm" type="video/webm"/></media:group>`),
+			want: "video/webm",
+		},
+		{
+			name: "media:content audio type",
+			body: rssItem(mediaNS, `<media:content url="https://cdn.example.com/a.ogg" type="audio/ogg"/>`),
+			want: "audio/ogg",
+		},
+		{
+			name: "media:content medium video without type",
+			body: rssItem(mediaNS, `<media:content url="https://cdn.example.com/a" medium="video"/>`),
+			want: "video/*",
+		},
+		{
+			name: "media:content medium ignored when typed",
+			body: rssItem(mediaNS, `<media:content url="https://cdn.example.com/a" type="application/octet-stream" medium="video"/>`),
+			want: "",
+		},
+		{
+			name: "atom enclosure link",
+			body: atomEntry(`<link rel="enclosure" type="audio/ogg" href="https://cdn.example.com/a.ogg"/>`),
+			want: "audio/ogg",
+		},
+		{
+			name: "unparseable type",
+			body: rssItem("", `<enclosure url="https://cdn.example.com/a.mp3" type="audio/" length="1"/>`),
+			want: "",
+		},
+		{
+			name: "no enclosure",
+			body: rssItem("", `<description>text</description>`),
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			if got.Items[0].MediaType != tt.want {
+				t.Errorf("MediaType = %q, want %q", got.Items[0].MediaType, tt.want)
+			}
+			if got.Items[0].ImageURL != tt.wantImage {
+				t.Errorf("ImageURL = %q, want %q", got.Items[0].ImageURL, tt.wantImage)
+			}
+		})
+	}
+}
+
 func TestParseItemDateOnly(t *testing.T) {
 	feedURL := mustParseURL(t, "https://example.com/feed.xml")
 	rssItem := func(item string) string {

@@ -7,13 +7,6 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-Reading features, planned in #309 (issues #293–#308), in merge order:
-
-1. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
-   with placement options first)
-
-Then:
-
 1. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 2. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -267,8 +260,15 @@ Each with when it pays off:
 - [ ] **Share button.** In the row's action bar, to Save's left (#299): the Web Share API on
   phones, else copy the article's link. Its own small issue.
 - [ ] **Filters and muting (needs planning).** Muting a feed on the timeline (kept
-  subscribed, still on its feed page), keyword filters, and how they relate to hiding
-  single articles (#308). The owner wants to think through what filters mean first.
+  subscribed, still on its feed page) and keyword filters. The owner wants to think
+  through what filters mean first.
+- [ ] **Reconsider hiding single articles (with filters).** A ✕ on timeline rows was
+  prototyped in #308 (draft PR #325, with screenshots) and not taken in. Revisit only as
+  part of "Filters and muting", which may solve the same problem (sponsored posts, topics
+  you don't follow) without per-article hides. Concerns to answer first, under "Hiding
+  articles" in decisions.md: the UX (Undo only lasts until the page reloads, and the only
+  way back is the feed page), hiding as inbox-zero on the timeline, and the cost of a
+  per-article `hides` table that every timeline page has to read.
 - [ ] **Measure untitled articles.** Before investing in better titles, query the share of
   articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 /
   count(*) FROM articles`).
@@ -536,18 +536,11 @@ Pages and queries:
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161). One query per timeline or feed
   page, matching reads across copies by `canonical_url` (#161). Saves add
-  `SavedArticleIDs` (#299), icons add `IconHashes` (#305), and feed pages add
-  `HiddenArticleIDs` (#308), each one more query per page with the same shape. *Signal:*
-  they show up in `pg_stat_statements`, or slow for users with many reads or saves.
-  *Fix:* fold them into the page's main query, or store the canonical URL on `reads`,
-  `saves` and `hides`.
-- [ ] **Hidden articles in the timeline query** (#308). `ListTimeline` leaves out hidden
-  articles and their copies with a `NOT EXISTS` over `hides` joined to `articles` by
-  `canonical_url`, for every subscribed article it considers. *Signal:* `/` p95 rising
-  for users who hide often, or `EXPLAIN ANALYZE` showing the anti-join as a large part of
-  the timeline query. *Fix:* store the hidden article's dedup key on `hides` so the check
-  is one index lookup, or fold hiding into the per-user timeline table (see "Timeline
-  query merges many feeds").
+  `SavedArticleIDs` (#299) and icons add `IconHashes` (#305), each one more query per
+  page with the same shape. *Signal:* they show up in `pg_stat_statements`, or slow for
+  users with many reads or saves.
+  *Fix:* fold them into the page's main query, or store the canonical URL on `reads`
+  and `saves`.
 - [ ] **Saved search scans with `ILIKE`** (#301). Search within Saved matches `%q%`
   against each of the user's saved articles. Fine for hundreds of saves. *Signal:*
   `/saved?q=` latency rising for users with thousands of saves. *Fix:* `pg_trgm` or

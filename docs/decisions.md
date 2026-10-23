@@ -40,8 +40,8 @@ section names; how the code works is in [architecture.md](architecture.md) and
   stage" in CLAUDE.md. (#180)
 - **A planned batch lands its schema in one change**, so production is reset once per
   batch rather than once per feature: the account tables (#255), then the reading
-  features' tables (#293). A prototype that may be dropped adds its own table instead
-  (`hides`, #308). Before a reset, export your OPML, and import it
+  features' tables (#293). A prototype that may be dropped adds its own table instead,
+  so dropping it leaves nothing behind. Before a reset, export your OPML, and import it
   afterwards (#303).
 
 ## Feed discovery
@@ -203,10 +203,23 @@ Planned in #309 (issues #299–#301).
   "Also in" shares its line, on the left. More actions (Share) join it to Save's left.
   On the article page it sits under the title, left-aligned with the heading.
 
-### Hiding articles (prototype)
+### Hiding articles (not taken in)
 
-Planned in #309 (issue #308). Low priority, and a prototype the owner may drop after
-seeing it.
+Planned in #309 (issue #308) as a prototype; built in draft PR #325 and **not taken in**
+(#308 closed). Revisit only alongside filters and muting ("Reconsider hiding single
+articles" in todo.md), for three reasons:
+
+- **UX:** Undo lasts only until the page reloads; after that the only way back is the
+  article's feed page, since there's no Hidden list. Hiding everything also lands on the
+  empty-timeline message, which reads as "you have no feeds".
+- **It invites inbox use.** Hiding each article as it arrives turns the timeline into an
+  inbox to clear, which the timeline is designed not to be ("Reading" above).
+- **Performance:** `hides` grows by a row per hide, never trimmed, and every timeline
+  page must read all of a user's hides to leave them out. In the prototype, a
+  `NOT EXISTS` filter made Postgres pick a plan about 5x slower, and the faster `NOT IN`
+  stops being hashed once a user's hides outgrow `work_mem`, re-checking them per article.
+
+What the prototype settled, as a starting point if it comes back:
 
 - **Hiding only affects your timeline.** The article stays on its feed page, marked
   "Hidden from timeline", with an Unhide button; there's no Hidden list, so hiding

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -296,6 +297,45 @@ func TestParseConfigInviteCode(t *testing.T) {
 	const msg = "invite code must be at least 16 characters"
 	if err == nil || !strings.Contains(err.Error(), msg) {
 		t.Errorf("15 characters: parseConfig() error = %v, want %q", err, msg)
+	}
+}
+
+func TestParseConfigDebugEmails(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://x"}
+
+	cfg, err := parseConfig(dsn, noEnv, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.server.debugEmails) != 0 {
+		t.Errorf("debugEmails = %q, want empty by default", cfg.server.debugEmails)
+	}
+
+	want := []string{"a@example.com", "b@example.com"}
+	const raw = " A@example.com , ,b@example.com"
+
+	cfg, err = parseConfig(append(dsn, "-debug-emails", raw), noEnv, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.server.debugEmails, want) {
+		t.Errorf("-debug-emails: debugEmails = %q, want %q", cfg.server.debugEmails, want)
+	}
+
+	cfg, err = parseConfig(dsn, envFrom(map[string]string{"RSS_DEBUG_EMAILS": raw}), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.server.debugEmails, want) {
+		t.Errorf("RSS_DEBUG_EMAILS: debugEmails = %q, want %q", cfg.server.debugEmails, want)
+	}
+
+	for _, bad := range []string{"not-an-email", "A <a@example.com>"} {
+		_, err = parseConfig(append(dsn, "-debug-emails", bad), noEnv, io.Discard)
+		msg := `debug-emails: "` + strings.ToLower(bad) + `" is not an email address`
+		if err == nil || !strings.Contains(err.Error(), msg) {
+			t.Errorf("%q: parseConfig() error = %v, want %q", bad, err, msg)
+		}
 	}
 }
 

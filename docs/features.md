@@ -766,6 +766,52 @@ content or summary shows the page's description as its body.
 
 **Why:** "Enrichment" in decisions.md.
 
+## Debug mode
+
+**Flow.** Debug mode shows the stored data behind site and feed pages, for the accounts
+listed in `-debug-emails` only.
+
+1. **Flag.** `parseConfig` splits `-debug-emails` on commas, trims and lowercases each
+   entry (`parseDebugEmails`), and `Validate` rejects anything that isn't a bare address.
+   It reaches the server as `Config.DebugEmails`.
+2. **Settings toggle.** For an allowed account (`debugAllowed`: the user's email is
+   listed, ignoring case), Settings shows a Debug section whose button posts
+   `POST /settings/debug` with `on=1` or `on=0`. `settingsDebugFormHandler` puts or
+   removes `"debug"` in the scs session, so it's per device and logging out ends it;
+   for anyone else the route is a 404.
+3. **`debugEnabled`** is `debugAllowed` and the session flag, checked on every request,
+   so removing an account from the flag turns debug mode off at once. `s.nav` sets
+   `navData.Debug` from it, and the nav shows a Debug badge linking to
+   `/settings#debug`.
+4. **Panels.** When `debugEnabled`, `siteHandler` loads `DebugStore.SiteDebug` (icon
+   bookkeeping and the stored icon without its bytes) and `FeedDebug` for the site's
+   feeds, and `feedHandler` loads `FeedDebug` for the feed (article and enrich job
+   counts, newest `created_at` and `timeline_at`). `siteDebugFields` and
+   `feedDebugFields` turn them into `debugField` rows (times through `debugTime`: RFC
+   3339 in UTC and how long ago), and the `debug-panel` partial renders a collapsed
+   `<details class="debug">` after the page header. The site panel also has one line
+   per feed (`siteFeedDebugLine`: status, last attempt, articles). Off, none of these
+   queries run.
+
+**Read:**
+
+1. `cmd/www/config.go`: `-debug-emails`, `parseDebugEmails`, `Validate`.
+2. `internal/server/debug.go`: `debugAllowed`, `debugEnabled`,
+   `settingsDebugFormHandler`, `debugTime`, `siteDebugFields`, `feedDebugFields`,
+   `siteFeedDebugLine`.
+3. `internal/server/sites.go`: `siteHandler`, `siteDebug`; `feeds.go`: `feedHandler`;
+   `settings.go`: `settingsHandler`; `html.go`: `nav`.
+4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`.
+5. `internal/ui/templates/partials/debug.html`, `partials/nav.html` (the badge),
+   `settings.html` (`#debug`); `.debug…` in `main.css`.
+
+**Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`);
+`internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the
+field builders, and the site, feed and settings pages with debug mode on, off and not
+allowed).
+
+**Why:** "Debug mode" in decisions.md.
+
 ## Adding a feature
 
 The usual path for a new page or action, following the conventions in CLAUDE.md:

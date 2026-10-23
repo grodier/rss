@@ -167,6 +167,12 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 (remembering a GET or HEAD's URI as `returnTo`, for after login or signup) and set
 `Cache-Control: no-store`.
 
+**Debug mode** (`internal/server/debug.go`) is gated in two steps, both checked on every
+request: `debugAllowed` (the logged-in user's email is in `-debug-emails`, ignoring case)
+and `debugEnabled` (allowed, and `"debug"` is set in the device's scs session).
+`POST /settings/debug` is a 404 unless `debugAllowed`. Pages only query
+`DebugStore` (`psql.DebugRepository`) when `debugEnabled`.
+
 **Routes:**
 
 | Route | Login | Handler | What it does |
@@ -208,6 +214,7 @@ Routes in the `requireAuthentication` group redirect anonymous users to `/login`
 | `GET, POST /settings/password` | yes | `settingsPasswordHandler`, `settingsPasswordFormHandler` | Change your password; logs out other devices and emails a notice |
 | `GET, POST /settings/email` | yes | `settingsEmailHandler`, `settingsEmailFormHandler` | Change your email (with your password); emails a link to the new address |
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
+| `POST /settings/debug` | yes | `settingsDebugFormHandler` | Turn debug mode on (`on=1`) or off for this device; 404 unless the account is on `-debug-emails` |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 | `GET, POST /settings/import` | yes | `settingsImportHandler`, `settingsImportFormHandler` | Upload an OPML file to import (multipart), and your last 5 imports; 303 to the import's results |
 | `GET /settings/imports/{id}` | yes | `importHandler` | An import's progress (refreshes itself every 2 s), then its results; 404 for another user's |
@@ -219,10 +226,11 @@ parsed together with all of `templates/partials/*.html` into one template per pa
 `renderHTML` executes into a buffer first, so a template error becomes a clean 500
 instead of half a page. Template functions: `asset` (a static file's URL with a content
 hash, from `static.go`), `avatar` (a site's or feed's `avatarView` for the `avatar`
-partial: its icon URL, else its letter and tint), `avatarTone` and `monogram`. Pages with
+partial: its icon URL, else its letter and tint), `avatarTone`, `monogram` and
+`debugPanel` (a `debugPanel` for the `debug-panel` partial). Pages with
 site avatars pass the icon URLs from `siteIconURLs` (rows carry theirs in
 `articleRow.Icon`). Logged-in pages pass a `navData`
-(the current section and the logged-in user, from `s.nav`) as their `Nav` field for the
+(the current section, the logged-in user and whether debug mode is on, from `s.nav`) as their `Nav` field for the
 `app-nav` partial. Errors are HTML pages via `errorHTML` (`errors.go`); JSON is only for
 `/healthcheck`.
 
@@ -453,7 +461,11 @@ CLAUDE.md.
   is missing, has fewer than N entries, or that entry doesn't parse. If that entry isn't a
   public address, it logs a warning once per process.
 - **Internal errors** (`lookups.error`, `feeds.last_error`, `emails.last_error`, Go
-  errors) go to the logs, never to pages.
+  errors) go to the logs, never to pages, except debug panels.
+- **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the
+  default, turns it off for everyone), and both checks run on every request (see HTTP).
+  Its panels show internal details (`feeds.last_error`, `lookups.error`) to those
+  accounts only, as escaped text, and only read.
 
 ## Frontend
 

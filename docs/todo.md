@@ -8,14 +8,13 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 ## Next up
 
 1. Debug mode, in merge order:
-   1. #327 Debug mode: allowlist, Settings toggle, and site and feed panels
-   2. #328 Debug mode: inspect a feed live (fields used and ignored, items from raw to
-      stored); depends on #327
-   3. #329 Debug mode: article panel and a debug line on list rows; depends on #328
-   4. #330 Debug mode: inspect article pages and site discovery live; depends on #328,
+   1. #328 Debug mode: inspect a feed live (fields used and ignored, items from raw to
+      stored)
+   2. #329 Debug mode: article panel and a debug line on list rows; depends on #328
+   3. #330 Debug mode: inspect article pages and site discovery live; depends on #328,
       and merges after #329
 
-   Waves: #327, then #328, then #329 and #330 in parallel.
+   Waves: #328, then #329 and #330 in parallel.
 2. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 3. Before production or a few thousand feeds, **plan** load and performance testing.

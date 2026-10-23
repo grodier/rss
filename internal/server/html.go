@@ -22,6 +22,7 @@ var templateFuncs = template.FuncMap{
 	"asset":      asset,
 	"avatar":     avatar,
 	"avatarTone": avatarTone,
+	"debugPanel": newDebugPanel,
 	"monogram":   monogram,
 }
 
@@ -63,18 +64,19 @@ func monogram(name string) string {
 	return ""
 }
 
-// navData is what the app-nav partial shows: the current section and the
-// logged-in user.
+// navData is what the app-nav partial shows: the current section, the
+// logged-in user, and whether debug mode is on.
 type navData struct {
 	Section string // "home", "saved", "feeds", "search", "settings" or ""
 	User    rss.User
+	Debug   bool
 }
 
 // nav returns the navData for a logged-in page, with the user from
 // authenticatedSession.
 func (s *Server) nav(r *http.Request, section string) navData {
 	sess, _ := s.authenticatedSession(r)
-	return navData{Section: section, User: sess.User}
+	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r)}
 }
 
 func parseTemplates() (map[string]*template.Template, error) {

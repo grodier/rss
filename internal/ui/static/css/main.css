@@ -112,6 +112,8 @@
     --tone-6: #22666a;
     --tone-6-bg: #def3f3;
     --avatar-icon-bg: #fff;
+    --debug-bg: #fffbea;
+    --debug-border: #c99a06;
     --radius: 16px;
     --radius-sm: 10px;
     --column: 40rem;
@@ -1870,6 +1872,92 @@
     .feed-row button {
       padding: 0.3125rem 0.75rem;
       font-size: 0.8125rem;
+    }
+  }
+
+  /* Debug mode (allowed accounts only). Panels read as tooling, not
+     product, so they don't follow the dividers and cards rules. */
+  .debug {
+    margin: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px dashed var(--debug-border);
+    border-radius: var(--radius-sm);
+    background: var(--debug-bg);
+    font-size: 0.8125rem;
+  }
+
+  .debug summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .debug-sub {
+    margin-block: 0.75rem 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .debug-fields {
+    display: grid;
+    gap: 0.25rem;
+    margin-block-start: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+  }
+
+  .debug-fields div {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  .debug-fields dt,
+  .debug-fields dd {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .debug-fields dt {
+    color: var(--text-2);
+  }
+
+  .debug-note {
+    color: var(--text-3);
+  }
+
+  .debug-badge {
+    align-self: flex-start;
+    margin-inline: 0.875rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px dashed var(--debug-border);
+    border-radius: 999px;
+    background: var(--debug-bg);
+    color: var(--text);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .settings-debug {
+    padding: 0.875rem 1rem 0;
+  }
+
+  .settings-debug p {
+    margin-block-end: 0.75rem;
+    color: var(--text-2);
+  }
+
+  @media (max-width: 69.99rem) {
+    .debug-badge {
+      align-self: center;
+      margin-inline: 0;
+    }
+  }
+
+  @media (max-width: 42.99rem) {
+    .debug-fields div {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
     }
   }
 }

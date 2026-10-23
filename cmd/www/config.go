@@ -35,6 +35,9 @@ type serverConfig struct {
 	// proxyHops is how many reverse proxies in front of the app append to
 	// X-Forwarded-For; 0 ignores the header.
 	proxyHops int
+	// debugEmails are the accounts that may turn on debug mode, lowercased;
+	// empty turns debug mode off.
+	debugEmails []string
 }
 
 type lookupConfig struct {
@@ -136,6 +139,11 @@ func (c config) Validate() error {
 	}
 	if c.server.inviteCode != "" && len(c.server.inviteCode) < 16 {
 		errs = append(errs, errors.New("invite code must be at least 16 characters"))
+	}
+	for _, e := range c.server.debugEmails {
+		if addr, err := netmail.ParseAddress(e); err != nil || addr.Name != "" || addr.Address != e {
+			errs = append(errs, fmt.Errorf("debug-emails: %q is not an email address", e))
+		}
 	}
 	if c.db.dsn == "" {
 		errs = append(errs, errors.New("database DSN must not be empty"))
@@ -252,6 +260,9 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
 	fs.StringVar(&cfg.server.inviteCode, "invite-code", cfg.server.inviteCode, "Open signup to people with this code (at least 16 characters; default: signup off)")
 
+	var debugEmails string
+	fs.StringVar(&debugEmails, "debug-emails", "", "Accounts that may turn on debug mode, comma-separated (default: debug mode off)")
+
 	fs.IntVar(&cfg.server.proxyHops, "proxy-hops", cfg.server.proxyHops, "Reverse proxies in front of the app that append to X-Forwarded-For (0-3; 0 ignores the header)")
 
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
@@ -277,6 +288,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 		return config{}, err
 	}
 	cfg.mail.setBaseURLDefault(cfg.server.port)
+	cfg.server.debugEmails = parseDebugEmails(debugEmails)
 
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(out, err)
@@ -284,6 +296,18 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	}
 
 	return cfg, nil
+}
+
+// parseDebugEmails splits -debug-emails on commas, trims and lowercases each
+// entry, and drops empty ones.
+func parseDebugEmails(s string) []string {
+	var emails []string
+	for e := range strings.SplitSeq(s, ",") {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			emails = append(emails, e)
+		}
+	}
+	return emails
 }
 
 // setFlagsFromEnv sets each flag in fs from its RSS_ environment variable, if

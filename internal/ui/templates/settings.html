@@ -97,6 +97,19 @@
         </ul>
       </section>
 
+      {{if .DebugAllowed}}
+      <section id="debug">
+        <div class="list-head">
+          <h2>Debug</h2>
+        </div>
+        <form class="settings-debug" action="/settings/debug" method="post">
+          <p>Debug mode shows the data behind sites, feeds and articles, on this device only.</p>
+          <input type="hidden" name="on" value="{{if .DebugOn}}0{{else}}1{{end}}">
+          <button type="submit">{{if .DebugOn}}Turn off debug mode{{else}}Turn on debug mode{{end}}</button>
+        </form>
+      </section>
+      {{end}}
+
       <section>
         <div class="list-head">
           <h2>Help</h2>

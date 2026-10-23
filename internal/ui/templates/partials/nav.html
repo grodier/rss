@@ -4,10 +4,12 @@
      and tab bar on narrow ones, with an account entry (the user's avatar,
      labelled Settings) at the bottom of the rail or the right of the top
      bar. Its data is a navData: the current section ("home", "saved",
-     "feeds", "search", "settings", or "" on pages outside them) and the user. */}}
+     "feeds", "search", "settings", or "" on pages outside them), the user,
+     and whether debug mode is on (a badge after the brand). */}}
 {{define "app-nav"}}
 <header class="rail">
   {{template "brand"}}
+  {{if .Debug}}<a class="debug-badge" href="/settings#debug">Debug</a>{{end}}
   <nav aria-label="Main">
     <ul class="rail-links" role="list">
       <li><a href="/"{{if eq .Section "home"}} aria-current="page"{{end}}>{{template "icon-home"}}<span>Home</span></a></li>

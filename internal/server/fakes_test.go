@@ -349,3 +349,16 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 	}
 	return f.listSavedFn(ctx, userID, q, before, limit)
 }
+
+type fakeDebugStore struct {
+	siteDebugFn func(ctx context.Context, siteID string) (rss.SiteDebug, error)
+	feedDebugFn func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+}
+
+func (f *fakeDebugStore) SiteDebug(ctx context.Context, siteID string) (rss.SiteDebug, error) {
+	return f.siteDebugFn(ctx, siteID)
+}
+
+func (f *fakeDebugStore) FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error) {
+	return f.feedDebugFn(ctx, feedIDs)
+}

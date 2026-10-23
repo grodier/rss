@@ -135,6 +135,7 @@ func (app *Application) Run() error {
 		ReadService:         psql.NewReadRepository(db),
 		SaveService:         psql.NewSaveRepository(db),
 		ImportService:       psql.NewImportRepository(db),
+		DebugService:        psql.NewDebugRepository(db),
 		Refresher:           refresher,
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},
 	}
@@ -147,6 +148,7 @@ func (app *Application) Run() error {
 		ProxyHops:    app.config.server.proxyHops,
 		BaseURL:      app.config.mail.baseURL,
 		SupportEmail: app.config.mail.supportEmail,
+		DebugEmails:  app.config.server.debugEmails,
 	}
 
 	sessionManager := newSessionManager(db, app.config.env)

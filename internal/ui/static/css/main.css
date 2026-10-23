@@ -94,6 +94,9 @@
     --brand: #f26b1d;
     --on-brand: #fff;
     --danger: #c0281e;
+    --embed-bg: #111318;
+    --on-embed: #fff;
+    --embed-play: rgb(0 0 0 / 0.7);
     --danger-bg: #fdf1f0;
     --info-bg: #eef3fe;
     --tone-1: #9a4316;
@@ -1558,6 +1561,82 @@
 
   .article-body th {
     background: var(--surface);
+  }
+
+  /* Video embeds: a click-to-play preview (sanitize's videoEmbed) that
+     app.js swaps for the player. */
+  .article-body .embed {
+    position: relative;
+    inline-size: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: var(--embed-bg);
+  }
+
+  .article-body .embed a {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 0.75rem;
+    position: absolute;
+    inset: 0;
+    color: var(--on-embed);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .article-body .embed img {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    object-fit: cover;
+    border-radius: 0;
+  }
+
+  /* The play button: a 4rem disc above the label (0.75rem gap), with a
+     triangle drawn by the label's ::before at the disc's center. */
+  .article-body .embed a::before {
+    content: "";
+    position: relative;
+    inline-size: 4rem;
+    block-size: 4rem;
+    border-radius: 50%;
+    background: var(--embed-play);
+  }
+
+  .article-body .embed span {
+    position: relative;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--embed-play);
+  }
+
+  .article-body .embed span::before {
+    content: "";
+    position: absolute;
+    inset-block-end: calc(100% + 2rem);
+    inset-inline-start: 50%;
+    inline-size: 1.4rem;
+    block-size: 1.5rem;
+    translate: -40% 0;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+    background: var(--on-embed);
+  }
+
+  .article-body .embed a:is(:hover, :focus-visible)::before {
+    background-color: var(--brand);
+  }
+
+  .article-body .embed iframe {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    border: 0;
   }
 
   .reader-foot {

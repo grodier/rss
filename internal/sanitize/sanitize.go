@@ -25,12 +25,16 @@ func newPolicy() *bluemonday.Policy {
 	p.RequireNoReferrerOnFullyQualifiedLinks(true)
 	p.AllowAttrs("loading").Matching(regexp.MustCompile(`^lazy$`)).OnElements("img")
 	p.AllowAttrs("referrerpolicy").Matching(regexp.MustCompile(`^no-referrer$`)).OnElements("img")
+	p.AllowAttrs("class").Matching(regexp.MustCompile(`^embed$`)).OnElements("figure")
+	p.AllowAttrs("data-embed").Matching(regexp.MustCompile(`^(youtube|vimeo)$`)).OnElements("figure")
+	p.AllowAttrs("data-embed-id").Matching(regexp.MustCompile(`^[A-Za-z0-9_-]{1,20}$`)).OnElements("figure")
 	return p
 }
 
 // HTML returns raw as HTML that is safe to render: relative URLs in href and
-// src are resolved against base (left as is if base is nil), each <iframe>
-// with an http(s) src is replaced by <p><a href="SRC">Open embedded
+// src are resolved against base (left as is if base is nil), YouTube and
+// Vimeo iframes become click-to-play previews (see videoEmbed), every other
+// <iframe> with an http(s) src is replaced by <p><a href="SRC">Open embedded
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
 // http(s) URLs become links (see linkify), and everything bluemonday's policy
 // doesn't allow is removed.
@@ -205,7 +209,7 @@ func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 }
 
 // rewrite walks the children of n: it resolves href and src against base,
-// replaces iframes with links (or drops them), removes srcset and sizes, and
+// replaces iframes with video previews or links (or drops them), removes srcset and sizes, and
 // makes images load lazily without a referrer.
 func rewrite(n *html.Node, base *url.URL) {
 	for c := n.FirstChild; c != nil; {
@@ -215,7 +219,9 @@ func rewrite(n *html.Node, base *url.URL) {
 			removeAttrs(c, "srcset", "sizes")
 			switch c.DataAtom {
 			case atom.Iframe:
-				if link := embedLink(c); link != nil {
+				if video := videoEmbed(c); video != nil {
+					n.InsertBefore(video, c)
+				} else if link := embedLink(c); link != nil {
 					n.InsertBefore(link, c)
 				}
 				n.RemoveChild(c)
@@ -484,6 +490,83 @@ func resolveURLs(n *html.Node, base *url.URL) {
 		}
 		n.Attr[i].Val = base.ResolveReference(u).String()
 	}
+}
+
+var (
+	youtubeHosts = []string{"youtube.com", "www.youtube.com", "m.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"}
+	youtubePath  = regexp.MustCompile(`^/embed/([A-Za-z0-9_-]{11})$`)
+	vimeoPath    = regexp.MustCompile(`^/video/([0-9]{1,12})$`)
+)
+
+// videoEmbed returns a click-to-play preview for a YouTube or Vimeo player
+// iframe, or nil for any other iframe. The query string is ignored. For
+// YouTube it is:
+//
+//	<figure class="embed" data-embed="youtube" data-embed-id="ID">
+//	  <a href="https://www.youtube.com/watch?v=ID">
+//	    <img src="https://i.ytimg.com/vi/ID/hqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer">
+//	    <span>Play on YouTube</span>
+//	  </a>
+//	</figure>
+//
+// Vimeo's links to https://vimeo.com/ID, reads "Play on Vimeo" and has no
+// <img> (its thumbnails need an API call). app.js swaps the link for the
+// player, built from data-embed-id.
+func videoEmbed(iframe *html.Node) *html.Node {
+	src, ok := attr(iframe, "src")
+	if !ok {
+		return nil
+	}
+	u, err := url.Parse(strings.TrimSpace(src))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil
+	}
+	host := strings.ToLower(u.Hostname())
+
+	var kind, id, href, label, thumb string
+	switch {
+	case slices.Contains(youtubeHosts, host):
+		m := youtubePath.FindStringSubmatch(u.Path)
+		if m == nil {
+			return nil
+		}
+		kind, id, label = "youtube", m[1], "Play on YouTube"
+		href = "https://www.youtube.com/watch?v=" + id
+		thumb = "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"
+	case host == "player.vimeo.com":
+		m := vimeoPath.FindStringSubmatch(u.Path)
+		if m == nil {
+			return nil
+		}
+		kind, id, label = "vimeo", m[1], "Play on Vimeo"
+		href = "https://vimeo.com/" + id
+	default:
+		return nil
+	}
+
+	figure := newElement(atom.Figure)
+	figure.Attr = []html.Attribute{
+		{Key: "class", Val: "embed"},
+		{Key: "data-embed", Val: kind},
+		{Key: "data-embed-id", Val: id},
+	}
+	a := newElement(atom.A)
+	a.Attr = []html.Attribute{{Key: "href", Val: href}}
+	if thumb != "" {
+		img := newElement(atom.Img)
+		img.Attr = []html.Attribute{
+			{Key: "src", Val: thumb},
+			{Key: "alt", Val: ""},
+			{Key: "loading", Val: "lazy"},
+			{Key: "referrerpolicy", Val: "no-referrer"},
+		}
+		a.AppendChild(img)
+	}
+	span := newElement(atom.Span)
+	span.AppendChild(&html.Node{Type: html.TextNode, Data: label})
+	a.AppendChild(span)
+	figure.AppendChild(a)
+	return figure
 }
 
 // embedLink returns <p><a href="SRC">Open embedded content</a></p> for an

@@ -120,12 +120,99 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name: "iframe becomes a link",
-			raw:  `<p>before</p><iframe src="https://www.youtube.com/embed/x" width="560"></iframe><p>after</p>`,
+			raw:  `<p>before</p><iframe src="https://open.spotify.com/embed/x" width="560"></iframe><p>after</p>`,
 			has: []string{
-				`<p>before</p><p><a href="https://www.youtube.com/embed/x"`,
+				`<p>before</p><p><a href="https://open.spotify.com/embed/x"`,
 				`>Open embedded content</a></p><p>after</p>`,
 			},
 			hasNot: []string{"iframe", "560"},
+		},
+		{
+			name: "YouTube iframe becomes a preview",
+			raw:  `<p>before</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560"></iframe><p>after</p>`,
+			has: []string{
+				`<p>before</p><figure class="embed" data-embed="youtube" data-embed-id="dQw4w9WgXcQ">` +
+					`<a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"`,
+				`<img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer"/>` +
+					`<span>Play on YouTube</span></a></figure><p>after</p>`,
+				`target="_blank"`,
+			},
+			hasNot: []string{"iframe", "560", "Open embedded content"},
+		},
+		{
+			name: "YouTube host without www",
+			raw:  `<iframe src="https://youtube.com/embed/dQw4w9WgXcQ"></iframe>`,
+			has:  []string{`data-embed="youtube" data-embed-id="dQw4w9WgXcQ"`, `href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"`},
+		},
+		{
+			name: "YouTube mobile host",
+			raw:  `<iframe src="https://m.youtube.com/embed/dQw4w9WgXcQ"></iframe>`,
+			has:  []string{`data-embed="youtube" data-embed-id="dQw4w9WgXcQ"`, `href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"`},
+		},
+		{
+			name: "YouTube nocookie host",
+			raw:  `<iframe src="https://youtube-nocookie.com/embed/a_b-c_d-e_f"></iframe>`,
+			has:  []string{`data-embed="youtube" data-embed-id="a_b-c_d-e_f"`, `src="https://i.ytimg.com/vi/a_b-c_d-e_f/hqdefault.jpg"`},
+		},
+		{
+			name: "YouTube nocookie host with www",
+			raw:  `<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"></iframe>`,
+			has:  []string{`data-embed="youtube" data-embed-id="dQw4w9WgXcQ"`},
+		},
+		{
+			name:   "YouTube query string ignored",
+			raw:    `<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=30&rel=0"></iframe>`,
+			has:    []string{`data-embed-id="dQw4w9WgXcQ"`, `href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"`},
+			hasNot: []string{"start", "rel=0"},
+		},
+		{
+			name: "Vimeo iframe becomes a preview without an image",
+			raw:  `<iframe src="https://player.vimeo.com/video/76979871?h=8272103f6e"></iframe>`,
+			has: []string{
+				`<figure class="embed" data-embed="vimeo" data-embed-id="76979871"><a href="https://vimeo.com/76979871"`,
+				`<span>Play on Vimeo</span></a></figure>`,
+			},
+			hasNot: []string{"<img", "8272103f6e"},
+		},
+		{
+			name:   "YouTube ID too short stays a link",
+			raw:    `<iframe src="https://www.youtube.com/embed/dQw4w9WgXc"></iframe>`,
+			has:    []string{"Open embedded content"},
+			hasNot: []string{"<figure"},
+		},
+		{
+			name:   "YouTube ID with a slash stays a link",
+			raw:    `<iframe src="https://www.youtube.com/embed/dQw4w9/WgXcQ"></iframe>`,
+			has:    []string{"Open embedded content"},
+			hasNot: []string{"<figure"},
+		},
+		{
+			name:   "YouTube watch URL in an iframe stays a link",
+			raw:    `<iframe src="https://www.youtube.com/watch?v=dQw4w9WgXcQ"></iframe>`,
+			has:    []string{"Open embedded content"},
+			hasNot: []string{"<figure"},
+		},
+		{
+			name:   "Vimeo page URL in an iframe stays a link",
+			raw:    `<iframe src="https://vimeo.com/123"></iframe>`,
+			has:    []string{"Open embedded content"},
+			hasNot: []string{"<figure"},
+		},
+		{
+			name:   "other host stays a link",
+			raw:    `<iframe src="https://evil.example/embed/dQw4w9WgXcQ"></iframe>`,
+			has:    []string{"Open embedded content"},
+			hasNot: []string{"<figure"},
+		},
+		{
+			name: "feed-written embed with an unknown type loses data-embed",
+			raw:  `<figure class="embed" data-embed="evil" data-embed-id="x">x</figure>`,
+			want: ptr(`<figure class="embed" data-embed-id="x">x</figure>`),
+		},
+		{
+			name: "feed-written embed ID with a space dropped",
+			raw:  `<figure class="embed" data-embed="youtube" data-embed-id="a b">x</figure>`,
+			want: ptr(`<figure class="embed" data-embed="youtube">x</figure>`),
 		},
 		{
 			name: "nested relative iframe resolved and replaced",

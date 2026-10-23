@@ -157,6 +157,16 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var debug []debugField
+	if s.debugEnabled(r) {
+		fd, err := s.services.DebugService.FeedDebug(r.Context(), []string{feed.ID})
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		debug = feedDebugFields(feed, fd[feed.ID], time.Now())
+	}
+
 	flash := s.sessionManager.PopString(r.Context(), "flash")
 
 	data := struct {
@@ -170,6 +180,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Subscribed     bool
 		RefreshPending bool
 		Flash          string
+		Debug          []debugField
 	}{
 		Nav:            s.nav(r, ""),
 		Feed:           feed,
@@ -181,6 +192,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Subscribed:     subscribed[feed.ID],
 		RefreshPending: pending,
 		Flash:          flash,
+		Debug:          debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {

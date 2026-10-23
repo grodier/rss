@@ -100,6 +100,7 @@ func TestSettingsRoutesRequireAuthentication(t *testing.T) {
 		{http.MethodGet, "/settings/email"},
 		{http.MethodPost, "/settings/email"},
 		{http.MethodPost, "/settings/log-out-others"},
+		{http.MethodPost, "/settings/debug"},
 		{http.MethodGet, "/settings/subscriptions.opml"},
 		{http.MethodGet, "/settings/import"},
 		{http.MethodPost, "/settings/import"},

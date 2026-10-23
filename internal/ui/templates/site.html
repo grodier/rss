@@ -44,6 +44,8 @@
         {{end}}
       </section>
 
+      {{with .Debug}}{{template "debug-panel" (debugPanel "site" .Fields .Feeds)}}{{end}}
+
       <section>
         <div class="list-head">
           <h2>Feeds</h2>

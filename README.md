@@ -50,6 +50,7 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-port` | `RSS_PORT` | `8080` | Server port |
 | `-invite-code` | `RSS_INVITE_CODE` | _(empty: signup off)_ | Open signup to people with this code (at least 16 characters) |
+| `-debug-emails` | `RSS_DEBUG_EMAILS` | _(empty: debug mode off)_ | Accounts that may turn on debug mode, comma-separated (case doesn't matter); see "Debug mode" in [docs/features.md](docs/features.md) |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the app that append to `X-Forwarded-For` (0–3; 0 ignores the header). The client IP is the entry this many places from the right. Only safe when those proxies are the only way to reach the app |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `25` | PostgreSQL max open connections |

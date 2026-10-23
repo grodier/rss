@@ -68,6 +68,8 @@
         {{end}}
       </section>
 
+      {{with .Debug}}{{template "debug-panel" (debugPanel "feed" .)}}{{end}}
+
       <div class="list-head">
         <h2>Articles</h2>
         {{if .Before}}<a href="/feeds/{{.Feed.ID}}">Back to newest</a>{{end}}

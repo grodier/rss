@@ -20,12 +20,16 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		Flash         string
 		ConfirmNotice *confirmNotice
 		SupportEmail  string
+		DebugAllowed  bool
+		DebugOn       bool
 	}{
 		Nav:           nav,
 		User:          nav.User,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
 		ConfirmNotice: s.confirmNotice(r),
 		SupportEmail:  s.config.SupportEmail,
+		DebugAllowed:  s.debugAllowed(r),
+		DebugOn:       nav.Debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "settings.html", data); err != nil {

@@ -56,6 +56,15 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var debug *siteDebugView
+	if s.debugEnabled(r) {
+		debug, err = s.siteDebug(r.Context(), site, feeds, lookup)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
+
 	data := struct {
 		Nav         navData
 		Site        rss.Site
@@ -67,6 +76,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		CanRecheck  bool
 		LookupID    string
 		Flash       string
+		Debug       *siteDebugView
 	}{
 		Nav:         s.nav(r, ""),
 		Site:        site,
@@ -78,11 +88,36 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		CanRecheck:  canRecheck(lookup, time.Now()),
 		LookupID:    lookup.ID,
 		Flash:       s.sessionManager.PopString(r.Context(), "flash"),
+		Debug:       debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "site.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// siteDebug loads the site page's debug panel: the site's fields and a line
+// for each of feeds.
+func (s *Server) siteDebug(ctx context.Context, site rss.Site, feeds []rss.Feed, lookup rss.Lookup) (*siteDebugView, error) {
+	d, err := s.services.DebugService.SiteDebug(ctx, site.ID)
+	if err != nil {
+		return nil, err
+	}
+	feedIDs := make([]string, len(feeds))
+	for i, f := range feeds {
+		feedIDs[i] = f.ID
+	}
+	fd, err := s.services.DebugService.FeedDebug(ctx, feedIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	view := &siteDebugView{Fields: siteDebugFields(site, d, lookup, now)}
+	for _, f := range feeds {
+		view.Feeds = append(view.Feeds, siteFeedDebugLine(f, fd[f.ID], now))
+	}
+	return view, nil
 }
 
 // canRecheck reports whether a new lookup of the site may be requested: there

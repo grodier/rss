@@ -35,6 +35,9 @@ type Config struct {
 	BaseURL string
 	// SupportEmail is where people can get help; pages show it.
 	SupportEmail string
+	// DebugEmails are the accounts that may turn on debug mode, lowercased.
+	// Empty turns debug mode off.
+	DebugEmails []string
 }
 
 // FeedStore is the feed persistence the server depends on.
@@ -145,6 +148,14 @@ type ImportStore interface {
 	ListByUser(ctx context.Context, userID string, limit int) ([]rss.ImportSummary, error)
 }
 
+// DebugStore reads what debug panels show beyond the usual rows; satisfied
+// by *psql.DebugRepository. Read-only.
+type DebugStore interface {
+	SiteDebug(ctx context.Context, siteID string) (rss.SiteDebug, error)
+	// FeedDebug returns the debug counts of each of feedIDs.
+	FeedDebug(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)
+}
+
 // EmailQueue queues emails for the mail runner to send; satisfied by
 // *mail.Queue.
 type EmailQueue interface {
@@ -165,6 +176,7 @@ var (
 	_ ReadStore         = (*psql.ReadRepository)(nil)
 	_ SaveStore         = (*psql.SaveRepository)(nil)
 	_ ImportStore       = (*psql.ImportRepository)(nil)
+	_ DebugStore        = (*psql.DebugRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
 )
 
@@ -182,6 +194,7 @@ type Services struct {
 	ReadService         ReadStore
 	SaveService         SaveStore
 	ImportService       ImportStore
+	DebugService        DebugStore
 	EmailQueue          EmailQueue
 }
 

@@ -1,0 +1,16 @@
+{{/* debug-panel is a debug panel, shown only in debug mode: a collapsed
+     list of the stored values behind a page. Its data is a debugPanel
+     (from the debugPanel function). Values are plain text, escaped like
+     any other; never template.HTML. */}}
+{{define "debug-panel"}}
+<details class="debug">
+  <summary>Debug: {{.Title}}</summary>
+  {{template "debug-fields" .Fields}}
+  {{with .Feeds}}
+  <h3 class="debug-sub">feeds</h3>
+  {{template "debug-fields" .}}
+  {{end}}
+</details>
+{{end}}
+
+{{define "debug-fields"}}<dl class="debug-fields">{{range .}}<div><dt>{{.Name}}</dt><dd>{{or .Value "—"}}{{with .Note}} <span class="debug-note">{{.}}</span>{{end}}</dd></div>{{end}}</dl>{{end}}

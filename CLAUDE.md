@@ -90,6 +90,7 @@ Each file has one role: `CLAUDE.md` holds the rules (what to do), `docs/decision
 - Only `cmd/www` handles OS signals. Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it. Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer`; no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one. Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.
+- Debug panels and inspectors live in `internal/server/debug.go`, `internal/psql/debug.go` and `partials/debug.html`. They're read-only, and render untrusted text only as escaped text.
 - Log with `s.logger` (slog); log request errors with `s.logError`.
 - Prefer the standard library. Don't add a dependency without a one-line justification in the PR.
 

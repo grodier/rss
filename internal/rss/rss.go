@@ -183,6 +183,22 @@ type SiteIcon struct {
 	FetchedAt    time.Time
 }
 
+// SiteDebug is what a site's debug panel shows beyond Site.
+type SiteDebug struct {
+	IconCheckedAt   time.Time // zero if the icon worker never looked
+	IconNextCheckAt time.Time
+	Icon            SiteIcon // zero (SiteID "") if the site has no icon; Data is left empty
+	IconBytes       int      // size of the stored icon; 0 if none
+}
+
+// FeedDebug is what a feed's debug panel shows beyond Feed.
+type FeedDebug struct {
+	Articles         int
+	NewestCreatedAt  time.Time // zero if the feed has no articles
+	NewestTimelineAt time.Time // likewise
+	EnrichJobs       int       // enrich_jobs rows of the feed's articles
+}
+
 // Subscription is a feed a user follows, with its site.
 type Subscription struct {
 	Feed            Feed

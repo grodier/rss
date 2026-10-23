@@ -231,7 +231,7 @@ func TestListSaved(t *testing.T) {
 	}
 	want := []string{hi, lo, articles[3].ID, articles[0].ID}
 
-	all, err := repo.ListSaved(ctx, user, rss.ArticleCursor{}, 100)
+	all, err := repo.ListSaved(ctx, user, "", rss.ArticleCursor{}, 100)
 	if err != nil {
 		t.Fatalf("ListSaved: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestListSaved(t *testing.T) {
 		var got []string
 		cursor := rss.ArticleCursor{}
 		for range len(want) + 1 {
-			page, err := repo.ListSaved(ctx, user, cursor, 1)
+			page, err := repo.ListSaved(ctx, user, "", cursor, 1)
 			if err != nil {
 				t.Fatalf("ListSaved: %v", err)
 			}
@@ -285,12 +285,105 @@ func TestListSaved(t *testing.T) {
 	})
 
 	t.Run("no saves", func(t *testing.T) {
-		got, err := repo.ListSaved(ctx, newTestUser(t, db), rss.ArticleCursor{}, 10)
+		got, err := repo.ListSaved(ctx, newTestUser(t, db), "", rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListSaved: %v", err)
 		}
 		if len(got) != 0 {
 			t.Errorf("ListSaved = %v, want none", got)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListSavedSearch(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSaveRepository(db)
+	ctx := t.Context()
+
+	exec := func(t *testing.T, stmt string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(stmt, args...); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	// Seven articles in one feed, and one in a feed of its own whose title
+	// is the only match.
+	ids := newTestArticles(t, db, 7)
+	byFeed := newTestArticles(t, db, 1)[0]
+	exec(t, `UPDATE articles SET title = 'Zebra crossing' WHERE id = $1`, ids[0])
+	exec(t, `UPDATE articles SET excerpt = 'All about a zebra.' WHERE id = $1`, ids[1])
+	exec(t, `UPDATE articles SET page_title = 'THE ZEBRA PAGE' WHERE id = $1`, ids[2])
+	exec(t, `UPDATE feeds SET title = 'Zebra Weekly' WHERE id = (SELECT feed_id FROM articles WHERE id = $1)`, byFeed)
+	exec(t, `UPDATE articles SET title = '50% off_sale' WHERE id = $1`, ids[3])
+	exec(t, `UPDATE articles SET title = '50 percent offxsale' WHERE id = $1`, ids[4])
+	exec(t, `UPDATE articles SET title = 'Zebra, but not ours' WHERE id = $1`, ids[6])
+
+	user := newTestUser(t, db)
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for i, id := range []string{ids[0], ids[1], ids[2], byFeed, ids[3], ids[4], ids[5]} {
+		exec(t, `INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, user, id, base.Add(time.Duration(i)*time.Hour))
+	}
+	// Another user's matching save isn't returned.
+	exec(t, `INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, newTestUser(t, db), ids[6], base)
+
+	list := func(t *testing.T, q string, before rss.ArticleCursor, limit int) []rss.SavedArticle {
+		t.Helper()
+		items, err := repo.ListSaved(ctx, user, q, before, limit)
+		if err != nil {
+			t.Fatalf("ListSaved(%q): %v", q, err)
+		}
+		return items
+	}
+	articleIDs := func(items []rss.SavedArticle) []string {
+		var got []string
+		for _, item := range items {
+			got = append(got, item.Article.ID)
+		}
+		return got
+	}
+
+	// Newest saved first.
+	zebras := []string{byFeed, ids[2], ids[1], ids[0]}
+
+	tests := []struct {
+		name string
+		q    string
+		want []string
+	}{
+		{"title, page title, excerpt and feed title, ignoring case", "zebra", zebras},
+		{"upper case", "ZEBRA", zebras},
+		{"title only", "crossing", []string{ids[0]}},
+		{"page title only", "zebra page", []string{ids[2]}},
+		{"excerpt only", "all about", []string{ids[1]}},
+		{"feed title only", "weekly", []string{byFeed}},
+		{"% and _ match literally", "50% off_", []string{ids[3]}},
+		{"_ alone matches literally", "off_", []string{ids[3]}},
+		{"no match", "giraffe", nil},
+		{"empty q lists every save", "", []string{ids[5], ids[4], ids[3], byFeed, ids[2], ids[1], ids[0]}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := articleIDs(list(t, tt.q, rss.ArticleCursor{}, 100)); !slices.Equal(got, tt.want) {
+				t.Errorf("ListSaved(%q) = %v, want %v", tt.q, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("paging with a query", func(t *testing.T) {
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range len(zebras) + 1 {
+			page := list(t, "zebra", cursor, 1)
+			if len(page) == 0 {
+				break
+			}
+			got = append(got, page[0].Article.ID)
+			cursor = rss.ArticleCursor{At: page[0].SavedAt, ID: page[0].Article.ID}
+		}
+		if !slices.Equal(got, zebras) {
+			t.Errorf("paged IDs = %v, want %v", got, zebras)
 		}
 	})
 }

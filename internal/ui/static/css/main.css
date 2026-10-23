@@ -668,6 +668,17 @@
     background: var(--bg);
   }
 
+  /* The Saved page's search, above its list; Clear sits under the row. */
+  .saved-search {
+    padding: 0 1rem 0.75rem;
+  }
+
+  .saved-search > a {
+    display: inline-block;
+    margin-block-start: 0.5rem;
+    font-size: 0.875rem;
+  }
+
   /* Messages */
   .flash {
     margin: 0.75rem 1rem 0;

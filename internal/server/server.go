@@ -131,9 +131,10 @@ type SaveStore interface {
 	Save(ctx context.Context, userID, articleID string) error
 	Unsave(ctx context.Context, userID, articleID string) error
 	SavedArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
-	// ListSaved returns a page of the user's saved articles, newest saved
-	// first. Summary and Content are left empty.
-	ListSaved(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
+	// ListSaved returns a page of the user's saved articles matching q
+	// (every one if q is ""), newest saved first. Summary and Content are
+	// left empty.
+	ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
 }
 
 // ImportStore stores OPML imports and reads their results.

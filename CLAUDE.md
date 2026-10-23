@@ -43,6 +43,8 @@ Before pushing: run gofmt, vet, staticcheck and tests. CI (`.github/workflows/ci
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
+- `internal/opml`: reads the feeds listed in OPML files
+- `internal/importer`: subscribes users to the feeds of their OPML imports, queued in the `import_feeds` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)
 - `internal/refresh`: refreshes feeds in the background when they're due
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)

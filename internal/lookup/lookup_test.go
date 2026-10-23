@@ -422,3 +422,43 @@ func TestRunCancelLeavesInterruptedJobRunning(t *testing.T) {
 		t.Errorf("interrupted job recorded: finished=%v failed=%v", store.finished, store.failed)
 	}
 }
+
+func TestToSave(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	items := []feedparse.Item{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}
+	res := discovery.Result{
+		Site: discovery.SiteInfo{Key: "a.example.com", URL: "https://a.example.com/", Title: "A", Description: "Site A"},
+		Feeds: []discovery.FeedInfo{
+			{URL: "https://a.example.com/feed.xml", Title: "Posts", Description: "All posts", SiteURL: "https://a.example.com/", Items: items},
+			{URL: "https://a.example.com/comments.xml", Title: "Comments"},
+		},
+	}
+
+	site, feeds := ToSave(res, now)
+
+	wantSite := rss.Site{Host: "a.example.com", URL: "https://a.example.com/", Title: "A", Description: "Site A"}
+	if site != wantSite {
+		t.Errorf("site = %+v, want %+v", site, wantSite)
+	}
+	for i := range feeds {
+		f := &feeds[i].Feed
+		// NextFetch is jittered around now + ingest.RefreshInterval.
+		if lo, hi := now.Add(ingest.RefreshInterval/2), now.Add(2*ingest.RefreshInterval); f.NextFetch.Before(lo) || f.NextFetch.After(hi) {
+			t.Errorf("feed %q NextFetch = %v, want about %v", f.Url, f.NextFetch, now.Add(ingest.RefreshInterval))
+		}
+		f.NextFetch = time.Time{}
+	}
+	wantFeeds := []rss.FeedWithArticles{
+		{
+			Feed:     rss.Feed{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts"},
+			Articles: ingest.Articles(items),
+		},
+		{Feed: rss.Feed{Url: "https://a.example.com/comments.xml", Title: "Comments"}, Articles: []rss.Article{}},
+	}
+	if !reflect.DeepEqual(feeds, wantFeeds) {
+		t.Errorf("feeds = %+v, want %+v", feeds, wantFeeds)
+	}
+	if arts := feeds[0].Articles; len(arts) != 2 || arts[0].ExternalID != "a" || arts[1].ExternalID != "b" {
+		t.Errorf("articles = %+v, want ExternalIDs a, b", arts)
+	}
+}

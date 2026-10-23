@@ -17,6 +17,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/importer"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/lookup"
 	"github.com/grodier/rss/internal/mail"
@@ -44,7 +45,7 @@ func (app *Application) Run() error {
 	}
 	defer db.Close()
 
-	// One client serves lookups and refreshes; it is safe for concurrent use.
+	// One client serves lookups, imports and refreshes; it is safe for concurrent use.
 	fetcher := fetch.New(fetch.Options{})
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
@@ -60,6 +61,18 @@ func (app *Application) Run() error {
 			Workers:    app.config.lookup.workers,
 		}
 		background = append(background, named("lookup runner", runner.Run))
+	}
+	if app.config.importer.workers > 0 {
+		runner := &importer.Runner{
+			Store:         psql.NewImportRepository(db),
+			Feeds:         psql.NewFeedRepository(db),
+			Subscriptions: psql.NewSubscriptionRepository(db),
+			Saver:         psql.NewDiscoveryRepository(db),
+			Discoverer:    &discovery.Discoverer{Fetcher: fetcher},
+			Logger:        app.logger,
+			Workers:       app.config.importer.workers,
+		}
+		background = append(background, named("import runner", runner.Run))
 	}
 	if app.config.refresh.workers > 0 {
 		runner := &refresh.Runner{

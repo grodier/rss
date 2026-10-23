@@ -445,6 +445,21 @@ feed's site URL or else its site's). It's encoded into a buffer first, so a stor
 encoding error is an HTML 500 instead of half a file, and sent as
 `rss-subscriptions-YYYY-MM-DD.opml` (UTC).
 
+**Import.** Importing an OPML file is a queue worked in the background (#303 adds the
+upload and results pages). `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any
+depth (folders are flattened), in file order and without repeats; it parses non-strictly
+and decodes legacy charsets, since older readers' exports are sloppy.
+`ImportRepository.Create` stores the import and one pending `import_feeds` row per feed.
+The import runner (`importer.Runner`, `-import-workers`) claims one row at a time, oldest
+import first, and in `run`: parses the URL with `discovery.ParseInput` (else `failed` /
+`invalid_url`); looks up its `CanonicalFeedURL` with `FeedRepository.GetByURL`; for an
+unknown or gone feed, runs discovery (an error is `unreachable`, no feeds `not_feed`),
+saves what it found with `lookup.ToSave` and `DiscoveryRepository.Save` exactly like a
+lookup, and takes the first feed; then records `already_subscribed`, or subscribes and
+records `subscribed`. Failures aren't retried; a crashed row is re-queued by
+`ResetStale`. Subscribing bumps nothing onto the timeline: the backlog keeps its
+published dates.
+
 **Read:**
 
 1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
@@ -455,9 +470,15 @@ encoding error is an HTML 500 instead of half a file, and sent as
 4. Templates: `feed.html`, `site.html`, `feeds.html`.
 5. Export: `internal/server/settings.go` (`opmlDoc`, `exportOPMLHandler`); the "Your
    data" section of `settings.html`.
+6. Import: `internal/opml/opml.go` (`Parse`); `internal/psql/imports.go`
+   (`ImportRepository`); `internal/importer/importer.go` (`Runner.process`, `run`,
+   `discover`); `internal/lookup/lookup.go` (`ToSave`); `FeedRepository.GetByURL` in
+   `internal/psql/feeds.go`.
 
 **Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`,
-`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`.
+`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`; import:
+`internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
+`internal/importer/importer_test.go`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

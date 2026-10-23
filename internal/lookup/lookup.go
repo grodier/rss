@@ -233,6 +233,22 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds,
 		return "", 0, 0, nil
 	}
 
+	site, fs := ToSave(res, time.Now())
+	for _, f := range fs {
+		articles += len(f.Articles)
+	}
+
+	siteID, err = r.Saver.Save(jobCtx, site, fs)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return siteID, len(fs), articles, nil
+}
+
+// ToSave converts what discovery found into the site and feeds that
+// Saver.Save takes. Each feed's next fetch is scheduled from now, since
+// discovery just fetched it.
+func ToSave(res discovery.Result, now time.Time) (rss.Site, []rss.FeedWithArticles) {
 	site := rss.Site{
 		Host:        res.Site.Key,
 		URL:         res.Site.URL,
@@ -247,16 +263,10 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds,
 				SiteUrl:     f.SiteURL,
 				Title:       f.Title,
 				Description: f.Description,
-				NextFetch:   ingest.NextFetch(time.Now()), // discovery just fetched it
+				NextFetch:   ingest.NextFetch(now),
 			},
 			Articles: ingest.Articles(f.Items),
 		}
-		articles += len(fs[i].Articles)
 	}
-
-	siteID, err = r.Saver.Save(jobCtx, site, fs)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	return siteID, len(fs), articles, nil
+	return site, fs
 }

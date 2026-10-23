@@ -12,19 +12,18 @@ Reading features, planned in #309 (issues #293–#308), in merge order:
 1. #295 Make article pages easier to read: wide content and a lead image (after #294)
 2. #297 Record which articles carry audio or video
 3. #299 Save articles (draft PR with layout options first)
-4. #302 Import subscriptions from OPML: the import queue
-5. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
-6. #300 Add a Saved page to the nav (after #299)
-7. #303 Import subscriptions from OPML: upload and results pages (after #302)
-8. #304 Find and store site icons
-9. #301 Search your saved articles (after #300)
-10. #305 Show site icons as avatars (after #304)
-11. #306 Fetch missing article images and titles from their web pages
-12. #307 Show article images and titles fetched from their web pages (after #306)
-13. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
+4. #296 Play YouTube and Vimeo videos in articles (after #294, #295)
+5. #300 Add a Saved page to the nav (after #299)
+6. #303 Import subscriptions from OPML: upload and results pages
+7. #304 Find and store site icons
+8. #301 Search your saved articles (after #300)
+9. #305 Show site icons as avatars (after #304)
+10. #306 Fetch missing article images and titles from their web pages
+11. #307 Show article images and titles fetched from their web pages (after #306)
+12. #308 Hide articles from the timeline (low priority, a prototype; after #299; draft PR
     with placement options first)
 
-These can run in parallel sessions, one wave after another: #295, #297, #299 and #302;
+These can run in parallel sessions, one wave after another: #295, #297 and #299;
 then #296, #300, #303 and #304; then #301, #305 and #306; then #307 and #308.
 
 Then:

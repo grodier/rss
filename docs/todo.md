@@ -7,9 +7,18 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. #340 Cut long site names on the "Read on" button with "…" (overflows on phones).
-2. #342 Rename a subscription. Independent of #340 and #341.
-3. #343 Show the reader's name for a feed everywhere they read it. After #341 and #342.
+1. #342 Rename a subscription.
+2. #343 Show the reader's name for a feed everywhere they read it. After #342.
+3. Filtering and timelines (planned in #365; decisions under "Filtering and timelines" in
+   decisions.md):
+   1. #348 The batch's tables (one production reset). Everything below needs it.
+   2. #349 Star articles, #350 posting rate, #351 Tags page: independent of each other.
+   3. #352 Tag subscriptions on Edit subscription (after #342 and #351), then #353 bulk
+      tagging, #354 OPML folders to tags, and #355 OPML export by tag (after #343).
+   4. #356 Custom timelines (after #351), then #357 reorder, #358 starred only (after
+      #349), #359 quiet posters (after #350), #360 keywords and #361 audio or video.
+   5. #362 Mute on Home (after #352, #353 and #356).
+   6. #363 Share a timeline (after #356), then #364 its Atom feed.
 4. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 5. Before production or a few thousand feeds, **plan** load and performance testing.
@@ -174,7 +183,8 @@ Each with when it pays off:
   posting frequency: count articles published in the last 14 days (`n`), interval =
   clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` /
   `Cache-Control` floors (#133). Worth it at a few thousand feeds, or when most fetches
-  are 304s or find no new articles.
+  are 304s or find no new articles. `feeds.posts_per_week` (#350) is a 30-day version of
+  `n` the schedule could use.
 - [ ] **Permanent redirects (301/308).** Update `feeds.url`. Needs `fetch` to report the
   redirect chain, and a decision for the unique-URL collision when two feeds end up at
   the same URL (merge, or keep the old one). Redirects are already followed, so this can
@@ -219,8 +229,6 @@ Each with when it pays off:
 - [ ] **Names from OPML imports.** Other readers' exports carry each feed's name as the
   outline's `text`/`title`; an import could set it as the subscription's name (#342)
   when it differs from the feed's title. Deferred from #344.
-- [ ] **Tags or categories on subscriptions** (needs planning). They'd go on the "Edit
-  subscription" page (#342).
 
 ## Reading
 
@@ -272,16 +280,6 @@ Each with when it pays off:
   arrive as into a quote card with the author and a link, without loading their scripts.
 - [ ] **Share button.** In the row's action bar, to Save's left (#299): the Web Share API on
   phones, else copy the article's link. Its own small issue.
-- [ ] **Filters and muting (needs planning).** Muting a feed on the timeline (kept
-  subscribed, still on its feed page) and keyword filters. The owner wants to think
-  through what filters mean first.
-- [ ] **Reconsider hiding single articles (with filters).** A ✕ on timeline rows was
-  prototyped in #308 (draft PR #325, with screenshots) and not taken in. Revisit only as
-  part of "Filters and muting", which may solve the same problem (sponsored posts, topics
-  you don't follow) without per-article hides. Concerns to answer first, under "Hiding
-  articles" in decisions.md: the UX (Undo only lasts until the page reloads, and the only
-  way back is the feed page), hiding as inbox-zero on the timeline, and the cost of a
-  per-article `hides` table that every timeline page has to read.
 - [ ] **Measure untitled articles.** Before investing in better titles, query the share of
   articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 /
   count(*) FROM articles`).
@@ -316,6 +314,36 @@ Each with when it pays off:
 - [ ] **"Discussion on Hacker News".** For aggregator items, a second link on the article
   page to the item's own page (the feed's `comments` link), next to "Read on {domain}".
   Deferred from #344.
+
+## Filtering and timelines
+
+Deferred while planning filters (#365). The decisions are under "Filtering and timelines"
+in decisions.md.
+
+- [ ] **Related articles (needs planning).** "More like this" on the article page, and
+  smarter topic matching than keyword filters (#360). Two approaches to compare:
+  - *Content similarity:* article embeddings, in Postgres with `pgvector` or in a
+    separate vector store, which means a model call per article and its cost; or
+    Postgres full-text search (`tsvector` similarity) as a cheap baseline first.
+  - *Signals across users:* articles starred together ("people who starred this also
+    starred…", within a similar category), and a feed's category from the tags readers
+    give it.
+
+  The second needs real usage first, and the conditions under "Cross-user use" in
+  decisions.md: anonymous totals above a minimum count, and a privacy policy update.
+- [ ] **Shared timelines in Search (needs planning).** An opt-in "List in search" per
+  shared timeline (#363), and a Timelines section in search results. Plan moderation
+  first: names and descriptions are the first user-written text strangers would see
+  (spam, impersonation, reporting), and whether to show an owner name or profile.
+- [ ] **More posting-frequency conditions.** Beyond "at most N posts a week" (#359): posts
+  a day, "posted in the last N days", "hasn't posted for N months". When someone asks.
+- [ ] **Mute from a timeline row.** A per-row menu with "Leave out of Home", if muting
+  from Edit subscription and tag pages (#362) proves too far away.
+- [ ] **Images on shared pages.** #363 shows text only. Card images would load from
+  publishers for strangers too; decide with the image proxy.
+- [ ] **Embedded videos for the audio/video condition.** #361 only counts enclosures. A
+  flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos;
+  decide with "Measure embeds and media".
 
 ## Design
 
@@ -487,6 +515,11 @@ Background refresh:
   upsert inside the `SaveFetch` transaction. *Signal:* `SaveFetch` time dominates the
   `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario
   above). *Fix:* a single multi-row upsert (`unnest` of arrays) per fetch.
+- [ ] **Posting rate recomputed on every save** (#350). `saveArticles` and
+  `RecordNotModified` count each feed's articles of the last 30 days on every fetch,
+  304s included, served by `articles_feed_sort_idx`. *Signal:* the count shows up in
+  `pg_stat_statements`, or `SaveFetch` time grows for busy feeds. *Fix:* recompute only
+  when articles were inserted, plus at most once a day.
 - [ ] **Writes from feed page views** (#137). Viewing a stale feed runs an `UPDATE`
   (`RequestRefresh`). The `refresh_requested_at IS NULL` guard limits it to once per stale
   period per feed, so this is unlikely to matter. *Signal:* `RequestRefresh` shows up in
@@ -550,6 +583,34 @@ Pages and queries:
   subscription count, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
   *Fix:* a `LATERAL` top-N per subscribed feed merged in the query, or a per-user
   timeline table filled at ingest.
+- [ ] **Filtered timelines read past many articles** (#356, #359, #360). A restrictive
+  filter (one quiet tag, a rarely matched keyword, quiet posters) still makes
+  `ListTimeline` collapse copies over all the matching subscriptions' articles, and
+  keyword matches (`~*` over title, page title and excerpt) can't use an index, so a
+  page that matches few articles reads many to fill 30 rows. *Signal:* `/timelines/{id}`
+  p95 above `/`'s, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
+  *Fix:* the per-user timeline table above; for words, a `pg_trgm` or full-text index on
+  the matched text, or bounding the scan to recent articles.
+- [ ] **Timeline tabs on every Home view** (#356). The tab row adds one small indexed
+  query (`TimelineRepository.List`) to `/` and each timeline page, and Home adds
+  `GetHome` (#362). *Signal:* they show up in `pg_stat_statements` totals. *Fix:* fold
+  them into one query, or keep the tab list in the session until a timeline changes.
+- [ ] **Tag page checklist is unpaginated** (#353, #356). A tag's page, and also
+  the timeline form, list all of a user's subscriptions as checkboxes, like My feeds.
+  *Signal:* users with hundreds of subscriptions, or those pages' p95 rising. *Fix:*
+  with My feeds' fix, plus a filter box over the list.
+- [ ] **Starred timelines read all of a user's stars** (#358). With Show limited to tags,
+  `ListStarred` walks the user's stars by `starred_at` and drops those outside the
+  filter, like the Saved search. Fine for hundreds of stars. *Signal:* starred-only
+  timelines slow for users with thousands of stars. *Fix:* join from the filter's feeds
+  instead, or index stars by feed.
+- [ ] **Shared feeds polled by other readers** (#363, #364). Every request for a
+  shared page or Atom feed runs its owner's timeline query, anonymously, and feed
+  readers poll every 15–60 minutes; a link that spreads multiplies that. `ETag`, 304s
+  and `Cache-Control: public` cut the bytes, not the query. *Signal:* `/shared/` requests
+  in the logs, their latency, or `ListShared` in `pg_stat_statements`. *Fix:* an
+  in-memory cache per token (keyed by the timeline's `updated_at` and newest article),
+  a CDN in front of `/shared/`, or a per-IP limit.
 - [ ] **Sanitizing article HTML on every view** (#151). `sanitize.HTML` parses and
   renders the article with `x/net/html`, then bluemonday parses it again, on each article
   page view; cost grows with the size of the HTML, which feeds don't bound. *Signal:*
@@ -562,9 +623,9 @@ Pages and queries:
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161). One query per timeline or feed
   page, matching reads across copies by `canonical_url` (#161). Saves add
-  `SavedArticleIDs` (#299) and icons add `IconHashes` (#305), each one more query per
-  page with the same shape. *Signal:* they show up in `pg_stat_statements`, or slow for
-  users with many reads or saves.
+  `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add
+  `IconHashes` (#305), each one more query per page with the same shape. *Signal:* they
+  show up in `pg_stat_statements`, or slow for users with many reads or saves.
   *Fix:* fold them into the page's main query, or store the canonical URL on `reads`
   and `saves`.
 - [ ] **Saved search scans with `ILIKE`** (#301). Search within Saved matches `%q%`

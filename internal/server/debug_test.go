@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/feedparse"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
@@ -355,6 +356,9 @@ func TestSiteHandlerDebugPanel(t *testing.T) {
 			"<dt>First</dt><dd>failing (2 in a row) · never attempted · 4 articles</dd>",
 			"&lt;script&gt;alert(1)&lt;/script&gt;",
 			`<a class="debug-badge" href="/settings#debug">Debug</a>`,
+			`<form class="debug-inspect" action="/debug/sites/`+testSiteID+`/discover" method="post">`,
+			"Run discovery</button>",
+			"Runs a lookup of this site now without saving anything.",
 		)
 		if strings.Contains(body, "<script>alert(1)") {
 			t.Error("lookup error is not escaped")
@@ -1052,9 +1056,22 @@ func TestArticleHandlerDebugPanel(t *testing.T) {
 			`<form class="debug-inspect" action="/debug/feeds/`+testFeedID+`/inspect" method="post">`,
 			`<input type="hidden" name="item" value="tag:example.com,2026:&lt;1&gt;">`,
 			"Source item</button>",
+			`<form class="debug-inspect" action="/debug/articles/`+testArticleID+`/inspect-page" method="post">`,
+			"Inspect page</button>",
 		)
 		if strings.Contains(body, "<script>alert") {
 			t.Error("raw content is not escaped")
+		}
+	})
+
+	t.Run("no URL, no Inspect page", func(t *testing.T) {
+		s := articleServer(t, rss.Article{Title: "No link", TimelineAt: time.Now()}, nil, nil, nil)
+		s.config.DebugEmails = debugConfig.DebugEmails
+		s.services.DebugService = copies
+		req := withRouteID(httptest.NewRequest(http.MethodGet, "/articles/"+testArticleID, nil), testArticleID)
+		rr, _, _ := serveDebug(t, s, s.articleHandler, req, &debugSession, true)
+		if body := rr.Body.String(); strings.Contains(body, "inspect-page") {
+			t.Errorf("shows Inspect page for an article without a URL: %s", body)
 		}
 	})
 
@@ -1183,5 +1200,281 @@ func TestArticleRowsDebugLine(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// inspectPageHTML is an article's web page for the page inspector tests.
+const inspectPageHTML = `<!doctype html><html><head>
+<title>Fetched page</title>
+<meta property="og:title" content="OG title">
+<meta name="description" content="Fetched   description">
+<meta property="og:image" content="https://example.com/lead.jpg">
+<meta property="article:published_time" content="2026-10-20T08:00:00Z">
+<script type="application/ld+json">{"@type": "NewsArticle", "headline": "</script><script>alert(1)</script>"}</script>
+</head><body></body></html>`
+
+// htmlResponse is a 200 HTML response with body from url.
+func htmlResponse(t *testing.T, rawURL, body string) *fakeFetcher {
+	return &fakeFetcher{resp: &fetch.Response{
+		URL:        mustURL(t, rawURL),
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+		Body:       []byte(body),
+	}}
+}
+
+// pageInspectServer is a server for the page inspector whose article is a
+// with ID testArticleID, fetching with fetcher.
+func pageInspectServer(t *testing.T, a rss.Article, fetcher *fakeFetcher) *Server {
+	t.Helper()
+	a.ID, a.FeedID = testArticleID, testFeedID
+	return newTestServerConfig(t, debugConfig, Services{
+		ArticleService: &fakeArticleStore{getByIDFn: func(_ context.Context, id string) (rss.Article, error) {
+			if id != testArticleID {
+				return rss.Article{}, rss.ErrNoRecord
+			}
+			return a, nil
+		}},
+		Fetcher: fetcher,
+	})
+}
+
+// servePost posts to target, handled by h behind requireDebug, with the
+// route's id and debug mode debugOn.
+func servePost(t *testing.T, s *Server, h http.HandlerFunc, target, id string, debugOn bool) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr, _, _ := serveDebug(t, s, s.requireDebug(h).ServeHTTP, withRouteID(req, id), &debugSession, debugOn)
+	return rr
+}
+
+func TestArticlePageInspectHandler(t *testing.T) {
+	article := rss.Article{URL: "https://example.com/1", Title: "An article", PageTitle: "Stored page title"}
+	serve := func(t *testing.T, s *Server) string {
+		t.Helper()
+		rr := servePost(t, s, s.articlePageInspectHandler, "/debug/articles/"+testArticleID+"/inspect-page", testArticleID, true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		return rr.Body.String()
+	}
+
+	t.Run("html", func(t *testing.T) {
+		fetcher := htmlResponse(t, "https://example.com/1", inspectPageHTML)
+		body := serve(t, pageInspectServer(t, article, fetcher))
+		assertBodyContains(t, body,
+			"<title>rss - inspect page</title>",
+			`<a href="/articles/`+testArticleID+`">Back to the article</a>`,
+			"<dt>status</dt><dd>200 OK</dd>",
+			"What enrichment would do",
+			`<th scope="row">page_title</th><td>OG title</td><td>Stored page title</td>`,
+			`<th scope="row">page_description</th><td>Fetched description</td><td>—</td>`,
+			`<th scope="row">page_image_url</th><td>https://example.com/lead.jpg</td><td>—</td>`,
+			`<tr><th scope="row">meta</th><td>og:title</td><td>OG title</td><td></td><td>used</td></tr>`,
+			`<tr class="debug-ignored"><th scope="row">meta</th><td>article:published_time</td><td>2026-10-20T08:00:00Z</td><td></td><td>ignored</td></tr>`,
+			"Types: none",
+		)
+		if len(fetcher.urls) != 1 || fetcher.urls[0] != "https://example.com/1" {
+			t.Errorf("fetched %v, want the article's URL once", fetcher.urls)
+		}
+	})
+
+	t.Run("JSON-LD is escaped", func(t *testing.T) {
+		page := `<script type="application/ld+json">{"@type": "NewsArticle", "x": "<\/script><script>alert(1)<\/script>"}</script>` +
+			`<script type="application/ld+json">{"bad": "</script><script>alert(2)</script>`
+		body := serve(t, pageInspectServer(t, article, htmlResponse(t, "https://example.com/1", page)))
+		assertBodyContains(t, body, "Types: NewsArticle", `&lt;\/script&gt;&lt;script&gt;alert(1)`, "JSON-LD block")
+		if strings.Contains(body, "<script>alert") {
+			t.Error("JSON-LD is not escaped")
+		}
+	})
+
+	t.Run("not HTML", func(t *testing.T) {
+		fetcher := htmlResponse(t, "https://example.com/1", "%PDF-1.7")
+		fetcher.resp.Header.Set("Content-Type", "application/pdf")
+		body := serve(t, pageInspectServer(t, article, fetcher))
+		assertBodyContains(t, body, "Enrichment would give up: not HTML")
+		if strings.Contains(body, ">Tags</h2>") {
+			t.Error("shows tags for a page that isn't HTML")
+		}
+	})
+
+	t.Run("404", func(t *testing.T) {
+		fetcher := htmlResponse(t, "https://example.com/1", "<title>Not found</title>")
+		fetcher.resp.StatusCode = http.StatusNotFound
+		body := serve(t, pageInspectServer(t, article, fetcher))
+		assertBodyContains(t, body, "<dt>status</dt><dd>404 Not Found</dd>", "Enrichment would retry or give up: status 404")
+	})
+
+	t.Run("fetch error", func(t *testing.T) {
+		body := serve(t, pageInspectServer(t, article, &fakeFetcher{err: errors.New("dial tcp: connection refused")}))
+		assertBodyContains(t, body, "Fetch failed: dial tcp: connection refused")
+	})
+
+	t.Run("no URL", func(t *testing.T) {
+		fetcher := htmlResponse(t, "https://example.com/1", inspectPageHTML)
+		s := pageInspectServer(t, rss.Article{Title: "No link"}, fetcher)
+		assertNotFoundHTML(t, servePost(t, s, s.articlePageInspectHandler, "/debug/articles/"+testArticleID+"/inspect-page", testArticleID, true))
+		if len(fetcher.urls) != 0 {
+			t.Errorf("fetched %v for an article without a URL", fetcher.urls)
+		}
+	})
+
+	t.Run("unknown article", func(t *testing.T) {
+		const other = "99999999-9999-4999-8999-999999999999"
+		s := pageInspectServer(t, article, htmlResponse(t, "https://example.com/1", inspectPageHTML))
+		assertNotFoundHTML(t, servePost(t, s, s.articlePageInspectHandler, "/debug/articles/"+other+"/inspect-page", other, true))
+	})
+}
+
+// siteDiscoverServer is a server for the discovery inspector of a site with
+// feeds, fetching with fetcher and discovering with d.
+func siteDiscoverServer(t *testing.T, feeds []rss.Feed, fetcher *fakeFetcher, d *fakeDiscoverer) *Server {
+	t.Helper()
+	return newTestServerConfig(t, debugConfig, Services{
+		SiteService: &fakeSiteStore{getByIDFn: func(_ context.Context, id string) (rss.Site, error) {
+			if id != testSiteID {
+				return rss.Site{}, rss.ErrNoRecord
+			}
+			return rss.Site{ID: id, Host: "example.com", URL: "https://example.com/", Title: "Stored title"}, nil
+		}},
+		FeedService: &fakeFeedStore{listBySiteFn: func(_ context.Context, siteID string) ([]rss.Feed, error) {
+			return feeds, nil
+		}},
+		Fetcher:    fetcher,
+		Discoverer: d,
+	})
+}
+
+func TestSiteDiscoverHandler(t *testing.T) {
+	stored := []rss.Feed{
+		{ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Title: "Posts", Url: "https://example.com/feed.xml"},
+		{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Title: "Old", Url: "https://example.com/old.xml"},
+	}
+	home := `<title>Fetched title</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">`
+	checked := []discovery.CandidateCheck{
+		{Candidate: discovery.Candidate{URL: mustURL(t, "https://example.com/feed.xml"), Title: "Posts"}, Source: discovery.SourcePage,
+			FinalURL: "https://example.com/feed.xml", Status: 200, Feed: "https://example.com/feed.xml", Outcome: discovery.OutcomeFeed},
+		{Candidate: discovery.Candidate{URL: mustURL(t, "https://example.com/comments.xml")}, Source: discovery.SourcePage,
+			FinalURL: "https://example.com/comments.xml", Status: 200, Feed: "https://example.com/comments.xml", Outcome: discovery.OutcomeFeed},
+		{Candidate: discovery.Candidate{URL: mustURL(t, "https://example.com/gone.xml")}, Source: discovery.SourcePage,
+			FinalURL: "https://example.com/gone.xml", Status: 404, Outcome: "status 404"},
+	}
+	serve := func(t *testing.T, s *Server) string {
+		t.Helper()
+		rr := servePost(t, s, s.siteDiscoverHandler, "/debug/sites/"+testSiteID+"/discover", testSiteID, true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		return rr.Body.String()
+	}
+
+	t.Run("known, new and missing feeds", func(t *testing.T) {
+		d := &fakeDiscoverer{res: discovery.Result{Checked: checked, Feeds: []discovery.FeedInfo{
+			{URL: "https://example.com/feed.xml", Title: "Posts"},
+			{URL: "https://example.com/comments.xml", Title: "Comments"},
+		}}}
+		fetcher := htmlResponse(t, "https://example.com/", home)
+		body := serve(t, siteDiscoverServer(t, stored, fetcher, d))
+		assertBodyContains(t, body,
+			"<title>rss - run discovery</title>",
+			`<a href="/sites/`+testSiteID+`">Back to the site</a>`,
+			`<th scope="row">title</th><td>Fetched title</td><td>Stored title</td>`,
+			`<tr><th scope="row">link</th><td>alternate</td><td>https://example.com/feed.xml</td><td>application/rss&#43;xml</td><td>used</td></tr>`,
+			`<tr><th scope="row">page</th><td>https://example.com/feed.xml <span class="debug-note">Posts</span></td><td>https://example.com/feed.xml</td><td>200</td><td>feed</td></tr>`,
+			`<tr class="debug-ignored"><th scope="row">page</th><td>https://example.com/gone.xml</td><td>https://example.com/gone.xml</td><td>404</td><td>status 404</td></tr>`,
+			`<dt>known</dt><dd>Posts <span class="debug-note">https://example.com/feed.xml</span></dd>`,
+			`<dt>new</dt><dd>Comments <span class="debug-note">https://example.com/comments.xml</span></dd>`,
+			"Stored but not found by this run",
+			`<a href="/feeds/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb">Old</a>`,
+		)
+		if strings.Contains(body, "Discovery failed") {
+			t.Error("shows a discovery error without one")
+		}
+		if !slices.Equal(d.urls, []string{"https://example.com/"}) || !slices.Equal(fetcher.urls, []string{"https://example.com/"}) {
+			t.Errorf("discovered %v and fetched %v, want the site's URL once each", d.urls, fetcher.urls)
+		}
+	})
+
+	t.Run("discovery error still shows Checked", func(t *testing.T) {
+		partial := append([]discovery.CandidateCheck{}, checked[0])
+		partial = append(partial, discovery.CandidateCheck{Candidate: discovery.Candidate{URL: mustURL(t, "https://example.com/late.xml")},
+			Source: discovery.SourcePage, Outcome: discovery.OutcomeDeadline})
+		d := &fakeDiscoverer{res: discovery.Result{Checked: partial}, err: errors.New("discovery: checking feeds: context deadline exceeded")}
+		body := serve(t, siteDiscoverServer(t, stored, htmlResponse(t, "https://example.com/", home), d))
+		assertBodyContains(t, body,
+			`<p class="fetch-error" role="alert">Discovery failed: discovery: checking feeds: context deadline exceeded</p>`,
+			"<td>not fetched (deadline)</td>",
+			"No feeds found.",
+		)
+	})
+
+	t.Run("direct feed", func(t *testing.T) {
+		d := &fakeDiscoverer{res: discovery.Result{Direct: true, Feeds: []discovery.FeedInfo{{URL: "https://example.com/feed.xml", Title: "Posts"}}}}
+		body := serve(t, siteDiscoverServer(t, stored, htmlResponse(t, "https://example.com/", home), d))
+		assertBodyContains(t, body, "The site's URL is itself a feed")
+	})
+
+	t.Run("home page fetch error", func(t *testing.T) {
+		d := &fakeDiscoverer{err: errors.New("discovery: fetching https://example.com/: dial tcp: refused")}
+		body := serve(t, siteDiscoverServer(t, stored, &fakeFetcher{err: errors.New("dial tcp: refused")}, d))
+		assertBodyContains(t, body, "Fetch failed: dial tcp: refused", "Discovery failed: discovery: fetching")
+	})
+
+	t.Run("unknown site", func(t *testing.T) {
+		const other = "99999999-9999-4999-8999-999999999999"
+		d := &fakeDiscoverer{}
+		s := siteDiscoverServer(t, stored, htmlResponse(t, "https://example.com/", home), d)
+		assertNotFoundHTML(t, servePost(t, s, s.siteDiscoverHandler, "/debug/sites/"+other+"/discover", other, true))
+		if len(d.urls) != 0 {
+			t.Errorf("discovered %v for an unknown site", d.urls)
+		}
+	})
+}
+
+// TestPageInspectorsDebugOff checks that with debug mode off both inspectors
+// are 404 and touch nothing: no store, fetch or discovery is called.
+func TestPageInspectorsDebugOff(t *testing.T) {
+	untouched := func(t *testing.T) Services {
+		return Services{
+			ArticleService: &fakeArticleStore{getByIDFn: func(context.Context, string) (rss.Article, error) {
+				t.Error("ArticleService.GetByID called")
+				return rss.Article{}, nil
+			}},
+			SiteService: &fakeSiteStore{getByIDFn: func(context.Context, string) (rss.Site, error) {
+				t.Error("SiteService.GetByID called")
+				return rss.Site{}, nil
+			}},
+			FeedService: &fakeFeedStore{
+				listBySiteFn: func(context.Context, string) ([]rss.Feed, error) {
+					t.Error("FeedService.ListBySite called")
+					return nil, nil
+				},
+				requestRefreshFn: func(context.Context, string) error {
+					t.Error("FeedService.RequestRefresh called")
+					return nil
+				},
+			},
+			DebugService: unusedDebugStore(t),
+		}
+	}
+	for _, tt := range []struct {
+		name, target, id string
+		handler          func(s *Server) http.HandlerFunc
+	}{
+		{"page inspector", "/debug/articles/" + testArticleID + "/inspect-page", testArticleID, func(s *Server) http.HandlerFunc { return s.articlePageInspectHandler }},
+		{"site discovery", "/debug/sites/" + testSiteID + "/discover", testSiteID, func(s *Server) http.HandlerFunc { return s.siteDiscoverHandler }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			services := untouched(t)
+			fetcher, d := &fakeFetcher{}, &fakeDiscoverer{}
+			services.Fetcher, services.Discoverer = fetcher, d
+			s := newTestServerConfig(t, debugConfig, services)
+			assertNotFoundHTML(t, servePost(t, s, tt.handler(s), tt.target, tt.id, false))
+			if len(fetcher.urls) != 0 || len(d.urls) != 0 {
+				t.Errorf("fetched %v and discovered %v with debug mode off", fetcher.urls, d.urls)
+			}
+		})
 	}
 }

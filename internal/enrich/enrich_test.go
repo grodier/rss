@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
@@ -154,6 +155,27 @@ func TestProcessShortensLongDescription(t *testing.T) {
 	}
 	if !strings.HasSuffix(c.page.Description, "…") {
 		t.Errorf("description = %q; want it shortened with …", c.page.Description)
+	}
+}
+
+func TestPageOf(t *testing.T) {
+	long := strings.Repeat("word\n\t ", 200)
+	got := PageOf(discovery.PageInfo{
+		Title:       "Site name",
+		PageTitle:   "Page title",
+		Description: "  Two\n\n  lines " + long,
+		Image:       "https://example.com/a.jpg",
+	})
+	want := rss.ArticlePage{
+		ImageURL:    "https://example.com/a.jpg",
+		Title:       "Page title",
+		Description: rss.Shorten("Two lines "+strings.TrimSpace(strings.Repeat("word ", 200)), ingest.ExcerptLen),
+	}
+	if got != want {
+		t.Errorf("PageOf = %+v, want %+v", got, want)
+	}
+	if !strings.HasSuffix(got.Description, "…") {
+		t.Errorf("description = %q; want it shortened with …", got.Description)
 	}
 }
 

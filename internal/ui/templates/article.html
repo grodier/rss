@@ -43,6 +43,12 @@
             <button class="btn-sm" type="submit">Source item</button>
           </form>
           <p class="debug-note">Fetches the feed now and shows this article's item, if the feed still lists it.</p>
+          {{if $.Article.URL}}
+          <form class="debug-inspect" action="/debug/articles/{{$.Article.ID}}/inspect-page" method="post">
+            <button class="btn-sm" type="submit">Inspect page</button>
+          </form>
+          <p class="debug-note">Fetches the article's web page now and shows its metadata tags and what enrichment would store.</p>
+          {{end}}
         </details>
         {{end}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}

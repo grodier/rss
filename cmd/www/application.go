@@ -52,6 +52,7 @@ func (app *Application) Run() error {
 	fetcher := fetch.New(fetch.Options{})
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
+	discoverer := &discovery.Discoverer{Fetcher: fetcher}
 
 	// Background components run alongside the server until ctx is canceled.
 	var background []func(context.Context) error
@@ -59,7 +60,7 @@ func (app *Application) Run() error {
 		runner := &lookup.Runner{
 			Store:      psql.NewLookupRepository(db),
 			Saver:      psql.NewDiscoveryRepository(db),
-			Discoverer: &discovery.Discoverer{Fetcher: fetcher},
+			Discoverer: discoverer,
 			Logger:     app.logger,
 			Workers:    app.config.lookup.workers,
 		}
@@ -71,7 +72,7 @@ func (app *Application) Run() error {
 			Feeds:         psql.NewFeedRepository(db),
 			Subscriptions: psql.NewSubscriptionRepository(db),
 			Saver:         psql.NewDiscoveryRepository(db),
-			Discoverer:    &discovery.Discoverer{Fetcher: fetcher},
+			Discoverer:    discoverer,
 			Logger:        app.logger,
 			Workers:       app.config.importer.workers,
 		}
@@ -139,6 +140,7 @@ func (app *Application) Run() error {
 		Refresher:           refresher,
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},
 		Fetcher:             fetcher,
+		Discoverer:          discoverer,
 	}
 
 	srvConfig := server.Config{

@@ -100,16 +100,16 @@ Mailpit (`compose.yml`) and in production against Resend.
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | `server`, `psql`, `lookup`, `importer`, `refresh`, `siteicon`, `enrich`, `ingest`, `discovery`, `fetch`, `mail`, `ui`, `migrations`, `validator`, `rss` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing), `ingest` (errors; `Articles` and `ExternalID` for the feed inspector), `feedparse` and `fetch` (the feed inspector), `opml` (import uploads), `psql` (interface checks only) |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing; `InspectPage` and `SiteDiscoverer` for the debug inspectors), `ingest` (errors; `Articles` and `ExternalID` for the feed inspector), `feedparse` and `fetch` (the feed inspector), `enrich` (`PageOf` and `IsHTML` for the page inspector), `opml` (import uploads), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file (`Parse`), folders flattened | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/siteicon` | Site icon workers: find a site's icon on its home page, check its type and size, store it | `discovery`, `fetch`, `rss` |
-| `internal/enrich` | Article enrichment workers: fetch an article's web page and store its image, title and description | `discovery`, `fetch`, `ingest` (`ExcerptLen`, `RetryAfter`), `rss` |
+| `internal/enrich` | Article enrichment workers: fetch an article's web page and store its image, title and description (`PageOf`, shared with the page inspector) | `discovery`, `fetch`, `ingest` (`ExcerptLen`, `RetryAfter`), `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
-| `internal/discovery` | Normalize user input, find a site's feeds | `fetch`, `feedparse` |
+| `internal/discovery` | Normalize user input, find a site's feeds; `Result.Checked` records every candidate and its outcome; `InspectPage` lists a page's `<title>`, `<base>`, `<meta>` and `<link>` tags (used or ignored by `ParsePage`) and its JSON-LD, for the debug inspectors | `fetch`, `feedparse` |
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed); `Inspect` lists a document's fields (used or ignored by `Parse`) and items' source, for the feed inspector | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); queue them in the outbox (`Queue`) and send them from it (`Runner`) over SMTP (`SMTPSender`) or to the log (`LogSender`) | `rss` |
@@ -219,6 +219,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /settings/log-out-others` | yes | `logOutOthersHandler` | Log out of all other devices |
 | `POST /settings/debug` | yes | `settingsDebugFormHandler` | Turn debug mode on (`on=1`) or off for this device; 404 unless the account is on `-debug-emails` |
 | `POST /debug/feeds/{id}/inspect` | yes | `feedInspectHandler` | Debug mode only (`requireDebug`): fetch the feed live and show the response, its fields and what a refresh would do with each item; saves nothing |
+| `POST /debug/articles/{id}/inspect-page` | yes | `articlePageInspectHandler` | Debug mode only: fetch the article's web page live and show its tags, its JSON-LD and what enrichment would store; 404 for an article without a URL; saves nothing |
+| `POST /debug/sites/{id}/discover` | yes | `siteDiscoverHandler` | Debug mode only: fetch the site's home page and run discovery live, and show its tags, every candidate's outcome, and the feeds found next to the stored ones; saves nothing |
 | `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
 | `GET, POST /settings/import` | yes | `settingsImportHandler`, `settingsImportFormHandler` | Upload an OPML file to import (multipart), and your last 5 imports; 303 to the import's results |
 | `GET /settings/imports/{id}` | yes | `importHandler` | An import's progress (refreshes itself every 2 s), then its results; 404 for another user's |

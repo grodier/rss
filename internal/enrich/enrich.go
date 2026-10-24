@@ -202,16 +202,20 @@ func (r *Runner) attempt(ctx context.Context, job rss.EnrichJob) result {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return result{outcome: outcomeGaveUp, err: fmt.Errorf("status %d", resp.StatusCode)}
 	}
-	if !isHTML(resp) {
+	if !IsHTML(resp) {
 		return result{outcome: outcomeGaveUp, err: fmt.Errorf("not HTML: %q", resp.Header.Get("Content-Type"))}
 	}
 
-	info := discovery.ParsePage(resp.URL, resp.Body)
-	return result{outcome: outcomeSaved, page: rss.ArticlePage{
+	return result{outcome: outcomeSaved, page: PageOf(discovery.ParsePage(resp.URL, resp.Body))}
+}
+
+// PageOf returns what enrichment stores from a page's metadata.
+func PageOf(info discovery.PageInfo) rss.ArticlePage {
+	return rss.ArticlePage{
 		ImageURL:    info.Image,
 		Title:       info.PageTitle,
 		Description: rss.Shorten(strings.Join(strings.Fields(info.Description), " "), ingest.ExcerptLen),
-	}}
+	}
 }
 
 // retry returns a retry of job after a failure with err, or gives it up
@@ -248,9 +252,9 @@ func transient(err error) bool {
 		!errors.Is(err, fetch.ErrTooManyRedirects)
 }
 
-// isHTML reports whether a response is an HTML page by its Content-Type, or
+// IsHTML reports whether a response is an HTML page by its Content-Type, or
 // by its bytes when it has none.
-func isHTML(resp *fetch.Response) bool {
+func IsHTML(resp *fetch.Response) bool {
 	ct := resp.Header.Get("Content-Type")
 	if ct == "" {
 		ct = http.DetectContentType(resp.Body)

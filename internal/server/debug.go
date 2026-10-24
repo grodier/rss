@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/enrich"
 	"github.com/grodier/rss/internal/feedparse"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
@@ -845,5 +848,201 @@ func (s *Server) fillDebug(r *http.Request, rows []articleRow) {
 	}
 	for i := range rows {
 		rows[i].Debug = newArticleRowDebug(rows[i].Article)
+	}
+}
+
+// pageInspectView is the article page inspector.
+type pageInspectView struct {
+	Nav         navData
+	Article     rss.Article
+	FetchedAt   string
+	Request     []debugField
+	Response    *inspectResponse // nil if the fetch failed
+	Error       string           // why the fetch failed; "" if it didn't
+	Enrich      string           // why enrichment wouldn't save the page; "" if it would
+	Page        []inspectMetaRow // what enrichment would store, next to what is stored
+	Tags        []discovery.PageTag
+	JSONLDTypes []string
+	JSONLD      []string
+}
+
+// articlePageInspectHandler fetches an article's web page live and shows
+// its metadata tags, its JSON-LD and what enrichment would store from it. It
+// saves nothing.
+func (s *Server) articlePageInspectHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	article, err := s.services.ArticleService.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+	// The article panel shows no Inspect page button then.
+	if article.URL == "" {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	if err := extendWriteDeadline(w); err != nil {
+		// The fetch may still finish within WriteTimeout.
+		s.logError(r, fmt.Errorf("extend write deadline: %w", err))
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), inspectTimeout)
+	defer cancel()
+
+	start := time.Now()
+	view := pageInspectView{
+		Nav:       s.nav(r, ""),
+		Article:   article,
+		FetchedAt: start.UTC().Format(time.RFC3339),
+		Request:   []debugField{{Name: "url", Value: article.URL}},
+	}
+	resp, err := s.services.Fetcher.Get(ctx, article.URL, nil)
+	elapsed := time.Since(start)
+	switch {
+	case err != nil:
+		view.Error = "Fetch failed: " + err.Error()
+	case resp.StatusCode < 200 || resp.StatusCode > 299:
+		view.Response = newInspectResponse(resp, elapsed)
+		view.Enrich = fmt.Sprintf("Enrichment would retry or give up: status %d", resp.StatusCode)
+	case !enrich.IsHTML(resp):
+		view.Response = newInspectResponse(resp, elapsed)
+		view.Enrich = "Enrichment would give up: not HTML"
+	default:
+		view.Response = newInspectResponse(resp, elapsed)
+		insp := discovery.InspectPage(resp.URL, resp.Body)
+		page := enrich.PageOf(insp.Info)
+		view.Page = []inspectMetaRow{
+			{Name: "page_image_url", Fetched: page.ImageURL, Stored: article.PageImageURL},
+			{Name: "page_title", Fetched: page.Title, Stored: article.PageTitle},
+			{Name: "page_description", Fetched: page.Description, Stored: article.PageDescription},
+		}
+		view.Tags = insp.Tags
+		view.JSONLDTypes = insp.JSONLDTypes
+		view.JSONLD = insp.JSONLD
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "debug_page.html", view); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// discoveredFeed is a feed a discovery run found.
+type discoveredFeed struct {
+	discovery.FeedInfo
+	Known bool // its URL is a stored feed's
+}
+
+// siteDiscoverView is the site discovery inspector.
+type siteDiscoverView struct {
+	Nav       navData
+	Site      rss.Site
+	FetchedAt string
+	Request   []debugField
+	Response  *inspectResponse // the home page; nil if the fetch failed
+	HomeError string           // why there are no tags to show; "" if there are
+	Home      []inspectMetaRow // what ParsePage gives, next to what is stored
+	Tags      []discovery.PageTag
+
+	DiscoveryError string // "" if discovery succeeded
+	Direct         bool
+	Checked        []discovery.CandidateCheck
+	Found          []discoveredFeed
+	Missing        []rss.Feed // stored feeds this run didn't find
+}
+
+// siteDiscoverHandler fetches a site's home page and runs discovery on it
+// live, and shows what discovery saw and decided. It saves nothing.
+func (s *Server) siteDiscoverHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	site, err := s.services.SiteService.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+	feeds, err := s.services.FeedService.ListBySite(r.Context(), site.ID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	siteURL, err := url.Parse(site.URL)
+	if err != nil {
+		s.serverErrorHTML(w, r, fmt.Errorf("site %s: parse url: %w", site.ID, err))
+		return
+	}
+
+	if err := extendWriteDeadline(w); err != nil {
+		// The fetches may still finish within WriteTimeout.
+		s.logError(r, fmt.Errorf("extend write deadline: %w", err))
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), inspectTimeout)
+	defer cancel()
+
+	start := time.Now()
+	view := siteDiscoverView{
+		Nav:       s.nav(r, ""),
+		Site:      site,
+		FetchedAt: start.UTC().Format(time.RFC3339),
+		Request:   []debugField{{Name: "url", Value: site.URL}},
+	}
+	resp, err := s.services.Fetcher.Get(ctx, site.URL, nil)
+	elapsed := time.Since(start)
+	switch {
+	case err != nil:
+		view.HomeError = "Fetch failed: " + err.Error()
+	case resp.StatusCode < 200 || resp.StatusCode > 299:
+		view.Response = newInspectResponse(resp, elapsed)
+		view.HomeError = view.Response.Status
+	default:
+		view.Response = newInspectResponse(resp, elapsed)
+		insp := discovery.InspectPage(resp.URL, resp.Body)
+		view.Home = []inspectMetaRow{
+			{Name: "title", Fetched: insp.Info.Title, Stored: site.Title},
+			{Name: "description", Fetched: insp.Info.Description, Stored: site.Description},
+		}
+		view.Tags = insp.Tags
+	}
+
+	// Discovery fetches the home page again; fine for a debug tool.
+	res, err := s.services.Discoverer.Discover(ctx, siteURL)
+	if err != nil {
+		view.DiscoveryError = "Discovery failed: " + err.Error()
+	}
+	view.Direct = res.Direct
+	view.Checked = res.Checked
+	found := make(map[string]bool, len(res.Feeds))
+	stored := make(map[string]bool, len(feeds))
+	for _, f := range feeds {
+		stored[f.Url] = true
+	}
+	for _, f := range res.Feeds {
+		found[f.URL] = true
+		view.Found = append(view.Found, discoveredFeed{FeedInfo: f, Known: stored[f.URL]})
+	}
+	for _, f := range feeds {
+		if !found[f.Url] {
+			view.Missing = append(view.Missing, f)
+		}
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "debug_site.html", view); err != nil {
+		s.serverErrorHTML(w, r, err)
 	}
 }

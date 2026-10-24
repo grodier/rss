@@ -475,3 +475,156 @@ func TestDiscoverWithFetchClient(t *testing.T) {
 		t.Errorf("Feeds[0] = %+v", res.Feeds[0])
 	}
 }
+
+// checkOutcomes returns Checked's "URL source: outcome" strings.
+func checkOutcomes(checked []CandidateCheck) []string {
+	var out []string
+	for _, c := range checked {
+		out = append(out, c.Candidate.URL.String()+" "+c.Source+": "+c.Outcome)
+	}
+	return out
+}
+
+func assertOutcomes(t *testing.T, got []CandidateCheck, want ...string) {
+	t.Helper()
+	if g := checkOutcomes(got); !slices.Equal(g, want) {
+		t.Errorf("Checked =\n  %s\nwant\n  %s", strings.Join(g, "\n  "), strings.Join(want, "\n  "))
+	}
+}
+
+func TestDiscoverChecked(t *testing.T) {
+	f := &fakeFetcher{
+		responses: map[string]*fetch.Response{
+			"https://example.com/": htmlResp(`
+				<link rel="alternate" type="application/rss+xml" href="/good.xml">
+				<link rel="alternate" type="application/rss+xml" href="/missing.xml">
+				<link rel="alternate" type="application/rss+xml" href="/page.xml">
+				<link rel="alternate" type="application/rss+xml" href="/broken.xml">
+				<link rel="alternate" type="application/rss+xml" href="/moved.xml">`),
+			"https://example.com/good.xml": rssResp("Good", "https://example.com/"),
+			"https://example.com/page.xml": htmlResp(`<html><title>Not a feed</title></html>`),
+			"https://example.com/moved.xml": func() *fetch.Response {
+				r := rssResp("Good", "https://example.com/")
+				r.URL = mustURL(t, "https://example.com/good.xml")
+				return r
+			}(),
+		},
+		errs: map[string]error{"https://example.com/broken.xml": errors.New("connection reset")},
+	}
+	res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://example.com/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Direct {
+		t.Error("Direct is set for an HTML page")
+	}
+	_, parseErr := feedparse.Parse(mustURL(t, "https://example.com/page.xml"), []byte(`<html><title>Not a feed</title></html>`))
+	assertOutcomes(t, res.Checked,
+		"https://example.com/good.xml page: feed",
+		"https://example.com/missing.xml page: status 404",
+		"https://example.com/page.xml page: "+parseErr.Error(),
+		"https://example.com/broken.xml page: connection reset",
+		"https://example.com/moved.xml page: duplicate",
+	)
+	good, moved, missing, broken := res.Checked[0], res.Checked[4], res.Checked[1], res.Checked[3]
+	if good.Feed != "https://example.com/good.xml" || good.Status != 200 || good.FinalURL != "https://example.com/good.xml" {
+		t.Errorf("good = %+v", good)
+	}
+	if moved.FinalURL != "https://example.com/good.xml" || moved.Feed != "https://example.com/good.xml" {
+		t.Errorf("moved = %+v, want its final URL and the feed it duplicates", moved)
+	}
+	if missing.Status != 404 || missing.Feed != "" {
+		t.Errorf("missing = %+v", missing)
+	}
+	if broken.Status != 0 || broken.FinalURL != "" {
+		t.Errorf("broken = %+v, want no status or final URL", broken)
+	}
+}
+
+func TestDiscoverCheckedCommonPaths(t *testing.T) {
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://example.com/":        htmlResp(`<title>No links</title>`),
+		"https://example.com/rss.xml": rssResp("Fallback", "https://example.com/"),
+	}}
+	res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://example.com/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Checked) != len(CommonFeedPaths) {
+		t.Fatalf("Checked has %d entries, want %d", len(res.Checked), len(CommonFeedPaths))
+	}
+	for i, c := range res.Checked {
+		if c.Source != SourceCommonPath {
+			t.Errorf("Checked[%d].Source = %q, want %q", i, c.Source, SourceCommonPath)
+		}
+	}
+	if c := res.Checked[3]; c.Candidate.URL.String() != "https://example.com/rss.xml" || c.Outcome != OutcomeFeed {
+		t.Errorf("Checked[3] = %+v, want /rss.xml as a feed", c)
+	}
+}
+
+func TestDiscoverCheckedLimits(t *testing.T) {
+	var links strings.Builder
+	responses := map[string]*fetch.Response{}
+	for i := range 6 {
+		fmt.Fprintf(&links, `<link rel="alternate" type="application/rss+xml" href="/f%d.xml">`, i)
+		responses[fmt.Sprintf("https://example.com/f%d.xml", i)] = rssResp(fmt.Sprintf("F%d", i), "")
+	}
+	responses["https://example.com/"] = htmlResp(links.String())
+
+	d := &Discoverer{Fetcher: &fakeFetcher{responses: responses}, MaxCandidates: 4, MaxFeeds: 2}
+	res, err := d.Discover(context.Background(), mustURL(t, "https://example.com/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOutcomes(t, res.Checked,
+		"https://example.com/f0.xml page: feed",
+		"https://example.com/f1.xml page: feed",
+		"https://example.com/f2.xml page: over the feed limit",
+		"https://example.com/f3.xml page: over the feed limit",
+		"https://example.com/f4.xml page: not fetched (over the candidate limit)",
+		"https://example.com/f5.xml page: not fetched (over the candidate limit)",
+	)
+}
+
+func TestDiscoverCheckedDirect(t *testing.T) {
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://example.com/feed.xml": rssResp("Direct", "https://example.com/"),
+	}}
+	res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://example.com/feed.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Direct || len(res.Checked) != 0 {
+		t.Errorf("Direct = %v, Checked = %+v; want a direct feed and nothing checked", res.Direct, res.Checked)
+	}
+}
+
+func TestDiscoverCheckedDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://example.com/": htmlResp(`<title>T</title>
+			<link rel="alternate" type="application/rss+xml" href="/a.xml">
+			<link rel="alternate" type="application/rss+xml" href="/b.xml">
+			<link rel="alternate" type="application/rss+xml" href="/c.xml">`),
+		"https://example.com/a.xml": rssResp("A", ""),
+	}}
+	f.onGet = func(rawURL string) {
+		if rawURL == "https://example.com/b.xml" {
+			cancel()
+		}
+	}
+	res, err := (&Discoverer{Fetcher: f, Concurrency: 1}).Discover(ctx, mustURL(t, "https://example.com/"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if res.Site.Title != "T" || len(res.Feeds) != 0 {
+		t.Errorf("Site = %+v, Feeds = %+v; want the site and no feeds", res.Site, res.Feeds)
+	}
+	assertOutcomes(t, res.Checked,
+		"https://example.com/a.xml page: feed",
+		"https://example.com/b.xml page: "+context.Canceled.Error(),
+		"https://example.com/c.xml page: not fetched (deadline)",
+	)
+}

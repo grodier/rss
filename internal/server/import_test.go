@@ -269,7 +269,7 @@ func TestSettingsImportHandler(t *testing.T) {
 	assertBodyContains(t, body,
 		"<h1>Import subscriptions</h1>",
 		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">`,
-		`accept=".opml,.xml,text/x-opml,text/xml,application/xml" required`,
+		`<input type="file" id="file" name="file" required`,
 		"Folders aren't kept: every feed goes into your timeline.",
 		`<a class="rail-account" href="/settings" aria-current="page">`,
 		"Recent imports",

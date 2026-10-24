@@ -124,6 +124,12 @@ type SubscriptionStore interface {
 	Unsubscribe(ctx context.Context, userID, feedID string) error
 	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error)
+	// Get returns userID's subscription to feedID, with its feed and site.
+	// rss.ErrNoRecord if userID doesn't subscribe to feedID.
+	Get(ctx context.Context, userID, feedID string) (rss.Subscription, error)
+	// Rename sets userID's name for feedID; "" uses the feed's own title.
+	// rss.ErrNoRecord if userID doesn't subscribe to feedID.
+	Rename(ctx context.Context, userID, feedID, title string) error
 }
 
 // ReadStore records and reports which articles a user has read.

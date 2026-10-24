@@ -204,6 +204,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /feeds/{id}/refresh` | yes | `feedRefreshHandler` | Refresh button: fetches now |
 | `POST /feeds/{id}/subscribe` | yes | `feedSubscribeHandler` | |
 | `POST /feeds/{id}/unsubscribe` | yes | `feedUnsubscribeHandler` | |
+| `GET /feeds/{id}/edit` | yes | `subscriptionEditHandler` | Edit subscription: the user's name for the feed; 404 if not subscribed; `?return_to=` |
+| `POST /feeds/{id}/edit` | yes | `subscriptionEditPostHandler` | Saves the name; 303 to `return_to` (else `/feeds`) |
 | `GET /articles/{id}` | yes | `articleHandler` | Article page; records the read |
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
 | `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |

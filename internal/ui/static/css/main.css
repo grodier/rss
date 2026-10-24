@@ -1372,7 +1372,8 @@
     color: var(--danger);
   }
 
-  .feed-row form {
+  .feed-row form,
+  .feed-row-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;

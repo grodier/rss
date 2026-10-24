@@ -71,11 +71,49 @@ func (r *SubscriptionRepository) SubscribedFeedIDs(ctx context.Context, userID s
 	return subscribed, nil
 }
 
+// subscriptionColumns are the columns scanSubscription reads, after the feed's.
+const subscriptionColumns = `sub.title, s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at`
+
+// Get returns userID's subscription to feedID, with its feed and site.
+// LatestArticleAt is left zero. rss.ErrNoRecord if userID doesn't
+// subscribe to feedID.
+func (r *SubscriptionRepository) Get(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+	stmt := `SELECT ` + qualifiedFeedColumns + `, ` + subscriptionColumns + `, NULL::timestamptz
+		FROM subscriptions sub
+		JOIN feeds f ON f.id = sub.feed_id
+		JOIN sites s ON s.id = f.site_id
+		WHERE sub.user_id = $1 AND sub.feed_id = $2`
+
+	sub, err := scanSubscription(r.DB.QueryRowContext(ctx, stmt, userID, feedID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.Subscription{}, rss.ErrNoRecord
+	}
+	return sub, err
+}
+
+// Rename sets userID's name for feedID; "" uses the feed's own title.
+// rss.ErrNoRecord if userID doesn't subscribe to feedID.
+func (r *SubscriptionRepository) Rename(ctx context.Context, userID, feedID, title string) error {
+	stmt := `UPDATE subscriptions SET title = $3 WHERE user_id = $1 AND feed_id = $2`
+
+	res, err := r.DB.ExecContext(ctx, stmt, userID, feedID, title)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return rss.ErrNoRecord
+	}
+	return nil
+}
+
 // ListByUser returns userID's subscriptions ordered by site (title, else host),
-// then feed title and URL.
+// then feed name (the user's, else the feed's title) and URL.
 func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error) {
-	stmt := `SELECT ` + qualifiedFeedColumns + `,
-			s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at, latest.at
+	stmt := `SELECT ` + qualifiedFeedColumns + `, ` + subscriptionColumns + `, latest.at
 		FROM subscriptions sub
 		JOIN feeds f ON f.id = sub.feed_id
 		JOIN sites s ON s.id = f.site_id
@@ -87,7 +125,8 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 			LIMIT 1
 		) latest ON true
 		WHERE sub.user_id = $1
-		ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host, lower(f.title), f.url`
+		ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host,
+			lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID)
 	if err != nil {
@@ -97,19 +136,10 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 
 	var subs []rss.Subscription
 	for rows.Next() {
-		var sub rss.Subscription
-		var latest sql.NullTime
-		// scanFeed only takes a Scan func, so wrap the extra columns around it.
-		feed, err := scanFeed(scanFunc(func(dest ...any) error {
-			dest = append(dest, &sub.Site.ID, &sub.Site.Host, &sub.Site.URL, &sub.Site.Title,
-				&sub.Site.Description, &sub.Site.CreatedAt, &sub.Site.UpdatedAt, &latest)
-			return rows.Scan(dest...)
-		}))
+		sub, err := scanSubscription(rows)
 		if err != nil {
 			return nil, err
 		}
-		sub.Feed = feed
-		sub.LatestArticleAt = latest.Time
 		subs = append(subs, sub)
 	}
 	if err := rows.Err(); err != nil {
@@ -117,6 +147,25 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 	}
 
 	return subs, nil
+}
+
+// scanSubscription scans a row selected with qualifiedFeedColumns,
+// subscriptionColumns and the latest article's time.
+func scanSubscription(row interface{ Scan(...any) error }) (rss.Subscription, error) {
+	var sub rss.Subscription
+	var latest sql.NullTime
+	// scanFeed only takes a Scan func, so wrap the extra columns around it.
+	feed, err := scanFeed(scanFunc(func(dest ...any) error {
+		dest = append(dest, &sub.Title, &sub.Site.ID, &sub.Site.Host, &sub.Site.URL, &sub.Site.Title,
+			&sub.Site.Description, &sub.Site.CreatedAt, &sub.Site.UpdatedAt, &latest)
+		return row.Scan(dest...)
+	}))
+	if err != nil {
+		return rss.Subscription{}, err
+	}
+	sub.Feed = feed
+	sub.LatestArticleAt = latest.Time
+	return sub, nil
 }
 
 // scanFunc adapts a function to the Scan interface scanFeed takes.

@@ -217,6 +217,30 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 		}
 	})
 
+	t.Run("returns Title and orders a site's feeds by their names", func(t *testing.T) {
+		user := newTestUser(t, db)
+		site := newSite(t, "renamed", "Renamed")
+		first, second := newFeed(t, site, "m-first"), newFeed(t, site, "n-second")
+		subscribe(t, user, first, second)
+		if err := repo.Rename(ctx, user, second, "AAA"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+
+		got, err := repo.ListByUser(ctx, user)
+		if err != nil {
+			t.Fatalf("ListByUser: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("got %d subscriptions, want 2", len(got))
+		}
+		if got[0].Feed.ID != second || got[0].Title != "AAA" {
+			t.Errorf("first = %s %q, want %s %q", got[0].Feed.ID, got[0].Title, second, "AAA")
+		}
+		if got[1].Feed.ID != first || got[1].Title != "" {
+			t.Errorf("second = %s %q, want %s with no name", got[1].Feed.ID, got[1].Title, first)
+		}
+	})
+
 	t.Run("LatestArticleAt", func(t *testing.T) {
 		user := newTestUser(t, db)
 		site := newSite(t, "latest", "Latest")
@@ -265,6 +289,104 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 		}
 		if len(got) != 0 {
 			t.Errorf("got %v, want none", got)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSubscriptionGet(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	t.Run("returns the feed, site and name", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newTestFeed(t, db)
+		if err := repo.Subscribe(ctx, user, feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		if err := repo.Rename(ctx, user, feed.ID, "My name"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+
+		got, err := repo.Get(ctx, user, feed.ID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if got.Feed.ID != feed.ID || got.Feed.Title != feed.Title || got.Feed.Url != feed.Url {
+			t.Errorf("Feed = %+v, want %+v", got.Feed, feed)
+		}
+		if got.Site.ID != feed.SiteID || got.Site.Host == "" {
+			t.Errorf("Site = %+v, want site %s", got.Site, feed.SiteID)
+		}
+		if got.Title != "My name" {
+			t.Errorf("Title = %q, want %q", got.Title, "My name")
+		}
+		if !got.LatestArticleAt.IsZero() {
+			t.Errorf("LatestArticleAt = %v, want zero", got.LatestArticleAt)
+		}
+	})
+
+	t.Run("not subscribed returns ErrNoRecord", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newTestFeed(t, db)
+
+		_, err := repo.Get(ctx, user, feed.ID)
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSubscriptionRename(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	title := func(t *testing.T, user, feed string) string {
+		t.Helper()
+		var got string
+		if err := db.QueryRow(`SELECT title FROM subscriptions WHERE user_id = $1 AND feed_id = $2`, user, feed).Scan(&got); err != nil {
+			t.Fatalf("select title: %v", err)
+		}
+		return got
+	}
+
+	t.Run("sets the name and empty resets it, leaving other users' alone", func(t *testing.T) {
+		user, other := newTestUser(t, db), newTestUser(t, db)
+		feed := newTestFeed(t, db)
+		for _, u := range []string{user, other} {
+			if err := repo.Subscribe(ctx, u, feed.ID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+
+		if err := repo.Rename(ctx, user, feed.ID, "Mine"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		if got := title(t, user, feed.ID); got != "Mine" {
+			t.Errorf("title = %q, want %q", got, "Mine")
+		}
+		if got := title(t, other, feed.ID); got != "" {
+			t.Errorf("other user's title = %q, want empty", got)
+		}
+
+		if err := repo.Rename(ctx, user, feed.ID, ""); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		if got := title(t, user, feed.ID); got != "" {
+			t.Errorf("title after reset = %q, want empty", got)
+		}
+	})
+
+	t.Run("not subscribed returns ErrNoRecord", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newTestFeed(t, db)
+
+		err := repo.Rename(ctx, user, feed.ID, "Mine")
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
 		}
 	})
 }

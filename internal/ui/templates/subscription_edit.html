@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - edit subscription</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Edit subscription</h1>
+      </header>
+
+      <div class="feed-row">
+        {{template "avatar" (avatar .Sub.Feed.SiteID (or .Sub.Feed.Title .Sub.Feed.Url) (index .Icons .Sub.Feed.SiteID))}}
+        <div>
+          <a class="feed-row-title" href="/feeds/{{.Sub.Feed.ID}}">{{or .Sub.Feed.Title .Sub.Feed.Url}}</a>
+          <p>From {{or .Sub.Site.Title .Sub.Site.Host}}</p>
+          <p class="feed-url"><code>{{.Sub.Feed.Url}}</code></p>
+        </div>
+      </div>
+
+      {{$focus := .Form.FirstError "title"}}
+      <form class="settings-form" action="/feeds/{{.Sub.Feed.ID}}/edit" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <input type="hidden" name="return_to" value="{{.Form.ReturnTo}}">
+        <div class="field">
+          <label for="title">Name</label>
+          <input type="text" id="title" name="title" value="{{.Form.Title}}"
+            placeholder="{{or .Sub.Feed.Title .Sub.Feed.Url}}"
+            aria-describedby="title-hint{{if .Form.FieldErrors.title}} title-error{{end}}"
+            {{with .Form.FieldErrors.title}}aria-invalid="true"{{end}}
+            {{if eq $focus "title"}}autofocus{{end}} />
+          <p class="hint" id="title-hint">Only you see this name. Leave it blank to use the feed's title.</p>
+          {{with .Form.FieldErrors.title}}<p class="error" id="title-error">{{.}}</p>{{end}}
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Save</button>
+          <a class="btn" href="{{.ReturnTo}}">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

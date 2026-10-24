@@ -29,26 +29,7 @@
 
       {{with .Error}}<p class="fetch-error" role="alert">{{.}}</p>{{end}}
 
-      {{with .Response}}
-      <section class="debug">
-        <h2 class="debug-sub">Response</h2>
-        <dl class="debug-fields">
-          <div><dt>final url</dt><dd>{{.URL}}</dd></div>
-          <div><dt>status</dt><dd>{{.Status}}</dd></div>
-          <div><dt>duration</dt><dd>{{.Duration}}</dd></div>
-          <div><dt>size</dt><dd>{{.Size}}</dd></div>
-          <div><dt>Content-Type</dt><dd>{{or .ContentType "—"}}</dd></div>
-          <div><dt>Sniff</dt><dd>{{.Sniff}}</dd></div>
-        </dl>
-        <h3 class="debug-sub">headers</h3>
-        {{template "debug-fields" .Headers}}
-        <details>
-          <summary>Body</summary>
-          {{with .BodyNote}}<p class="debug-note">{{.}}</p>{{end}}
-          <pre class="debug-pre">{{.Body}}</pre>
-        </details>
-      </section>
-      {{end}}
+      {{with .Response}}{{template "debug-response" .}}{{end}}
 
       {{if .Meta}}
       <section class="debug">

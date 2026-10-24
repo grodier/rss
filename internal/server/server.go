@@ -7,11 +7,13 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/mail"
@@ -168,6 +170,11 @@ type URLFetcher interface {
 	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
+// SiteDiscoverer finds a site's feeds; satisfied by *discovery.Discoverer.
+type SiteDiscoverer interface {
+	Discover(ctx context.Context, u *url.URL) (discovery.Result, error)
+}
+
 // EmailQueue queues emails for the mail runner to send; satisfied by
 // *mail.Queue.
 type EmailQueue interface {
@@ -191,6 +198,7 @@ var (
 	_ DebugStore        = (*psql.DebugRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
 	_ URLFetcher        = (*fetch.Client)(nil)
+	_ SiteDiscoverer    = (*discovery.Discoverer)(nil)
 )
 
 type Services struct {
@@ -210,6 +218,7 @@ type Services struct {
 	DebugService        DebugStore
 	EmailQueue          EmailQueue
 	Fetcher             URLFetcher
+	Discoverer          SiteDiscoverer
 }
 
 type Server struct {

@@ -94,6 +94,8 @@ func (s *Server) router() http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(s.requireDebug)
 				r.Post("/debug/feeds/{id}/inspect", s.feedInspectHandler)
+				r.Post("/debug/articles/{id}/inspect-page", s.articlePageInspectHandler)
+				r.Post("/debug/sites/{id}/discover", s.siteDiscoverHandler)
 			})
 		})
 

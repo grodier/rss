@@ -342,7 +342,13 @@ if it is itself a feed, that's the result. Otherwise read the HTML page's title,
 description and `<link rel="alternate">` feeds, or, if there are none, try
 `CommonFeedPaths`. (`ParsePage` also reads a page's own title, Open Graph image and
 icon links, for the icon worker and article enrichment; discovery doesn't use them.)
-Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse. The worker
+Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
+`Result.Checked` records every candidate (its source, `page` or `common path`, final
+URL, status, and outcome: `feed`, `duplicate`, over a limit, not fetched, or why it
+isn't a feed; `Direct` instead when the URL was itself a feed), for the debug
+inspector. If the deadline ends the checking, `Discover` returns the site and the
+`Checked` so far alongside the error; the lookup and import runners return on any error
+without reading the result. The worker
 turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds
 and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed
 has articles right away. The site page lists the feeds with subscribe
@@ -741,9 +747,10 @@ fetches their web page in the background and stores what its meta tags say.
      and `GiveUp` after the third;
    - **any other non-2xx, a body that isn't HTML, or a fetch the client refuses** (a
      blocked address, too large, too many redirects): `GiveUp` at once;
-   - **an HTML page:** `discovery.ParsePage` reads its `og:image` (else
-     `twitter:image`), `og:title` (else `<title>`) and description, collapsed and
-     shortened like an excerpt (`ingest.ExcerptLen`), and `SavePage` stores them in the
+   - **an HTML page** (`IsHTML`): `discovery.ParsePage` reads its `og:image` (else
+     `twitter:image`), `og:title` (else `<title>`) and description, and `PageOf` turns
+     them into an `rss.ArticlePage`, the description collapsed and shortened like an
+     excerpt (`ingest.ExcerptLen`). `SavePage` stores them in the
      article's `page_image_url`, `page_title` and `page_description` and deletes the
      job, in one transaction. A page with none of the tags saves empty values.
 4. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and
@@ -764,7 +771,8 @@ content or summary shows the page's description as its body.
 
 1. `internal/psql/articles.go`: `saveArticles`, `needsEnrichment`, `enrichCandidates`.
 2. `internal/psql/enrich.go`: `ClaimNext`, `SavePage`, `Retry`, `GiveUp`.
-3. `internal/enrich/enrich.go`: `Runner.work`, `process`, `attempt`, `retry`, `retryAt`.
+3. `internal/enrich/enrich.go`: `Runner.work`, `process`, `attempt`, `PageOf`, `retry`,
+   `retryAt`.
 4. `internal/discovery/page.go`: `ParsePage`.
 5. `cmd/www/application.go`: the runner.
 
@@ -779,7 +787,8 @@ content or summary shows the page's description as its body.
 ## Debug mode
 
 **Flow.** Debug mode shows the stored data behind site, feed and article pages and
-article rows, for the accounts listed in `-debug-emails` only.
+article rows, and inspects feeds, article pages and site discovery live, for the
+accounts listed in `-debug-emails` only.
 
 1. **Flag.** `parseConfig` splits `-debug-emails` on commas, trims and lowercases each
    entry (`parseDebugEmails`), and `Validate` rejects anything that isn't a bare address.
@@ -829,7 +838,8 @@ article rows, for the accounts listed in `-debug-emails` only.
    rows), the sanitized body's length and the lead image decision, the copies as links,
    the raw `summary` and `content` (cut at 20 000 bytes) in `<pre>`, and a **Source
    item** form posting to the feed inspector with the article's `external_id` as
-   `item`. `?debug=1` renders the panel open; it changes rendering only.
+   `item`, and, when the article has a URL, an **Inspect page** form. `?debug=1`
+   renders the panel open; it changes rendering only.
 7. **Provenance.** `articleProvenance` is a pure function of the article that says where
    each shown value comes from: title `feed`, `page`, `excerpt` or `none`; excerpt and
    image `feed`, `page` or `none`; timeline `backlog` (`timeline_at` equals
@@ -842,6 +852,28 @@ article rows, for the accounts listed in `-debug-emails` only.
    `article-row` partial adds a `.debug-line`: the short ID, timeline placement and
    time, published date, title and image provenance, and a `debug` link to
    `/articles/{id}?debug=1#debug` (which marks the article read, like any visit).
+9. **Page inspector.** **Inspect page** posts `POST /debug/articles/{id}/inspect-page`.
+   `articlePageInspectHandler` loads the article (404 if missing or without a URL) and,
+   like the feed inspector, extends its write deadline and fetches within 30 s, saving
+   nothing. It renders `debug_page.html`: the response (the `debug-response` partial,
+   shared with the feed inspector); what enrichment would do (`Enrichment would retry
+   or give up: status N` for a non-2xx, `Enrichment would give up: not HTML` when
+   `enrich.IsHTML` says no, otherwise `enrich.PageOf` of the page next to the stored
+   `page_*` columns); then `discovery.InspectPage`'s tags (the `debug-tags` partial:
+   tag, key, value cut at 300 runes, type and sizes, `used` or `ignored` from
+   `usedPageKeys`, a hand-kept list next to `ParsePage`) and its JSON-LD (the `@type`s
+   at the top level and in `@graph`, then each block, indented if it parses, cut at
+   20 000 bytes, in a `<pre>`).
+10. **Discovery inspector.** Under the site panel, **Run discovery** posts
+    `POST /debug/sites/{id}/discover`. `siteDiscoverHandler` loads the site and its
+    feeds, fetches the home page (`InspectPage`: the title and description `ParsePage`
+    gives next to the stored ones, and the tags), then runs `Services.Discoverer`
+    (the `discovery.Discoverer` the runners use; it fetches the home page again) and
+    renders `debug_site.html`: `Direct`, one row per `Result.Checked` entry (source,
+    candidate URL and title, final URL, status, outcome), the feeds found marked `known`
+    or `new` against the stored feeds' URLs, and `Stored but not found by this run`. A
+    discovery error shows as `Discovery failed: …` above whatever `Checked` holds.
+    Nothing is saved: no site, lookup or feed row changes.
 
 **Read:**
 
@@ -862,13 +894,23 @@ article rows, for the accounts listed in `-debug-emails` only.
    `internal/feedparse/inspect.go` (`Inspect`, `usedChannelFields`, `usedItemFields`,
    `inspectXML`, `inspectJSON`); `internal/ingest/ingest.go` (`ExternalID`);
    `templates/debug_feed.html` and the form in `feed.html`.
+7. The page and discovery inspectors: `internal/server/debug.go`
+   (`articlePageInspectHandler`, `siteDiscoverHandler`); `internal/discovery/inspect.go`
+   (`InspectPage`, `usedPageKeys`) and `discover.go` (`CandidateCheck`,
+   `checkCandidates`); `internal/enrich/enrich.go` (`PageOf`, `IsHTML`);
+   `templates/debug_page.html`, `debug_site.html`, and the forms in `article.html` and
+   `site.html`.
 
 **Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`);
 `internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the
 field builders, the site, feed, article and settings pages with debug mode on, off and
 not allowed, `articleProvenance`, the list rows' debug lines, `requireDebug`,
-`compareArticle`, the feed inspector's outcomes and errors, and
-`TestExtendWriteDeadline` through the router); `internal/feedparse/inspect_test.go`.
+`compareArticle`, the feed inspector's outcomes and errors,
+`TestExtendWriteDeadline` through the router, `TestArticlePageInspectHandler`,
+`TestSiteDiscoverHandler` and `TestPageInspectorsDebugOff`);
+`internal/feedparse/inspect_test.go`; `internal/discovery/inspect_test.go` (fixture
+`testdata/page.html`) and the `TestDiscoverChecked…` tests in `discover_test.go`;
+`TestPageOf` in `internal/enrich/enrich_test.go`.
 
 **Why:** "Debug mode" in decisions.md.
 

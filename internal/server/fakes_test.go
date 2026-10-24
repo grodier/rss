@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
@@ -394,4 +396,18 @@ func (f *fakeFetcher) Get(ctx context.Context, rawURL string, header http.Header
 	f.urls = append(f.urls, rawURL)
 	f.headers = append(f.headers, header.Clone())
 	return f.resp, f.err
+}
+
+// fakeDiscoverer answers with res and err, and records the URLs it was asked
+// to discover.
+type fakeDiscoverer struct {
+	res discovery.Result
+	err error
+
+	urls []string
+}
+
+func (f *fakeDiscoverer) Discover(ctx context.Context, u *url.URL) (discovery.Result, error) {
+	f.urls = append(f.urls, u.String())
+	return f.res, f.err
 }

@@ -76,6 +76,9 @@ type iconLink struct {
 // ParsePage extracts page info from an HTML document fetched from pageURL.
 // Malformed or truncated HTML is not an error: parsing stops at the end of
 // body and returns what it found up to there.
+//
+// When ParsePage starts or stops reading a tag, update usedPageKeys in
+// inspect.go.
 func ParsePage(pageURL *url.URL, body []byte) PageInfo {
 	var (
 		links                         []feedLink

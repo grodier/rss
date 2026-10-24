@@ -48,9 +48,36 @@ type FeedInfo struct {
 
 // Result is what Discover found.
 type Result struct {
-	Site  SiteInfo
-	Feeds []FeedInfo // may be empty: "site reachable, no feeds found" is not an error
+	Site    SiteInfo
+	Feeds   []FeedInfo       // may be empty: "site reachable, no feeds found" is not an error
+	Direct  bool             // the looked-up URL was itself a feed; Checked is empty
+	Checked []CandidateCheck // every candidate, in order
 }
+
+// Sources of a candidate, as CandidateCheck.Source reports them.
+const (
+	SourcePage       = "page"        // a <link rel="alternate"> on the page
+	SourceCommonPath = "common path" // CommonFeedPaths
+)
+
+// CandidateCheck is the outcome of one candidate feed URL.
+type CandidateCheck struct {
+	Candidate Candidate
+	Source    string // "page" (a <link rel="alternate"> on the page) or "common path" (CommonFeedPaths)
+	FinalURL  string // after redirects; "" if the request failed or wasn't made
+	Status    int    // 0 if the request failed or wasn't made
+	Feed      string // the FeedInfo.URL it became; "" if not a feed
+	Outcome   string // "feed", "duplicate" (an earlier candidate had its URL), "over the feed limit", "not fetched (over the candidate limit)", "not fetched (deadline)", or why it isn't a feed: the request error, "status 404", or the parse error
+}
+
+// Outcomes of a CandidateCheck, besides why a candidate isn't a feed.
+const (
+	OutcomeFeed           = "feed"
+	OutcomeDuplicate      = "duplicate"
+	OutcomeOverFeedLimit  = "over the feed limit"
+	OutcomeOverCandidates = "not fetched (over the candidate limit)"
+	OutcomeDeadline       = "not fetched (deadline)"
+)
 
 // Discoverer finds the feeds of a site. Zero limits use the defaults.
 type Discoverer struct {
@@ -67,6 +94,11 @@ type Discoverer struct {
 // an error, however malformed or truncated: Discover uses whatever title,
 // description and feed links it could read, and when the page advertises no
 // feeds it tries CommonFeedPaths.
+//
+// Result.Checked records every candidate. If ctx ends while candidates are
+// being checked, Discover returns the Site and the Checked so far alongside
+// the error; the lookup and import runners return on any error without
+// reading the result.
 func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	resp, err := d.Fetcher.Get(ctx, u.String(), nil)
 	if err != nil {
@@ -95,7 +127,7 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 			if site.Title == "" {
 				site.Title = site.Key
 			}
-			return Result{Site: site, Feeds: []FeedInfo{feed}}, nil
+			return Result{Site: site, Feeds: []FeedInfo{feed}, Direct: true}, nil
 		}
 	}
 
@@ -111,8 +143,9 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 		site.Title = site.Key
 	}
 
-	candidates := info.Feeds
+	candidates, source := info.Feeds, SourcePage
 	if len(candidates) == 0 {
+		source = SourceCommonPath
 		base, _ := url.Parse(site.URL)
 		for _, p := range CommonFeedPaths {
 			ref, err := url.Parse(p)
@@ -123,21 +156,30 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 		}
 	}
 
-	feeds, err := d.checkCandidates(ctx, candidates)
+	feeds, checked, err := d.checkCandidates(ctx, candidates, source)
 	if err != nil {
-		return Result{}, err
+		return Result{Site: site, Checked: checked}, err
 	}
-	return Result{Site: site, Feeds: feeds}, nil
+	return Result{Site: site, Feeds: feeds, Checked: checked}, nil
 }
 
 // checkCandidates fetches and parses up to MaxCandidates candidates,
 // Concurrency at a time, and returns the valid feeds in candidate order,
-// deduplicated by canonical URL and capped at MaxFeeds.
-func (d *Discoverer) checkCandidates(ctx context.Context, candidates []Candidate) ([]FeedInfo, error) {
+// deduplicated by canonical URL and capped at MaxFeeds, and the outcome of
+// every candidate. On an error (ctx ended) it still returns the outcomes,
+// with the candidates it didn't fetch marked OutcomeDeadline.
+func (d *Discoverer) checkCandidates(ctx context.Context, candidates []Candidate, source string) ([]FeedInfo, []CandidateCheck, error) {
 	maxCandidates := orDefault(d.MaxCandidates, defaultMaxCandidates)
 	maxFeeds := orDefault(d.MaxFeeds, defaultMaxFeeds)
 	concurrency := orDefault(d.Concurrency, defaultConcurrency)
 
+	checked := make([]CandidateCheck, len(candidates))
+	for i, c := range candidates {
+		checked[i] = CandidateCheck{Candidate: c, Source: source, Outcome: OutcomeDeadline}
+		if i >= maxCandidates {
+			checked[i].Outcome = OutcomeOverCandidates
+		}
+	}
 	if len(candidates) > maxCandidates {
 		candidates = candidates[:maxCandidates]
 	}
@@ -148,52 +190,71 @@ func (d *Discoverer) checkCandidates(ctx context.Context, candidates []Candidate
 	var wg sync.WaitGroup
 
 loop:
-	for i, c := range candidates {
+	for i := range candidates {
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
+			break loop
+		}
+		if ctx.Err() != nil {
+			// Both cases were ready, and select picked the semaphore.
+			<-sem
 			break loop
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[i] = d.checkCandidate(ctx, c)
+			results[i] = d.checkCandidate(ctx, &checked[i])
 		}()
 	}
 	wg.Wait()
 
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("discovery: checking feeds: %w", err)
+		return nil, checked, fmt.Errorf("discovery: checking feeds: %w", err)
 	}
 
 	var feeds []FeedInfo
 	seen := make(map[string]bool)
-	for _, f := range results {
-		if f == nil || seen[f.URL] {
-			continue
-		}
-		seen[f.URL] = true
-		feeds = append(feeds, *f)
-		if len(feeds) == maxFeeds {
-			break
+	for i, f := range results {
+		switch {
+		case f == nil:
+		case seen[f.URL]:
+			checked[i].Outcome = OutcomeDuplicate
+		case len(feeds) == maxFeeds:
+			checked[i].Outcome = OutcomeOverFeedLimit
+		default:
+			seen[f.URL] = true
+			feeds = append(feeds, *f)
 		}
 	}
-	return feeds, nil
+	return feeds, checked, nil
 }
 
-// checkCandidate returns the feed at c, or nil if it can't be fetched or
-// isn't a feed.
-func (d *Discoverer) checkCandidate(ctx context.Context, c Candidate) *FeedInfo {
+// checkCandidate returns the feed at check's candidate, or nil if it can't
+// be fetched or isn't a feed, and fills in check.
+func (d *Discoverer) checkCandidate(ctx context.Context, check *CandidateCheck) *FeedInfo {
+	c := check.Candidate
 	resp, err := d.Fetcher.Get(ctx, c.URL.String(), nil)
-	if err != nil || !ok2xx(resp.StatusCode) {
+	if err != nil {
+		check.Outcome = err.Error()
+		return nil
+	}
+	if resp.URL != nil {
+		check.FinalURL = resp.URL.String()
+	}
+	check.Status = resp.StatusCode
+	if !ok2xx(resp.StatusCode) {
+		check.Outcome = fmt.Sprintf("status %d", resp.StatusCode)
 		return nil
 	}
 	parsed, err := feedparse.Parse(resp.URL, resp.Body)
 	if err != nil {
+		check.Outcome = err.Error()
 		return nil
 	}
 	f := feedInfo(resp.URL, parsed, c.Title)
+	check.Feed, check.Outcome = f.URL, OutcomeFeed
 	return &f
 }
 

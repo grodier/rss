@@ -14,3 +14,37 @@
 {{end}}
 
 {{define "debug-fields"}}<dl class="debug-fields">{{range .}}<div><dt>{{.Name}}</dt><dd>{{or .Value "—"}}{{with .Note}} <span class="debug-note">{{.}}</span>{{end}}</dd></div>{{end}}</dl>{{end}}
+
+{{/* debug-response is the response an inspector got: its data is an
+     *inspectResponse. The headers and body are untrusted text. */}}
+{{define "debug-response"}}
+<section class="debug">
+  <h2 class="debug-sub">Response</h2>
+  <dl class="debug-fields">
+    <div><dt>final url</dt><dd>{{.URL}}</dd></div>
+    <div><dt>status</dt><dd>{{.Status}}</dd></div>
+    <div><dt>duration</dt><dd>{{.Duration}}</dd></div>
+    <div><dt>size</dt><dd>{{.Size}}</dd></div>
+    <div><dt>Content-Type</dt><dd>{{or .ContentType "—"}}</dd></div>
+    <div><dt>Sniff</dt><dd>{{.Sniff}}</dd></div>
+  </dl>
+  <h3 class="debug-sub">headers</h3>
+  {{template "debug-fields" .Headers}}
+  <details>
+    <summary>Body</summary>
+    {{with .BodyNote}}<p class="debug-note">{{.}}</p>{{end}}
+    <pre class="debug-pre">{{.Body}}</pre>
+  </details>
+</section>
+{{end}}
+
+{{/* debug-tags is a page's metadata tags: its data is a
+     []discovery.PageTag. Values are untrusted text. */}}
+{{define "debug-tags"}}
+<table class="debug-table">
+  <thead><tr><th scope="col">Tag</th><th scope="col">Key</th><th scope="col">Value</th><th scope="col">Extra</th><th scope="col">Used</th></tr></thead>
+  <tbody>
+    {{range .}}<tr{{if not .Used}} class="debug-ignored"{{end}}><th scope="row">{{.Tag}}</th><td>{{.Key}}</td><td>{{.Value}}</td><td>{{.Extra}}</td><td>{{if .Used}}used{{else}}ignored{{end}}</td></tr>{{else}}<tr><td colspan="5">No tags.</td></tr>{{end}}
+  </tbody>
+</table>
+{{end}}

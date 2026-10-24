@@ -44,7 +44,13 @@
         {{end}}
       </section>
 
-      {{with .Debug}}{{template "debug-panel" (debugPanel "site" .Fields .Feeds)}}{{end}}
+      {{with .Debug}}
+      {{template "debug-panel" (debugPanel "site" .Fields .Feeds)}}
+      <form class="debug-inspect" action="/debug/sites/{{$.Site.ID}}/discover" method="post">
+        <button class="btn-sm" type="submit">Run discovery</button>
+      </form>
+      <p class="debug-note">Runs a lookup of this site now without saving anything.</p>
+      {{end}}
 
       <section>
         <div class="list-head">

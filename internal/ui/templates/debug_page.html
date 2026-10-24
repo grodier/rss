@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - inspect page</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    {{/* Everything from the fetched page is untrusted: it is only ever
+         shown as escaped text. */}}
+    <main class="column inspect">
+      <section class="inspect-head">
+        <h1>Inspect page</h1>
+        <p>{{.Article.DisplayTitle}} · <a href="/articles/{{.Article.ID}}">Back to the article</a></p>
+        <p class="debug-note">Fetched {{.FetchedAt}}. Nothing was saved.</p>
+      </section>
+
+      <section class="debug">
+        <h2 class="debug-sub">Request</h2>
+        {{template "debug-fields" .Request}}
+      </section>
+
+      {{with .Error}}<p class="fetch-error" role="alert">{{.}}</p>{{end}}
+
+      {{with .Response}}{{template "debug-response" .}}{{end}}
+
+      {{if or .Enrich .Page}}
+      <section class="debug">
+        <h2 class="debug-sub">What enrichment would do</h2>
+        {{with .Enrich}}<p class="fetch-error">{{.}}</p>{{end}}
+        {{with .Page}}
+        <table class="debug-table">
+          <thead><tr><th scope="col">Column</th><th scope="col">Would store</th><th scope="col">Stored</th></tr></thead>
+          <tbody>
+            {{range .}}<tr><th scope="row">{{.Name}}</th><td>{{or .Fetched "—"}}</td><td>{{or .Stored "—"}}</td></tr>{{end}}
+          </tbody>
+        </table>
+        {{end}}
+      </section>
+      {{end}}
+
+      {{if .Page}}
+      <section class="debug">
+        <h2 class="debug-sub">Tags</h2>
+        {{template "debug-tags" .Tags}}
+      </section>
+
+      <section class="debug">
+        <h2 class="debug-sub">JSON-LD</h2>
+        {{if .JSONLD}}
+        <p>Types: {{with .JSONLDTypes}}{{range $i, $t := .}}{{if $i}}, {{end}}{{$t}}{{end}}{{else}}none{{end}}</p>
+        {{range .JSONLD}}
+        <details class="inspect-item">
+          <summary>JSON-LD block</summary>
+          <pre class="debug-pre">{{.}}</pre>
+        </details>
+        {{end}}
+        {{else}}
+        <p class="debug-note">No JSON-LD blocks.</p>
+        {{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

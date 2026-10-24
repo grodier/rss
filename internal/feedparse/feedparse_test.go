@@ -359,6 +359,43 @@ func TestParseItemImage(t *testing.T) {
 			want: "https://cdn.example.com/thumb.jpg",
 		},
 		{
+			name: "atom media:group thumbnail",
+			body: atomEntry(`<media:group><media:thumbnail url="https://i.ytimg.com/vi/abc/hqdefault.jpg"/></media:group>`),
+			want: "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+		},
+		{
+			name: "rss media:group thumbnail",
+			body: rssItem(mediaNS, `<media:group><media:thumbnail url="https://i.ytimg.com/vi/abc/hqdefault.jpg"/></media:group>`),
+			want: "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+		},
+		{
+			name: "top-level thumbnail before group",
+			body: rssItem(mediaNS, `<media:group><media:thumbnail url="https://cdn.example.com/group.jpg"/></media:group><media:thumbnail url="https://cdn.example.com/top.jpg"/>`),
+			want: "https://cdn.example.com/top.jpg",
+		},
+		{
+			// Atom: gofeed's RSS translator already makes an image enclosure
+			// the item image, ahead of any thumbnail.
+			name: "group thumbnail before image enclosure",
+			body: atomEntry(`<link rel="enclosure" type="image/png" href="https://cdn.example.com/a.png"/><media:group><media:thumbnail url="https://cdn.example.com/group.jpg"/></media:group>`),
+			want: "https://cdn.example.com/group.jpg",
+		},
+		{
+			name: "blank group thumbnail skipped",
+			body: atomEntry(`<media:group><media:thumbnail url=" "/><media:thumbnail url="https://cdn.example.com/second.jpg"/></media:group>`),
+			want: "https://cdn.example.com/second.jpg",
+		},
+		{
+			name: "blank top-level thumbnail skipped",
+			body: rssItem(mediaNS, `<media:thumbnail url=" "/><media:thumbnail url="https://cdn.example.com/second.jpg"/>`),
+			want: "https://cdn.example.com/second.jpg",
+		},
+		{
+			name: "relative group thumbnail resolved",
+			body: atomEntry(`<media:group><media:thumbnail url="img/a.jpg"/></media:group>`),
+			want: "https://example.com/blog/img/a.jpg",
+		},
+		{
 			name: "json image",
 			body: jsonItem(`"image":"https://cdn.example.com/a.jpg","banner_image":"https://cdn.example.com/banner.jpg"`),
 			want: "https://cdn.example.com/a.jpg",

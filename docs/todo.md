@@ -9,8 +9,6 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 1. #330 Debug mode: inspect article pages and site discovery live.
 2. #340 Cut long site names on the "Read on" button with "…" (overflows on phones).
-3. #341 Name the article's own domain on "Read on" for aggregator feeds. After #340, or
-   merge #340's markup into it.
 4. #342 Rename a subscription. Independent of #340 and #341.
 5. #343 Show the reader's name for a feed everywhere they read it. After #341 and #342.
 6. **Plan** the error-state walkthrough and run the first pass; then repeat it

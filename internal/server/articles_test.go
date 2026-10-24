@@ -652,3 +652,41 @@ func TestArticleHandlerSiteIcon(t *testing.T) {
 		return rr.Body.String()
 	})
 }
+
+func TestReadOnLabel(t *testing.T) {
+	example := rss.Site{Host: "example.com", Title: "Example Site"}
+	tests := []struct {
+		name string
+		url  string
+		site rss.Site
+		want string
+	}{
+		{"same host", "https://example.com/a", example, "Example Site"},
+		{"www", "https://www.example.com/a", example, "Example Site"},
+		{"article on a subdomain", "https://blog.example.com/a", example, "Example Site"},
+		{"site on a subdomain", "https://ycombinator.com/a", rss.Site{Host: "news.ycombinator.com", Title: "Hacker News"}, "Hacker News"},
+		{"another site", "https://www.nytimes.com/2026/a.html", example, "nytimes.com"},
+		{"suffix that isn't a subdomain", "https://notexample.com/a", example, "notexample.com"},
+		{"uppercase host", "https://EXAMPLE.com/a", example, "Example Site"},
+		{"no title", "https://example.com/a", rss.Site{Host: "example.com"}, "example.com"},
+		{"not http", "mailto:x@example.org", example, "Example Site"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := readOnLabel(rss.Article{URL: tt.url}, tt.site); got != tt.want {
+				t.Errorf("readOnLabel(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticleHandlerReadOnOtherSite(t *testing.T) {
+	s := articleServer(t, rss.Article{Title: "A", URL: "https://www.nytimes.com/a"}, nil, nil, nil)
+	s.services.SiteService.(*fakeSiteStore).getByIDFn = func(ctx context.Context, id string) (rss.Site, error) {
+		return rss.Site{ID: id, Host: "news.ycombinator.com", Title: "Hacker News"}, nil
+	}
+
+	rr := serveArticle(t, s, testArticleID)
+
+	assertBodyContains(t, rr.Body.String(), `Read on <span class="btn-label">nytimes.com</span> ↗`)
+}

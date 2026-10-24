@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"html/template"
@@ -97,6 +98,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Article   rss.Article
 		Feed      rss.Feed
 		Site      rss.Site
+		ReadOn    string
 		Icons     map[string]string
 		LeadImage string
 		Body      template.HTML
@@ -108,6 +110,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Article:   article,
 		Feed:      feed,
 		Site:      site,
+		ReadOn:    readOnLabel(article, site),
 		Icons:     s.pageIcons(r, []string{site.ID}),
 		LeadImage: leadImage,
 		Body:      body,
@@ -119,6 +122,19 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// readOnLabel returns the name the article page's "Read on" button shows:
+// the article's host (without "www.") when its URL is on another site than
+// site, else the site's title, else its host. Hosts on a subdomain of each
+// other count as the same site.
+func readOnLabel(article rss.Article, site rss.Site) string {
+	host := strings.ToLower(article.URLHost())
+	if host == "" || host == site.Host ||
+		strings.HasSuffix(host, "."+site.Host) || strings.HasSuffix(site.Host, "."+host) {
+		return cmp.Or(site.Title, site.Host)
+	}
+	return host
 }
 
 // articleReadHandler records that the user clicked through to the original

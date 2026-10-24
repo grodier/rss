@@ -12,10 +12,8 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-1. **Wave 1.**
-   1. #348 The tables for the whole batch, `subscriptions.title` included (one production
-      reset). Everything below needs it except #334.
-   2. #334 YouTube thumbnails from `media:group`. Independent (feed parsing only).
+1. **Wave 1:** #348 The tables for the whole batch, `subscriptions.title` included (one
+   production reset). Everything below needs it.
 2. **Wave 2**, after #348:
    1. #351 Tags page, with tagging many feeds at once from a tag's page.
    2. #349 Star articles (stops for the owner's layout pick). Early, so stars collect
@@ -239,6 +237,15 @@ Each with when it pays off:
 - [ ] **Operational visibility.** An admin page or metrics (due backlog, failure rate,
   304 rate). When the app runs somewhere the logs aren't at hand. An admin page would
   build on debug mode's allowlist (#327).
+- [ ] **Titles and summaries from `media:group`.** YouTube entries have no `summary`;
+  their text is in `media:group/media:description` (and `media:title`), which `Parse`
+  doesn't read, so their excerpt stays empty and each one gets an enrichment job. Read
+  them as fallbacks when enrichment fetches of video pages become a noticeable share.
+- [ ] **Image `media:content` in Atom and in `media:group`.** `itemImage` reads
+  thumbnails at the top level and in a `media:group` (#334), but an image `media:content`
+  only at an RSS item's top level, through gofeed's RSS translator (its Atom translator
+  reads none). Reading them in both formats, grouped or not, would cover Media RSS feeds
+  that declare no thumbnail. When such a feed turns up.
 - [ ] **Fetch history.** Keep the last N fetch attempts per feed, with status, bytes,
   items, new and updated counts, and duration, but no bodies. Show them in the feed's
   debug panel. Debug mode (#327–#330) deliberately stores nothing and inspects live.

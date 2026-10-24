@@ -121,11 +121,14 @@ func TestInspectAtom(t *testing.T) {
 func TestInspectMediaGroup(t *testing.T) {
 	insp := inspectTestdata(t, "atom-media-group.xml")
 
-	checkField(t, insp.ItemFields, "media:group/media:thumbnail@url", 1, false)
+	checkField(t, insp.ItemFields, "media:group/media:thumbnail@url", 1, true)
 	checkField(t, insp.ItemFields, "media:group/media:content@type", 1, true)
 	checkField(t, insp.ItemFields, "media:group", 1, true) // it holds used fields
 	checkField(t, insp.ItemFields, "yt:videoId", 1, false)
 	checkField(t, insp.Channel, "yt:channelId", 1, false)
+	if got, want := insp.Items[0].Item.ImageURL, "https://i.ytimg.com/vi/abc/hqdefault.jpg"; got != want {
+		t.Errorf("Items[0].Item.ImageURL = %q, want %q", got, want)
+	}
 }
 
 func TestInspectUnknownNamespace(t *testing.T) {

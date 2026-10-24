@@ -17,6 +17,7 @@ import (
 
 	"github.com/mmcdole/gofeed"
 	"github.com/mmcdole/gofeed/atom"
+	ext "github.com/mmcdole/gofeed/extensions"
 	jsonfeed "github.com/mmcdole/gofeed/json"
 	"golang.org/x/net/html"
 )
@@ -222,20 +223,34 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 // itemImage returns the URL of the image an item declares, unresolved, from
 // the first non-empty of: gofeed's item image (itunes:image, a media:content
 // image, an image enclosure; JSON Feed image, then banner_image), the first
-// media:thumbnail, and the first image enclosure (which covers Atom
-// <link rel="enclosure">). "" if none.
+// media:thumbnail, else the first one in a media:group, and the first image
+// enclosure (which covers Atom <link rel="enclosure">). "" if none.
 func itemImage(it *gofeed.Item) string {
 	if it.Image != nil && strings.TrimSpace(it.Image.URL) != "" {
 		return it.Image.URL
 	}
-	if thumbs := it.Extensions["media"]["thumbnail"]; len(thumbs) > 0 {
-		if u := thumbs[0].Attrs["url"]; strings.TrimSpace(u) != "" {
+	if u := firstThumbnail(it.Extensions["media"]["thumbnail"]); u != "" {
+		return u
+	}
+	for _, g := range it.Extensions["media"]["group"] {
+		if u := firstThumbnail(g.Children["thumbnail"]); u != "" {
 			return u
 		}
 	}
 	for _, e := range it.Enclosures {
 		if e != nil && strings.HasPrefix(e.Type, "image/") {
 			return e.URL
+		}
+	}
+	return ""
+}
+
+// firstThumbnail returns the first non-blank url of thumbs, media:thumbnail
+// elements. "" if none.
+func firstThumbnail(thumbs []ext.Extension) string {
+	for _, t := range thumbs {
+		if u := t.Attrs["url"]; strings.TrimSpace(u) != "" {
+			return u
 		}
 	}
 	return ""

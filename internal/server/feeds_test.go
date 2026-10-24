@@ -321,6 +321,39 @@ func TestFeedHandlerSavedArticleIDsError(t *testing.T) {
 	}
 }
 
+func TestFeedHandlerStarredRows(t *testing.T) {
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return feedArticles(2), nil
+		},
+	})
+	ids := []string{feedArticles(2)[0].ID, feedArticles(2)[1].ID}
+	var gotUser string
+	var gotIDs []string
+	s.services.StarService = starStoreReporting(&gotUser, &gotIDs, ids[0])
+
+	rr := serveFeedAs(t, s, "user-1", testFeedID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if gotUser != "user-1" || !slices.Equal(gotIDs, ids) {
+		t.Errorf("StarredArticleIDs(%q, %v), want (user-1, %v)", gotUser, gotIDs, ids)
+	}
+	assertStarButtons(t, rr.Body.String(), "/feeds/"+testFeedID, ids[0], ids[1])
+}
+
+func TestFeedHandlerStarredArticleIDsError(t *testing.T) {
+	s := feedServer(t, nil)
+	s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+		return nil, errors.New("db down")
+	}}
+
+	if rr := serveFeed(t, s, testFeedID); rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
 // feedArticles returns n articles, newest first, the odd ones undated.
 func feedArticles(n int) []rss.Article {
 	as := make([]rss.Article, n)

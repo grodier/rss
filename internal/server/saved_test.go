@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,13 +72,43 @@ func TestSavedHandler(t *testing.T) {
 		forms := saveForms(t, body)
 		for _, item := range result {
 			id := item.Article.ID
-			want := saveFormMarkup{Action: "/articles/" + id + "/unsave", Pressed: "true", ReturnTo: "/saved"}
+			want := toggleFormMarkup{Action: "/articles/" + id + "/unsave", Pressed: "true", ReturnTo: "/saved"}
 			if got := forms[id]; got != want {
 				t.Errorf("Save form for %s = %+v, want %+v", id, got, want)
 			}
 		}
 		if strings.Contains(body, "Older saved articles") || strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected pager: %s", body)
+		}
+	})
+
+	t.Run("starred rows show a pressed Star button", func(t *testing.T) {
+		result, storeErr = savedItems(2), nil
+		var gotStarUser string
+		var gotIDs []string
+		s.services.StarService = starStoreReporting(&gotStarUser, &gotIDs, result[0].Article.ID)
+		t.Cleanup(func() { s.services.StarService = &fakeStarStore{} })
+
+		rr := getSaved(t, s, "/saved")
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if gotStarUser != "user-1" || !slices.Equal(gotIDs, []string{result[0].Article.ID, result[1].Article.ID}) {
+			t.Errorf("StarredArticleIDs(%q, %v)", gotStarUser, gotIDs)
+		}
+		assertStarButtons(t, rr.Body.String(), "/saved", result[0].Article.ID, result[1].Article.ID)
+	})
+
+	t.Run("star store error is 500", func(t *testing.T) {
+		result, storeErr = savedItems(2), nil
+		s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("boom")
+		}}
+		t.Cleanup(func() { s.services.StarService = &fakeStarStore{} })
+
+		if rr := getSaved(t, s, "/saved"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
 		}
 	})
 

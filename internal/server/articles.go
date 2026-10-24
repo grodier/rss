@@ -80,6 +80,11 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	starred, err := s.services.StarService.StarredArticleIDs(r.Context(), userID, []string{article.ID})
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 
 	var debug *articleDebugView
 	if s.debugEnabled(r) {
@@ -103,6 +108,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		LeadImage string
 		Body      template.HTML
 		Saved     bool
+		Starred   bool
 		ReturnTo  string
 		Debug     *articleDebugView
 	}{
@@ -115,6 +121,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		LeadImage: leadImage,
 		Body:      body,
 		Saved:     saved[article.ID],
+		Starred:   starred[article.ID],
 		ReturnTo:  r.URL.RequestURI(),
 		Debug:     debug,
 	}
@@ -164,20 +171,33 @@ func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 // articleSaveHandler saves an article for the user, and every copy of it
 // with it. Saving is quiet: no flash, and it doesn't mark the article read.
 func (s *Server) articleSaveHandler(w http.ResponseWriter, r *http.Request) {
-	s.saveAction(w, r, true)
+	s.toggleAction(w, r, s.services.SaveService.Save)
 }
 
 // articleUnsaveHandler removes the user's save of an article and of every
 // copy of it. Unsaving an article that isn't saved is a no-op.
 func (s *Server) articleUnsaveHandler(w http.ResponseWriter, r *http.Request) {
-	s.saveAction(w, r, false)
+	s.toggleAction(w, r, s.services.SaveService.Unsave)
 }
 
-// saveAction runs what the save and unsave handlers share: it saves (or, if
-// save is false, unsaves) the article named in the URL, then sends the user back to the row they
-// posted from (return_to, anchored on #article-{id}). app.js posts the same
-// form with fetch and ignores the redirect.
-func (s *Server) saveAction(w http.ResponseWriter, r *http.Request, save bool) {
+// articleStarHandler stars an article for the user, and every copy of it
+// with it. Like saving, starring is quiet and doesn't mark the article read.
+func (s *Server) articleStarHandler(w http.ResponseWriter, r *http.Request) {
+	s.toggleAction(w, r, s.services.StarService.Star)
+}
+
+// articleUnstarHandler removes the user's star of an article and of every
+// copy of it. Unstarring an article that isn't starred is a no-op.
+func (s *Server) articleUnstarHandler(w http.ResponseWriter, r *http.Request) {
+	s.toggleAction(w, r, s.services.StarService.Unstar)
+}
+
+// toggleAction runs what the save, unsave, star and unstar handlers share:
+// it calls do with the user and the article named in the URL, then sends the
+// user back to the row they posted from (return_to, anchored on
+// #article-{id}). app.js posts the same form with fetch and ignores the
+// redirect.
+func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ctx context.Context, userID, articleID string) error) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
@@ -190,12 +210,8 @@ func (s *Server) saveAction(w http.ResponseWriter, r *http.Request, save bool) {
 		return
 	}
 
-	action := s.services.SaveService.Unsave
-	if save {
-		action = s.services.SaveService.Save
-	}
 	userID, _ := s.authenticatedUserID(r)
-	if err := action(r.Context(), userID, id); err != nil {
+	if err := do(r.Context(), userID, id); err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
 			s.notFoundResponse(w, r)
 		} else {
@@ -222,8 +238,9 @@ type articleRow struct {
 	AlsoIn   []rss.Feed       // other subscribed feeds with a copy; timeline only
 	Read     bool             // this user has opened the article
 	Saved    bool             // this user has saved the article (or a copy)
+	Starred  bool             // this user has starred the article (or a copy)
 	Icon     string           // the URL of Feed's site icon, or "" for its letter
-	ReturnTo string           // where the row's Save button sends the user back to
+	ReturnTo string           // where the row's Save and Star buttons send the user back to
 	Debug    *articleRowDebug // the row's debug line; nil unless debug mode is on
 }
 
@@ -273,6 +290,22 @@ func (s *Server) fillSaved(ctx context.Context, userID string, rows []articleRow
 	}
 	for i := range rows {
 		rows[i].Saved = saved[rows[i].Article.ID]
+	}
+	return nil
+}
+
+// fillStarred sets Starred on each row userID has starred.
+func (s *Server) fillStarred(ctx context.Context, userID string, rows []articleRow) error {
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Article.ID
+	}
+	starred, err := s.services.StarService.StarredArticleIDs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Starred = starred[rows[i].Article.ID]
 	}
 	return nil
 }

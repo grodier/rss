@@ -50,6 +50,10 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	if err := s.fillStarred(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	s.fillDebug(r, rows)
 	s.fillIcons(r, rows)
 

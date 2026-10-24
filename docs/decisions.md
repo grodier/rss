@@ -272,6 +272,11 @@ Planned in #309 (issues #299–#301).
   the meta line). The card's left edge stays clean, and it's under the thumb on phones.
   "Also in" shares its line, on the left. More actions (Share) join it to Save's left.
   On the article page it sits under the title, left-aligned with the heading.
+- **The Star is an icon-only button to Save's left** (owner's pick in #349, from three
+  layouts: a labelled Star next to Save, this icon-only Star, a Star in the meta line).
+  It stays compact next to the labelled Save and leaves room for Share, which goes
+  between them. Its accessible name is its `aria-label`, "Star"; `aria-pressed` carries
+  the state, as on Save.
 
 ### Hiding articles (not taken in)
 
@@ -318,8 +323,8 @@ names, lands in one change (#348).
   on articles over favorite feeds; a tag such as "Favorites" covers favorite feeds. A
   star is what a picks timeline, and a shared link blog, is made from. Starring covers
   every copy, is quiet, doesn't mark the article read, and is private except through a
-  timeline the user shares. Where the star sits next to Save is the implementer's layout
-  options. (#349)
+  timeline the user shares. It's an icon-only button to Save's left (see "Saved
+  articles" under Reading). (#349)
 - **Stars outlive subscriptions**, like saves, so unsubscribing never edits a picks
   timeline that shows all feeds. (#358)
 - **Tags are free text on subscriptions, several per feed, not folders**: a feed can be

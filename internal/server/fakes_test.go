@@ -370,6 +370,33 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 	return f.listSavedFn(ctx, userID, q, before, limit)
 }
 
+type fakeStarStore struct {
+	starFn              func(ctx context.Context, userID, articleID string) error
+	unstarFn            func(ctx context.Context, userID, articleID string) error
+	starredArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+}
+
+func (f *fakeStarStore) Star(ctx context.Context, userID, articleID string) error {
+	if f.starFn == nil {
+		return nil
+	}
+	return f.starFn(ctx, userID, articleID)
+}
+
+func (f *fakeStarStore) Unstar(ctx context.Context, userID, articleID string) error {
+	if f.unstarFn == nil {
+		return nil
+	}
+	return f.unstarFn(ctx, userID, articleID)
+}
+
+func (f *fakeStarStore) StarredArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+	if f.starredArticleIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.starredArticleIDsFn(ctx, userID, articleIDs)
+}
+
 type fakeDebugStore struct {
 	siteDebugFn            func(ctx context.Context, siteID string) (rss.SiteDebug, error)
 	feedDebugFn            func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)

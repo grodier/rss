@@ -277,6 +277,36 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		assertSaveButtons(t, rr.Body.String(), target, result[0].Article.ID, result[1].Article.ID)
 	})
 
+	t.Run("starred rows show a pressed Star button", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		var gotUser string
+		var gotIDs []string
+		s.services.StarService = starStoreReporting(&gotUser, &gotIDs, result[1].Article.ID)
+		t.Cleanup(func() { s.services.StarService = &fakeStarStore{} })
+
+		rr := getHome(t, s, "/", true)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if gotUser != "user-1" || !slices.Equal(gotIDs, []string{result[0].Article.ID, result[1].Article.ID}) {
+			t.Errorf("StarredArticleIDs(%q, %v)", gotUser, gotIDs)
+		}
+		assertStarButtons(t, rr.Body.String(), "/", result[1].Article.ID, result[0].Article.ID)
+	})
+
+	t.Run("star store error is 500", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("boom")
+		}}
+		t.Cleanup(func() { s.services.StarService = &fakeStarStore{} })
+
+		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
 	t.Run("save store error is 500", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
 		s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {

@@ -210,6 +210,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
 | `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |
 | `POST /articles/{id}/unsave` | yes | `articleUnsaveHandler` | Unsaves the article and its copies; 303 to `return_to#article-{id}` |
+| `POST /articles/{id}/star` | yes | `articleStarHandler` | Star button: stars the article (and its copies); 303 to `return_to#article-{id}` |
+| `POST /articles/{id}/unstar` | yes | `articleUnstarHandler` | Unstars the article and its copies; 303 to `return_to#article-{id}` |
 | `GET /sites/{id}` | yes | `siteHandler` | A site and its feeds |
 | `GET /search` | yes | `searchHandler` | Search sites and feeds in the database |
 | `POST /lookups` | yes | `lookupCreateHandler` | Queue a site lookup; wait up to 3 s for it |
@@ -307,7 +309,8 @@ emails   (the outbox: no foreign keys)
   at query time.
 - **`stars`**: `(user_id, article_id)` with `starred_at`; an article a user starred
   ("this is good"). Like `saves`, every copy of the article (same `canonical_url`)
-  counts as starred, matched at query time. Not used yet.
+  counts as starred, matched at query time (`StarRepository`, behind the server's
+  `StarStore`).
 - **`tags`** and **`subscription_tags`**: a user's labels (`name`, `citext`: trimmed,
   inner spaces collapsed, unique per user ignoring case) and the subscriptions that
   carry them, several per subscription. Composite foreign keys (`(user_id, feed_id)` to
@@ -530,9 +533,9 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
   its tint. People's avatars (the nav, Settings) stay circles.
 - **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`, from the `local-time` and `local-date` partials; `data-local="date"` shows the date only), read pings (`<a ping>` → `navigator.sendBeacon`),
-  Save buttons (a delegated `submit` listener posts `form[data-save]` with `fetch`, then
-  flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` action; on any
-  failure it submits the form normally), video embeds (a delegated `click` listener
+  Save and Star buttons (a delegated `submit` listener posts `form[data-toggle]` with
+  `fetch`, then flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` or
+  `/star` ↔ `/unstar` action; on any failure it submits the form normally), video embeds (a delegated `click` listener
   swaps the link in `figure.embed[data-embed]` for a sandboxed player built from
   `data-embed-id`; modified clicks follow the link), infinite scroll (fetch the page behind
   `.pager a[rel=next]` and append its `.article-row`s), and a show/hide toggle on every

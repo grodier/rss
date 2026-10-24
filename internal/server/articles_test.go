@@ -462,7 +462,7 @@ func TestArticleReadHandler(t *testing.T) {
 func assertSaveButtons(t *testing.T, body, returnTo, savedID, unsavedID string) {
 	t.Helper()
 	forms := saveForms(t, body)
-	want := map[string]saveFormMarkup{
+	want := map[string]toggleFormMarkup{
 		savedID:   {Action: "/articles/" + savedID + "/unsave", Pressed: "true", ReturnTo: returnTo},
 		unsavedID: {Action: "/articles/" + unsavedID + "/save", Pressed: "false", ReturnTo: returnTo},
 	}
@@ -473,6 +473,38 @@ func assertSaveButtons(t *testing.T, body, returnTo, savedID, unsavedID string) 
 			t.Errorf("Save form for %s = %+v, want %+v", id, got, w)
 		}
 	}
+}
+
+// assertStarButtons checks that body has a Star form for starredID showing
+// it starred and one for unstarredID showing it not starred, both returning
+// to returnTo.
+func assertStarButtons(t *testing.T, body, returnTo, starredID, unstarredID string) {
+	t.Helper()
+	forms := starForms(t, body)
+	want := map[string]toggleFormMarkup{
+		starredID:   {Action: "/articles/" + starredID + "/unstar", Pressed: "true", ReturnTo: returnTo},
+		unstarredID: {Action: "/articles/" + unstarredID + "/star", Pressed: "false", ReturnTo: returnTo},
+	}
+	for id, w := range want {
+		if got, ok := forms[id]; !ok {
+			t.Errorf("no Star form for %s: %s", id, body)
+		} else if got != w {
+			t.Errorf("Star form for %s = %+v, want %+v", id, got, w)
+		}
+	}
+}
+
+// starStoreReporting returns a StarStore whose StarredArticleIDs records its
+// arguments and reports starredIDs as starred.
+func starStoreReporting(gotUser *string, gotIDs *[]string, starredIDs ...string) *fakeStarStore {
+	return &fakeStarStore{starredArticleIDsFn: func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error) {
+		*gotUser, *gotIDs = userID, articleIDs
+		starred := map[string]bool{}
+		for _, id := range starredIDs {
+			starred[id] = true
+		}
+		return starred, nil
+	}}
 }
 
 // saveStoreReporting returns a SaveStore whose SavedArticleIDs records its
@@ -508,7 +540,7 @@ func TestArticleHandlerSaved(t *testing.T) {
 			if !slices.Equal(gotIDs, []string{testArticleID}) {
 				t.Errorf("SavedArticleIDs(%q, %v), want [%s]", gotUser, gotIDs, testArticleID)
 			}
-			want := saveFormMarkup{Action: "/articles/" + testArticleID + "/save", Pressed: "false", ReturnTo: "/articles/x"}
+			want := toggleFormMarkup{Action: "/articles/" + testArticleID + "/save", Pressed: "false", ReturnTo: "/articles/x"}
 			if saved {
 				want.Action, want.Pressed = "/articles/"+testArticleID+"/unsave", "true"
 			}
@@ -522,6 +554,51 @@ func TestArticleHandlerSaved(t *testing.T) {
 	t.Run("SavedArticleIDs error is 500", func(t *testing.T) {
 		s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
 		s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return nil, errors.New("db down")
+		}}
+
+		if rr := serveArticle(t, s, testArticleID); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestArticleHandlerStarred(t *testing.T) {
+	for _, starred := range []bool{true, false} {
+		t.Run(fmt.Sprintf("starred=%v", starred), func(t *testing.T) {
+			s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
+			var gotUser string
+			var gotIDs []string
+			var ids []string
+			if starred {
+				ids = []string{testArticleID}
+			}
+			s.services.StarService = starStoreReporting(&gotUser, &gotIDs, ids...)
+
+			rr := serveArticle(t, s, testArticleID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if !slices.Equal(gotIDs, []string{testArticleID}) {
+				t.Errorf("StarredArticleIDs(%q, %v), want [%s]", gotUser, gotIDs, testArticleID)
+			}
+			want := toggleFormMarkup{Action: "/articles/" + testArticleID + "/star", Pressed: "false", ReturnTo: "/articles/x"}
+			if starred {
+				want.Action, want.Pressed = "/articles/"+testArticleID+"/unstar", "true"
+			}
+			forms := starForms(t, rr.Body.String())
+			if got := forms[testArticleID]; len(forms) != 1 || got != want {
+				t.Errorf("Star forms = %+v, want only %+v", forms, want)
+			}
+			// The Star button is icon-only, so its aria-label names it.
+			assertBodyContains(t, rr.Body.String(), `aria-label="Star"`)
+		})
+	}
+
+	t.Run("StarredArticleIDs error is 500", func(t *testing.T) {
+		s := articleServer(t, rss.Article{Title: "T"}, nil, nil, nil)
+		s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
 			return nil, errors.New("db down")
 		}}
 
@@ -546,23 +623,40 @@ func postSave(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, ret
 }
 
 func TestArticleSaveHandler(t *testing.T) {
-	testSaveAction(t, "save", func(s *Server) http.HandlerFunc { return s.articleSaveHandler },
-		func(f *fakeSaveStore, fn func(ctx context.Context, userID, articleID string) error) { f.saveFn = fn })
+	testToggleAction(t, "save", func(s *Server) http.HandlerFunc { return s.articleSaveHandler },
+		func(fn func(ctx context.Context, userID, articleID string) error) Services {
+			return Services{SaveService: &fakeSaveStore{saveFn: fn}}
+		})
 }
 
 func TestArticleUnsaveHandler(t *testing.T) {
-	testSaveAction(t, "unsave", func(s *Server) http.HandlerFunc { return s.articleUnsaveHandler },
-		func(f *fakeSaveStore, fn func(ctx context.Context, userID, articleID string) error) { f.unsaveFn = fn })
+	testToggleAction(t, "unsave", func(s *Server) http.HandlerFunc { return s.articleUnsaveHandler },
+		func(fn func(ctx context.Context, userID, articleID string) error) Services {
+			return Services{SaveService: &fakeSaveStore{unsaveFn: fn}}
+		})
 }
 
-// testSaveAction tests the save or unsave handler (path is "save" or
-// "unsave"); setFn sets the store method the handler should call.
-func testSaveAction(t *testing.T, path string, handler func(*Server) http.HandlerFunc, setFn func(*fakeSaveStore, func(ctx context.Context, userID, articleID string) error)) {
+func TestArticleStarHandler(t *testing.T) {
+	testToggleAction(t, "star", func(s *Server) http.HandlerFunc { return s.articleStarHandler },
+		func(fn func(ctx context.Context, userID, articleID string) error) Services {
+			return Services{StarService: &fakeStarStore{starFn: fn}}
+		})
+}
+
+func TestArticleUnstarHandler(t *testing.T) {
+	testToggleAction(t, "unstar", func(s *Server) http.HandlerFunc { return s.articleUnstarHandler },
+		func(fn func(ctx context.Context, userID, articleID string) error) Services {
+			return Services{StarService: &fakeStarStore{unstarFn: fn}}
+		})
+}
+
+// testToggleAction tests the save, unsave, star or unstar handler (path is
+// "save", "unsave", "star" or "unstar"); services returns the services with
+// fn as the store method the handler should call.
+func testToggleAction(t *testing.T, path string, handler func(*Server) http.HandlerFunc, services func(fn func(ctx context.Context, userID, articleID string) error) Services) {
 	t.Helper()
 	newServer := func(fn func(ctx context.Context, userID, articleID string) error) *Server {
-		store := &fakeSaveStore{}
-		setFn(store, fn)
-		return newTestServerWith(t, Services{SaveService: store})
+		return newTestServerWith(t, services(fn))
 	}
 
 	t.Run("redirects to return_to at the row", func(t *testing.T) {
@@ -585,7 +679,8 @@ func testSaveAction(t *testing.T, path string, handler func(*Server) http.Handle
 		if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
 			t.Errorf("store called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
 		}
-		// Saving is quiet: a flash would have written the session cookie.
+		// Saving and starring are quiet: a flash would have written the
+		// session cookie.
 		if c := rr.Header().Get("Set-Cookie"); c != "" {
 			t.Errorf("Set-Cookie = %q, want none (no flash)", c)
 		}
@@ -610,7 +705,10 @@ func testSaveAction(t *testing.T, path string, handler func(*Server) http.Handle
 	})
 
 	t.Run("malformed id", func(t *testing.T) {
-		s := newTestServer(t) // nil stores: any store call would panic
+		s := newServer(func(context.Context, string, string) error {
+			t.Error("store called for a malformed id")
+			return nil
+		})
 		assertNotFoundHTML(t, postSave(t, s, handler(s), "user-1", "abc", "/"))
 	})
 

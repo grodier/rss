@@ -14,9 +14,7 @@ time, in the order listed, and each branch merges the latest `main` before its P
 
 2. **Wave 2:**
    1. #351 Tags page, with tagging many feeds at once from a tag's page.
-   2. #349 Star articles (stops for the owner's layout pick). Early, so stars collect
-      before the Starred timeline (#358) shows them.
-   3. #350 Posting rate.
+   2. #350 Posting rate.
 3. **Wave 3:**
    1. #343 The reader's names everywhere. Before #356: both change
       `ListTimeline`, and this one is smaller.
@@ -307,7 +305,7 @@ Each with when it pays off:
   previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.** Style the blockquote that X, Bluesky and Mastodon embeds
   arrive as into a quote card with the author and a link, without loading their scripts.
-- [ ] **Share button.** In the row's action bar, to Save's left (#299): the Web Share API on
+- [ ] **Share button.** In the row's action bar, between Star and Save (#299, #349): the Web Share API on
   phones, else copy the article's link. Its own small issue.
 - [ ] **Measure untitled articles.** Before investing in better titles, query the share of
   articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 /

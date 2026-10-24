@@ -39,6 +39,11 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.SiteService == nil {
 		svc.SiteService = &fakeSiteStore{}
 	}
+	// Every page with article rows reads stars; a test that doesn't care
+	// gets none.
+	if svc.StarService == nil {
+		svc.StarService = &fakeStarStore{}
+	}
 	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)

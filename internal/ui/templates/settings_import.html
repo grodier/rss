@@ -24,7 +24,7 @@
         {{end}}
         <div class="field">
           <label for="file">OPML file</label>
-          <input type="file" id="file" name="file" accept=".opml,.xml,text/x-opml,text/xml,application/xml" required
+          <input type="file" id="file" name="file" required
             aria-describedby="file-hint{{if .Form.FieldErrors.file}} file-error{{end}}"
             {{with .Form.FieldErrors.file}}aria-invalid="true"{{end}}
             {{if eq $focus "file"}}autofocus{{end}} />

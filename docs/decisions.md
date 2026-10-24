@@ -175,6 +175,11 @@ Planned in #309 (issues #302, #303).
 - **Offered in Settings, next to Export, and on the empty timeline.**
 - **Files up to 1 MiB and 1,000 feeds, 5 imports per user an hour.** The upload is a
   multipart form with its own size cap, not `decodePostForm`'s 64 KiB.
+- **The file input has no `accept` filter.** iOS turns `accept` into system file types,
+  has none for `.opml`, and so greys out OPML files in the picker, including our own
+  export. No `accept` value both narrows the picker and lets iOS pick `.opml`, and the
+  filter was never a safeguard: the server's size and feed caps and `opml.Parse` handle
+  any file, and a file that isn't OPML gets the usual error. (#367)
 
 ## Reading
 

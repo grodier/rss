@@ -86,15 +86,20 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 	}
 }
 
-// TestSaveButtonMarkup checks the markup app.js's Save buttons rely on: each
-// row has a form[data-save] posting to /articles/{id}/save (or /unsave when
-// saved), with a return_to input and a button whose aria-pressed is the state.
-func TestSaveButtonMarkup(t *testing.T) {
+// TestToggleButtonMarkup checks the markup app.js's Save and Star buttons
+// rely on: each row has a form[data-toggle] posting to /articles/{id}/save
+// (or /unsave when saved) and one posting to /articles/{id}/star (or /unstar
+// when starred), each with a return_to input and a button whose aria-pressed
+// is the state.
+func TestToggleButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	s := newTestServerWith(t, Services{
 		ReadService: &fakeReadStore{},
 		SaveService: &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
 			return map[string]bool{items[0].Article.ID: true}, nil
+		}},
+		StarService: &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
+			return map[string]bool{items[1].Article.ID: true}, nil
 		}},
 		ArticleService: &fakeArticleStore{
 			listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
@@ -102,55 +107,84 @@ func TestSaveButtonMarkup(t *testing.T) {
 			},
 		},
 	})
+	body := getHome(t, s, "/", true).Body.String()
 
-	forms := saveForms(t, getHome(t, s, "/", true).Body.String())
-
-	want := map[string]saveFormMarkup{
-		items[0].Article.ID: {Action: "/articles/" + items[0].Article.ID + "/unsave", Pressed: "true", ReturnTo: "/"},
-		items[1].Article.ID: {Action: "/articles/" + items[1].Article.ID + "/save", Pressed: "false", ReturnTo: "/"},
-	}
-	if len(forms) != len(want) {
-		t.Errorf("found %d Save forms, want %d: %v", len(forms), len(want), forms)
-	}
-	for id, w := range want {
-		if got := forms[id]; got != w {
-			t.Errorf("Save form for %s = %+v, want %+v", id, got, w)
+	for _, tt := range []struct {
+		verb string
+		on   string // the article ID that's pressed
+	}{
+		{"save", items[0].Article.ID},
+		{"star", items[1].Article.ID},
+	} {
+		forms := toggleForms(t, body, tt.verb)
+		want := map[string]toggleFormMarkup{}
+		for _, item := range items {
+			id := item.Article.ID
+			if id == tt.on {
+				want[id] = toggleFormMarkup{Action: "/articles/" + id + "/un" + tt.verb, Pressed: "true", ReturnTo: "/"}
+			} else {
+				want[id] = toggleFormMarkup{Action: "/articles/" + id + "/" + tt.verb, Pressed: "false", ReturnTo: "/"}
+			}
+		}
+		if len(forms) != len(want) {
+			t.Errorf("found %d %s forms, want %d: %v", len(forms), tt.verb, len(want), forms)
+		}
+		for id, w := range want {
+			if got := forms[id]; got != w {
+				t.Errorf("%s form for %s = %+v, want %+v", tt.verb, id, got, w)
+			}
 		}
 	}
 }
 
-// saveFormMarkup is what app.js reads from a Save form.
-type saveFormMarkup struct {
+// toggleFormMarkup is what app.js reads from a Save or Star form.
+type toggleFormMarkup struct {
 	Action   string // the form's action
 	Pressed  string // the submit button's aria-pressed
 	ReturnTo string // the return_to input's value
 }
 
-var saveActionRe = regexp.MustCompile(`^/articles/([^/]+)/(?:un)?save$`)
+// saveForms is toggleForms for the Save forms.
+func saveForms(t *testing.T, body string) map[string]toggleFormMarkup {
+	t.Helper()
+	return toggleForms(t, body, "save")
+}
 
-// saveForms finds the form[data-save] elements in body, keyed by the article
-// ID in their action. It fails the test on a form without a POST method, an
-// /articles/{id}/save or /unsave action, a return_to input or one submit
+// starForms is toggleForms for the Star forms.
+func starForms(t *testing.T, body string) map[string]toggleFormMarkup {
+	t.Helper()
+	return toggleForms(t, body, "star")
+}
+
+var toggleActionRe = regexp.MustCompile(`^/articles/([^/]+)/(?:un)?(save|star)$`)
+
+// toggleForms finds the form[data-toggle] elements in body whose action is
+// /articles/{id}/{verb} or /un{verb} ("save" or "star"), keyed by the article
+// ID. It fails the test on a form[data-toggle] without a POST method or one
+// of those actions, and on one without a return_to input or one submit
 // button with aria-pressed.
-func saveForms(t *testing.T, body string) map[string]saveFormMarkup {
+func toggleForms(t *testing.T, body, verb string) map[string]toggleFormMarkup {
 	t.Helper()
 	doc, err := html.Parse(strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	forms := map[string]saveFormMarkup{}
-	for _, f := range findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-save") }) {
+	forms := map[string]toggleFormMarkup{}
+	for _, f := range findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-toggle") }) {
 		action := attr(f, "action")
-		m := saveActionRe.FindStringSubmatch(action)
+		m := toggleActionRe.FindStringSubmatch(action)
 		if m == nil || attr(f, "method") != "post" {
-			t.Errorf("Save form method=%q action=%q, want post to /articles/{id}/save or /unsave", attr(f, "method"), action)
+			t.Errorf("toggle form method=%q action=%q, want post to /articles/{id}/save, /unsave, /star or /unstar", attr(f, "method"), action)
 			continue
 		}
-		got := saveFormMarkup{Action: action}
+		if m[2] != verb {
+			continue
+		}
+		got := toggleFormMarkup{Action: action}
 
 		inputs := findAll(f, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "return_to" })
 		if len(inputs) != 1 || attr(inputs[0], "type") != "hidden" {
-			t.Errorf("Save form %s: want one hidden return_to input", action)
+			t.Errorf("form %s: want one hidden return_to input", action)
 		} else {
 			got.ReturnTo = attr(inputs[0], "value")
 		}
@@ -159,9 +193,12 @@ func saveForms(t *testing.T, body string) map[string]saveFormMarkup {
 			return n.Data == "button" && attr(n, "type") == "submit" && hasAttr(n, "aria-pressed")
 		})
 		if len(buttons) != 1 {
-			t.Errorf("Save form %s: found %d submit buttons with aria-pressed, want 1", action, len(buttons))
+			t.Errorf("form %s: found %d submit buttons with aria-pressed, want 1", action, len(buttons))
 		} else {
 			got.Pressed = attr(buttons[0], "aria-pressed")
+		}
+		if _, dup := forms[m[1]]; dup {
+			t.Errorf("more than one %s form for %s", verb, m[1])
 		}
 		forms[m[1]] = got
 	}

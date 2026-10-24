@@ -30,14 +30,15 @@
   };
   enhancePings(document);
 
-  // Save buttons: form[data-save] posts to /articles/{id}/save or /unsave.
-  // Post it with fetch instead, then flip aria-pressed (main.css swaps the
-  // icon) and the action, so the page doesn't reload. On any failure, submit
-  // the form normally so the round trip shows what happened. Delegated, so
-  // rows added by infinite scroll work too.
+  // Save and Star buttons: form[data-toggle] posts to /articles/{id}/save,
+  // /unsave, /star or /unstar. Post it with fetch instead, then flip
+  // aria-pressed (main.css swaps the icon) and the action, so the page
+  // doesn't reload. On any failure, submit the form normally so the round
+  // trip shows what happened. Delegated, so rows added by infinite scroll
+  // work too.
   document.addEventListener("submit", async (e) => {
     const form = e.target;
-    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-save]")) return;
+    if (!(form instanceof HTMLFormElement) || !form.matches("form[data-toggle]")) return;
     e.preventDefault();
     const button = form.querySelector("button[aria-pressed]");
     if (!button || button.disabled) return;
@@ -49,9 +50,9 @@
         redirect: "manual",
       });
       if (res.type !== "opaqueredirect" && !res.ok) throw new Error(`status ${res.status}`);
-      const saved = button.getAttribute("aria-pressed") !== "true";
-      button.setAttribute("aria-pressed", String(saved));
-      form.setAttribute("action", form.getAttribute("action").replace(/\/(un)?save$/, saved ? "/unsave" : "/save"));
+      const pressed = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", String(pressed));
+      form.setAttribute("action", form.getAttribute("action").replace(/\/(un)?(save|star)$/, (_, un, verb) => (pressed ? `/un${verb}` : `/${verb}`)));
       button.disabled = false;
     } catch {
       form.submit();

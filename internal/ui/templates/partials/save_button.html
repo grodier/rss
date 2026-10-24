@@ -1,17 +1,25 @@
-{{/* The Save button, for an article row or the article page: data with
-     Article, Saved and ReturnTo. app.js's "Save buttons" relies on this
-     markup: form[data-save], its /save or /unsave action, the button's
-     aria-pressed and the return_to input. main.css shows the outline or the
-     filled icon from aria-pressed. */}}
+{{/* The Save and Star buttons, for an article row or the article page:
+     data with Article, Saved, Starred and ReturnTo. app.js's "Save and Star
+     buttons" relies on this markup: form[data-toggle], its /save, /unsave,
+     /star or /unstar action, the button's aria-pressed and the return_to
+     input. main.css shows the outline or the filled icon from aria-pressed. */}}
 {{define "save-button"}}
-<form class="save-form" method="post" action="/articles/{{.Article.ID}}/{{if .Saved}}unsave{{else}}save{{end}}" data-save>
+<form class="save-form" method="post" action="/articles/{{.Article.ID}}/{{if .Saved}}unsave{{else}}save{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
   <button class="save-button" type="submit" aria-pressed="{{.Saved}}">{{template "icon-bookmark"}}{{template "icon-bookmark-fill"}}<span class="save-label">Save</span></button>
 </form>
 {{end}}
 
-{{/* The actions on an article: Save for now. One group, so more actions
-     (Share) can join it. */}}
+{{/* The Star button: icon-only, named by its aria-label. */}}
+{{define "star-button"}}
+<form class="star-form" method="post" action="/articles/{{.Article.ID}}/{{if .Starred}}unstar{{else}}star{{end}}" data-toggle>
+  <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}</button>
+</form>
+{{end}}
+
+{{/* The actions on an article: an icon-only Star left of a labelled Save.
+     One group, so more actions (Share) can join it. */}}
 {{define "article-actions"}}
-<div class="article-actions">{{template "save-button" .}}</div>
+<div class="article-actions">{{template "star-button" .}}{{template "save-button" .}}</div>
 {{end}}

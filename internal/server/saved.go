@@ -49,6 +49,10 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	if err := s.fillStarred(r.Context(), userID, rows); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	s.fillIcons(r, rows)
 	s.fillDebug(r, rows)
 

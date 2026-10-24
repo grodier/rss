@@ -619,7 +619,7 @@ button with a bookmark icon, in the `article-actions` group: on rows it's right-
 under the card (the row's `article-foot`, with "Also in" on the left), on the article
 page under the title. The button is the `save-button` partial, a form posting to
 `/articles/{id}/save`, or `/unsave` when the article is saved, with a `return_to` of the
-page's request URI. `articleSaveHandler` and `articleUnsaveHandler` (both `saveAction`)
+page's request URI. `articleSaveHandler` and `articleUnsaveHandler` (both `toggleAction`)
 call `SaveRepository.Save` or `Unsave` and redirect to `return_to` with
 `#article-{id}` appended, so without JavaScript the page comes back at the same row.
 Saving is quiet: no flash, and it doesn't mark the article read. With JavaScript,
@@ -633,14 +633,26 @@ like read state. `Save` inserts nothing when the user already saved a copy, and 
 of every copy. List pages ask `SavedArticleIDs` which rows are saved (`fillSaved`), with
 the same query shape as `ReadArticleIDs`; the article page asks it for its one article.
 
+**Stars.** A star means "this is good" (Saved stays "keep"). Every row (timeline, feed
+pages, Saved) and the article page has an icon-only Star button (`star-button`,
+`aria-label="Star"`) to Save's left in `article-actions`, a form posting to
+`/articles/{id}/star`, or `/unstar` when starred. `articleStarHandler` and
+`articleUnstarHandler` share `toggleAction` with Save, so they behave the same way: 404
+for a bad or unknown article, then a 303 back to `return_to#article-{id}`, quiet, and
+without marking the article read. `StarRepository` mirrors `SaveRepository`: `Star`
+skips an article whose copy is already starred, `Unstar` removes every copy's star, and
+`StarredArticleIDs` (`fillStarred` on list pages, `articleHandler` for its article)
+matches copies. Stars are private: no counts, and no page of them yet (the Starred
+timeline is #358). `app.js` flips the Star in place with the same listener as Save.
+
 **Saved page** (`/saved`, "Saved" in the nav, after Home). `savedHandler` is modelled on
 the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest
 saved first, paged with a `?before=` cursor whose time is the `saved_at` (infinite
 scroll with JavaScript, "Older saved articles" without). `ListSaved` joins `saves` to
 `articles` and `feeds` with keyset paging on `(saved_at, article_id)`, served by
-`saves_user_saved_at_idx`. Each row is an `articleRow` with its feed, `Saved: true` and
-`fillRead`'s read marker. Unsaving from the page comes back to `/saved`; with
-JavaScript the row stays (its button flips) until the page is reloaded, so an
+`saves_user_saved_at_idx`. Each row is an `articleRow` with its feed, `Saved: true`,
+`fillRead`'s read marker and `fillStarred`'s star. Unsaving from the page comes back to
+`/saved`; with JavaScript the row stays (its button flips) until the page is reloaded, so an
 accidental unsave can be undone in place. There's no count anywhere.
 
 **Search** (`/saved?q=…`). A GET form above the list (`saved-search`), shown when there
@@ -656,23 +668,30 @@ on a later page).
 **Read:**
 
 1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`,
-   `saveAction`, `withFragment`, then `articleRow` and `fillSaved`; `articleHandler`'s
-   `Saved`; `internal/server/saved.go`: `savedHandler`, `savedURL`.
+   `articleStarHandler`, `articleUnstarHandler`, `toggleAction`, `withFragment`, then
+   `articleRow`, `fillSaved` and `fillStarred`; `articleHandler`'s `Saved` and
+   `Starred`; `internal/server/saved.go`: `savedHandler`, `savedURL`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
-3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`.
-4. Templates: `partials/save_button.html` (`save-button`, `article-actions`),
-   `partials/article_row.html`, `article.html`, `saved.html`, `partials/nav.html`; `icon-bookmark` and
-   `icon-bookmark-fill` in `partials/icons.html`.
-5. `internal/ui/static/js/app.js`: "Save buttons".
+3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`;
+   `internal/psql/stars.go`: `Star`, `Unstar`, `StarredArticleIDs`.
+4. Templates: `partials/save_button.html` (`save-button`, `star-button`,
+   `article-actions`), `partials/article_row.html`, `article.html`, `saved.html`,
+   `partials/nav.html`; `icon-bookmark`, `icon-bookmark-fill`, `icon-star` and
+   `icon-star-fill` in `partials/icons.html`.
+5. `internal/ui/static/js/app.js`: "Save and Star buttons".
 
 **Tests:** `internal/server/articles_test.go` (`TestArticleSaveHandler`,
-`TestArticleUnsaveHandler`, `TestArticleHandlerSaved`), `saved_test.go`
-(`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`),
-`scroll_test.go` (`TestSaveButtonMarkup`, `TestInfiniteScrollMarkup`),
-`templates_test.go` (`TestAppNav`); `internal/psql/saves_test.go` (`TestListSaved`,
-`TestListSavedSearch`).
+`TestArticleUnsaveHandler`, `TestArticleStarHandler`, `TestArticleUnstarHandler`,
+`TestArticleHandlerSaved`, `TestArticleHandlerStarred`), `saved_test.go`
+(`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`,
+`TestFeedHandlerStarredRows`), `scroll_test.go` (`TestToggleButtonMarkup`,
+`TestInfiniteScrollMarkup`), `templates_test.go` (`TestAppNav`);
+`internal/psql/saves_test.go` (`TestSaveRepository`, `TestListSaved`,
+`TestListSavedSearch`), `stars_test.go` (`TestStar`, `TestUnstar`,
+`TestStarredArticleIDs`).
 
-**Why:** "Reading" in decisions.md.
+**Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and
+timelines" in decisions.md.
 
 ## Site icons
 

@@ -12,9 +12,7 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-1. **Wave 1:** #348 The tables for the whole batch, `subscriptions.title` included (one
-   production reset). Everything below needs it.
-2. **Wave 2**, after #348:
+2. **Wave 2:**
    1. #351 Tags page, with tagging many feeds at once from a tag's page.
    2. #349 Star articles (stops for the owner's layout pick). Early, so stars collect
       before the Starred timeline (#358) shows them.

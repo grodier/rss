@@ -255,11 +255,15 @@ CLAUDE.md).
 users ──< subscriptions >── feeds ──< articles ──< reads >── users
                               │          │
                               │          ├──< saves >── users
+                              │          ├──< stars >── users
                               │          └──< enrich_jobs
                               │
                             sites ──< lookups (site_id, once found)
                               └──< site_icons
 
+users ──< tags
+subscriptions ──< subscription_tags >── tags
+users ──< timelines ──< timeline_tags (>── tags) / timeline_feeds (>── subscriptions)
 users ──< imports ──< import_feeds (feed_id, once known)
 users ──< user_sessions
 users ──< user_tokens
@@ -282,6 +286,8 @@ emails   (the outbox: no foreign keys)
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
   (for conditional GET), `gone_at` (410 Gone: not fetched again until a lookup finds the
   feed again), and `refresh_requested_at` (a page view asked for a fetch).
+  `posts_per_week` is how many articles it published in the last 30 days, per week
+  (not written or read yet).
 - **`articles`**: unique by `(feed_id, external_id)`. `summary` and `content` are raw HTML
   from the feed; `excerpt` is plain text; `canonical_url` matches copies of one article
   across feeds; `timeline_at` is set once on insert and never updated. `page_image_url`,
@@ -292,9 +298,31 @@ emails   (the outbox: no foreign keys)
   of the item's first audio or video enclosure (`""` if none), written by `saveArticles`
   and not displayed yet.
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
+  A subscription's `title` is the user's name for the feed; `''` uses the feed's own
+  title (not written or read yet).
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
   at query time.
+- **`stars`**: `(user_id, article_id)` with `starred_at`; an article a user starred
+  ("this is good"). Like `saves`, every copy of the article (same `canonical_url`)
+  counts as starred, matched at query time. Not used yet.
+- **`tags`** and **`subscription_tags`**: a user's labels (`name`, `citext`: trimmed,
+  inner spaces collapsed, unique per user ignoring case) and the subscriptions that
+  carry them, several per subscription. Composite foreign keys (`(user_id, feed_id)` to
+  `subscriptions`, `(tag_id, user_id)` to `tags`) keep a subscription to its own user's
+  tags, so repositories need no ownership check for it. Not used yet.
+- **`timelines`**, **`timeline_tags`** and **`timeline_feeds`**: a user's timelines.
+  Home is the row with `home` set (at most one per user, created when the user first
+  mutes something on Home; no row: nothing is muted), and only its leave-outs are used;
+  the others are custom timelines with a `name`, `description` and tab `position`. Their
+  conditions are columns: `all_feeds` (false: only the feeds of its included tags and
+  feeds), `starred_only`, `max_posts_per_week` (0: any rate), `include_words` (an article
+  must mention one), `exclude_words` (an article mentioning one is left out),
+  `media_only` (audio or video enclosures only) and `share_token` (NULL: not shared;
+  else the public link's token, stored as is). Its sources are `timeline_tags` and
+  `timeline_feeds` rows, each with `exclude` (false: show; true: leave out); composite
+  foreign keys keep them to the timeline's own user's tags and subscriptions. Not used
+  yet.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,
@@ -303,7 +331,8 @@ emails   (the outbox: no foreign keys)
   articles of feeds with a subscriber.
 - **`imports`** and **`import_feeds`**: an OPML file a user uploaded (`filename`) and its
   feeds, keyed by `(import_id, position)` in file order, with the outline's `url` and
-  `title`. `import_feeds` is also the import queue: `status` pending → running →
+  `title`, and `tags`, the names of the folders the outline is in, to apply as tags on
+  subscribe (not written or read yet). `import_feeds` is also the import queue: `status` pending → running →
   subscribed, already_subscribed or failed, with `failure` (`invalid_url`,
   `unreachable`, `not_feed`) and `error` (internal, never shown); `feed_id` is the feed
   subscribed to, once known.
@@ -328,9 +357,12 @@ emails   (the outbox: no foreign keys)
 
 Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves
 and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and
-`import_feeds.feed_id`; deleting an article deletes its saves, reads and enrich job;
-deleting a user cascades to their subscriptions, reads, saves, imports (and their
-`import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
+`import_feeds.feed_id`; deleting an article deletes its saves, stars, reads and enrich
+job; deleting a user cascades to their subscriptions, reads, saves, stars, tags,
+timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and
+leaves their `emails`. Deleting a subscription (unsubscribing) deletes its name, its
+`subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean;
+deleting a tag removes it from subscriptions and timelines.
 Deleting an account (`UserRepository.Delete`) deletes the user, with that cascade;
 feeds and articles stay, even when no one subscribes to them anymore. Nothing deletes
 sites, feeds or articles yet; unsubscribing deletes the subscription row, logging out deletes the `user_sessions` row, confirming an address

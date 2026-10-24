@@ -41,9 +41,9 @@ section names; how the code works is in [architecture.md](architecture.md) and
   stage" in CLAUDE.md. (#180)
 - **A planned batch lands its schema in one change**, so production is reset once per
   batch rather than once per feature: the account tables (#255), then the reading
-  features' tables (#293). A prototype that may be dropped adds its own table instead,
-  so dropping it leaves nothing behind. Before a reset, export your OPML, and import it
-  afterwards (#303).
+  features' tables (#293), then subscription names and the filtering batch's (#348). A
+  prototype that may be dropped adds its own table instead, so dropping it leaves
+  nothing behind. Before a reset, export your OPML, and import it afterwards (#303).
 
 ## Debug mode
 
@@ -302,9 +302,10 @@ What the prototype settled, as a starting point if it comes back:
 
 ## Filtering and timelines
 
-Planned in #365 (issues #348–#364), from the owner's list: favorites, tags, several
-timelines with filters, a quiet-posters timeline, shared timelines. The batch's schema
-lands in one change (#348).
+Planned in #365 (issues #348–#364; #353, #355 and #361 were folded into #351, #354 and
+#359), from the owner's list: favorites, tags, several timelines with filters, a
+quiet-posters timeline, shared timelines. The batch's schema, with #342's subscription
+names, lands in one change (#348).
 
 ### Stars and tags
 
@@ -321,7 +322,7 @@ lands in one change (#348).
   and worse for private organizing. Names are trimmed with inner whitespace collapsed,
   compared ignoring case (`citext`), 1–50 characters with no commas, up to 100 per user.
   Managed at `/tags`; added on Edit subscription (checkboxes plus a comma-separated
-  field, no JavaScript) and in bulk from a tag's page. (#351–#353)
+  field, no JavaScript) and in bulk from a tag's page. (#351, #352)
 - **Composite foreign keys keep tags and timelines inside one account**, and
   unsubscribing drops the subscription's tags, Home mute and timeline rows (cascade),
   like its name. (#348)
@@ -329,7 +330,7 @@ lands in one change (#348).
   depth; import only adds tags), **and the export nests feeds in a folder per tag** (a
   feed with two tags appears in both; untagged feeds at the top level), which every
   reader imports as folders. No `category` attribute, which most readers ignore. These
-  change "OPML import" under Subscriptions and the export under Accounts. (#354, #355)
+  change "OPML import" under Subscriptions and the export under Accounts. (#354)
 
 ### Timelines
 
@@ -343,7 +344,7 @@ lands in one change (#348).
   these tags or these feeds; Leave out is tags and feeds, and always wins; then
   conditions that must all hold: starred only, at most N posts a week, must mention /
   leave out words, audio or video only. Timelines pick only from your subscriptions,
-  except a starred-only one showing all feeds. (#356, #358–#361)
+  except a starred-only one showing all feeds. (#356, #358–#360)
 - **The same reading rules as Home:** arrival order, copies collapsed among the
   timeline's own feeds, "Also in", read markers. A starred-only timeline orders by star
   time instead, so new picks land on top. (#356, #358)
@@ -363,7 +364,7 @@ lands in one change (#348).
   needs a letter or digit. Any term matches; leave-out wins. Plain matching only:
   smarter matching belongs with related articles (todo). (#360)
 - **Audio or video means an enclosure** (`articles.media_type`), not a video embedded in
-  the HTML. (#361)
+  the HTML. (#359)
 - **Muting is Home's Leave out.** Home is a `timelines` row created on first mute, with
   no other settings; "Show on Home" sits on Edit subscription and tag pages, and My feeds
   marks muted feeds. This is the muting half of the old "Filters and muting" item. (#362)
@@ -592,7 +593,7 @@ experience.
 - **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): one
   `<outline>` per feed, with no nesting by site, since most readers turn nested outlines
   into folders and would make one per site. Gone feeds are included: they're still your
-  subscriptions. Changed in #355: feeds are nested in a folder per tag (see "Filtering and
+  subscriptions. Changed in #354: feeds are nested in a folder per tag (see "Filtering and
   timelines"), and the list stays flat for someone without tags. Import: see "OPML import"
   under Subscriptions.
 - **Security emails:** password changed, email changed (to the old address), and account

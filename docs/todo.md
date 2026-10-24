@@ -7,23 +7,48 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-1. #342 Rename a subscription.
-2. #343 Show the reader's name for a feed everywhere they read it. After #342.
-3. Filtering and timelines (planned in #365; decisions under "Filtering and timelines" in
-   decisions.md):
-   1. #348 The batch's tables (one production reset). Everything below needs it.
-   2. #349 Star articles, #350 posting rate, #351 Tags page: independent of each other.
-   3. #352 Tag subscriptions on Edit subscription (after #342 and #351), then #353 bulk
-      tagging, #354 OPML folders to tags, and #355 OPML export by tag (after #343).
-   4. #356 Custom timelines (after #351), then #357 reorder, #358 starred only (after
-      #349), #359 quiet posters (after #350), #360 keywords and #361 audio or video.
-   5. #362 Mute on Home (after #352, #353 and #356).
-   6. #363 Share a timeline (after #356), then #364 its Atom feed.
-4. **Plan** the error-state walkthrough and run the first pass; then repeat it
-   periodically.
-5. Before production or a few thousand feeds, **plan** load and performance testing.
+Subscription names and filtering (planned in #344 and #365; decisions under "Subscriptions"
+and "Filtering and timelines" in decisions.md), in waves. Issues in one wave can be built
+in parallel once the waves before them have merged; merge one PR at a time, in the order
+listed, and each branch merges the latest `main` before its PR.
 
-Merge one PR at a time; each branch merges the latest `main` before its PR.
+1. **Wave 1.**
+   1. #348 The tables for the whole batch, `subscriptions.title` included (one production
+      reset). Everything below needs it except #334.
+   2. #334 YouTube thumbnails from `media:group`. Independent (feed parsing only).
+2. **Wave 2**, after #348:
+   1. #351 Tags page, with tagging many feeds at once from a tag's page.
+   2. #349 Star articles (stops for the owner's layout pick). Early, so stars collect
+      before the Starred timeline (#358) shows them.
+   3. #342 Rename a subscription.
+   4. #350 Posting rate.
+3. **Wave 3:**
+   1. #343 The reader's names everywhere (after #342). Before #356: both change
+      `ListTimeline`, and this one is smaller.
+   2. #356 Custom timelines as tabs on Home (after #351; stops for the owner's tab-row
+      pick).
+   3. #352 Tags on Edit subscription and My feeds (after #342 and #351).
+4. **Wave 4**, after #356:
+   1. #358 Starred-only timelines (after #349).
+   2. #362 Mute on Home (after #352).
+   3. #359 Quiet posters and audio or video (after #350).
+   4. #354 OPML folders to tags, and export by tag (after #352 and #343).
+5. **Wave 5:**
+   1. #360 Keyword filters.
+   2. #363 Share a timeline.
+   3. #357 Reorder timelines. Lowest priority; any time after #356.
+6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
+
+Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
+(#342, #350, #351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
+(#356, #358, #359, #360); `subscription_edit.html` (#342, #352, #362); `ListTimeline`
+(#343, #356).
+
+Then:
+
+1. **Plan** the error-state walkthrough and run the first pass; then repeat it
+   periodically.
+2. Before production or a few thousand feeds, **plan** load and performance testing.
 
 ## Pre-alpha testing
 
@@ -341,7 +366,7 @@ in decisions.md.
   from Edit subscription and tag pages (#362) proves too far away.
 - [ ] **Images on shared pages.** #363 shows text only. Card images would load from
   publishers for strangers too; decide with the image proxy.
-- [ ] **Embedded videos for the audio/video condition.** #361 only counts enclosures. A
+- [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures. A
   flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos;
   decide with "Measure embeds and media".
 
@@ -595,7 +620,7 @@ Pages and queries:
   query (`TimelineRepository.List`) to `/` and each timeline page, and Home adds
   `GetHome` (#362). *Signal:* they show up in `pg_stat_statements` totals. *Fix:* fold
   them into one query, or keep the tab list in the session until a timeline changes.
-- [ ] **Tag page checklist is unpaginated** (#353, #356). A tag's page, and also
+- [ ] **Tag page checklist is unpaginated** (#351, #356). A tag's page, and also
   the timeline form, list all of a user's subscriptions as checkboxes, like My feeds.
   *Signal:* users with hundreds of subscriptions, or those pages' p95 rising. *Fix:*
   with My feeds' fix, plus a filter box over the list.

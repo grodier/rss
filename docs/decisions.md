@@ -356,8 +356,12 @@ lands in one change (#348).
   (#350, #359)
 - **Keyword filters match whole words and phrases, ignoring case, in the title, page
   title and excerpt**, never the full content (lists don't load it, and it's unbounded).
-  Any term matches; leave-out wins. Plain matching only: smarter matching belongs with
-  related articles (todo). (#360)
+  A term matches where the characters just before and after it aren't letters or
+  digits, so terms like `C++`, `C#`, `.NET` and `#hashtag` work (symbols are matched
+  literally), and `AI` still matches "#AI" but not "said". Accepted: `C` alone also
+  matches "C++"; counting symbols as letters would stop `AI` matching "#AI". A term
+  needs a letter or digit. Any term matches; leave-out wins. Plain matching only:
+  smarter matching belongs with related articles (todo). (#360)
 - **Audio or video means an enclosure** (`articles.media_type`), not a video embedded in
   the HTML. (#361)
 - **Muting is Home's Leave out.** Home is a `timelines` row created on first mute, with

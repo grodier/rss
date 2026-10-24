@@ -103,7 +103,7 @@ func TestArticleHandler(t *testing.T) {
 		`<div class="article-body">`,
 		"<strong>world</strong>",
 		`src="https://example.com/pic.png"`,
-		`href="https://example.com/posts/a" target="_blank" rel="noopener noreferrer">Read on Example Site`,
+		`href="https://example.com/posts/a" target="_blank" rel="noopener noreferrer" title="Read on Example Site">Read on <span class="btn-label">Example Site</span> ↗`,
 	)
 	for _, bad := range []string{"<script>", "CONTENT-MARKER", "SUMMARY-MARKER", "<b>title</b>"} {
 		if strings.Contains(body, bad) {

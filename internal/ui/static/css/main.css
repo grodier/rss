@@ -560,6 +560,17 @@
     padding-block: 0.75rem;
   }
 
+  /* A button whose label can be long: the label is cut with "…". */
+  .btn-truncate {
+    max-inline-size: 100%;
+  }
+
+  .btn-truncate .btn-label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .btn-sm .icon {
     inline-size: 1rem;
     block-size: 1rem;

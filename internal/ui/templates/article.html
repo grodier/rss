@@ -54,7 +54,7 @@
         <p class="empty">This article has no text in its feed.</p>
         {{end}}
         {{if .Article.URL}}
-        <p class="reader-foot"><a class="btn" href="{{.Article.URL}}" target="_blank" rel="noopener noreferrer">Read on {{or .Site.Title .Site.Host}} ↗</a></p>
+        <p class="reader-foot"><a class="btn btn-truncate" href="{{.Article.URL}}" target="_blank" rel="noopener noreferrer" title="Read on {{or .Site.Title .Site.Host}}">Read on <span class="btn-label">{{or .Site.Title .Site.Host}}</span> ↗</a></p>
         {{end}}
       </article>
     </main>

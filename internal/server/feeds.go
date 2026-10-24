@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -275,6 +276,109 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (fee
 func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form returnForm, feed rss.Feed, msg string) {
 	s.sessionManager.Put(r.Context(), "flash", msg)
 	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID), http.StatusSeeOther)
+}
+
+type subscriptionForm struct {
+	Title               string `form:"title"`
+	ReturnTo            string `form:"return_to"`
+	validator.Validator `form:"-"`
+}
+
+// subscriptionTitleMaxChars is the longest name a user can give a subscription.
+const subscriptionTitleMaxChars = 100
+
+// subscriptionEditHandler shows the form for editing the user's subscription
+// to a feed: for now, the name they give it.
+func (s *Server) subscriptionEditHandler(w http.ResponseWriter, r *http.Request) {
+	sub, ok := s.subscriptionFromURL(w, r)
+	if !ok {
+		return
+	}
+	form := subscriptionForm{Title: sub.Title, ReturnTo: r.URL.Query().Get("return_to")}
+	s.renderSubscriptionEdit(w, r, http.StatusOK, sub, form)
+}
+
+// subscriptionEditPostHandler saves the user's name for a feed. A blank name,
+// or one equal to the feed's title, is stored as "" so the feed's own title
+// (and later changes to it) shows instead.
+func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Request) {
+	sub, ok := s.subscriptionFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	var form subscriptionForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+
+	form.Title = strings.TrimSpace(form.Title)
+	form.CheckField(validator.MaxChars(form.Title, subscriptionTitleMaxChars), "title", "Must be 100 characters or fewer.")
+	if !form.Valid() {
+		s.renderSubscriptionEdit(w, r, http.StatusUnprocessableEntity, sub, form)
+		return
+	}
+
+	title := form.Title
+	if title == sub.Feed.Title {
+		title = ""
+	}
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.SubscriptionService.Rename(r.Context(), userID, sub.Feed.ID, title); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	s.sessionManager.Put(r.Context(), "flash", "Subscription updated.")
+	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds"), http.StatusSeeOther)
+}
+
+// subscriptionFromURL returns the user's subscription to the feed named in the
+// URL. If ok is false it has already written the response: 404 if the id isn't
+// a UUID or the user doesn't subscribe to the feed.
+func (s *Server) subscriptionFromURL(w http.ResponseWriter, r *http.Request) (sub rss.Subscription, ok bool) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return rss.Subscription{}, false
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	sub, err := s.services.SubscriptionService.Get(r.Context(), userID, id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return rss.Subscription{}, false
+	}
+	return sub, true
+}
+
+// renderSubscriptionEdit renders subscription_edit.html with status.
+func (s *Server) renderSubscriptionEdit(w http.ResponseWriter, r *http.Request, status int, sub rss.Subscription, form subscriptionForm) {
+	data := struct {
+		Nav      navData
+		Sub      rss.Subscription
+		Icons    map[string]string
+		Form     subscriptionForm
+		ReturnTo string
+	}{
+		Nav:      s.nav(r, "feeds"),
+		Sub:      sub,
+		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
+		Form:     form,
+		ReturnTo: safeReturnPath(form.ReturnTo, "/feeds"),
+	}
+	if err := s.renderHTML(w, status, "subscription_edit.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 // feedLabel is how messages refer to a feed: its title, else its URL.

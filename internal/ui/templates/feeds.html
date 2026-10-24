@@ -29,9 +29,9 @@
         <ul role="list">
           {{range .Subs}}
           <li class="feed-row">
-            {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
+            {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
             <div>
-              <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
+              <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Title .Feed.Title .Feed.Url}}</a>
               {{if .LatestArticleAt.IsZero}}
               <p>No articles yet.</p>
               {{else}}
@@ -43,10 +43,13 @@
               <p class="fetch-error">This feed is failing to update.</p>
               {{end}}
             </div>
-            <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-              <input type="hidden" name="return_to" value="/feeds">
-              <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
-            </form>
+            <div class="feed-row-actions">
+              <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{or .Title .Feed.Title .Feed.Url}}">Edit</a>
+              <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
+                <input type="hidden" name="return_to" value="/feeds">
+                <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Title .Feed.Title .Feed.Url}}">Unsubscribe</button>
+              </form>
+            </div>
           </li>
           {{end}}
         </ul>

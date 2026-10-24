@@ -233,6 +233,7 @@ type ArticleCopy struct {
 type Subscription struct {
 	Feed            Feed
 	Site            Site
+	Title           string    // the user's name for the feed; "" uses Feed.Title
 	LatestArticleAt time.Time // newest article's published_at, else created_at; zero if the feed has no articles
 }
 

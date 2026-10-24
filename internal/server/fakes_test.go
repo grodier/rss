@@ -264,6 +264,8 @@ type fakeSubscriptionStore struct {
 	unsubscribeFn       func(ctx context.Context, userID, feedID string) error
 	subscribedFeedIDsFn func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	listByUserFn        func(ctx context.Context, userID string) ([]rss.Subscription, error)
+	getFn               func(ctx context.Context, userID, feedID string) (rss.Subscription, error)
+	renameFn            func(ctx context.Context, userID, feedID, title string) error
 }
 
 func (f *fakeSubscriptionStore) Subscribe(ctx context.Context, userID, feedID string) error {
@@ -292,6 +294,20 @@ func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) (
 		return nil, nil
 	}
 	return f.listByUserFn(ctx, userID)
+}
+
+func (f *fakeSubscriptionStore) Get(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+	if f.getFn == nil {
+		return rss.Subscription{}, rss.ErrNoRecord
+	}
+	return f.getFn(ctx, userID, feedID)
+}
+
+func (f *fakeSubscriptionStore) Rename(ctx context.Context, userID, feedID, title string) error {
+	if f.renameFn == nil {
+		return nil
+	}
+	return f.renameFn(ctx, userID, feedID, title)
 }
 
 // fakeEmailQueue records the messages queued to it, unless err is set.

@@ -16,14 +16,13 @@ time, in the order listed, and each branch merges the latest `main` before its P
    1. #351 Tags page, with tagging many feeds at once from a tag's page.
    2. #349 Star articles (stops for the owner's layout pick). Early, so stars collect
       before the Starred timeline (#358) shows them.
-   3. #342 Rename a subscription.
-   4. #350 Posting rate.
+   3. #350 Posting rate.
 3. **Wave 3:**
-   1. #343 The reader's names everywhere (after #342). Before #356: both change
+   1. #343 The reader's names everywhere. Before #356: both change
       `ListTimeline`, and this one is smaller.
    2. #356 Custom timelines as tabs on Home (after #351; stops for the owner's tab-row
       pick).
-   3. #352 Tags on Edit subscription and My feeds (after #342 and #351).
+   3. #352 Tags on Edit subscription and My feeds (after #351).
 4. **Wave 4**, after #356:
    1. #358 Starred-only timelines (after #349).
    2. #362 Mute on Home (after #352).
@@ -36,8 +35,8 @@ time, in the order listed, and each branch merges the latest `main` before its P
 6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
 
 Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
-(#342, #350, #351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
-(#356, #358, #359, #360); `subscription_edit.html` (#342, #352, #362); `ListTimeline`
+(#350, #351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
+(#356, #358, #359, #360); `subscription_edit.html` (#352, #362); `ListTimeline`
 (#343, #356).
 
 Then:

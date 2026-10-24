@@ -453,6 +453,19 @@ mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`)
 Subscriptions also decide which feeds are refreshed in the background and what's in the
 timeline.
 
+**Names.** A subscription can have the user's own name for the feed
+(`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed
+that changes its title still updates). Edit on My feeds, and next to Unsubscribe on a
+subscribed feed's page, links to `/feeds/{id}/edit?return_to=…`
+(`subscriptionEditHandler`), which loads the subscription with `Get` (404 if the user
+doesn't subscribe) and shows a Name field with the feed's title as placeholder. The post
+(`subscriptionEditPostHandler`) trims the name, re-renders with 422 over 100 characters,
+stores `""` for a blank name or one equal to the feed's current title (`Rename`),
+flashes "Subscription updated." and redirects to `safeReturnPath(return_to, "/feeds")`.
+My feeds shows the name (else the feed's title, else its URL) and sorts a site's feeds
+by it. Unsubscribing drops the name. Catalog pages (site, search) keep the feed's own
+title.
+
 **Export.** "Export subscriptions", under "Your data" in Settings, downloads
 `/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription from
 `ListByUser`, gone feeds included, as a flat OPML 2.0 list with one `<outline>` per
@@ -496,11 +509,13 @@ published dates.
 **Read:**
 
 1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
-   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler`.
+   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler`; names:
+   `subscriptionEditHandler`, `subscriptionEditPostHandler`, `subscriptionFromURL`,
+   `renderSubscriptionEdit`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
 3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
-   `ListByUser`.
-4. Templates: `feed.html`, `site.html`, `feeds.html`.
+   `ListByUser`, `Get`, `Rename`, `scanSubscription`.
+4. Templates: `feed.html`, `site.html`, `feeds.html`, `subscription_edit.html`.
 5. Export: `internal/server/settings.go` (`opmlDoc`, `exportOPMLHandler`); the "Your
    data" section of `settings.html`.
 6. Import: `internal/server/import.go` (`settingsImportHandler`,
@@ -510,8 +525,10 @@ published dates.
    (`Runner.process`, `run`, `discover`); `internal/lookup/lookup.go` (`ToSave`);
    `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `sites_test.go`, `search_test.go`,
-`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`; import:
+**Tests:** `internal/server/feeds_test.go` (names: `TestSubscriptionEdit`,
+`TestSubscriptionEditPost`), `sites_test.go`, `search_test.go`,
+`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`
+(`TestSubscriptionGet`, `TestSubscriptionRename`); import:
 `internal/server/import_test.go` (`TestSettingsImportForm`, `TestSettingsImportHandler`,
 `TestImportHandler`), `internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
 `internal/importer/importer_test.go`.

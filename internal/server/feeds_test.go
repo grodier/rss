@@ -667,6 +667,24 @@ func TestFeedsHandler(t *testing.T) {
 		)
 	})
 
+	t.Run("renamed subscription shows its name and an Edit link", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Title: "My Name", Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertContains(t, body,
+			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">My Name</a>`,
+			`<a class="btn btn-sm" href="/feeds/`+testFeedID+`/edit?return_to=/feeds" aria-label="Edit My Name">Edit</a>`,
+			`aria-label="Unsubscribe from My Name"`,
+		)
+		assertNotContains(t, body, ">One<")
+	})
+
+	t.Run("unrenamed subscription shows the feed's title", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertContains(t, body,
+			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">One</a>`,
+			`aria-label="Edit One"`,
+		)
+	})
+
 	t.Run("empty state", func(t *testing.T) {
 		rr, body := getFeeds(t, listing())
 		if rr.Code != http.StatusOK {
@@ -1388,14 +1406,14 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 			feed: rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
 			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Subscribe to Example Feed"`},
 			notWant: []string{
-				unsubscribeForm, "Subscribed ✓",
+				unsubscribeForm, "Subscribed ✓", "/edit",
 			},
 		},
 		{
 			name:       "subscribed",
 			feed:       rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
 			subscribed: true,
-			want:       []string{unsubscribeForm, "Subscribed ✓", `aria-label="Unsubscribe from Example Feed"`},
+			want:       []string{unsubscribeForm, "Subscribed ✓", `aria-label="Unsubscribe from Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
 			notWant:    []string{subscribeForm},
 		},
 		{
@@ -1511,5 +1529,182 @@ func TestFeedsHandlerSiteIcons(t *testing.T) {
 			t.Fatalf("status = %d", rr.Code)
 		}
 		return rr.Body.String()
+	})
+}
+
+// serveSubscriptionEdit serves handler for the edit subscription page of
+// feedID as user-1. form is posted when not nil, with query appended to the
+// URL either way. It returns the response and the flash left in the session.
+func serveSubscriptionEdit(t *testing.T, s *Server, handler http.HandlerFunc, feedID, query string, form url.Values) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/feeds/x/edit"+query, nil)
+	if form != nil {
+		req = httptest.NewRequest(http.MethodPost, "/feeds/x/edit"+query, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", feedID)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	var flash string
+	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	})).ServeHTTP(rr, req)
+	return rr, flash
+}
+
+type renameCall struct{ userID, feedID, title string }
+
+// editSubscriptionServer serves sub to user-1 as their subscription to
+// testFeedID and records the Rename calls in renames.
+func editSubscriptionServer(t *testing.T, sub rss.Subscription, renames *[]renameCall) *Server {
+	t.Helper()
+	sub.Feed.ID = testFeedID
+	return newTestServerWith(t, Services{SubscriptionService: &fakeSubscriptionStore{
+		getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+			if userID != "user-1" || feedID != testFeedID {
+				return rss.Subscription{}, rss.ErrNoRecord
+			}
+			return sub, nil
+		},
+		renameFn: func(ctx context.Context, userID, feedID, title string) error {
+			*renames = append(*renames, renameCall{userID, feedID, title})
+			return nil
+		},
+	}})
+}
+
+func TestSubscriptionEdit(t *testing.T) {
+	sub := rss.Subscription{
+		Title: "Pro Football Talk",
+		Feed:  rss.Feed{Title: "NBC Sports", Url: "https://example.com/feed.xml", SiteID: testSiteID},
+		Site:  rss.Site{ID: testSiteID, Host: "example.com", Title: "Example Site"},
+	}
+	var renames []renameCall
+
+	t.Run("shows the current name and the feed's title as placeholder", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "", nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		body := rr.Body.String()
+		for _, want := range []string{
+			"<h1>Edit subscription</h1>",
+			`value="Pro Football Talk"`,
+			`placeholder="NBC Sports"`,
+			"From Example Site",
+			"<code>https://example.com/feed.xml</code>",
+			`action="/feeds/` + testFeedID + `/edit"`,
+			`<a class="btn" href="/feeds">Cancel</a>`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("return_to goes into the hidden field", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "?return_to=/feeds/"+testFeedID, nil)
+		body := rr.Body.String()
+		for _, want := range []string{
+			`name="return_to" value="/feeds/` + testFeedID + `"`,
+			`<a class="btn" href="/feeds/` + testFeedID + `">Cancel</a>`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("non-UUID id", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, "abc", "", nil)
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("not subscribed", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, "22222222-2222-4222-8222-222222222222", "", nil)
+		assertNotFoundHTML(t, rr)
+	})
+}
+
+func TestSubscriptionEditPost(t *testing.T) {
+	sub := rss.Subscription{
+		Feed: rss.Feed{Title: "NBC Sports", Url: "https://example.com/feed.xml", SiteID: testSiteID},
+		Site: rss.Site{ID: testSiteID, Host: "example.com"},
+	}
+	tooLong := strings.Repeat("é", 101)
+	maxLen := strings.Repeat("é", 100)
+
+	tests := []struct {
+		name         string
+		title        string
+		returnTo     string
+		wantCode     int
+		wantLocation string
+		wantRename   []renameCall // nil: Rename not called
+	}{
+		{"valid name", "  Pro Football Talk ", "", http.StatusSeeOther, "/feeds", []renameCall{{"user-1", testFeedID, "Pro Football Talk"}}},
+		{"blank name", "   ", "", http.StatusSeeOther, "/feeds", []renameCall{{"user-1", testFeedID, ""}}},
+		{"feed's title", " NBC Sports ", "", http.StatusSeeOther, "/feeds", []renameCall{{"user-1", testFeedID, ""}}},
+		{"101 runes", tooLong, "", http.StatusUnprocessableEntity, "", nil},
+		{"100 runes", maxLen, "", http.StatusSeeOther, "/feeds", []renameCall{{"user-1", testFeedID, maxLen}}},
+		{"return_to the feed page", "PFT", "/feeds/" + testFeedID, http.StatusSeeOther, "/feeds/" + testFeedID, []renameCall{{"user-1", testFeedID, "PFT"}}},
+		{"return_to another host", "PFT", "//evil.example", http.StatusSeeOther, "/feeds", []renameCall{{"user-1", testFeedID, "PFT"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var renames []renameCall
+			s := editSubscriptionServer(t, sub, &renames)
+			form := url.Values{"title": {tt.title}}
+			if tt.returnTo != "" {
+				form.Set("return_to", tt.returnTo)
+			}
+
+			rr, flash := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, testFeedID, "", form)
+
+			if rr.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantCode)
+			}
+			if fmt.Sprint(renames) != fmt.Sprint(tt.wantRename) {
+				t.Errorf("Rename calls = %v, want %v", renames, tt.wantRename)
+			}
+			if tt.wantCode == http.StatusSeeOther {
+				if loc := rr.Header().Get("Location"); loc != tt.wantLocation {
+					t.Errorf("Location = %q, want %q", loc, tt.wantLocation)
+				}
+				if flash != "Subscription updated." {
+					t.Errorf("flash = %q, want %q", flash, "Subscription updated.")
+				}
+				return
+			}
+			body := rr.Body.String()
+			for _, want := range []string{
+				`<p class="error" id="title-error">Must be 100 characters or fewer.</p>`,
+				`aria-invalid="true"`,
+				`aria-describedby="title-hint title-error"`,
+				"autofocus",
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("body does not contain %q: %s", want, body)
+				}
+			}
+		})
+	}
+
+	t.Run("not subscribed", func(t *testing.T) {
+		var renames []renameCall
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, "22222222-2222-4222-8222-222222222222", "", url.Values{"title": {"PFT"}})
+		assertNotFoundHTML(t, rr)
+		if len(renames) != 0 {
+			t.Errorf("Rename calls = %v, want none", renames)
+		}
 	})
 }

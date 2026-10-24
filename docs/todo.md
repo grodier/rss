@@ -7,10 +7,10 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-Subscription names and filtering (planned in #344 and #365; decisions under "Subscriptions"
-and "Filtering and timelines" in decisions.md), in waves. Issues in one wave can be built
-in parallel once the waves before them have merged; merge one PR at a time, in the order
-listed, and each branch merges the latest `main` before its PR.
+Subscription names and filtering (planned in #344 and #365; decisions under
+"Subscriptions" and "Filtering and timelines" in decisions.md), in waves. Issues in one
+wave can be built in parallel once the waves before them have merged; merge one PR at a
+time, in the order listed, and each branch merges the latest `main` before its PR.
 
 1. **Wave 1.**
    1. #348 The tables for the whole batch, `subscriptions.title` included (one production

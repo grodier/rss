@@ -47,6 +47,7 @@ CREATE TABLE feeds (
     last_modified TEXT NOT NULL DEFAULT '', -- Last-Modified of the last 2xx response, sent back as If-Modified-Since
     gone_at TIMESTAMPTZ, -- set when the feed answered 410 Gone; it is no longer fetched
     refresh_requested_at TIMESTAMPTZ, -- set when a page view asks for a stale feed to be fetched; cleared when the outcome is recorded
+    posts_per_week REAL NOT NULL DEFAULT 0, -- articles published in the last 30 days, per week; set by saveArticles and RecordNotModified
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -119,6 +120,7 @@ CREATE TABLE subscriptions (
         REFERENCES feeds(id)
         ON DELETE CASCADE,
 
+    title TEXT NOT NULL DEFAULT '', -- the user's name for the feed; '' uses feeds.title
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     PRIMARY KEY (user_id, feed_id)
@@ -160,6 +162,108 @@ CREATE TABLE saves (
 
 CREATE INDEX saves_user_saved_at_idx ON saves (user_id, saved_at DESC, article_id DESC);
 CREATE INDEX saves_article_id_idx ON saves (article_id);
+
+-- Articles a user starred: "this is good". Starring covers every copy of an
+-- article (same canonical_url); see psql.StarRepository.
+CREATE TABLE stars (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    starred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX stars_user_starred_at_idx ON stars (user_id, starred_at DESC, article_id DESC);
+CREATE INDEX stars_article_id_idx ON stars (article_id);
+
+-- A user's labels for their subscriptions. Private to the user.
+CREATE TABLE tags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    name citext NOT NULL, -- trimmed, inner spaces collapsed; unique per user ignoring case
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (user_id, name),
+    UNIQUE (id, user_id) -- for the composite foreign keys below
+);
+
+CREATE TABLE subscription_tags (
+    user_id UUID NOT NULL,
+    feed_id UUID NOT NULL,
+    tag_id UUID NOT NULL,
+
+    PRIMARY KEY (user_id, feed_id, tag_id),
+    FOREIGN KEY (user_id, feed_id) REFERENCES subscriptions (user_id, feed_id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id, user_id) REFERENCES tags (id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX subscription_tags_tag_id_idx ON subscription_tags (tag_id);
+
+-- A user's timelines: Home (home = true, only its leave-outs are used) and
+-- the custom ones shown as tabs after it. Sources are timeline_tags and
+-- timeline_feeds rows; the other conditions are columns.
+CREATE TABLE timelines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    home BOOLEAN NOT NULL DEFAULT false,
+    name TEXT NOT NULL DEFAULT '',        -- '' for Home
+    description TEXT NOT NULL DEFAULT '',
+    position INT NOT NULL DEFAULT 0,      -- tab order after Home, lowest first
+    all_feeds BOOLEAN NOT NULL DEFAULT true, -- false: only the feeds of its included tags and feeds
+    starred_only BOOLEAN NOT NULL DEFAULT false,
+    max_posts_per_week INT NOT NULL DEFAULT 0, -- 0: any posting rate
+    include_words TEXT[] NOT NULL DEFAULT '{}', -- an article must mention one of them; empty: no condition
+    exclude_words TEXT[] NOT NULL DEFAULT '{}', -- an article mentioning one of them is left out
+    media_only BOOLEAN NOT NULL DEFAULT false,  -- only articles with an audio or video enclosure
+    share_token TEXT UNIQUE,              -- NULL: not shared; else the public link's token
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (id, user_id) -- for the composite foreign keys below
+);
+
+CREATE UNIQUE INDEX timelines_home_idx ON timelines (user_id) WHERE home;
+CREATE INDEX timelines_user_position_idx ON timelines (user_id, position);
+
+CREATE TABLE timeline_tags (
+    timeline_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    tag_id UUID NOT NULL,
+    exclude BOOLEAN NOT NULL, -- false: show the tag's feeds; true: leave them out
+
+    PRIMARY KEY (timeline_id, tag_id),
+    FOREIGN KEY (timeline_id, user_id) REFERENCES timelines (id, user_id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id, user_id) REFERENCES tags (id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX timeline_tags_tag_id_idx ON timeline_tags (tag_id);
+
+CREATE TABLE timeline_feeds (
+    timeline_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    feed_id UUID NOT NULL,
+    exclude BOOLEAN NOT NULL, -- false: show the feed; true: leave it out
+
+    PRIMARY KEY (timeline_id, feed_id),
+    FOREIGN KEY (timeline_id, user_id) REFERENCES timelines (id, user_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, feed_id) REFERENCES subscriptions (user_id, feed_id) ON DELETE CASCADE
+);
+
+CREATE INDEX timeline_feeds_user_feed_idx ON timeline_feeds (user_id, feed_id);
 
 -- The enrichment queue: articles whose web page should be fetched for a
 -- missing image, title or excerpt. A row is deleted once its work is done
@@ -217,6 +321,7 @@ CREATE TABLE import_feeds (
     position INT NOT NULL,           -- order in the file, from 0
     url TEXT NOT NULL,               -- the outline's xmlUrl, trimmed
     title TEXT NOT NULL DEFAULT '',  -- the outline's title, else its text
+    tags TEXT[] NOT NULL DEFAULT '{}', -- the names of the folders the outline is in; applied as tags on subscribe
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'running', 'subscribed', 'already_subscribed', 'failed')),
     failure TEXT NOT NULL DEFAULT ''
@@ -300,6 +405,12 @@ DROP TABLE import_feeds;
 DROP TABLE imports;
 DROP TABLE site_icons;
 DROP TABLE enrich_jobs;
+DROP TABLE timeline_feeds;
+DROP TABLE timeline_tags;
+DROP TABLE timelines;
+DROP TABLE subscription_tags;
+DROP TABLE tags;
+DROP TABLE stars;
 DROP TABLE saves;
 DROP TABLE reads;
 DROP TABLE subscriptions;

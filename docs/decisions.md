@@ -179,7 +179,7 @@ Planned in #309 (issues #302, #303).
   has none for `.opml`, and so greys out OPML files in the picker, including our own
   export. No `accept` value both narrows the picker and lets iOS pick `.opml`, and the
   filter was never a safeguard: the server's size and feed caps and `opml.Parse` handle
-  any file, and a file that isn't OPML gets the usual error.
+  any file, and a file that isn't OPML gets the usual error. (#367)
 
 ## Reading
 

@@ -41,9 +41,9 @@ section names; how the code works is in [architecture.md](architecture.md) and
   stage" in CLAUDE.md. (#180)
 - **A planned batch lands its schema in one change**, so production is reset once per
   batch rather than once per feature: the account tables (#255), then the reading
-  features' tables (#293). A prototype that may be dropped adds its own table instead,
-  so dropping it leaves nothing behind. Before a reset, export your OPML, and import it
-  afterwards (#303).
+  features' tables (#293), then subscription names and the filtering batch's (#348). A
+  prototype that may be dropped adds its own table instead, so dropping it leaves
+  nothing behind. Before a reset, export your OPML, and import it afterwards (#303).
 
 ## Debug mode
 
@@ -141,7 +141,8 @@ Planned in #139 (issues #135–#138).
 - **Refresh requests from page views are a `feeds` column** (`refresh_requested_at`)
   worked by the existing refresh workers, never a goroutine or an in-memory queue, so
   they survive restarts and work across instances.
-- **Subscriptions are private:** no subscriber counts.
+- **Subscriptions are private:** no subscriber counts. Anonymous totals across users may
+  come later, under the conditions in "Cross-user use" under "Filtering and timelines".
 - **Readers can rename their subscriptions** (planned in #344, issues #342 and #343). The
   name is per subscription (user and feed), not per site, since one site can have many
   feeds and future tags will be per subscription too. It's edited on "Edit subscription"
@@ -158,8 +159,8 @@ Planned in #139 (issues #135–#138).
 Planned in #309 (issues #302, #303).
 
 - **Everything in the file is imported**, with no preview or checklist; unsubscribing is
-  one click if something unwanted came in. Folders are flattened, since the app has no
-  folders.
+  one click if something unwanted came in. Folders become tags (#354; until then they were
+  flattened, since the app had no folders): see "Filtering and timelines".
 - **Import is a background queue**, one `import_feeds` row per feed in the file, worked by
   its own runner: an unknown feed has to be fetched and checked first, since feeds are
   only created by discovery. The `lookups` table can't be reused: it's keyed by site key,
@@ -252,7 +253,8 @@ Planned in #309 (issues #299–#301).
   archive, no "done", no counts. A queue you work through to empty is an inbox, which
   the timeline deliberately isn't.
 - **Called Save / Saved, with a bookmark icon**, not a star or heart, which read as
-  "like". Saving is quiet (no flash) and doesn't mark the article read.
+  "like". Saving is quiet (no flash) and doesn't mark the article read. The star is a
+  separate action that does mean "this is good" (#349, "Filtering and timelines").
 - **Saving covers every copy** (same `canonical_url`), like read state: `saves` keys on
   `article_id`, and copies are matched at query time. Saving a copy of an already saved
   article adds nothing; unsaving removes them all.
@@ -269,8 +271,10 @@ Planned in #309 (issues #299–#301).
 ### Hiding articles (not taken in)
 
 Planned in #309 (issue #308) as a prototype; built in draft PR #325 and **not taken in**
-(#308 closed). Revisit only alongside filters and muting ("Reconsider hiding single
-articles" in todo.md), for three reasons:
+(#308 closed), for the three reasons below. Planning filters (see "Filtering and
+timelines") kept it out: keyword filters and muting on Home cover what it was for
+(sponsored posts, topics you don't follow) without a per-article table. Revisit only if
+they turn out not to.
 
 - **UX:** Undo lasts only until the page reloads; after that the only way back is the
   article's feed page, since there's no Hidden list. Hiding everything also lands on the
@@ -295,6 +299,113 @@ What the prototype settled, as a starting point if it comes back:
 - **Muting feeds and keyword filters are a separate planning item**, not part of hiding.
 - **The hide ✕ goes at the row's top right**, on the meta line, not in Save's action bar
   (#316): next to Save, a mis-tap would hide the article you meant to keep.
+
+## Filtering and timelines
+
+Planned in #365 (issues #348–#364; #353, #355 and #361 were folded into #351, #354 and
+#359), from the owner's list: favorites, tags, several timelines with filters, a
+quiet-posters timeline, shared timelines. The batch's schema, with #342's subscription
+names, lands in one change (#348).
+
+### Stars and tags
+
+- **A star on articles means "this is good"; Saved stays "keep".** The owner chose stars
+  on articles over favorite feeds; a tag such as "Favorites" covers favorite feeds. A
+  star is what a picks timeline, and a shared link blog, is made from. Starring covers
+  every copy, is quiet, doesn't mark the article read, and is private except through a
+  timeline the user shares. Where the star sits next to Save is the implementer's layout
+  options. (#349)
+- **Stars outlive subscriptions**, like saves, so unsubscribing never edits a picks
+  timeline that shows all feeds. (#358)
+- **Tags are free text on subscriptions, several per feed, not folders**: a feed can be
+  both "Tech" and "News". There's no shared list of categories, which would be a guess
+  and worse for private organizing. Names are trimmed with inner whitespace collapsed,
+  compared ignoring case (`citext`), 1–50 characters with no commas, up to 100 per user.
+  Managed at `/tags`; added on Edit subscription (checkboxes plus a comma-separated
+  field, no JavaScript) and in bulk from a tag's page. (#351, #352)
+- **Composite foreign keys keep tags and timelines inside one account**, and
+  unsubscribing drops the subscription's tags, Home mute and timeline rows (cascade),
+  like its name. (#348)
+- **OPML: folders become tags on import** (every folder an outline sits in, at any
+  depth; import only adds tags), **and the export nests feeds in a folder per tag** (a
+  feed with two tags appears in both; untagged feeds at the top level), which every
+  reader imports as folders. No `category` attribute, which most readers ignore. These
+  change "OPML import" under Subscriptions and the export under Accounts. (#354)
+
+### Timelines
+
+- **Timelines are explicit, not one per tag.** Tags organize; a timeline is made on
+  purpose (a tag's page offers "Make a timeline"), which keeps the tab row short. (#356)
+- **Tabs at the top of Home**, at `/timelines/{id}`, managed at `/timelines` and
+  reordered with Move up / Move down (no drag and drop, which needs JavaScript). The nav
+  rail is unchanged, and tabs carry no counts. The tab row's layout is the implementer's
+  options. (#356, #357)
+- **A filter is a form, not a query builder.** Show is all my feeds, or feeds with any of
+  these tags or these feeds; Leave out is tags and feeds, and always wins; then
+  conditions that must all hold: starred only, at most N posts a week, must mention /
+  leave out words, audio or video only. Timelines pick only from your subscriptions,
+  except a starred-only one showing all feeds. (#356, #358–#360)
+- **The same reading rules as Home:** arrival order, copies collapsed among the
+  timeline's own feeds, "Also in", read markers. A starred-only timeline orders by star
+  time instead, so new picks land on top. (#356, #358)
+- **Presets on New timeline, not built-in tabs:** Starred (all feeds, starred only),
+  Quiet posters (at most 2 a week), and From a tag. Each is an ordinary timeline you can
+  rename, filter, share or delete. (#356, #358, #359)
+- **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on
+  every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to
+  help pick N. One whole-number field for now; richer frequency rules are a todo item.
+  (#350, #359)
+- **Keyword filters match whole words and phrases, ignoring case, in the title, page
+  title and excerpt**, never the full content (lists don't load it, and it's unbounded).
+  A term matches where the characters just before and after it aren't letters or
+  digits, so terms like `C++`, `C#`, `.NET` and `#hashtag` work (symbols are matched
+  literally), and `AI` still matches "#AI" but not "said". Accepted: `C` alone also
+  matches "C++"; counting symbols as letters would stop `AI` matching "#AI". A term
+  needs a letter or digit. Any term matches; leave-out wins. Plain matching only:
+  smarter matching belongs with related articles (todo). (#360)
+- **Audio or video means an enclosure** (`articles.media_type`), not a video embedded in
+  the HTML. (#359)
+- **Muting is Home's Leave out.** Home is a `timelines` row created on first mute, with
+  no other settings; "Show on Home" sits on Edit subscription and tag pages, and My feeds
+  marks muted feeds. This is the muting half of the old "Filters and muting" item. (#362)
+- **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280. (#356)
+- **No unread filter or counts**, as under "Reading".
+
+### Sharing
+
+- **Opt-in per timeline, unlisted, at an unguessable link**: 32 random bytes, stored as
+  is (not hashed like email tokens), since the owner's settings show the link again and
+  it only grants reading what they published. A public page (`noindex`, no session) and
+  an Atom feed. Stop sharing makes the link a 404; New link replaces it. Home can't be
+  shared. Needs a confirmed email ("Accounts"). (#363, #364)
+- **Each item is the title, a link to the original, the date, the source and the
+  excerpt.** Never the content: republishing publishers' text is the copyright question
+  under "Enrichment". Articles without a link are left out. (#363)
+- **No owner name or email**, only the timeline's name and description; the page does
+  show which feeds the articles come from, and the settings say so. **The source is the
+  feed's own title**, never the owner's private name for it (#342). (#363)
+- **Atom, not RSS 2.0:** typed text (`<summary type="text">`, so plain excerpts are never
+  guessed to be HTML), required stable IDs (the canonical URL) and RFC 3339 dates, and
+  `<source>` for each entry's original feed. Every reader reads both, and users only see
+  "feed". (#364)
+- **Public routes are a deliberate exception** to "Search, site pages and lookups are
+  login-only" (Feed discovery): their owner opted in.
+- **Shared timelines aren't listed in Search** for now: their names and descriptions
+  would be the first user-written text shown to strangers, which brings spam,
+  impersonation and reporting. A todo item.
+- **The privacy policy says what's kept and what sharing publishes**, in the same PR
+  (#363).
+
+### Cross-user use (later)
+
+- **Stars and tags may later feed anonymous totals across users**, e.g. "people who
+  starred this also starred…" or a feed's usual tags as its category. Only as aggregates
+  above a minimum count, never traceable to one person, and after a privacy policy
+  update. The tag hint says "Only you see your tags", which stays true; it doesn't
+  promise the data is never used. It would relax "no subscriber counts" (Subscriptions)
+  for aggregates only, when planned (see "Related articles" in todo.md). The data is
+  shaped for it now: tags on subscriptions add up per feed, and stars are on articles
+  with `starred_at`, matched across copies by `canonical_url`.
 
 ## Enrichment
 
@@ -479,10 +590,12 @@ experience.
   it's rare and deliberate, and a pending state adds a scheduled job and doubt about
   whether the data is gone. Feeds and articles stay, since they're shared. Backups keep
   the data up to 35 days, which the privacy policy says.
-- **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): a
-  flat list, one `<outline>` per feed, with no nesting by site, since most readers turn
-  nested outlines into folders and would make one per site. Gone feeds are included:
-  they're still your subscriptions. Import: see "OPML import" under Subscriptions.
+- **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): one
+  `<outline>` per feed, with no nesting by site, since most readers turn nested outlines
+  into folders and would make one per site. Gone feeds are included: they're still your
+  subscriptions. Changed in #354: feeds are nested in a folder per tag (see "Filtering and
+  timelines"), and the list stays flat for someone without tags. Import: see "OPML import"
+  under Subscriptions.
 - **Security emails:** password changed, email changed (to the old address), and account
   deleted. No "new login" alerts: they're noisy, and people learn to ignore them.
 - **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by

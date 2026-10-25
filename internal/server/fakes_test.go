@@ -397,6 +397,65 @@ func (f *fakeStarStore) StarredArticleIDs(ctx context.Context, userID string, ar
 	return f.starredArticleIDsFn(ctx, userID, articleIDs)
 }
 
+type fakeTagStore struct {
+	createFn   func(ctx context.Context, userID, name string) (rss.Tag, error)
+	listFn     func(ctx context.Context, userID string) ([]rss.Tag, error)
+	getFn      func(ctx context.Context, userID, id string) (rss.Tag, error)
+	renameFn   func(ctx context.Context, userID, id, name string) error
+	deleteFn   func(ctx context.Context, userID, id string) error
+	feedIDsFn  func(ctx context.Context, userID, id string) (map[string]bool, error)
+	setFeedsFn func(ctx context.Context, userID, id string, feedIDs []string) error
+}
+
+func (f *fakeTagStore) Create(ctx context.Context, userID, name string) (rss.Tag, error) {
+	if f.createFn == nil {
+		return rss.Tag{}, nil
+	}
+	return f.createFn(ctx, userID, name)
+}
+
+func (f *fakeTagStore) List(ctx context.Context, userID string) ([]rss.Tag, error) {
+	if f.listFn == nil {
+		return nil, nil
+	}
+	return f.listFn(ctx, userID)
+}
+
+func (f *fakeTagStore) Get(ctx context.Context, userID, id string) (rss.Tag, error) {
+	if f.getFn == nil {
+		return rss.Tag{}, rss.ErrNoRecord
+	}
+	return f.getFn(ctx, userID, id)
+}
+
+func (f *fakeTagStore) Rename(ctx context.Context, userID, id, name string) error {
+	if f.renameFn == nil {
+		return nil
+	}
+	return f.renameFn(ctx, userID, id, name)
+}
+
+func (f *fakeTagStore) Delete(ctx context.Context, userID, id string) error {
+	if f.deleteFn == nil {
+		return nil
+	}
+	return f.deleteFn(ctx, userID, id)
+}
+
+func (f *fakeTagStore) FeedIDs(ctx context.Context, userID, id string) (map[string]bool, error) {
+	if f.feedIDsFn == nil {
+		return map[string]bool{}, nil
+	}
+	return f.feedIDsFn(ctx, userID, id)
+}
+
+func (f *fakeTagStore) SetFeeds(ctx context.Context, userID, id string, feedIDs []string) error {
+	if f.setFeedsFn == nil {
+		return nil
+	}
+	return f.setFeedsFn(ctx, userID, id, feedIDs)
+}
+
 type fakeDebugStore struct {
 	siteDebugFn            func(ctx context.Context, siteID string) (rss.SiteDebug, error)
 	feedDebugFn            func(ctx context.Context, feedIDs []string) (map[string]rss.FeedDebug, error)

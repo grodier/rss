@@ -333,6 +333,11 @@ names, lands in one change (#348).
   compared ignoring case (`citext`), 1–50 characters with no commas, up to 100 per user.
   Managed at `/tags`; added on Edit subscription (checkboxes plus a comma-separated
   field, no JavaScript) and in bulk from a tag's page. (#351, #352)
+- **A tag's page is one checklist form of all the user's subscriptions**, since tagging
+  many feeds one Edit page at a time is the real pain. Saving sets exactly the ticked
+  ones, leaving their other tags alone, with no JavaScript needed; it isn't paginated,
+  like My feeds (watchlist). **Deleting a tag isn't confirmed**, like unsubscribing: the
+  flash says what was deleted. (#351)
 - **Composite foreign keys keep tags and timelines inside one account**, and
   unsubscribing drops the subscription's tags, Home mute and timeline rows (cascade),
   like its name. (#348)

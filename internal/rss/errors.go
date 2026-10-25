@@ -8,4 +8,6 @@ var (
 	ErrWrongPassword  = errors.New("wrong password")
 	ErrDuplicateEmail = errors.New("duplicate email")
 	ErrTooManyEmails  = errors.New("too many emails to this address")
+	ErrDuplicateTag   = errors.New("duplicate tag")
+	ErrTooManyTags    = errors.New("too many tags")
 )

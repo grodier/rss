@@ -124,3 +124,58 @@ func (r *StarRepository) StarredArticleIDs(ctx context.Context, userID string, a
 
 	return starred, nil
 }
+
+// ListStarred returns up to limit of userID's starred articles that pass
+// filter (see timelineWhere), newest starred first (starred_at, then article
+// ID), starting after before (from the start if before is zero; its At is a
+// starred_at). Feed titles are the user's names for their subscriptions where
+// they've set one. Summary and Content are left empty.
+func (r *StarRepository) ListStarred(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.StarredArticle, error) {
+	at, id := cursorArgs(before)
+	args := []any{userID, at, id, limit}
+
+	// A walk of stars_user_starred_at_idx. Stars outlive subscriptions
+	// (hence the LEFT JOIN): with Show = All my feeds they all show, while
+	// chosen tags or feeds only match subscriptions. Starring already covers
+	// every copy of an article, so there's nothing to collapse.
+	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `, s.starred_at
+		FROM stars s
+		JOIN articles a ON a.id = s.article_id
+		JOIN feeds f ON f.id = a.feed_id
+		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
+		WHERE s.user_id = $1
+		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, &args) + `
+		ORDER BY s.starred_at DESC, s.article_id DESC
+		LIMIT $4`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []rss.StarredArticle{}
+	for rows.Next() {
+		var item rss.StarredArticle
+		// Nest scanArticle and scanFeed as ListSaved does, with starred_at
+		// after the feed's columns.
+		article, err := scanArticle(scanFunc(func(articleDests ...any) error {
+			var feedErr error
+			item.Feed, feedErr = scanFeed(scanFunc(func(feedDests ...any) error {
+				dests := append(articleDests, feedDests...)
+				return rows.Scan(append(dests, &item.StarredAt)...)
+			}))
+			return feedErr
+		}))
+		if err != nil {
+			return nil, err
+		}
+		item.Article = article
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}

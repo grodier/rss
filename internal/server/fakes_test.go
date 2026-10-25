@@ -374,6 +374,7 @@ type fakeStarStore struct {
 	starFn              func(ctx context.Context, userID, articleID string) error
 	unstarFn            func(ctx context.Context, userID, articleID string) error
 	starredArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+	listStarredFn       func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.StarredArticle, error)
 }
 
 func (f *fakeStarStore) Star(ctx context.Context, userID, articleID string) error {
@@ -395,6 +396,13 @@ func (f *fakeStarStore) StarredArticleIDs(ctx context.Context, userID string, ar
 		return map[string]bool{}, nil
 	}
 	return f.starredArticleIDsFn(ctx, userID, articleIDs)
+}
+
+func (f *fakeStarStore) ListStarred(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.StarredArticle, error) {
+	if f.listStarredFn == nil {
+		return nil, nil
+	}
+	return f.listStarredFn(ctx, userID, filter, before, limit)
 }
 
 type fakeTagStore struct {

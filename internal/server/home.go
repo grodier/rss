@@ -47,31 +47,16 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		return
 	}
 
-	items, err := s.services.ArticleService.ListTimeline(r.Context(), userID, current.Filter, before, timelinePageSize+1)
+	rows, next, err := s.timelineRows(r, userID, current.Filter, before)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
-	}
-	next := ""
-	if len(items) > timelinePageSize {
-		items = items[:timelinePageSize]
-		last := items[len(items)-1].Article
-		next = encodeCursor(rss.ArticleCursor{At: last.TimelineAt, ID: last.ID})
-	}
-
-	rows := make([]articleRow, len(items))
-	for i, item := range items {
-		rows[i] = articleRow{Article: item.Article, Feed: item.Feed, AlsoIn: item.AlsoIn, ReturnTo: r.URL.RequestURI()}
 	}
 	if err := s.fillRead(r.Context(), userID, rows); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 	if err := s.fillSaved(r.Context(), userID, rows); err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
-	}
-	if err := s.fillStarred(r.Context(), userID, rows); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
@@ -111,4 +96,46 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	if err := s.renderHTML(w, http.StatusOK, "timeline.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// timelineRows returns a page of the articles filter shows userID, starting
+// after before, and the cursor of the next page ("" if it's the last). A
+// starred-only timeline lists stars, newest starred first, with Starred set;
+// any other has Starred still to fill.
+func (s *Server) timelineRows(r *http.Request, userID string, filter rss.TimelineFilter, before rss.ArticleCursor) ([]articleRow, string, error) {
+	next := ""
+	if filter.StarredOnly {
+		items, err := s.services.StarService.ListStarred(r.Context(), userID, filter, before, timelinePageSize+1)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(items) > timelinePageSize {
+			items = items[:timelinePageSize]
+			last := items[len(items)-1]
+			next = encodeCursor(rss.ArticleCursor{At: last.StarredAt, ID: last.Article.ID})
+		}
+		rows := make([]articleRow, len(items))
+		for i, item := range items {
+			rows[i] = articleRow{Article: item.Article, Feed: item.Feed, Starred: true, ReturnTo: r.URL.RequestURI()}
+		}
+		return rows, next, nil
+	}
+
+	items, err := s.services.ArticleService.ListTimeline(r.Context(), userID, filter, before, timelinePageSize+1)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(items) > timelinePageSize {
+		items = items[:timelinePageSize]
+		last := items[len(items)-1].Article
+		next = encodeCursor(rss.ArticleCursor{At: last.TimelineAt, ID: last.ID})
+	}
+	rows := make([]articleRow, len(items))
+	for i, item := range items {
+		rows[i] = articleRow{Article: item.Article, Feed: item.Feed, AlsoIn: item.AlsoIn, ReturnTo: r.URL.RequestURI()}
+	}
+	if err := s.fillStarred(r.Context(), userID, rows); err != nil {
+		return nil, "", err
+	}
+	return rows, next, nil
 }

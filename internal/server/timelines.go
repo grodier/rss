@@ -27,6 +27,7 @@ type timelineForm struct {
 	IncludeFeeds        []string `form:"include_feeds"`
 	ExcludeTags         []string `form:"exclude_tags"`
 	ExcludeFeeds        []string `form:"exclude_feeds"`
+	StarredOnly         bool     `form:"starred_only"`
 	validator.Validator `form:"-"`
 }
 
@@ -38,6 +39,7 @@ func timelineFormFor(t rss.Timeline) timelineForm {
 		Show:         "all",
 		ExcludeTags:  t.Filter.ExcludeTagIDs,
 		ExcludeFeeds: t.Filter.ExcludeFeedIDs,
+		StarredOnly:  t.Filter.StarredOnly,
 	}
 	if t.Filter.OnlyIncluded {
 		form.Show = "some"
@@ -94,6 +96,7 @@ func (f *timelineForm) timeline() rss.Timeline {
 		Filter: rss.TimelineFilter{
 			ExcludeTagIDs:  f.ExcludeTags,
 			ExcludeFeedIDs: f.ExcludeFeeds,
+			StarredOnly:    f.StarredOnly,
 		},
 	}
 	if f.Show == "some" {
@@ -154,11 +157,17 @@ func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// timelineNewHandler shows the New timeline form, showing all feeds; with
-// ?tag={id} (one of the user's tags) it's named after the tag and shows only
-// its feeds. Any other tag is ignored.
+// timelineNewHandler shows the New timeline form, showing all feeds. With
+// ?preset=starred it's named Starred and shows only starred articles. With
+// ?tag={id} (one of the user's tags) it's named after the tag (even with a
+// preset) and shows only its feeds. Any other tag or preset is ignored.
 func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
 	form := timelineForm{Show: "all"}
+
+	if r.URL.Query().Get("preset") == "starred" {
+		form.Name = "Starred"
+		form.StarredOnly = true
+	}
 
 	if id := r.URL.Query().Get("tag"); validator.Matches(id, validator.UUIDRX) {
 		userID, _ := s.authenticatedUserID(r)

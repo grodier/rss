@@ -269,6 +269,7 @@ type TimelineFilter struct {
 	IncludeFeedIDs []string
 	ExcludeTagIDs  []string // left out even when included
 	ExcludeFeedIDs []string
+	StarredOnly    bool // only articles the user starred, newest starred first
 }
 
 // TagName normalizes a tag name: trimmed, with each run of whitespace
@@ -382,6 +383,13 @@ type SavedArticle struct {
 	Article Article
 	Feed    Feed
 	SavedAt time.Time
+}
+
+// StarredArticle is an article a user starred, with its feed.
+type StarredArticle struct {
+	Article   Article
+	Feed      Feed
+	StarredAt time.Time
 }
 
 // User is an account.

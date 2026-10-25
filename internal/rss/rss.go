@@ -345,6 +345,7 @@ type ImportFeed struct {
 	Position int
 	URL      string
 	Title    string
+	Tags     []string // folder names from the file, normalized; applied as tags on subscribe
 	Status   ImportStatus
 	Failure  ImportFailure
 	FeedID   string // "" until known

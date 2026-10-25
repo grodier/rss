@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -99,6 +100,23 @@ func (s *fakeSubscriptions) SubscribedFeedIDs(ctx context.Context, userID string
 	return got, nil
 }
 
+// addTagsCall is one call to fakeTags.AddToSubscription.
+type addTagsCall struct {
+	userID, feedID string
+	names          []string
+}
+
+// fakeTags records AddToSubscription calls and returns err.
+type fakeTags struct {
+	calls []addTagsCall
+	err   error
+}
+
+func (t *fakeTags) AddToSubscription(ctx context.Context, userID, feedID string, names []string) error {
+	t.calls = append(t.calls, addTagsCall{userID, feedID, names})
+	return t.err
+}
+
 // fakeSaver records saves and, like DiscoveryRepository.Save, makes the
 // saved feeds known to feeds.
 type fakeSaver struct {
@@ -147,6 +165,7 @@ type testRunner struct {
 	store *fakeStore
 	feeds *fakeFeeds
 	subs  *fakeSubscriptions
+	tags  *fakeTags
 	saver *fakeSaver
 	disc  *fakeDiscoverer
 	logs  *bytes.Buffer
@@ -158,6 +177,7 @@ func newTestRunner() *testRunner {
 		store: newFakeStore(),
 		feeds: feeds,
 		subs:  &fakeSubscriptions{},
+		tags:  &fakeTags{},
 		saver: &fakeSaver{feeds: feeds},
 		disc:  &fakeDiscoverer{},
 		logs:  &bytes.Buffer{},
@@ -166,6 +186,7 @@ func newTestRunner() *testRunner {
 		Store:         tr.store,
 		Feeds:         tr.feeds,
 		Subscriptions: tr.subs,
+		Tags:          tr.tags,
 		Saver:         tr.saver,
 		Discoverer:    tr.disc,
 		Logger:        slog.New(slog.NewTextHandler(tr.logs, nil)),
@@ -178,7 +199,13 @@ func newTestRunner() *testRunner {
 // fails the test if nothing was.
 func (tr *testRunner) importOne(t *testing.T, ctx context.Context, url string) rss.ImportFeed {
 	t.Helper()
-	tr.process(ctx, rss.ImportFeed{ImportID: "imp-1", UserID: "user-1", Position: 3, URL: url, Status: rss.ImportRunning})
+	return tr.importTagged(t, ctx, url, nil)
+}
+
+// importTagged is importOne for a feed with tags.
+func (tr *testRunner) importTagged(t *testing.T, ctx context.Context, url string, tags []string) rss.ImportFeed {
+	t.Helper()
+	tr.process(ctx, rss.ImportFeed{ImportID: "imp-1", UserID: "user-1", Position: 3, URL: url, Tags: tags, Status: rss.ImportRunning})
 	if len(tr.store.finished) != 1 {
 		t.Fatalf("Finish called %d times; want 1", len(tr.store.finished))
 	}
@@ -244,6 +271,69 @@ func TestProcessAlreadySubscribed(t *testing.T) {
 
 	got := tr.importOne(t, t.Context(), "https://example.com/feed")
 	checkOutcome(t, got, rss.ImportAlreadySubscribed, "", "feed-1")
+}
+
+func TestProcessAddsTags(t *testing.T) {
+	want := []addTagsCall{{"user-1", "feed-1", []string{"Tech", "AI"}}}
+
+	t.Run("subscribed", func(t *testing.T) {
+		tr := newTestRunner()
+		tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+
+		got := tr.importTagged(t, t.Context(), "https://example.com/feed", []string{"Tech", "AI"})
+		checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+		if !reflect.DeepEqual(tr.tags.calls, want) {
+			t.Errorf("AddToSubscription calls = %v; want %v", tr.tags.calls, want)
+		}
+	})
+
+	t.Run("already subscribed", func(t *testing.T) {
+		tr := newTestRunner()
+		tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+		tr.subs.Subscribe(t.Context(), "user-1", "feed-1")
+
+		got := tr.importTagged(t, t.Context(), "https://example.com/feed", []string{"Tech", "AI"})
+		checkOutcome(t, got, rss.ImportAlreadySubscribed, "", "feed-1")
+		if !reflect.DeepEqual(tr.tags.calls, want) {
+			t.Errorf("AddToSubscription calls = %v; want %v", tr.tags.calls, want)
+		}
+	})
+
+	t.Run("an error is logged and the feed is still subscribed", func(t *testing.T) {
+		tr := newTestRunner()
+		tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+		tr.tags.err = errors.New("db down")
+
+		got := tr.importTagged(t, t.Context(), "https://example.com/feed", []string{"Tech"})
+		checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+		if got.Error != "" {
+			t.Errorf("Error = %q; want none", got.Error)
+		}
+		if logs := tr.logs.String(); !strings.Contains(logs, "importer: add tags") || !strings.Contains(logs, "db down") {
+			t.Errorf("no add tags error in logs %q", logs)
+		}
+	})
+
+	t.Run("no tags, no call", func(t *testing.T) {
+		tr := newTestRunner()
+		tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+
+		got := tr.importOne(t, t.Context(), "https://example.com/feed")
+		checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+		if len(tr.tags.calls) != 0 {
+			t.Errorf("AddToSubscription calls = %v; want none", tr.tags.calls)
+		}
+	})
+
+	t.Run("a failed feed isn't tagged", func(t *testing.T) {
+		tr := newTestRunner()
+
+		got := tr.importTagged(t, t.Context(), "ftp://example.com/feed", []string{"Tech"})
+		checkOutcome(t, got, rss.ImportFailed, rss.ImportInvalidURL, "")
+		if len(tr.tags.calls) != 0 {
+			t.Errorf("AddToSubscription calls = %v; want none", tr.tags.calls)
+		}
+	})
 }
 
 func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {

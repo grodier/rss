@@ -9,11 +9,13 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/opml"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -40,7 +42,7 @@ func TestSettingsHandler(t *testing.T) {
 			`<form class="settings-devices" action="/settings/log-out-others" method="post">`,
 			`<a class="settings-row" href="/settings/import" aria-describedby="import-hint">`,
 			"Bring your feeds from another reader with an OPML file.",
-			`<a class="settings-row" href="/settings/subscriptions.opml" download`,
+			`<a class="settings-row" href="/settings/export"`,
 			"An OPML file you can import into another reader.",
 			`<form class="settings-logout" action="/logout" method="post">`,
 			`<a href="/settings/delete">Delete account</a>`,
@@ -101,6 +103,7 @@ func TestSettingsRoutesRequireAuthentication(t *testing.T) {
 		{http.MethodPost, "/settings/email"},
 		{http.MethodPost, "/settings/log-out-others"},
 		{http.MethodPost, "/settings/debug"},
+		{http.MethodGet, "/settings/export"},
 		{http.MethodGet, "/settings/subscriptions.opml"},
 		{http.MethodGet, "/settings/import"},
 		{http.MethodPost, "/settings/import"},
@@ -484,10 +487,33 @@ func TestChangePasswordWellKnown(t *testing.T) {
 // subscriptions come from listByUser.
 func getOPML(t *testing.T, listByUser func(context.Context, string) ([]rss.Subscription, error)) *httptest.ResponseRecorder {
 	t.Helper()
+	return getOPMLQuery(t, "", listByUser)
+}
+
+// getOPMLQuery is getOPML with query appended to the export's URL.
+func getOPMLQuery(t *testing.T, query string, listByUser func(context.Context, string) ([]rss.Subscription, error)) *httptest.ResponseRecorder {
+	t.Helper()
 	s := newTestServerWith(t, Services{SubscriptionService: &fakeSubscriptionStore{listByUserFn: listByUser}})
 	rr := httptest.NewRecorder()
-	s.sessionManager.LoadAndSave(http.HandlerFunc(s.exportOPMLHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+	req := requestWithSession(settingsSession)
+	req.URL.RawQuery = query
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.exportOPMLHandler)).ServeHTTP(rr, req)
 	return rr
+}
+
+func TestSettingsExportHandler(t *testing.T) {
+	s := newTestServer(t)
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsExportHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	assertBodyContains(t, rr.Body.String(),
+		`<form class="settings-form" action="/settings/subscriptions.opml" method="get">`,
+		`<input type="radio" name="tags" value="folders" checked> Turn each tag into a folder`,
+		`<input type="radio" name="tags" value="ignore"> Ignore tags`,
+	)
 }
 
 // parseOPML checks the export's status and headers and decodes its body.
@@ -561,13 +587,68 @@ func TestExportOPML(t *testing.T) {
 			{Type: "rss", Text: title, Title: title, XMLURL: "https://b.example/rss?x=1&y=2", HTMLURL: "https://b.example/blog"},
 			{Type: "rss", Text: "My name for C", Title: "My name for C", XMLURL: "https://c.example/feed", HTMLURL: "https://c.example/"},
 		}
-		if len(doc.Body) != len(want) {
-			t.Fatalf("got %d outlines, want %d: %+v", len(doc.Body), len(want), doc.Body)
+		if !reflect.DeepEqual(doc.Body, want) {
+			t.Errorf("outlines = %+v, want %+v", doc.Body, want)
 		}
-		for i := range want {
-			if doc.Body[i] != want[i] {
-				t.Errorf("outline %d = %+v, want %+v", i, doc.Body[i], want[i])
+	})
+
+	ai := rss.Tag{ID: "tag-ai", Name: "AI"}
+	news := rss.Tag{ID: "tag-news", Name: "news"}
+	tagged := []rss.Subscription{
+		{Feed: rss.Feed{ID: "feed-1", Url: "https://a.example/feed", Title: "A"}, Tags: []rss.Tag{news}},
+		{Feed: rss.Feed{ID: "feed-2", Url: "https://b.example/feed", Title: "B"}},
+		{Feed: rss.Feed{ID: "feed-3", Url: "https://c.example/feed", Title: "C"}, Tags: []rss.Tag{ai, news}},
+		{Feed: rss.Feed{ID: "feed-4", Url: "https://d.example/feed", Title: "D"}, Tags: []rss.Tag{ai}},
+		{Feed: rss.Feed{ID: "feed-5", Url: "https://e.example/feed", Title: "E"}},
+	}
+	listTagged := func(context.Context, string) ([]rss.Subscription, error) { return tagged, nil }
+	feed := func(name, host string) opmlOutline {
+		return opmlOutline{Type: "rss", Text: name, Title: name, XMLURL: "https://" + host + "/feed"}
+	}
+
+	t.Run("a folder per tag, then the untagged feeds", func(t *testing.T) {
+		for _, query := range []string{"", "tags=folders"} {
+			rr := getOPMLQuery(t, query, listTagged)
+
+			doc := parseOPML(t, rr)
+			want := []opmlOutline{
+				{Text: "AI", Title: "AI", Outlines: []opmlOutline{feed("C", "c.example"), feed("D", "d.example")}},
+				{Text: "news", Title: "news", Outlines: []opmlOutline{feed("A", "a.example"), feed("C", "c.example")}},
+				feed("B", "b.example"),
+				feed("E", "e.example"),
 			}
+			if !reflect.DeepEqual(doc.Body, want) {
+				t.Errorf("%q: outlines = %+v, want %+v", query, doc.Body, want)
+			}
+			// Folders have no type or xmlUrl.
+			assertBodyContains(t, rr.Body.String(), `<outline text="AI" title="AI">`, `<outline text="news" title="news">`)
+		}
+	})
+
+	t.Run("tags=ignore lists every feed once, flat", func(t *testing.T) {
+		doc := parseOPML(t, getOPMLQuery(t, "tags=ignore", listTagged))
+		want := []opmlOutline{
+			feed("A", "a.example"), feed("B", "b.example"), feed("C", "c.example"), feed("D", "d.example"), feed("E", "e.example"),
+		}
+		if !reflect.DeepEqual(doc.Body, want) {
+			t.Errorf("outlines = %+v, want %+v", doc.Body, want)
+		}
+	})
+
+	t.Run("round trip through opml.Parse", func(t *testing.T) {
+		outlines, err := opml.Parse(getOPMLQuery(t, "", listTagged).Body)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		want := []opml.Outline{
+			{URL: "https://c.example/feed", Title: "C", Folders: []string{"AI", "news"}},
+			{URL: "https://d.example/feed", Title: "D", Folders: []string{"AI"}},
+			{URL: "https://a.example/feed", Title: "A", Folders: []string{"news"}},
+			{URL: "https://b.example/feed", Title: "B"},
+			{URL: "https://e.example/feed", Title: "E"},
+		}
+		if !reflect.DeepEqual(outlines, want) {
+			t.Errorf("Parse = %+v, want %+v", outlines, want)
 		}
 	})
 

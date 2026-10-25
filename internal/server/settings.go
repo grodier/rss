@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -253,8 +254,18 @@ func (s *Server) changePasswordWellKnownHandler(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, "/settings/password", http.StatusFound)
 }
 
-// opmlDoc is an OPML 2.0 document of the user's subscriptions: a flat list,
-// one outline per feed, since readers turn nested outlines into folders.
+// settingsExportHandler shows the export's options; its form downloads
+// the file from exportOPMLHandler.
+func (s *Server) settingsExportHandler(w http.ResponseWriter, r *http.Request) {
+	data := struct{ Nav navData }{Nav: s.nav(r, "settings")}
+	if err := s.renderHTML(w, http.StatusOK, "settings_export.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// opmlDoc is an OPML 2.0 document of the user's subscriptions. Readers turn
+// nested outlines into folders, so feeds are nested in a folder per tag, or
+// listed flat.
 type opmlDoc struct {
 	XMLName xml.Name      `xml:"opml"`
 	Version string        `xml:"version,attr"`
@@ -267,16 +278,19 @@ type opmlHead struct {
 	DateCreated string `xml:"dateCreated"` // time.RFC1123Z
 }
 
+// opmlOutline is a feed, or a folder (a tag) of feeds.
 type opmlOutline struct {
-	Type    string `xml:"type,attr"`              // "rss"
-	Text    string `xml:"text,attr"`              // the user's name for the feed, else its title, else its URL
-	Title   string `xml:"title,attr,omitempty"`   // the user's name for the feed, else its title
-	XMLURL  string `xml:"xmlUrl,attr"`            // Feed.Url
-	HTMLURL string `xml:"htmlUrl,attr,omitempty"` // Feed.SiteUrl, else Site.URL
+	Type     string        `xml:"type,attr,omitempty"`    // "rss"; "" for a folder
+	Text     string        `xml:"text,attr"`              // the user's name for the feed, else its title, else its URL; the tag's name
+	Title    string        `xml:"title,attr,omitempty"`   // the user's name for the feed, else its title; the tag's name
+	XMLURL   string        `xml:"xmlUrl,attr,omitempty"`  // Feed.Url; "" for a folder
+	HTMLURL  string        `xml:"htmlUrl,attr,omitempty"` // Feed.SiteUrl, else Site.URL
+	Outlines []opmlOutline `xml:"outline,omitempty"`      // a folder's feeds
 }
 
 // exportOPMLHandler downloads the user's subscriptions, gone feeds included,
-// as an OPML file.
+// as an OPML file: with ?tags=ignore a flat list of feeds, else a folder per
+// tag, ordered by name, then the untagged feeds.
 func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
 	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
@@ -290,21 +304,12 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 		Version: "2.0",
 		Head:    opmlHead{Title: "rss subscriptions", DateCreated: now.Format(time.RFC1123Z)},
 	}
-	for _, sub := range subs {
-		o := opmlOutline{
-			Type:    "rss",
-			Text:    cmp.Or(sub.Title, sub.Feed.Title),
-			Title:   cmp.Or(sub.Title, sub.Feed.Title),
-			XMLURL:  sub.Feed.Url,
-			HTMLURL: sub.Feed.SiteUrl,
+	if r.URL.Query().Get("tags") == "ignore" {
+		for _, sub := range subs {
+			doc.Body = append(doc.Body, feedOutline(sub))
 		}
-		if o.Text == "" {
-			o.Text = sub.Feed.Url
-		}
-		if o.HTMLURL == "" {
-			o.HTMLURL = sub.Site.URL
-		}
-		doc.Body = append(doc.Body, o)
+	} else {
+		doc.Body = tagFolders(subs)
 	}
 
 	// Encoded into a buffer first, so a failure never sends half a file.
@@ -323,4 +328,45 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		s.logError(r, err)
 	}
+}
+
+// feedOutline is sub's feed as an OPML outline.
+func feedOutline(sub rss.Subscription) opmlOutline {
+	return opmlOutline{
+		Type:    "rss",
+		Text:    cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url),
+		Title:   cmp.Or(sub.Title, sub.Feed.Title),
+		XMLURL:  sub.Feed.Url,
+		HTMLURL: cmp.Or(sub.Feed.SiteUrl, sub.Site.URL),
+	}
+}
+
+// tagFolders is subs as OPML outlines: a folder per tag, ordered by name
+// ignoring case, with its feeds in subs' order (a feed with two tags is in
+// both), then the untagged feeds.
+func tagFolders(subs []rss.Subscription) []opmlOutline {
+	var tags []rss.Tag
+	feeds := map[string][]opmlOutline{} // by tag ID
+	var untagged []opmlOutline
+	for _, sub := range subs {
+		o := feedOutline(sub)
+		if len(sub.Tags) == 0 {
+			untagged = append(untagged, o)
+		}
+		for _, tag := range sub.Tags {
+			if _, ok := feeds[tag.ID]; !ok {
+				tags = append(tags, tag)
+			}
+			feeds[tag.ID] = append(feeds[tag.ID], o)
+		}
+	}
+	slices.SortFunc(tags, func(a, b rss.Tag) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+
+	var outlines []opmlOutline
+	for _, tag := range tags {
+		outlines = append(outlines, opmlOutline{Text: tag.Name, Title: tag.Name, Outlines: feeds[tag.ID]})
+	}
+	return append(outlines, untagged...)
 }

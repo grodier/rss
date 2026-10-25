@@ -159,8 +159,9 @@ Planned in #139 (issues #135–#138).
 Planned in #309 (issues #302, #303).
 
 - **Everything in the file is imported**, with no preview or checklist; unsubscribing is
-  one click if something unwanted came in. Folders become tags (#354; until then they were
-  flattened, since the app had no folders): see "Filtering and timelines".
+  one click if something unwanted came in. Folders become tags unless the user chooses to
+  ignore them (#354; until then they were flattened, since the app had no folders): see
+  "Filtering and timelines".
 - **Import is a background queue**, one `import_feeds` row per feed in the file, worked by
   its own runner: an unknown feed has to be fetched and checked first, since feeds are
   only created by discovery. The `lookups` table can't be reused: it's keyed by site key,
@@ -346,6 +347,13 @@ names, lands in one change (#348).
   feed with two tags appears in both; untagged feeds at the top level), which every
   reader imports as folders. No `category` attribute, which most readers ignore. These
   change "OPML import" under Subscriptions and the export under Accounts. (#354)
+- **Both are a choice, defaulting to tags and folders** (decided while building #354):
+  the import form asks "Turn each folder into a tag" or "Ignore folders", and an export
+  page asks "Turn each tag into a folder" or "Ignore tags" (a flat list), since someone
+  coming from a reader whose folders they don't want, or going to one that handles
+  nesting badly, shouldn't have to undo it by hand. The choice isn't remembered. The
+  export's choice is a query parameter (`?tags=ignore`), so the plain download link
+  (on the delete account page) still works and gives folders.
 
 ### Timelines
 
@@ -628,8 +636,9 @@ experience.
 - **Export your subscriptions as OPML 2.0, downloaded from Settings** (#270, #267): one
   `<outline>` per feed, with no nesting by site, since most readers turn nested outlines
   into folders and would make one per site. Gone feeds are included: they're still your
-  subscriptions. Changed in #354: feeds are nested in a folder per tag (see "Filtering and
-  timelines"), and the list stays flat for someone without tags. Import: see "OPML import"
+  subscriptions. Changed in #354: feeds are nested in a folder per tag unless the user chooses
+  a flat list (see "Filtering and timelines"), and the list stays flat for someone
+  without tags. Import: see "OPML import"
   under Subscriptions.
 - **Security emails:** password changed, email changed (to the old address), and account
   deleted. No "new login" alerts: they're noisy, and people learn to ignore them.

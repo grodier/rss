@@ -539,3 +539,91 @@ func TestSetForSubscription(t *testing.T) {
 		}
 	})
 }
+
+func TestAddToSubscription(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTagRepository(db)
+	ctx := t.Context()
+
+	t.Run("adds new and existing tags, keeping those on it", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 2)
+		ai := mustCreateTag(t, repo, user, "AI")
+		news := mustCreateTag(t, repo, user, "News")
+		mustSetFeeds(t, repo, user, news.ID, feeds[0], feeds[1])
+
+		if err := repo.AddToSubscription(ctx, user, feeds[0], []string{"ai", "Cooking", "news"}); err != nil {
+			t.Fatalf("AddToSubscription: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"AI", "Cooking", "News"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+		if got := tagCount(t, db, user); got != 3 {
+			t.Errorf("tags = %d, want 3", got)
+		}
+		if got := tagFeedIDs(t, db, ai.ID); !slices.Equal(got, []string{feeds[0]}) {
+			t.Errorf("AI's feeds = %v, want %v", got, []string{feeds[0]})
+		}
+		// Other subscriptions keep theirs.
+		if got, want := subscriptionTagNames(t, db, user, feeds[1]), []string{"News"}; !slices.Equal(got, want) {
+			t.Errorf("other subscription's tags = %v, want %v", got, want)
+		}
+
+		// Again: nothing duplicates.
+		if err := repo.AddToSubscription(ctx, user, feeds[0], []string{"Cooking"}); err != nil {
+			t.Fatalf("AddToSubscription again: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"AI", "Cooking", "News"}; !slices.Equal(got, want) {
+			t.Errorf("tags after the second call = %v, want %v", got, want)
+		}
+		if got := tagCount(t, db, user); got != 3 {
+			t.Errorf("tags after the second call = %d, want 3", got)
+		}
+	})
+
+	t.Run("no names changes nothing", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		news := mustCreateTag(t, repo, user, "News")
+		mustSetFeeds(t, repo, user, news.ID, feeds[0])
+
+		if err := repo.AddToSubscription(ctx, user, feeds[0], nil); err != nil {
+			t.Fatalf("AddToSubscription: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"News"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("new names past MaxTags are skipped", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		for i := range MaxTags - 1 {
+			mustCreateTag(t, repo, user, fmt.Sprintf("Tag %d", i))
+		}
+
+		err := repo.AddToSubscription(ctx, user, feeds[0], []string{"First new", "tag 5", "Second new", "Third new"})
+		if err != nil {
+			t.Fatalf("AddToSubscription: %v", err)
+		}
+		// The first new one fits; an existing one is still added.
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"First new", "Tag 5"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+		if got := tagCount(t, db, user); got != MaxTags {
+			t.Errorf("tags = %d, want %d", got, MaxTags)
+		}
+	})
+
+	t.Run("not subscribed", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newTestFeed(t, db).ID
+
+		if err := repo.AddToSubscription(ctx, user, feed, []string{"Cooking"}); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+		if got := tagCount(t, db, user); got != 0 {
+			t.Errorf("tags = %d, want 0", got)
+		}
+	})
+}

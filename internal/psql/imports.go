@@ -3,6 +3,7 @@ package psql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const importFeedColumns = `f.import_id, i.user_id, f.position, f.url, f.title, f.status, f.failure, f.feed_id, f.error, f.attempts`
+const importFeedColumns = `f.import_id, i.user_id, f.position, f.url, f.title, f.tags, f.status, f.failure, f.feed_id, f.error, f.attempts`
 
 // ImportRepository stores OPML imports and their feeds, which are also the
 // import queue.
@@ -42,13 +43,24 @@ func (r *ImportRepository) Create(ctx context.Context, userID, filename string, 
 
 	urls := make([]string, len(feeds))
 	titles := make([]string, len(feeds))
+	// unnest can't take an array of arrays of different lengths, so each
+	// feed's tags go in as a JSON array.
+	tags := make([]string, len(feeds))
 	for i, f := range feeds {
 		urls[i], titles[i] = f.URL, f.Title
+		tags[i] = "[]"
+		if len(f.Tags) > 0 {
+			b, err := json.Marshal(f.Tags)
+			if err != nil {
+				return "", err
+			}
+			tags[i] = string(b)
+		}
 	}
-	stmt := `INSERT INTO import_feeds (import_id, position, url, title)
-		SELECT $1, ord - 1, url, title
-		FROM unnest($2::text[], $3::text[]) WITH ORDINALITY AS t(url, title, ord)`
-	if _, err := tx.ExecContext(ctx, stmt, id, pq.Array(urls), pq.Array(titles)); err != nil {
+	stmt := `INSERT INTO import_feeds (import_id, position, url, title, tags)
+		SELECT $1, ord - 1, url, title, ARRAY(SELECT jsonb_array_elements_text(tags::jsonb))
+		FROM unnest($2::text[], $3::text[], $4::text[]) WITH ORDINALITY AS t(url, title, tags, ord)`
+	if _, err := tx.ExecContext(ctx, stmt, id, pq.Array(urls), pq.Array(titles), pq.Array(tags)); err != nil {
 		return "", err
 	}
 
@@ -194,11 +206,15 @@ func (r *ImportRepository) ResetStale(ctx context.Context, olderThan time.Durati
 func scanImportFeed(row interface{ Scan(...any) error }, extra ...any) (rss.ImportFeed, error) {
 	var f rss.ImportFeed
 	var feedID sql.NullString
-	dest := append([]any{&f.ImportID, &f.UserID, &f.Position, &f.URL, &f.Title, &f.Status, &f.Failure, &feedID, &f.Error, &f.Attempts}, extra...)
+	var tags pq.StringArray
+	dest := append([]any{&f.ImportID, &f.UserID, &f.Position, &f.URL, &f.Title, &tags, &f.Status, &f.Failure, &feedID, &f.Error, &f.Attempts}, extra...)
 	err := row.Scan(dest...)
 	if err != nil {
 		return rss.ImportFeed{}, err
 	}
 	f.FeedID = feedID.String
+	if len(tags) > 0 {
+		f.Tags = tags
+	}
 	return f, nil
 }

@@ -37,20 +37,63 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			name: "nested folders are flattened in order",
+			name: "nested folders",
 			input: `<opml version="1.0"><body>
 				<outline text="Tech">
 					<outline text="A" xmlUrl="https://a.example.com/feed"/>
-					<outline text="Deeper">
-						<outline text="B" xmlUrl="https://b.example.com/feed"/>
+					<outline title="AI" text="Artificial intelligence">
+						<outline text="B" xmlUrl="https://b.example.com/feed"></outline>
+						<outline text="Tech"><outline text="C" xmlUrl="https://c.example.com/feed"/></outline>
 					</outline>
+					<outline text="D" xmlUrl="https://d.example.com/feed"/>
 				</outline>
-				<outline text="C" xmlUrl="https://c.example.com/feed"/>
+				<outline text="   ">
+					<outline text="E" xmlUrl="https://e.example.com/feed"/>
+				</outline>
+				<outline text="Empty"/>
+				<outline text="  News   today ">
+					<outline text="F" xmlUrl="https://f.example.com/feed"/>
+				</outline>
+				<outline text="G" xmlUrl="https://g.example.com/feed"/>
 			</body></opml>`,
 			want: []Outline{
-				{URL: "https://a.example.com/feed", Title: "A"},
-				{URL: "https://b.example.com/feed", Title: "B"},
-				{URL: "https://c.example.com/feed", Title: "C"},
+				{URL: "https://a.example.com/feed", Title: "A", Folders: []string{"Tech"}},
+				{URL: "https://b.example.com/feed", Title: "B", Folders: []string{"Tech", "AI"}},
+				{URL: "https://c.example.com/feed", Title: "C", Folders: []string{"Tech", "AI"}},
+				{URL: "https://d.example.com/feed", Title: "D", Folders: []string{"Tech"}},
+				{URL: "https://e.example.com/feed", Title: "E"},
+				{URL: "https://f.example.com/feed", Title: "F", Folders: []string{"News today"}},
+				{URL: "https://g.example.com/feed", Title: "G"},
+			},
+		},
+		{
+			name: "a URL in several folders is one outline with all of them",
+			input: `<opml><body>
+				<outline text="Tech"><outline text="First" xmlUrl="https://example.com/feed"/></outline>
+				<outline text="Other" xmlUrl="https://other.example.com/feed"/>
+				<outline text="News">
+					<outline text="Second" xmlUrl="https://example.com/feed"/>
+					<outline text="Tech"><outline text="Third" xmlUrl="https://example.com/feed"/></outline>
+				</outline>
+				<outline text="Top" xmlUrl="https://example.com/feed"/>
+			</body></opml>`,
+			want: []Outline{
+				{URL: "https://example.com/feed", Title: "First", Folders: []string{"Tech", "News"}},
+				{URL: "https://other.example.com/feed", Title: "Other"},
+			},
+		},
+		{
+			name: "outlines nested in a feed outline",
+			input: `<opml><body>
+				<outline text="Feed" xmlUrl="https://example.com/feed">
+					<outline text="Child" xmlUrl="https://child.example.com/feed"/>
+				</outline>
+				<outline text="After" xmlUrl="https://after.example.com/feed"/>
+			</body></opml>`,
+			want: []Outline{
+				{URL: "https://example.com/feed", Title: "Feed"},
+				{URL: "https://child.example.com/feed", Title: "Child"},
+				{URL: "https://after.example.com/feed", Title: "After"},
 			},
 		},
 		{
@@ -71,7 +114,7 @@ func TestParse(t *testing.T) {
 				<outline text="Other" xmlUrl="https://example.com/feed?x=1"/>
 			</body></opml>`,
 			want: []Outline{
-				{URL: "https://example.com/feed", Title: "First"},
+				{URL: "https://example.com/feed", Title: "First", Folders: []string{"Folder"}},
 				{URL: "https://example.com/feed?x=1", Title: "Other"},
 			},
 		},

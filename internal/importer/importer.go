@@ -48,6 +48,11 @@ type Subscriptions interface {
 	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 }
 
+// Tags tags subscriptions; satisfied by *psql.TagRepository.
+type Tags interface {
+	AddToSubscription(ctx context.Context, userID, feedID string, names []string) error
+}
+
 // Saver stores a discovered site and its feeds; satisfied by
 // *psql.DiscoveryRepository.
 type Saver interface {
@@ -65,6 +70,7 @@ type Runner struct {
 	Store         Store
 	Feeds         Feeds
 	Subscriptions Subscriptions
+	Tags          Tags
 	Saver         Saver
 	Discoverer    Discoverer
 	Logger        *slog.Logger
@@ -209,8 +215,8 @@ func (r *Runner) process(ctx context.Context, f rss.ImportFeed) {
 	)
 }
 
-// run finds or discovers f's feed and subscribes f's user to it, and
-// returns f with its outcome set. A panic is a failure.
+// run finds or discovers f's feed, subscribes f's user to it and adds f's
+// tags, and returns f with its outcome set. A panic is a failure.
 func (r *Runner) run(ctx context.Context, f rss.ImportFeed) (out rss.ImportFeed) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -249,13 +255,25 @@ func (r *Runner) run(ctx context.Context, f rss.ImportFeed) (out rss.ImportFeed)
 	}
 	if subscribed[feed.ID] {
 		f.Status = rss.ImportAlreadySubscribed
-		return f
+	} else {
+		if err := r.Subscriptions.Subscribe(jobCtx, f.UserID, feed.ID); err != nil {
+			return failed(f, rss.ImportUnreachable, fmt.Errorf("subscribe: %w", err))
+		}
+		f.Status = rss.ImportSubscribed
 	}
-	if err := r.Subscriptions.Subscribe(jobCtx, f.UserID, feed.ID); err != nil {
-		return failed(f, rss.ImportUnreachable, fmt.Errorf("subscribe: %w", err))
-	}
-	f.Status = rss.ImportSubscribed
+	r.addTags(jobCtx, f)
 	return f
+}
+
+// addTags adds f's tags to the subscription to f.FeedID. The feed is
+// subscribed either way, so a failure is only logged.
+func (r *Runner) addTags(ctx context.Context, f rss.ImportFeed) {
+	if len(f.Tags) == 0 {
+		return
+	}
+	if err := r.Tags.AddToSubscription(ctx, f.UserID, f.FeedID, f.Tags); err != nil {
+		r.Logger.Error("importer: add tags", "import_id", f.ImportID, "position", f.Position, "error", err)
+	}
 }
 
 // discover fetches u, saves what it finds exactly like a lookup, and

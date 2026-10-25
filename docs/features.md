@@ -487,24 +487,35 @@ and Subscribe/Unsubscribe labels show the name, with "Feed title “…”" afte
 export writes it too. Catalog pages (site, search) and debug panels keep the feed's own
 title.
 
-**Export.** "Export subscriptions", under "Your data" in Settings, downloads
-`/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription from
-`ListByUser`, gone feeds included, as a flat OPML 2.0 list with one `<outline>` per
-feed (`type="rss"`, `text` and `title` the user's name for the feed or else its title,
-`text` falling back to its URL, `xmlUrl`, and `htmlUrl` the feed's site URL or else its
-site's). It's encoded into a buffer first, so a store or
+**Export.** "Export subscriptions", under "Your data" in Settings, opens
+`/settings/export` (`settingsExportHandler`): a GET form asking "Turn each tag into a
+folder" (the default) or "Ignore tags", which downloads `/settings/subscriptions.opml`
+(`exportOPMLHandler`; the delete account page links to it directly). It writes every
+subscription from `ListByUser`, gone feeds included, as OPML 2.0 with one `<outline>`
+per feed (`feedOutline`: `type="rss"`, `text` and `title` the user's name for the feed
+or else its title, `text` falling back to its URL, `xmlUrl`, and `htmlUrl` the feed's
+site URL or else its site's). By default (`tagFolders`) the feeds are nested in a
+folder outline per tag (`text` and `title` the tag's name, no `type` or `xmlUrl`),
+ordered by name ignoring case, a feed with two tags in both, then the untagged feeds
+at the top level; with `?tags=ignore`, or for someone without tags, it's a flat list
+in `ListByUser` order. It's encoded into a buffer first, so a store or
 encoding error is an HTML 500 instead of half a file, and sent as
 `rss-subscriptions-YYYY-MM-DD.opml` (UTC).
 
 **Import.** "Import subscriptions", under "Your data" in Settings and linked from the
-empty timeline, opens `/settings/import` (`settingsImportHandler`): an upload form and
+empty timeline, opens `/settings/import` (`settingsImportHandler`): an upload form,
+with a choice to "Turn each folder into a tag" (the default, `folders=tags`) or "Ignore
+folders", and
 the user's last 5 imports from `ImportRepository.ListByUser`, each with its date,
 filename, feed count and "importing…" or how many couldn't be added. The form posts the
 file as multipart to `settingsImportFormHandler`, which caps the body with
 `http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and
 re-renders the form with the error on the `file` field for no file (422), a file over
 1 MiB (413), a file that isn't OPML, has no feeds or has more than 1,000 (422), or a
-sixth import within the hour (`importLimiter`, 429 with `Retry-After`). Otherwise it
+sixth import within the hour (`importLimiter`, 429 with `Retry-After`), keeping the
+folders choice. Otherwise it turns each outline's `Folders` into its `Tags` with
+`importTags` (when folders become tags: commas become spaces, names are normalized like
+typed tags, cut to 50 characters, and empty names and repeats ignoring case dropped),
 creates the import, with the file's base name, and redirects to `/settings/imports/{id}`
 (`importHandler`; another user's import is a 404). While any feed is pending or running
 that page shows "Checked {done} of {total} feeds." and refreshes itself with
@@ -515,16 +526,22 @@ with the URL, a plain reason for its `Failure` (`importReasons`) and a link to s
 for its host.
 
 The import itself is a queue worked in the background. `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any
-depth (folders are flattened), in file order and without repeats; it parses non-strictly
+depth, in file order and without repeats; an outline without one is a folder, and each
+feed's `Folders` are the names of the folders it's nested in, at any depth (a feed in
+`Tech › AI` has both), plus those of any repeat of its URL. It parses non-strictly
 and decodes legacy charsets, since older readers' exports are sloppy.
-`ImportRepository.Create` stores the import and one pending `import_feeds` row per feed.
+`ImportRepository.Create` stores the import and one pending `import_feeds` row per feed,
+with its `tags`.
 The import runner (`importer.Runner`, `-import-workers`) claims one row at a time, oldest
 import first, and in `run`: parses the URL with `discovery.ParseInput` (else `failed` /
 `invalid_url`); looks up its `CanonicalFeedURL` with `FeedRepository.GetByURL`; for an
 unknown or gone feed, runs discovery (an error is `unreachable`, no feeds `not_feed`),
 saves what it found with `lookup.ToSave` and `DiscoveryRepository.Save` exactly like a
 lookup, and takes the first feed; then records `already_subscribed`, or subscribes and
-records `subscribed`. Failures aren't retried; a crashed row is re-queued by
+records `subscribed`; either way it adds the row's tags with
+`TagRepository.AddToSubscription` (`addTags`), which reuses the user's tags by name
+ignoring case, creates the rest while the user has fewer than 100, skips those past the
+cap, and never removes a tag. A tag error is only logged: the feed stays subscribed. Failures aren't retried; a crashed row is re-queued by
 `ResetStale`. Subscribing bumps nothing onto the timeline: the backlog keeps its
 published dates.
 
@@ -538,25 +555,29 @@ published dates.
 3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
    `ListByUser`, `Get`, `Rename`, `scanSubscription`.
 4. Templates: `feed.html`, `site.html`, `feeds.html`, `subscription_edit.html`.
-5. Export: `internal/server/settings.go` (`opmlDoc`, `exportOPMLHandler`); the "Your
-   data" section of `settings.html`.
+5. Export: `internal/server/settings.go` (`settingsExportHandler`, `opmlDoc`,
+   `exportOPMLHandler`, `feedOutline`, `tagFolders`); the "Your data" section of
+   `settings.html`; `settings_export.html`.
 6. Import: `internal/server/import.go` (`settingsImportHandler`,
-   `settingsImportFormHandler`, `importFilename`, `importHandler`, `importSummary`);
+   `settingsImportFormHandler`, `importTags`, `importFilename`, `importHandler`, `importSummary`);
    templates `settings_import.html`, `import.html`; `internal/opml/opml.go` (`Parse`);
    `internal/psql/imports.go` (`ImportRepository`); `internal/importer/importer.go`
-   (`Runner.process`, `run`, `discover`); `internal/lookup/lookup.go` (`ToSave`);
+   (`Runner.process`, `run`, `addTags`, `discover`); `TagRepository.AddToSubscription`
+   in `internal/psql/tags.go`; `internal/lookup/lookup.go` (`ToSave`);
    `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
 **Tests:** `internal/server/feeds_test.go` (`TestPostingRate`; names:
 `TestSubscriptionEdit`, `TestSubscriptionEditPost`, `TestFeedHandlerSubscriptionName`),
 `articles_test.go` (`TestArticleHandlerSubscriptionName`, `TestReadOnLabel`),
-`sites_test.go`, `search_test.go`, `settings_test.go` (`TestExportOPML`);
+`sites_test.go`, `search_test.go`, `settings_test.go` (`TestSettingsExportHandler`,
+`TestExportOPML`);
 `internal/psql/subscriptions_test.go` (`TestSubscriptionGet`, `TestSubscriptionRename`),
 `articles_test.go` (`TestListTimelineSubscriptionNames`), `saves_test.go`
 (`TestListSavedSubscriptionNames`); import:
-`internal/server/import_test.go` (`TestSettingsImportForm`, `TestSettingsImportHandler`,
-`TestImportHandler`), `internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
-`internal/importer/importer_test.go`.
+`internal/server/import_test.go` (`TestSettingsImportForm`, `TestImportTags`,
+`TestSettingsImportHandler`, `TestImportHandler`), `internal/opml/opml_test.go`,
+`internal/psql/imports_test.go`, `internal/psql/tags_test.go` (`TestAddToSubscription`),
+`internal/importer/importer_test.go` (`TestProcessAddsTags`).
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

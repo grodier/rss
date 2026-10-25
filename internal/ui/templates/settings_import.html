@@ -29,8 +29,16 @@
             {{with .Form.FieldErrors.file}}aria-invalid="true"{{end}}
             {{if eq $focus "file"}}autofocus{{end}} />
           {{with .Form.FieldErrors.file}}<p class="error" id="file-error">{{.}}</p>{{end}}
-          <p class="hint" id="file-hint">An OPML file exported from another reader. Folders aren't kept: every feed goes into your timeline.</p>
+          <p class="hint" id="file-hint">An OPML file exported from another reader.</p>
         </div>
+        <fieldset class="field tag-checks" aria-describedby="folders-hint">
+          <legend>Folders</legend>
+          <div class="settings-choices">
+            <label class="tag-check"><input type="radio" name="folders" value="tags"{{if .Form.FoldersAsTags}} checked{{end}}> Turn each folder into a tag</label>
+            <label class="tag-check"><input type="radio" name="folders" value="ignore"{{if not .Form.FoldersAsTags}} checked{{end}}> Ignore folders</label>
+          </div>
+          <p class="hint" id="folders-hint">A feed in several folders gets a tag for each. Tags you already have are reused, and feeds you already follow keep their tags.</p>
+        </fieldset>
         <div class="form-actions">
           <button class="btn-primary" type="submit">Import</button>
           <a class="btn" href="/settings">Cancel</a>

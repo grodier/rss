@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - export subscriptions</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Export subscriptions</h1>
+      </header>
+
+      <form class="settings-form" action="/settings/subscriptions.opml" method="get">
+        <p class="form-intro">An OPML file of every feed you follow, which you can import into another reader.</p>
+        <fieldset class="field tag-checks" aria-describedby="tags-hint">
+          <legend>Tags</legend>
+          <div class="settings-choices">
+            <label class="tag-check"><input type="radio" name="tags" value="folders" checked> Turn each tag into a folder</label>
+            <label class="tag-check"><input type="radio" name="tags" value="ignore"> Ignore tags</label>
+          </div>
+          <p class="hint" id="tags-hint">A feed with several tags is listed in each of their folders, which other readers import as one feed. Feeds without tags are listed after the folders.</p>
+        </fieldset>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Download</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

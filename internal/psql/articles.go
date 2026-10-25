@@ -197,6 +197,10 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 // Show: with OnlyIncluded, only the feeds in IncludeFeedIDs or with a tag in
 // IncludeTagIDs. Leave out: never the feeds in ExcludeFeedIDs or with a tag
 // in ExcludeTagIDs, even when included.
+//
+// sub can be NULL (a LEFT JOIN, as in ListStarred: a star from a feed the
+// user no longer subscribes to). Then Show conditions fail (the feed has no
+// tags and isn't chosen) and Leave out conditions pass.
 func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 	ids := func(s []string) string {
 		if s == nil {
@@ -215,11 +219,11 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 	var where strings.Builder
 	if filter.OnlyIncluded {
 		where.WriteString(`
-				AND (sub.feed_id = ANY(` + ids(filter.IncludeFeedIDs) + `) OR ` + hasTag(ids(filter.IncludeTagIDs)) + `)`)
+				AND COALESCE(sub.feed_id = ANY(` + ids(filter.IncludeFeedIDs) + `) OR ` + hasTag(ids(filter.IncludeTagIDs)) + `, false)`)
 	}
 	if len(filter.ExcludeFeedIDs) > 0 {
 		where.WriteString(`
-				AND NOT (sub.feed_id = ANY(` + ids(filter.ExcludeFeedIDs) + `))`)
+				AND NOT COALESCE(sub.feed_id = ANY(` + ids(filter.ExcludeFeedIDs) + `), false)`)
 	}
 	if len(filter.ExcludeTagIDs) > 0 {
 		where.WriteString(`

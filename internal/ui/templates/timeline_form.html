@@ -19,6 +19,15 @@
         <a href="/timelines">All timelines</a>
       </header>
 
+      {{if not .Timeline.ID}}
+      <div class="timeline-presets">
+        <span id="presets-label">Start from:</span>
+        <ul aria-labelledby="presets-label" role="list">
+          <li><a href="/timelines/new?preset=starred">Starred</a></li>
+        </ul>
+      </div>
+      {{end}}
+
       {{$focus := .Form.FirstError "name" "description" "show"}}
       <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
         <div class="timeline-form-fields">
@@ -75,6 +84,17 @@
           {{template "timeline-tag-checks" .Checks.exclude_tags}}
           {{end}}
           {{template "timeline-feed-checks" .Checks.exclude_feeds}}
+        </fieldset>
+        {{end}}
+
+        {{block "timeline-form-only-show" .}}
+        <fieldset aria-describedby="starred-only-hint">
+          <legend>Only show</legend>
+          <label class="choice">
+            <input type="checkbox" name="starred_only" value="1"{{if .Form.StarredOnly}} checked{{end}} />
+            Articles I've starred
+          </label>
+          <p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>
         </fieldset>
         {{end}}
 

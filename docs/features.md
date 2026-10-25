@@ -642,15 +642,19 @@ timeline's name, or Home) is visually hidden; the description and Edit link foll
 a row under the tabs. A timeline is a name, an optional description and a
 `rss.TimelineFilter` over the user's subscriptions: Show is all feeds, or
 (`OnlyIncluded`) only the feeds with any of `IncludeTagIDs` or in `IncludeFeedIDs`;
-Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins. Tag-based timelines stay
-current, since the filter reads `subscription_tags` on every page.
+Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins; Only show `StarredOnly`
+limits it to the user's stars. Tag-based timelines stay current, since the filter reads
+`subscription_tags` on every page.
 
 `/timelines` (`timelinesHandler`) lists them with an Edit link each. New timeline
 (`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after
 the tag and shows only that tag) and Edit (`timelineEditHandler`) render one form,
 `timeline_form.html`: Name, Description, then a Show fieldset (radios, the user's tags
-as checkboxes, their feeds in a `<details>` that's open when any is ticked) and a Leave
-out fieldset (tags and feeds). Posting (`timelineCreateHandler`,
+as checkboxes, their feeds in a `<details>` that's open when any is ticked), a Leave
+out fieldset (tags and feeds) and an Only show fieldset (the `starred_only` checkbox,
+"Articles I've starred"). New timeline also offers presets as links, "Start from:
+Starred": `?preset=starred` prefills the name Starred, Show all and starred only; with
+`?tag=` too, the tag names it and sets Show. Posting (`timelineCreateHandler`,
 `timelineEditPostHandler`, both through `decodeTimelineForm`) answers 400 for a `show`
 other than `all` or `some`, then `timelineForm.check` trims the text, keeps only the
 user's own tags and feeds (each once), and validates: a name of 1–50 runes, a
@@ -666,30 +670,41 @@ A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero fil
 share `renderTimeline`, so they follow the same rules (see "Reading" below), paging at
 their own URL. `ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it
 reads, before collapsing copies, so a left-out feed's copy never stands in for an
-entry; "Also in" still lists every subscribed feed with a copy. Empty states: "This
-timeline has no feeds to show. Edit it to choose some." when it shows only some feeds
-but has none (say its only tag was deleted), else "Nothing in this timeline yet.".
+entry; "Also in" still lists every subscribed feed with a copy.
+
+A starred-only timeline lists stars instead (`timelineRows`): `StarRepository.ListStarred`
+reads the user's `stars` newest starred first, paged by `starred_at` (the cursor's
+time is `StarredAt`), with rows `Starred: true` and no "Also in" (starring covers every
+copy already). It LEFT JOINs `subscriptions`, so with Show all a star from a feed the
+user has since unsubscribed from still shows, as on Saved; `timelineWhere` handles the
+missing subscription: Show conditions fail for it (its tags went with it) and Leave out
+conditions pass. Empty states: "This timeline has no feeds to show. Edit it to choose
+some." when it shows only some feeds but has none (say its only tag was deleted), then
+"Nothing starred here yet. Star articles in your timelines and they'll show up here."
+for a starred-only one, else "Nothing in this timeline yet.".
 
 **Read:**
 
-1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineTabs`.
+1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineRows`, `timelineTabs`.
 2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
    `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`, `timeline`,
    `checks`), `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
    `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`.
-3. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`; `ErrTooManyTimelines` in
+3. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`; `ErrTooManyTimelines` in
    `errors.go`.
 4. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`,
-   `insertTimelineSources`; then `timelineWhere` and `ListTimeline` in `articles.go`.
+   `insertTimelineSources`; then `timelineWhere` and `ListTimeline` in `articles.go`,
+   and `ListStarred` in `stars.go`.
 5. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
    `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`;
-   `.timeline-tabs`, `.timeline-list` and `.timeline-form` in `main.css`; the tab
+   `.timeline-tabs`, `.timeline-list`, `.timeline-presets` and `.timeline-form` in `main.css`; the tab
    row's enhancement in `app.js`.
 
 **Tests:** `internal/server/timelines_test.go`, `TestHomeHandlerTabs` in
 `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
 `TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
-`TestTimelineCascades`), `TestListTimelineFilter` in `articles_test.go`.
+`TestTimelineCascades`), `TestListTimelineFilter` in `articles_test.go`,
+`TestListStarred` in `stars_test.go`.
 
 **Why:** "Timelines" under "Filtering and timelines" in decisions.md.
 
@@ -807,8 +822,8 @@ for a bad or unknown article, then a 303 back to `return_to#article-{id}`, quiet
 without marking the article read. `StarRepository` mirrors `SaveRepository`: `Star`
 skips an article whose copy is already starred, `Unstar` removes every copy's star, and
 `StarredArticleIDs` (`fillStarred` on list pages, `articleHandler` for its article)
-matches copies. Stars are private: no counts, and no page of them yet (the Starred
-timeline is #358). `app.js` flips the Star in place with the same listener as Save.
+matches copies. Stars are private: no counts. They're listed by starred-only
+timelines (see "Timelines"; New timeline's Starred preset makes one). `app.js` flips the Star in place with the same listener as Save.
 
 **Saved page** (`/saved`, "Saved" in the nav, after Home). `savedHandler` is modelled on
 the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest
@@ -854,7 +869,7 @@ on a later page).
 `TestInfiniteScrollMarkup`), `templates_test.go` (`TestAppNav`);
 `internal/psql/saves_test.go` (`TestSaveRepository`, `TestListSaved`,
 `TestListSavedSearch`, `TestListSavedSubscriptionNames`), `stars_test.go` (`TestStar`,
-`TestUnstar`, `TestStarredArticleIDs`).
+`TestUnstar`, `TestStarredArticleIDs`, `TestListStarred`).
 
 **Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and
 timelines" in decisions.md.

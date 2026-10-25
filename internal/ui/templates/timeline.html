@@ -48,6 +48,8 @@
       <div class="empty">
         <p>This timeline has no feeds to show. <a href="/timelines/{{.Timeline.ID}}/edit">Edit it</a> to choose some.</p>
       </div>
+      {{else if .Timeline.Filter.StarredOnly}}
+      <p class="empty">Nothing starred here yet. Star articles in your timelines and they'll show up here.</p>
       {{else if not .Timeline.Home}}
       <p class="empty">Nothing in this timeline yet.</p>
       {{else}}

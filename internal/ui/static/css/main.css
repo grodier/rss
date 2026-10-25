@@ -1656,7 +1656,27 @@
     font-size: 0.875rem;
   }
 
-  /* The timeline form: name and description, then Show and Leave out. */
+  /* New timeline's presets: a row of links above the form. */
+  .timeline-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .timeline-presets ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The timeline form: name and description, then Show, Leave out and Only show. */
   .timeline-form-fields {
     padding: 1.25rem 1rem;
   }
@@ -1710,7 +1730,7 @@
     background: var(--surface);
   }
 
-  .choice input[type="radio"] {
+  .choice input:is([type="radio"], [type="checkbox"]) {
     flex: none;
     inline-size: 1.125rem;
     block-size: 1.125rem;

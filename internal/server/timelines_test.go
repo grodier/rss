@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -159,6 +160,43 @@ func TestTimelineNewHandler(t *testing.T) {
 				t.Errorf("body has %q: %s", bad, body)
 			}
 		}
+	})
+
+	t.Run("offers the presets", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			`<span id="presets-label">Start from:</span>`,
+			`<li><a href="/timelines/new?preset=starred">Starred</a></li>`,
+			"<legend>Only show</legend>",
+			`<input type="checkbox" name="starred_only" value="1" />`,
+			`<p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>`,
+		)
+	})
+
+	t.Run("?preset=starred prefills Starred", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred", "", nil)
+		assertBodyContains(t, rr.Body.String(),
+			`<input type="text" id="name" name="name" value="Starred"`,
+			`<input type="radio" name="show" value="all" checked`,
+			`<input type="checkbox" name="starred_only" value="1" checked />`,
+		)
+	})
+
+	t.Run("?preset=starred with ?tag= is named after the tag", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred&tag="+testTagID, "", nil)
+		assertBodyContains(t, rr.Body.String(),
+			`<input type="text" id="name" name="name" value="AI"`,
+			`<input type="radio" name="show" value="some" checked`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
+			`<input type="checkbox" name="starred_only" value="1" checked />`,
+		)
+	})
+
+	t.Run("an unknown preset is ignored", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=junk", "", nil)
+		body := rr.Body.String()
+		assertBodyContains(t, body, `name="name" value=""`, `<input type="checkbox" name="starred_only" value="1" />`)
 	})
 
 	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
@@ -436,10 +474,92 @@ func TestTimelineHandler(t *testing.T) {
 	})
 }
 
+// starredItems returns n starred articles, newest starred first, starred an
+// hour apart and long after they arrived.
+func starredItems(n int) []rss.StarredArticle {
+	items := make([]rss.StarredArticle, n)
+	for i, item := range timelineItems(n) {
+		items[i] = rss.StarredArticle{
+			Article:   item.Article,
+			Feed:      item.Feed,
+			StarredAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(i) * time.Hour),
+		}
+	}
+	return items
+}
+
+func TestStarredTimeline(t *testing.T) {
+	var gotFilter rss.TimelineFilter
+	var gotBefore rss.ArticleCursor
+	var result []rss.StarredArticle
+	stars := &fakeStarStore{
+		listStarredFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.StarredArticle, error) {
+			if userID != "user-1" {
+				return nil, errors.New("wrong user")
+			}
+			gotFilter, gotBefore = filter, before
+			return result, nil
+		},
+	}
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+		return nil, errors.New("ListTimeline called for a starred-only timeline")
+	}}
+	filter := rss.TimelineFilter{StarredOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{testTagID}}
+	s := newTestServerWith(t, Services{ArticleService: articles, StarService: stars, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
+		TimelineService: userTimeline(rss.Timeline{Name: "AI picks", Filter: filter})})
+	get := func(t *testing.T, target string) *httptest.ResponseRecorder {
+		t.Helper()
+		rr, _ := serveTimeline(t, s, s.timelineHandler, target, testTimelineID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+		}
+		return rr
+	}
+
+	t.Run("lists stars with Star pressed", func(t *testing.T) {
+		result = starredItems(2)
+		body := get(t, "/timelines/"+testTimelineID).Body.String()
+		if !gotFilter.StarredOnly || !gotFilter.OnlyIncluded || !slices.Equal(gotFilter.IncludeTagIDs, filter.IncludeTagIDs) || !gotBefore.IsZero() {
+			t.Errorf("ListStarred got filter %+v, before %+v", gotFilter, gotBefore)
+		}
+		assertBodyContains(t, body, "Article 0", "Article 1", `aria-pressed="true" aria-label="Star"`)
+		if strings.Contains(body, `aria-pressed="false" aria-label="Star"`) {
+			t.Errorf("a row's Star isn't pressed: %s", body)
+		}
+	})
+
+	t.Run("the pager's cursor is the last row's starred_at", func(t *testing.T) {
+		result = starredItems(timelinePageSize + 1)
+		body := get(t, "/timelines/"+testTimelineID).Body.String()
+		last := result[timelinePageSize-1]
+		m := regexp.MustCompile(`rel="next" href="/timelines/` + testTimelineID + `\?before=([^"]+)"`).FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("no pager: %s", body)
+		}
+		next, err := url.QueryUnescape(m[1])
+		if err != nil {
+			t.Fatalf("unescape %q: %v", m[1], err)
+		}
+		cur, err := decodeCursor(next)
+		if err != nil || !cur.At.Equal(last.StarredAt) || cur.ID != last.Article.ID {
+			t.Errorf("next cursor = %+v (%v), want %v/%s", cur, err, last.StarredAt, last.Article.ID)
+		}
+	})
+
+	t.Run("empty state", func(t *testing.T) {
+		result = nil
+		body := get(t, "/timelines/"+testTimelineID).Body.String()
+		assertBodyContains(t, body, "Nothing starred here yet. Star articles in your timelines and they'll show up here.")
+		if strings.Contains(body, "Nothing in this timeline yet.") {
+			t.Errorf("shows the plain empty state: %s", body)
+		}
+	})
+}
+
 func TestTimelineEditHandler(t *testing.T) {
 	tags, subs := timelineSourcesStores()
 	timelines := userTimeline(rss.Timeline{Name: "AI", Description: "Models", Filter: rss.TimelineFilter{
-		OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, ExcludeFeedIDs: []string{timelineFeed2ID},
+		OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, ExcludeFeedIDs: []string{timelineFeed2ID}, StarredOnly: true,
 	}})
 	s := newTestServerWith(t, Services{TagService: tags, SubscriptionService: subs, TimelineService: timelines})
 
@@ -456,6 +576,7 @@ func TestTimelineEditHandler(t *testing.T) {
 			`<input type="radio" name="show" value="some" checked`,
 			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
 			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`" checked>`,
+			`<input type="checkbox" name="starred_only" value="1" checked />`,
 			`<a class="btn" href="/timelines/`+testTimelineID+`">Cancel</a>`,
 			`<form class="tag-delete" action="/timelines/`+testTimelineID+`/delete" method="post">`,
 			`<button class="btn-sm" type="submit">Delete timeline</button>`,
@@ -489,9 +610,28 @@ func TestTimelineEditPostHandler(t *testing.T) {
 			t.Fatalf("code %d flash %q location %q", rr.Code, flash, rr.Header().Get("Location"))
 		}
 		if updated == nil || updated.ID != testTimelineID || updated.Name != "Not AI" || updated.Filter.OnlyIncluded ||
-			!slices.Equal(updated.Filter.ExcludeTagIDs, []string{testTagID}) {
+			!slices.Equal(updated.Filter.ExcludeTagIDs, []string{testTagID}) || updated.Filter.StarredOnly {
 			t.Errorf("updated %+v", updated)
 		}
+	})
+
+	t.Run("saves starred only", func(t *testing.T) {
+		updated = nil
+		form := url.Values{"name": {"Starred"}, "show": {"all"}, "starred_only": {"1"}}
+		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if updated == nil || !updated.Filter.StarredOnly {
+			t.Errorf("updated %+v, want StarredOnly", updated)
+		}
+	})
+
+	t.Run("starred only stays ticked when the form is invalid", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, url.Values{"name": {""}, "show": {"all"}, "starred_only": {"1"}})
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		assertBodyContains(t, rr.Body.String(), `<input type="checkbox" name="starred_only" value="1" checked />`)
 	})
 
 	t.Run("invalid is 422 on the edit form", func(t *testing.T) {

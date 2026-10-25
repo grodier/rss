@@ -44,13 +44,14 @@ func sortedFilter(f rss.TimelineFilter) rss.TimelineFilter {
 		IncludeFeedIDs: s(f.IncludeFeedIDs),
 		ExcludeTagIDs:  s(f.ExcludeTagIDs),
 		ExcludeFeedIDs: s(f.ExcludeFeedIDs),
+		StarredOnly:    f.StarredOnly,
 	}
 }
 
 func assertFilter(t *testing.T, got, want rss.TimelineFilter) {
 	t.Helper()
 	got, want = sortedFilter(got), sortedFilter(want)
-	if got.OnlyIncluded != want.OnlyIncluded ||
+	if got.OnlyIncluded != want.OnlyIncluded || got.StarredOnly != want.StarredOnly ||
 		!slices.Equal(got.IncludeTagIDs, want.IncludeTagIDs) || !slices.Equal(got.IncludeFeedIDs, want.IncludeFeedIDs) ||
 		!slices.Equal(got.ExcludeTagIDs, want.ExcludeTagIDs) || !slices.Equal(got.ExcludeFeedIDs, want.ExcludeFeedIDs) {
 		t.Errorf("filter = %+v, want %+v", got, want)
@@ -119,6 +120,22 @@ func TestTimelineCreate(t *testing.T) {
 			ExcludeTagIDs:  []string{ai.ID},
 			ExcludeFeedIDs: []string{feeds[1]},
 		})
+	})
+
+	t.Run("starred_only round-trips", func(t *testing.T) {
+		user := newTestUser(t, db)
+		id := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Starred", Filter: rss.TimelineFilter{StarredOnly: true}})
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{StarredOnly: true})
+
+		if err := repo.Update(ctx, user, rss.Timeline{ID: id, Name: "Everything"}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{})
+
+		if err := repo.Update(ctx, user, rss.Timeline{ID: id, Name: "Starred", Filter: rss.TimelineFilter{StarredOnly: true}}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{StarredOnly: true})
 	})
 
 	t.Run("the 21st is ErrTooManyTimelines", func(t *testing.T) {

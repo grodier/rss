@@ -150,11 +150,14 @@ type SaveStore interface {
 	ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
 }
 
-// StarStore records which articles a user has starred.
+// StarStore records and lists which articles a user has starred.
 type StarStore interface {
 	Star(ctx context.Context, userID, articleID string) error
 	Unstar(ctx context.Context, userID, articleID string) error
 	StarredArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+	// ListStarred returns a page of the user's starred articles that filter
+	// passes, newest starred first. Summary and Content are left empty.
+	ListStarred(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.StarredArticle, error)
 }
 
 // TagStore stores a user's tags and which of their subscriptions have them.

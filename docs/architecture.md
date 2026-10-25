@@ -213,7 +213,7 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /tags/{id}/rename` | yes | `tagRenameHandler` | Renames the tag; 303 to it (422 as for creating) |
 | `POST /tags/{id}/delete` | yes | `tagDeleteHandler` | Deletes the tag (cascade); 303 to `/tags` |
 | `GET /timelines` | yes | `timelinesHandler` | Timelines: the user's custom timelines with their descriptions and Edit links, and a New timeline button |
-| `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
+| `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?preset=starred` names it Starred and shows only starred articles; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
 | `POST /timelines` | yes | `timelineCreateHandler` | Makes a timeline; 303 to it (422 for an invalid form or over 20 timelines; 400 for a `show` other than `all` or `some`) |
 | `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's or it's their Home row |
 | `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
@@ -315,7 +315,7 @@ emails   (the outbox: no foreign keys)
   and not displayed yet.
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
   A subscription's `title` is the user's name for the feed; `''` uses the feed's own
-  title. Per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`) select it in
+  title. Per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`, `ListStarred`) select it in
   place of `feeds.title` (`subscriptionTitle`, `qualifiedFeedColumnsTitled`).
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
@@ -323,7 +323,8 @@ emails   (the outbox: no foreign keys)
 - **`stars`**: `(user_id, article_id)` with `starred_at`; an article a user starred
   ("this is good"). Like `saves`, every copy of the article (same `canonical_url`)
   counts as starred, matched at query time (`StarRepository`, behind the server's
-  `StarStore`).
+  `StarStore`). `ListStarred` walks `stars_user_starred_at_idx` for starred-only
+  timelines.
 - **`tags`** and **`subscription_tags`**: a user's labels (`name`, `citext`: trimmed,
   inner spaces collapsed, unique per user ignoring case) and the subscriptions that
   carry them, several per subscription. Composite foreign keys (`(user_id, feed_id)` to
@@ -345,7 +346,7 @@ emails   (the outbox: no foreign keys)
   both is stored once, as excluded. `TimelineRepository` (behind the server's
   `TimelineStore`) creates, reads, lists, updates and deletes custom timelines, never
   the Home row; `MaxTimelines` caps a user at 20, checked in the insert. So far only
-  `all_feeds` and the sources are used; nothing creates Home rows yet (#362).
+  `all_feeds`, `starred_only` and the sources are used; nothing creates Home rows yet (#362).
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,

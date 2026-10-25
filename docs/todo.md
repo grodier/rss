@@ -12,8 +12,6 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-4. **Wave 4**, after #356:
-   1. #354 OPML folders to tags, and export by tag (after #352).
 5. **Wave 5:**
    1. #360 Keyword filters.
    2. #363 Share a timeline.

@@ -42,11 +42,17 @@ func opmlWithFeeds(n int) string {
 }
 
 // multipartBody returns a multipart form body with a "file" part holding
-// content as filename, or no file part when filename is "".
-func multipartBody(t *testing.T, filename, content string) (body *bytes.Buffer, contentType string) {
+// content as filename, or no file part when filename is "", after fields
+// given as name, value pairs.
+func multipartBody(t *testing.T, filename, content string, fields ...string) (body *bytes.Buffer, contentType string) {
 	t.Helper()
 	body = &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
+	for i := 0; i+1 < len(fields); i += 2 {
+		if err := mw.WriteField(fields[i], fields[i+1]); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if filename != "" {
 		fw, err := mw.CreateFormFile("file", filename)
 		if err != nil {
@@ -73,9 +79,16 @@ func withSession(req *http.Request, sess rss.Session) *http.Request {
 	return req.WithContext(ctx)
 }
 
+// postImport posts an import form with filename and content, choosing to
+// turn folders into tags; postImportFolders chooses folders.
 func postImport(t *testing.T, s *Server, filename, content string) *httptest.ResponseRecorder {
 	t.Helper()
-	body, contentType := multipartBody(t, filename, content)
+	return postImportFolders(t, s, filename, content, "tags")
+}
+
+func postImportFolders(t *testing.T, s *Server, filename, content, folders string) *httptest.ResponseRecorder {
+	t.Helper()
+	body, contentType := multipartBody(t, filename, content, "folders", folders)
 	req := httptest.NewRequest(http.MethodPost, "/settings/import", body)
 	req.Header.Set("Content-Type", contentType)
 	rr := httptest.NewRecorder()
@@ -110,11 +123,41 @@ func TestSettingsImportForm(t *testing.T) {
 			t.Errorf("Create(%q, %q), want (%q, %q)", gotUser, gotName, settingsSession.User.ID, "feeds.opml")
 		}
 		want := []rss.ImportFeed{
-			{URL: "https://a.example/feed.xml", Title: "A blog"},
+			{URL: "https://a.example/feed.xml", Title: "A blog", Tags: []string{"Tech"}},
 			{URL: "https://b.example/rss"},
 		}
 		if !reflect.DeepEqual(gotFeeds, want) {
 			t.Errorf("feeds = %+v, want %+v", gotFeeds, want)
+		}
+	})
+
+	t.Run("folders ignored", func(t *testing.T) {
+		for _, folders := range []string{"ignore", ""} {
+			var gotFeeds []rss.ImportFeed
+			store := &fakeImportStore{createFn: func(_ context.Context, _, _ string, feeds []rss.ImportFeed) (string, error) {
+				gotFeeds = feeds
+				return testImportID, nil
+			}}
+			rr := postImportFolders(t, importServer(t, store), "feeds.opml", importOPML, folders)
+
+			assertRedirect(t, rr, "/settings/imports/"+testImportID)
+			want := []rss.ImportFeed{
+				{URL: "https://a.example/feed.xml", Title: "A blog"},
+				{URL: "https://b.example/rss"},
+			}
+			if !reflect.DeepEqual(gotFeeds, want) {
+				t.Errorf("folders=%q: feeds = %+v, want %+v", folders, gotFeeds, want)
+			}
+		}
+	})
+
+	t.Run("an error keeps the folders choice", func(t *testing.T) {
+		for folders, checked := range map[string]string{"tags": `value="tags" checked`, "ignore": `value="ignore" checked`} {
+			rr := postImportFolders(t, importServer(t, noCreate(t)), "", "", folders)
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+			}
+			assertBodyContains(t, rr.Body.String(), checked)
 		}
 	})
 
@@ -243,6 +286,31 @@ func TestSettingsImportForm(t *testing.T) {
 	})
 }
 
+func TestImportTags(t *testing.T) {
+	long := strings.Repeat("é", 49) + " " + strings.Repeat("x", 10)
+	tests := []struct {
+		name    string
+		folders []string
+		want    []string
+	}{
+		{"none", nil, nil},
+		{"kept in order", []string{"Tech", "AI"}, []string{"Tech", "AI"}},
+		{"commas become spaces", []string{"News, Politics", ",,"}, []string{"News Politics"}},
+		{"whitespace collapsed", []string{"  Deep \t  learning\n"}, []string{"Deep learning"}},
+		{"cut to 50 runes", []string{strings.Repeat("é", 60)}, []string{strings.Repeat("é", 50)}},
+		{"no trailing space after the cut", []string{long}, []string{strings.Repeat("é", 49)}},
+		{"empty names dropped", []string{"", "   ", "Tech"}, []string{"Tech"}},
+		{"repeats dropped ignoring case", []string{"Tech", "tech", "TECH ", "AI"}, []string{"Tech", "AI"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := importTags(tt.folders); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("importTags(%q) = %q, want %q", tt.folders, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSettingsImportHandler(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	var gotUser string
@@ -270,7 +338,8 @@ func TestSettingsImportHandler(t *testing.T) {
 		"<h1>Import subscriptions</h1>",
 		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">`,
 		`<input type="file" id="file" name="file" required`,
-		"Folders aren't kept: every feed goes into your timeline.",
+		`<input type="radio" name="folders" value="tags" checked> Turn each folder into a tag`,
+		`<input type="radio" name="folders" value="ignore"> Ignore folders`,
 		`<a class="rail-account" href="/settings" aria-current="page">`,
 		"Recent imports",
 		`href="/settings/imports/imp-running"`,

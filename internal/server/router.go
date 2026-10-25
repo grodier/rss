@@ -100,6 +100,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/settings/email", s.settingsEmailFormHandler)
 			r.Post("/settings/log-out-others", s.logOutOthersHandler)
 			r.Post("/settings/debug", s.settingsDebugFormHandler)
+			r.Get("/settings/export", s.settingsExportHandler)
 			r.Get("/settings/subscriptions.opml", s.exportOPMLHandler)
 			r.Get("/settings/import", s.settingsImportHandler)
 			r.Post("/settings/import", s.settingsImportFormHandler)

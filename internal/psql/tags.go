@@ -254,6 +254,71 @@ func (r *TagRepository) SetForSubscription(ctx context.Context, userID, feedID s
 	return tx.Commit()
 }
 
+// AddToSubscription adds the tags named names (normalized) to userID's
+// subscription to feedID, creating those the user doesn't have, skipping
+// new ones past MaxTags. Tags already on it stay. rss.ErrNoRecord if the
+// user doesn't subscribe to feedID.
+func (r *TagRepository) AddToSubscription(ctx context.Context, userID, feedID string, names []string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	var exists bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM subscriptions WHERE user_id = $1 AND feed_id = $2)`,
+		userID, feedID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return rss.ErrNoRecord
+	}
+
+	// New names are created in order while the user has room, so the first
+	// ones win when there isn't room for all. Concurrent imports can
+	// overshoot MaxTags slightly; that's accepted, as in Create. DO UPDATE
+	// (a no-op) rather than DO NOTHING, so RETURNING also gives the IDs of
+	// the tags that already exist, including one a concurrent import just
+	// created.
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM tags WHERE user_id = $1`, userID).Scan(&count); err != nil {
+		return err
+	}
+	var ids []string
+	for _, name := range names {
+		var id string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM tags WHERE user_id = $1 AND name = $2`, userID, name).Scan(&id)
+		switch {
+		case err == nil:
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		case count >= MaxTags:
+			continue
+		default:
+			stmt := `INSERT INTO tags (user_id, name) VALUES ($1, $2)
+				ON CONFLICT (user_id, name) DO UPDATE SET name = tags.name
+				RETURNING id`
+			if err := tx.QueryRowContext(ctx, stmt, userID, name).Scan(&id); err != nil {
+				return tagError(err)
+			}
+			count++
+		}
+		ids = append(ids, id)
+	}
+
+	stmt := `INSERT INTO subscription_tags (user_id, feed_id, tag_id)
+		SELECT $1, $2, tag_id
+		FROM unnest($3::uuid[]) AS tag_id
+		ON CONFLICT DO NOTHING`
+	if _, err := tx.ExecContext(ctx, stmt, userID, feedID, pq.Array(ids)); err != nil {
+		return tagError(err)
+	}
+
+	return tx.Commit()
+}
+
 // tagError maps a unique violation to rss.ErrDuplicateTag and a foreign key
 // violation to rss.ErrNoRecord.
 func tagError(err error) error {

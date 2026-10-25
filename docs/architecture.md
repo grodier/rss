@@ -46,7 +46,8 @@ run seven long-lived components, all stopped by one context:
   `psql.DiscoveryRepository`.
 - The **import runner** (`internal/importer`) claims pending rows from the `import_feeds`
   table (one per feed of an uploaded OPML file), finds the feed by URL or discovers and
-  saves it as the lookup runner does, and subscribes the import's user to it.
+  saves it as the lookup runner does, subscribes the import's user to it, and adds the
+  row's tags (its folders) to the subscription with `psql.TagRepository`.
 - The **site icon runner** (`internal/siteicon`) claims sites whose icon check is due
   from the `sites` table, fetches each site's home page, downloads the icons it declares
   (or `/apple-touch-icon.png` and `/favicon.ico`) until one is usable, and stores it in
@@ -103,8 +104,8 @@ Mailpit (`compose.yml`) and in production against Resend.
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `discovery` (input parsing; `InspectPage` and `SiteDiscoverer` for the debug inspectors), `ingest` (errors; `Articles` and `ExternalID` for the feed inspector), `feedparse` and `fetch` (the feed inspector), `enrich` (`PageOf` and `IsHTML` for the page inspector), `opml` (import uploads), `psql` (interface checks only) |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
-| `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe | `discovery`, `lookup` (`ToSave`), `rss` |
-| `internal/opml` | Read the feeds listed in an OPML file (`Parse`), folders flattened | — |
+| `internal/importer` | OPML import queue workers: find or discover each feed, then subscribe and tag | `discovery`, `lookup` (`ToSave`), `rss` |
+| `internal/opml` | Read the feeds listed in an OPML file (`Parse`), with the folders each is in | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/siteicon` | Site icon workers: find a site's icon on its home page, check its type and size, store it | `discovery`, `fetch`, `rss` |
 | `internal/enrich` | Article enrichment workers: fetch an article's web page and store its image, title and description (`PageOf`, shared with the page inspector) | `discovery`, `fetch`, `ingest` (`ExcerptLen`, `RetryAfter`), `rss` |
@@ -237,7 +238,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /debug/feeds/{id}/inspect` | yes | `feedInspectHandler` | Debug mode only (`requireDebug`): fetch the feed live and show the response, its fields and what a refresh would do with each item; saves nothing |
 | `POST /debug/articles/{id}/inspect-page` | yes | `articlePageInspectHandler` | Debug mode only: fetch the article's web page live and show its tags, its JSON-LD and what enrichment would store; 404 for an article without a URL; saves nothing |
 | `POST /debug/sites/{id}/discover` | yes | `siteDiscoverHandler` | Debug mode only: fetch the site's home page and run discovery live, and show its tags, every candidate's outcome, and the feeds found next to the stored ones; saves nothing |
-| `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML |
+| `GET /settings/export` | yes | `settingsExportHandler` | Choose whether tags become folders, then download |
+| `GET /settings/subscriptions.opml` | yes | `exportOPMLHandler` | Download your subscriptions as OPML: a folder per tag, or flat with `?tags=ignore` |
 | `GET, POST /settings/import` | yes | `settingsImportHandler`, `settingsImportFormHandler` | Upload an OPML file to import (multipart), and your last 5 imports; 303 to the import's results |
 | `GET /settings/imports/{id}` | yes | `importHandler` | An import's progress (refreshes itself every 2 s), then its results; 404 for another user's |
 | `GET, POST /settings/delete` | yes | `settingsDeleteHandler`, `settingsDeleteFormHandler` | Delete your account (with your password); emails a notice, logs out, flash on `/` |
@@ -355,7 +357,7 @@ emails   (the outbox: no foreign keys)
 - **`imports`** and **`import_feeds`**: an OPML file a user uploaded (`filename`) and its
   feeds, keyed by `(import_id, position)` in file order, with the outline's `url` and
   `title`, and `tags`, the names of the folders the outline is in, to apply as tags on
-  subscribe (not written or read yet). `import_feeds` is also the import queue: `status` pending → running →
+  subscribe (empty when the user chose to ignore folders). `import_feeds` is also the import queue: `status` pending → running →
   subscribed, already_subscribed or failed, with `failure` (`invalid_url`,
   `unreachable`, `not_feed`) and `error` (internal, never shown); `feed_id` is the feed
   subscribed to, once known.

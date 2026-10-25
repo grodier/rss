@@ -28,6 +28,7 @@ const (
 )
 
 type importForm struct {
+	FoldersAsTags bool // the "folders" checkbox: make each folder a tag on its feeds
 	validator.Validator
 }
 
@@ -54,7 +55,7 @@ func (s *Server) renderSettingsImport(w http.ResponseWriter, r *http.Request, st
 }
 
 func (s *Server) settingsImportHandler(w http.ResponseWriter, r *http.Request) {
-	s.renderSettingsImport(w, r, http.StatusOK, importForm{})
+	s.renderSettingsImport(w, r, http.StatusOK, importForm{FoldersAsTags: true})
 }
 
 // settingsImportFormHandler reads an uploaded OPML file, queues an import of
@@ -78,6 +79,7 @@ func (s *Server) settingsImportFormHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
+	form.FoldersAsTags = r.PostFormValue("folders") == "tags"
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -120,6 +122,9 @@ func (s *Server) settingsImportFormHandler(w http.ResponseWriter, r *http.Reques
 	feeds := make([]rss.ImportFeed, len(outlines))
 	for i, o := range outlines {
 		feeds[i] = rss.ImportFeed{URL: o.URL, Title: o.Title}
+		if form.FoldersAsTags {
+			feeds[i].Tags = importTags(o.Folders)
+		}
 	}
 	id, err := s.services.ImportService.Create(r.Context(), userID, importFilename(header.Filename), feeds)
 	if err != nil {
@@ -127,6 +132,28 @@ func (s *Server) settingsImportFormHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	http.Redirect(w, r, "/settings/imports/"+id, http.StatusSeeOther)
+}
+
+// importTags turns an outline's folder names into tag names: commas, which
+// separate typed tags, become spaces; names are normalized like typed ones
+// and cut to tagNameMaxChars; empty names and repeats (ignoring case) are
+// dropped. nil when none are left.
+func importTags(folders []string) []string {
+	var tags []string
+	seen := map[string]bool{}
+	for _, name := range folders {
+		name = rss.TagName(strings.ReplaceAll(name, ",", " "))
+		if utf8.RuneCountInString(name) > tagNameMaxChars {
+			name = rss.TagName(string([]rune(name)[:tagNameMaxChars]))
+		}
+		key := strings.ToLower(name)
+		if name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		tags = append(tags, name)
+	}
+	return tags
 }
 
 // importFilename is name without any directories (browsers on Windows may

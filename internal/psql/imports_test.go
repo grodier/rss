@@ -56,9 +56,9 @@ func TestImportRepositoryCreateAndGet(t *testing.T) {
 	userID := newTestUser(t, db)
 
 	id, err := repo.Create(t.Context(), userID, "my feeds.opml", []rss.ImportFeed{
-		{URL: "https://a.example.com/feed", Title: "A", Position: 7},
+		{URL: "https://a.example.com/feed", Title: "A", Position: 7, Tags: []string{"Tech", `Tom's "AI" {café}`}},
 		{URL: "https://b.example.com/feed", Title: ""},
-		{URL: "https://c.example.com/feed", Title: "C"},
+		{URL: "https://c.example.com/feed", Title: "C", Tags: []string{"News"}},
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -72,9 +72,9 @@ func TestImportRepositoryCreateAndGet(t *testing.T) {
 		t.Errorf("import = %+v; want id %s, user %s, filename and created_at", imp, id, userID)
 	}
 	want := []rss.ImportFeed{
-		{ImportID: id, UserID: userID, Position: 0, URL: "https://a.example.com/feed", Title: "A", Status: rss.ImportPending},
+		{ImportID: id, UserID: userID, Position: 0, URL: "https://a.example.com/feed", Title: "A", Tags: []string{"Tech", `Tom's "AI" {café}`}, Status: rss.ImportPending},
 		{ImportID: id, UserID: userID, Position: 1, URL: "https://b.example.com/feed", Title: "", Status: rss.ImportPending},
-		{ImportID: id, UserID: userID, Position: 2, URL: "https://c.example.com/feed", Title: "C", Status: rss.ImportPending},
+		{ImportID: id, UserID: userID, Position: 2, URL: "https://c.example.com/feed", Title: "C", Tags: []string{"News"}, Status: rss.ImportPending},
 	}
 	if !reflect.DeepEqual(feeds, want) {
 		t.Errorf("feeds = %+v; want %+v", feeds, want)
@@ -147,6 +147,32 @@ func TestImportRepositoryClaimNext(t *testing.T) {
 		}
 		if !startedAt.Valid {
 			t.Error("started_at not set")
+		}
+	})
+
+	t.Run("returns the tags", func(t *testing.T) {
+		userID := newTestUser(t, db)
+		id, err := repo.Create(t.Context(), userID, "tags.opml", []rss.ImportFeed{
+			{URL: "https://t0.example.com/feed", Tags: []string{"Tech", "AI"}},
+			{URL: "https://t1.example.com/feed"},
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		setImportCreatedAt(t, db, id, "1999-12-31")
+
+		for _, want := range [][]string{{"Tech", "AI"}, nil} {
+			f, err := repo.ClaimNext(t.Context())
+			if err != nil {
+				t.Fatalf("ClaimNext: %v", err)
+			}
+			if f.ImportID != id {
+				unclaim(t, f)
+				t.Fatalf("claimed %s/%d; want import %s", f.ImportID, f.Position, id)
+			}
+			if !reflect.DeepEqual(f.Tags, want) {
+				t.Errorf("position %d: tags = %q; want %q", f.Position, f.Tags, want)
+			}
 		}
 	})
 

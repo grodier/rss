@@ -71,6 +71,7 @@ func (app *Application) Run() error {
 			Store:         psql.NewImportRepository(db),
 			Feeds:         psql.NewFeedRepository(db),
 			Subscriptions: psql.NewSubscriptionRepository(db),
+			Tags:          psql.NewTagRepository(db),
 			Saver:         psql.NewDiscoveryRepository(db),
 			Discoverer:    discoverer,
 			Logger:        app.logger,

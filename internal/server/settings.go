@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/xml"
 	"errors"
 	"net/http"
@@ -268,8 +269,8 @@ type opmlHead struct {
 
 type opmlOutline struct {
 	Type    string `xml:"type,attr"`              // "rss"
-	Text    string `xml:"text,attr"`              // feed title, else its URL
-	Title   string `xml:"title,attr,omitempty"`   // feed title
+	Text    string `xml:"text,attr"`              // the user's name for the feed, else its title, else its URL
+	Title   string `xml:"title,attr,omitempty"`   // the user's name for the feed, else its title
 	XMLURL  string `xml:"xmlUrl,attr"`            // Feed.Url
 	HTMLURL string `xml:"htmlUrl,attr,omitempty"` // Feed.SiteUrl, else Site.URL
 }
@@ -292,8 +293,8 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	for _, sub := range subs {
 		o := opmlOutline{
 			Type:    "rss",
-			Text:    sub.Feed.Title,
-			Title:   sub.Feed.Title,
+			Text:    cmp.Or(sub.Title, sub.Feed.Title),
+			Title:   cmp.Or(sub.Title, sub.Feed.Title),
 			XMLURL:  sub.Feed.Url,
 			HTMLURL: sub.Feed.SiteUrl,
 		}

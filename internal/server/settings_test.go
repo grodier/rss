@@ -540,6 +540,11 @@ func TestExportOPML(t *testing.T) {
 				Feed: rss.Feed{ID: "feed-2", Url: "https://b.example/rss?x=1&y=2", SiteUrl: "https://b.example/blog", Title: title, GoneAt: time.Now()},
 				Site: rss.Site{URL: "https://b.example/"},
 			},
+			{
+				Feed:  rss.Feed{ID: "feed-3", Url: "https://c.example/feed", Title: "C's own title"},
+				Site:  rss.Site{URL: "https://c.example/"},
+				Title: "My name for C",
+			},
 		}
 		var gotUserID string
 		rr := getOPML(t, func(ctx context.Context, userID string) ([]rss.Subscription, error) {
@@ -554,6 +559,7 @@ func TestExportOPML(t *testing.T) {
 		want := []opmlOutline{
 			{Type: "rss", Text: "https://a.example/feed.xml", XMLURL: "https://a.example/feed.xml", HTMLURL: "https://a.example/"},
 			{Type: "rss", Text: title, Title: title, XMLURL: "https://b.example/rss?x=1&y=2", HTMLURL: "https://b.example/blog"},
+			{Type: "rss", Text: "My name for C", Title: "My name for C", XMLURL: "https://c.example/feed", HTMLURL: "https://c.example/"},
 		}
 		if len(doc.Body) != len(want) {
 			t.Fatalf("got %d outlines, want %d: %+v", len(doc.Body), len(want), doc.Body)

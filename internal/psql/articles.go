@@ -124,7 +124,8 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 // Copies of one article (same non-empty canonical_url) in several subscribed
 // feeds are one entry: the earliest copy to arrive (smallest timeline_at,
 // then ID), at that copy's position, with AlsoIn listing the other feeds
-// that have a copy, ordered by title.
+// that have a copy, ordered by title. Feed titles are the user's names for
+// their subscriptions where they've set one.
 //
 // Summary and Content are left empty.
 func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
@@ -141,9 +142,10 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 			FROM mine
 			ORDER BY dedup_key, timeline_at, id
 		)
-		SELECT ` + qualifiedArticleColumns + `, ` + qualifiedFeedColumns + `
+		SELECT ` + qualifiedArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `
 		FROM firsts a
 		JOIN feeds f ON f.id = a.feed_id
+		JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = a.feed_id
 		WHERE ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
@@ -186,7 +188,8 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 }
 
 // fillAlsoIn sets AlsoIn on each item with a canonical URL to the other
-// feeds userID subscribes to that have a copy of it, ordered by title.
+// feeds userID subscribes to that have a copy of it, ordered by title (the
+// user's name for the feed where they've set one).
 func (r *ArticleRepository) fillAlsoIn(ctx context.Context, userID string, items []rss.ArticleWithFeed) error {
 	byURL := map[string]*rss.ArticleWithFeed{}
 	var urls []string
@@ -200,12 +203,12 @@ func (r *ArticleRepository) fillAlsoIn(ctx context.Context, userID string, items
 		return nil
 	}
 
-	stmt := `SELECT a.canonical_url, ` + qualifiedFeedColumns + `
+	stmt := `SELECT a.canonical_url, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `
 		FROM subscriptions sub
 		JOIN articles a ON a.feed_id = sub.feed_id
 		JOIN feeds f ON f.id = a.feed_id
 		WHERE sub.user_id = $1 AND a.canonical_url = ANY($2)
-		ORDER BY lower(COALESCE(NULLIF(f.title, ''), f.url)), f.id`
+		ORDER BY lower(COALESCE(NULLIF(sub.title, ''), NULLIF(f.title, ''), f.url)), f.id`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID, pq.Array(urls))
 	if err != nil {

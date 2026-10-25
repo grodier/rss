@@ -387,3 +387,86 @@ func TestListSavedSearch(t *testing.T) {
 		}
 	})
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListSavedSubscriptionNames(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSaveRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	exec := func(t *testing.T, stmt string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(stmt, args...); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	// renamed is from a feed the user subscribes to and has named; left is
+	// from a feed they no longer subscribe to.
+	renamed, left := newTestArticles(t, db, 1)[0], newTestArticles(t, db, 1)[0]
+	feedOf := func(t *testing.T, articleID string) string {
+		t.Helper()
+		var feedID string
+		if err := db.QueryRow(`SELECT feed_id FROM articles WHERE id = $1`, articleID).Scan(&feedID); err != nil {
+			t.Fatalf("select feed_id: %v", err)
+		}
+		return feedID
+	}
+	exec(t, `UPDATE feeds SET title = 'Renamed Feed Own Title' WHERE id = $1`, feedOf(t, renamed))
+	exec(t, `UPDATE feeds SET title = 'Left Feed Title' WHERE id = $1`, feedOf(t, left))
+
+	user := newTestUser(t, db)
+	if err := subs.Subscribe(ctx, user, feedOf(t, renamed)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if err := subs.Rename(ctx, user, feedOf(t, renamed), "Pro Football Talk"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	exec(t, `INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, user, renamed, base.Add(time.Hour))
+	exec(t, `INSERT INTO saves (user_id, article_id, saved_at) VALUES ($1, $2, $3)`, user, left, base)
+
+	list := func(t *testing.T, q string) []rss.SavedArticle {
+		t.Helper()
+		items, err := repo.ListSaved(ctx, user, q, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListSaved(%q): %v", q, err)
+		}
+		return items
+	}
+
+	t.Run("feed titles", func(t *testing.T) {
+		items := list(t, "")
+		if len(items) != 2 {
+			t.Fatalf("got %d items, want 2", len(items))
+		}
+		want := map[string]string{renamed: "Pro Football Talk", left: "Left Feed Title"}
+		for _, item := range items {
+			if got := item.Feed.Title; got != want[item.Article.ID] {
+				t.Errorf("article %s: Feed.Title = %q, want %q", item.Article.ID, got, want[item.Article.ID])
+			}
+		}
+	})
+
+	tests := []struct {
+		name string
+		q    string
+		want []string
+	}{
+		{"the name", "football", []string{renamed}},
+		{"the renamed feed's own title", "own title", []string{renamed}},
+		{"an unsubscribed feed's title", "left feed", []string{left}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, item := range list(t, tt.q) {
+				got = append(got, item.Article.ID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ListSaved(%q) = %v, want %v", tt.q, got, tt.want)
+			}
+		})
+	}
+}

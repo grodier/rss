@@ -25,6 +25,25 @@ var (
 	qualifiedFeedColumns = "f." + strings.Join(feedColumnNames, ", f.")
 )
 
+// subscriptionTitle is the reader's name for the feed, else its title;
+// for queries that join subscriptions as sub.
+const subscriptionTitle = `COALESCE(NULLIF(sub.title, ''), f.title)`
+
+// qualifiedFeedColumnsTitled is qualifiedFeedColumns with f.title replaced
+// by title, an SQL expression: for queries that show a reader's name for
+// the feed in its place.
+func qualifiedFeedColumnsTitled(title string) string {
+	cols := make([]string, len(feedColumnNames))
+	for i, name := range feedColumnNames {
+		if name == "title" {
+			cols[i] = title
+		} else {
+			cols[i] = "f." + name
+		}
+	}
+	return strings.Join(cols, ", ")
+}
+
 // postsPerWeek is feed $1's articles published in the last 30 days, per
 // week; served by articles_feed_sort_idx.
 const postsPerWeek = `(SELECT count(*) * 7.0 / 30 FROM articles

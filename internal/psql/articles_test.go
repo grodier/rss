@@ -975,6 +975,70 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 	})
 }
 
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineSubscriptionNames(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	// Both users subscribe to A and B; only the renamer names them. A and B
+	// carry copies of one post, so each entry has the other in AlsoIn.
+	feedA, feedB := newTestFeed(t, db), newTestFeed(t, db)
+	renamer, other := newTestUser(t, db), newTestUser(t, db)
+	for _, user := range []string{renamer, other} {
+		for _, f := range []rss.Feed{feedA, feedB} {
+			if err := subs.Subscribe(ctx, user, f.ID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+	}
+	for feedID, name := range map[string]string{feedA.ID: "Name for A", feedB.ID: "Name for B"} {
+		if err := subs.Rename(ctx, renamer, feedID, name); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+	}
+
+	post := fmt.Sprintf("https://example.com/post-%d", time.Now().UnixNano())
+	for _, f := range []rss.Feed{feedA, feedB} {
+		batch := []rss.Article{{ExternalID: "shared", CanonicalURL: post}, {ExternalID: "own"}}
+		if _, err := feeds.SaveFetch(ctx, f, batch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+	}
+
+	names := map[string]map[string]string{
+		renamer: {feedA.ID: "Name for A", feedB.ID: "Name for B"},
+		other:   {feedA.ID: "Old title", feedB.ID: "Old title"},
+	}
+	for user, want := range names {
+		items, err := articles.ListTimeline(ctx, user, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		// Two "own" entries and one collapsed "shared" entry.
+		if len(items) != 3 {
+			t.Fatalf("got %d entries, want 3", len(items))
+		}
+		var alsoIn int
+		for _, item := range items {
+			if got := item.Feed.Title; got != want[item.Feed.ID] {
+				t.Errorf("article %s: Feed.Title = %q, want %q", item.Article.ExternalID, got, want[item.Feed.ID])
+			}
+			for _, f := range item.AlsoIn {
+				alsoIn++
+				if f.Title != want[f.ID] {
+					t.Errorf("AlsoIn feed %s: Title = %q, want %q", f.ID, f.Title, want[f.ID])
+				}
+			}
+		}
+		if alsoIn != 1 {
+			t.Errorf("got %d AlsoIn feeds, want 1", alsoIn)
+		}
+	}
+}
+
 // enrichJobs returns the priority of each of feedID's articles' enrichment
 // jobs, by external ID.
 func enrichJobs(t *testing.T, db *sql.DB, feedID string) map[string]int {

@@ -158,8 +158,12 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.fillDebug(r, rows)
 
-	subscribed, err := s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, []string{feed.ID})
-	if err != nil {
+	var subscribed bool
+	sub, err := s.services.SubscriptionService.Get(r.Context(), userID, feed.ID)
+	switch {
+	case err == nil:
+		subscribed = true
+	case !errors.Is(err, rss.ErrNoRecord):
 		s.serverErrorHTML(w, r, err)
 		return
 	}
@@ -179,6 +183,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Nav            navData
 		Feed           rss.Feed
+		Name           string // the user's name for the feed; "" if none or not subscribed
 		Site           rss.Site
 		Icons          map[string]string
 		Rows           []articleRow
@@ -191,12 +196,13 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Nav:            s.nav(r, ""),
 		Feed:           feed,
+		Name:           sub.Title,
 		Site:           site,
 		Icons:          s.pageIcons(r, []string{site.ID}),
 		Rows:           rows,
 		Before:         !before.IsZero(),
 		Next:           next,
-		Subscribed:     subscribed[feed.ID],
+		Subscribed:     subscribed,
 		RefreshPending: pending,
 		Flash:          flash,
 		Debug:          debug,

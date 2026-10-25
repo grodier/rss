@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>rss - {{or .Feed.Title .Feed.Url}}</title>
+  <title>rss - {{or .Name .Feed.Title .Feed.Url}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   <script src="{{asset "js/app.js"}}" defer></script>
 </head>
@@ -26,17 +26,17 @@
             <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
             <span class="chip">Subscribed ✓</span>
             <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds/{{.Feed.ID}}">Edit</a>
-            <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Feed.Title .Feed.Url}}">Unsubscribe</button>
+            <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Name .Feed.Title .Feed.Url}}">Unsubscribe</button>
           </form>
           {{else if .Feed.GoneAt.IsZero}}
           <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">
             <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
-            <button class="btn-primary btn-sm" type="submit" aria-label="Subscribe to {{or .Feed.Title .Feed.Url}}">Subscribe</button>
+            <button class="btn-primary btn-sm" type="submit" aria-label="Subscribe to {{or .Name .Feed.Title .Feed.Url}}">Subscribe</button>
           </form>
           {{end}}
         </div>
-        <h1>{{or .Feed.Title .Feed.Url}}</h1>
-        <p class="profile-sub">From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></p>
+        <h1>{{or .Name .Feed.Title .Feed.Url}}</h1>
+        <p class="profile-sub">From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a>{{if .Name}} · Feed title “{{or .Feed.Title .Feed.Url}}”{{end}}</p>
         {{with .Feed.Description}}
         <p class="profile-desc">{{.}}</p>
         {{end}}

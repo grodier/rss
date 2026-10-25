@@ -13,16 +13,14 @@ wave can be built in parallel once the waves before them have merged; merge one 
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
 3. **Wave 3:**
-   1. #343 The reader's names everywhere. Before #356: both change
-      `ListTimeline`, and this one is smaller.
-   2. #356 Custom timelines as tabs on Home (after #351; stops for the owner's tab-row
+   1. #356 Custom timelines as tabs on Home (after #351; stops for the owner's tab-row
       pick).
-   3. #352 Tags on Edit subscription and My feeds (after #351).
+   2. #352 Tags on Edit subscription and My feeds (after #351).
 4. **Wave 4**, after #356:
    1. #358 Starred-only timelines (after #349).
    2. #362 Mute on Home (after #352).
    3. #359 Quiet posters and audio or video (after #350).
-   4. #354 OPML folders to tags, and export by tag (after #352 and #343).
+   4. #354 OPML folders to tags, and export by tag (after #352).
 5. **Wave 5:**
    1. #360 Keyword filters.
    2. #363 Share a timeline.
@@ -31,8 +29,7 @@ time, in the order listed, and each branch merges the latest `main` before its P
 
 Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
 (#351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
-(#356, #358, #359, #360); `subscription_edit.html` (#352, #362); `ListTimeline`
-(#343, #356).
+(#356, #358, #359, #360); `subscription_edit.html` (#352, #362).
 
 Then:
 

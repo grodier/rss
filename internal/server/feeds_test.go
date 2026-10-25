@@ -1498,12 +1498,14 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var gotUser string
-			var gotIDs []string
+			var gotUser, gotFeed string
 			s := subscriptionServer(t, tt.feed, nil, &fakeSubscriptionStore{
-				subscribedFeedIDsFn: func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {
-					gotUser, gotIDs = userID, feedIDs
-					return map[string]bool{testFeedID: tt.subscribed}, nil
+				getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+					gotUser, gotFeed = userID, feedID
+					if !tt.subscribed {
+						return rss.Subscription{}, rss.ErrNoRecord
+					}
+					return rss.Subscription{}, nil
 				},
 			})
 			s.services.ArticleService = &fakeArticleStore{}
@@ -1518,8 +1520,8 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 			}
-			if gotUser != "user-1" || len(gotIDs) != 1 || gotIDs[0] != testFeedID {
-				t.Errorf("SubscribedFeedIDs(%q, %v), want (user-1, [%s])", gotUser, gotIDs, testFeedID)
+			if gotUser != "user-1" || gotFeed != testFeedID {
+				t.Errorf("Get(%q, %q), want (user-1, %s)", gotUser, gotFeed, testFeedID)
 			}
 			body := rr.Body.String()
 			for _, w := range tt.want {
@@ -1536,11 +1538,11 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 	}
 }
 
-func TestFeedHandlerSubscribedFeedIDsError(t *testing.T) {
+func TestFeedHandlerSubscriptionError(t *testing.T) {
 	s := feedServer(t, nil)
 	s.services.SubscriptionService = &fakeSubscriptionStore{
-		subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-			return nil, errors.New("db down")
+		getFn: func(context.Context, string, string) (rss.Subscription, error) {
+			return rss.Subscription{}, errors.New("db down")
 		},
 	}
 
@@ -1548,6 +1550,65 @@ func TestFeedHandlerSubscribedFeedIDsError(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestFeedHandlerSubscriptionName(t *testing.T) {
+	const feedTitleLine = `· Feed title “Example Feed Title”`
+	tests := []struct {
+		name    string
+		get     func(context.Context, string, string) (rss.Subscription, error)
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "renamed",
+			get: func(context.Context, string, string) (rss.Subscription, error) {
+				return rss.Subscription{Title: "Pro Football Talk"}, nil
+			},
+			want: []string{
+				"<title>rss - Pro Football Talk</title>",
+				"<h1>Pro Football Talk</h1>",
+				`aria-label="Unsubscribe from Pro Football Talk"`,
+				`From <a href="/sites/` + testSiteID + `">Example Site</a> ` + feedTitleLine + `</p>`,
+			},
+			notWant: []string{"<h1>Example Feed Title</h1>"},
+		},
+		{
+			name: "subscribed without a name",
+			get: func(context.Context, string, string) (rss.Subscription, error) {
+				return rss.Subscription{}, nil
+			},
+			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Unsubscribe from Example Feed Title"`},
+			notWant: []string{"Feed title “"},
+		},
+		{
+			name: "not subscribed",
+			get: func(context.Context, string, string) (rss.Subscription, error) {
+				return rss.Subscription{}, rss.ErrNoRecord
+			},
+			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Subscribe to Example Feed Title"`},
+			notWant: []string{"Feed title “", "Unsubscribe"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := feedServer(t, nil)
+			s.services.SubscriptionService = &fakeSubscriptionStore{getFn: tt.get}
+
+			rr := serveFeed(t, s, testFeedID)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want...)
+			for _, w := range tt.notWant {
+				if strings.Contains(body, w) {
+					t.Errorf("body contains %q: %s", w, body)
+				}
+			}
+		})
 	}
 }
 

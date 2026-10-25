@@ -309,7 +309,8 @@ emails   (the outbox: no foreign keys)
   and not displayed yet.
 - **`subscriptions`** and **`reads`**: `(user_id, feed_id)` and `(user_id, article_id)`.
   A subscription's `title` is the user's name for the feed; `''` uses the feed's own
-  title (not written or read yet).
+  title. Per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`) select it in
+  place of `feeds.title` (`subscriptionTitle`, `qualifiedFeedColumnsTitled`).
 - **`saves`**: `(user_id, article_id)` with `saved_at`; an article a user saved to keep.
   Like `reads`, every copy of the article (same `canonical_url`) counts as saved, matched
   at query time.

@@ -37,8 +37,9 @@ func articleServer(t *testing.T, article rss.Article, articleErr, feedErr, siteE
 	article.ID = testArticleID
 	article.FeedID = testFeedID
 	return newTestServerWith(t, Services{
-		ReadService: &fakeReadStore{},
-		SaveService: &fakeSaveStore{},
+		ReadService:         &fakeReadStore{},
+		SaveService:         &fakeSaveStore{},
+		SubscriptionService: &fakeSubscriptionStore{},
 		ArticleService: &fakeArticleStore{getByIDFn: func(ctx context.Context, id string) (rss.Article, error) {
 			if articleErr != nil {
 				return rss.Article{}, articleErr
@@ -754,25 +755,29 @@ func TestArticleHandlerSiteIcon(t *testing.T) {
 func TestReadOnLabel(t *testing.T) {
 	example := rss.Site{Host: "example.com", Title: "Example Site"}
 	tests := []struct {
-		name string
-		url  string
-		site rss.Site
-		want string
+		name     string
+		url      string
+		site     rss.Site
+		feedName string
+		want     string
 	}{
-		{"same host", "https://example.com/a", example, "Example Site"},
-		{"www", "https://www.example.com/a", example, "Example Site"},
-		{"article on a subdomain", "https://blog.example.com/a", example, "Example Site"},
-		{"site on a subdomain", "https://ycombinator.com/a", rss.Site{Host: "news.ycombinator.com", Title: "Hacker News"}, "Hacker News"},
-		{"another site", "https://www.nytimes.com/2026/a.html", example, "nytimes.com"},
-		{"suffix that isn't a subdomain", "https://notexample.com/a", example, "notexample.com"},
-		{"uppercase host", "https://EXAMPLE.com/a", example, "Example Site"},
-		{"no title", "https://example.com/a", rss.Site{Host: "example.com"}, "example.com"},
-		{"not http", "mailto:x@example.org", example, "Example Site"},
+		{"same host", "https://example.com/a", example, "", "Example Site"},
+		{"name on the same site", "https://example.com/a", example, "My Name", "My Name"},
+		{"name with no article URL", "", example, "My Name", "My Name"},
+		{"name with an article on another site", "https://www.nytimes.com/a", example, "My Name", "nytimes.com"},
+		{"www", "https://www.example.com/a", example, "", "Example Site"},
+		{"article on a subdomain", "https://blog.example.com/a", example, "", "Example Site"},
+		{"site on a subdomain", "https://ycombinator.com/a", rss.Site{Host: "news.ycombinator.com", Title: "Hacker News"}, "", "Hacker News"},
+		{"another site", "https://www.nytimes.com/2026/a.html", example, "", "nytimes.com"},
+		{"suffix that isn't a subdomain", "https://notexample.com/a", example, "", "notexample.com"},
+		{"uppercase host", "https://EXAMPLE.com/a", example, "", "Example Site"},
+		{"no title", "https://example.com/a", rss.Site{Host: "example.com"}, "", "example.com"},
+		{"not http", "mailto:x@example.org", example, "", "Example Site"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := readOnLabel(rss.Article{URL: tt.url}, tt.site); got != tt.want {
-				t.Errorf("readOnLabel(%q) = %q, want %q", tt.url, got, tt.want)
+			if got := readOnLabel(rss.Article{URL: tt.url}, tt.site, tt.feedName); got != tt.want {
+				t.Errorf("readOnLabel(%q, %q) = %q, want %q", tt.url, tt.feedName, got, tt.want)
 			}
 		})
 	}
@@ -787,4 +792,75 @@ func TestArticleHandlerReadOnOtherSite(t *testing.T) {
 	rr := serveArticle(t, s, testArticleID)
 
 	assertBodyContains(t, rr.Body.String(), `Read on <span class="btn-label">nytimes.com</span> ↗`)
+}
+
+func TestArticleHandlerSubscriptionName(t *testing.T) {
+	article := rss.Article{Title: "A", URL: "https://example.com/a"}
+
+	t.Run("renamed", func(t *testing.T) {
+		s := articleServer(t, article, nil, nil, nil)
+		var gotUser, gotFeed string
+		s.services.SubscriptionService = &fakeSubscriptionStore{getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+			gotUser, gotFeed = userID, feedID
+			return rss.Subscription{Title: "Pro Football Talk"}, nil
+		}}
+
+		rr := serveArticleAs(t, s, "user-1", testArticleID)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if gotUser != "user-1" || gotFeed != testFeedID {
+			t.Errorf("Get(%q, %q), want (user-1, %s)", gotUser, gotFeed, testFeedID)
+		}
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			`<a href="/feeds/`+testFeedID+`">Pro Football Talk</a>`,
+			`title="Read on Pro Football Talk">Read on <span class="btn-label">Pro Football Talk</span> ↗`,
+		)
+		if strings.Contains(body, "Example Feed Title") {
+			t.Errorf("body contains the feed's own title: %s", body)
+		}
+	})
+
+	t.Run("subscribed without a name", func(t *testing.T) {
+		s := articleServer(t, article, nil, nil, nil)
+		s.services.SubscriptionService = &fakeSubscriptionStore{getFn: func(context.Context, string, string) (rss.Subscription, error) {
+			return rss.Subscription{}, nil
+		}}
+
+		body := serveArticle(t, s, testArticleID).Body.String()
+
+		assertBodyContains(t, body,
+			`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
+			`Read on <span class="btn-label">Example Site</span> ↗`,
+		)
+	})
+
+	t.Run("not subscribed", func(t *testing.T) {
+		s := articleServer(t, article, nil, nil, nil)
+
+		rr := serveArticle(t, s, testArticleID)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		assertBodyContains(t, rr.Body.String(),
+			`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
+			`Read on <span class="btn-label">Example Site</span> ↗`,
+		)
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := articleServer(t, article, nil, nil, nil)
+		s.services.SubscriptionService = &fakeSubscriptionStore{getFn: func(context.Context, string, string) (rss.Subscription, error) {
+			return rss.Subscription{}, errors.New("db down")
+		}}
+
+		rr := serveArticle(t, s, testArticleID)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
 }

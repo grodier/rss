@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
@@ -20,6 +21,10 @@ const (
 	timelineDescriptionMaxChars = 280
 	// timelineMaxPostsPerWeek is the highest "at most N posts a week".
 	timelineMaxPostsPerWeek = 100
+	// timelineMaxTerms is the most words or phrases in a keyword field.
+	timelineMaxTerms = 20
+	// timelineTermMaxChars is the longest word or phrase.
+	timelineTermMaxChars = 50
 )
 
 type timelineForm struct {
@@ -33,6 +38,8 @@ type timelineForm struct {
 	StarredOnly         bool     `form:"starred_only"`
 	MaxPostsPerWeek     string   `form:"max_posts_per_week"` // "": any rate
 	MediaOnly           bool     `form:"media_only"`
+	IncludeWords        string   `form:"include_words"` // comma-separated
+	ExcludeWords        string   `form:"exclude_words"`
 	validator.Validator `form:"-"`
 }
 
@@ -46,6 +53,8 @@ func timelineFormFor(t rss.Timeline) timelineForm {
 		ExcludeFeeds: t.Filter.ExcludeFeedIDs,
 		StarredOnly:  t.Filter.StarredOnly,
 		MediaOnly:    t.Filter.MediaOnly,
+		IncludeWords: strings.Join(t.Filter.IncludeWords, ", "),
+		ExcludeWords: strings.Join(t.Filter.ExcludeWords, ", "),
 	}
 	if t.Filter.MaxPostsPerWeek > 0 {
 		form.MaxPostsPerWeek = strconv.Itoa(t.Filter.MaxPostsPerWeek)
@@ -86,6 +95,35 @@ func (f *timelineForm) check(tags []rss.Tag, subs []rss.Subscription) {
 		"Choose at least one tag or feed, or show all your feeds.")
 	_, ok := f.maxPostsPerWeek()
 	f.CheckField(ok, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank.")
+	f.checkTerms(splitTerms(f.IncludeWords), "include_words")
+	f.checkTerms(splitTerms(f.ExcludeWords), "exclude_words")
+}
+
+// checkTerms validates the words or phrases of field.
+func (f *timelineForm) checkTerms(terms []string, field string) {
+	f.CheckField(len(terms) <= timelineMaxTerms, field, "At most 20 words or phrases.")
+	for _, term := range terms {
+		f.CheckField(validator.MaxChars(term, timelineTermMaxChars), field, "Each word or phrase must be 50 characters or fewer.")
+		f.CheckField(strings.ContainsFunc(term, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }), field,
+			"Each word or phrase needs at least one letter or number.")
+	}
+}
+
+// splitTerms splits a comma-separated list into trimmed terms with inner
+// whitespace collapsed, dropping empty ones and repeats (ignoring case).
+func splitTerms(s string) []string {
+	var terms []string
+	seen := map[string]bool{}
+	for part := range strings.SplitSeq(s, ",") {
+		term := strings.Join(strings.Fields(part), " ")
+		key := strings.ToLower(term)
+		if term == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		terms = append(terms, term)
+	}
+	return terms
 }
 
 // maxPostsPerWeek returns MaxPostsPerWeek as a number: 0 when it's blank.
@@ -126,6 +164,8 @@ func (f *timelineForm) timeline() rss.Timeline {
 			StarredOnly:     f.StarredOnly,
 			MaxPostsPerWeek: maxPostsPerWeek,
 			MediaOnly:       f.MediaOnly,
+			IncludeWords:    splitTerms(f.IncludeWords),
+			ExcludeWords:    splitTerms(f.ExcludeWords),
 		},
 	}
 	if f.Show == "some" {

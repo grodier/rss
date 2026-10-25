@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/lib/pq"
@@ -33,8 +36,9 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 	defer tx.Rollback()
 
 	// Concurrent requests can overshoot MaxTimelines slightly; that's accepted.
-	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only)
-		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6, $7, $8
+	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
+			include_words, exclude_words)
+		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6, $7, $8, $9, $10
 		FROM timelines
 		WHERE user_id = $1
 		HAVING count(*) < $5
@@ -42,7 +46,8 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 
 	var id string
 	err = tx.QueryRowContext(ctx, stmt, userID, t.Name, t.Description, !t.Filter.OnlyIncluded, MaxTimelines,
-		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly).Scan(&id)
+		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly,
+		words(t.Filter.IncludeWords), words(t.Filter.ExcludeWords)).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", rss.ErrTooManyTimelines
@@ -62,14 +67,16 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 // Get returns userID's timeline id with its filter. rss.ErrNoRecord if it
 // doesn't exist or is another user's.
 func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Timeline, error) {
-	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only, COALESCE(share_token, ''), created_at, updated_at
+	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
+			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at
 		FROM timelines
 		WHERE id = $2 AND user_id = $1`
 
 	var t rss.Timeline
 	var allFeeds bool
 	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
-		&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
+		&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly,
+		pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Timeline{}, rss.ErrNoRecord
@@ -130,10 +137,12 @@ func (r *TimelineRepository) Update(ctx context.Context, userID string, t rss.Ti
 
 	stmt := `UPDATE timelines
 		SET name = $3, description = $4, all_feeds = $5, starred_only = $6,
-			max_posts_per_week = $7, media_only = $8, updated_at = now()
+			max_posts_per_week = $7, media_only = $8, include_words = $9, exclude_words = $10,
+			updated_at = now()
 		WHERE id = $2 AND user_id = $1`
 	if err := execOne(ctx, tx, stmt, userID, t.ID, t.Name, t.Description, !t.Filter.OnlyIncluded,
-		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly); err != nil {
+		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly,
+		words(t.Filter.IncludeWords), words(t.Filter.ExcludeWords)); err != nil {
 		return err
 	}
 
@@ -223,6 +232,52 @@ func scanTimelineSources(ctx context.Context, db *sql.DB, stmt, timelineID strin
 		}
 	}
 	return rows.Err()
+}
+
+// words returns s as a TEXT[] parameter: '{}' rather than NULL when it's
+// empty, for the NOT NULL include_words and exclude_words.
+func words(s []string) any {
+	if s == nil {
+		s = []string{}
+	}
+	return pq.Array(s)
+}
+
+// wordsPattern returns a Postgres regular expression (for ~*) matching any
+// of words where the characters just before and after it aren't letters or
+// digits: (?<![[:alnum:]])(?:…|…)(?![[:alnum:]]). In each word, every
+// ASCII character that isn't a letter, a digit or whitespace is escaped with
+// a backslash, so it matches literally, and each run of whitespace becomes
+// \s+. "" for no words.
+//
+// A backslash before a character that isn't a letter or digit is always a
+// literal in Postgres regular expressions. Only ASCII characters are
+// escaped: none outside ASCII has a meaning in a regular expression, and a
+// backslash before one the database's locale counts as alphanumeric (such
+// as ²) would be an invalid escape. [[:alnum:]] follows the database's
+// LC_CTYPE, so in a UTF-8 database accented and non-Latin letters count as
+// letters.
+func wordsPattern(words []string) string {
+	if len(words) == 0 {
+		return ""
+	}
+	alts := make([]string, len(words))
+	for i, word := range words {
+		var b strings.Builder
+		for j, field := range strings.Fields(word) {
+			if j > 0 {
+				b.WriteString(`\s+`)
+			}
+			for _, r := range field {
+				if r < utf8.RuneSelf && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+					b.WriteByte('\\')
+				}
+				b.WriteRune(r)
+			}
+		}
+		alts[i] = b.String()
+	}
+	return `(?<![[:alnum:]])(?:` + strings.Join(alts, "|") + `)(?![[:alnum:]])`
 }
 
 // timelineError maps a foreign key violation (a tag or feed that isn't the

@@ -391,6 +391,7 @@ func TestListStarredConditions(t *testing.T) {
 	repo := NewStarRepository(db)
 	user := newTestUser(t, db)
 	_, articleID, tag := newConditionArticles(t, db, user)
+	setConditionTexts(t, db, articleID)
 
 	// Star them all, newest article starred last; C-text stays unstarred.
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -421,6 +422,13 @@ func TestListStarredConditions(t *testing.T) {
 			[]string{"B-audio", "A-audio", "C-audio"}},
 		{"audio or video with a tag", rss.TimelineFilter{StarredOnly: true, MediaOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
 			[]string{"B-audio", "A-audio"}},
+		{"must mention", rss.TimelineFilter{StarredOnly: true, IncludeWords: []string{"AI", "LLM"}},
+			[]string{"B-audio", "B-text", "A-text", "C-audio"}},
+		{"leave out", rss.TimelineFilter{StarredOnly: true, ExcludeWords: []string{"sponsored"}},
+			[]string{"B-text", "A-audio", "A-text"}},
+		{"must mention and leave out with a tag", rss.TimelineFilter{StarredOnly: true, IncludeWords: []string{"AI", "LLM"},
+			ExcludeWords: []string{"sponsored"}, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"B-text", "A-text"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

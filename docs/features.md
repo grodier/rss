@@ -667,8 +667,21 @@ Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins; Only show `StarredOnl
 limits it to the user's stars, `MaxPostsPerWeek` (0: any) to feeds whose
 `feeds.posts_per_week` (the 30-day average) is at most that, so a feed that gets
 busier takes its older articles with it, and `MediaOnly` to articles with an audio or
-video enclosure (`media_type <> ''`; videos embedded in the HTML don't count). Tag-based timelines stay current, since the filter reads
+video enclosure (`media_type <> ''`; videos embedded in the HTML don't count);
+`IncludeWords` keeps only articles that mention one of its words or phrases, and an
+article that mentions one of `ExcludeWords` is left out, even when it mentions an
+`IncludeWords` term too. Tag-based timelines stay current, since the filter reads
 `subscription_tags` on every page.
+
+Words and phrases match whole words, ignoring case, in `concat_ws(' ', title,
+page_title, excerpt)` (never the full content): `wordsPattern` turns a list into one
+Postgres regular expression for `~*`, `(?<![[:alnum:]])(?:…|…)(?![[:alnum:]])`, with
+each ASCII character that isn't a letter or digit backslash-escaped (so `C++`, `.NET`
+and `a|b` match literally) and each run of whitespace as `\s+`. So `AI` matches "AI's"
+and "#AI" but not "said", `C++` matches "(C++)" but not "C++20", and `C` matches "C++"
+too (the accepted trade-off). `[[:alnum:]]` follows the database's `LC_CTYPE`, so in a
+UTF-8 database `café` doesn't match "cafés". They're stored as the `include_words` and
+`exclude_words` arrays.
 
 `/timelines` (`timelinesHandler`) lists them with an Edit link each. New timeline
 (`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after
@@ -677,7 +690,10 @@ the tag and shows only that tag) and Edit (`timelineEditHandler`) render one for
 as checkboxes, their feeds in a `<details>` that's open when any is ticked), a Leave
 out fieldset (tags and feeds) and an Only show fieldset (the `starred_only` checkbox,
 "Articles I've starred"; "Feeds that post at most [`max_posts_per_week`] times a
-week", a number field; the `media_only` checkbox, "Articles with audio or video"). New
+week", a number field; the `media_only` checkbox, "Articles with audio or video";
+"Articles that mention" (`include_words`) and "Leave out articles that mention"
+(`exclude_words`), text fields sharing one hint, "Separate words or phrases with
+commas, …"). New
 timeline also offers presets as links, "Start from: Starred, Quiet posters":
 `?preset=starred` prefills the name Starred, Show all and starred only;
 `?preset=quiet` the name Quiet posters, Show all and at most 2 posts a week; with
@@ -687,7 +703,12 @@ other than `all` or `some`, then `timelineForm.check` trims the text, keeps only
 user's own tags and feeds (each once), and validates: a name of 1–50 runes, a
 description up to 280, with Show "some", at least one tag or feed, and a posting
 rate that's blank or a whole number from 1 to 100 ("Enter a whole number from 1 to
-100, or leave it blank."). Any error
+100, or leave it blank."). Each words field is split by `splitTerms` (on commas,
+trimmed, inner whitespace collapsed, blanks and repeats ignoring case dropped) and
+holds at most 20 terms ("At most 20 words or phrases."), each up to 50 runes ("Each
+word or phrase must be 50 characters or fewer.") with a letter or digit ("Each word
+or phrase needs at least one letter or number.", so `+++` is refused and `C++`
+accepted); the edit form shows them joined with ", ". Any error
 re-renders the form with 422 and everything kept; `ErrTooManyTimelines` (20) is a form
 error. `timelineForm.timeline` drops the Show checkboxes when Show is all. Saving
 flashes "Timeline created." or "Timeline saved." and goes to the timeline; Delete
@@ -718,22 +739,23 @@ for a starred-only one, else "Nothing in this timeline yet.".
 1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineRows`, `timelineTabs`.
 2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
    `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`,
-   `maxPostsPerWeek`, `timeline`, `checks`), `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
+   `maxPostsPerWeek`, `checkTerms`, `timeline`, `checks`), `splitTerms`, `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
    `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`.
 3. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`; `ErrTooManyTimelines` in
    `errors.go`.
 4. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`,
-   `insertTimelineSources`; then `timelineWhere` and `ListTimeline` in `articles.go`,
+   `insertTimelineSources`, `wordsPattern`; then `timelineWhere` and `ListTimeline` in `articles.go`,
    and `ListStarred` in `stars.go`.
 5. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
    `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`;
-   `.timeline-tabs`, `.timeline-list`, `.timeline-presets`, `.timeline-form` and `.rate-field` in `main.css`; the tab
+   `.timeline-tabs`, `.timeline-list`, `.timeline-presets`, `.timeline-form`, `.rate-field` and `.words-field` in `main.css`; the tab
    row's enhancement in `app.js`.
 
 **Tests:** `internal/server/timelines_test.go`, `TestHomeHandlerTabs` in
 `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
 `TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
-`TestTimelineCascades`), `TestListTimelineFilter` and `TestListTimelineConditions` in
+`TestTimelineCascades`, `TestWordsPattern`, `TestWordsPatternMatches`),
+`TestListTimelineFilter`, `TestListTimelineConditions` and `TestListTimelineWords` in
 `articles_test.go`, `TestListStarred` and `TestListStarredConditions` in `stars_test.go`.
 
 **Why:** "Timelines" under "Filtering and timelines" in decisions.md.

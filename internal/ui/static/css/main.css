@@ -1719,8 +1719,14 @@
     inline-size: 5rem;
   }
 
+  /* "Articles that mention" and "Leave out articles that mention", which
+     share the hint after them. */
+  .words-field {
+    padding: 0.75rem 1rem 0;
+  }
+
   /* Only show's conditions, each with its hint, are separated by dividers. */
-  .timeline-form fieldset > :is(.hint, p.error) + :is(.choice, .rate-field) {
+  .timeline-form fieldset > :is(.hint, p.error) + :is(.choice, .rate-field, .words-field) {
     margin-block-start: 0.75rem;
     border-block-start: 1px solid var(--border);
   }

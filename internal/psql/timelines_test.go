@@ -46,6 +46,8 @@ func sortedFilter(f rss.TimelineFilter) rss.TimelineFilter {
 		StarredOnly:     f.StarredOnly,
 		MaxPostsPerWeek: f.MaxPostsPerWeek,
 		MediaOnly:       f.MediaOnly,
+		IncludeWords:    s(f.IncludeWords),
+		ExcludeWords:    s(f.ExcludeWords),
 	}
 }
 
@@ -55,7 +57,8 @@ func assertFilter(t *testing.T, got, want rss.TimelineFilter) {
 	if got.OnlyIncluded != want.OnlyIncluded || got.StarredOnly != want.StarredOnly ||
 		got.MaxPostsPerWeek != want.MaxPostsPerWeek || got.MediaOnly != want.MediaOnly ||
 		!slices.Equal(got.IncludeTagIDs, want.IncludeTagIDs) || !slices.Equal(got.IncludeFeedIDs, want.IncludeFeedIDs) ||
-		!slices.Equal(got.ExcludeTagIDs, want.ExcludeTagIDs) || !slices.Equal(got.ExcludeFeedIDs, want.ExcludeFeedIDs) {
+		!slices.Equal(got.ExcludeTagIDs, want.ExcludeTagIDs) || !slices.Equal(got.ExcludeFeedIDs, want.ExcludeFeedIDs) ||
+		!slices.Equal(got.IncludeWords, want.IncludeWords) || !slices.Equal(got.ExcludeWords, want.ExcludeWords) {
 		t.Errorf("filter = %+v, want %+v", got, want)
 	}
 }
@@ -146,6 +149,24 @@ func TestTimelineCreate(t *testing.T) {
 			t.Fatalf("Update: %v", err)
 		}
 		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, busy)
+	})
+
+	t.Run("include_words and exclude_words round-trip", func(t *testing.T) {
+		user := newTestUser(t, db)
+		ai := rss.TimelineFilter{IncludeWords: []string{"AI", "C++", "machine learning"}, ExcludeWords: []string{"Sponsored"}}
+		id := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "AI", Filter: ai})
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, ai)
+
+		if err := repo.Update(ctx, user, rss.Timeline{ID: id, Name: "Everything"}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{})
+
+		deals := rss.TimelineFilter{ExcludeWords: []string{"deal", "Café"}}
+		if err := repo.Update(ctx, user, rss.Timeline{ID: id, Name: "No deals", Filter: deals}); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		assertFilter(t, mustGetTimeline(t, repo, user, id).Filter, deals)
 	})
 
 	t.Run("the 21st is ErrTooManyTimelines", func(t *testing.T) {
@@ -349,4 +370,69 @@ func TestTimelineCascades(t *testing.T) {
 		IncludeFeedIDs: []string{feeds[0]},
 		ExcludeTagIDs:  []string{news.ID},
 	})
+}
+
+func TestWordsPattern(t *testing.T) {
+	const before, after = `(?<![[:alnum:]])(?:`, `)(?![[:alnum:]])`
+	tests := []struct {
+		words []string
+		want  string // between before and after; "" for no pattern
+	}{
+		{nil, ""},
+		{[]string{}, ""},
+		{[]string{"AI"}, `AI`},
+		{[]string{"AI", "LLM", "GPT"}, `AI|LLM|GPT`},
+		{[]string{"C++"}, `C\+\+`},
+		{[]string{"C#", ".NET"}, `C\#|\.NET`},
+		{[]string{"(x)", "a|b", `\`, "[x]"}, `\(x\)|a\|b|\\|\[x\]`},
+		{[]string{"*", "?", "^", "$", "{2}"}, `\*|\?|\^|\$|\{2\}`},
+		{[]string{"machine learning", "a \t\n b"}, `machine\s+learning|a\s+b`},
+		{[]string{"café", "日本"}, `café|日本`},
+	}
+	for _, tt := range tests {
+		want := ""
+		if tt.want != "" {
+			want = before + tt.want + after
+		}
+		if got := wordsPattern(tt.words); got != want {
+			t.Errorf("wordsPattern(%q) = %q, want %q", tt.words, got, want)
+		}
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB. Checks wordsPattern's
+// patterns with Postgres's regular expressions and the database's locale.
+func TestWordsPatternMatches(t *testing.T) {
+	db := psqltest.NewDB(t)
+
+	tests := []struct {
+		term     string
+		match    []string
+		mismatch []string
+	}{
+		{"AI", []string{"New AI model", "AI's", "#AI", "(AI)", "ai at the start", "at the end ai"}, []string{"said", "AIDS", "OpenAI"}},
+		{"C++", []string{"C++ 20", "learn C++.", "(C++)"}, []string{"C++20", "XC++"}},
+		{"C#", []string{"in C#"}, []string{"C#9"}},
+		{"F#", []string{"F# rocks"}, []string{"F#9"}},
+		{".NET", []string{".NET 9", "the .NET runtime"}, []string{"ASP.NET"}},
+		{"node.js", []string{"node.js", "Node.js 22"}, []string{"nodexjs"}},
+		{"machine learning", []string{"machine  learning", "Machine\nlearning"}, []string{"machinelearning"}},
+		{"café", []string{"Café culture"}, []string{"cafés"}},
+		{"C", []string{"C++", "Plan C"}, []string{"CSS"}},
+		{`a|b`, []string{"x a|b y"}, []string{"a", "b"}},
+		{"²", []string{"x ² y"}, []string{"x"}},
+	}
+	for _, tt := range tests {
+		pattern := wordsPattern([]string{tt.term})
+		for _, text := range append(tt.match, tt.mismatch...) {
+			want := slices.Contains(tt.match, text)
+			var got bool
+			if err := db.QueryRowContext(t.Context(), `SELECT $1 ~* $2`, text, pattern).Scan(&got); err != nil {
+				t.Fatalf("%q ~* %q: %v", text, pattern, err)
+			}
+			if got != want {
+				t.Errorf("%q ~* wordsPattern(%q) = %v, want %v", text, tt.term, got, want)
+			}
+		}
+	}
 }

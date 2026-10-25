@@ -28,6 +28,7 @@
         <li>
           <div class="timeline-list-text">
             <a class="timeline-list-name" href="/timelines/{{.ID}}">{{.Name}}</a>
+            {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
             {{with .Description}}<p>{{.}}</p>{{end}}
           </div>
           <a href="/timelines/{{.ID}}/edit">Edit<span class="visually-hidden"> {{.Name}}</span></a>

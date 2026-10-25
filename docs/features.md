@@ -734,31 +734,79 @@ some." when it shows only some feeds but has none (say its only tag was deleted)
 "Nothing starred here yet. Star articles in your timelines and they'll show up here."
 for a starred-only one, else "Nothing in this timeline yet.".
 
+**Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at
+the same link. Its edit page ends with a Sharing section (`timelineSharing`): with an
+unconfirmed email, "Confirm your email address to share timelines." and a Resend
+button back to `#sharing`; not shared, what sharing shows and a Share this timeline
+button; shared, read-only Feed link (`{base URL}/shared/{token}/feed.atom`) and Page
+link (`{base URL}/shared/{token}`) fields, from `sharedURLs`, with Stop sharing and New
+link. `timelineShareHandler` gives the timeline a `token.Random` token unless it has
+one (`TimelineRepository.Share`); `timelineNewLinkHandler` replaces it
+(`NewShareLink`, a 404 if it isn't shared); `timelineUnshareHandler` clears it
+(`Unshare`). Each goes through `timelineFromURL` and flashes, then 303s to
+`/timelines/{id}/edit#sharing`; Share and New link with an unconfirmed email only flash
+"Confirm your email address to share timelines.". `/timelines` marks shared timelines
+with a Shared chip.
+
+The public routes are outside the session group. `sharedTimelineFromURL` 404s a token
+that isn't 43 base64url characters (`shareTokenRX`) or that `GetShared` doesn't know,
+which reads the timeline with its filter and its owner's ID. The page
+(`sharedTimelineHandler`, `shared_timeline.html`, `.solo`) shows the name, description,
+"A timeline shared from rss.", how to follow it in a reader, the feed's URL and an Open
+the feed link, and advertises the feed with `<link rel="alternate"
+type="application/atom+xml">`; it reads no articles. The feed (`sharedFeedHandler`)
+reads the newest 50 with `ArticleRepository.ListShared`: `ListTimeline`'s query
+(`timelineStmt`), or `ListStarred`'s (`starredStmt`) for a starred-only timeline, with
+`shared` set, so feeds have their own titles (never the owner's names) and articles
+without a URL are left out; no "Also in". `sharedAtomFeed` and `sharedAtomEntry` build
+the `atomFeed` structs: the page URL as the feed's ID, the timeline's name as title and
+author, its description as subtitle; each entry's ID is its canonical URL (else
+`urn:uuid:{id}`), with its link, `DisplayTitle`, `DisplayExcerpt` as a text summary,
+published date, an updated time (the star time for a starred-only timeline, else
+published, else `timeline_at`) and a `<source>` naming its feed. The feed's updated time
+is the latest entry's, else the timeline's `updated_at`. It's encoded into a buffer,
+then sent with an `ETag` (the first 16 bytes of its SHA-256, in hex) and
+`Last-Modified`; a matching `If-None-Match` is a 304 (`etagMatches`, shared with site
+icons). Both send `X-Robots-Tag: noindex` and `Cache-Control: public` (5 minutes for
+the page, 15 for the feed).
+
 **Read:**
 
 1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineRows`, `timelineTabs`.
 2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
    `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`,
    `maxPostsPerWeek`, `checkTerms`, `timeline`, `checks`), `splitTerms`, `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
-   `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`.
-3. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`; `ErrTooManyTimelines` in
-   `errors.go`.
-4. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`,
-   `insertTimelineSources`, `wordsPattern`; then `timelineWhere` and `ListTimeline` in `articles.go`,
-   and `ListStarred` in `stars.go`.
-5. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
-   `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`;
-   `.timeline-tabs`, `.timeline-list`, `.timeline-presets`, `.timeline-form`, `.rate-field` and `.words-field` in `main.css`; the tab
-   row's enhancement in `app.js`.
+   `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`; sharing:
+   `timelineShareHandler`, `timelineUnshareHandler`, `timelineNewLinkHandler`,
+   `timelineSharing`.
+3. `internal/server/shared.go`: `sharedTimelineFromURL`, `sharedTimelineHandler`,
+   `sharedFeedHandler`, `sharedAtomFeed`, `sharedAtomEntry`, `sharedURLs`; and
+   `token.Random` in `internal/token/token.go`.
+4. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`, `SharedArticle`;
+   `ErrTooManyTimelines` in `errors.go`.
+5. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`, `Share`,
+   `NewShareLink`, `Unshare`, `GetShared`, `insertTimelineSources`, `wordsPattern`; then
+   `timelineWhere`, `ListTimeline`, `ListShared` and `timelineStmt` in `articles.go`,
+   and `ListStarred` and `starredStmt` in `stars.go`.
+6. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
+   `shared_timeline.html`, `partials/timeline_tabs.html`, the Make a timeline link in
+   `tag.html`; `.timeline-tabs`, `.timeline-list`, `.timeline-presets`, `.timeline-form`,
+   `.rate-field`, `.words-field`, `.timeline-sharing` and `.shared-timeline` in
+   `main.css`; the tab row's enhancement in `app.js`.
 
-**Tests:** `internal/server/timelines_test.go`, `TestHomeHandlerTabs` in
+**Tests:** `internal/server/timelines_test.go` (sharing: `TestTimelineEditSharing`,
+`TestTimelineSharingHandlers`), `internal/server/shared_test.go`
+(`TestSharedTimelinePage`, `TestSharedFeed`, `TestSharedNotFound`),
+`TestPrivacySharedTimelines` in `policy_test.go`, `TestHomeHandlerTabs` in
 `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
 `TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
-`TestTimelineCascades`, `TestWordsPattern`, `TestWordsPatternMatches`),
-`TestListTimelineFilter`, `TestListTimelineConditions` and `TestListTimelineWords` in
-`articles_test.go`, `TestListStarred` and `TestListStarredConditions` in `stars_test.go`.
+`TestTimelineSharing`, `TestTimelineCascades`, `TestWordsPattern`,
+`TestWordsPatternMatches`), `TestListTimelineFilter`, `TestListTimelineConditions`,
+`TestListTimelineWords` and `TestListShared` in `articles_test.go`, `TestListStarred`
+and `TestListStarredConditions` in `stars_test.go`; `TestRandom` in
+`internal/token/token_test.go`.
 
-**Why:** "Timelines" under "Filtering and timelines" in decisions.md.
+**Why:** "Timelines" and "Sharing" under "Filtering and timelines" in decisions.md.
 
 ## Reading: timeline, article pages and read state
 

@@ -133,29 +133,7 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	at, id := cursorArgs(before)
 	args := []any{userID, at, id, limit}
 
-	// Articles with no canonical URL key on their own ID, so they're never
-	// collapsed. Copies collapse after filtering, so a left-out feed's copy
-	// never takes an entry's place.
-	stmt := `WITH mine AS (
-			SELECT ` + qualifiedListArticleColumns + `,
-				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
-			FROM subscriptions sub
-			JOIN articles a ON a.feed_id = sub.feed_id
-			WHERE sub.user_id = $1` + timelineWhere(filter, &args) + `
-		), firsts AS (
-			SELECT DISTINCT ON (dedup_key) *
-			FROM mine
-			ORDER BY dedup_key, timeline_at, id
-		)
-		SELECT ` + qualifiedArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `
-		FROM firsts a
-		JOIN feeds f ON f.id = a.feed_id
-		JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = a.feed_id
-		WHERE ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
-		ORDER BY a.timeline_at DESC, a.id DESC
-		LIMIT $4`
-
-	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	rows, err := r.DB.QueryContext(ctx, timelineStmt(filter, false, &args), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,19 +142,9 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	items := []rss.ArticleWithFeed{}
 	for rows.Next() {
 		var item rss.ArticleWithFeed
-		// scanArticle and scanFeed each take a Scan func and read their own
-		// columns, so nest them: the feed's destinations go after the article's.
-		article, err := scanArticle(scanFunc(func(articleDests ...any) error {
-			var feedErr error
-			item.Feed, feedErr = scanFeed(scanFunc(func(feedDests ...any) error {
-				return rows.Scan(append(articleDests, feedDests...)...)
-			}))
-			return feedErr
-		}))
-		if err != nil {
+		if item.Article, item.Feed, err = scanArticleWithFeed(rows); err != nil {
 			return nil, err
 		}
-		item.Article = article
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -188,6 +156,113 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	}
 
 	return items, nil
+}
+
+// ListShared returns the newest limit articles with a URL of ownerID's
+// timeline with filter, for its shared feed: like ListTimeline (or
+// ListStarred when filter.StarredOnly, with StarredAt set), but with each
+// feed's own title, never the owner's name for it, and without AlsoIn.
+// Summary and Content are left empty.
+func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
+	at, id := cursorArgs(rss.ArticleCursor{})
+	args := []any{ownerID, at, id, limit}
+
+	var stmt string
+	if filter.StarredOnly {
+		stmt = starredStmt(filter, true, &args)
+	} else {
+		stmt = timelineStmt(filter, true, &args)
+	}
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []rss.SharedArticle{}
+	for rows.Next() {
+		var item rss.SharedArticle
+		var extra []any
+		if filter.StarredOnly {
+			extra = append(extra, &item.StarredAt)
+		}
+		if item.Article, item.Feed, err = scanArticleWithFeed(rows, extra...); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// timelineStmt returns ListTimeline's query for filter, appending filter's
+// parameters to args, which starts with the user ID, the cursor's time and
+// ID, and the limit. With shared (for ListShared), feeds have their own
+// titles, and articles without a URL are left out.
+func timelineStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
+	// Articles with no canonical URL key on their own ID, so they're never
+	// collapsed. Copies collapse after filtering, so a left-out feed's copy
+	// never takes an entry's place.
+	return `WITH mine AS (
+			SELECT ` + qualifiedListArticleColumns + `,
+				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
+			FROM subscriptions sub
+			JOIN articles a ON a.feed_id = sub.feed_id
+			WHERE sub.user_id = $1` + timelineWhere(filter, args) + sharedWhere(shared) + `
+		), firsts AS (
+			SELECT DISTINCT ON (dedup_key) *
+			FROM mine
+			ORDER BY dedup_key, timeline_at, id
+		)
+		SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
+		FROM firsts a
+		JOIN feeds f ON f.id = a.feed_id
+		JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = a.feed_id
+		WHERE ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
+		ORDER BY a.timeline_at DESC, a.id DESC
+		LIMIT $4`
+}
+
+// listFeedColumns returns the feed columns of a timeline query: with the
+// reader's names for their subscriptions, or the feeds' own titles when
+// shared.
+func listFeedColumns(shared bool) string {
+	if shared {
+		return qualifiedFeedColumns
+	}
+	return qualifiedFeedColumnsTitled(subscriptionTitle)
+}
+
+// sharedWhere returns the condition a shared timeline adds on a
+// (articles): only articles with a link. "" unless shared.
+func sharedWhere(shared bool) string {
+	if !shared {
+		return ""
+	}
+	return `
+				AND a.url <> ''`
+}
+
+// scanArticleWithFeed scans a row of an article's columns (as scanArticle),
+// then its feed's (as scanFeed), then extra.
+func scanArticleWithFeed(rows *sql.Rows, extra ...any) (rss.Article, rss.Feed, error) {
+	var feed rss.Feed
+	// scanArticle and scanFeed each take a Scan func and read their own
+	// columns, so nest them: the feed's destinations go after the article's.
+	article, err := scanArticle(scanFunc(func(articleDests ...any) error {
+		var feedErr error
+		feed, feedErr = scanFeed(scanFunc(func(feedDests ...any) error {
+			dests := append(articleDests, feedDests...)
+			return rows.Scan(append(dests, extra...)...)
+		}))
+		return feedErr
+	}))
+	if err != nil {
+		return rss.Article{}, rss.Feed{}, err
+	}
+	return article, feed, nil
 }
 
 // timelineWhere returns the SQL conditions on sub (subscriptions) and a

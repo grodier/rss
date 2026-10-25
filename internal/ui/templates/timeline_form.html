@@ -19,6 +19,10 @@
         <a href="/timelines">All timelines</a>
       </header>
 
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
       {{if not .Timeline.ID}}
       <div class="timeline-presets">
         <span id="presets-label">Start from:</span>
@@ -137,6 +141,50 @@
           <a class="btn" href="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}{{else}}/timelines{{end}}">Cancel</a>
         </div>
       </form>
+
+      {{with .Sharing}}
+      <section class="timeline-sharing" id="sharing" aria-labelledby="sharing-heading">
+        <h2 id="sharing-heading">Sharing</h2>
+        {{if not .Confirmed}}
+        <div class="timeline-sharing-body">
+          <p>Confirm your email address to share timelines.</p>
+          <form action="/confirm-email/resend" method="post">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}" />
+            <button class="btn-sm" type="submit">Resend confirmation email</button>
+          </form>
+        </div>
+        {{else if .FeedURL}}
+        <div class="timeline-sharing-body">
+          <p>Anyone with the link can follow this timeline's newest articles in a feed reader: their titles, excerpts and links, and the names of the feeds they come from. Your name and email aren't shown, and the link isn't listed anywhere.</p>
+          <div class="field">
+            <label for="share-feed-url">Feed link</label>
+            <input type="text" id="share-feed-url" value="{{.FeedURL}}" readonly />
+          </div>
+          <div class="field">
+            <label for="share-page-url">Page link</label>
+            <input type="text" id="share-page-url" value="{{.PageURL}}" readonly aria-describedby="share-page-url-hint" />
+            <p class="hint" id="share-page-url-hint">A page to send to people: it says how to subscribe.</p>
+          </div>
+          <div class="timeline-sharing-actions">
+            <form action="/timelines/{{$.Timeline.ID}}/unshare" method="post">
+              <button class="btn-sm" type="submit">Stop sharing</button>
+            </form>
+            <form action="/timelines/{{$.Timeline.ID}}/share/new-link" method="post">
+              <button class="btn-sm" type="submit" aria-describedby="share-new-link-hint">New link</button>
+            </form>
+          </div>
+          <p class="hint" id="share-new-link-hint">The current links will stop working.</p>
+        </div>
+        {{else}}
+        <div class="timeline-sharing-body">
+          <p>Anyone with the link will be able to follow this timeline's newest articles in a feed reader: their titles, excerpts and links, and the names of the feeds they come from. Your name and email aren't shown, and the link isn't listed anywhere.</p>
+          <form action="/timelines/{{$.Timeline.ID}}/share" method="post">
+            <button class="btn-sm" type="submit">Share this timeline</button>
+          </form>
+        </div>
+        {{end}}
+      </section>
+      {{end}}
 
       {{if .Timeline.ID}}
       <form class="tag-delete" action="/timelines/{{.Timeline.ID}}/delete" method="post">

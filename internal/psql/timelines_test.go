@@ -8,6 +8,7 @@ import (
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/token"
 )
 
 func mustCreateTimeline(t *testing.T, repo *TimelineRepository, userID string, tl rss.Timeline) string {
@@ -337,6 +338,112 @@ func TestTimelineDelete(t *testing.T) {
 	if err := repo.Delete(ctx, user, id); !errors.Is(err, rss.ErrNoRecord) {
 		t.Errorf("second Delete = %v, want ErrNoRecord", err)
 	}
+}
+
+// shareToken returns a unique 43-character token for a test.
+func shareToken(t *testing.T) string {
+	t.Helper()
+	tok, err := token.Random()
+	if err != nil {
+		t.Fatalf("token.Random: %v", err)
+	}
+	return tok
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestTimelineSharing(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTimelineRepository(db)
+	tags := NewTagRepository(db)
+	ctx := t.Context()
+
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	ai := mustCreateTag(t, tags, user, "AI")
+	filter := rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{ai.ID}, StarredOnly: true}
+	id := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Picks", Filter: filter})
+
+	first := shareToken(t)
+	t.Run("Share sets a token once", func(t *testing.T) {
+		got, err := repo.Share(ctx, user, id, first)
+		if err != nil || got != first {
+			t.Fatalf("Share = %q, %v; want %q", got, err, first)
+		}
+		got, err = repo.Share(ctx, user, id, shareToken(t))
+		if err != nil || got != first {
+			t.Errorf("second Share = %q, %v; want the first token %q", got, err, first)
+		}
+		if tl := mustGetTimeline(t, repo, user, id); tl.ShareToken != first {
+			t.Errorf("Get ShareToken = %q, want %q", tl.ShareToken, first)
+		}
+	})
+
+	t.Run("GetShared finds it with its filter and owner", func(t *testing.T) {
+		tl, owner, err := repo.GetShared(ctx, first)
+		if err != nil {
+			t.Fatalf("GetShared: %v", err)
+		}
+		if tl.ID != id || tl.Name != "Picks" || owner != user {
+			t.Errorf("GetShared = %+v, %q; want %s owned by %s", tl, owner, id, user)
+		}
+		assertFilter(t, tl.Filter, filter)
+	})
+
+	t.Run("an unknown token is ErrNoRecord", func(t *testing.T) {
+		if _, _, err := repo.GetShared(ctx, shareToken(t)); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want ErrNoRecord", err)
+		}
+	})
+
+	t.Run("another user can't share, replace or unshare it", func(t *testing.T) {
+		if _, err := repo.Share(ctx, other, id, shareToken(t)); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Share(other) = %v, want ErrNoRecord", err)
+		}
+		if err := repo.NewShareLink(ctx, other, id, shareToken(t)); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("NewShareLink(other) = %v, want ErrNoRecord", err)
+		}
+		if err := repo.Unshare(ctx, other, id); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Unshare(other) = %v, want ErrNoRecord", err)
+		}
+		if tl := mustGetTimeline(t, repo, user, id); tl.ShareToken != first {
+			t.Errorf("ShareToken = %q, want it unchanged (%q)", tl.ShareToken, first)
+		}
+	})
+
+	second := shareToken(t)
+	t.Run("NewShareLink replaces the token", func(t *testing.T) {
+		if err := repo.NewShareLink(ctx, user, id, second); err != nil {
+			t.Fatalf("NewShareLink: %v", err)
+		}
+		if _, _, err := repo.GetShared(ctx, first); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("GetShared(old token) = %v, want ErrNoRecord", err)
+		}
+		if tl, _, err := repo.GetShared(ctx, second); err != nil || tl.ID != id {
+			t.Errorf("GetShared(new token) = %+v, %v", tl, err)
+		}
+	})
+
+	t.Run("Unshare clears it, and twice is fine", func(t *testing.T) {
+		for range 2 {
+			if err := repo.Unshare(ctx, user, id); err != nil {
+				t.Fatalf("Unshare: %v", err)
+			}
+		}
+		if _, _, err := repo.GetShared(ctx, second); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("GetShared after Unshare = %v, want ErrNoRecord", err)
+		}
+		if tl := mustGetTimeline(t, repo, user, id); tl.ShareToken != "" {
+			t.Errorf("ShareToken = %q, want none", tl.ShareToken)
+		}
+	})
+
+	t.Run("NewShareLink on an unshared timeline is ErrNoRecord", func(t *testing.T) {
+		if err := repo.NewShareLink(ctx, user, id, shareToken(t)); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want ErrNoRecord", err)
+		}
+		if tl := mustGetTimeline(t, repo, user, id); tl.ShareToken != "" {
+			t.Errorf("ShareToken = %q, want none", tl.ShareToken)
+		}
+	})
 }
 
 // Requires a migrated database; see psqltest.NewDB.

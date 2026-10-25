@@ -220,6 +220,7 @@ type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	listSharedFn   func(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
 }
 
 func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article, error) {
@@ -238,6 +239,13 @@ func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filt
 		return nil, nil
 	}
 	return f.listTimelineFn(ctx, userID, filter, before, limit)
+}
+
+func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
+	if f.listSharedFn == nil {
+		return nil, nil
+	}
+	return f.listSharedFn(ctx, ownerID, filter, limit)
 }
 
 type fakeReadStore struct {
@@ -537,6 +545,11 @@ type fakeTimelineStore struct {
 	listFn   func(ctx context.Context, userID string) ([]rss.Timeline, error)
 	updateFn func(ctx context.Context, userID string, t rss.Timeline) error
 	deleteFn func(ctx context.Context, userID, id string) error
+
+	shareFn        func(ctx context.Context, userID, id, newToken string) (string, error)
+	newShareLinkFn func(ctx context.Context, userID, id, newToken string) error
+	unshareFn      func(ctx context.Context, userID, id string) error
+	getSharedFn    func(ctx context.Context, token string) (rss.Timeline, string, error)
 }
 
 func (f *fakeTimelineStore) Create(ctx context.Context, userID string, t rss.Timeline) (string, error) {
@@ -572,4 +585,32 @@ func (f *fakeTimelineStore) Delete(ctx context.Context, userID, id string) error
 		return nil
 	}
 	return f.deleteFn(ctx, userID, id)
+}
+
+func (f *fakeTimelineStore) Share(ctx context.Context, userID, id, newToken string) (string, error) {
+	if f.shareFn == nil {
+		return newToken, nil
+	}
+	return f.shareFn(ctx, userID, id, newToken)
+}
+
+func (f *fakeTimelineStore) NewShareLink(ctx context.Context, userID, id, newToken string) error {
+	if f.newShareLinkFn == nil {
+		return nil
+	}
+	return f.newShareLinkFn(ctx, userID, id, newToken)
+}
+
+func (f *fakeTimelineStore) Unshare(ctx context.Context, userID, id string) error {
+	if f.unshareFn == nil {
+		return nil
+	}
+	return f.unshareFn(ctx, userID, id)
+}
+
+func (f *fakeTimelineStore) GetShared(ctx context.Context, token string) (rss.Timeline, string, error) {
+	if f.getSharedFn == nil {
+		return rss.Timeline{}, "", rss.ErrNoRecord
+	}
+	return f.getSharedFn(ctx, token)
 }

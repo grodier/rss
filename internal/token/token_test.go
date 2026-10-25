@@ -26,3 +26,20 @@ func TestNew(t *testing.T) {
 		t.Errorf("two calls returned the same token %q", plain)
 	}
 }
+
+func TestRandom(t *testing.T) {
+	a, err := Random()
+	if err != nil {
+		t.Fatalf("Random() error = %v", err)
+	}
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(a) {
+		t.Errorf("Random() = %q, want 43 URL-safe characters", a)
+	}
+	b, err := Random()
+	if err != nil {
+		t.Fatalf("Random() error = %v", err)
+	}
+	if a == b {
+		t.Errorf("two calls returned the same token %q", a)
+	}
+}

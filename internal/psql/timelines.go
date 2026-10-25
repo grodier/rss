@@ -166,6 +166,68 @@ func (r *TimelineRepository) Delete(ctx context.Context, userID, id string) erro
 	return execOne(ctx, r.DB, stmt, userID, id)
 }
 
+// Share gives userID's custom timeline id the share token newToken if it
+// has none, and returns its token. rss.ErrNoRecord if it isn't one of the
+// user's custom timelines.
+func (r *TimelineRepository) Share(ctx context.Context, userID, id, newToken string) (string, error) {
+	stmt := `UPDATE timelines
+		SET share_token = COALESCE(share_token, $3)
+		WHERE id = $2 AND user_id = $1
+		RETURNING share_token`
+
+	var token string
+	if err := r.DB.QueryRowContext(ctx, stmt, userID, id, newToken).Scan(&token); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", rss.ErrNoRecord
+		}
+		return "", err
+	}
+	return token, nil
+}
+
+// NewShareLink replaces the token of userID's shared timeline id with
+// newToken. rss.ErrNoRecord if it isn't shared or isn't the user's.
+func (r *TimelineRepository) NewShareLink(ctx context.Context, userID, id, newToken string) error {
+	stmt := `UPDATE timelines
+		SET share_token = $3
+		WHERE id = $2 AND user_id = $1 AND share_token IS NOT NULL`
+
+	return execOne(ctx, r.DB, stmt, userID, id, newToken)
+}
+
+// Unshare clears the share token of userID's custom timeline id. Not shared
+// is not an error; rss.ErrNoRecord if it isn't one of the user's custom
+// timelines.
+func (r *TimelineRepository) Unshare(ctx context.Context, userID, id string) error {
+	stmt := `UPDATE timelines SET share_token = NULL WHERE id = $2 AND user_id = $1`
+
+	return execOne(ctx, r.DB, stmt, userID, id)
+}
+
+// GetShared returns the shared timeline with token, with its filter, and its
+// owner's ID. rss.ErrNoRecord if no timeline has it.
+func (r *TimelineRepository) GetShared(ctx context.Context, token string) (t rss.Timeline, ownerID string, err error) {
+	stmt := `SELECT id, user_id FROM timelines WHERE share_token = $1`
+
+	var id string
+	if err := r.DB.QueryRowContext(ctx, stmt, token).Scan(&id, &ownerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.Timeline{}, "", rss.ErrNoRecord
+		}
+		return rss.Timeline{}, "", err
+	}
+	// The timeline can be unshared or deleted in between: Get's row then
+	// lacks the token, or is gone.
+	t, err = r.Get(ctx, ownerID, id)
+	if err != nil {
+		return rss.Timeline{}, "", err
+	}
+	if t.ShareToken != token {
+		return rss.Timeline{}, "", rss.ErrNoRecord
+	}
+	return t, ownerID, nil
+}
+
 // insertTimelineSources stores filter's tags and feeds as timelineID's
 // timeline_tags and timeline_feeds rows. An ID both included and excluded
 // is stored once, as excluded, since Leave out wins.

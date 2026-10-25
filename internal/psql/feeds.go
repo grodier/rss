@@ -14,7 +14,7 @@ import (
 var feedColumnNames = []string{
 	"id", "site_id", "url", "site_url", "title", "description", "last_fetched_at",
 	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at",
-	"refresh_requested_at", "created_at",
+	"refresh_requested_at", "posts_per_week", "created_at",
 }
 
 var (
@@ -25,13 +25,18 @@ var (
 	qualifiedFeedColumns = "f." + strings.Join(feedColumnNames, ", f.")
 )
 
+// postsPerWeek is feed $1's articles published in the last 30 days, per
+// week; served by articles_feed_sort_idx.
+const postsPerWeek = `(SELECT count(*) * 7.0 / 30 FROM articles
+	WHERE feed_id = $1 AND COALESCE(published_at, created_at) > now() - interval '30 days')`
+
 // scanFeed scans a row selected with feedColumns.
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
 	var lastFetched, lastAttempt, goneAt, refreshRequested sql.NullTime
 	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
 		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch,
-		&feed.ETag, &feed.LastModified, &goneAt, &refreshRequested, &feed.CreatedAt)
+		&feed.ETag, &feed.LastModified, &goneAt, &refreshRequested, &feed.PostsPerWeek, &feed.CreatedAt)
 	if err != nil {
 		return rss.Feed{}, err
 	}
@@ -150,11 +155,13 @@ func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next
 
 // RecordNotModified records a 304 for feed id: a successful attempt with no
 // changes (last_fetched_at, last_attempt_at, clears last_error and
-// consecutive_failures) and next_fetch_at = next. rss.ErrNoRecord if missing.
+// consecutive_failures) and next_fetch_at = next. It recomputes posts_per_week
+// so the 30-day window keeps sliding for feeds that stopped changing.
+// rss.ErrNoRecord if missing.
 func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next time.Time) error {
 	stmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
 			last_error = '', consecutive_failures = 0, next_fetch_at = $2,
-			refresh_requested_at = NULL
+			refresh_requested_at = NULL, posts_per_week = ` + postsPerWeek + `
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, id, next)

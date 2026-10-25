@@ -27,6 +27,8 @@ type Feed struct {
 	GoneAt             time.Time // zero unless the feed answered 410
 	RefreshRequestedAt time.Time // zero unless a refresh was requested and its outcome isn't recorded yet
 
+	PostsPerWeek float64 // articles published in the last 30 days, per week
+
 	CreatedAt time.Time
 }
 

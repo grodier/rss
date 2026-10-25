@@ -2,6 +2,7 @@ package psql
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -195,6 +196,10 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 		for _, f := range got {
 			if f.LastFetched.IsZero() {
 				t.Errorf("feed %q has zero LastFetched", f.Title)
+			}
+			// The articles are undated, so they count from when they were saved.
+			if want := float64(articleCounts[f.Title]) * 7 / 30; math.Abs(f.PostsPerWeek-want) > 1e-4 {
+				t.Errorf("feed %q: got PostsPerWeek %v; want %v", f.Title, f.PostsPerWeek, want)
 			}
 			arts, err := NewArticleRepository(db).ListByFeed(t.Context(), f.ID, rss.ArticleCursor{}, 10)
 			if err != nil {

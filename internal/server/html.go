@@ -19,11 +19,12 @@ import (
 const avatarTones = 6
 
 var templateFuncs = template.FuncMap{
-	"asset":      asset,
-	"avatar":     avatar,
-	"avatarTone": avatarTone,
-	"debugPanel": newDebugPanel,
-	"monogram":   monogram,
+	"asset":       asset,
+	"avatar":      avatar,
+	"avatarTone":  avatarTone,
+	"debugPanel":  newDebugPanel,
+	"monogram":    monogram,
+	"postingRate": postingRate,
 }
 
 // avatarView is what the avatar partial shows: the site's icon, else its

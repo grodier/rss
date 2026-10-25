@@ -412,6 +412,13 @@ articles aren't written, and an existing `published_at` is kept because some fee
 it on every edit. A newly inserted article missing an image, title or excerpt gets an
 enrichment job in the same transaction (see "Article enrichment").
 
+Posting rate: `feeds.posts_per_week` is the feed's articles published in the last 30 days
+(by `COALESCE(published_at, created_at)`, so undated ones count from when they were
+saved) × 7 ÷ 30 (`postsPerWeek` in `internal/psql/feeds.go`). It's recomputed in the
+same transaction at the end of every `saveArticles` (refresh, the Refresh button,
+lookups and imports) and by `RecordNotModified`, so the window keeps sliding for feeds
+that stopped changing. My feeds and the feed page show it (see Subscriptions).
+
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
 pending refresh request, requested ones first. A request is made when someone views a
 stale feed's page (`feedHandler` calls `RequestRefresh`, and the page says "Checking for
@@ -429,14 +436,15 @@ the result in a flash message. It refuses gone feeds, feeds fetched successfully
 5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `RetryAfter`, `freshness`) and
    `canonical.go` (`CanonicalURL`).
 6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
-   `MarkGone`.
+   `MarkGone`, `postsPerWeek`.
 7. `internal/psql/articles.go`: `saveArticles`, `timelineAt`.
 8. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the
    `RequestRefresh` call in `feedHandler`.
 
 **Tests:** `internal/feedparse/feedparse_test.go` (`TestParseItemImage`,
 `TestParseItemMediaType`); `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
-`internal/psql/feeds_test.go`, `articles_test.go`; `internal/server/feeds_test.go`.
+`internal/psql/feeds_test.go` (`TestSaveFetchPostsPerWeek`), `articles_test.go`;
+`internal/server/feeds_test.go`.
 
 **Why:** "Feed ingestion" in decisions.md.
 
@@ -448,7 +456,9 @@ My feeds) post to
 the subscription, flashes a message, and redirects back (`safeReturnPath` keeps it
 local). Gone feeds can't be subscribed to but can be unsubscribed from. "My feeds"
 (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest
-article date and a warning after 3 failed fetches in a row. Site, feed and search pages
+article date and posting rate ("About 3 posts a week", `postingRate`; only for feeds
+with articles) and a warning after 3 failed fetches in a row. A fetched feed's page shows
+the rate after "Last fetched". Site, feed and search pages
 mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the
 timeline.
@@ -509,7 +519,7 @@ published dates.
 **Read:**
 
 1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
-   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler`; names:
+   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler` and `postingRate`; names:
    `subscriptionEditHandler`, `subscriptionEditPostHandler`, `subscriptionFromURL`,
    `renderSubscriptionEdit`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
@@ -525,8 +535,8 @@ published dates.
    (`Runner.process`, `run`, `discover`); `internal/lookup/lookup.go` (`ToSave`);
    `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
-**Tests:** `internal/server/feeds_test.go` (names: `TestSubscriptionEdit`,
-`TestSubscriptionEditPost`), `sites_test.go`, `search_test.go`,
+**Tests:** `internal/server/feeds_test.go` (`TestPostingRate`; names:
+`TestSubscriptionEdit`, `TestSubscriptionEditPost`), `sites_test.go`, `search_test.go`,
 `settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`
 (`TestSubscriptionGet`, `TestSubscriptionRename`); import:
 `internal/server/import_test.go` (`TestSettingsImportForm`, `TestSettingsImportHandler`,

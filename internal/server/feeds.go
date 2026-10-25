@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -391,6 +392,24 @@ func feedLabel(feed rss.Feed) string {
 		return feed.Title
 	}
 	return feed.Url
+}
+
+// postingRate describes a feed's posting rate for people.
+func postingRate(perWeek float64) string {
+	switch {
+	case perWeek <= 0:
+		return "No posts in the last 30 days"
+	case perWeek < 1:
+		return "Less than one post a week"
+	case perWeek < 14:
+		n := math.Round(perWeek)
+		if n == 1 {
+			return "About 1 post a week"
+		}
+		return fmt.Sprintf("About %d posts a week", int(n))
+	default:
+		return fmt.Sprintf("About %d posts a day", int(math.Round(perWeek/7)))
+	}
 }
 
 func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {

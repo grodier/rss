@@ -353,8 +353,17 @@ names, lands in one change (#348).
   purpose (a tag's page offers "Make a timeline"), which keeps the tab row short. (#356)
 - **Tabs at the top of Home**, at `/timelines/{id}`, managed at `/timelines` and
   reordered with Move up / Move down (no drag and drop, which needs JavaScript). The nav
-  rail is unchanged, and tabs carry no counts. The tab row's layout is the implementer's
-  options. (#356, #357)
+  rail is unchanged, and tabs carry no counts. (#356, #357)
+- **The tab row is underlined tabs in place of the page head's heading**, the owner's
+  pick of three options (pills under the heading; wrapping pills with More on phones)
+  for its app-like look. The tabs scroll sideways when they don't fit; `app.js` scrolls
+  the current one into view, and without JavaScript the row starts at Home. The
+  description and Edit link go in a row under the tabs. (#356)
+- **The tab row is navigation, not ARIA tabs.** Each tab is its own page, so it's a
+  `<nav aria-label="Timelines">` list of links with `aria-current="page"`;
+  `role="tablist"` is for switching panels within a page and would promise arrow-key
+  behavior links don't have. The `<h1>` (the timeline's name, or Home) stays, visually
+  hidden and first in the header, so headings still outline the page. (#356)
 - **A filter is a form, not a query builder.** Show is all my feeds, or feeds with any of
   these tags or these feeds; Leave out is tags and feeds, and always wins; then
   conditions that must all hold: starred only, at most N posts a week, must mention /
@@ -384,6 +393,13 @@ names, lands in one change (#348).
   no other settings; "Show on Home" sits on Edit subscription and tag pages, and My feeds
   marks muted feeds. This is the muting half of the old "Filters and muting" item. (#362)
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280. (#356)
+- **The form stores only what has an effect.** With Show set to all feeds, the tags and
+  feeds ticked under Show are dropped on save; a tag or feed both shown and left out is
+  stored as left out; IDs that aren't the user's are ignored. A timeline showing only
+  some feeds whose sources are all gone (say its only tag was deleted) stays, with an
+  empty state asking to edit it, rather than silently showing every feed. (#356)
+- **Home's heading is "Home"**, matching its tab, and each custom timeline's heading is
+  its name, both visually hidden (above). (#356)
 - **No unread filter or counts**, as under "Reading".
 
 ### Sharing

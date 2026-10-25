@@ -219,7 +219,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
-	listTimelineFn func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 
 func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article, error) {
@@ -233,11 +233,11 @@ func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before
 	return f.listByFeedFn(ctx, feedID, before, limit)
 }
 
-func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	if f.listTimelineFn == nil {
 		return nil, nil
 	}
-	return f.listTimelineFn(ctx, userID, before, limit)
+	return f.listTimelineFn(ctx, userID, filter, before, limit)
 }
 
 type fakeReadStore struct {
@@ -512,4 +512,47 @@ type fakeDiscoverer struct {
 func (f *fakeDiscoverer) Discover(ctx context.Context, u *url.URL) (discovery.Result, error) {
 	f.urls = append(f.urls, u.String())
 	return f.res, f.err
+}
+
+type fakeTimelineStore struct {
+	createFn func(ctx context.Context, userID string, t rss.Timeline) (string, error)
+	getFn    func(ctx context.Context, userID, id string) (rss.Timeline, error)
+	listFn   func(ctx context.Context, userID string) ([]rss.Timeline, error)
+	updateFn func(ctx context.Context, userID string, t rss.Timeline) error
+	deleteFn func(ctx context.Context, userID, id string) error
+}
+
+func (f *fakeTimelineStore) Create(ctx context.Context, userID string, t rss.Timeline) (string, error) {
+	if f.createFn == nil {
+		return "", nil
+	}
+	return f.createFn(ctx, userID, t)
+}
+
+func (f *fakeTimelineStore) Get(ctx context.Context, userID, id string) (rss.Timeline, error) {
+	if f.getFn == nil {
+		return rss.Timeline{}, rss.ErrNoRecord
+	}
+	return f.getFn(ctx, userID, id)
+}
+
+func (f *fakeTimelineStore) List(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	if f.listFn == nil {
+		return nil, nil
+	}
+	return f.listFn(ctx, userID)
+}
+
+func (f *fakeTimelineStore) Update(ctx context.Context, userID string, t rss.Timeline) error {
+	if f.updateFn == nil {
+		return nil
+	}
+	return f.updateFn(ctx, userID, t)
+}
+
+func (f *fakeTimelineStore) Delete(ctx context.Context, userID, id string) error {
+	if f.deleteFn == nil {
+		return nil
+	}
+	return f.deleteFn(ctx, userID, id)
 }

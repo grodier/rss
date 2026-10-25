@@ -12,10 +12,7 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-3. **Wave 3:**
-   1. #356 Custom timelines as tabs on Home (after #351; stops for the owner's tab-row
-      pick).
-   2. #352 Tags on Edit subscription and My feeds (after #351).
+3. **Wave 3:** #352 Tags on Edit subscription and My feeds (after #351).
 4. **Wave 4**, after #356:
    1. #358 Starred-only timelines (after #349).
    2. #362 Mute on Home (after #352).

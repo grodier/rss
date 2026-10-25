@@ -113,9 +113,10 @@ type ArticleStore interface {
 	// ListByFeed returns a page of a feed's articles. Summary and Content
 	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
-	// ListTimeline returns a page of the user's timeline. Summary and
-	// Content are left empty.
-	ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	// ListTimeline returns a page of the user's subscriptions' articles that
+	// filter shows (the zero filter for Home). Summary and Content are left
+	// empty.
+	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 }
 
 // SubscriptionStore is the subscription persistence the server depends on.
@@ -179,6 +180,26 @@ type TagStore interface {
 	SetFeeds(ctx context.Context, userID, id string, feedIDs []string) error
 }
 
+// TimelineStore stores a user's custom timelines (the tabs after Home).
+type TimelineStore interface {
+	// Create stores a custom timeline after the user's others and returns its
+	// ID. rss.ErrTooManyTimelines if they have psql.MaxTimelines already;
+	// rss.ErrNoRecord if a tag or feed isn't the user's.
+	Create(ctx context.Context, userID string, t rss.Timeline) (string, error)
+	// Get returns the user's timeline id (Home included) with its filter, or
+	// rss.ErrNoRecord.
+	Get(ctx context.Context, userID, id string) (rss.Timeline, error)
+	// List returns the user's custom timelines in tab order, without their
+	// filters.
+	List(ctx context.Context, userID string) ([]rss.Timeline, error)
+	// Update replaces the name, description and filter of the user's custom
+	// timeline t.ID. rss.ErrNoRecord as Create, or if there's no such
+	// timeline.
+	Update(ctx context.Context, userID string, t rss.Timeline) error
+	// Delete deletes the user's custom timeline id, or rss.ErrNoRecord.
+	Delete(ctx context.Context, userID, id string) error
+}
+
 // ImportStore stores OPML imports and reads their results.
 type ImportStore interface {
 	Create(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error)
@@ -232,6 +253,7 @@ var (
 	_ SaveStore         = (*psql.SaveRepository)(nil)
 	_ StarStore         = (*psql.StarRepository)(nil)
 	_ TagStore          = (*psql.TagRepository)(nil)
+	_ TimelineStore     = (*psql.TimelineRepository)(nil)
 	_ ImportStore       = (*psql.ImportRepository)(nil)
 	_ DebugStore        = (*psql.DebugRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
@@ -254,6 +276,7 @@ type Services struct {
 	SaveService         SaveStore
 	StarService         StarStore
 	TagService          TagStore
+	TimelineService     TimelineStore
 	ImportService       ImportStore
 	DebugService        DebugStore
 	EmailQueue          EmailQueue

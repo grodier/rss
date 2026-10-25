@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Timeline</title>
+  <title>{{if .Timeline.Home}}Home{{else}}rss - {{.Timeline.Name}}{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   <script src="{{asset "js/app.js"}}" defer></script>
 </head>
@@ -14,10 +14,21 @@
     {{template "app-nav" .Nav}}
 
     <main class="column">
-      <header class="page-head">
-        <h1>Timeline</h1>
-        {{if .Before}}<a href="/">Back to newest</a>{{end}}
+      {{/* The tabs stand in for the page's heading, so the <h1> is visually
+           hidden; it comes first so heading navigation still finds it. */}}
+      <header class="page-head tabs-head">
+        <h1 class="visually-hidden">{{if .Timeline.Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
+        {{template "timeline-tabs" .Tabs}}
       </header>
+      {{if or .Timeline.Description (not .Timeline.Home) .Before}}
+      <div class="timeline-about">
+        {{with .Timeline.Description}}<p>{{.}}</p>{{end}}
+        <div class="timeline-links">
+          {{if .Before}}<a href="{{.Path}}">Back to newest</a>{{end}}
+          {{if not .Timeline.Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit<span class="visually-hidden"> {{.Timeline.Name}}</span></a>{{end}}
+        </div>
+      </div>
+      {{end}}
 
       {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
 
@@ -33,6 +44,12 @@
       </div>
       {{else if .Before}}
       <p class="empty">No older articles.</p>
+      {{else if .NoSources}}
+      <div class="empty">
+        <p>This timeline has no feeds to show. <a href="/timelines/{{.Timeline.ID}}/edit">Edit it</a> to choose some.</p>
+      </div>
+      {{else if not .Timeline.Home}}
+      <p class="empty">Nothing in this timeline yet.</p>
       {{else}}
       <div class="empty">
         {{template "icon-rss"}}
@@ -41,7 +58,7 @@
       {{end}}
 
       {{if .Next}}
-      <nav class="pager"><a class="btn" rel="next" href="/?before={{.Next}}">Older articles</a></nav>
+      <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}">Older articles</a></nav>
       {{end}}
     </main>
   </div>

@@ -1,0 +1,21 @@
+{{/* timeline-tabs is the tab row heading Home and custom timelines: Home,
+     the user's timelines in order, then a link to make or manage them. Its
+     data is a timelineTabs. Each tab is its own page, so this is navigation
+     (links with aria-current), not ARIA tabs, which switch panels within a
+     page. No counts ("Reading" in docs/decisions.md). app.js scrolls the
+     current tab into view. */}}
+{{define "timeline-tabs"}}
+<nav class="timeline-tabs" aria-label="Timelines">
+  <ul role="list">
+    <li><a href="/"{{if eq .CurrentID ""}} aria-current="page"{{end}}>Home</a></li>
+    {{range .Timelines}}
+    <li><a href="/timelines/{{.ID}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{.Name}}</a></li>
+    {{end}}
+    {{if .Timelines}}
+    <li class="tab-manage"><a href="/timelines">Timelines</a></li>
+    {{else}}
+    <li class="tab-manage"><a href="/timelines/new">New timeline</a></li>
+    {{end}}
+  </ul>
+</nav>
+{{end}}

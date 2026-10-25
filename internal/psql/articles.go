@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -118,25 +119,29 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 }
 
 // ListTimeline returns up to limit entries from the feeds userID subscribes
-// to, ordered by timeline_at then ID, newest first, starting after before
-// (from the start if before is zero).
+// to that filter shows (see timelineWhere), ordered by timeline_at then ID,
+// newest first, starting after before (from the start if before is zero).
 //
-// Copies of one article (same non-empty canonical_url) in several subscribed
+// Copies of one article (same non-empty canonical_url) in several of those
 // feeds are one entry: the earliest copy to arrive (smallest timeline_at,
 // then ID), at that copy's position, with AlsoIn listing the other feeds
 // that have a copy, ordered by title. Feed titles are the user's names for
 // their subscriptions where they've set one.
 //
 // Summary and Content are left empty.
-func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	at, id := cursorArgs(before)
+	args := []any{userID, at, id, limit}
+
 	// Articles with no canonical URL key on their own ID, so they're never
-	// collapsed.
+	// collapsed. Copies collapse after filtering, so a left-out feed's copy
+	// never takes an entry's place.
 	stmt := `WITH mine AS (
 			SELECT ` + qualifiedListArticleColumns + `,
 				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
 			FROM subscriptions sub
 			JOIN articles a ON a.feed_id = sub.feed_id
-			WHERE sub.user_id = $1
+			WHERE sub.user_id = $1` + timelineWhere(filter, &args) + `
 		), firsts AS (
 			SELECT DISTINCT ON (dedup_key) *
 			FROM mine
@@ -150,9 +155,7 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
 
-	at, id := cursorArgs(before)
-
-	rows, err := r.DB.QueryContext(ctx, stmt, userID, at, id, limit)
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +188,44 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, bef
 	}
 
 	return items, nil
+}
+
+// timelineWhere returns the SQL conditions on sub (subscriptions) for
+// filter, appending its parameters to args. Each condition starts with AND,
+// so the result follows another condition; it's "" for the zero filter.
+//
+// Show: with OnlyIncluded, only the feeds in IncludeFeedIDs or with a tag in
+// IncludeTagIDs. Leave out: never the feeds in ExcludeFeedIDs or with a tag
+// in ExcludeTagIDs, even when included.
+func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
+	ids := func(s []string) string {
+		if s == nil {
+			// NULL would make = ANY and NOT (= ANY) both NULL.
+			s = []string{}
+		}
+		*args = append(*args, pq.Array(s))
+		return fmt.Sprintf("$%d::uuid[]", len(*args))
+	}
+	hasTag := func(tagIDs string) string {
+		return `EXISTS (
+				SELECT 1 FROM subscription_tags st
+				WHERE st.user_id = sub.user_id AND st.feed_id = sub.feed_id AND st.tag_id = ANY(` + tagIDs + `))`
+	}
+
+	var where strings.Builder
+	if filter.OnlyIncluded {
+		where.WriteString(`
+				AND (sub.feed_id = ANY(` + ids(filter.IncludeFeedIDs) + `) OR ` + hasTag(ids(filter.IncludeTagIDs)) + `)`)
+	}
+	if len(filter.ExcludeFeedIDs) > 0 {
+		where.WriteString(`
+				AND NOT (sub.feed_id = ANY(` + ids(filter.ExcludeFeedIDs) + `))`)
+	}
+	if len(filter.ExcludeTagIDs) > 0 {
+		where.WriteString(`
+				AND NOT ` + hasTag(ids(filter.ExcludeTagIDs)))
+	}
+	return where.String()
 }
 
 // fillAlsoIn sets AlsoIn on each item with a canonical URL to the other

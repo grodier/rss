@@ -743,7 +743,7 @@ func TestListTimeline(t *testing.T) {
 		}
 	}
 
-	all, err := articles.ListTimeline(ctx, user, rss.ArticleCursor{}, 100)
+	all, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
 	if err != nil {
 		t.Fatalf("ListTimeline: %v", err)
 	}
@@ -780,7 +780,7 @@ func TestListTimeline(t *testing.T) {
 		var got []string
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, user, cursor, 2)
+			page, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, cursor, 2)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -807,7 +807,7 @@ func TestListTimeline(t *testing.T) {
 	})
 
 	t.Run("no subscriptions gives an empty slice", func(t *testing.T) {
-		got, err := articles.ListTimeline(ctx, newTestUser(t, db), rss.ArticleCursor{}, 10)
+		got, err := articles.ListTimeline(ctx, newTestUser(t, db), rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -868,7 +868,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		}
 	}
 
-	all, err := articles.ListTimeline(ctx, reader, rss.ArticleCursor{}, 100)
+	all, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
 	if err != nil {
 		t.Fatalf("ListTimeline: %v", err)
 	}
@@ -949,7 +949,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		var got []rss.ArticleWithFeed
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, reader, cursor, 1)
+			page, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, cursor, 1)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -967,7 +967,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 	})
 
 	t.Run("a user subscribed only to B sees B's copy without AlsoIn", func(t *testing.T) {
-		got, err := articles.ListTimeline(ctx, bOnly, rss.ArticleCursor{}, 100)
+		got, err := articles.ListTimeline(ctx, bOnly, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1013,7 +1013,7 @@ func TestListTimelineSubscriptionNames(t *testing.T) {
 		other:   {feedA.ID: "Old title", feedB.ID: "Old title"},
 	}
 	for user, want := range names {
-		items, err := articles.ListTimeline(ctx, user, rss.ArticleCursor{}, 100)
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1154,4 +1154,124 @@ func TestGetByIDReadsPageColumns(t *testing.T) {
 	if a.PageImageURL != "https://example.com/p.jpg" || a.PageTitle != "Page title" || a.PageDescription != "Page description" {
 		t.Errorf("page columns = %q, %q, %q", a.PageImageURL, a.PageTitle, a.PageDescription)
 	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineFilter(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	tags := NewTagRepository(db)
+	ctx := t.Context()
+
+	// The user subscribes to A, B, C and D. A is tagged T1; B and C are
+	// tagged T2. x has copies in C (first to arrive) and A.
+	user := newTestUser(t, db)
+	ids := newTestSubscriptions(t, db, user, 4)
+	feedOf := map[string]string{"A": ids[0], "B": ids[1], "C": ids[2], "D": ids[3]}
+	nameOf := map[string]string{}
+	for name, id := range feedOf {
+		nameOf[id] = name
+	}
+	t1, t2 := mustCreateTag(t, tags, user, "T1"), mustCreateTag(t, tags, user, "T2")
+	mustSetFeeds(t, tags, user, t1.ID, feedOf["A"])
+	mustSetFeeds(t, tags, user, t2.ID, feedOf["B"], feedOf["C"])
+
+	postX := fmt.Sprintf("https://example.com/filter-x-%d", time.Now().UnixNano())
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		feed, ext, url string
+		offset         time.Duration
+	}{
+		{"A", "a1", "", time.Hour},
+		{"A", "a2", "", 2 * time.Hour},
+		{"B", "b1", "", 3 * time.Hour},
+		{"C", "c1", "", 4 * time.Hour},
+		{"D", "d1", "", 5 * time.Hour},
+		{"C", "x", postX, 6 * time.Hour},
+		{"A", "x", postX, 7 * time.Hour},
+	} {
+		feed := rss.Feed{ID: feedOf[c.feed], NextFetch: time.Now().Add(time.Hour)}
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: c.ext, CanonicalURL: c.url}}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(c.offset), feed.ID, c.ext); err != nil {
+			t.Fatalf("set timeline_at: %v", err)
+		}
+	}
+
+	// entries lists filter's timeline as "ext@feed", newest first.
+	entries := func(t *testing.T, filter rss.TimelineFilter) []string {
+		t.Helper()
+		items, err := articles.ListTimeline(ctx, user, filter, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		got := []string{}
+		for _, item := range items {
+			got = append(got, item.Article.ExternalID+"@"+nameOf[item.Feed.ID])
+		}
+		return got
+	}
+
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   []string
+	}{
+		{"zero filter shows every subscription", rss.TimelineFilter{},
+			[]string{"x@C", "d1@D", "c1@C", "b1@B", "a2@A", "a1@A"}},
+		{"only one tag", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{t1.ID}},
+			[]string{"x@A", "a2@A", "a1@A"}},
+		{"one tag plus one feed", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{t1.ID}, IncludeFeedIDs: []string{feedOf["D"]}},
+			[]string{"x@A", "d1@D", "a2@A", "a1@A"}},
+		{"leave out a tag and a feed", rss.TimelineFilter{ExcludeTagIDs: []string{t2.ID}, ExcludeFeedIDs: []string{feedOf["D"]}},
+			[]string{"x@A", "a2@A", "a1@A"}},
+		{"leave out wins over include", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{t2.ID}, IncludeFeedIDs: []string{feedOf["A"]}, ExcludeFeedIDs: []string{feedOf["C"]}},
+			[]string{"x@A", "b1@B", "a2@A", "a1@A"}},
+		{"leave out a tag that's included", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{t1.ID, t2.ID}, ExcludeTagIDs: []string{t2.ID}},
+			[]string{"x@A", "a2@A", "a1@A"}},
+		{"only included with nothing included shows nothing", rss.TimelineFilter{OnlyIncluded: true},
+			[]string{}},
+		// x's copy in C arrived first, but C is left out, so A's copy shows.
+		{"copies collapse among the timeline's feeds only", rss.TimelineFilter{ExcludeFeedIDs: []string{feedOf["C"]}},
+			[]string{"x@A", "d1@D", "b1@B", "a2@A", "a1@A"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := entries(t, tt.filter); !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("also in still lists every other subscribed copy", func(t *testing.T) {
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{ExcludeFeedIDs: []string{feedOf["C"]}}, rss.ArticleCursor{}, 1)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		if len(items) != 1 || len(items[0].AlsoIn) != 1 || items[0].AlsoIn[0].ID != feedOf["C"] {
+			t.Errorf("got %+v, want x from A, also in C", items)
+		}
+	})
+
+	t.Run("paging with a filter", func(t *testing.T) {
+		filter := rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{t1.ID}, IncludeFeedIDs: []string{feedOf["D"]}}
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 10 {
+			page, err := articles.ListTimeline(ctx, user, filter, cursor, 1)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			if len(page) == 0 {
+				break
+			}
+			got = append(got, page[0].Article.ExternalID+"@"+nameOf[page[0].Feed.ID])
+			cursor = rss.ArticleCursor{At: page[0].Article.TimelineAt, ID: page[0].Article.ID}
+		}
+		if want := []string{"x@A", "d1@D", "a2@A", "a1@A"}; !slices.Equal(got, want) {
+			t.Errorf("paged %v, want %v", got, want)
+		}
+	})
 }

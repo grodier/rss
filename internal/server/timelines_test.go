@@ -30,12 +30,22 @@ const (
 // and the flash left in the session.
 func serveTimeline(t *testing.T, s *Server, handler http.HandlerFunc, target, id string, form url.Values) (*httptest.ResponseRecorder, string) {
 	t.Helper()
+	return serveTimelineSession(t, s, nil, handler, target, id, form)
+}
+
+// serveTimelineSession is serveTimeline with sess (user-1's) as the
+// logged-in session, when it isn't nil.
+func serveTimelineSession(t *testing.T, s *Server, sess *rss.Session, handler http.HandlerFunc, target, id string, form url.Values) (*httptest.ResponseRecorder, string) {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)
 	if form != nil {
 		req = httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	ctx := context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1")
+	if sess != nil {
+		ctx = context.WithValue(ctx, authenticatedSessionContextKey, *sess)
+	}
 	if id != "" {
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", id)
@@ -89,7 +99,7 @@ func TestTimelinesHandler(t *testing.T) {
 				if userID != "user-1" {
 					return nil, errors.New("wrong user")
 				}
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more"}, {ID: newsTimelineID, Name: "News"}}, nil
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken}, {ID: newsTimelineID, Name: "News"}}, nil
 			},
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
@@ -108,6 +118,12 @@ func TestTimelinesHandler(t *testing.T) {
 		if strings.Contains(body, "You don't have any timelines yet.") {
 			t.Errorf("shows the empty state: %s", body)
 		}
+		// Only AI is shared.
+		if n := strings.Count(body, `<span class="chip">Shared</span>`); n != 1 {
+			t.Errorf("%d timelines marked Shared, want 1: %s", n, body)
+		}
+		assertBodyContains(t, body, `<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>
+            <span class="chip">Shared</span>`)
 	})
 
 	t.Run("empty state", func(t *testing.T) {
@@ -877,4 +893,188 @@ func TestTagPageMakeTimelineLink(t *testing.T) {
 	s := newTestServerWith(t, Services{TagService: userTag(), SubscriptionService: &fakeSubscriptionStore{}})
 	rr, _ := serveTag(t, s, s.tagHandler, testTagID, nil)
 	assertBodyContains(t, rr.Body.String(), `<a href="/timelines/new?tag=`+testTagID+`">Make a timeline</a>`)
+}
+
+const testShareToken = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456"
+
+var (
+	sharingConfirmed   = &rss.Session{User: rss.User{ID: "user-1", Email: "ada@example.com", EmailConfirmedAt: time.Now()}}
+	sharingUnconfirmed = &rss.Session{User: rss.User{ID: "user-1", Email: "ada@example.com"}}
+)
+
+// newSharingTestServer is a server with base URL https://rss.example and
+// timelines, where user-1 has a tag and two feeds (timelineSourcesStores).
+func newSharingTestServer(t *testing.T, timelines *fakeTimelineStore) *Server {
+	t.Helper()
+	tags, subs := timelineSourcesStores()
+	return newTestServerConfig(t, Config{Port: 4000, Env: "development", BaseURL: "https://rss.example"},
+		Services{TagService: tags, SubscriptionService: subs, TimelineService: timelines})
+}
+
+func TestTimelineEditSharing(t *testing.T) {
+	edit := func(t *testing.T, s *Server, sess *rss.Session) string {
+		t.Helper()
+		rr, _ := serveTimelineSession(t, s, sess, s.timelineEditHandler, "/timelines/"+testTimelineID+"/edit", testTimelineID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	}
+
+	t.Run("unconfirmed email", func(t *testing.T) {
+		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
+		body := edit(t, s, sharingUnconfirmed)
+		assertBodyContains(t, body,
+			`<section class="timeline-sharing" id="sharing" aria-labelledby="sharing-heading">`,
+			`<h2 id="sharing-heading">Sharing</h2>`,
+			"<p>Confirm your email address to share timelines.</p>",
+			`<form action="/confirm-email/resend" method="post">`,
+			`<input type="hidden" name="return_to" value="/timelines/`+testTimelineID+`/edit#sharing" />`,
+		)
+		if strings.Contains(body, "Share this timeline") {
+			t.Errorf("offers sharing without a confirmed email: %s", body)
+		}
+	})
+
+	t.Run("not shared", func(t *testing.T) {
+		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
+		body := edit(t, s, sharingConfirmed)
+		assertBodyContains(t, body,
+			"Anyone with the link will be able to follow this timeline's newest articles in a feed reader",
+			`<form action="/timelines/`+testTimelineID+`/share" method="post">`,
+			`<button class="btn-sm" type="submit">Share this timeline</button>`,
+		)
+		if strings.Contains(body, "/shared/") {
+			t.Errorf("shows a link while not shared: %s", body)
+		}
+	})
+
+	t.Run("shared", func(t *testing.T) {
+		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI", ShareToken: testShareToken}))
+		body := edit(t, s, sharingConfirmed)
+		assertBodyContains(t, body,
+			"Anyone with the link can follow this timeline's newest articles in a feed reader",
+			`<label for="share-feed-url">Feed link</label>`,
+			`<input type="text" id="share-feed-url" value="https://rss.example/shared/`+testShareToken+`/feed.atom" readonly />`,
+			`<label for="share-page-url">Page link</label>`,
+			`<input type="text" id="share-page-url" value="https://rss.example/shared/`+testShareToken+`" readonly`,
+			"A page to send to people: it says how to subscribe.",
+			`<form action="/timelines/`+testTimelineID+`/unshare" method="post">`,
+			`<button class="btn-sm" type="submit">Stop sharing</button>`,
+			`<form action="/timelines/`+testTimelineID+`/share/new-link" method="post">`,
+			`<button class="btn-sm" type="submit" aria-describedby="share-new-link-hint">New link</button>`,
+			"The current links will stop working.",
+		)
+	})
+
+	t.Run("shows the flash", func(t *testing.T) {
+		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
+		rr, flash := serveTimelineSession(t, s, sharingConfirmed, func(w http.ResponseWriter, r *http.Request) {
+			s.sessionManager.Put(r.Context(), "flash", "Sharing turned on.")
+			s.timelineEditHandler(w, r)
+		}, "/", testTimelineID, nil)
+		assertBodyContains(t, rr.Body.String(), `<div class="flash">Sharing turned on.</div>`)
+		if flash != "" {
+			t.Errorf("flash left in the session: %q", flash)
+		}
+	})
+
+	t.Run("New timeline has no Sharing section", func(t *testing.T) {
+		s := newSharingTestServer(t, &fakeTimelineStore{})
+		rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineNewHandler, "/timelines/new", "", nil)
+		if body := rr.Body.String(); strings.Contains(body, `id="sharing"`) {
+			t.Errorf("New timeline has a Sharing section: %s", body)
+		}
+	})
+}
+
+func TestTimelineSharingHandlers(t *testing.T) {
+	type call struct{ userID, id, token string }
+	// newServer returns a server whose store records each call, and
+	// fails NewShareLink with ErrNoRecord when notShared is set.
+	newServer := func(t *testing.T, notShared bool) (*Server, *[]call) {
+		var calls []call
+		timelines := userTimeline(rss.Timeline{Name: "AI"})
+		timelines.shareFn = func(ctx context.Context, userID, id, newToken string) (string, error) {
+			calls = append(calls, call{userID, id, newToken})
+			return newToken, nil
+		}
+		timelines.unshareFn = func(ctx context.Context, userID, id string) error {
+			calls = append(calls, call{userID, id, ""})
+			return nil
+		}
+		timelines.newShareLinkFn = func(ctx context.Context, userID, id, newToken string) error {
+			calls = append(calls, call{userID, id, newToken})
+			if notShared {
+				return rss.ErrNoRecord
+			}
+			return nil
+		}
+		return newSharingTestServer(t, timelines), &calls
+	}
+	token43 := regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+
+	tests := []struct {
+		name       string
+		handler    func(*Server) http.HandlerFunc
+		sess       *rss.Session
+		wantCall   bool
+		wantToken  bool
+		wantFlash  string
+		notShared  bool
+		wantStatus int
+	}{
+		{"share", func(s *Server) http.HandlerFunc { return s.timelineShareHandler }, sharingConfirmed, true, true, "Sharing turned on.", false, http.StatusSeeOther},
+		{"share unconfirmed changes nothing", func(s *Server) http.HandlerFunc { return s.timelineShareHandler }, sharingUnconfirmed, false, false, "Confirm your email address to share timelines.", false, http.StatusSeeOther},
+		{"unshare", func(s *Server) http.HandlerFunc { return s.timelineUnshareHandler }, sharingConfirmed, true, false, "Sharing turned off. The links no longer work.", false, http.StatusSeeOther},
+		{"unshare unconfirmed still works", func(s *Server) http.HandlerFunc { return s.timelineUnshareHandler }, sharingUnconfirmed, true, false, "Sharing turned off. The links no longer work.", false, http.StatusSeeOther},
+		{"new link", func(s *Server) http.HandlerFunc { return s.timelineNewLinkHandler }, sharingConfirmed, true, true, "New link made. The old one no longer works.", false, http.StatusSeeOther},
+		{"new link unconfirmed changes nothing", func(s *Server) http.HandlerFunc { return s.timelineNewLinkHandler }, sharingUnconfirmed, false, false, "Confirm your email address to share timelines.", false, http.StatusSeeOther},
+		{"new link when not shared is 404", func(s *Server) http.HandlerFunc { return s.timelineNewLinkHandler }, sharingConfirmed, true, true, "", true, http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, calls := newServer(t, tt.notShared)
+			rr, flash := serveTimelineSession(t, s, tt.sess, tt.handler(s), "/", testTimelineID, url.Values{})
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusSeeOther {
+				if loc := rr.Header().Get("Location"); loc != "/timelines/"+testTimelineID+"/edit#sharing" {
+					t.Errorf("Location = %q", loc)
+				}
+			}
+			if flash != tt.wantFlash {
+				t.Errorf("flash = %q, want %q", flash, tt.wantFlash)
+			}
+			if !tt.wantCall {
+				if len(*calls) != 0 {
+					t.Errorf("store called: %v", *calls)
+				}
+				return
+			}
+			if len(*calls) != 1 || (*calls)[0].userID != "user-1" || (*calls)[0].id != testTimelineID {
+				t.Fatalf("calls = %v, want one for user-1's timeline", *calls)
+			}
+			if got := (*calls)[0].token; tt.wantToken != token43.MatchString(got) {
+				t.Errorf("token = %q, want a new 43-character token: %v", got, tt.wantToken)
+			}
+		})
+	}
+
+	for name, handler := range map[string]func(*Server) http.HandlerFunc{
+		"share":    func(s *Server) http.HandlerFunc { return s.timelineShareHandler },
+		"unshare":  func(s *Server) http.HandlerFunc { return s.timelineUnshareHandler },
+		"new link": func(s *Server) http.HandlerFunc { return s.timelineNewLinkHandler },
+	} {
+		for _, id := range []string{"junk", otherTagID} {
+			t.Run(name+" "+id+" is 404", func(t *testing.T) {
+				s, calls := newServer(t, false)
+				rr, _ := serveTimelineSession(t, s, sharingConfirmed, handler(s), "/", id, url.Values{})
+				if rr.Code != http.StatusNotFound || len(*calls) != 0 {
+					t.Errorf("status = %d, calls %v; want 404 and none", rr.Code, *calls)
+				}
+			})
+		}
+	}
 }

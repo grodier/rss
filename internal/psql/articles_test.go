@@ -1439,3 +1439,117 @@ func TestListTimelineWords(t *testing.T) {
 		})
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListShared(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	tags := NewTagRepository(db)
+	ctx := t.Context()
+
+	// The owner subscribes to A (renamed, tagged T) and B. A has a linked
+	// article, one mentioning AI, and one without a link; B one linked one.
+	owner := newTestUser(t, db)
+	ids := newTestSubscriptions(t, db, owner, 2)
+	feedA, feedB := ids[0], ids[1]
+	if err := subs.Rename(ctx, owner, feedA, "My name for A"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	tag := mustCreateTag(t, tags, owner, "T")
+	mustSetFeeds(t, tags, owner, tag.ID, feedA)
+
+	saves := map[string][]rss.Article{
+		feedA: {
+			{ExternalID: "a-link", URL: "https://example.com/a-link", Title: "A link"},
+			{ExternalID: "a-ai", URL: "https://example.com/a-ai", Title: "All about AI"},
+			{ExternalID: "a-nolink", Title: "No link"},
+		},
+		feedB: {{ExternalID: "b-link", URL: "https://example.com/b-link", Title: "B link"}},
+	}
+	articleOf := map[string]string{}
+	for feedID, batch := range saves {
+		if _, err := feeds.SaveFetch(ctx, rss.Feed{ID: feedID, NextFetch: time.Now().Add(time.Hour)}, batch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		for _, a := range batch {
+			var id string
+			if err := db.QueryRow(`SELECT id FROM articles WHERE feed_id = $1 AND external_id = $2`, feedID, a.ExternalID).Scan(&id); err != nil {
+				t.Fatalf("select article: %v", err)
+			}
+			articleOf[a.ExternalID] = id
+		}
+	}
+	externalID := map[string]string{}
+	for ext, id := range articleOf {
+		externalID[id] = ext
+	}
+
+	list := func(t *testing.T, filter rss.TimelineFilter, limit int) []rss.SharedArticle {
+		t.Helper()
+		items, err := articles.ListShared(ctx, owner, filter, limit)
+		if err != nil {
+			t.Fatalf("ListShared: %v", err)
+		}
+		return items
+	}
+	names := func(items []rss.SharedArticle) []string {
+		got := []string{}
+		for _, item := range items {
+			got = append(got, externalID[item.Article.ID])
+		}
+		return got
+	}
+
+	t.Run("linked articles with each feed's own title", func(t *testing.T) {
+		items := list(t, rss.TimelineFilter{}, 50)
+		if got, want := slices.Sorted(slices.Values(names(items))), []string{"a-ai", "a-link", "b-link"}; !slices.Equal(got, want) {
+			t.Errorf("articles = %v, want %v (none without a link)", got, want)
+		}
+		for _, item := range items {
+			if item.Feed.Title != "Old title" {
+				t.Errorf("%s: Feed.Title = %q, want the feed's own title", externalID[item.Article.ID], item.Feed.Title)
+			}
+			if !item.StarredAt.IsZero() {
+				t.Errorf("%s: StarredAt = %v, want zero", externalID[item.Article.ID], item.StarredAt)
+			}
+		}
+	})
+
+	t.Run("the filter applies", func(t *testing.T) {
+		got := slices.Sorted(slices.Values(names(list(t, rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}}, 50))))
+		if want := []string{"a-ai", "a-link"}; !slices.Equal(got, want) {
+			t.Errorf("tag T = %v, want %v", got, want)
+		}
+		if got, want := names(list(t, rss.TimelineFilter{IncludeWords: []string{"AI"}}, 50)), []string{"a-ai"}; !slices.Equal(got, want) {
+			t.Errorf("mentions AI = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("at most limit", func(t *testing.T) {
+		if got := list(t, rss.TimelineFilter{}, 2); len(got) != 2 {
+			t.Errorf("got %d articles, want 2", len(got))
+		}
+	})
+
+	t.Run("starred only, newest starred first", func(t *testing.T) {
+		base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+		for i, ext := range []string{"b-link", "a-link", "a-nolink"} {
+			if _, err := db.Exec(`INSERT INTO stars (user_id, article_id, starred_at) VALUES ($1, $2, $3)`,
+				owner, articleOf[ext], base.Add(time.Duration(i)*time.Hour)); err != nil {
+				t.Fatalf("insert star: %v", err)
+			}
+		}
+		items := list(t, rss.TimelineFilter{StarredOnly: true}, 50)
+		if got, want := names(items), []string{"a-link", "b-link"}; !slices.Equal(got, want) {
+			t.Fatalf("starred = %v, want %v", got, want)
+		}
+		if !items[0].StarredAt.Equal(base.Add(time.Hour)) {
+			t.Errorf("StarredAt = %v, want %v", items[0].StarredAt, base.Add(time.Hour))
+		}
+		if items[0].Feed.Title != "Old title" {
+			t.Errorf("Feed.Title = %q, want the feed's own title", items[0].Feed.Title)
+		}
+	})
+}

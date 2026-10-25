@@ -34,7 +34,8 @@ type Config struct {
 	// X-Forwarded-For. 0 ignores the header.
 	ProxyHops int
 	// BaseURL is the app's public URL, without a trailing slash. Links in
-	// emails are built from it, never from a request's Host header.
+	// emails and shared timelines' links are built from it, never from a
+	// request's Host header.
 	BaseURL string
 	// SupportEmail is where people can get help; pages show it.
 	SupportEmail string
@@ -117,6 +118,10 @@ type ArticleStore interface {
 	// filter shows (the zero filter for Home). Summary and Content are left
 	// empty.
 	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	// ListShared returns the newest limit articles with a URL of the owner's
+	// timeline with filter, with each feed's own title, for its shared feed.
+	// Summary and Content are left empty.
+	ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
 }
 
 // SubscriptionStore is the subscription persistence the server depends on.
@@ -207,6 +212,18 @@ type TimelineStore interface {
 	Update(ctx context.Context, userID string, t rss.Timeline) error
 	// Delete deletes the user's custom timeline id, or rss.ErrNoRecord.
 	Delete(ctx context.Context, userID, id string) error
+	// Share gives the user's custom timeline id the share token newToken if
+	// it has none, and returns its token. rss.ErrNoRecord as Get.
+	Share(ctx context.Context, userID, id, newToken string) (string, error)
+	// NewShareLink replaces the token of the user's shared timeline id.
+	// rss.ErrNoRecord if it isn't shared, or as Get.
+	NewShareLink(ctx context.Context, userID, id, newToken string) error
+	// Unshare clears the token of the user's custom timeline id; not shared
+	// is not an error. rss.ErrNoRecord as Get.
+	Unshare(ctx context.Context, userID, id string) error
+	// GetShared returns the shared timeline with token, with its filter, and
+	// its owner's ID, or rss.ErrNoRecord.
+	GetShared(ctx context.Context, token string) (t rss.Timeline, ownerID string, err error)
 }
 
 // ImportStore stores OPML imports and reads their results.

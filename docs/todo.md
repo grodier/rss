@@ -12,9 +12,7 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-5. **Wave 5:**
-   1. #381 Share a timeline as an Atom feed, with a landing page at its link.
-   2. #357 Reorder timelines. Lowest priority; any time after #356.
+5. **Wave 5:** #357 Reorder timelines. Lowest priority; any time after #356.
 
 Then:
 

@@ -116,7 +116,7 @@ Mailpit (`compose.yml`) and in production against Resend.
 | `internal/mail` | Render emails from embedded templates (`ParseTemplates`, `Render`); queue them in the outbox (`Queue`) and send them from it (`Runner`) over SMTP (`SMTPSender`) or to the log (`LogSender`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
-| `internal/token` | One-time tokens for email links: `New` (32 random bytes, base64url, and its SHA-256) and `Hash` | — |
+| `internal/token` | Random tokens for links: `Random` (32 random bytes, base64url, for share links), `New` (a `Random` token for an email link and its SHA-256) and `Hash` | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates, email templates (`Emails`) and static files | — |
 | `internal/validator` | Form validation helpers; the rules for new passwords, with the embedded common-password list | — |
@@ -160,7 +160,8 @@ adding another):
 5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
 Then routes are split into groups. `/static/*`, `/sites/{id}/icon`, `/healthcheck`,
-`/privacy` and `/terms` have no session. All
+`/privacy`, `/terms` and the shared timeline routes (`/shared/{token}`,
+`/shared/{token}/feed.atom`) have no session. All
 other routes load the session (`sessionManager.LoadAndSave`) and `authenticate`, which
 loads the device's `user_sessions` row with its user and puts both in the request
 context, unless the row is gone or idle for 90 days.
@@ -186,6 +187,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `GET /sites/{id}/icon` | no | `siteIconHandler` | A site's stored icon; `?v=<hash>` URLs are cached for a year; 404 when it has none |
 | `GET /privacy` | no | `privacyHandler` | Privacy policy |
 | `GET /terms` | no | `termsHandler` | Terms of use |
+| `GET /shared/{token}` | no | `sharedTimelineHandler` | A shared timeline's landing page: name, description, how to subscribe, and `<link rel="alternate">` to its feed; 404 for a malformed or unknown token |
+| `GET /shared/{token}/feed.atom` | no | `sharedFeedHandler` | A shared timeline's Atom feed: its newest 50 linked articles; `ETag`, 304 on a matching `If-None-Match`; 404 as the page |
 | `GET /` | no | `homeHandler` | Landing page (shows a flash); when logged in, Home: the timeline of every subscription, under the tab row |
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
@@ -219,6 +222,9 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's |
 | `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
 | `POST /timelines/{id}/delete` | yes | `timelineDeleteHandler` | Deletes the timeline (cascade), unconfirmed; 303 to `/timelines` |
+| `POST /timelines/{id}/share` | yes | `timelineShareHandler` | Shares the timeline (a share token, unless it has one); needs a confirmed email; 303 to `/timelines/{id}/edit#sharing` |
+| `POST /timelines/{id}/unshare` | yes | `timelineUnshareHandler` | Stops sharing: clears the token; 303 as Share |
+| `POST /timelines/{id}/share/new-link` | yes | `timelineNewLinkHandler` | Replaces the token, so the old links 404; needs a confirmed email; 404 if not shared; 303 as Share |
 | `GET /articles/{id}` | yes | `articleHandler` | Article page; records the read |
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
 | `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |
@@ -341,12 +347,13 @@ emails   (the outbox: no foreign keys)
   feeds), `starred_only`, `max_posts_per_week` (0: any rate), `include_words` (an article
   must mention one), `exclude_words` (an article mentioning one is left out),
   `media_only` (audio or video enclosures only) and `share_token` (NULL: not shared;
-  else the public link's token, stored as is). Its sources are `timeline_tags` and
-  `timeline_feeds` rows, each with `exclude` (false: show; true: leave out); composite
+  else the token in the timeline's shared links, stored as is and unique). Its
+  sources are `timeline_tags` and `timeline_feeds` rows, each with `exclude` (false: show; true: leave out); composite
   foreign keys keep them to the timeline's own user's tags and subscriptions. An ID in
   both is stored once, as excluded. `TimelineRepository` (behind the server's
-  `TimelineStore`) creates, reads, lists, updates and deletes them; `MaxTimelines` caps
-  a user at 20, checked in the insert. So far `include_words` and `exclude_words` are
+  `TimelineStore`) creates, reads, lists, updates, deletes and shares them
+  (`Share`, `NewShareLink`, `Unshare`, `GetShared`); `MaxTimelines` caps a user at 20,
+  checked in the insert. So far `include_words` and `exclude_words` are
   unused.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
@@ -500,6 +507,13 @@ CLAUDE.md.
   uses the token, so mail scanners that open links can't use it. The link's page is served
   with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in
   its URL.
+- **Shared timelines:** their routes are public (no session, no login) and reachable
+  only by the share token: 32 random bytes from `token.Random`, stored as is, so the
+  owner's settings can show the link again. A malformed token is a 404 before any
+  query. The page and feed send `X-Robots-Tag: noindex` (the page also has a robots
+  meta tag) and name no owner; feed entries carry only titles, links, dates, excerpts
+  and each feed's own title. Their absolute URLs are built from `-base-url`, never the
+  `Host` header. Sharing and New link need a confirmed email.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form. A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.
 - **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.

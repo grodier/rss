@@ -1467,7 +1467,8 @@
     border: 0;
   }
 
-  :is(.tag-feeds, .timeline-form) legend {
+  :is(.tag-feeds, .timeline-form) legend,
+  .timeline-sharing h2 {
     inline-size: 100%;
     padding: 1rem 1rem 0.625rem;
     border-block-end: 1px solid var(--border);
@@ -1533,6 +1534,34 @@
 
   .tag-delete {
     padding: 0 1rem 1.5rem;
+  }
+
+  /* The timeline edit page's Sharing section, between the form and Delete. */
+  .timeline-sharing h2 {
+    margin: 0;
+  }
+
+  .timeline-sharing-body {
+    padding: 0.875rem 1rem 1.5rem;
+  }
+
+  .timeline-sharing-body > p,
+  .timeline-sharing-body > .field {
+    margin-block-end: 1rem;
+  }
+
+  .timeline-sharing-body > .hint {
+    margin-block: 0.5rem 0;
+  }
+
+  .timeline-sharing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .timeline-list-name + .chip {
+    margin-inline-start: 0.5rem;
   }
 
   /* Timelines: the tab row on Home and custom timelines. */
@@ -2194,6 +2223,23 @@
 
   .solo-foot a {
     color: inherit;
+  }
+
+  /* A shared timeline's public page: its name and how to follow it. */
+  .shared-timeline-description {
+    color: var(--text-2);
+    text-align: center;
+  }
+
+  .shared-timeline-follow {
+    margin-block-start: 2rem;
+    padding-block-start: 1.5rem;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .shared-timeline-follow > p,
+  .shared-timeline-follow > .field {
+    margin-block-end: 1rem;
   }
 
   /* The privacy policy and terms: a column of text in a solo page. */

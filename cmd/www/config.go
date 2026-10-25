@@ -212,7 +212,7 @@ func (c mailConfig) validate(env string) []error {
 // registerMailFlags registers the mail flags in fs, writing to c. -base-url
 // has no default here: call c.setBaseURLDefault after fs.Parse.
 func registerMailFlags(fs *flag.FlagSet, c *mailConfig) {
-	fs.StringVar(&c.baseURL, "base-url", "", "Public URL of the app, for links in emails (default http://localhost:<port>; required in production)")
+	fs.StringVar(&c.baseURL, "base-url", "", "Public URL of the app, for links in emails and shared timelines (default http://localhost:<port>; required in production)")
 	fs.StringVar(&c.supportEmail, "support-email", c.supportEmail, "Where people can get help: shown on pages and used as Reply-To (required in production)")
 	fs.StringVar(&c.smtpHost, "smtp-host", c.smtpHost, "SMTP server (default: emails are logged, not sent; required in production)")
 	fs.IntVar(&c.smtpPort, "smtp-port", c.smtpPort, "SMTP port: 465 for implicit TLS, otherwise STARTTLS")

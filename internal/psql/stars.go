@@ -134,21 +134,7 @@ func (r *StarRepository) ListStarred(ctx context.Context, userID string, filter 
 	at, id := cursorArgs(before)
 	args := []any{userID, at, id, limit}
 
-	// A walk of stars_user_starred_at_idx. Stars outlive subscriptions
-	// (hence the LEFT JOIN): with Show = All my feeds they all show, while
-	// chosen tags or feeds only match subscriptions. Starring already covers
-	// every copy of an article, so there's nothing to collapse.
-	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `, s.starred_at
-		FROM stars s
-		JOIN articles a ON a.id = s.article_id
-		JOIN feeds f ON f.id = a.feed_id
-		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
-		WHERE s.user_id = $1
-		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, &args) + `
-		ORDER BY s.starred_at DESC, s.article_id DESC
-		LIMIT $4`
-
-	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	rows, err := r.DB.QueryContext(ctx, starredStmt(filter, false, &args), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,20 +143,9 @@ func (r *StarRepository) ListStarred(ctx context.Context, userID string, filter 
 	items := []rss.StarredArticle{}
 	for rows.Next() {
 		var item rss.StarredArticle
-		// Nest scanArticle and scanFeed as ListSaved does, with starred_at
-		// after the feed's columns.
-		article, err := scanArticle(scanFunc(func(articleDests ...any) error {
-			var feedErr error
-			item.Feed, feedErr = scanFeed(scanFunc(func(feedDests ...any) error {
-				dests := append(articleDests, feedDests...)
-				return rows.Scan(append(dests, &item.StarredAt)...)
-			}))
-			return feedErr
-		}))
-		if err != nil {
+		if item.Article, item.Feed, err = scanArticleWithFeed(rows, &item.StarredAt); err != nil {
 			return nil, err
 		}
-		item.Article = article
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -178,4 +153,23 @@ func (r *StarRepository) ListStarred(ctx context.Context, userID string, filter 
 	}
 
 	return items, nil
+}
+
+// starredStmt returns ListStarred's query for filter, appending filter's
+// parameters to args as timelineStmt does; it selects starred_at after the
+// feed's columns. shared is as for timelineStmt.
+func starredStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
+	// A walk of stars_user_starred_at_idx. Stars outlive subscriptions
+	// (hence the LEFT JOIN): with Show = All my feeds they all show, while
+	// chosen tags or feeds only match subscriptions. Starring already covers
+	// every copy of an article, so there's nothing to collapse.
+	return `SELECT ` + qualifiedListArticleColumns + `, ` + listFeedColumns(shared) + `, s.starred_at
+		FROM stars s
+		JOIN articles a ON a.id = s.article_id
+		JOIN feeds f ON f.id = a.feed_id
+		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
+		WHERE s.user_id = $1
+		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, args) + sharedWhere(shared) + `
+		ORDER BY s.starred_at DESC, s.article_id DESC
+		LIMIT $4`
 }

@@ -396,6 +396,14 @@ type StarredArticle struct {
 	StarredAt time.Time
 }
 
+// SharedArticle is an article of a shared timeline, with its feed (the
+// feed's own title, never the owner's name for it).
+type SharedArticle struct {
+	Article   Article
+	Feed      Feed
+	StarredAt time.Time // when the owner starred it; zero unless the timeline is starred-only
+}
+
 // User is an account.
 type User struct {
 	ID               string

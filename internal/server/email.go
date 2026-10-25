@@ -26,7 +26,7 @@ func (s *Server) sendEmail(ctx context.Context, to, name string, data any) error
 }
 
 // absoluteURL returns path, which must start with "/", on the app's base URL,
-// for links in emails.
+// for links in emails and shared timelines' links.
 func (s *Server) absoluteURL(path string) string {
 	return s.config.BaseURL + path
 }

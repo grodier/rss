@@ -54,6 +54,11 @@ func (s *Server) router() http.Handler {
 	router.Get("/privacy", s.privacyHandler)
 	router.Get("/terms", s.termsHandler)
 
+	// Shared timelines are public and need no session: their owner opted in,
+	// and their links carry an unguessable token.
+	router.Get("/shared/{token}", s.sharedTimelineHandler)
+	router.Get("/shared/{token}/feed.atom", s.sharedFeedHandler)
+
 	router.Group(func(r chi.Router) {
 		r.Use(s.sessionManager.LoadAndSave)
 		r.Use(s.authenticate)
@@ -80,6 +85,9 @@ func (s *Server) router() http.Handler {
 			r.Get("/timelines/{id}/edit", s.timelineEditHandler)
 			r.Post("/timelines/{id}/edit", s.timelineEditPostHandler)
 			r.Post("/timelines/{id}/delete", s.timelineDeleteHandler)
+			r.Post("/timelines/{id}/share", s.timelineShareHandler)
+			r.Post("/timelines/{id}/unshare", s.timelineUnshareHandler)
+			r.Post("/timelines/{id}/share/new-link", s.timelineNewLinkHandler)
 			r.Get("/saved", s.savedHandler)
 			r.Get("/articles/{id}", s.articleHandler)
 			r.Post("/articles/{id}/read", s.articleReadHandler)

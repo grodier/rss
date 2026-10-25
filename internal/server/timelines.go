@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -359,6 +360,110 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/timelines", http.StatusSeeOther)
 }
 
+// timelineShareHandler shares a timeline: it gets a share token, unless it
+// has one. It needs a confirmed email address.
+func (s *Server) timelineShareHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.timelineFromURL(w, r)
+	if !ok {
+		return
+	}
+	if !s.emailConfirmed(r) {
+		s.redirectToSharing(w, r, t, shareNeedsConfirmation)
+		return
+	}
+
+	tok, err := token.Random()
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	userID, _ := s.authenticatedUserID(r)
+	if _, err := s.services.TimelineService.Share(r.Context(), userID, t.ID, tok); err != nil {
+		s.timelineWriteError(w, r, err)
+		return
+	}
+	s.redirectToSharing(w, r, t, "Sharing turned on.")
+}
+
+// timelineUnshareHandler stops sharing a timeline: its links become 404s.
+func (s *Server) timelineUnshareHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.timelineFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.TimelineService.Unshare(r.Context(), userID, t.ID); err != nil {
+		s.timelineWriteError(w, r, err)
+		return
+	}
+	s.redirectToSharing(w, r, t, "Sharing turned off. The links no longer work.")
+}
+
+// timelineNewLinkHandler replaces a shared timeline's token, so its old
+// links stop working. It needs a confirmed email address, like sharing.
+func (s *Server) timelineNewLinkHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.timelineFromURL(w, r)
+	if !ok {
+		return
+	}
+	if !s.emailConfirmed(r) {
+		s.redirectToSharing(w, r, t, shareNeedsConfirmation)
+		return
+	}
+
+	tok, err := token.Random()
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	userID, _ := s.authenticatedUserID(r)
+	// ErrNoRecord here also means it isn't shared (unshared in another tab):
+	// a 404, like a timeline that's gone.
+	if err := s.services.TimelineService.NewShareLink(r.Context(), userID, t.ID, tok); err != nil {
+		s.timelineWriteError(w, r, err)
+		return
+	}
+	s.redirectToSharing(w, r, t, "New link made. The old one no longer works.")
+}
+
+// shareNeedsConfirmation is the flash for sharing with an unconfirmed email
+// address.
+const shareNeedsConfirmation = "Confirm your email address to share timelines."
+
+// redirectToSharing flashes msg and goes to the Sharing section of t's edit
+// page.
+func (s *Server) redirectToSharing(w http.ResponseWriter, r *http.Request, t rss.Timeline, msg string) {
+	s.sessionManager.Put(r.Context(), "flash", msg)
+	http.Redirect(w, r, "/timelines/"+t.ID+"/edit#sharing", http.StatusSeeOther)
+}
+
+// timelineWriteError writes the response for err from changing a timeline:
+// 404 for rss.ErrNoRecord, else 500.
+func (s *Server) timelineWriteError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, rss.ErrNoRecord) {
+		s.notFoundResponse(w, r)
+	} else {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// emailConfirmed reports whether the logged-in user has confirmed their
+// email address.
+func (s *Server) emailConfirmed(r *http.Request) bool {
+	sess, ok := s.authenticatedSession(r)
+	return ok && !sess.User.EmailConfirmedAt.IsZero()
+}
+
+// timelineSharing is the Sharing section of a timeline's edit page.
+type timelineSharing struct {
+	Confirmed bool
+	// PageURL and FeedURL are the shared links; "" unless it's shared.
+	PageURL  string
+	FeedURL  string
+	ReturnTo string // for the confirmation notice's Resend
+}
+
 // timelineFromURL returns the user's custom timeline named in the URL. If ok
 // is false it has already written the response: 404 if the id isn't a UUID,
 // or the user has no such timeline.
@@ -449,12 +554,24 @@ func (s *Server) renderTimelineFormWith(w http.ResponseWriter, r *http.Request, 
 		Form     timelineForm
 		Tags     []rss.Tag
 		Checks   map[string]timelineChecks
+		Sharing  *timelineSharing // nil for New timeline
+		Flash    string
 	}{
 		Nav:      s.nav(r, "home"),
 		Timeline: t,
 		Form:     form,
 		Tags:     tags,
 		Checks:   form.checks(tags, subs, s.pageIcons(r, siteIDs)),
+	}
+	if t.ID != "" {
+		data.Sharing = &timelineSharing{
+			Confirmed: s.emailConfirmed(r),
+			ReturnTo:  "/timelines/" + t.ID + "/edit#sharing",
+		}
+		if t.ShareToken != "" {
+			data.Sharing.PageURL, data.Sharing.FeedURL = s.sharedURLs(t.ShareToken)
+		}
+		data.Flash = s.sessionManager.PopString(r.Context(), "flash")
 	}
 	if err := s.renderHTML(w, status, "timeline_form.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

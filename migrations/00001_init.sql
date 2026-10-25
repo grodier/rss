@@ -209,8 +209,8 @@ CREATE TABLE subscription_tags (
 
 CREATE INDEX subscription_tags_tag_id_idx ON subscription_tags (tag_id);
 
--- A user's timelines: Home (home = true, only its leave-outs are used) and
--- the custom ones shown as tabs after it. Sources are timeline_tags and
+-- A user's custom timelines, shown as tabs after Home (which shows every
+-- subscription and has no row). Sources are timeline_tags and
 -- timeline_feeds rows; the other conditions are columns.
 CREATE TABLE timelines (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -219,8 +219,7 @@ CREATE TABLE timelines (
         REFERENCES users(id)
         ON DELETE CASCADE,
 
-    home BOOLEAN NOT NULL DEFAULT false,
-    name TEXT NOT NULL DEFAULT '',        -- '' for Home
+    name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     position INT NOT NULL DEFAULT 0,      -- tab order after Home, lowest first
     all_feeds BOOLEAN NOT NULL DEFAULT true, -- false: only the feeds of its included tags and feeds
@@ -236,7 +235,6 @@ CREATE TABLE timelines (
     UNIQUE (id, user_id) -- for the composite foreign keys below
 );
 
-CREATE UNIQUE INDEX timelines_home_idx ON timelines (user_id) WHERE home;
 CREATE INDEX timelines_user_position_idx ON timelines (user_id, position);
 
 CREATE TABLE timeline_tags (

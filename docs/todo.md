@@ -13,18 +13,17 @@ wave can be built in parallel once the waves before them have merged; merge one 
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
 4. **Wave 4**, after #356:
-   1. #362 Mute on Home (after #352).
-   2. #359 Quiet posters and audio or video (after #350).
-   3. #354 OPML folders to tags, and export by tag (after #352).
+   1. #359 Quiet posters and audio or video (after #350).
+   2. #354 OPML folders to tags, and export by tag (after #352).
 5. **Wave 5:**
    1. #360 Keyword filters.
    2. #363 Share a timeline.
    3. #357 Reorder timelines. Lowest priority; any time after #356.
 6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
 
-Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
-(#362); `TimelineFilter`, `timelineWhere` and the timeline form
-(#356, #358, #359, #360); #359 and #360's conditions apply to `ListStarred` too.
+Files several of them share, so later PRs merge the earlier ones' changes:
+`TimelineFilter`, `timelineWhere` and the timeline form (#356, #358, #359, #360); #359
+and #360's conditions apply to `ListStarred` too.
 
 Then:
 
@@ -353,8 +352,9 @@ in decisions.md.
   (spam, impersonation, reporting), and whether to show an owner name or profile.
 - [ ] **More posting-frequency conditions.** Beyond "at most N posts a week" (#359): posts
   a day, "posted in the last N days", "hasn't posted for N months". When someone asks.
-- [ ] **Mute from a timeline row.** A per-row menu with "Leave out of Home", if muting
-  from Edit subscription and tag pages (#362) proves too far away.
+- [ ] **Start on a chosen timeline.** A setting for which tab `/` opens, for someone who
+  reads a filtered timeline (say, everything but a news wire) more than Home, which
+  can't be edited (see "Timelines" in decisions.md). When someone asks.
 - [ ] **Images on shared pages.** #363 shows text only. Card images would load from
   publishers for strangers too; decide with the image proxy.
 - [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures. A
@@ -608,9 +608,9 @@ Pages and queries:
   *Fix:* the per-user timeline table above; for words, a `pg_trgm` or full-text index on
   the matched text, or bounding the scan to recent articles.
 - [ ] **Timeline tabs on every Home view** (#356). The tab row adds one small indexed
-  query (`TimelineRepository.List`) to `/` and each timeline page, and Home adds
-  `GetHome` (#362). *Signal:* they show up in `pg_stat_statements` totals. *Fix:* fold
-  them into one query, or keep the tab list in the session until a timeline changes.
+  query (`TimelineRepository.List`) to `/` and each timeline page. *Signal:* it shows up
+  in `pg_stat_statements` totals. *Fix:* keep the tab list in the session until a
+  timeline changes.
 - [ ] **Tag page checklist is unpaginated** (#351, #356). A tag's page, and also
   the timeline form, list all of a user's subscriptions as checkboxes, like My feeds.
   Saving a tag posts every ticked feed's ID (43 bytes each), so past about 1,500 ticked

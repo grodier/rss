@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>{{if .Timeline.Home}}Home{{else}}rss - {{.Timeline.Name}}{{end}}</title>
+  <title>{{if .Home}}Home{{else}}rss - {{.Timeline.Name}}{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   <script src="{{asset "js/app.js"}}" defer></script>
 </head>
@@ -17,15 +17,15 @@
       {{/* The tabs stand in for the page's heading, so the <h1> is visually
            hidden; it comes first so heading navigation still finds it. */}}
       <header class="page-head tabs-head">
-        <h1 class="visually-hidden">{{if .Timeline.Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
+        <h1 class="visually-hidden">{{if .Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
         {{template "timeline-tabs" .Tabs}}
       </header>
-      {{if or .Timeline.Description (not .Timeline.Home) .Before}}
+      {{if or .Timeline.Description (not .Home) .Before}}
       <div class="timeline-about">
         {{with .Timeline.Description}}<p>{{.}}</p>{{end}}
         <div class="timeline-links">
           {{if .Before}}<a href="{{.Path}}">Back to newest</a>{{end}}
-          {{if not .Timeline.Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit<span class="visually-hidden"> {{.Timeline.Name}}</span></a>{{end}}
+          {{if not .Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit<span class="visually-hidden"> {{.Timeline.Name}}</span></a>{{end}}
         </div>
       </div>
       {{end}}
@@ -50,7 +50,7 @@
       </div>
       {{else if .Timeline.Filter.StarredOnly}}
       <p class="empty">Nothing starred here yet. Star articles in your timelines and they'll show up here.</p>
-      {{else if not .Timeline.Home}}
+      {{else if not .Home}}
       <p class="empty">Nothing in this timeline yet.</p>
       {{else}}
       <div class="empty">

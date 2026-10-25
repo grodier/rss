@@ -247,11 +247,10 @@ type Tag struct {
 	Feeds int // how many of the user's subscriptions have it; set by TagRepository.List
 }
 
-// Timeline is a user's timeline: Home (Home is true), or a custom one shown
-// as a tab after it.
+// Timeline is a user's custom timeline, shown as a tab after Home. Home
+// itself is the zero Timeline: every subscription, with no ID.
 type Timeline struct {
 	ID          string
-	Home        bool
 	Name        string
 	Description string
 	Position    int

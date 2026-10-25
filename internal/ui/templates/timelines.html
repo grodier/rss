@@ -24,13 +24,21 @@
 
       {{if .Timelines}}
       <ul class="timeline-list" role="list">
-        {{range .Timelines}}
-        <li>
+        {{/* $last is the index of the last row. */}}
+        {{$last := len (slice .Timelines 1)}}
+        {{range $i, $t := .Timelines}}
+        <li id="timeline-{{.ID}}">
           <div class="timeline-list-text">
             <a class="timeline-list-name" href="/timelines/{{.ID}}">{{.Name}}</a>
             {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
             {{with .Description}}<p>{{.}}</p>{{end}}
           </div>
+          {{if $last}}
+          <form class="timeline-move" action="/timelines/{{.ID}}/move" method="post">
+            {{if gt $i 0}}<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move {{.Name}} up">Move up</button>{{end}}
+            {{if lt $i $last}}<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move {{.Name}} down">Move down</button>{{end}}
+          </form>
+          {{end}}
           <a href="/timelines/{{.ID}}/edit">Edit<span class="visually-hidden"> {{.Name}}</span></a>
         </li>
         {{end}}

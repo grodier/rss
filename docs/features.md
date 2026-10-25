@@ -683,7 +683,15 @@ too (the accepted trade-off). `[[:alnum:]]` follows the database's `LC_CTYPE`, s
 UTF-8 database `café` doesn't match "cafés". They're stored as the `include_words` and
 `exclude_words` arrays.
 
-`/timelines` (`timelinesHandler`) lists them with an Edit link each. New timeline
+`/timelines` (`timelinesHandler`) lists them in tab order with an Edit link each, and
+Move up and Move down buttons (`aria-label` "Move {name} up" / "down"; none on the
+first row's Move up or the last row's Move down, and no buttons with one timeline).
+Each posts `direction` to `timelineMoveHandler` (400 for anything but `up` or `down`),
+whose `TimelineRepository.Move` locks the user's timelines (`FOR UPDATE`) in a
+transaction and renumbers them 0…n−1 in tab order with the timeline swapped with its
+neighbour, which also repairs ties and gaps from deletes; at either end it changes
+nothing. It 303s to `/timelines#timeline-{id}`, back at the row, with no flash. Home
+is always first and can't move. New timeline
 (`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after
 the tag and shows only that tag) and Edit (`timelineEditHandler`) render one form,
 `timeline_form.html`: Name, Description, then a Show fieldset (radios, the user's tags
@@ -776,7 +784,8 @@ the page, 15 for the feed).
 2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
    `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`,
    `maxPostsPerWeek`, `checkTerms`, `timeline`, `checks`), `splitTerms`, `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
-   `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`; sharing:
+   `timelineEditPostHandler`, `timelineDeleteHandler`, `timelineMoveHandler`,
+   `renderTimelineForm`; sharing:
    `timelineShareHandler`, `timelineUnshareHandler`, `timelineNewLinkHandler`,
    `timelineSharing`.
 3. `internal/server/shared.go`: `sharedTimelineFromURL`, `sharedTimelineHandler`,
@@ -784,13 +793,13 @@ the page, 15 for the feed).
    `token.Random` in `internal/token/token.go`.
 4. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`, `SharedArticle`;
    `ErrTooManyTimelines` in `errors.go`.
-5. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`, `Share`,
+5. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`, `Move`, `Share`,
    `NewShareLink`, `Unshare`, `GetShared`, `insertTimelineSources`, `wordsPattern`; then
    `timelineWhere`, `ListTimeline`, `ListShared` and `timelineStmt` in `articles.go`,
    and `ListStarred` and `starredStmt` in `stars.go`.
 6. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
    `shared_timeline.html`, `partials/timeline_tabs.html`, the Make a timeline link in
-   `tag.html`; `.timeline-tabs`, `.timeline-list`, `.timeline-presets`, `.timeline-form`,
+   `tag.html`; `.timeline-tabs`, `.timeline-list`, `.timeline-move`, `.timeline-presets`, `.timeline-form`,
    `.rate-field`, `.words-field`, `.timeline-sharing` and `.shared-timeline` in
    `main.css`; the tab row's enhancement in `app.js`.
 
@@ -800,6 +809,7 @@ the page, 15 for the feed).
 `TestPrivacySharedTimelines` in `policy_test.go`, `TestHomeHandlerTabs` in
 `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
 `TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
+`TestTimelineMove`,
 `TestTimelineSharing`, `TestTimelineCascades`, `TestWordsPattern`,
 `TestWordsPatternMatches`), `TestListTimelineFilter`, `TestListTimelineConditions`,
 `TestListTimelineWords` and `TestListShared` in `articles_test.go`, `TestListStarred`

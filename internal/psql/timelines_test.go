@@ -9,6 +9,7 @@ import (
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
+	"github.com/lib/pq"
 )
 
 func mustCreateTimeline(t *testing.T, repo *TimelineRepository, userID string, tl rss.Timeline) string {
@@ -338,6 +339,109 @@ func TestTimelineDelete(t *testing.T) {
 	if err := repo.Delete(ctx, user, id); !errors.Is(err, rss.ErrNoRecord) {
 		t.Errorf("second Delete = %v, want ErrNoRecord", err)
 	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestTimelineMove(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTimelineRepository(db)
+	ctx := t.Context()
+
+	// order returns userID's timeline IDs in tab order, and fails unless
+	// their positions are 0…n−1.
+	order := func(t *testing.T, userID string) []string {
+		t.Helper()
+		rows, err := db.Query(`SELECT id, position FROM timelines WHERE user_id = $1 ORDER BY position, created_at`, userID)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		defer rows.Close()
+		var ids []string
+		for rows.Next() {
+			var id string
+			var pos int
+			if err := rows.Scan(&id, &pos); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			if pos != len(ids) {
+				t.Errorf("timeline %d has position %d", len(ids), pos)
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("rows: %v", err)
+		}
+		return ids
+	}
+	move := func(t *testing.T, userID, id string, up bool) {
+		t.Helper()
+		if err := repo.Move(ctx, userID, id, up); err != nil {
+			t.Fatalf("Move(%s, up=%v): %v", id, up, err)
+		}
+	}
+
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	a := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "A"})
+	b := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "B"})
+	c := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "C"})
+	theirs1 := mustCreateTimeline(t, repo, other, rss.Timeline{Name: "Theirs 1"})
+	theirs2 := mustCreateTimeline(t, repo, other, rss.Timeline{Name: "Theirs 2"})
+	// Ties and gaps: A and B share a position (created_at breaks the tie), C
+	// is far after them.
+	if _, err := db.Exec(`UPDATE timelines SET position = CASE id WHEN $1 THEN 5 WHEN $2 THEN 5 ELSE 9 END WHERE id IN ($1, $2, $3)`, a, b, c); err != nil {
+		t.Fatalf("set positions: %v", err)
+	}
+	var theirPositions []int64
+	if err := db.QueryRow(`SELECT array_agg(position ORDER BY created_at) FROM timelines WHERE user_id = $1`, other).Scan(pq.Array(&theirPositions)); err != nil {
+		t.Fatalf("their positions: %v", err)
+	}
+
+	steps := []struct {
+		name string
+		id   string
+		up   bool
+		want []string
+	}{
+		{"down swaps with the next", a, false, []string{b, a, c}},
+		{"up swaps with the previous", c, true, []string{b, c, a}},
+		{"up on the first does nothing", b, true, []string{b, c, a}},
+		{"down on the last does nothing", a, false, []string{b, c, a}},
+		{"down from the middle", c, false, []string{b, a, c}},
+	}
+	for _, st := range steps {
+		t.Run(st.name, func(t *testing.T) {
+			move(t, user, st.id, st.up)
+			if got := order(t, user); !slices.Equal(got, st.want) {
+				t.Errorf("order = %v, want %v", got, st.want)
+			}
+		})
+	}
+
+	t.Run("another user's timeline is ErrNoRecord", func(t *testing.T) {
+		if err := repo.Move(ctx, user, theirs1, false); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Move(their timeline) = %v, want ErrNoRecord", err)
+		}
+		if err := repo.Move(ctx, other, a, true); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Move(as other) = %v, want ErrNoRecord", err)
+		}
+		if got := order(t, user); !slices.Equal(got, []string{b, a, c}) {
+			t.Errorf("user's order = %v, changed", got)
+		}
+		var got []int64
+		var ids []string
+		if err := db.QueryRow(`SELECT array_agg(position ORDER BY created_at), array_agg(id::text ORDER BY created_at) FROM timelines WHERE user_id = $1`, other).Scan(pq.Array(&got), pq.Array(&ids)); err != nil {
+			t.Fatalf("their positions: %v", err)
+		}
+		if !slices.Equal(got, theirPositions) || !slices.Equal(ids, []string{theirs1, theirs2}) {
+			t.Errorf("their positions = %v (%v), want %v untouched", got, ids, theirPositions)
+		}
+	})
+
+	t.Run("unknown timeline is ErrNoRecord", func(t *testing.T) {
+		if err := repo.Move(ctx, user, "00000000-0000-4000-8000-000000000000", true); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Move = %v, want ErrNoRecord", err)
+		}
+	})
 }
 
 // shareToken returns a unique 43-character token for a test.

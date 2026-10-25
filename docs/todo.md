@@ -7,15 +7,6 @@ under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decision
 
 ## Next up
 
-Subscription names and filtering (planned in #344 and #365; decisions under
-"Subscriptions" and "Filtering and timelines" in decisions.md), in waves. Issues in one
-wave can be built in parallel once the waves before them have merged; merge one PR at a
-time, in the order listed, and each branch merges the latest `main` before its PR.
-
-5. **Wave 5:** #357 Reorder timelines. Lowest priority; any time after #356.
-
-Then:
-
 1. **Plan** the error-state walkthrough and run the first pass; then repeat it
    periodically.
 2. Before production or a few thousand feeds, **plan** load and performance testing.

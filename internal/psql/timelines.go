@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -164,6 +165,65 @@ func (r *TimelineRepository) Delete(ctx context.Context, userID, id string) erro
 	stmt := `DELETE FROM timelines WHERE id = $2 AND user_id = $1`
 
 	return execOne(ctx, r.DB, stmt, userID, id)
+}
+
+// Move swaps userID's custom timeline id with its neighbour in tab order:
+// the one before it if up, else the one after it. At either end it does
+// nothing. rss.ErrNoRecord if the timeline isn't the user's custom one.
+//
+// It renumbers the user's timelines 0…n−1 each time, which also repairs ties
+// and gaps left by deletes.
+func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up bool) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	stmt := `SELECT id FROM timelines
+		WHERE user_id = $1
+		ORDER BY position, created_at
+		FOR UPDATE`
+	rows, err := tx.QueryContext(ctx, stmt, userID)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var tid string
+		if err := rows.Scan(&tid); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, tid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	i := slices.Index(ids, id)
+	if i < 0 {
+		return rss.ErrNoRecord
+	}
+	j := i + 1
+	if up {
+		j = i - 1
+	}
+	if j >= 0 && j < len(ids) {
+		ids[i], ids[j] = ids[j], ids[i]
+	}
+
+	// Each ID's new position is its index in ids, counted from 0.
+	stmt = `UPDATE timelines t
+		SET position = s.position - 1
+		FROM unnest($2::uuid[]) WITH ORDINALITY AS s (id, position)
+		WHERE t.id = s.id AND t.user_id = $1 AND t.position <> s.position - 1`
+	if _, err := tx.ExecContext(ctx, stmt, userID, pq.Array(ids)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Share gives userID's custom timeline id the share token newToken if it

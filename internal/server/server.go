@@ -212,6 +212,10 @@ type TimelineStore interface {
 	Update(ctx context.Context, userID string, t rss.Timeline) error
 	// Delete deletes the user's custom timeline id, or rss.ErrNoRecord.
 	Delete(ctx context.Context, userID, id string) error
+	// Move swaps the user's custom timeline id with the one before it in tab
+	// order if up, else the one after it; at either end it does nothing.
+	// rss.ErrNoRecord as Get.
+	Move(ctx context.Context, userID, id string, up bool) error
 	// Share gives the user's custom timeline id the share token newToken if
 	// it has none, and returns its token. rss.ErrNoRecord as Get.
 	Share(ctx context.Context, userID, id, newToken string) (string, error)

@@ -1394,14 +1394,14 @@
   }
 
   /* A tag's page: a checklist of the user's subscriptions. */
-  .tag-feeds fieldset {
+  :is(.tag-feeds, .timeline-form) fieldset {
     min-inline-size: 0;
     margin: 0;
     padding: 0;
     border: 0;
   }
 
-  .tag-feeds legend {
+  :is(.tag-feeds, .timeline-form) legend {
     inline-size: 100%;
     padding: 1rem 1rem 0.625rem;
     border-block-end: 1px solid var(--border);
@@ -1467,6 +1467,276 @@
 
   .tag-delete {
     padding: 0 1rem 1.5rem;
+  }
+
+  /* Timelines: the tab row on Home and custom timelines. */
+  .timeline-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+  }
+
+  .timeline-about {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+  }
+
+  .timeline-about .timeline-links {
+    margin-inline-start: auto;
+    font-size: 0.875rem;
+  }
+
+  .timeline-tabs ul {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .timeline-tabs li {
+    flex: none;
+  }
+
+  .timeline-tabs a {
+    display: block;
+    max-inline-size: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Option a: pills under the page head, scrolling sideways. */
+  .timeline-tabs-a,
+  .timeline-tabs-c {
+    border-block-end: 1px solid var(--border);
+  }
+
+  .timeline-tabs-a ul {
+    overflow-x: auto;
+    padding: 0.75rem 1rem;
+    scrollbar-width: thin;
+  }
+
+  .timeline-tabs-c ul {
+    flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+  }
+
+  :is(.timeline-tabs-a, .timeline-tabs-c) a {
+    padding: 0.375rem 0.875rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  :is(.timeline-tabs-a, .timeline-tabs-c) a:hover {
+    background: var(--surface);
+  }
+
+  :is(.timeline-tabs-a, .timeline-tabs-c) a[aria-current="page"] {
+    border-color: var(--text);
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  :is(.timeline-tabs-a, .timeline-tabs-c) .tab-manage a,
+  .timeline-tabs-c .tab-more a {
+    border-color: transparent;
+    color: var(--accent);
+  }
+
+  .timeline-tabs-c .tab-more {
+    display: none;
+  }
+
+  /* Option b: underlined tabs in place of the page head's heading. */
+  .page-head.tabs-head {
+    padding-block: 0;
+  }
+
+  .timeline-tabs-b {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .timeline-tabs-b ul {
+    gap: 1.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .timeline-tabs-b a {
+    padding: 1rem 0 0.875rem;
+    border-block-end: 2px solid transparent;
+    color: var(--text-2);
+    font-size: 1rem;
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .timeline-tabs-b a:hover {
+    color: var(--text);
+  }
+
+  .timeline-tabs-b a[aria-current="page"] {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .timeline-tabs-b .tab-manage a {
+    color: var(--accent);
+    font-weight: 550;
+  }
+
+  @media (max-width: 42.99rem) {
+    .page-head.tabs-head {
+      padding: 0 1rem;
+    }
+
+    .timeline-tabs-c ul {
+      flex-wrap: nowrap;
+    }
+
+    .timeline-tabs-c .tab-extra:not(:has([aria-current])),
+    .timeline-tabs-c .tab-more ~ .tab-manage,
+    .timeline-tabs-c .tab-manage:has(+ .tab-more) {
+      display: none;
+    }
+
+    .timeline-tabs-c .tab-more {
+      display: block;
+    }
+
+    /* The current tab shrinks, with an ellipsis, so More always fits. */
+    .timeline-tabs-c a {
+      max-inline-size: 8rem;
+    }
+
+    .timeline-tabs-c li:has([aria-current]) {
+      flex: 0 1 auto;
+      min-inline-size: 0;
+    }
+  }
+
+  /* The Timelines page: each timeline's name, description and Edit link. */
+  .timeline-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .timeline-list-text {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .timeline-list-name {
+    color: var(--text);
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .timeline-list-name:hover {
+    text-decoration: underline;
+  }
+
+  .timeline-list p {
+    margin-block-start: 0.125rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .timeline-list li > a {
+    font-size: 0.875rem;
+  }
+
+  /* The timeline form: name and description, then Show and Leave out. */
+  .timeline-form-fields {
+    padding: 1.25rem 1rem;
+  }
+
+  .timeline-form .hint,
+  .timeline-form fieldset > p.error,
+  .timeline-form .form-note {
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+  }
+
+  .timeline-form fieldset {
+    margin-block-end: 1rem;
+  }
+
+  .timeline-form .form-actions {
+    margin: 0;
+    padding: 0.5rem 1rem 1.25rem;
+  }
+
+  textarea {
+    display: block;
+    inline-size: 100%;
+    padding: 0.6875rem 0.875rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+  }
+
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .choice {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    font-size: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .choice:hover {
+    background: var(--surface);
+  }
+
+  .choice input[type="radio"] {
+    flex: none;
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--accent);
+  }
+
+  /* Tags have no avatar. */
+  .check-row-plain {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .timeline-form .check-list .check-row {
+    padding-inline-start: 2.875rem;
+  }
+
+  .feed-picker summary {
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   /* Search results: a site, with its feeds grouped in a box. */

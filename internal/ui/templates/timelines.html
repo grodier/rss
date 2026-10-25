@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - Timelines</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Timelines</h1>
+        <a class="btn btn-sm btn-primary" href="/timelines/new">New timeline</a>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{if .Timelines}}
+      <ul class="timeline-list" role="list">
+        {{range .Timelines}}
+        <li>
+          <div class="timeline-list-text">
+            <a class="timeline-list-name" href="/timelines/{{.ID}}">{{.Name}}</a>
+            {{with .Description}}<p>{{.}}</p>{{end}}
+          </div>
+          <a href="/timelines/{{.ID}}/edit">Edit<span class="visually-hidden"> {{.Name}}</span></a>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <div class="empty">
+        <p>You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.</p>
+      </div>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

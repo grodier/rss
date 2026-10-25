@@ -18,7 +18,7 @@ import (
 // .article-list, and the next page is linked by .pager a[rel=next].
 func TestInfiniteScrollMarkup(t *testing.T) {
 	timeline := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			return timelineItems(31), nil
 		},
 	}})
@@ -102,7 +102,7 @@ func TestToggleButtonMarkup(t *testing.T) {
 			return map[string]bool{items[1].Article.ID: true}, nil
 		}},
 		ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return items, nil
 			},
 		},

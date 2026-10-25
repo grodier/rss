@@ -44,6 +44,10 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.StarService == nil {
 		svc.StarService = &fakeStarStore{}
 	}
+	// Every timeline page lists the tabs; a test that doesn't care gets none.
+	if svc.TimelineService == nil {
+		svc.TimelineService = &fakeTimelineStore{}
+	}
 	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)

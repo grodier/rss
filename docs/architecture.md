@@ -185,7 +185,7 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `GET /sites/{id}/icon` | no | `siteIconHandler` | A site's stored icon; `?v=<hash>` URLs are cached for a year; 404 when it has none |
 | `GET /privacy` | no | `privacyHandler` | Privacy policy |
 | `GET /terms` | no | `termsHandler` | Terms of use |
-| `GET /` | no | `homeHandler` | Landing page (shows a flash); the timeline when logged in |
+| `GET /` | no | `homeHandler` | Landing page (shows a flash); when logged in, Home: the timeline of every subscription, under the tab row |
 | `GET, POST /signup` | no | `signupHandler`, `signupFormHandler` | Only registered with `-invite-code` |
 | `GET, POST /login` | no | `loginHandler`, `loginFormHandler` | |
 | `POST /logout` | no | `logoutHandler` | |
@@ -212,6 +212,12 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /tags/{id}/feeds` | yes | `tagFeedsHandler` | Sets exactly the ticked subscriptions as having the tag (ignores feeds the user doesn't subscribe to); 303 to the tag |
 | `POST /tags/{id}/rename` | yes | `tagRenameHandler` | Renames the tag; 303 to it (422 as for creating) |
 | `POST /tags/{id}/delete` | yes | `tagDeleteHandler` | Deletes the tag (cascade); 303 to `/tags` |
+| `GET /timelines` | yes | `timelinesHandler` | Timelines: the user's custom timelines with their descriptions and Edit links, and a New timeline button |
+| `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
+| `POST /timelines` | yes | `timelineCreateHandler` | Makes a timeline; 303 to it (422 for an invalid form or over 20 timelines; 400 for a `show` other than `all` or `some`) |
+| `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's or it's their Home row |
+| `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
+| `POST /timelines/{id}/delete` | yes | `timelineDeleteHandler` | Deletes the timeline (cascade), unconfirmed; 303 to `/timelines` |
 | `GET /articles/{id}` | yes | `articleHandler` | Article page; records the read |
 | `POST /articles/{id}/read` | yes | `articleReadHandler` | Click-through ping; 204 |
 | `POST /articles/{id}/save` | yes | `articleSaveHandler` | Save button: saves the article (and its copies); 303 to `return_to#article-{id}` |
@@ -334,8 +340,11 @@ emails   (the outbox: no foreign keys)
   `media_only` (audio or video enclosures only) and `share_token` (NULL: not shared;
   else the public link's token, stored as is). Its sources are `timeline_tags` and
   `timeline_feeds` rows, each with `exclude` (false: show; true: leave out); composite
-  foreign keys keep them to the timeline's own user's tags and subscriptions. Not used
-  yet.
+  foreign keys keep them to the timeline's own user's tags and subscriptions. An ID in
+  both is stored once, as excluded. `TimelineRepository` (behind the server's
+  `TimelineStore`) creates, reads, lists, updates and deletes custom timelines, never
+  the Home row; `MaxTimelines` caps a user at 20, checked in the insert. So far only
+  `all_feeds` and the sources are used; nothing creates Home rows yet (#362).
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,
@@ -539,6 +548,10 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the
   site's icon on a white tile (`--avatar-icon-bg`, `.avatar-icon`), else its letter on
   its tint. People's avatars (the nav, Settings) stay circles.
+- **The tab row** (`partials/timeline_tabs.html`, `timeline-tabs`) is on Home and each
+  custom timeline: Home, the user's timelines in order, then New timeline (or Timelines,
+  to manage them). CSS only, no counts. While the owner picks a layout (#356), it has
+  three options, `a`, `b` and `c` (`defaultTabLayout`; `?tabs=` previews the others).
 - **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`, from the `local-time` and `local-date` partials; `data-local="date"` shows the date only), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save and Star buttons (a delegated `submit` listener posts `form[data-toggle]` with

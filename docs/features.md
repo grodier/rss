@@ -606,11 +606,70 @@ without JavaScript.
 
 **Why:** "Stars and tags" under "Filtering and timelines" in decisions.md.
 
+## Timelines
+
+**Flow.** Home and each custom timeline show a tab row (`timeline-tabs`, from
+`TimelineRepository.List`): Home, the user's timelines in tab order, then New timeline
+(or Timelines when there are some). A timeline is a name, an optional description and a
+`rss.TimelineFilter` over the user's subscriptions: Show is all feeds, or
+(`OnlyIncluded`) only the feeds with any of `IncludeTagIDs` or in `IncludeFeedIDs`;
+Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins. Tag-based timelines stay
+current, since the filter reads `subscription_tags` on every page.
+
+`/timelines` (`timelinesHandler`) lists them with an Edit link each. New timeline
+(`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after
+the tag and shows only that tag) and Edit (`timelineEditHandler`) render one form,
+`timeline_form.html`: Name, Description, then a Show fieldset (radios, the user's tags
+as checkboxes, their feeds in a `<details>` that's open when any is ticked) and a Leave
+out fieldset (tags and feeds). Posting (`timelineCreateHandler`,
+`timelineEditPostHandler`, both through `decodeTimelineForm`) answers 400 for a `show`
+other than `all` or `some`, then `timelineForm.check` trims the text, keeps only the
+user's own tags and feeds (each once), and validates: a name of 1–50 runes, a
+description up to 280, and with Show "some", at least one tag or feed. Any error
+re-renders the form with 422 and everything kept; `ErrTooManyTimelines` (20) is a form
+error. `timelineForm.timeline` drops the Show checkboxes when Show is all. Saving
+flashes "Timeline created." or "Timeline saved." and goes to the timeline; Delete
+timeline on the edit page (`timelineDeleteHandler`, unconfirmed) flashes "Deleted the
+timeline “…”." and goes to `/timelines`. `timelineFromURL` makes a non-UUID, another
+user's timeline or their Home row a 404.
+
+A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero filter)
+share `renderTimeline`, so they follow the same rules (see "Reading" below), paging at
+their own URL. `ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it
+reads, before collapsing copies, so a left-out feed's copy never stands in for an
+entry; "Also in" still lists every subscribed feed with a copy. Empty states: "This
+timeline has no feeds to show. Edit it to choose some." when it shows only some feeds
+but has none (say its only tag was deleted), else "Nothing in this timeline yet.".
+
+**Read:**
+
+1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineTabs`,
+   `tabLayout`.
+2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
+   `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`, `timeline`,
+   `checks`), `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
+   `timelineEditPostHandler`, `timelineDeleteHandler`, `renderTimelineForm`.
+3. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`; `ErrTooManyTimelines` in
+   `errors.go`.
+4. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`,
+   `insertTimelineSources`; then `timelineWhere` and `ListTimeline` in `articles.go`.
+5. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
+   `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`;
+   `.timeline-tabs`, `.timeline-list` and `.timeline-form` in `main.css`.
+
+**Tests:** `internal/server/timelines_test.go`, `TestHomeHandlerTabs` in
+`home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
+`TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
+`TestTimelineCascades`), `TestListTimelineFilter` in `articles_test.go`.
+
+**Why:** "Timelines" under "Filtering and timelines" in decisions.md.
+
 ## Reading: timeline, article pages and read state
 
-**Timeline** (`/` when logged in). `homeHandler` asks `ListTimeline` for 31 entries to
-know whether there's a next page, and shows 30. `ListTimeline` joins the user's
-subscriptions to their feeds' articles, collapses copies of one article (same
+**Timeline** (Home, `/` when logged in, and each custom timeline; see "Timelines").
+`renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page,
+and shows 30. `ListTimeline` joins the user's subscriptions (those the timeline's filter
+shows; all of them on Home) to their feeds' articles, collapses copies of one article (same
 `canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending,
 and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry. Both show the
@@ -669,7 +728,7 @@ nearby. Without JavaScript the link just works.
 
 **Read:**
 
-1. `internal/server/home.go`: `homeHandler`; `cursor.go`.
+1. `internal/server/home.go`: `homeHandler`, `renderTimeline`; `cursor.go`.
 2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`,
    `articleListColumns`, then `timelineAt`; `subscriptionTitle` and
    `qualifiedFeedColumnsTitled` in `feeds.go`.
@@ -960,7 +1019,7 @@ accounts listed in `-debug-emails` only.
    `published_at`) or `news` (a backlog item clamped to its arrival time reads as news);
    external ID `hash`, `link` or `guid`. Its rules mirror `DisplayTitle`,
    `DisplayExcerpt` and `CardImageURL`, whose comments point to it.
-8. **List line.** `feedHandler`, `homeHandler` and `savedHandler` call `fillDebug` after
+8. **List line.** `feedHandler`, `renderTimeline` and `savedHandler` call `fillDebug` after
    building their rows; when `debugEnabled` it sets each `articleRow.Debug`
    (`newArticleRowDebug`, from columns the lists already load, so no queries) and the
    `article-row` partial adds a `.debug-line`: the short ID, timeline placement and

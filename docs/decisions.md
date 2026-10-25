@@ -384,6 +384,13 @@ names, lands in one change (#348).
   no other settings; "Show on Home" sits on Edit subscription and tag pages, and My feeds
   marks muted feeds. This is the muting half of the old "Filters and muting" item. (#362)
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280. (#356)
+- **The form stores only what has an effect.** With Show set to all feeds, the tags and
+  feeds ticked under Show are dropped on save; a tag or feed both shown and left out is
+  stored as left out; IDs that aren't the user's are ignored. A timeline showing only
+  some feeds whose sources are all gone (say its only tag was deleted) stays, with an
+  empty state asking to edit it, rather than silently showing every feed. (#356)
+- **Home's heading is "Home"**, matching its tab, and each custom timeline's heading is
+  its name. (#356)
 - **No unread filter or counts**, as under "Reading".
 
 ### Sharing

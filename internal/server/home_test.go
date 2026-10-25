@@ -51,7 +51,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	var result []rss.ArticleWithFeed
 	var storeErr error
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(ctx context.Context, userID string, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			calls++
 			gotUser, gotBefore, gotLimit = userID, before, limit
 			return result, storeErr
@@ -338,7 +338,7 @@ func TestHomeHandlerSiteIcons(t *testing.T) {
 	}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, SiteService: &fakeSiteStore{},
 		ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return items, nil
 			},
 		}})
@@ -348,5 +348,60 @@ func TestHomeHandlerSiteIcons(t *testing.T) {
 			t.Fatalf("status = %d", rr.Code)
 		}
 		return rr.Body.String()
+	})
+}
+
+func TestHomeHandlerTabs(t *testing.T) {
+	var gotFilter *rss.TimelineFilter
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		gotFilter = &filter
+		return timelineItems(1), nil
+	}}
+	timelines := &fakeTimelineStore{}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
+
+	t.Run("no timelines offers to make one", func(t *testing.T) {
+		body := getHome(t, s, "/", true).Body.String()
+		assertBodyContains(t, body,
+			"<h1>Home</h1>",
+			`<nav class="timeline-tabs timeline-tabs-a" aria-label="Timelines">`,
+			`<li><a href="/" aria-current="page">Home</a></li>`,
+			`<li class="tab-manage"><a href="/timelines/new">New timeline</a></li>`,
+		)
+		if gotFilter == nil || gotFilter.OnlyIncluded || gotFilter.IncludeTagIDs != nil || gotFilter.IncludeFeedIDs != nil ||
+			gotFilter.ExcludeTagIDs != nil || gotFilter.ExcludeFeedIDs != nil {
+			t.Errorf("ListTimeline filter = %+v, want the zero filter", gotFilter)
+		}
+	})
+
+	t.Run("lists the timelines in order with Home current", func(t *testing.T) {
+		timelines.listFn = func(ctx context.Context, userID string) ([]rss.Timeline, error) {
+			if userID != "user-1" {
+				return nil, errors.New("wrong user")
+			}
+			return []rss.Timeline{{ID: "t-1", Name: "AI"}, {ID: "t-2", Name: "News & views"}}, nil
+		}
+		t.Cleanup(func() { timelines.listFn = nil })
+		body := getHome(t, s, "/", true).Body.String()
+		assertBodyContains(t, body,
+			`<li><a href="/" aria-current="page">Home</a></li>`,
+			`<li><a href="/timelines/t-1">AI</a></li>`,
+			`<li><a href="/timelines/t-2">News &amp; views</a></li>`,
+			`<li class="tab-manage"><a href="/timelines">Timelines</a></li>`,
+		)
+		if strings.Index(body, ">AI<") > strings.Index(body, ">News &amp; views<") {
+			t.Errorf("tabs out of order: %s", body)
+		}
+		if strings.Contains(body, `href="/timelines/new"`) {
+			t.Errorf("New timeline link shown with timelines: %s", body)
+		}
+	})
+
+	t.Run("tab store error is 500", func(t *testing.T) {
+		timelines.listFn = func(context.Context, string) ([]rss.Timeline, error) { return nil, errors.New("boom") }
+		t.Cleanup(func() { timelines.listFn = nil })
+		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
 	})
 }

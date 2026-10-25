@@ -246,6 +246,30 @@ type Tag struct {
 	Feeds int // how many of the user's subscriptions have it; set by TagRepository.List
 }
 
+// Timeline is a user's timeline: Home (Home is true), or a custom one shown
+// as a tab after it.
+type Timeline struct {
+	ID          string
+	Home        bool
+	Name        string
+	Description string
+	Position    int
+	Filter      TimelineFilter
+	ShareToken  string // "" unless shared
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// TimelineFilter says which of a user's articles a timeline shows. The zero
+// value shows every subscription, as Home does.
+type TimelineFilter struct {
+	OnlyIncluded   bool // only the feeds of IncludeTagIDs and IncludeFeedIDs (timelines.all_feeds = false)
+	IncludeTagIDs  []string
+	IncludeFeedIDs []string
+	ExcludeTagIDs  []string // left out even when included
+	ExcludeFeedIDs []string
+}
+
 // TagName normalizes a tag name: trimmed, with each run of whitespace
 // replaced by one space.
 func TagName(s string) string {

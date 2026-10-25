@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - {{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  <script src="{{asset "js/app.js"}}" defer></script>
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>{{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</h1>
+        <a href="/timelines">All timelines</a>
+      </header>
+
+      {{$focus := .Form.FirstError "name" "description" "show"}}
+      <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
+        <div class="timeline-form-fields">
+          {{range .Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{.Form.Name}}"
+              {{with .Form.FieldErrors.name}}aria-invalid="true" aria-describedby="name-error"{{end}}
+              {{if eq $focus "name"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3"
+              aria-describedby="description-hint{{if .Form.FieldErrors.description}} description-error{{end}}"
+              {{with .Form.FieldErrors.description}}aria-invalid="true"{{end}}
+              {{if eq $focus "description"}}autofocus{{end}}>{{.Form.Description}}</textarea>
+            <p class="hint" id="description-hint">Shown under the tabs. Optional.</p>
+            {{with .Form.FieldErrors.description}}<p class="error" id="description-error">{{.}}</p>{{end}}
+          </div>
+        </div>
+
+        {{block "timeline-form-show" .}}
+        <fieldset{{with .Form.FieldErrors.show}} aria-describedby="show-error"{{end}}>
+          <legend>Show</legend>
+          <label class="choice">
+            <input type="radio" name="show" value="all"{{if eq .Form.Show "all"}} checked{{end}}
+              {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}}
+              {{if eq (.Form.FirstError "name" "description" "show") "show"}}autofocus{{end}} />
+            All my feeds
+          </label>
+          <label class="choice">
+            <input type="radio" name="show" value="some"{{if eq .Form.Show "some"}} checked{{end}}
+              {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}} />
+            Only feeds with these tags, or these feeds:
+          </label>
+          {{with .Form.FieldErrors.show}}<p class="error" id="show-error">{{.}}</p>{{end}}
+          {{if .Tags}}
+          {{template "timeline-tag-checks" .Checks.include_tags}}
+          {{else}}
+          <p class="form-note">You don't have any tags yet. <a href="/tags">Make a tag</a> to group feeds.</p>
+          {{end}}
+          {{template "timeline-feed-checks" .Checks.include_feeds}}
+        </fieldset>
+        {{end}}
+
+        {{block "timeline-form-leave-out" .}}
+        <fieldset aria-describedby="exclude-hint">
+          <legend>Leave out</legend>
+          <p class="hint" id="exclude-hint">Feeds left out never show here, even if they have a tag you chose above.</p>
+          {{if .Tags}}
+          {{template "timeline-tag-checks" .Checks.exclude_tags}}
+          {{end}}
+          {{template "timeline-feed-checks" .Checks.exclude_feeds}}
+        </fieldset>
+        {{end}}
+
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Save</button>
+          <a class="btn" href="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}{{else}}/timelines{{end}}">Cancel</a>
+        </div>
+      </form>
+
+      {{if .Timeline.ID}}
+      <form class="tag-delete" action="/timelines/{{.Timeline.ID}}/delete" method="post">
+        <button class="btn-sm" type="submit">Delete timeline</button>
+      </form>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{/* timeline-tag-checks and timeline-feed-checks are a field's checkboxes
+     for the user's tags and feeds; their data is a timelineChecks. */}}
+{{define "timeline-tag-checks"}}
+<ul class="check-list" role="list">
+  {{range .Tags}}
+  <li>
+    <label class="check-row check-row-plain">
+      <input type="checkbox" name="{{$.Field}}" value="{{.ID}}"{{if index $.Ticked .ID}} checked{{end}}>
+      <span class="check-row-title">{{.Name}}</span>
+    </label>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+{{define "timeline-feed-checks"}}
+{{if .Subs}}
+<details class="feed-picker"{{if .Ticked}} open{{end}}>
+  <summary>Choose feeds</summary>
+  <ul class="check-list" role="list">
+    {{range .Subs}}
+    <li>
+      <label class="check-row">
+        <input type="checkbox" name="{{$.Field}}" value="{{.Feed.ID}}"{{if index $.Ticked .Feed.ID}} checked{{end}}>
+        {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
+        <span class="check-row-text">
+          <span class="check-row-title">{{or .Title .Feed.Title .Feed.Url}}</span>
+          <span class="check-row-sub">{{or .Site.Title .Site.Host}}</span>
+        </span>
+      </label>
+    </li>
+    {{end}}
+  </ul>
+</details>
+{{end}}
+{{end}}

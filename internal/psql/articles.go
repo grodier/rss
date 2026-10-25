@@ -398,8 +398,9 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		}
 	}
 
+	// posts_per_week is recomputed after the inserts so it counts them.
 	feedStmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
-			last_error = '', consecutive_failures = 0
+			last_error = '', consecutive_failures = 0, posts_per_week = ` + postsPerWeek + `
 		WHERE id = $1`
 	if _, err := q.ExecContext(ctx, feedStmt, feedID); err != nil {
 		return rss.FetchResult{}, err

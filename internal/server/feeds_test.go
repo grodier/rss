@@ -657,10 +657,12 @@ func TestFeedsHandler(t *testing.T) {
 
 	t.Run("latest article", func(t *testing.T) {
 		_, body := getFeeds(t, listing(
-			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: latest},
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One", PostsPerWeek: 3.4}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
 		))
-		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time>`, "No articles yet.")
+		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time> · About 3 posts a week</p>`, "<p>No articles yet.</p>")
+		// The feed without articles shows no rate.
+		assertNotContains(t, body, "No posts in the last 30 days")
 	})
 
 	t.Run("latest article in another zone", func(t *testing.T) {
@@ -753,10 +755,11 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 		name        string
 		lastFetched time.Time
 		want        []string
+		wantNot     []string
 	}{
-		{"never fetched", time.Time{}, []string{"Never fetched."}},
-		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}},
-		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}},
+		{"never fetched", time.Time{}, []string{"Never fetched."}, []string{"posts a week"}},
+		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`, "About 3 posts a week."}, nil},
+		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -766,7 +769,7 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 				SaveService:         &fakeSaveStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
-					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched}, nil
+					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched, PostsPerWeek: 3.4}, nil
 				}},
 				SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
 					return rss.Site{ID: id, Host: "example.com"}, nil
@@ -778,6 +781,11 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 			for _, w := range want {
 				if !strings.Contains(body, w) {
 					t.Errorf("body does not contain %q: %s", w, body)
+				}
+			}
+			for _, not := range tt.wantNot {
+				if strings.Contains(body, not) {
+					t.Errorf("body contains %q: %s", not, body)
 				}
 			}
 		})
@@ -976,6 +984,27 @@ func TestRefreshFlash(t *testing.T) {
 	for _, tt := range tests {
 		if got := refreshFlash(tt.res); got != tt.want {
 			t.Errorf("refreshFlash(%+v) = %q, want %q", tt.res, got, tt.want)
+		}
+	}
+}
+
+func TestPostingRate(t *testing.T) {
+	tests := []struct {
+		perWeek float64
+		want    string
+	}{
+		{0, "No posts in the last 30 days"},
+		{0.5, "Less than one post a week"},
+		{1, "About 1 post a week"},
+		{1.4, "About 1 post a week"},
+		{3.4, "About 3 posts a week"},
+		{13.9, "About 14 posts a week"},
+		{14, "About 2 posts a day"},
+		{70, "About 10 posts a day"},
+	}
+	for _, tt := range tests {
+		if got := postingRate(tt.perWeek); got != tt.want {
+			t.Errorf("postingRate(%v) = %q, want %q", tt.perWeek, got, tt.want)
 		}
 	}
 }

@@ -12,7 +12,6 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-2. **Wave 2:** #350 Posting rate.
 3. **Wave 3:**
    1. #343 The reader's names everywhere. Before #356: both change
       `ListTimeline`, and this one is smaller.
@@ -31,7 +30,7 @@ time, in the order listed, and each branch merges the latest `main` before its P
 6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
 
 Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
-(#350, #351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
+(#351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
 (#356, #358, #359, #360); `subscription_edit.html` (#352, #362); `ListTimeline`
 (#343, #356).
 

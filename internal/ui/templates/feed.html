@@ -46,6 +46,7 @@
           <span>{{template "icon-clock"}}Never fetched.</span>
           {{else}}
           <span>{{template "icon-clock"}}Last fetched {{template "local-time" .Feed.LastFetched}}.</span>
+          <span>{{template "icon-activity"}}{{postingRate .Feed.PostsPerWeek}}.</span>
           {{end}}
         </p>
         {{if not .Feed.GoneAt.IsZero}}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -443,6 +444,52 @@ func TestFeedRepositoryRecordNotModified(t *testing.T) {
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("got %v; want rss.ErrNoRecord", err)
 		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchPostsPerWeek(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+	feed := newTestFeed(t, db)
+
+	// Six articles in the last 30 days (one undated, counted by created_at)
+	// and two older ones.
+	now := time.Now()
+	var articles []rss.Article
+	for i := range 5 {
+		articles = append(articles, rss.Article{ExternalID: fmt.Sprintf("recent-%d", i), Title: "Recent", PublishedAt: now.Add(-time.Duration(i+1) * 24 * time.Hour)})
+	}
+	articles = append(articles,
+		rss.Article{ExternalID: "undated", Title: "Undated"},
+		rss.Article{ExternalID: "old-1", Title: "Old", PublishedAt: now.Add(-40 * 24 * time.Hour)},
+		rss.Article{ExternalID: "old-2", Title: "Old", PublishedAt: now.Add(-90 * 24 * time.Hour)},
+	)
+	if _, err := repo.SaveFetch(ctx, feed, articles); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+
+	checkRate := func(t *testing.T, want float64) {
+		t.Helper()
+		got, err := repo.GetByID(ctx, feed.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if math.Abs(got.PostsPerWeek-want) > 1e-4 {
+			t.Errorf("got PostsPerWeek %v; want %v", got.PostsPerWeek, want)
+		}
+	}
+	checkRate(t, 6*7.0/30)
+
+	t.Run("RecordNotModified recomputes it", func(t *testing.T) {
+		if _, err := db.Exec(`UPDATE articles SET published_at = now() - interval '31 days' WHERE feed_id = $1`, feed.ID); err != nil {
+			t.Fatalf("backdate articles: %v", err)
+		}
+		if err := repo.RecordNotModified(ctx, feed.ID, time.Now().Add(time.Hour)); err != nil {
+			t.Fatalf("RecordNotModified: %v", err)
+		}
+		checkRate(t, 0)
 	})
 }
 

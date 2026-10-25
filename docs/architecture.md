@@ -296,8 +296,8 @@ emails   (the outbox: no foreign keys)
   `consecutive_failures`, `last_error` (internal, never shown), `etag` / `last_modified`
   (for conditional GET), `gone_at` (410 Gone: not fetched again until a lookup finds the
   feed again), and `refresh_requested_at` (a page view asked for a fetch).
-  `posts_per_week` is how many articles it published in the last 30 days, per week
-  (not written or read yet).
+  `posts_per_week` is how many articles it published in the last 30 days, per week,
+  recomputed by `saveArticles` and `RecordNotModified`.
 - **`articles`**: unique by `(feed_id, external_id)`. `summary` and `content` are raw HTML
   from the feed; `excerpt` is plain text; `canonical_url` matches copies of one article
   across feeds; `timeline_at` is set once on insert and never updated. `page_image_url`,

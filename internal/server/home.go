@@ -30,23 +30,6 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 type timelineTabs struct {
 	Timelines []rss.Timeline
 	CurrentID string
-	// Layout is the tab row's layout option ("a", "b" or "c"); see
-	// tabLayout.
-	Layout string
-}
-
-// defaultTabLayout is the tab row's layout until the owner picks one of the
-// options (#356); ?tabs=a, b or c previews the others. The option not picked
-// goes before this merges.
-const defaultTabLayout = "a"
-
-// tabLayout returns the tab row's layout option for r.
-func tabLayout(r *http.Request) string {
-	switch q := r.URL.Query().Get("tabs"); q {
-	case "a", "b", "c":
-		return q
-	}
-	return defaultTabLayout
 }
 
 // renderTimeline renders timeline.html: a page of current's articles for
@@ -115,7 +98,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	}{
 		Nav:           s.nav(r, "home"),
 		Timeline:      current,
-		Tabs:          timelineTabs{Timelines: timelines, CurrentID: current.ID, Layout: tabLayout(r)},
+		Tabs:          timelineTabs{Timelines: timelines, CurrentID: current.ID},
 		Path:          path,
 		NoSources:     filter.OnlyIncluded && len(filter.IncludeTagIDs) == 0 && len(filter.IncludeFeedIDs) == 0,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),

@@ -114,6 +114,17 @@
     if (input.form) input.form.addEventListener("submit", () => show(false));
   }
 
+  // Timeline tabs: when the current tab (.timeline-tabs [aria-current])
+  // is scrolled out of its row, scroll the row (not the page) so it shows.
+  // Without this the row starts at Home and the reader scrolls it.
+  {
+    const current = document.querySelector(".timeline-tabs [aria-current=page]");
+    const row = current && current.closest("ul");
+    if (row && current.offsetLeft + current.offsetWidth > row.clientWidth) {
+      row.scrollLeft = current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2;
+    }
+  }
+
   // Infinite scroll: when the "Older articles" link (.pager a[rel=next])
   // nears the viewport, fetch the page it links to and append its rows to
   // .article-list. The link stays the source of truth: on any failure it is

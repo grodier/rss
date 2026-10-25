@@ -548,18 +548,20 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md. Beyond those:
 - **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the
   site's icon on a white tile (`--avatar-icon-bg`, `.avatar-icon`), else its letter on
   its tint. People's avatars (the nav, Settings) stay circles.
-- **The tab row** (`partials/timeline_tabs.html`, `timeline-tabs`) is on Home and each
-  custom timeline: Home, the user's timelines in order, then New timeline (or Timelines,
-  to manage them). CSS only, no counts. While the owner picks a layout (#356), it has
-  three options, `a`, `b` and `c` (`defaultTabLayout`; `?tabs=` previews the others).
-- **`app.js`** has six enhancements, each hooked onto server-rendered markup: local
+- **The tab row** (`partials/timeline_tabs.html`, `timeline-tabs`) heads Home and each
+  custom timeline in place of the page's visible heading (the `<h1>` is visually
+  hidden): underlined tabs for Home, the user's timelines in order, then New timeline
+  (or Timelines, to manage them), scrolling sideways when they don't fit. It's a `nav`
+  of links with `aria-current`, not ARIA tabs. CSS only, no counts.
+- **`app.js`** has seven enhancements, each hooked onto server-rendered markup: local
   times (`<time data-local>`, from the `local-time` and `local-date` partials; `data-local="date"` shows the date only), read pings (`<a ping>` → `navigator.sendBeacon`),
   Save and Star buttons (a delegated `submit` listener posts `form[data-toggle]` with
   `fetch`, then flips the button's `aria-pressed` and the form's `/save` ↔ `/unsave` or
   `/star` ↔ `/unstar` action; on any failure it submits the form normally), video embeds (a delegated `click` listener
   swaps the link in `figure.embed[data-embed]` for a sandboxed player built from
   `data-embed-id`; modified clicks follow the link), infinite scroll (fetch the page behind
-  `.pager a[rel=next]` and append its `.article-row`s), and a show/hide toggle on every
+  `.pager a[rel=next]` and append its `.article-row`s), scrolling the tab row
+  (`.timeline-tabs`) so its current tab shows, and a show/hide toggle on every
   `input[type=password]` (set back to `password` before its form submits). `internal/server/scroll_test.go` pins the markup the script relies on.
 
 ## Testing

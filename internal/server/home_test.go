@@ -360,11 +360,13 @@ func TestHomeHandlerTabs(t *testing.T) {
 	timelines := &fakeTimelineStore{}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
+	// app.js scrolls the list in .timeline-tabs to its [aria-current=page] link.
 	t.Run("no timelines offers to make one", func(t *testing.T) {
 		body := getHome(t, s, "/", true).Body.String()
 		assertBodyContains(t, body,
-			"<h1>Home</h1>",
-			`<nav class="timeline-tabs timeline-tabs-a" aria-label="Timelines">`,
+			`<header class="page-head tabs-head">
+        <h1 class="visually-hidden">Home</h1>`,
+			`<nav class="timeline-tabs" aria-label="Timelines">`,
 			`<li><a href="/" aria-current="page">Home</a></li>`,
 			`<li class="tab-manage"><a href="/timelines/new">New timeline</a></li>`,
 		)

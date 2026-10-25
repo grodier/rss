@@ -14,7 +14,8 @@
     {{template "app-nav" .Nav}}
 
     <main class="column">
-      {{if eq .Tabs.Layout "b"}}
+      {{/* The tabs stand in for the page's heading, so the <h1> is visually
+           hidden; it comes first so heading navigation still finds it. */}}
       <header class="page-head tabs-head">
         <h1 class="visually-hidden">{{if .Timeline.Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
         {{template "timeline-tabs" .Tabs}}
@@ -24,22 +25,9 @@
         {{with .Timeline.Description}}<p>{{.}}</p>{{end}}
         <div class="timeline-links">
           {{if .Before}}<a href="{{.Path}}">Back to newest</a>{{end}}
-          {{if not .Timeline.Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit</a>{{end}}
+          {{if not .Timeline.Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit<span class="visually-hidden"> {{.Timeline.Name}}</span></a>{{end}}
         </div>
       </div>
-      {{end}}
-      {{else}}
-      <header class="page-head">
-        <h1>{{if .Timeline.Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
-        <div class="timeline-links">
-          {{if .Before}}<a href="{{.Path}}">Back to newest</a>{{end}}
-          {{if not .Timeline.Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit</a>{{end}}
-        </div>
-      </header>
-      {{template "timeline-tabs" .Tabs}}
-      {{with .Timeline.Description}}
-      <div class="timeline-about"><p>{{.}}</p></div>
-      {{end}}
       {{end}}
 
       {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}

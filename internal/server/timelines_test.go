@@ -371,9 +371,9 @@ func TestTimelineHandler(t *testing.T) {
 		}
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			"<h1>AI</h1>",
-			`<div class="timeline-about"><p>Models &amp; more</p></div>`,
-			`<a href="/timelines/`+testTimelineID+`/edit">Edit</a>`,
+			`<h1 class="visually-hidden">AI</h1>`,
+			"<p>Models &amp; more</p>",
+			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
 			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
 			`<li><a href="/">Home</a></li>`,
 			"Article 0", "Article 1",

@@ -608,9 +608,12 @@ without JavaScript.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline show a tab row (`timeline-tabs`, from
+**Flow.** Home and each custom timeline are headed by a tab row (`timeline-tabs`, from
 `TimelineRepository.List`): Home, the user's timelines in tab order, then New timeline
-(or Timelines when there are some). A timeline is a name, an optional description and a
+(or Timelines when there are some), underlined tabs that scroll sideways when they
+don't fit; `app.js` scrolls the row so the current tab shows. The page's `<h1>` (the
+timeline's name, or Home) is visually hidden; the description and Edit link follow in
+a row under the tabs. A timeline is a name, an optional description and a
 `rss.TimelineFilter` over the user's subscriptions: Show is all feeds, or
 (`OnlyIncluded`) only the feeds with any of `IncludeTagIDs` or in `IncludeFeedIDs`;
 Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins. Tag-based timelines stay
@@ -643,8 +646,7 @@ but has none (say its only tag was deleted), else "Nothing in this timeline yet.
 
 **Read:**
 
-1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineTabs`,
-   `tabLayout`.
+1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineTabs`.
 2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
    `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`, `timeline`,
    `checks`), `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
@@ -655,7 +657,8 @@ but has none (say its only tag was deleted), else "Nothing in this timeline yet.
    `insertTimelineSources`; then `timelineWhere` and `ListTimeline` in `articles.go`.
 5. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
    `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`;
-   `.timeline-tabs`, `.timeline-list` and `.timeline-form` in `main.css`.
+   `.timeline-tabs`, `.timeline-list` and `.timeline-form` in `main.css`; the tab
+   row's enhancement in `app.js`.
 
 **Tests:** `internal/server/timelines_test.go`, `TestHomeHandlerTabs` in
 `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,

@@ -268,9 +268,11 @@ type TimelineFilter struct {
 	IncludeFeedIDs  []string
 	ExcludeTagIDs   []string // left out even when included
 	ExcludeFeedIDs  []string
-	StarredOnly     bool // only articles the user starred, newest starred first
-	MaxPostsPerWeek int  // only feeds posting at most this many articles a week; 0: any
-	MediaOnly       bool // only articles with an audio or video enclosure
+	StarredOnly     bool     // only articles the user starred, newest starred first
+	MaxPostsPerWeek int      // only feeds posting at most this many articles a week; 0: any
+	MediaOnly       bool     // only articles with an audio or video enclosure
+	IncludeWords    []string // an article must mention one; empty: no condition
+	ExcludeWords    []string // an article mentioning one is left out
 }
 
 // TagName normalizes a tag name: trimmed, with each run of whitespace

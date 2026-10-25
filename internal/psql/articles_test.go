@@ -1369,3 +1369,73 @@ func TestListTimelineConditions(t *testing.T) {
 		})
 	}
 }
+
+// setConditionTexts gives newConditionArticles' articles titles, page titles
+// and excerpts for keyword conditions: A-text, B-text (in its page title)
+// and C-audio (in its excerpt) mention AI or LLM; B-audio (in its title) and
+// C-audio (in its excerpt) mention "sponsored"; A-audio and C-text mention
+// neither, only words containing them.
+func setConditionTexts(t *testing.T, db *sql.DB, articleID map[string]string) {
+	t.Helper()
+	for ext, text := range map[string][3]string{
+		"A-text":  {"New AI model", "", ""},
+		"A-audio": {"She said nothing", "", "AIDS research"},
+		"B-text":  {"Weekly news", "LLM roundup", ""},
+		"B-audio": {"Sponsored: AI deals", "", ""},
+		"C-audio": {"Episode 12", "", "All about AI. Sponsored by Example."},
+		"C-text":  {"OpenAI raises", "", "unsponsored"},
+	} {
+		if _, err := db.Exec(`UPDATE articles SET title = $1, page_title = $2, excerpt = $3 WHERE id = $4`,
+			text[0], text[1], text[2], articleID[ext]); err != nil {
+			t.Fatalf("set texts: %v", err)
+		}
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineWords(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	user := newTestUser(t, db)
+	_, articleID, tag := newConditionArticles(t, db, user)
+	setConditionTexts(t, db, articleID)
+
+	ai := []string{"AI", "LLM"}
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   []string
+	}{
+		{"must mention keeps only matches", rss.TimelineFilter{IncludeWords: ai},
+			[]string{"B-audio", "B-text", "A-text", "C-audio"}},
+		{"a page title match counts", rss.TimelineFilter{IncludeWords: []string{"llm"}},
+			[]string{"B-text"}},
+		{"an excerpt match counts", rss.TimelineFilter{IncludeWords: []string{"example"}},
+			[]string{"C-audio"}},
+		{"leave out removes matches", rss.TimelineFilter{ExcludeWords: []string{"sponsored"}},
+			[]string{"B-text", "A-audio", "A-text", "C-text"}},
+		{"leave out wins over must mention", rss.TimelineFilter{IncludeWords: ai, ExcludeWords: []string{"sponsored"}},
+			[]string{"B-text", "A-text"}},
+		{"must mention with a tag", rss.TimelineFilter{IncludeWords: ai, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"B-audio", "B-text", "A-text"}},
+		{"leave out with a tag", rss.TimelineFilter{ExcludeWords: []string{"sponsored"}, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"B-text", "A-audio", "A-text"}},
+		{"no matches", rss.TimelineFilter{IncludeWords: []string{"C++"}},
+			[]string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.ArticleCursor{}, 100)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			got := []string{}
+			for _, item := range items {
+				got = append(got, item.Article.ExternalID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

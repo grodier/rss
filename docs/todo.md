@@ -13,14 +13,9 @@ wave can be built in parallel once the waves before them have merged; merge one 
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
 5. **Wave 5:**
-   1. #360 Keyword filters.
-   2. #363 Share a timeline.
-   3. #357 Reorder timelines. Lowest priority; any time after #356.
+   1. #363 Share a timeline.
+   2. #357 Reorder timelines. Lowest priority; any time after #356.
 6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
-
-Files several of them share, so later PRs merge the earlier ones' changes:
-`TimelineFilter`, `timelineWhere` and the timeline form (#360); #360's conditions apply
-to `ListStarred` too, as #358 and #359's do.
 
 Then:
 

@@ -200,7 +200,9 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 // in ExcludeTagIDs, even when included. Only show: with MaxPostsPerWeek,
 // only feeds whose posts_per_week is at most that, so a feed that gets busier
 // takes its older articles with it; with MediaOnly, only articles with an
-// audio or video enclosure (a non-empty media_type).
+// audio or video enclosure (a non-empty media_type); with IncludeWords, only
+// articles whose title, page title or excerpt mention one of them; with
+// ExcludeWords, never articles that mention one of them (see wordsPattern).
 //
 // sub can be NULL (a LEFT JOIN, as in ListStarred: a star from a feed the
 // user no longer subscribes to). Then Show conditions fail (the feed has no
@@ -243,6 +245,17 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 	if filter.MediaOnly {
 		where.WriteString(`
 				AND a.media_type <> ''`)
+	}
+	const text = `concat_ws(' ', a.title, a.page_title, a.excerpt)`
+	if len(filter.IncludeWords) > 0 {
+		*args = append(*args, wordsPattern(filter.IncludeWords))
+		fmt.Fprintf(&where, `
+				AND %s ~* $%d`, text, len(*args))
+	}
+	if len(filter.ExcludeWords) > 0 {
+		*args = append(*args, wordsPattern(filter.ExcludeWords))
+		fmt.Fprintf(&where, `
+				AND NOT (%s ~* $%d)`, text, len(*args))
 	}
 	return where.String()
 }

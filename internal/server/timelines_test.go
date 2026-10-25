@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -346,6 +347,19 @@ func TestTimelineCreateHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("saves the words and phrases", func(t *testing.T) {
+		form := url.Values{"name": {"AI"}, "show": {"all"},
+			"include_words": {" AI, llm ,, machine \t learning, ai, C++ "}, "exclude_words": {"Sponsored"}}
+		res := post(t, form, nil)
+		if res.code != http.StatusSeeOther || res.created == nil {
+			t.Fatalf("code %d, created %v", res.code, res.created)
+		}
+		f := res.created.Filter
+		if !slices.Equal(f.IncludeWords, []string{"AI", "llm", "machine learning", "C++"}) || !slices.Equal(f.ExcludeWords, []string{"Sponsored"}) {
+			t.Errorf("filter = %+v", f)
+		}
+	})
+
 	long := strings.Repeat("é", 51)
 	tests := []struct {
 		name    string
@@ -367,6 +381,21 @@ func TestTimelineCreateHandler(t *testing.T) {
 			message string
 		}{"posts a week " + rate, url.Values{"name": {"X"}, "show": {"all"}, "max_posts_per_week": {rate}}, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank."})
 	}
+	for _, field := range []string{"include_words", "exclude_words"} {
+		for _, tt := range []struct{ name, value, message string }{
+			{"21 terms", numberedTerms(21), "At most 20 words or phrases."},
+			{"a term over 50 runes", "AI, " + strings.Repeat("é", 51), "Each word or phrase must be 50 characters or fewer."},
+			{"+++", "AI, +++", "Each word or phrase needs at least one letter or number."},
+			{"--", "--", "Each word or phrase needs at least one letter or number."},
+		} {
+			tests = append(tests, struct {
+				name    string
+				form    url.Values
+				field   string
+				message string
+			}{field + " " + tt.name, url.Values{"name": {"X"}, "show": {"all"}, field: {tt.value}}, field, tt.message})
+		}
+	}
 	for _, tt := range tests {
 		t.Run(tt.name+" is 422", func(t *testing.T) {
 			res := post(t, tt.form, nil)
@@ -386,10 +415,12 @@ func TestTimelineCreateHandler(t *testing.T) {
 
 	t.Run("422 keeps everything", func(t *testing.T) {
 		form := url.Values{"name": {""}, "description": {"Kept"}, "show": {"some"}, "include_feeds": {timelineFeedID}, "exclude_tags": {testTagID},
-			"max_posts_per_week": {"7"}, "media_only": {"1"}}
+			"max_posts_per_week": {"7"}, "media_only": {"1"}, "include_words": {"AI,  C++"}, "exclude_words": {"deal"}}
 		res := post(t, form, nil)
 		assertBodyContains(t, res.body,
 			">Kept</textarea>",
+			`name="include_words" value="AI,  C&#43;&#43;"`,
+			`name="exclude_words" value="deal"`,
 			`value="7"`,
 			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
 			`<input type="radio" name="show" value="some" checked`,
@@ -604,7 +635,7 @@ func TestTimelineEditHandler(t *testing.T) {
 	tags, subs := timelineSourcesStores()
 	timelines := userTimeline(rss.Timeline{Name: "AI", Description: "Models", Filter: rss.TimelineFilter{
 		OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, ExcludeFeedIDs: []string{timelineFeed2ID}, StarredOnly: true,
-		MaxPostsPerWeek: 3, MediaOnly: true,
+		MaxPostsPerWeek: 3, MediaOnly: true, IncludeWords: []string{"AI", "machine learning"}, ExcludeWords: []string{"Sponsored"},
 	}})
 	s := newTestServerWith(t, Services{TagService: tags, SubscriptionService: subs, TimelineService: timelines})
 
@@ -624,6 +655,8 @@ func TestTimelineEditHandler(t *testing.T) {
 			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
 			`value="3"`,
 			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
+			`name="include_words" value="AI, machine learning"`,
+			`name="exclude_words" value="Sponsored"`,
 			`<a class="btn" href="/timelines/`+testTimelineID+`">Cancel</a>`,
 			`<form class="tag-delete" action="/timelines/`+testTimelineID+`/delete" method="post">`,
 			`<button class="btn-sm" type="submit">Delete timeline</button>`,
@@ -693,6 +726,26 @@ func TestTimelineEditPostHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("saves the words and phrases, and clears them", func(t *testing.T) {
+		updated = nil
+		form := url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {"AI, LLM"}, "exclude_words": {"deal"}}
+		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if updated == nil || !slices.Equal(updated.Filter.IncludeWords, []string{"AI", "LLM"}) || !slices.Equal(updated.Filter.ExcludeWords, []string{"deal"}) {
+			t.Errorf("updated %+v, want the words", updated)
+		}
+
+		updated = nil
+		form = url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {" , "}, "exclude_words": {""}}
+		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if updated == nil || len(updated.Filter.IncludeWords) != 0 || len(updated.Filter.ExcludeWords) != 0 {
+			t.Errorf("updated %+v, want no words", updated)
+		}
+	})
+
 	t.Run("starred only stays ticked when the form is invalid", func(t *testing.T) {
 		rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, url.Values{"name": {""}, "show": {"all"}, "starred_only": {"1"}})
 		if rr.Code != http.StatusUnprocessableEntity {
@@ -725,6 +778,71 @@ func TestTimelineEditPostHandler(t *testing.T) {
 			t.Errorf("status = %d, want 404", rr.Code)
 		}
 	})
+}
+
+func TestSplitTerms(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{" , ,, ", nil},
+		{"AI", []string{"AI"}},
+		{" AI , LLM,GPT ", []string{"AI", "LLM", "GPT"}},
+		{"machine \t\n  learning", []string{"machine learning"}},
+		{"AI, ai, Ai, LLM", []string{"AI", "LLM"}},
+		{"C++, C#, .NET, +++", []string{"C++", "C#", ".NET", "+++"}},
+		{"Café, CAFÉ", []string{"Café"}},
+	}
+	for _, tt := range tests {
+		if got := splitTerms(tt.in); !slices.Equal(got, tt.want) {
+			t.Errorf("splitTerms(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// numberedTerms returns n different terms, comma-separated: t1, t2, ….
+func numberedTerms(n int) string {
+	terms := make([]string, n)
+	for i := range terms {
+		terms[i] = fmt.Sprintf("t%d", i+1)
+	}
+	return strings.Join(terms, ", ")
+}
+
+func TestTimelineFormTerms(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		message string // "": valid
+	}{
+		{"blank", "", ""},
+		{"C++ and C#", "C++, C#, F#, .NET, @handle, #hashtag", ""},
+		{"20 terms", numberedTerms(20), ""},
+		{"21 terms", numberedTerms(21), "At most 20 words or phrases."},
+		{"21 terms with repeats", strings.Repeat("a,", 30), ""},
+		{"50 runes", strings.Repeat("é", 50), ""},
+		{"51 runes", strings.Repeat("é", 51), "Each word or phrase must be 50 characters or fewer."},
+		{"+++", "+++", "Each word or phrase needs at least one letter or number."},
+		{"--", "AI, --", "Each word or phrase needs at least one letter or number."},
+		{"a digit is enough", "2026", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, field := range []string{"include_words", "exclude_words"} {
+				f := timelineForm{Name: "X", Show: "all"}
+				if field == "include_words" {
+					f.IncludeWords = tt.value
+				} else {
+					f.ExcludeWords = tt.value
+				}
+				f.check(nil, nil)
+				if got := f.FieldErrors[field]; got != tt.message {
+					t.Errorf("%s: error = %q, want %q", field, got, tt.message)
+				}
+			}
+		})
+	}
 }
 
 func TestTimelineDeleteHandler(t *testing.T) {

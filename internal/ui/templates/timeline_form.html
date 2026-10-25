@@ -29,7 +29,7 @@
       </div>
       {{end}}
 
-      {{$focus := .Form.FirstError "name" "description" "show" "max_posts_per_week"}}
+      {{$focus := .Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words"}}
       <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
         <div class="timeline-form-fields">
           {{range .Form.NonFieldErrors}}
@@ -59,7 +59,7 @@
           <label class="choice">
             <input type="radio" name="show" value="all"{{if eq .Form.Show "all"}} checked{{end}}
               {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week") "show"}}autofocus{{end}} />
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "show"}}autofocus{{end}} />
             All my feeds
           </label>
           <label class="choice">
@@ -102,7 +102,7 @@
               value="{{.Form.MaxPostsPerWeek}}"
               aria-describedby="max_posts_per_week-hint{{if .Form.FieldErrors.max_posts_per_week}} max_posts_per_week-error{{end}}"
               {{with .Form.FieldErrors.max_posts_per_week}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week") "max_posts_per_week"}}autofocus{{end}} />
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "max_posts_per_week"}}autofocus{{end}} />
             <span>times a week</span>
           </div>
           <p class="hint" id="max_posts_per_week-hint">Based on the last 30 days. My feeds shows each feed's rate.</p>
@@ -112,6 +112,23 @@
             Articles with audio or video
           </label>
           <p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>
+          <div class="field words-field">
+            <label for="include_words">Articles that mention</label>
+            <input type="text" id="include_words" name="include_words" value="{{.Form.IncludeWords}}"
+              aria-describedby="words-hint{{if .Form.FieldErrors.include_words}} include_words-error{{end}}"
+              {{with .Form.FieldErrors.include_words}}aria-invalid="true"{{end}}
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "include_words"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.include_words}}<p class="error" id="include_words-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field words-field">
+            <label for="exclude_words">Leave out articles that mention</label>
+            <input type="text" id="exclude_words" name="exclude_words" value="{{.Form.ExcludeWords}}"
+              aria-describedby="words-hint{{if .Form.FieldErrors.exclude_words}} exclude_words-error{{end}}"
+              {{with .Form.FieldErrors.exclude_words}}aria-invalid="true"{{end}}
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "exclude_words"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.exclude_words}}<p class="error" id="exclude_words-error">{{.}}</p>{{end}}
+          </div>
+          <p class="hint" id="words-hint">Separate words or phrases with commas, for example: AI, C++, machine learning. Matches whole words in titles and excerpts, ignoring case.</p>
         </fieldset>
         {{end}}
 

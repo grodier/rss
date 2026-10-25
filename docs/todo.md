@@ -12,9 +12,7 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-2. **Wave 2:**
-   1. #351 Tags page, with tagging many feeds at once from a tag's page.
-   2. #350 Posting rate.
+2. **Wave 2:** #350 Posting rate.
 3. **Wave 3:**
    1. #343 The reader's names everywhere. Before #356: both change
       `ListTimeline`, and this one is smaller.
@@ -624,6 +622,8 @@ Pages and queries:
   them into one query, or keep the tab list in the session until a timeline changes.
 - [ ] **Tag page checklist is unpaginated** (#351, #356). A tag's page, and also
   the timeline form, list all of a user's subscriptions as checkboxes, like My feeds.
+  Saving a tag posts every ticked feed's ID (43 bytes each), so past about 1,500 ticked
+  feeds the form outgrows `decodePostForm`'s 64 KiB and gets a 413.
   *Signal:* users with hundreds of subscriptions, or those pages' p95 rising. *Fix:*
   with My feeds' fix, plus a filter box over the list.
 - [ ] **Starred timelines read all of a user's stars** (#358). With Show limited to tags,

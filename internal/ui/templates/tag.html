@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - {{.Tag.Name}}</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>{{.Tag.Name}}</h1>
+        <a href="/tags">All tags</a>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{if .Subs}}
+      <form class="tag-feeds" action="/tags/{{.Tag.ID}}/feeds" method="post">
+        <fieldset>
+          <legend>Feeds tagged “{{.Tag.Name}}”</legend>
+          {{if gt (len .Subs) 20}}
+          <div class="form-actions">
+            <button class="btn-primary" type="submit">Save</button>
+          </div>
+          {{end}}
+          <ul role="list">
+            {{range .Subs}}
+            <li>
+              <label class="check-row">
+                <input type="checkbox" name="feeds" value="{{.Feed.ID}}"{{if index $.Tagged .Feed.ID}} checked{{end}}>
+                {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
+                <span class="check-row-text">
+                  <span class="check-row-title">{{or .Title .Feed.Title .Feed.Url}}</span>
+                  <span class="check-row-sub">{{or .Site.Title .Site.Host}}</span>
+                </span>
+              </label>
+            </li>
+            {{end}}
+          </ul>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit">Save</button>
+          </div>
+        </fieldset>
+      </form>
+      {{else}}
+      <div class="empty">
+        {{template "icon-feeds"}}
+        <p>You're not subscribed to any feeds yet. <a href="/search">Search</a> for a site to find some.</p>
+      </div>
+      {{end}}
+
+      <section>
+        <div class="list-head">
+          <h2>Rename</h2>
+        </div>
+        {{$focus := .Form.FirstError "name"}}
+        <form class="settings-form" action="/tags/{{.Tag.ID}}/rename" method="post">
+          {{range .Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{.Form.Name}}"
+              aria-describedby="name-hint{{if .Form.FieldErrors.name}} name-error{{end}}"
+              {{with .Form.FieldErrors.name}}aria-invalid="true"{{end}}
+              {{if eq $focus "name"}}autofocus{{end}} />
+            <p class="hint" id="name-hint">Only you see your tags.</p>
+            {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button type="submit">Rename</button>
+          </div>
+        </form>
+      </section>
+
+      <form class="tag-delete" action="/tags/{{.Tag.ID}}/delete" method="post">
+        <button class="btn-sm" type="submit">Delete tag</button>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

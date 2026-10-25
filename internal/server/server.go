@@ -156,6 +156,29 @@ type StarStore interface {
 	StarredArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 }
 
+// TagStore stores a user's tags and which of their subscriptions have them.
+type TagStore interface {
+	// Create makes a tag called name (already normalized).
+	// rss.ErrDuplicateTag if the user has one by that name (ignoring case);
+	// rss.ErrTooManyTags if they have psql.MaxTags already.
+	Create(ctx context.Context, userID, name string) (rss.Tag, error)
+	// List returns the user's tags ordered by name, with their Feeds counts.
+	List(ctx context.Context, userID string) ([]rss.Tag, error)
+	// Get returns the user's tag id, or rss.ErrNoRecord.
+	Get(ctx context.Context, userID, id string) (rss.Tag, error)
+	// Rename renames the user's tag id. rss.ErrNoRecord as Get;
+	// rss.ErrDuplicateTag if another of the user's tags has the name.
+	Rename(ctx context.Context, userID, id, name string) error
+	// Delete deletes the user's tag id. rss.ErrNoRecord as Get.
+	Delete(ctx context.Context, userID, id string) error
+	// FeedIDs returns the feeds of the user's subscriptions that have tag id.
+	FeedIDs(ctx context.Context, userID, id string) (map[string]bool, error)
+	// SetFeeds makes feedIDs exactly the user's subscriptions that have tag
+	// id. rss.ErrNoRecord if the tag isn't the user's or the user doesn't
+	// subscribe to one of feedIDs.
+	SetFeeds(ctx context.Context, userID, id string, feedIDs []string) error
+}
+
 // ImportStore stores OPML imports and reads their results.
 type ImportStore interface {
 	Create(ctx context.Context, userID, filename string, feeds []rss.ImportFeed) (string, error)
@@ -208,6 +231,7 @@ var (
 	_ ReadStore         = (*psql.ReadRepository)(nil)
 	_ SaveStore         = (*psql.SaveRepository)(nil)
 	_ StarStore         = (*psql.StarRepository)(nil)
+	_ TagStore          = (*psql.TagRepository)(nil)
 	_ ImportStore       = (*psql.ImportRepository)(nil)
 	_ DebugStore        = (*psql.DebugRepository)(nil)
 	_ EmailQueue        = (*mail.Queue)(nil)
@@ -229,6 +253,7 @@ type Services struct {
 	ReadService         ReadStore
 	SaveService         SaveStore
 	StarService         StarStore
+	TagService          TagStore
 	ImportService       ImportStore
 	DebugService        DebugStore
 	EmailQueue          EmailQueue

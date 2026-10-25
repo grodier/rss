@@ -1393,6 +1393,82 @@
     gap: 0.5rem;
   }
 
+  /* A tag's page: a checklist of the user's subscriptions. */
+  .tag-feeds fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .tag-feeds legend {
+    inline-size: 100%;
+    padding: 1rem 1rem 0.625rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .tag-feeds .form-actions {
+    margin: 0;
+    padding: 0.875rem 1rem;
+  }
+
+  .check-row {
+    display: grid;
+    grid-template-columns: auto 2.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    font-size: inherit;
+    font-weight: inherit;
+    cursor: pointer;
+  }
+
+  .check-row:hover {
+    background: var(--surface);
+  }
+
+  .check-row input[type="checkbox"] {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--accent);
+  }
+
+  .check-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-inline-size: 0;
+  }
+
+  .check-row-title,
+  .check-row-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .check-row-title {
+    font-weight: 650;
+  }
+
+  .check-row-sub {
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  .tag-delete {
+    padding: 0 1rem 1.5rem;
+  }
+
   /* Search results: a site, with its feeds grouped in a box. */
   .lookup-cta {
     display: flex;

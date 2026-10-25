@@ -535,6 +535,53 @@ published dates.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 
+## Tags
+
+**Flow.** A Tags button in My feeds' page head links to `/tags` (`tagsHandler`): a New
+tag form, then the user's tags from `TagRepository.List` (ordered by name ignoring case,
+each with its number of subscriptions, "1 feed" / "N feeds"), each linking to its page.
+Creating (`tagCreateHandler`) normalizes the name with `rss.TagName` (trimmed, runs of
+whitespace collapsed to one space) and checks it with `tagForm.check` (not blank, at
+most 50 runes, no commas, since Edit subscription will separate new tags with commas);
+`Create` reports `ErrDuplicateTag` for a name the user already has, ignoring case
+(`citext`), and `ErrTooManyTags` at 100 (`addStoreError` turns both into the field's
+error). Any error re-renders the page with 422 and the typed value; success redirects
+to the new tag's page.
+
+A tag's page (`/tags/{id}`, `tagHandler`; another user's tag or a non-UUID is a 404 via
+`tagFromURL`) is one form with a checkbox per subscription, in `ListByUser` order, each
+with its avatar, name and site, ticked where `FeedIDs` has it. Save (also above the
+list when there are more than 20 subscriptions) posts the ticked feeds to
+`tagFeedsHandler`, which drops malformed IDs and any feed the user no longer subscribes
+to (`SubscribedFeedIDs`, e.g. unsubscribed in another tab), then calls `SetFeeds`: in
+one transaction it removes the tag from the user's subscriptions not in the list and
+adds it to the rest, leaving their other tags alone. It flashes "Saved the feeds tagged
+“…”." and comes back to the page. Below the list, Rename (`tagRenameHandler`, the same
+validation; a 422 re-renders the page) flashes "Tag renamed."; Delete tag
+(`tagDeleteHandler`, no confirmation) cascades to `subscription_tags` and
+`timeline_tags`, flashes "Deleted the tag “…”." and goes back to `/tags`. All of it works
+without JavaScript.
+
+**Read:**
+
+1. `internal/server/tags.go`: `tagsHandler`, `tagCreateHandler`, `tagForm` (`check`,
+   `addStoreError`), `renderTags`; then `tagHandler`, `tagFromURL`, `renderTag`,
+   `tagFeedsHandler`, `tagRenameHandler`, `tagDeleteHandler`.
+2. `internal/rss/rss.go`: `Tag`, `TagName`; `ErrDuplicateTag`, `ErrTooManyTags` in
+   `errors.go`.
+3. `internal/psql/tags.go`: `Create`, `List`, `Get`, `Rename`, `Delete`, `FeedIDs`,
+   `SetFeeds`, `tagError`.
+4. Templates: `tags.html`, `tag.html`, the Tags link in `feeds.html`; `.tag-feeds` and
+   `.check-row` in `main.css`.
+
+**Tests:** `internal/server/tags_test.go` (`TestTagsHandler`, `TestTagCreateHandler`,
+`TestTagHandler`, `TestTagFeedsHandler`, `TestTagRenameHandler`, `TestTagDeleteHandler`,
+`TestFeedsHandlerTagsLink`); `internal/psql/tags_test.go` (`TestTagCreate`,
+`TestTagList`, `TestTagGet`, `TestTagRename`, `TestTagDelete`, `TestTagFeedIDs`,
+`TestTagSetFeeds`); `internal/rss/rss_test.go` (`TestTagName`).
+
+**Why:** "Stars and tags" under "Filtering and timelines" in decisions.md.
+
 ## Reading: timeline, article pages and read state
 
 **Timeline** (`/` when logged in). `homeHandler` asks `ListTimeline` for 31 entries to

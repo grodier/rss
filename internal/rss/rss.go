@@ -237,6 +237,19 @@ type Subscription struct {
 	LatestArticleAt time.Time // newest article's published_at, else created_at; zero if the feed has no articles
 }
 
+// Tag is a user's label for their subscriptions.
+type Tag struct {
+	ID    string
+	Name  string
+	Feeds int // how many of the user's subscriptions have it; set by TagRepository.List
+}
+
+// TagName normalizes a tag name: trimmed, with each run of whitespace
+// replaced by one space.
+func TagName(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // SiteWithFeeds is a site and its feeds.
 type SiteWithFeeds struct {
 	Site  Site

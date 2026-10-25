@@ -136,6 +136,7 @@ func (app *Application) Run() error {
 		ReadService:         psql.NewReadRepository(db),
 		SaveService:         psql.NewSaveRepository(db),
 		StarService:         psql.NewStarRepository(db),
+		TagService:          psql.NewTagRepository(db),
 		ImportService:       psql.NewImportRepository(db),
 		DebugService:        psql.NewDebugRepository(db),
 		Refresher:           refresher,

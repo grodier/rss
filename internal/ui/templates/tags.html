@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>rss - tags</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Tags</h1>
+        <a href="/feeds">My feeds</a>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{$focus := .Form.FirstError "name"}}
+      <form class="settings-form" action="/tags" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <div class="field">
+          <label for="name">New tag</label>
+          <input type="text" id="name" name="name" value="{{.Form.Name}}"
+            aria-describedby="name-hint{{if .Form.FieldErrors.name}} name-error{{end}}"
+            {{with .Form.FieldErrors.name}}aria-invalid="true"{{end}}
+            {{if eq $focus "name"}}autofocus{{end}} />
+          <p class="hint" id="name-hint">Only you see your tags.</p>
+          {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Create tag</button>
+        </div>
+      </form>
+
+      <section>
+        <div class="list-head">
+          <h2>Your tags</h2>
+        </div>
+        {{if .Tags}}
+        <ul class="settings-list" role="list">
+          {{range .Tags}}
+          <li>
+            <a class="settings-row" href="/tags/{{.ID}}">
+              <span class="settings-label">{{.Name}}</span>
+              <span class="settings-value">{{.Feeds}} feed{{if ne .Feeds 1}}s{{end}}</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          {{end}}
+        </ul>
+        {{else}}
+        <div class="empty">
+          <p>You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them.</p>
+        </div>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

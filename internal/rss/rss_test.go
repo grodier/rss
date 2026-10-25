@@ -106,3 +106,21 @@ func TestArticleURLHost(t *testing.T) {
 		}
 	}
 }
+
+func TestTagName(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"AI", "AI"},
+		{"  News  ", "News"},
+		{"Machine   learning", "Machine learning"},
+		{"Machine\tlearning\nand\r\n  more", "Machine learning and more"},
+		{"Single spaces stay", "Single spaces stay"},
+		{" \t\n ", ""},
+	}
+	for _, tt := range tests {
+		if got := TagName(tt.in); got != tt.want {
+			t.Errorf("TagName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

@@ -26,7 +26,7 @@
         </div>
       </div>
 
-      {{$focus := .Form.FirstError "title"}}
+      {{$focus := .Form.FirstError "title" "new_tags"}}
       <form class="settings-form" action="/feeds/{{.Sub.Feed.ID}}/edit" method="post">
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
@@ -42,6 +42,24 @@
           <p class="hint" id="title-hint">Only you see this name. Leave it blank to use the feed's title.</p>
           {{with .Form.FieldErrors.title}}<p class="error" id="title-error">{{.}}</p>{{end}}
         </div>
+        <fieldset class="field tag-checks">
+          <legend>Tags</legend>
+          {{if .Tags}}
+          <div class="tag-check-list">
+            {{range .Tags}}
+            <label class="tag-check"><input type="checkbox" name="tags" value="{{.Tag.ID}}"{{if .Checked}} checked{{end}}> {{.Tag.Name}}</label>
+            {{end}}
+          </div>
+          {{end}}
+          <label for="new_tags">New tags</label>
+          <input type="text" id="new_tags" name="new_tags" value="{{.Form.NewTags}}"
+            aria-describedby="new_tags-hint{{if .Form.FieldErrors.new_tags}} new_tags-error{{end}}"
+            {{with .Form.FieldErrors.new_tags}}aria-invalid="true"{{end}}
+            {{if eq $focus "new_tags"}}autofocus{{end}} />
+          <p class="hint" id="new_tags-hint">Separate tags with commas. Only you see your tags.</p>
+          {{with .Form.FieldErrors.new_tags}}<p class="error" id="new_tags-error">{{.}}</p>{{end}}
+          <p class="hint"><a href="/tags">Manage tags</a></p>
+        </fieldset>
         <div class="form-actions">
           <button class="btn-primary" type="submit">Save</button>
           <a class="btn" href="{{.ReturnTo}}">Cancel</a>

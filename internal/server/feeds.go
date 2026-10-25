@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -290,8 +291,10 @@ func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form 
 }
 
 type subscriptionForm struct {
-	Title               string `form:"title"`
-	ReturnTo            string `form:"return_to"`
+	Title               string   `form:"title"`
+	Tags                []string `form:"tags"`     // IDs of the ticked tags
+	NewTags             string   `form:"new_tags"` // comma-separated names
+	ReturnTo            string   `form:"return_to"`
 	validator.Validator `form:"-"`
 }
 
@@ -299,19 +302,30 @@ type subscriptionForm struct {
 const subscriptionTitleMaxChars = 100
 
 // subscriptionEditHandler shows the form for editing the user's subscription
-// to a feed: for now, the name they give it.
+// to a feed: the name they give it and its tags.
 func (s *Server) subscriptionEditHandler(w http.ResponseWriter, r *http.Request) {
 	sub, ok := s.subscriptionFromURL(w, r)
 	if !ok {
 		return
 	}
+	userID, _ := s.authenticatedUserID(r)
+	tags, err := s.services.TagService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	form := subscriptionForm{Title: sub.Title, ReturnTo: r.URL.Query().Get("return_to")}
-	s.renderSubscriptionEdit(w, r, http.StatusOK, sub, form)
+	for _, tag := range sub.Tags {
+		form.Tags = append(form.Tags, tag.ID)
+	}
+	s.renderSubscriptionEdit(w, r, http.StatusOK, sub, tags, form)
 }
 
-// subscriptionEditPostHandler saves the user's name for a feed. A blank name,
-// or one equal to the feed's title, is stored as "" so the feed's own title
-// (and later changes to it) shows instead.
+// subscriptionEditPostHandler saves the user's name for a feed and replaces
+// its tags with the ticked ones plus the new ones typed. A blank name, or one
+// equal to the feed's title, is stored as "" so the feed's own title (and
+// later changes to it) shows instead.
 func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Request) {
 	sub, ok := s.subscriptionFromURL(w, r)
 	if !ok {
@@ -324,10 +338,41 @@ func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	userID, _ := s.authenticatedUserID(r)
+	tags, err := s.services.TagService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	// A tag deleted in another tab is ignored rather than an error.
+	form.Tags = ownTagIDs(form.Tags, tags)
+	newNames := splitTagNames(form.NewTags)
+
 	form.Title = strings.TrimSpace(form.Title)
 	form.CheckField(validator.MaxChars(form.Title, subscriptionTitleMaxChars), "title", "Must be 100 characters or fewer.")
+	for _, name := range newNames {
+		if !validator.MaxChars(name, tagNameMaxChars) {
+			form.AddFieldError("new_tags", "Each tag must be 50 characters or fewer.")
+			break
+		}
+	}
 	if !form.Valid() {
-		s.renderSubscriptionEdit(w, r, http.StatusUnprocessableEntity, sub, form)
+		s.renderSubscriptionEdit(w, r, http.StatusUnprocessableEntity, sub, tags, form)
+		return
+	}
+
+	// Tags first: if they're refused (too many), nothing has changed yet.
+	if err := s.services.TagService.SetForSubscription(r.Context(), userID, sub.Feed.ID, form.Tags, newNames); err != nil {
+		switch {
+		case errors.Is(err, rss.ErrTooManyTags):
+			form.AddFieldError("new_tags", "You can have up to 100 tags.")
+			s.renderSubscriptionEdit(w, r, http.StatusUnprocessableEntity, sub, tags, form)
+		case errors.Is(err, rss.ErrNoRecord):
+			s.notFoundResponse(w, r)
+		default:
+			s.serverErrorHTML(w, r, err)
+		}
 		return
 	}
 
@@ -335,7 +380,6 @@ func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Requ
 	if title == sub.Feed.Title {
 		title = ""
 	}
-	userID, _ := s.authenticatedUserID(r)
 	if err := s.services.SubscriptionService.Rename(r.Context(), userID, sub.Feed.ID, title); err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
 			s.notFoundResponse(w, r)
@@ -347,6 +391,41 @@ func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Requ
 
 	s.sessionManager.Put(r.Context(), "flash", "Subscription updated.")
 	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds"), http.StatusSeeOther)
+}
+
+// ownTagIDs returns the IDs in ids that are of tags, in order and without
+// repeats.
+func ownTagIDs(ids []string, tags []rss.Tag) []string {
+	own := make(map[string]bool, len(tags))
+	for _, tag := range tags {
+		own[tag.ID] = true
+	}
+	var kept []string
+	for _, id := range ids {
+		if own[id] {
+			kept = append(kept, id)
+			own[id] = false
+		}
+	}
+	return kept
+}
+
+// splitTagNames splits comma-separated tag names and normalizes each with
+// rss.TagName, dropping empty ones and repeats (ignoring case; the first
+// spelling wins).
+func splitTagNames(s string) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(s, ",") {
+		name := rss.TagName(part)
+		key := strings.ToLower(name)
+		if name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		names = append(names, name)
+	}
+	return names
 }
 
 // subscriptionFromURL returns the user's subscription to the feed named in the
@@ -372,18 +451,31 @@ func (s *Server) subscriptionFromURL(w http.ResponseWriter, r *http.Request) (su
 	return sub, true
 }
 
-// renderSubscriptionEdit renders subscription_edit.html with status.
-func (s *Server) renderSubscriptionEdit(w http.ResponseWriter, r *http.Request, status int, sub rss.Subscription, form subscriptionForm) {
+// tagOption is a checkbox for a tag on the Edit subscription form.
+type tagOption struct {
+	Tag     rss.Tag
+	Checked bool
+}
+
+// renderSubscriptionEdit renders subscription_edit.html with status, with a
+// checkbox for each of tags, ticked if form.Tags has it.
+func (s *Server) renderSubscriptionEdit(w http.ResponseWriter, r *http.Request, status int, sub rss.Subscription, tags []rss.Tag, form subscriptionForm) {
+	options := make([]tagOption, len(tags))
+	for i, tag := range tags {
+		options[i] = tagOption{Tag: tag, Checked: slices.Contains(form.Tags, tag.ID)}
+	}
 	data := struct {
 		Nav      navData
 		Sub      rss.Subscription
 		Icons    map[string]string
+		Tags     []tagOption
 		Form     subscriptionForm
 		ReturnTo string
 	}{
 		Nav:      s.nav(r, "feeds"),
 		Sub:      sub,
 		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
+		Tags:     options,
 		Form:     form,
 		ReturnTo: safeReturnPath(form.ReturnTo, "/feeds"),
 	}

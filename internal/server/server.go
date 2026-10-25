@@ -178,6 +178,12 @@ type TagStore interface {
 	// id. rss.ErrNoRecord if the tag isn't the user's or the user doesn't
 	// subscribe to one of feedIDs.
 	SetFeeds(ctx context.Context, userID, id string, feedIDs []string) error
+	// SetForSubscription replaces the tags on the user's subscription to
+	// feedID with tagIDs plus the tags named newNames (normalized), creating
+	// those the user doesn't have. rss.ErrNoRecord if the user doesn't
+	// subscribe to feedID or a tag ID isn't theirs; rss.ErrTooManyTags if
+	// creating the new ones would pass psql.MaxTags.
+	SetForSubscription(ctx context.Context, userID, feedID string, tagIDs, newNames []string) error
 }
 
 // TimelineStore stores a user's custom timelines (the tabs after Home).

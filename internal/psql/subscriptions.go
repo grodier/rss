@@ -88,7 +88,16 @@ func (r *SubscriptionRepository) Get(ctx context.Context, userID, feedID string)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.Subscription{}, rss.ErrNoRecord
 	}
-	return sub, err
+	if err != nil {
+		return rss.Subscription{}, err
+	}
+
+	tags, err := r.tagsByFeed(ctx, userID, sql.NullString{String: feedID, Valid: true})
+	if err != nil {
+		return rss.Subscription{}, err
+	}
+	sub.Tags = tags[feedID]
+	return sub, nil
 }
 
 // Rename sets userID's name for feedID; "" uses the feed's own title.
@@ -146,7 +155,48 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 		return nil, err
 	}
 
+	tags, err := r.tagsByFeed(ctx, userID, sql.NullString{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range subs {
+		subs[i].Tags = tags[subs[i].Feed.ID]
+	}
+
 	return subs, nil
+}
+
+// tagsByFeed returns the tags of userID's subscriptions, by feed, each
+// feed's ordered by name ignoring case. A NULL feedID means every
+// subscription; otherwise only that feed's.
+func (r *SubscriptionRepository) tagsByFeed(ctx context.Context, userID string, feedID sql.NullString) (map[string][]rss.Tag, error) {
+	// name is citext, so ordering by it ignores case.
+	stmt := `SELECT st.feed_id, t.id, t.name
+		FROM subscription_tags st
+		JOIN tags t ON t.id = st.tag_id
+		WHERE st.user_id = $1 AND ($2::uuid IS NULL OR st.feed_id = $2::uuid)
+		ORDER BY t.name`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, userID, feedID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tags := map[string][]rss.Tag{}
+	for rows.Next() {
+		var feedID string
+		var tag rss.Tag
+		if err := rows.Scan(&feedID, &tag.ID, &tag.Name); err != nil {
+			return nil, err
+		}
+		tags[feedID] = append(tags[feedID], tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tags, nil
 }
 
 // scanSubscription scans a row selected with qualifiedFeedColumns,

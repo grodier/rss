@@ -468,12 +468,13 @@ timeline.
 that changes its title still updates). Edit on My feeds, and next to Unsubscribe on a
 subscribed feed's page, links to `/feeds/{id}/edit?return_to=…`
 (`subscriptionEditHandler`), which loads the subscription with `Get` (404 if the user
-doesn't subscribe) and shows a Name field with the feed's title as placeholder. The post
+doesn't subscribe) and shows a Name field with the feed's title as placeholder, then the
+subscription's tags (see "On a subscription" under "Tags"). The post
 (`subscriptionEditPostHandler`) trims the name, re-renders with 422 over 100 characters,
 stores `""` for a blank name or one equal to the feed's current title (`Rename`),
 flashes "Subscription updated." and redirects to `safeReturnPath(return_to, "/feeds")`.
 My feeds shows the name (else the feed's title, else its URL) and sorts a site's feeds
-by it. Unsubscribing drops the name.
+by it. Unsubscribing drops the name and the subscription's tags (see "Tags").
 
 The name shows wherever the user's own reading shows the feed. Per-user list queries
 (`ListTimeline` and `fillAlsoIn` for the timeline, `ListSaved` for the saved list)
@@ -566,7 +567,7 @@ tag form, then the user's tags from `TagRepository.List` (ordered by name ignori
 each with its number of subscriptions, "1 feed" / "N feeds"), each linking to its page.
 Creating (`tagCreateHandler`) normalizes the name with `rss.TagName` (trimmed, runs of
 whitespace collapsed to one space) and checks it with `tagForm.check` (not blank, at
-most 50 runes, no commas, since Edit subscription will separate new tags with commas);
+most 50 runes, no commas, since Edit subscription separates new tags with commas);
 `Create` reports `ErrDuplicateTag` for a name the user already has, ignoring case
 (`citext`), and `ErrTooManyTags` at 100 (`addStoreError` turns both into the field's
 error). Any error re-renders the page with 422 and the typed value; success redirects
@@ -586,23 +587,48 @@ validation; a 422 re-renders the page) flashes "Tag renamed."; Delete tag
 `timeline_tags`, flashes "Deleted the tag “…”." and goes back to `/tags`. All of it works
 without JavaScript.
 
+**On a subscription.** Edit subscription (`/feeds/{id}/edit`, see "Names" under
+"Subscriptions") has a Tags fieldset after the Name field: a checkbox per tag from
+`List` (`tagOption`), ticked for those in the subscription's `Tags`, then a New tags
+field for comma-separated names and a Manage tags link to `/tags`. The post
+(`subscriptionEditPostHandler`) keeps only ticked IDs that are in the user's list
+(`ownTagIDs`; a tag deleted in another tab is ignored), splits New tags with
+`splitTagNames` (normalized with `rss.TagName`, empty ones and repeats, ignoring case,
+dropped) and re-renders with 422 on `new_tags` for a name over 50 runes. It then calls
+`SetForSubscription` before `Rename`, so a refusal changes nothing: in one transaction it
+checks the subscription exists, refuses (`ErrTooManyTags`, a 422 on `new_tags`) if the
+new names would take the user past `MaxTags`, creates them with `INSERT … ON CONFLICT
+(user_id, name) DO UPDATE` (so a name the user already has, ignoring case, reuses that
+tag), and replaces the subscription's `subscription_tags` rows with the ticked tags plus
+the new ones. A 422 keeps the ticks and the typed text. `ListByUser` and `Get` fill
+`Subscription.Tags` with one more query each (`tagsByFeed`: the user's
+`subscription_tags` joined to `tags`, grouped by feed in Go), and My feeds shows a
+feed's tags under its title as small links to their pages (`.feed-tags`). Unsubscribing
+cascades to the subscription's `subscription_tags` rows; the tags stay.
+
 **Read:**
 
 1. `internal/server/tags.go`: `tagsHandler`, `tagCreateHandler`, `tagForm` (`check`,
    `addStoreError`), `renderTags`; then `tagHandler`, `tagFromURL`, `renderTag`,
-   `tagFeedsHandler`, `tagRenameHandler`, `tagDeleteHandler`.
-2. `internal/rss/rss.go`: `Tag`, `TagName`; `ErrDuplicateTag`, `ErrTooManyTags` in
+   `tagFeedsHandler`, `tagRenameHandler`, `tagDeleteHandler`. On a subscription:
+   `subscriptionEditHandler`, `subscriptionEditPostHandler`, `ownTagIDs`,
+   `splitTagNames`, `renderSubscriptionEdit` in `internal/server/feeds.go`.
+2. `internal/rss/rss.go`: `Tag`, `TagName`, `Subscription.Tags`; `ErrDuplicateTag`, `ErrTooManyTags` in
    `errors.go`.
 3. `internal/psql/tags.go`: `Create`, `List`, `Get`, `Rename`, `Delete`, `FeedIDs`,
-   `SetFeeds`, `tagError`.
-4. Templates: `tags.html`, `tag.html`, the Tags link in `feeds.html`; `.tag-feeds` and
-   `.check-row` in `main.css`.
+   `SetFeeds`, `SetForSubscription`, `tagError`; `tagsByFeed` in
+   `internal/psql/subscriptions.go`.
+4. Templates: `tags.html`, `tag.html`, the Tags link and `.feed-tags` in `feeds.html`,
+   the Tags fieldset in `subscription_edit.html`; `.tag-feeds`, `.check-row`,
+   `.tag-checks` and `.feed-tags` in `main.css`.
 
 **Tests:** `internal/server/tags_test.go` (`TestTagsHandler`, `TestTagCreateHandler`,
 `TestTagHandler`, `TestTagFeedsHandler`, `TestTagRenameHandler`, `TestTagDeleteHandler`,
-`TestFeedsHandlerTagsLink`); `internal/psql/tags_test.go` (`TestTagCreate`,
-`TestTagList`, `TestTagGet`, `TestTagRename`, `TestTagDelete`, `TestTagFeedIDs`,
-`TestTagSetFeeds`); `internal/rss/rss_test.go` (`TestTagName`).
+`TestFeedsHandlerTagsLink`), `feeds_test.go` (`TestSubscriptionEdit`,
+`TestSubscriptionEditPost`, and My feeds' tag links in `TestFeedsHandler`);
+`internal/psql/tags_test.go` (`TestTagCreate`, `TestTagList`, `TestTagGet`,
+`TestTagRename`, `TestTagDelete`, `TestTagFeedIDs`, `TestTagSetFeeds`,
+`TestSetForSubscription`), `subscriptions_test.go` (`TestSubscriptionTags`); `internal/rss/rss_test.go` (`TestTagName`).
 
 **Why:** "Stars and tags" under "Filtering and timelines" in decisions.md.
 

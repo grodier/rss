@@ -24,11 +24,12 @@
         <span id="presets-label">Start from:</span>
         <ul aria-labelledby="presets-label" role="list">
           <li><a href="/timelines/new?preset=starred">Starred</a></li>
+          <li><a href="/timelines/new?preset=quiet">Quiet posters</a></li>
         </ul>
       </div>
       {{end}}
 
-      {{$focus := .Form.FirstError "name" "description" "show"}}
+      {{$focus := .Form.FirstError "name" "description" "show" "max_posts_per_week"}}
       <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
         <div class="timeline-form-fields">
           {{range .Form.NonFieldErrors}}
@@ -58,7 +59,7 @@
           <label class="choice">
             <input type="radio" name="show" value="all"{{if eq .Form.Show "all"}} checked{{end}}
               {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show") "show"}}autofocus{{end}} />
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week") "show"}}autofocus{{end}} />
             All my feeds
           </label>
           <label class="choice">
@@ -88,13 +89,29 @@
         {{end}}
 
         {{block "timeline-form-only-show" .}}
-        <fieldset aria-describedby="starred-only-hint">
+        <fieldset>
           <legend>Only show</legend>
           <label class="choice">
-            <input type="checkbox" name="starred_only" value="1"{{if .Form.StarredOnly}} checked{{end}} />
+            <input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint"{{if .Form.StarredOnly}} checked{{end}} />
             Articles I've starred
           </label>
           <p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>
+          <div class="rate-field">
+            <label for="max_posts_per_week">Feeds that post at most</label>
+            <input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"
+              value="{{.Form.MaxPostsPerWeek}}"
+              aria-describedby="max_posts_per_week-hint{{if .Form.FieldErrors.max_posts_per_week}} max_posts_per_week-error{{end}}"
+              {{with .Form.FieldErrors.max_posts_per_week}}aria-invalid="true"{{end}}
+              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week") "max_posts_per_week"}}autofocus{{end}} />
+            <span>times a week</span>
+          </div>
+          <p class="hint" id="max_posts_per_week-hint">Based on the last 30 days. My feeds shows each feed's rate.</p>
+          {{with .Form.FieldErrors.max_posts_per_week}}<p class="error" id="max_posts_per_week-error">{{.}}</p>{{end}}
+          <label class="choice">
+            <input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint"{{if .Form.MediaOnly}} checked{{end}} />
+            Articles with audio or video
+          </label>
+          <p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>
         </fieldset>
         {{end}}
 

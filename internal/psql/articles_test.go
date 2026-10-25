@@ -1275,3 +1275,97 @@ func TestListTimelineFilter(t *testing.T) {
 		}
 	})
 }
+
+// newConditionArticles subscribes userID to A and C, which post 1.4 times a
+// week, and B, which posts 5 times; A and B are tagged T. Each feed has an
+// audio article ("<feed>-audio", the newest) and a text-only one
+// ("<feed>-text"); B's are newest, then A's, then C's. It returns the
+// articles' feeds by article ID, the article IDs by external ID, and T.
+func newConditionArticles(t *testing.T, db *sql.DB, userID string) (feedName, articleID map[string]string, tag rss.Tag) {
+	t.Helper()
+	ctx := t.Context()
+	feeds := NewFeedRepository(db)
+	tags := NewTagRepository(db)
+
+	ids := newTestSubscriptions(t, db, userID, 3)
+	feedOf := map[string]string{"A": ids[0], "B": ids[1], "C": ids[2]}
+	tag = mustCreateTag(t, tags, userID, "T")
+	mustSetFeeds(t, tags, userID, tag.ID, feedOf["A"], feedOf["B"])
+
+	feedName = map[string]string{}
+	articleID = map[string]string{}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, c := range []struct {
+		feed         string
+		postsPerWeek float64
+	}{{"C", 1.4}, {"A", 1.4}, {"B", 5}} {
+		feed := rss.Feed{ID: feedOf[c.feed], NextFetch: time.Now().Add(time.Hour)}
+		items := []rss.Article{
+			{ExternalID: c.feed + "-text"},
+			{ExternalID: c.feed + "-audio", MediaType: "audio/mpeg"},
+		}
+		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		// SaveFetch computes posts_per_week from the articles' dates; set it
+		// after.
+		if _, err := db.Exec(`UPDATE feeds SET posts_per_week = $1 WHERE id = $2`, c.postsPerWeek, feed.ID); err != nil {
+			t.Fatalf("set posts_per_week: %v", err)
+		}
+		for j, item := range items {
+			var id string
+			err := db.QueryRow(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3 RETURNING id`,
+				base.Add(time.Duration(2*i+j)*time.Hour), feed.ID, item.ExternalID).Scan(&id)
+			if err != nil {
+				t.Fatalf("set timeline_at: %v", err)
+			}
+			feedName[id] = c.feed
+			articleID[item.ExternalID] = id
+		}
+	}
+	return feedName, articleID, tag
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineConditions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	user := newTestUser(t, db)
+	_, _, tag := newConditionArticles(t, db, user)
+
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   []string
+	}{
+		{"any posting rate", rss.TimelineFilter{},
+			[]string{"B-audio", "B-text", "A-audio", "A-text", "C-audio", "C-text"}},
+		{"at most 2 posts a week leaves out the busy feed", rss.TimelineFilter{MaxPostsPerWeek: 2},
+			[]string{"A-audio", "A-text", "C-audio", "C-text"}},
+		{"at most 5 posts a week includes a feed at exactly 5", rss.TimelineFilter{MaxPostsPerWeek: 5},
+			[]string{"B-audio", "B-text", "A-audio", "A-text", "C-audio", "C-text"}},
+		{"at most 2 posts a week with a tag", rss.TimelineFilter{MaxPostsPerWeek: 2, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"A-audio", "A-text"}},
+		{"audio or video", rss.TimelineFilter{MediaOnly: true},
+			[]string{"B-audio", "A-audio", "C-audio"}},
+		{"audio or video with a tag", rss.TimelineFilter{MediaOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"B-audio", "A-audio"}},
+		{"both", rss.TimelineFilter{MediaOnly: true, MaxPostsPerWeek: 2, ExcludeTagIDs: []string{tag.ID}},
+			[]string{"C-audio"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.ArticleCursor{}, 100)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			got := []string{}
+			for _, item := range items {
+				got = append(got, item.Article.ExternalID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

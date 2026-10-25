@@ -33,15 +33,16 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 	defer tx.Rollback()
 
 	// Concurrent requests can overshoot MaxTimelines slightly; that's accepted.
-	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only)
-		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6
+	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only)
+		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6, $7, $8
 		FROM timelines
 		WHERE user_id = $1
 		HAVING count(*) < $5
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRowContext(ctx, stmt, userID, t.Name, t.Description, !t.Filter.OnlyIncluded, MaxTimelines, t.Filter.StarredOnly).Scan(&id)
+	err = tx.QueryRowContext(ctx, stmt, userID, t.Name, t.Description, !t.Filter.OnlyIncluded, MaxTimelines,
+		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", rss.ErrTooManyTimelines
@@ -61,13 +62,14 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 // Get returns userID's timeline id with its filter. rss.ErrNoRecord if it
 // doesn't exist or is another user's.
 func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Timeline, error) {
-	stmt := `SELECT id, name, description, position, all_feeds, starred_only, COALESCE(share_token, ''), created_at, updated_at
+	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only, COALESCE(share_token, ''), created_at, updated_at
 		FROM timelines
 		WHERE id = $2 AND user_id = $1`
 
 	var t rss.Timeline
 	var allFeeds bool
-	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds, &t.Filter.StarredOnly, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
+	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
+		&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Timeline{}, rss.ErrNoRecord
@@ -127,9 +129,11 @@ func (r *TimelineRepository) Update(ctx context.Context, userID string, t rss.Ti
 	defer tx.Rollback()
 
 	stmt := `UPDATE timelines
-		SET name = $3, description = $4, all_feeds = $5, starred_only = $6, updated_at = now()
+		SET name = $3, description = $4, all_feeds = $5, starred_only = $6,
+			max_posts_per_week = $7, media_only = $8, updated_at = now()
 		WHERE id = $2 AND user_id = $1`
-	if err := execOne(ctx, tx, stmt, userID, t.ID, t.Name, t.Description, !t.Filter.OnlyIncluded, t.Filter.StarredOnly); err != nil {
+	if err := execOne(ctx, tx, stmt, userID, t.ID, t.Name, t.Description, !t.Filter.OnlyIncluded,
+		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly); err != nil {
 		return err
 	}
 

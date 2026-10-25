@@ -263,12 +263,14 @@ type Timeline struct {
 // TimelineFilter says which of a user's articles a timeline shows. The zero
 // value shows every subscription, as Home does.
 type TimelineFilter struct {
-	OnlyIncluded   bool // only the feeds of IncludeTagIDs and IncludeFeedIDs (timelines.all_feeds = false)
-	IncludeTagIDs  []string
-	IncludeFeedIDs []string
-	ExcludeTagIDs  []string // left out even when included
-	ExcludeFeedIDs []string
-	StarredOnly    bool // only articles the user starred, newest starred first
+	OnlyIncluded    bool // only the feeds of IncludeTagIDs and IncludeFeedIDs (timelines.all_feeds = false)
+	IncludeTagIDs   []string
+	IncludeFeedIDs  []string
+	ExcludeTagIDs   []string // left out even when included
+	ExcludeFeedIDs  []string
+	StarredOnly     bool // only articles the user starred, newest starred first
+	MaxPostsPerWeek int  // only feeds posting at most this many articles a week; 0: any
+	MediaOnly       bool // only articles with an audio or video enclosure
 }
 
 // TagName normalizes a tag name: trimmed, with each run of whitespace

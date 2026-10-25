@@ -190,13 +190,17 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	return items, nil
 }
 
-// timelineWhere returns the SQL conditions on sub (subscriptions) for
-// filter, appending its parameters to args. Each condition starts with AND,
-// so the result follows another condition; it's "" for the zero filter.
+// timelineWhere returns the SQL conditions on sub (subscriptions) and a
+// (articles) for filter, appending its parameters to args. Each condition
+// starts with AND, so the result follows another condition; it's "" for the
+// zero filter.
 //
 // Show: with OnlyIncluded, only the feeds in IncludeFeedIDs or with a tag in
 // IncludeTagIDs. Leave out: never the feeds in ExcludeFeedIDs or with a tag
-// in ExcludeTagIDs, even when included.
+// in ExcludeTagIDs, even when included. Only show: with MaxPostsPerWeek,
+// only feeds whose posts_per_week is at most that, so a feed that gets busier
+// takes its older articles with it; with MediaOnly, only articles with an
+// audio or video enclosure (a non-empty media_type).
 //
 // sub can be NULL (a LEFT JOIN, as in ListStarred: a star from a feed the
 // user no longer subscribes to). Then Show conditions fail (the feed has no
@@ -228,6 +232,17 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 	if len(filter.ExcludeTagIDs) > 0 {
 		where.WriteString(`
 				AND NOT ` + hasTag(ids(filter.ExcludeTagIDs)))
+	}
+	if filter.MaxPostsPerWeek > 0 {
+		// A subquery rather than a join, so timelines without the condition
+		// (Home among them) don't read feeds.
+		*args = append(*args, filter.MaxPostsPerWeek)
+		fmt.Fprintf(&where, `
+				AND EXISTS (SELECT 1 FROM feeds rate WHERE rate.id = a.feed_id AND rate.posts_per_week <= $%d)`, len(*args))
+	}
+	if filter.MediaOnly {
+		where.WriteString(`
+				AND a.media_type <> ''`)
 	}
 	return where.String()
 }

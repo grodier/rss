@@ -19,7 +19,7 @@ import (
 
 const (
 	testTimelineID  = "55555555-5555-4555-8555-555555555555"
-	homeTimelineID  = "66666666-6666-4666-8666-666666666666"
+	newsTimelineID  = "66666666-6666-4666-8666-666666666666"
 	timelineFeedID  = "77777777-7777-4777-8777-777777777777"
 	timelineFeed2ID = "88888888-8888-4888-8888-888888888888"
 )
@@ -51,7 +51,7 @@ func serveTimeline(t *testing.T, s *Server, handler http.HandlerFunc, target, id
 }
 
 // userTimeline is a fakeTimelineStore whose user-1 has t (with ID
-// testTimelineID) and a Home row, homeTimelineID.
+// testTimelineID).
 func userTimeline(t rss.Timeline) *fakeTimelineStore {
 	t.ID = testTimelineID
 	return &fakeTimelineStore{getFn: func(ctx context.Context, userID, id string) (rss.Timeline, error) {
@@ -60,8 +60,6 @@ func userTimeline(t rss.Timeline) *fakeTimelineStore {
 			return rss.Timeline{}, rss.ErrNoRecord
 		case id == testTimelineID:
 			return t, nil
-		case id == homeTimelineID:
-			return rss.Timeline{ID: homeTimelineID, Home: true}, nil
 		}
 		return rss.Timeline{}, rss.ErrNoRecord
 	}}
@@ -90,7 +88,7 @@ func TestTimelinesHandler(t *testing.T) {
 				if userID != "user-1" {
 					return nil, errors.New("wrong user")
 				}
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more"}, {ID: homeTimelineID, Name: "News"}}, nil
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more"}, {ID: newsTimelineID, Name: "News"}}, nil
 			},
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
@@ -104,7 +102,7 @@ func TestTimelinesHandler(t *testing.T) {
 			`<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>`,
 			"<p>Models &amp; more</p>",
 			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
-			`<a class="timeline-list-name" href="/timelines/`+homeTimelineID+`">News</a>`,
+			`<a class="timeline-list-name" href="/timelines/`+newsTimelineID+`">News</a>`,
 		)
 		if strings.Contains(body, "You don't have any timelines yet.") {
 			t.Errorf("shows the empty state: %s", body)
@@ -458,7 +456,6 @@ func TestTimelineHandler(t *testing.T) {
 	for _, tt := range []struct{ name, id string }{
 		{"a bad ID", "not-a-uuid"},
 		{"another user's", otherTagID},
-		{"the Home row", homeTimelineID},
 	} {
 		t.Run(tt.name+" is 404", func(t *testing.T) {
 			if rr := get(t, "/timelines/"+tt.id, tt.id); rr.Code != http.StatusNotFound {
@@ -583,7 +580,7 @@ func TestTimelineEditHandler(t *testing.T) {
 		)
 	})
 
-	for _, id := range []string{"junk", otherTagID, homeTimelineID} {
+	for _, id := range []string{"junk", otherTagID} {
 		t.Run(id+" is 404", func(t *testing.T) {
 			if rr, _ := serveTimeline(t, s, s.timelineEditHandler, "/", id, nil); rr.Code != http.StatusNotFound {
 				t.Errorf("status = %d, want 404", rr.Code)
@@ -677,7 +674,7 @@ func TestTimelineDeleteHandler(t *testing.T) {
 		t.Errorf("deleted %q, flash %q", deleted, flash)
 	}
 
-	for _, id := range []string{"junk", otherTagID, homeTimelineID} {
+	for _, id := range []string{"junk", otherTagID} {
 		t.Run(id+" is 404", func(t *testing.T) {
 			deleted = ""
 			rr, _ := serveTimeline(t, s, s.timelineDeleteHandler, "/", id, url.Values{})

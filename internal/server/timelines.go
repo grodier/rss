@@ -286,7 +286,7 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 // timelineFromURL returns the user's custom timeline named in the URL. If ok
 // is false it has already written the response: 404 if the id isn't a UUID,
-// the user has no such timeline, or it's their Home row.
+// or the user has no such timeline.
 func (s *Server) timelineFromURL(w http.ResponseWriter, r *http.Request) (t rss.Timeline, ok bool) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
@@ -302,10 +302,6 @@ func (s *Server) timelineFromURL(w http.ResponseWriter, r *http.Request) (t rss.
 		} else {
 			s.serverErrorHTML(w, r, err)
 		}
-		return rss.Timeline{}, false
-	}
-	if t.Home {
-		s.notFoundResponse(w, r)
 		return rss.Timeline{}, false
 	}
 	return t, true

@@ -195,7 +195,7 @@ type TimelineStore interface {
 	// ID. rss.ErrTooManyTimelines if they have psql.MaxTimelines already;
 	// rss.ErrNoRecord if a tag or feed isn't the user's.
 	Create(ctx context.Context, userID string, t rss.Timeline) (string, error)
-	// Get returns the user's timeline id (Home included) with its filter, or
+	// Get returns the user's custom timeline id with its filter, or
 	// rss.ErrNoRecord.
 	Get(ctx context.Context, userID, id string) (rss.Timeline, error)
 	// List returns the user's custom timelines in tab order, without their

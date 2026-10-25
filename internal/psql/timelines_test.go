@@ -1,7 +1,6 @@
 package psql
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -58,16 +57,6 @@ func assertFilter(t *testing.T, got, want rss.TimelineFilter) {
 	}
 }
 
-// newHomeTimeline inserts userID's Home row, as muting will (#362).
-func newHomeTimeline(t *testing.T, db *sql.DB, userID string) string {
-	t.Helper()
-	var id string
-	if err := db.QueryRow(`INSERT INTO timelines (user_id, home) VALUES ($1, true) RETURNING id`, userID).Scan(&id); err != nil {
-		t.Fatalf("insert Home: %v", err)
-	}
-	return id
-}
-
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineCreate(t *testing.T) {
 	db := psqltest.NewDB(t)
@@ -91,7 +80,7 @@ func TestTimelineCreate(t *testing.T) {
 		second := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "All"})
 
 		got := mustGetTimeline(t, repo, user, first)
-		if got.ID != first || got.Home || got.Name != "AI" || got.Description != "Models" || got.ShareToken != "" || got.CreatedAt.IsZero() {
+		if got.ID != first || got.Name != "AI" || got.Description != "Models" || got.ShareToken != "" || got.CreatedAt.IsZero() {
 			t.Errorf("Get = %+v", got)
 		}
 		assertFilter(t, got.Filter, filter)
@@ -140,8 +129,6 @@ func TestTimelineCreate(t *testing.T) {
 
 	t.Run("the 21st is ErrTooManyTimelines", func(t *testing.T) {
 		user := newTestUser(t, db)
-		// Home doesn't count.
-		newHomeTimeline(t, db, user)
 		for i := range MaxTimelines {
 			mustCreateTimeline(t, repo, user, rss.Timeline{Name: fmt.Sprintf("T%d", i)})
 		}
@@ -186,13 +173,6 @@ func TestTimelineGet(t *testing.T) {
 			t.Errorf("err = %v, want ErrNoRecord", err)
 		}
 	})
-
-	t.Run("Home is returned as Home", func(t *testing.T) {
-		home := newHomeTimeline(t, db, user)
-		if got := mustGetTimeline(t, repo, user, home); !got.Home {
-			t.Errorf("Get(Home) = %+v, want Home", got)
-		}
-	})
 }
 
 // Requires a migrated database; see psqltest.NewDB.
@@ -232,13 +212,6 @@ func TestTimelineUpdate(t *testing.T) {
 		}
 	})
 
-	t.Run("Home is ErrNoRecord", func(t *testing.T) {
-		home := newHomeTimeline(t, db, user)
-		if err := repo.Update(ctx, user, rss.Timeline{ID: home, Name: "Home"}); !errors.Is(err, rss.ErrNoRecord) {
-			t.Errorf("err = %v, want ErrNoRecord", err)
-		}
-	})
-
 	t.Run("a foreign source is ErrNoRecord and nothing changes", func(t *testing.T) {
 		theirs := mustCreateTag(t, tags, other, "Theirs")
 		err := repo.Update(ctx, user, rss.Timeline{ID: id, Name: "Bad", Filter: rss.TimelineFilter{ExcludeTagIDs: []string{theirs.ID}}})
@@ -260,7 +233,6 @@ func TestTimelineList(t *testing.T) {
 	ctx := t.Context()
 
 	user, other := newTestUser(t, db), newTestUser(t, db)
-	newHomeTimeline(t, db, user)
 	b := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "B", Description: "Bee"})
 	a := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "A"})
 	c := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "C"})
@@ -279,7 +251,7 @@ func TestTimelineList(t *testing.T) {
 		ids = append(ids, tl.ID)
 	}
 	if want := []string{c, b, a}; !slices.Equal(ids, want) {
-		t.Errorf("List IDs = %v, want %v (by position, no Home, no other user's)", ids, want)
+		t.Errorf("List IDs = %v, want %v (by position, no other user's)", ids, want)
 	}
 	if got[1].Name != "B" || got[1].Description != "Bee" {
 		t.Errorf("List[1] = %+v", got[1])
@@ -323,13 +295,6 @@ func TestTimelineDelete(t *testing.T) {
 	if err := repo.Delete(ctx, user, id); !errors.Is(err, rss.ErrNoRecord) {
 		t.Errorf("second Delete = %v, want ErrNoRecord", err)
 	}
-
-	t.Run("Home is ErrNoRecord", func(t *testing.T) {
-		home := newHomeTimeline(t, db, user)
-		if err := repo.Delete(ctx, user, home); !errors.Is(err, rss.ErrNoRecord) {
-			t.Errorf("err = %v, want ErrNoRecord", err)
-		}
-	})
 }
 
 // Requires a migrated database; see psqltest.NewDB.

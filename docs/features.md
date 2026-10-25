@@ -663,10 +663,11 @@ re-renders the form with 422 and everything kept; `ErrTooManyTimelines` (20) is 
 error. `timelineForm.timeline` drops the Show checkboxes when Show is all. Saving
 flashes "Timeline created." or "Timeline saved." and goes to the timeline; Delete
 timeline on the edit page (`timelineDeleteHandler`, unconfirmed) flashes "Deleted the
-timeline “…”." and goes to `/timelines`. `timelineFromURL` makes a non-UUID, another
-user's timeline or their Home row a 404.
+timeline “…”." and goes to `/timelines`. `timelineFromURL` makes a non-UUID or another
+user's timeline a 404.
 
-A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero filter)
+A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero
+`rss.Timeline`: every subscription, not editable)
 share `renderTimeline`, so they follow the same rules (see "Reading" below), paging at
 their own URL. `ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it
 reads, before collapsing copies, so a left-out feed's copy never stands in for an

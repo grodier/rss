@@ -215,7 +215,7 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `GET /timelines` | yes | `timelinesHandler` | Timelines: the user's custom timelines with their descriptions and Edit links, and a New timeline button |
 | `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?preset=starred` names it Starred and shows only starred articles; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
 | `POST /timelines` | yes | `timelineCreateHandler` | Makes a timeline; 303 to it (422 for an invalid form or over 20 timelines; 400 for a `show` other than `all` or `some`) |
-| `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's or it's their Home row |
+| `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's |
 | `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
 | `POST /timelines/{id}/delete` | yes | `timelineDeleteHandler` | Deletes the timeline (cascade), unconfirmed; 303 to `/timelines` |
 | `GET /articles/{id}` | yes | `articleHandler` | Article page; records the read |
@@ -332,10 +332,9 @@ emails   (the outbox: no foreign keys)
   tags, so repositories need no ownership check for it (`TagRepository`, behind the
   server's `TagStore`; `MaxTags` caps a user at 100, checked in `Create`'s insert and
   by a count in `SetForSubscription`'s transaction).
-- **`timelines`**, **`timeline_tags`** and **`timeline_feeds`**: a user's timelines.
-  Home is the row with `home` set (at most one per user, created when the user first
-  mutes something on Home; no row: nothing is muted), and only its leave-outs are used;
-  the others are custom timelines with a `name`, `description` and tab `position`. Their
+- **`timelines`**, **`timeline_tags`** and **`timeline_feeds`**: a user's custom
+  timelines, each with a `name`, `description` and tab `position` (Home shows every
+  subscription and has no row). Their
   conditions are columns: `all_feeds` (false: only the feeds of its included tags and
   feeds), `starred_only`, `max_posts_per_week` (0: any rate), `include_words` (an article
   must mention one), `exclude_words` (an article mentioning one is left out),
@@ -344,9 +343,9 @@ emails   (the outbox: no foreign keys)
   `timeline_feeds` rows, each with `exclude` (false: show; true: leave out); composite
   foreign keys keep them to the timeline's own user's tags and subscriptions. An ID in
   both is stored once, as excluded. `TimelineRepository` (behind the server's
-  `TimelineStore`) creates, reads, lists, updates and deletes custom timelines, never
-  the Home row; `MaxTimelines` caps a user at 20, checked in the insert. So far only
-  `all_feeds`, `starred_only` and the sources are used; nothing creates Home rows yet (#362).
+  `TimelineStore`) creates, reads, lists, updates and deletes them; `MaxTimelines` caps
+  a user at 20, checked in the insert. So far only `all_feeds`, `starred_only` and the
+  sources are used.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,

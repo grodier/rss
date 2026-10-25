@@ -19,9 +19,7 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Home's leave-outs come with muting (#362); until then it's every
-	// subscription.
-	s.renderTimeline(w, r, userID, rss.Timeline{Home: true})
+	s.renderTimeline(w, r, userID, rss.Timeline{})
 }
 
 // timelineTabs is the data of the timeline-tabs partial: Home, then the
@@ -33,7 +31,7 @@ type timelineTabs struct {
 }
 
 // renderTimeline renders timeline.html: a page of current's articles for
-// userID (Home when current.Home), with the tab row.
+// userID (Home when current has no ID), with the tab row.
 func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID string, current rss.Timeline) {
 	before, err := decodeCursor(r.URL.Query().Get("before"))
 	if err != nil {
@@ -63,8 +61,9 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	s.fillDebug(r, rows)
 	s.fillIcons(r, rows)
 
+	home := current.ID == ""
 	path := "/"
-	if !current.Home {
+	if !home {
 		path = "/timelines/" + current.ID
 	}
 	filter := current.Filter
@@ -74,6 +73,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		Flash         string
 		ConfirmNotice *confirmNotice
 		Timeline      rss.Timeline
+		Home          bool // current is Home
 		Tabs          timelineTabs
 		Path          string // the timeline's URL, for the pager
 		NoSources     bool   // it shows only some feeds but has none to show
@@ -83,6 +83,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	}{
 		Nav:           s.nav(r, "home"),
 		Timeline:      current,
+		Home:          home,
 		Tabs:          timelineTabs{Timelines: timelines, CurrentID: current.ID},
 		Path:          path,
 		NoSources:     filter.OnlyIncluded && len(filter.IncludeTagIDs) == 0 && len(filter.IncludeFeedIDs) == 0,

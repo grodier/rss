@@ -36,7 +36,7 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only)
 		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6
 		FROM timelines
-		WHERE user_id = $1 AND NOT home
+		WHERE user_id = $1
 		HAVING count(*) < $5
 		RETURNING id`
 
@@ -61,13 +61,13 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 // Get returns userID's timeline id with its filter. rss.ErrNoRecord if it
 // doesn't exist or is another user's.
 func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Timeline, error) {
-	stmt := `SELECT id, home, name, description, position, all_feeds, starred_only, COALESCE(share_token, ''), created_at, updated_at
+	stmt := `SELECT id, name, description, position, all_feeds, starred_only, COALESCE(share_token, ''), created_at, updated_at
 		FROM timelines
 		WHERE id = $2 AND user_id = $1`
 
 	var t rss.Timeline
 	var allFeeds bool
-	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Home, &t.Name, &t.Description, &t.Position, &allFeeds, &t.Filter.StarredOnly, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
+	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds, &t.Filter.StarredOnly, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Timeline{}, rss.ErrNoRecord
@@ -87,12 +87,12 @@ func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Ti
 	return t, nil
 }
 
-// List returns userID's custom timelines (not Home) by position, then
+// List returns userID's custom timelines by position, then
 // created_at, without their filters: what the tab row needs.
 func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Timeline, error) {
 	stmt := `SELECT id, name, description, position, COALESCE(share_token, ''), created_at, updated_at
 		FROM timelines
-		WHERE user_id = $1 AND NOT home
+		WHERE user_id = $1
 		ORDER BY position, created_at`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID)
@@ -128,7 +128,7 @@ func (r *TimelineRepository) Update(ctx context.Context, userID string, t rss.Ti
 
 	stmt := `UPDATE timelines
 		SET name = $3, description = $4, all_feeds = $5, starred_only = $6, updated_at = now()
-		WHERE id = $2 AND user_id = $1 AND NOT home`
+		WHERE id = $2 AND user_id = $1`
 	if err := execOne(ctx, tx, stmt, userID, t.ID, t.Name, t.Description, !t.Filter.OnlyIncluded, t.Filter.StarredOnly); err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (r *TimelineRepository) Update(ctx context.Context, userID string, t rss.Ti
 // Delete deletes userID's custom timeline id. rss.ErrNoRecord if it isn't
 // one of the user's custom timelines.
 func (r *TimelineRepository) Delete(ctx context.Context, userID, id string) error {
-	stmt := `DELETE FROM timelines WHERE id = $2 AND user_id = $1 AND NOT home`
+	stmt := `DELETE FROM timelines WHERE id = $2 AND user_id = $1`
 
 	return execOne(ctx, r.DB, stmt, userID, id)
 }

@@ -282,8 +282,8 @@ Planned in #309 (issues #299–#301).
 
 Planned in #309 (issue #308) as a prototype; built in draft PR #325 and **not taken in**
 (#308 closed), for the three reasons below. Planning filters (see "Filtering and
-timelines") kept it out: keyword filters and muting on Home cover what it was for
-(sponsored posts, topics you don't follow) without a per-article table. Revisit only if
+timelines") kept it out: a timeline's keyword filters and Leave out cover what it was
+for (sponsored posts, topics you don't follow) without a per-article table. Revisit only if
 they turn out not to.
 
 - **UX:** Undo lasts only until the page reloads; after that the only way back is the
@@ -339,7 +339,7 @@ names, lands in one change (#348).
   like My feeds (watchlist). **Deleting a tag isn't confirmed**, like unsubscribing: the
   flash says what was deleted. (#351)
 - **Composite foreign keys keep tags and timelines inside one account**, and
-  unsubscribing drops the subscription's tags, Home mute and timeline rows (cascade),
+  unsubscribing drops the subscription's tags and timeline rows (cascade),
   like its name. (#348)
 - **OPML: folders become tags on import** (every folder an outline sits in, at any
   depth; import only adds tags), **and the export nests feeds in a folder per tag** (a
@@ -389,9 +389,13 @@ names, lands in one change (#348).
   smarter matching belongs with related articles (todo). (#360)
 - **Audio or video means an enclosure** (`articles.media_type`), not a video embedded in
   the HTML. (#359)
-- **Muting is Home's Leave out.** Home is a `timelines` row created on first mute, with
-  no other settings; "Show on Home" sits on Edit subscription and tag pages, and My feeds
-  marks muted feeds. This is the muting half of the old "Filters and muting" item. (#362)
+- **Home shows every feed you subscribe to and can't be edited; there's no muting.** To
+  keep a noisy feed out of view, make a timeline that leaves it out. Muting on Home
+  (#362, not built) was dropped: a feed missing from the main view, with the reason only
+  on its Edit page, raises "why don't I see X?" with no answer on the page, and it would
+  have been a second way to filter beside the timeline form. Home has no `timelines`
+  row. The cost: `/` always opens on Home, so someone who reads a filtered timeline
+  first taps its tab each visit (a todo item, "Start on a chosen timeline").
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280. (#356)
 - **The form stores only what has an effect.** With Show set to all feeds, the tags and
   feeds ticked under Show are dropped on save; a tag or feed both shown and left out is

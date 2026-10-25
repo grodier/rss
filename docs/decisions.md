@@ -314,9 +314,9 @@ What the prototype settled, as a starting point if it comes back:
 ## Filtering and timelines
 
 Planned in #365 (issues #348–#364; #353, #355 and #361 were folded into #351, #354 and
-#359), from the owner's list: favorites, tags, several timelines with filters, a
-quiet-posters timeline, shared timelines. The batch's schema, with #342's subscription
-names, lands in one change (#348).
+#359, and #363 and #364 into #381), from the owner's list: favorites, tags, several
+timelines with filters, a quiet-posters timeline, shared timelines. The batch's schema,
+with #342's subscription names, lands in one change (#348).
 
 ### Stars and tags
 
@@ -416,28 +416,41 @@ names, lands in one change (#348).
 
 ### Sharing
 
+- **A shared timeline is an Atom feed, with a landing page at its link** (#381, which
+  replaced #363 and #364). People follow someone's picks in their own reader, which
+  brings new ones to them; a web page listing the articles is a weaker copy of the feed,
+  with no profile to attach it to (none is planned). The page shows the timeline's name
+  and description and how to subscribe, and advertises the feed, so the link can be sent
+  to anyone and readers given the page's address find the feed. It doesn't list
+  articles, so only the feed runs the timeline query. #363 planned a page of the newest
+  50 articles; this reverses it.
 - **Opt-in per timeline, unlisted, at an unguessable link**: 32 random bytes, stored as
   is (not hashed like email tokens), since the owner's settings show the link again and
-  it only grants reading what they published. A public page (`noindex`, no session) and
-  an Atom feed. Stop sharing makes the link a 404; New link replaces it. Home can't be
-  shared. Needs a confirmed email ("Accounts"). (#363, #364)
-- **Each item is the title, a link to the original, the date, the source and the
-  excerpt.** Never the content: republishing publishers' text is the copyright question
-  under "Enrichment". Articles without a link are left out. (#363)
-- **No owner name or email**, only the timeline's name and description; the page does
-  show which feeds the articles come from, and the settings say so. **The source is the
-  feed's own title**, never the owner's private name for it (#342). (#363)
+  it only grants reading what they published. The page and feed are `noindex` and use no
+  session. Stop sharing makes the links a 404; New link replaces them. Home can't be
+  shared. Needs a confirmed email ("Accounts"). (#381)
+- **Each entry is the title, a link to the original, the dates, the excerpt and the
+  source feed.** Never the content: republishing publishers' text is the copyright
+  question under "Enrichment". Articles without a link are left out. The feed has the
+  newest 50. (#381)
+- **No owner name or email**, only the timeline's name and description (the feed's
+  author is the timeline's name, since Atom requires one); the feed does name the feeds
+  its articles come from, and the settings say so. **The source is the feed's own
+  title**, never the owner's private name for it (#342). (#381)
 - **Atom, not RSS 2.0:** typed text (`<summary type="text">`, so plain excerpts are never
   guessed to be HTML), required stable IDs (the canonical URL) and RFC 3339 dates, and
   `<source>` for each entry's original feed. Every reader reads both, and users only see
-  "feed". (#364)
+  "feed". Built with `encoding/xml`. (#381)
+- **Cheap to poll:** an `ETag` of the body, a 304 when `If-None-Match` matches, and
+  `Cache-Control: public` (15 minutes for the feed, 5 for the page). More caching is a
+  watchlist item. (#381)
 - **Public routes are a deliberate exception** to "Search, site pages and lookups are
   login-only" (Feed discovery): their owner opted in.
 - **Shared timelines aren't listed in Search** for now: their names and descriptions
   would be the first user-written text shown to strangers, which brings spam,
   impersonation and reporting. A todo item.
 - **The privacy policy says what's kept and what sharing publishes**, in the same PR
-  (#363).
+  (#381).
 
 ### Cross-user use (later)
 

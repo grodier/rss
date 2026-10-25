@@ -13,9 +13,8 @@ wave can be built in parallel once the waves before them have merged; merge one 
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
 5. **Wave 5:**
-   1. #363 Share a timeline.
+   1. #381 Share a timeline as an Atom feed, with a landing page at its link.
    2. #357 Reorder timelines. Lowest priority; any time after #356.
-6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
 
 Then:
 
@@ -339,7 +338,7 @@ in decisions.md.
   The second needs real usage first, and the conditions under "Cross-user use" in
   decisions.md: anonymous totals above a minimum count, and a privacy policy update.
 - [ ] **Shared timelines in Search (needs planning).** An opt-in "List in search" per
-  shared timeline (#363), and a Timelines section in search results. Plan moderation
+  shared timeline (#381), and a Timelines section in search results. Plan moderation
   first: names and descriptions are the first user-written text strangers would see
   (spam, impersonation, reporting), and whether to show an owner name or profile.
 - [ ] **More posting-frequency conditions.** Beyond "at most N posts a week" (#359): posts
@@ -347,8 +346,6 @@ in decisions.md.
 - [ ] **Start on a chosen timeline.** A setting for which tab `/` opens, for someone who
   reads a filtered timeline (say, everything but a news wire) more than Home, which
   can't be edited (see "Timelines" in decisions.md). When someone asks.
-- [ ] **Images on shared pages.** #363 shows text only. Card images would load from
-  publishers for strangers too; decide with the image proxy.
 - [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures. A
   flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos;
   decide with "Measure embeds and media".
@@ -614,13 +611,13 @@ Pages and queries:
   filter, like the Saved search. Fine for hundreds of stars. *Signal:* starred-only
   timelines slow for users with thousands of stars. *Fix:* join from the filter's feeds
   instead, or index stars by feed.
-- [ ] **Shared feeds polled by other readers** (#363, #364). Every request for a
-  shared page or Atom feed runs its owner's timeline query, anonymously, and feed
-  readers poll every 15–60 minutes; a link that spreads multiplies that. `ETag`, 304s
-  and `Cache-Control: public` cut the bytes, not the query. *Signal:* `/shared/` requests
-  in the logs, their latency, or `ListShared` in `pg_stat_statements`. *Fix:* an
-  in-memory cache per token (keyed by the timeline's `updated_at` and newest article),
-  a CDN in front of `/shared/`, or a per-IP limit.
+- [ ] **Shared feeds polled by other readers** (#381). Every request for a shared
+  timeline's Atom feed runs its owner's timeline query, anonymously, and feed readers
+  poll every 15–60 minutes; a link that spreads multiplies that. (The landing page only
+  reads the timeline row.) `ETag`, 304s and `Cache-Control: public` cut the bytes, not
+  the query. *Signal:* `/shared/` requests in the logs, their latency, or `ListShared`
+  in `pg_stat_statements`. *Fix:* an in-memory cache per token (keyed by the timeline's
+  `updated_at` and newest article), a CDN in front of `/shared/`, or a per-IP limit.
 - [ ] **Sanitizing article HTML on every view** (#151). `sanitize.HTML` parses and
   renders the article with `x/net/html`, then bluemonday parses it again, on each article
   page view; cost grows with the size of the HTML, which feeds don't bound. *Signal:*

@@ -359,3 +359,183 @@ func TestTagSetFeeds(t *testing.T) {
 		}
 	})
 }
+
+// subscriptionTagNames returns the names of the tags on userID's
+// subscription to feedID, sorted.
+func subscriptionTagNames(t *testing.T, db *sql.DB, userID, feedID string) []string {
+	t.Helper()
+	rows, err := db.Query(`SELECT t.name FROM subscription_tags st JOIN tags t ON t.id = st.tag_id
+		WHERE st.user_id = $1 AND st.feed_id = $2 ORDER BY t.name`, userID, feedID)
+	if err != nil {
+		t.Fatalf("select subscription_tags: %v", err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	return names
+}
+
+func tagCount(t *testing.T, db *sql.DB, userID string) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM tags WHERE user_id = $1`, userID).Scan(&n); err != nil {
+		t.Fatalf("count tags: %v", err)
+	}
+	return n
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSetForSubscription(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTagRepository(db)
+	ctx := t.Context()
+
+	t.Run("sets the ticked tags", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 2)
+		ai := mustCreateTag(t, repo, user, "AI")
+		news := mustCreateTag(t, repo, user, "News")
+		mustCreateTag(t, repo, user, "Sports")
+		mustSetFeeds(t, repo, user, news.ID, feeds[1])
+
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{ai.ID, news.ID}, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"AI", "News"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+		// Other subscriptions keep theirs.
+		if got, want := subscriptionTagNames(t, db, user, feeds[1]), []string{"News"}; !slices.Equal(got, want) {
+			t.Errorf("other subscription's tags = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("creates new names and reuses existing ones ignoring case", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		ai := mustCreateTag(t, repo, user, "AI")
+
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{ai.ID}, []string{"Cooking", "ai"}); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"AI", "Cooking"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+		if got := tagCount(t, db, user); got != 2 {
+			t.Errorf("tags = %d, want 2", got)
+		}
+	})
+
+	t.Run("replaces the tags, and an empty set removes them all", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		ai := mustCreateTag(t, repo, user, "AI")
+		news := mustCreateTag(t, repo, user, "News")
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{ai.ID, news.ID}, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{news.ID}, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"News"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+
+		if err := repo.SetForSubscription(ctx, user, feeds[0], nil, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		if got := subscriptionTagNames(t, db, user, feeds[0]); len(got) != 0 {
+			t.Errorf("tags = %v, want none", got)
+		}
+		// The tags themselves stay.
+		if got := tagCount(t, db, user); got != 2 {
+			t.Errorf("tags = %d, want 2", got)
+		}
+	})
+
+	t.Run("another user's tag ID", func(t *testing.T) {
+		owner := newTestUser(t, db)
+		theirs := mustCreateTag(t, repo, owner, "AI")
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		mine := mustCreateTag(t, repo, user, "News")
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{mine.ID}, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+
+		err := repo.SetForSubscription(ctx, user, feeds[0], []string{theirs.ID}, []string{"Cooking"})
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+		// The transaction is rolled back: the earlier state stays.
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"News"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+		if got := tagCount(t, db, user); got != 1 {
+			t.Errorf("tags = %d, want 1", got)
+		}
+	})
+
+	t.Run("not subscribed", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newTestFeed(t, db).ID
+		ai := mustCreateTag(t, repo, user, "AI")
+
+		for _, ids := range [][]string{nil, {ai.ID}} {
+			if err := repo.SetForSubscription(ctx, user, feed, ids, nil); !errors.Is(err, rss.ErrNoRecord) {
+				t.Errorf("SetForSubscription(%v): err = %v, want %v", ids, err, rss.ErrNoRecord)
+			}
+		}
+		if err := repo.SetForSubscription(ctx, user, feed, nil, []string{"Cooking"}); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("SetForSubscription with a new name: err = %v, want %v", err, rss.ErrNoRecord)
+		}
+		if got := tagCount(t, db, user); got != 1 {
+			t.Errorf("tags = %d, want 1", got)
+		}
+	})
+
+	t.Run("passing MaxTags changes nothing", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feeds := newTestSubscriptions(t, db, user, 1)
+		var first rss.Tag
+		for i := range MaxTags - 1 {
+			tag := mustCreateTag(t, repo, user, fmt.Sprintf("Tag %d", i))
+			if i == 0 {
+				first = tag
+			}
+		}
+		if err := repo.SetForSubscription(ctx, user, feeds[0], []string{first.ID}, nil); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+
+		// One new name (plus an existing one) reaches MaxTags exactly.
+		err := repo.SetForSubscription(ctx, user, feeds[0], nil, []string{"New 1", "tag 1"})
+		if err != nil {
+			t.Fatalf("SetForSubscription to MaxTags: %v", err)
+		}
+		if got := tagCount(t, db, user); got != MaxTags {
+			t.Errorf("tags = %d, want %d", got, MaxTags)
+		}
+
+		err = repo.SetForSubscription(ctx, user, feeds[0], []string{first.ID}, []string{"New 2"})
+		if !errors.Is(err, rss.ErrTooManyTags) {
+			t.Errorf("err = %v, want %v", err, rss.ErrTooManyTags)
+		}
+		if got := tagCount(t, db, user); got != MaxTags {
+			t.Errorf("tags = %d, want %d", got, MaxTags)
+		}
+		if got, want := subscriptionTagNames(t, db, user, feeds[0]), []string{"New 1", "Tag 1"}; !slices.Equal(got, want) {
+			t.Errorf("tags = %v, want %v", got, want)
+		}
+	})
+}

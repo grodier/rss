@@ -204,8 +204,8 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /feeds/{id}/refresh` | yes | `feedRefreshHandler` | Refresh button: fetches now |
 | `POST /feeds/{id}/subscribe` | yes | `feedSubscribeHandler` | |
 | `POST /feeds/{id}/unsubscribe` | yes | `feedUnsubscribeHandler` | |
-| `GET /feeds/{id}/edit` | yes | `subscriptionEditHandler` | Edit subscription: the user's name for the feed; 404 if not subscribed; `?return_to=` |
-| `POST /feeds/{id}/edit` | yes | `subscriptionEditPostHandler` | Saves the name; 303 to `return_to` (else `/feeds`) |
+| `GET /feeds/{id}/edit` | yes | `subscriptionEditHandler` | Edit subscription: the user's name for the feed and its tags; 404 if not subscribed; `?return_to=` |
+| `POST /feeds/{id}/edit` | yes | `subscriptionEditPostHandler` | Saves the name and replaces the tags (creating new ones); 303 to `return_to` (else `/feeds`) |
 | `GET /tags` | yes | `tagsHandler` | Tags: the user's tags with their feed counts, and a New tag form |
 | `POST /tags` | yes | `tagCreateHandler` | Makes a tag; 303 to its page (422 for an invalid or duplicate name, or over 100 tags) |
 | `GET /tags/{id}` | yes | `tagHandler` | A tag's page: a checklist of the user's subscriptions, Rename and Delete; 404 if not the user's |
@@ -329,7 +329,8 @@ emails   (the outbox: no foreign keys)
   carry them, several per subscription. Composite foreign keys (`(user_id, feed_id)` to
   `subscriptions`, `(tag_id, user_id)` to `tags`) keep a subscription to its own user's
   tags, so repositories need no ownership check for it (`TagRepository`, behind the
-  server's `TagStore`; `MaxTags` caps a user at 100, checked in the insert).
+  server's `TagStore`; `MaxTags` caps a user at 100, checked in `Create`'s insert and
+  by a count in `SetForSubscription`'s transaction).
 - **`timelines`**, **`timeline_tags`** and **`timeline_feeds`**: a user's timelines.
   Home is the row with `home` set (at most one per user, created when the user first
   mutes something on Home; no row: nothing is muted), and only its leave-outs are used;

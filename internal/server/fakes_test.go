@@ -405,6 +405,8 @@ type fakeTagStore struct {
 	deleteFn   func(ctx context.Context, userID, id string) error
 	feedIDsFn  func(ctx context.Context, userID, id string) (map[string]bool, error)
 	setFeedsFn func(ctx context.Context, userID, id string, feedIDs []string) error
+
+	setForSubscriptionFn func(ctx context.Context, userID, feedID string, tagIDs, newNames []string) error
 }
 
 func (f *fakeTagStore) Create(ctx context.Context, userID, name string) (rss.Tag, error) {
@@ -454,6 +456,13 @@ func (f *fakeTagStore) SetFeeds(ctx context.Context, userID, id string, feedIDs 
 		return nil
 	}
 	return f.setFeedsFn(ctx, userID, id, feedIDs)
+}
+
+func (f *fakeTagStore) SetForSubscription(ctx context.Context, userID, feedID string, tagIDs, newNames []string) error {
+	if f.setForSubscriptionFn == nil {
+		return nil
+	}
+	return f.setForSubscriptionFn(ctx, userID, feedID, tagIDs, newNames)
 }
 
 type fakeDebugStore struct {

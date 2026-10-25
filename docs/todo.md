@@ -12,7 +12,6 @@ Subscription names and filtering (planned in #344 and #365; decisions under
 wave can be built in parallel once the waves before them have merged; merge one PR at a
 time, in the order listed, and each branch merges the latest `main` before its PR.
 
-3. **Wave 3:** #352 Tags on Edit subscription and My feeds (after #351).
 4. **Wave 4**, after #356:
    1. #358 Starred-only timelines (after #349).
    2. #362 Mute on Home (after #352).
@@ -25,8 +24,8 @@ time, in the order listed, and each branch merges the latest `main` before its P
 6. **Wave 6:** #364 Shared timelines as an Atom feed (after #363).
 
 Files several of them share, so later PRs merge the earlier ones' changes: `feeds.html`
-(#351, #352, #362); `TimelineFilter`, `timelineWhere` and the timeline form
-(#356, #358, #359, #360); `subscription_edit.html` (#352, #362).
+(#362); `TimelineFilter`, `timelineWhere` and the timeline form
+(#356, #358, #359, #360).
 
 Then:
 

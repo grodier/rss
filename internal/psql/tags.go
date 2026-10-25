@@ -173,6 +173,87 @@ func (r *TagRepository) SetFeeds(ctx context.Context, userID, id string, feedIDs
 	return tx.Commit()
 }
 
+// SetForSubscription replaces the tags on userID's subscription to feedID
+// with tagIDs plus the tags named newNames (normalized), creating those
+// the user doesn't have, all in one transaction. rss.ErrNoRecord if the
+// user doesn't subscribe to feedID or a tag ID isn't theirs;
+// rss.ErrTooManyTags if creating the new ones would pass MaxTags.
+func (r *TagRepository) SetForSubscription(ctx context.Context, userID, feedID string, tagIDs, newNames []string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	// With no tags nothing is inserted, so the foreign key alone wouldn't
+	// catch a feed the user doesn't subscribe to.
+	var exists bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM subscriptions WHERE user_id = $1 AND feed_id = $2)`,
+		userID, feedID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return rss.ErrNoRecord
+	}
+
+	ids := append([]string{}, tagIDs...)
+	if len(newNames) > 0 {
+		// name is citext, so DISTINCT and the comparison ignore case.
+		// Concurrent requests can overshoot MaxTags slightly; that's
+		// accepted, as in Create.
+		names := pq.Array(newNames)
+		var total int
+		stmt := `SELECT (SELECT count(*) FROM tags WHERE user_id = $1)
+			+ (SELECT count(DISTINCT n::citext) FROM unnest($2::text[]) AS n
+				WHERE NOT EXISTS (SELECT 1 FROM tags WHERE user_id = $1 AND name = n::citext))`
+		if err := tx.QueryRowContext(ctx, stmt, userID, names).Scan(&total); err != nil {
+			return err
+		}
+		if total > MaxTags {
+			return rss.ErrTooManyTags
+		}
+
+		// DO UPDATE (a no-op) rather than DO NOTHING, so RETURNING also
+		// gives the IDs of the tags that already exist.
+		stmt = `INSERT INTO tags (user_id, name)
+			SELECT DISTINCT $1::uuid, n::citext FROM unnest($2::text[]) AS n
+			ON CONFLICT (user_id, name) DO UPDATE SET name = tags.name
+			RETURNING id`
+		rows, err := tx.QueryContext(ctx, stmt, userID, names)
+		if err != nil {
+			return tagError(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+
+	stmt := `DELETE FROM subscription_tags WHERE user_id = $1 AND feed_id = $2`
+	if _, err := tx.ExecContext(ctx, stmt, userID, feedID); err != nil {
+		return err
+	}
+
+	stmt = `INSERT INTO subscription_tags (user_id, feed_id, tag_id)
+		SELECT $1, $2, tag_id
+		FROM unnest($3::uuid[]) AS tag_id
+		ON CONFLICT DO NOTHING`
+	if _, err := tx.ExecContext(ctx, stmt, userID, feedID, pq.Array(ids)); err != nil {
+		return tagError(err)
+	}
+
+	return tx.Commit()
+}
+
 // tagError maps a unique violation to rss.ErrDuplicateTag and a foreign key
 // violation to rss.ErrNoRecord.
 func tagError(err error) error {

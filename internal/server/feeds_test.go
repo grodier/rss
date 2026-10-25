@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -718,6 +719,19 @@ func TestFeedsHandler(t *testing.T) {
 			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">One</a>`,
 			`aria-label="Edit One"`,
 		)
+	})
+
+	t.Run("a feed's tags link to their pages", func(t *testing.T) {
+		tags := []rss.Tag{{ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Name: "AI"}, {ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Name: "News"}}
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Tags: tags, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertContains(t, body,
+			`<p class="feed-tags"><a href="/tags/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa">AI</a><a href="/tags/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb">News</a></p>`,
+		)
+	})
+
+	t.Run("a feed without tags has no tag line", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertNotContains(t, body, `class="feed-tags"`)
 	})
 
 	t.Run("empty state", func(t *testing.T) {
@@ -1681,12 +1695,45 @@ func serveSubscriptionEdit(t *testing.T, s *Server, handler http.HandlerFunc, fe
 
 type renameCall struct{ userID, feedID, title string }
 
+type setTagsCall struct {
+	userID, feedID   string
+	tagIDs, newNames []string
+}
+
+// assertNewTagsError checks that body re-renders the form with wantError on
+// new_tags, the typed newTags kept and the ticked tag (userTags[0]) still
+// ticked.
+func assertNewTagsError(t *testing.T, body, wantError, newTags string) {
+	t.Helper()
+	for _, want := range []string{
+		`<p class="error" id="new_tags-error">` + wantError + `</p>`,
+		`aria-describedby="new_tags-hint new_tags-error"`,
+		`value="` + newTags + `"`,
+		`value="` + userTags[0].ID + `" checked>`,
+		`value="` + userTags[1].ID + `">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+	if !regexp.MustCompile(`id="new_tags"[^>]*aria-invalid="true"[^>]*autofocus`).MatchString(body) {
+		t.Errorf("new_tags is not invalid and focused: %s", body)
+	}
+}
+
 // editSubscriptionServer serves sub to user-1 as their subscription to
-// testFeedID and records the Rename calls in renames.
+// testFeedID and records the Rename calls in renames. The user has no tags.
 func editSubscriptionServer(t *testing.T, sub rss.Subscription, renames *[]renameCall) *Server {
 	t.Helper()
+	return editSubscriptionServerWithTags(t, sub, renames, &fakeTagStore{})
+}
+
+// editSubscriptionServerWithTags is editSubscriptionServer with tags as the
+// TagService.
+func editSubscriptionServerWithTags(t *testing.T, sub rss.Subscription, renames *[]renameCall, tags *fakeTagStore) *Server {
+	t.Helper()
 	sub.Feed.ID = testFeedID
-	return newTestServerWith(t, Services{SubscriptionService: &fakeSubscriptionStore{
+	return newTestServerWith(t, Services{TagService: tags, SubscriptionService: &fakeSubscriptionStore{
 		getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
 			if userID != "user-1" || feedID != testFeedID {
 				return rss.Subscription{}, rss.ErrNoRecord
@@ -1698,6 +1745,20 @@ func editSubscriptionServer(t *testing.T, sub rss.Subscription, renames *[]renam
 			return nil
 		},
 	}})
+}
+
+// userTags are user-1's tags in the Edit subscription tests.
+var userTags = []rss.Tag{
+	{ID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Name: "AI", Feeds: 2},
+	{ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", Name: "News", Feeds: 0},
+	{ID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Name: "Sports", Feeds: 1},
+}
+
+func listUserTags(ctx context.Context, userID string) ([]rss.Tag, error) {
+	if userID != "user-1" {
+		return nil, nil
+	}
+	return userTags, nil
 }
 
 func TestSubscriptionEdit(t *testing.T) {
@@ -1741,6 +1802,53 @@ func TestSubscriptionEdit(t *testing.T) {
 			if !strings.Contains(body, want) {
 				t.Errorf("body does not contain %q: %s", want, body)
 			}
+		}
+	})
+
+	t.Run("checkboxes for the user's tags, the subscription's ticked", func(t *testing.T) {
+		tagged := sub
+		tagged.Tags = []rss.Tag{userTags[0], userTags[2]}
+		s := editSubscriptionServerWithTags(t, tagged, &renames, &fakeTagStore{listFn: listUserTags})
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "", nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		body := rr.Body.String()
+		for _, want := range []string{
+			"<legend>Tags</legend>",
+			`<input type="checkbox" name="tags" value="` + userTags[0].ID + `" checked> AI</label>`,
+			`<input type="checkbox" name="tags" value="` + userTags[1].ID + `"> News</label>`,
+			`<input type="checkbox" name="tags" value="` + userTags[2].ID + `" checked> Sports</label>`,
+			`<label for="new_tags">New tags</label>`,
+			`aria-describedby="new_tags-hint"`,
+			`<p class="hint" id="new_tags-hint">Separate tags with commas. Only you see your tags.</p>`,
+			`<a href="/tags">Manage tags</a>`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("no tags: only the New tags field", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "", nil)
+		body := rr.Body.String()
+		if strings.Contains(body, `type="checkbox"`) {
+			t.Errorf("body has a checkbox: %s", body)
+		}
+		if !strings.Contains(body, `id="new_tags"`) {
+			t.Errorf("body has no New tags field: %s", body)
+		}
+	})
+
+	t.Run("listing tags fails", func(t *testing.T) {
+		s := editSubscriptionServerWithTags(t, sub, &renames, &fakeTagStore{listFn: func(context.Context, string) ([]rss.Tag, error) {
+			return nil, errors.New("boom")
+		}})
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "", nil)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
 
@@ -1820,6 +1928,116 @@ func TestSubscriptionEditPost(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("tags", func(t *testing.T) {
+		tooLongTag := strings.Repeat("é", 51)
+		maxTag := strings.Repeat("é", 50)
+		tests := []struct {
+			name      string
+			tags      []string
+			newTags   string
+			wantCode  int
+			wantSet   *setTagsCall // nil: SetForSubscription not called
+			wantError string
+		}{
+			{"ticked and new", []string{userTags[2].ID, userTags[0].ID}, "Cooking", http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, []string{userTags[2].ID, userTags[0].ID}, []string{"Cooking"}}, ""},
+			{"none: removes all", nil, "", http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, nil, nil}, ""},
+			{"an ID not the user's is dropped", []string{"dddddddd-dddd-4ddd-8ddd-dddddddddddd", userTags[1].ID, "abc"}, "", http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, []string{userTags[1].ID}, nil}, ""},
+			{"an ID ticked twice", []string{userTags[1].ID, userTags[1].ID}, "", http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, []string{userTags[1].ID}, nil}, ""},
+			{"new names split and normalized", nil, "News, ai , ,News,  Machine   learning ,AI", http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, nil, []string{"News", "ai", "Machine learning"}}, ""},
+			{"50 runes", nil, maxTag, http.StatusSeeOther,
+				&setTagsCall{"user-1", testFeedID, nil, []string{maxTag}}, ""},
+			{"51 runes", []string{userTags[0].ID}, "News, " + tooLongTag, http.StatusUnprocessableEntity,
+				nil, "Each tag must be 50 characters or fewer."},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var renames []renameCall
+				var sets []setTagsCall
+				s := editSubscriptionServerWithTags(t, sub, &renames, &fakeTagStore{
+					listFn: listUserTags,
+					setForSubscriptionFn: func(ctx context.Context, userID, feedID string, tagIDs, newNames []string) error {
+						sets = append(sets, setTagsCall{userID, feedID, tagIDs, newNames})
+						return nil
+					},
+				})
+				form := url.Values{"title": {"PFT"}, "tags": tt.tags, "new_tags": {tt.newTags}}
+
+				rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, testFeedID, "", form)
+
+				if rr.Code != tt.wantCode {
+					t.Fatalf("status = %d, want %d", rr.Code, tt.wantCode)
+				}
+				var wantSets []setTagsCall
+				if tt.wantSet != nil {
+					wantSets = []setTagsCall{*tt.wantSet}
+				}
+				if fmt.Sprint(sets) != fmt.Sprint(wantSets) {
+					t.Errorf("SetForSubscription calls = %v, want %v", sets, wantSets)
+				}
+				if tt.wantCode == http.StatusSeeOther {
+					if want := []renameCall{{"user-1", testFeedID, "PFT"}}; fmt.Sprint(renames) != fmt.Sprint(want) {
+						t.Errorf("Rename calls = %v, want %v", renames, want)
+					}
+					return
+				}
+				if len(renames) != 0 {
+					t.Errorf("Rename calls = %v, want none", renames)
+				}
+				assertNewTagsError(t, rr.Body.String(), tt.wantError, tt.newTags)
+			})
+		}
+	})
+
+	t.Run("too many tags", func(t *testing.T) {
+		var renames []renameCall
+		s := editSubscriptionServerWithTags(t, sub, &renames, &fakeTagStore{
+			listFn: listUserTags,
+			setForSubscriptionFn: func(context.Context, string, string, []string, []string) error {
+				return rss.ErrTooManyTags
+			},
+		})
+		form := url.Values{"title": {"PFT"}, "tags": {userTags[0].ID}, "new_tags": {"Cooking"}}
+
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, testFeedID, "", form)
+
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+		if len(renames) != 0 {
+			t.Errorf("Rename calls = %v, want none", renames)
+		}
+		assertNewTagsError(t, rr.Body.String(), "You can have up to 100 tags.", "Cooking")
+	})
+
+	t.Run("SetForSubscription finds no subscription", func(t *testing.T) {
+		var renames []renameCall
+		s := editSubscriptionServerWithTags(t, sub, &renames, &fakeTagStore{
+			setForSubscriptionFn: func(context.Context, string, string, []string, []string) error {
+				return rss.ErrNoRecord
+			},
+		})
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, testFeedID, "", url.Values{"title": {"PFT"}})
+		assertNotFoundHTML(t, rr)
+	})
+
+	t.Run("SetForSubscription fails", func(t *testing.T) {
+		var renames []renameCall
+		s := editSubscriptionServerWithTags(t, sub, &renames, &fakeTagStore{
+			setForSubscriptionFn: func(context.Context, string, string, []string, []string) error {
+				return errors.New("boom")
+			},
+		})
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditPostHandler, testFeedID, "", url.Values{"title": {"PFT"}})
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
 
 	t.Run("not subscribed", func(t *testing.T) {
 		var renames []renameCall

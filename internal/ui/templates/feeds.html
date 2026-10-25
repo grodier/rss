@@ -33,6 +33,9 @@
             {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
             <div>
               <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Title .Feed.Title .Feed.Url}}</a>
+              {{with .Tags}}
+              <p class="feed-tags">{{range .}}<a href="/tags/{{.ID}}">{{.Name}}</a>{{end}}</p>
+              {{end}}
               {{if .LatestArticleAt.IsZero}}
               <p>No articles yet.</p>
               {{else}}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -387,6 +388,111 @@ func TestSubscriptionRename(t *testing.T) {
 		err := repo.Rename(ctx, user, feed.ID, "Mine")
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("err = %v, want %v", err, rss.ErrNoRecord)
+		}
+	})
+}
+
+// tagNames returns the names of tags, in order.
+func tagNames(tags []rss.Tag) []string {
+	var names []string
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+	}
+	return names
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSubscriptionTags(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSubscriptionRepository(db)
+	tags := NewTagRepository(db)
+	ctx := t.Context()
+
+	// tagged subscribes a new user to two feeds, tagging the first with
+	// "news", "AI" and "Cooking" and leaving the second untagged.
+	tagged := func(t *testing.T) (user string, feeds []string) {
+		t.Helper()
+		user = newTestUser(t, db)
+		feeds = newTestSubscriptions(t, db, user, 2)
+		if err := tags.SetForSubscription(ctx, user, feeds[0], nil, []string{"news", "AI", "Cooking"}); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		return user, feeds
+	}
+	want := []string{"AI", "Cooking", "news"}
+
+	t.Run("ListByUser returns each subscription's tags in name order", func(t *testing.T) {
+		user, feeds := tagged(t)
+		// Another user's tags on the same feed don't show.
+		other := newTestUser(t, db)
+		if err := repo.Subscribe(ctx, other, feeds[0]); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		if err := tags.SetForSubscription(ctx, other, feeds[0], nil, []string{"Theirs"}); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+
+		subs, err := repo.ListByUser(ctx, user)
+		if err != nil {
+			t.Fatalf("ListByUser: %v", err)
+		}
+		got := map[string][]rss.Tag{}
+		for _, sub := range subs {
+			got[sub.Feed.ID] = sub.Tags
+		}
+		if names := tagNames(got[feeds[0]]); !slices.Equal(names, want) {
+			t.Errorf("tags = %v, want %v", names, want)
+		}
+		if len(got[feeds[1]]) != 0 {
+			t.Errorf("untagged subscription's tags = %v, want none", got[feeds[1]])
+		}
+		for _, tag := range got[feeds[0]] {
+			if tag.ID == "" {
+				t.Errorf("tag %q has no ID", tag.Name)
+			}
+		}
+	})
+
+	t.Run("Get returns the subscription's tags in name order", func(t *testing.T) {
+		user, feeds := tagged(t)
+
+		sub, err := repo.Get(ctx, user, feeds[0])
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if names := tagNames(sub.Tags); !slices.Equal(names, want) {
+			t.Errorf("tags = %v, want %v", names, want)
+		}
+
+		sub, err = repo.Get(ctx, user, feeds[1])
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if len(sub.Tags) != 0 {
+			t.Errorf("untagged subscription's tags = %v, want none", sub.Tags)
+		}
+	})
+
+	t.Run("unsubscribing drops the subscription's tags and keeps the tags", func(t *testing.T) {
+		user, feeds := tagged(t)
+
+		if err := repo.Unsubscribe(ctx, user, feeds[0]); err != nil {
+			t.Fatalf("Unsubscribe: %v", err)
+		}
+		var n int
+		err := db.QueryRow(`SELECT count(*) FROM subscription_tags WHERE user_id = $1 AND feed_id = $2`, user, feeds[0]).Scan(&n)
+		if err != nil {
+			t.Fatalf("count subscription_tags: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("subscription_tags rows = %d, want 0", n)
+		}
+		list, err := tags.List(ctx, user)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if names := tagNames(list); !slices.Equal(names, want) {
+			t.Errorf("tags = %v, want %v", names, want)
 		}
 	})
 }

@@ -237,6 +237,7 @@ type Subscription struct {
 	Site            Site
 	Title           string    // the user's name for the feed; "" uses Feed.Title
 	LatestArticleAt time.Time // newest article's published_at, else created_at; zero if the feed has no articles
+	Tags            []Tag     // ordered by name, ignoring case; Feeds left zero
 }
 
 // Tag is a user's label for their subscriptions.

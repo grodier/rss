@@ -126,21 +126,26 @@ func (r *SaveRepository) SavedArticleIDs(ctx context.Context, userID string, art
 }
 
 // ListSaved returns up to limit of userID's saved articles whose title,
-// page title, excerpt or feed title contains q (ignoring case; every saved
-// article if q is ""), newest saved first (saved_at, then article ID),
-// starting after before (from the start if before is zero; its At is a
-// saved_at). Summary and Content are left empty.
+// page title, excerpt, feed title or the user's name for the feed contains q
+// (ignoring case; every saved article if q is ""), newest saved first
+// (saved_at, then article ID), starting after before (from the start if
+// before is zero; its At is a saved_at). Feed titles are the user's names
+// for their subscriptions where they've set one. Summary and Content are left empty.
 func (r *SaveRepository) ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
 	// A scan of the user's saves, filtered with ILIKE: a user's saves are a
-	// small set (see the Performance watchlist in docs/todo.md).
-	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumns + `, s.saved_at
+	// small set (see the Performance watchlist in docs/todo.md). Saved
+	// articles can come from feeds the user no longer subscribes to (hence
+	// the LEFT JOIN), which keep their own title.
+	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `, s.saved_at
 		FROM saves s
 		JOIN articles a ON a.id = s.article_id
 		JOIN feeds f ON f.id = a.feed_id
+		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
 		WHERE s.user_id = $1
 		  AND ($2::timestamptz IS NULL OR (s.saved_at, s.article_id) < ($2, $3::uuid))
 		  AND ($5 = '' OR a.title ILIKE $6 ESCAPE '\' OR a.page_title ILIKE $6 ESCAPE '\'
-		       OR a.excerpt ILIKE $6 ESCAPE '\' OR f.title ILIKE $6 ESCAPE '\')
+		       OR a.excerpt ILIKE $6 ESCAPE '\' OR f.title ILIKE $6 ESCAPE '\'
+		       OR sub.title ILIKE $6 ESCAPE '\')
 		ORDER BY s.saved_at DESC, s.article_id DESC
 		LIMIT $4`
 

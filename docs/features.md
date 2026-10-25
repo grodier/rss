@@ -473,14 +473,25 @@ doesn't subscribe) and shows a Name field with the feed's title as placeholder. 
 stores `""` for a blank name or one equal to the feed's current title (`Rename`),
 flashes "Subscription updated." and redirects to `safeReturnPath(return_to, "/feeds")`.
 My feeds shows the name (else the feed's title, else its URL) and sorts a site's feeds
-by it. Unsubscribing drops the name. Catalog pages (site, search) keep the feed's own
+by it. Unsubscribing drops the name.
+
+The name shows wherever the user's own reading shows the feed. Per-user list queries
+(`ListTimeline` and `fillAlsoIn` for the timeline, `ListSaved` for the saved list)
+select `subscriptionTitle` (`COALESCE(NULLIF(sub.title, ''), f.title)`) as the feed's
+title through `qualifiedFeedColumnsTitled`, so rows, avatars and "Also in" show it
+without template changes. The feed page and the article page load the subscription with
+`Get` (`ErrNoRecord` means not subscribed): the feed page's `<title>`, heading, avatar
+and Subscribe/Unsubscribe labels show the name, with "Feed title “…”" after "From
+{site}" when it's set; the article page's header and "Read on" button use it. The OPML
+export writes it too. Catalog pages (site, search) and debug panels keep the feed's own
 title.
 
 **Export.** "Export subscriptions", under "Your data" in Settings, downloads
 `/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription from
 `ListByUser`, gone feeds included, as a flat OPML 2.0 list with one `<outline>` per
-feed (`type="rss"`, `text` the feed's title or else its URL, `xmlUrl`, and `htmlUrl` the
-feed's site URL or else its site's). It's encoded into a buffer first, so a store or
+feed (`type="rss"`, `text` and `title` the user's name for the feed or else its title,
+`text` falling back to its URL, `xmlUrl`, and `htmlUrl` the feed's site URL or else its
+site's). It's encoded into a buffer first, so a store or
 encoding error is an HTML 500 instead of half a file, and sent as
 `rss-subscriptions-YYYY-MM-DD.opml` (UTC).
 
@@ -536,9 +547,12 @@ published dates.
    `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
 **Tests:** `internal/server/feeds_test.go` (`TestPostingRate`; names:
-`TestSubscriptionEdit`, `TestSubscriptionEditPost`), `sites_test.go`, `search_test.go`,
-`settings_test.go` (`TestExportOPML`); `internal/psql/subscriptions_test.go`
-(`TestSubscriptionGet`, `TestSubscriptionRename`); import:
+`TestSubscriptionEdit`, `TestSubscriptionEditPost`, `TestFeedHandlerSubscriptionName`),
+`articles_test.go` (`TestArticleHandlerSubscriptionName`, `TestReadOnLabel`),
+`sites_test.go`, `search_test.go`, `settings_test.go` (`TestExportOPML`);
+`internal/psql/subscriptions_test.go` (`TestSubscriptionGet`, `TestSubscriptionRename`),
+`articles_test.go` (`TestListTimelineSubscriptionNames`), `saves_test.go`
+(`TestListSavedSubscriptionNames`); import:
 `internal/server/import_test.go` (`TestSettingsImportForm`, `TestSettingsImportHandler`,
 `TestImportHandler`), `internal/opml/opml_test.go`, `internal/psql/imports_test.go`,
 `internal/importer/importer_test.go`.
@@ -599,8 +613,10 @@ know whether there's a next page, and shows 30. `ListTimeline` joins the user's
 subscriptions to their feeds' articles, collapses copies of one article (same
 `canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending,
 and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
-`fillAlsoIn` then lists the other subscribed feeds that carry each entry. Feed pages work
-the same way with `ListByFeed`, but in publication order and without collapsing copies.
+`fillAlsoIn` then lists the other subscribed feeds that carry each entry. Both show the
+user's name for a feed in place of its title (see "Names" under "Subscriptions"). Feed
+pages work the same way with `ListByFeed`, but in publication order and without
+collapsing copies.
 The feed page's status times ("Last fetched", failed attempt, "Next check around") use the
 `local-time` partial, like article times; "Latest article" on Feeds and the import date use
 `local-date`. Both render UTC for `app.js` to localize.
@@ -621,8 +637,11 @@ item on a feed's first save, or older items appearing later) goes at its publish
 or now if that's in the future. So new items always land on top, and an imported archive
 doesn't.
 
-**Article page.** `articleHandler` records the read, then renders the content (else the
-summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
+**Article page.** `articleHandler` records the read and loads the user's subscription
+to the feed (`Get`; not subscribed is fine) so the header shows their name for it. The
+"Read on" button (`readOnLabel`) names the article's domain when it's on another site,
+else the user's name for the feed, else the site's title, else its host. The page then
+renders the content (else the summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
 (else the feed's); with neither, the page's description (plain text, escaped by the
 template), else "This article has no text in its feed." Plain text (no block-level markup) is split into paragraphs at blank
 lines, with `<br>` for single line breaks, and bare http(s) URLs become links. The
@@ -652,9 +671,10 @@ nearby. Without JavaScript the link just works.
 
 1. `internal/server/home.go`: `homeHandler`; `cursor.go`.
 2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`,
-   `articleListColumns`, then `timelineAt`.
-3. `internal/server/articles.go`: `articleHandler`, `articleReadHandler`, `articleRow`,
-   `fillRead`.
+   `articleListColumns`, then `timelineAt`; `subscriptionTitle` and
+   `qualifiedFeedColumnsTitled` in `feeds.go`.
+3. `internal/server/articles.go`: `articleHandler`, `readOnLabel`, `articleReadHandler`,
+   `articleRow`, `fillRead`.
 4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
 5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
    `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
@@ -706,9 +726,10 @@ timeline is #358). `app.js` flips the Star in place with the same listener as Sa
 the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest
 saved first, paged with a `?before=` cursor whose time is the `saved_at` (infinite
 scroll with JavaScript, "Older saved articles" without). `ListSaved` joins `saves` to
-`articles` and `feeds` with keyset paging on `(saved_at, article_id)`, served by
-`saves_user_saved_at_idx`. Each row is an `articleRow` with its feed, `Saved: true`,
-`fillRead`'s read marker and `fillStarred`'s star. Unsaving from the page comes back to
+`articles` and `feeds`, and left-joins the user's `subscriptions` so a feed they named
+shows the name (a feed they've since unsubscribed from shows its own title), with keyset
+paging on `(saved_at, article_id)`, served by `saves_user_saved_at_idx`. Each row is an
+`articleRow` with its feed, `Saved: true`, `fillRead`'s read marker and `fillStarred`'s star. Unsaving from the page comes back to
 `/saved`; with JavaScript the row stays (its button flips) until the page is reloaded, so an
 accidental unsave can be undone in place. There's no count anywhere.
 
@@ -716,10 +737,10 @@ accidental unsave can be undone in place. There's no count anywhere.
 are saves or a query, so a search with no results can be changed. `savedHandler` trims
 `q` and cuts it to 200 runes (`savedSearchMaxRunes`), passes it to `ListSaved`, and keeps
 it in the pager and "Back to newest" links (`savedURL`) and in each row's `ReturnTo`.
-`ListSaved` matches `q` against the article's title, page title and excerpt and the
-feed's title with `ILIKE` (`likePattern` escapes `\`, `%` and `_`), on the same order
-and paging; an empty `q` matches everything. With a query, "Clear" links back to
-`/saved`, and an empty page says "No saved articles match “…”." (or "No older matches."
+`ListSaved` matches `q` against the article's title, page title and excerpt, the
+feed's title and the user's name for the feed with `ILIKE` (`likePattern` escapes `\`,
+`%` and `_`), on the same order and paging; an empty `q` matches everything. With a
+query, "Clear" links back to `/saved`, and an empty page says "No saved articles match “…”." (or "No older matches."
 on a later page).
 
 **Read:**
@@ -744,8 +765,8 @@ on a later page).
 `TestFeedHandlerStarredRows`), `scroll_test.go` (`TestToggleButtonMarkup`,
 `TestInfiniteScrollMarkup`), `templates_test.go` (`TestAppNav`);
 `internal/psql/saves_test.go` (`TestSaveRepository`, `TestListSaved`,
-`TestListSavedSearch`), `stars_test.go` (`TestStar`, `TestUnstar`,
-`TestStarredArticleIDs`).
+`TestListSavedSearch`, `TestListSavedSubscriptionNames`), `stars_test.go` (`TestStar`,
+`TestUnstar`, `TestStarredArticleIDs`).
 
 **Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and
 timelines" in decisions.md.

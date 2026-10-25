@@ -56,6 +56,21 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The header and "Read on" show the user's name for the feed, if they
+	// subscribe to it and have named it.
+	var name string
+	sub, err := s.services.SubscriptionService.Get(r.Context(), userID, feed.ID)
+	switch {
+	case err == nil:
+		name = sub.Title
+	case !errors.Is(err, rss.ErrNoRecord):
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	if name != "" {
+		feed.Title = name
+	}
+
 	// Relative URLs in the body resolve against the article's address, else
 	// the feed's.
 	base, err := url.Parse(article.URL)
@@ -116,7 +131,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Article:   article,
 		Feed:      feed,
 		Site:      site,
-		ReadOn:    readOnLabel(article, site),
+		ReadOn:    readOnLabel(article, site, name),
 		Icons:     s.pageIcons(r, []string{site.ID}),
 		LeadImage: leadImage,
 		Body:      body,
@@ -133,13 +148,14 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 
 // readOnLabel returns the name the article page's "Read on" button shows:
 // the article's host (without "www.") when its URL is on another site than
-// site, else the site's title, else its host. Hosts on a subdomain of each
-// other count as the same site.
-func readOnLabel(article rss.Article, site rss.Site) string {
+// site, else name (the user's name for the article's feed, "" if none), else
+// the site's title, else its host. Hosts on a subdomain of each other count
+// as the same site.
+func readOnLabel(article rss.Article, site rss.Site, name string) string {
 	host := strings.ToLower(article.URLHost())
 	if host == "" || host == site.Host ||
 		strings.HasSuffix(host, "."+site.Host) || strings.HasSuffix(site.Host, "."+host) {
-		return cmp.Or(site.Title, site.Host)
+		return cmp.Or(name, site.Title, site.Host)
 	}
 	return host
 }

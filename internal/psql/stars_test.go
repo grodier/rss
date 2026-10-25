@@ -384,3 +384,57 @@ func TestListStarred(t *testing.T) {
 		}
 	})
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListStarredConditions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewStarRepository(db)
+	user := newTestUser(t, db)
+	_, articleID, tag := newConditionArticles(t, db, user)
+
+	// Star them all, newest article starred last; C-text stays unstarred.
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	starred := []string{"C-audio", "A-text", "A-audio", "B-text", "B-audio"}
+	for i, ext := range starred {
+		if _, err := db.Exec(`INSERT INTO stars (user_id, article_id, starred_at) VALUES ($1, $2, $3)`,
+			user, articleID[ext], base.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatalf("insert star: %v", err)
+		}
+	}
+	extOf := map[string]string{}
+	for ext, id := range articleID {
+		extOf[id] = ext
+	}
+
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   []string
+	}{
+		{"any posting rate", rss.TimelineFilter{StarredOnly: true},
+			[]string{"B-audio", "B-text", "A-audio", "A-text", "C-audio"}},
+		{"at most 2 posts a week", rss.TimelineFilter{StarredOnly: true, MaxPostsPerWeek: 2},
+			[]string{"A-audio", "A-text", "C-audio"}},
+		{"at most 2 posts a week with a tag", rss.TimelineFilter{StarredOnly: true, MaxPostsPerWeek: 2, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"A-audio", "A-text"}},
+		{"audio or video", rss.TimelineFilter{StarredOnly: true, MediaOnly: true},
+			[]string{"B-audio", "A-audio", "C-audio"}},
+		{"audio or video with a tag", rss.TimelineFilter{StarredOnly: true, MediaOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{tag.ID}},
+			[]string{"B-audio", "A-audio"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items, err := repo.ListStarred(t.Context(), user, tt.filter, rss.ArticleCursor{}, 100)
+			if err != nil {
+				t.Fatalf("ListStarred: %v", err)
+			}
+			got := []string{}
+			for _, item := range items {
+				got = append(got, extOf[item.Article.ID])
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

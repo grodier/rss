@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,8 @@ const (
 	timelineNameMaxChars = 50
 	// timelineDescriptionMaxChars is the longest timeline description.
 	timelineDescriptionMaxChars = 280
+	// timelineMaxPostsPerWeek is the highest "at most N posts a week".
+	timelineMaxPostsPerWeek = 100
 )
 
 type timelineForm struct {
@@ -28,6 +31,8 @@ type timelineForm struct {
 	ExcludeTags         []string `form:"exclude_tags"`
 	ExcludeFeeds        []string `form:"exclude_feeds"`
 	StarredOnly         bool     `form:"starred_only"`
+	MaxPostsPerWeek     string   `form:"max_posts_per_week"` // "": any rate
+	MediaOnly           bool     `form:"media_only"`
 	validator.Validator `form:"-"`
 }
 
@@ -40,6 +45,10 @@ func timelineFormFor(t rss.Timeline) timelineForm {
 		ExcludeTags:  t.Filter.ExcludeTagIDs,
 		ExcludeFeeds: t.Filter.ExcludeFeedIDs,
 		StarredOnly:  t.Filter.StarredOnly,
+		MediaOnly:    t.Filter.MediaOnly,
+	}
+	if t.Filter.MaxPostsPerWeek > 0 {
+		form.MaxPostsPerWeek = strconv.Itoa(t.Filter.MaxPostsPerWeek)
 	}
 	if t.Filter.OnlyIncluded {
 		form.Show = "some"
@@ -55,6 +64,7 @@ func timelineFormFor(t rss.Timeline) timelineForm {
 func (f *timelineForm) check(tags []rss.Tag, subs []rss.Subscription) {
 	f.Name = strings.TrimSpace(f.Name)
 	f.Description = strings.TrimSpace(f.Description)
+	f.MaxPostsPerWeek = strings.TrimSpace(f.MaxPostsPerWeek)
 
 	tagIDs := map[string]bool{}
 	for _, tag := range tags {
@@ -74,6 +84,21 @@ func (f *timelineForm) check(tags []rss.Tag, subs []rss.Subscription) {
 	f.CheckField(validator.MaxChars(f.Description, timelineDescriptionMaxChars), "description", "Must be 280 characters or fewer.")
 	f.CheckField(f.Show == "all" || len(f.IncludeTags) > 0 || len(f.IncludeFeeds) > 0, "show",
 		"Choose at least one tag or feed, or show all your feeds.")
+	_, ok := f.maxPostsPerWeek()
+	f.CheckField(ok, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank.")
+}
+
+// maxPostsPerWeek returns MaxPostsPerWeek as a number: 0 when it's blank.
+// ok is false unless it's blank or a whole number from 1 to 100.
+func (f *timelineForm) maxPostsPerWeek() (n int, ok bool) {
+	if f.MaxPostsPerWeek == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(f.MaxPostsPerWeek)
+	if err != nil || n < 1 || n > timelineMaxPostsPerWeek {
+		return 0, false
+	}
+	return n, true
 }
 
 // keepKnown returns the IDs in ids that known has, each once, in order.
@@ -87,16 +112,20 @@ func keepKnown(ids []string, known map[string]bool) []string {
 	return kept
 }
 
-// timeline returns the timeline the form describes. With Show "all" the
-// ticked Show tags and feeds are dropped: they'd have no effect.
+// timeline returns the timeline the form describes; the form must be valid.
+// With Show "all" the ticked Show tags and feeds are dropped: they'd have no
+// effect.
 func (f *timelineForm) timeline() rss.Timeline {
+	maxPostsPerWeek, _ := f.maxPostsPerWeek()
 	t := rss.Timeline{
 		Name:        f.Name,
 		Description: f.Description,
 		Filter: rss.TimelineFilter{
-			ExcludeTagIDs:  f.ExcludeTags,
-			ExcludeFeedIDs: f.ExcludeFeeds,
-			StarredOnly:    f.StarredOnly,
+			ExcludeTagIDs:   f.ExcludeTags,
+			ExcludeFeedIDs:  f.ExcludeFeeds,
+			StarredOnly:     f.StarredOnly,
+			MaxPostsPerWeek: maxPostsPerWeek,
+			MediaOnly:       f.MediaOnly,
 		},
 	}
 	if f.Show == "some" {
@@ -158,15 +187,21 @@ func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // timelineNewHandler shows the New timeline form, showing all feeds. With
-// ?preset=starred it's named Starred and shows only starred articles. With
+// ?preset=starred it's named Starred and shows only starred articles; with
+// ?preset=quiet it's named Quiet posters and shows only feeds posting at
+// most 2 times a week. With
 // ?tag={id} (one of the user's tags) it's named after the tag (even with a
 // preset) and shows only its feeds. Any other tag or preset is ignored.
 func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
 	form := timelineForm{Show: "all"}
 
-	if r.URL.Query().Get("preset") == "starred" {
+	switch r.URL.Query().Get("preset") {
+	case "starred":
 		form.Name = "Starred"
 		form.StarredOnly = true
+	case "quiet":
+		form.Name = "Quiet posters"
+		form.MaxPostsPerWeek = "2"
 	}
 
 	if id := r.URL.Query().Get("tag"); validator.Matches(id, validator.UUIDRX) {

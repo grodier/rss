@@ -213,7 +213,7 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `POST /tags/{id}/rename` | yes | `tagRenameHandler` | Renames the tag; 303 to it (422 as for creating) |
 | `POST /tags/{id}/delete` | yes | `tagDeleteHandler` | Deletes the tag (cascade); 303 to `/tags` |
 | `GET /timelines` | yes | `timelinesHandler` | Timelines: the user's custom timelines with their descriptions and Edit links, and a New timeline button |
-| `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?preset=starred` names it Starred and shows only starred articles; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
+| `GET /timelines/new` | yes | `timelineNewHandler` | The New timeline form; `?preset=starred` names it Starred and shows only starred articles; `?preset=quiet` names it Quiet posters and shows only feeds posting at most 2 times a week; `?tag={id}` (one of the user's tags) names it after the tag and shows only its feeds |
 | `POST /timelines` | yes | `timelineCreateHandler` | Makes a timeline; 303 to it (422 for an invalid form or over 20 timelines; 400 for a `show` other than `all` or `some`) |
 | `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's |
 | `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
@@ -344,8 +344,8 @@ emails   (the outbox: no foreign keys)
   foreign keys keep them to the timeline's own user's tags and subscriptions. An ID in
   both is stored once, as excluded. `TimelineRepository` (behind the server's
   `TimelineStore`) creates, reads, lists, updates and deletes them; `MaxTimelines` caps
-  a user at 20, checked in the insert. So far only `all_feeds`, `starred_only` and the
-  sources are used.
+  a user at 20, checked in the insert. So far `include_words` and `exclude_words` are
+  unused.
 - **`enrich_jobs`**: the enrichment queue, one row per article whose web page should be
   fetched for a missing image, title or excerpt: `priority` (0 new arrivals, 1 backlog;
   lower first), `next_attempt_at` (when it's due, and the claim lease), `attempts`,

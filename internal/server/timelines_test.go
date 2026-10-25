@@ -166,9 +166,29 @@ func TestTimelineNewHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			`<span id="presets-label">Start from:</span>`,
 			`<li><a href="/timelines/new?preset=starred">Starred</a></li>`,
+			`<li><a href="/timelines/new?preset=quiet">Quiet posters</a></li>`,
 			"<legend>Only show</legend>",
-			`<input type="checkbox" name="starred_only" value="1" />`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
 			`<p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>`,
+			`<label for="max_posts_per_week">Feeds that post at most</label>`,
+			`<input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"`,
+			`value=""`,
+			`aria-describedby="max_posts_per_week-hint"`,
+			"times a week",
+			`<p class="hint" id="max_posts_per_week-hint">Based on the last 30 days. My feeds shows each feed's rate.</p>`,
+			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" />`,
+			"Articles with audio or video",
+			`<p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>`,
+		)
+	})
+
+	t.Run("?preset=quiet prefills Quiet posters", func(t *testing.T) {
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=quiet", "", nil)
+		assertBodyContains(t, rr.Body.String(),
+			`<input type="text" id="name" name="name" value="Quiet posters"`,
+			`<input type="radio" name="show" value="all" checked`,
+			`value="2"`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
 		)
 	})
 
@@ -177,7 +197,7 @@ func TestTimelineNewHandler(t *testing.T) {
 		assertBodyContains(t, rr.Body.String(),
 			`<input type="text" id="name" name="name" value="Starred"`,
 			`<input type="radio" name="show" value="all" checked`,
-			`<input type="checkbox" name="starred_only" value="1" checked />`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
 		)
 	})
 
@@ -187,14 +207,14 @@ func TestTimelineNewHandler(t *testing.T) {
 			`<input type="text" id="name" name="name" value="AI"`,
 			`<input type="radio" name="show" value="some" checked`,
 			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-			`<input type="checkbox" name="starred_only" value="1" checked />`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
 		)
 	})
 
 	t.Run("an unknown preset is ignored", func(t *testing.T) {
 		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=junk", "", nil)
 		body := rr.Body.String()
-		assertBodyContains(t, body, `name="name" value=""`, `<input type="checkbox" name="starred_only" value="1" />`)
+		assertBodyContains(t, body, `name="name" value=""`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`)
 	})
 
 	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
@@ -310,6 +330,22 @@ func TestTimelineCreateHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("saves the posting rate and audio or video", func(t *testing.T) {
+		for _, tt := range []struct {
+			value string
+			want  int
+		}{{"", 0}, {"2", 2}, {" 100 ", 100}} {
+			form := url.Values{"name": {"Quiet"}, "show": {"all"}, "max_posts_per_week": {tt.value}, "media_only": {"1"}}
+			res := post(t, form, nil)
+			if res.code != http.StatusSeeOther || res.created == nil {
+				t.Fatalf("%q: code %d, created %v", tt.value, res.code, res.created)
+			}
+			if f := res.created.Filter; f.MaxPostsPerWeek != tt.want || !f.MediaOnly {
+				t.Errorf("%q: filter = %+v, want MaxPostsPerWeek %d and MediaOnly", tt.value, f, tt.want)
+			}
+		}
+	})
+
 	long := strings.Repeat("é", 51)
 	tests := []struct {
 		name    string
@@ -322,6 +358,14 @@ func TestTimelineCreateHandler(t *testing.T) {
 		{"description over 280 runes", url.Values{"name": {"X"}, "description": {strings.Repeat("é", 281)}, "show": {"all"}}, "description", "Must be 280 characters or fewer."},
 		{"some with nothing ticked", url.Values{"name": {"X"}, "show": {"some"}, "exclude_tags": {testTagID}}, "show", "Choose at least one tag or feed, or show all your feeds."},
 		{"some with only foreign IDs", url.Values{"name": {"X"}, "show": {"some"}, "include_tags": {otherTagID}}, "show", "Choose at least one tag or feed, or show all your feeds."},
+	}
+	for _, rate := range []string{"0", "101", "2.5", "abc", "-1"} {
+		tests = append(tests, struct {
+			name    string
+			form    url.Values
+			field   string
+			message string
+		}{"posts a week " + rate, url.Values{"name": {"X"}, "show": {"all"}, "max_posts_per_week": {rate}}, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank."})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name+" is 422", func(t *testing.T) {
@@ -341,10 +385,13 @@ func TestTimelineCreateHandler(t *testing.T) {
 	}
 
 	t.Run("422 keeps everything", func(t *testing.T) {
-		form := url.Values{"name": {""}, "description": {"Kept"}, "show": {"some"}, "include_feeds": {timelineFeedID}, "exclude_tags": {testTagID}}
+		form := url.Values{"name": {""}, "description": {"Kept"}, "show": {"some"}, "include_feeds": {timelineFeedID}, "exclude_tags": {testTagID},
+			"max_posts_per_week": {"7"}, "media_only": {"1"}}
 		res := post(t, form, nil)
 		assertBodyContains(t, res.body,
 			">Kept</textarea>",
+			`value="7"`,
+			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
 			`<input type="radio" name="show" value="some" checked`,
 			`<input type="checkbox" name="include_feeds" value="`+timelineFeedID+`" checked>`,
 			`<input type="checkbox" name="exclude_tags" value="`+testTagID+`" checked>`,
@@ -557,6 +604,7 @@ func TestTimelineEditHandler(t *testing.T) {
 	tags, subs := timelineSourcesStores()
 	timelines := userTimeline(rss.Timeline{Name: "AI", Description: "Models", Filter: rss.TimelineFilter{
 		OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, ExcludeFeedIDs: []string{timelineFeed2ID}, StarredOnly: true,
+		MaxPostsPerWeek: 3, MediaOnly: true,
 	}})
 	s := newTestServerWith(t, Services{TagService: tags, SubscriptionService: subs, TimelineService: timelines})
 
@@ -573,7 +621,9 @@ func TestTimelineEditHandler(t *testing.T) {
 			`<input type="radio" name="show" value="some" checked`,
 			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
 			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`" checked>`,
-			`<input type="checkbox" name="starred_only" value="1" checked />`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
+			`value="3"`,
+			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
 			`<a class="btn" href="/timelines/`+testTimelineID+`">Cancel</a>`,
 			`<form class="tag-delete" action="/timelines/`+testTimelineID+`/delete" method="post">`,
 			`<button class="btn-sm" type="submit">Delete timeline</button>`,
@@ -623,12 +673,32 @@ func TestTimelineEditPostHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("saves the posting rate and audio or video, and clears them", func(t *testing.T) {
+		updated = nil
+		form := url.Values{"name": {"Podcasts"}, "show": {"all"}, "max_posts_per_week": {"2"}, "media_only": {"1"}}
+		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if updated == nil || updated.Filter.MaxPostsPerWeek != 2 || !updated.Filter.MediaOnly {
+			t.Errorf("updated %+v, want MaxPostsPerWeek 2 and MediaOnly", updated)
+		}
+
+		updated = nil
+		form = url.Values{"name": {"Podcasts"}, "show": {"all"}, "max_posts_per_week": {""}}
+		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		if updated == nil || updated.Filter.MaxPostsPerWeek != 0 || updated.Filter.MediaOnly {
+			t.Errorf("updated %+v, want neither condition", updated)
+		}
+	})
+
 	t.Run("starred only stays ticked when the form is invalid", func(t *testing.T) {
 		rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, url.Values{"name": {""}, "show": {"all"}, "starred_only": {"1"}})
 		if rr.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("status = %d", rr.Code)
 		}
-		assertBodyContains(t, rr.Body.String(), `<input type="checkbox" name="starred_only" value="1" checked />`)
+		assertBodyContains(t, rr.Body.String(), `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`)
 	})
 
 	t.Run("invalid is 422 on the edit form", func(t *testing.T) {

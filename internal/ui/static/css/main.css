@@ -1692,6 +1692,32 @@
     margin-block-end: 1rem;
   }
 
+  /* "Feeds that post at most [N] times a week", on one line. */
+  .rate-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem 0;
+    font-weight: 600;
+  }
+
+  .rate-field label {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  .rate-field input:not([type="hidden"]) {
+    inline-size: 5rem;
+  }
+
+  /* Only show's conditions, each with its hint, are separated by dividers. */
+  .timeline-form fieldset > :is(.hint, p.error) + :is(.choice, .rate-field) {
+    margin-block-start: 0.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+
   .timeline-form .form-actions {
     margin: 0;
     padding: 0.5rem 1rem 1.25rem;

@@ -1692,6 +1692,11 @@
     font-size: 0.875rem;
   }
 
+  .timeline-move {
+    display: flex;
+    gap: 0.5rem;
+  }
+
   /* New timeline's presets: a row of links above the form. */
   .timeline-presets {
     display: flex;

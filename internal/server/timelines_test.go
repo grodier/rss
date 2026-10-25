@@ -126,6 +126,47 @@ func TestTimelinesHandler(t *testing.T) {
             <span class="chip">Shared</span>`)
 	})
 
+	t.Run("move buttons", func(t *testing.T) {
+		const thirdID = "99999999-9999-4999-8999-999999999999"
+		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}, {ID: newsTimelineID, Name: "News"}, {ID: thirdID, Name: "Sports"}}, nil
+			},
+		}})
+		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
+		body := rr.Body.String()
+		up := func(name string) string {
+			return `<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move ` + name + ` up">Move up</button>`
+		}
+		down := func(name string) string {
+			return `<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move ` + name + ` down">Move down</button>`
+		}
+		assertBodyContains(t, body,
+			`<li id="timeline-`+testTimelineID+`">`,
+			`<form class="timeline-move" action="/timelines/`+testTimelineID+`/move" method="post">`,
+			down("AI"),
+			up("News"), down("News"),
+			up("Sports"),
+		)
+		for _, unwanted := range []string{up("AI"), down("Sports")} {
+			if strings.Contains(body, unwanted) {
+				t.Errorf("body has %s", unwanted)
+			}
+		}
+	})
+
+	t.Run("no move buttons for one timeline", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+			},
+		}})
+		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
+		if body := rr.Body.String(); strings.Contains(body, "timeline-move") {
+			t.Errorf("body has move buttons: %s", body)
+		}
+	})
+
 	t.Run("empty state", func(t *testing.T) {
 		s := newTestServer(t)
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
@@ -887,6 +928,71 @@ func TestTimelineDeleteHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTimelineMoveHandler(t *testing.T) {
+	type call struct {
+		userID, id string
+		up         bool
+	}
+	var calls []call
+	s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+		moveFn: func(ctx context.Context, userID, id string, up bool) error {
+			calls = append(calls, call{userID, id, up})
+			if id != testTimelineID {
+				return rss.ErrNoRecord
+			}
+			return nil
+		},
+	}})
+
+	for _, tt := range []struct {
+		direction string
+		up        bool
+	}{{"up", true}, {"down", false}} {
+		t.Run(tt.direction, func(t *testing.T) {
+			calls = nil
+			rr, flash := serveTimeline(t, s, s.timelineMoveHandler, "/", testTimelineID, url.Values{"direction": {tt.direction}})
+			if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/timelines#timeline-"+testTimelineID {
+				t.Fatalf("code %d location %q", rr.Code, rr.Header().Get("Location"))
+			}
+			if want := []call{{"user-1", testTimelineID, tt.up}}; !slices.Equal(calls, want) {
+				t.Errorf("calls = %v, want %v", calls, want)
+			}
+			if flash != "" {
+				t.Errorf("flash = %q, want none", flash)
+			}
+		})
+	}
+
+	for _, direction := range []string{"", "left", "UP"} {
+		t.Run("direction "+direction+" is 400", func(t *testing.T) {
+			calls = nil
+			rr, _ := serveTimeline(t, s, s.timelineMoveHandler, "/", testTimelineID, url.Values{"direction": {direction}})
+			if rr.Code != http.StatusBadRequest || calls != nil {
+				t.Errorf("status = %d, calls %v", rr.Code, calls)
+			}
+		})
+	}
+
+	for _, id := range []string{"junk", otherTagID} {
+		t.Run(id+" is 404", func(t *testing.T) {
+			rr, _ := serveTimeline(t, s, s.timelineMoveHandler, "/", id, url.Values{"direction": {"up"}})
+			if rr.Code != http.StatusNotFound {
+				t.Errorf("status = %d", rr.Code)
+			}
+		})
+	}
+
+	t.Run("store error is 500", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+			moveFn: func(context.Context, string, string, bool) error { return errors.New("boom") },
+		}})
+		rr, _ := serveTimeline(t, s, s.timelineMoveHandler, "/", testTimelineID, url.Values{"direction": {"down"}})
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
 }
 
 func TestTagPageMakeTimelineLink(t *testing.T) {

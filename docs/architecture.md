@@ -222,6 +222,7 @@ group inside `requireAuthentication` with `requireDebug`, which answers 404 unle
 | `GET /timelines/{id}` | yes | `timelineHandler` | A custom timeline under the tab row, paged with `?before=`; 404 if not the user's |
 | `GET, POST /timelines/{id}/edit` | yes | `timelineEditHandler`, `timelineEditPostHandler` | Change the timeline's name, description and filter; 303 to it |
 | `POST /timelines/{id}/delete` | yes | `timelineDeleteHandler` | Deletes the timeline (cascade), unconfirmed; 303 to `/timelines` |
+| `POST /timelines/{id}/move` | yes | `timelineMoveHandler` | Swaps the timeline with its neighbour in tab order (`direction` `up` or `down`, else 400); 404 if not the user's; 303 to `/timelines#timeline-{id}` |
 | `POST /timelines/{id}/share` | yes | `timelineShareHandler` | Shares the timeline (a share token, unless it has one); needs a confirmed email; 303 to `/timelines/{id}/edit#sharing` |
 | `POST /timelines/{id}/unshare` | yes | `timelineUnshareHandler` | Stops sharing: clears the token; 303 as Share |
 | `POST /timelines/{id}/share/new-link` | yes | `timelineNewLinkHandler` | Replaces the token, so the old links 404; needs a confirmed email; 404 if not shared; 303 as Share |

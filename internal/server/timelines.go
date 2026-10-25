@@ -362,6 +362,38 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 // timelineShareHandler shares a timeline: it gets a share token, unless it
 // has one. It needs a confirmed email address.
+// timelineMoveForm is the Move up or Move down button on /timelines.
+type timelineMoveForm struct {
+	Direction string `form:"direction"` // "up" or "down"
+}
+
+// timelineMoveHandler moves the user's custom timeline one place up or down
+// the tab order, then goes back to its row on /timelines.
+func (s *Server) timelineMoveHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	var form timelineMoveForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	if form.Direction != "up" && form.Direction != "down" {
+		s.formErrorResponse(w, r, fmt.Errorf("direction = %q", form.Direction))
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.TimelineService.Move(r.Context(), userID, id, form.Direction == "up"); err != nil {
+		s.timelineWriteError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/timelines#timeline-"+id, http.StatusSeeOther)
+}
+
 func (s *Server) timelineShareHandler(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.timelineFromURL(w, r)
 	if !ok {

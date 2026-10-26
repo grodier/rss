@@ -156,8 +156,9 @@ CI sets it and fails if it is missing.
 
 - [`docs/architecture.md`](docs/architecture.md): how the app fits together: the process, packages, routes, data model, background workers and security measures.
   Start here.
-- [`docs/features.md`](docs/features.md): how each feature works and which code to read, in order.
+- [`docs/features.md`](docs/features.md): how each feature works and where to start reading its code.
 - [`docs/decisions.md`](docs/decisions.md): decisions made while planning, and why.
-- [`docs/backlog.md`](docs/backlog.md): what's next, planned work that has no issue yet, and the performance watchlist.
+- [Roadmap (#385)](https://github.com/grodier/rss/issues/385): the planned issues, in order.
+- [`docs/backlog.md`](docs/backlog.md): work that has no issue yet, and the performance watchlist.
 - [`infra/README.md`](infra/README.md): production infrastructure on Render (Terraform) and how to run it.
 - [`CLAUDE.md`](CLAUDE.md): code, testing and PR conventions (for people and coding agents), and which docs to update when.

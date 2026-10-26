@@ -77,15 +77,24 @@ Update docs in the same PR as the code or plan they describe.
 | File | Holds | Update it when |
 | --- | --- | --- |
 | `README.md` | Setup, flags, make targets, running tests | A flag, make target, prerequisite or setup step changes |
-| `docs/architecture.md` | Glossary, the process, packages and third-party modules, middleware and routes, schema, background workers, outbound HTTP, security measures and rate limits, frontend | You add, remove or rename a package, module, route, middleware, table or column, worker, rate limit or security measure, or change how components connect or start |
-| `docs/features.md` | One section per feature: the flow, the files and symbols to read in order, its tests, and its decisions section | A feature ships or its flow, files or symbols change. A user-visible capability with its own flow gets a new section; anything else extends the closest one |
+| `docs/architecture.md` | Glossary, the process, packages and third-party modules, middleware and routes, how tables are used together, background workers, outbound HTTP, security measures and rate limits, frontend, deployment overview | You add, remove or rename a package, module, route, middleware, table, worker, rate limit or security measure, or change how components connect or start |
+| `docs/features.md` | One section per feature: the flow, a few entry points to start reading at, its test files, and its decisions section | A feature ships or its flow or entry points change. A user-visible capability with its own flow gets a new section; anything else extends the closest one |
 | `docs/decisions.md` | Decisions with their reasons and issue numbers, by area | Planning settles a question (add it under the area's section, citing the planning issue or PR); a PR makes a choice later work must respect; a PR deliberately changes a decision (edit it and say so in the PR description) |
-| `docs/backlog.md` | "Next up", planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item and its "Next up" line); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
+| `docs/backlog.md` | Work that has no issue yet, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
 | `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
 
-- A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `backlog.md`, its performance risks in the watchlist, and the issue order in "Next up".
+The order of planned work isn't in a file: it's the [Roadmap issue](https://github.com/grodier/rss/issues/385), whose sub-issues are the planned issues (see "Finding work").
+
+- Docs say what the code can't: reasons, flows that cross packages, and invariants that aren't obvious.
+  Don't restate what lives in the code, templates, tests, the schema's comments or Terraform: user-facing strings, CSS classes, every helper or test name, column lists, configuration values.
+  Name a few entry points and let readers follow the calls.
+- One sentence per line, with no hard wrapping, so a change touches only its own lines.
+  Add new list items, table rows and watchlist entries next to related ones, not at the end.
+- A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `backlog.md` and its performance risks in the watchlist, and deletes from `backlog.md` the items that now have issues.
+  The issues themselves go on the Roadmap as sub-issues, in order; the PR doesn't list them in a file.
   It doesn't describe unbuilt code in `architecture.md` or `features.md`.
-- An implementation PR updates `architecture.md` and `features.md` for what it builds, and removes what it finishes from `backlog.md`.
+- An implementation PR updates `architecture.md` and `features.md` for what it builds.
+  It doesn't edit the Roadmap: `Closes #N` closes its sub-issue.
 - When you rename or remove a symbol, file, route or docs section, grep for the old name in the docs and the code: `grep -rn OldName docs internal cmd README.md CLAUDE.md`.
 
 ## Code conventions
@@ -166,7 +175,8 @@ Update docs in the same PR as the code or plan they describe.
 ## Finding work
 
 GitHub issues are the source of truth for scoped tasks.
-`docs/backlog.md` has "Next up" (what to do, in which order), planned work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
+The [Roadmap issue (#385)](https://github.com/grodier/rss/issues/385) says what to do next and in which order: its sub-issues, grouped into waves that can be built in parallel.
+`docs/backlog.md` has work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
 Before working on a feature, read its section in `docs/features.md` (the flow and where the code is) and in `docs/decisions.md` (what's decided and why, so you don't reopen it); `docs/architecture.md` has the overall shape.
 
 ## Writing issues
@@ -180,6 +190,7 @@ Issues are written for an implementer with no context from the planning conversa
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).
+- File each issue as a sub-issue of the Roadmap (#385), and update its waves.
 - Performance risks: when planning, look at what the planned work could cost as data and traffic grow (queries that can't use an index, unpaginated lists, writes on page views, polling, per-row loops, unbounded tables).
   Add each risk to the Performance watchlist in `docs/backlog.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix.
   Don't fix risks early, but don't leave them unrecorded.

@@ -1,13 +1,10 @@
 # Backlog
 
-Open work only: what's next, work that has no GitHub issue yet, and the Performance watchlist.
+Work that has no GitHub issue yet, and the Performance watchlist.
+What's planned, and in which order, is the [Roadmap issue](https://github.com/grodier/rss/issues/385): its sub-issues are the filed work.
+When an item here gets an issue, the planning work deletes it from this file and adds the issue to the Roadmap.
 Items marked "needs planning" are too large or open-ended to hand to an agent as-is; plan them first and split them into issues.
 How to keep this file up to date is under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decisions.md).
-
-## Next up
-
-1. **Plan** the error-state walkthrough and run the first pass; then repeat it periodically.
-2. Before production or a few thousand feeds, **plan** load and performance testing.
 
 ## Pre-alpha testing
 
@@ -55,13 +52,10 @@ The decisions are under "Accounts" in decisions.md.
   When Resend's free tier (100 emails a day, 3,000 a month) gets tight or costs more than SES.
   Sending is SMTP (#259), so the app only changes configuration.
   The rest: request SES production access (it asks how bounces and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL FROM domain, move DMARC from `p=none` to `quarantine` once its reports are clean (the app has no `_dmarc.rss` record yet: add one, or `sp=` on `georgerodier.com`'s), and check the result with mail-tester.com.
-- [ ] **Product name and domain.**
-  `rss.georgerodier.com` (#254) until the app has a name.
-  Moving means verifying the new domain with the email provider, new DNS records, changing `RSS_BASE_URL`, `RSS_MAIL_FROM` and `RSS_SUPPORT_EMAIL`, and redirecting the old domain.
-  Sessions on the old domain end.
-- [ ] **One canonical host.**
-  The app also answers on its `onrender.com` URL, so sessions and links can be split between two hosts.
-  Redirect requests for any other host to `-base-url`'s, except `/healthcheck`, which Render's health checks call.
+- [ ] **Product name in the app.**
+  Moving to the new domain is #389; the app still calls itself "rss" in page titles, emails and the policy pages.
+- [ ] **Support address on the new domain.**
+  The support address stays `rss-support@georgerodier.com` after #389; moving it needs Email Routing on the new domain's zone.
 - [ ] **Full data export.**
   A JSON file with your account, subscriptions, reading history and saved articles (#299), next to the OPML export.
 - [ ] **Clean up abandoned unconfirmed accounts**, e.g. delete accounts never confirmed and unused for 30 days after signup.
@@ -76,19 +70,6 @@ The decisions are under "Accounts" in decisions.md.
 
 ## Deployment
 
-- [ ] **HSTS.**
-  Send `Strict-Transport-Security` in production once the app's domain is settled (see "Product name and domain" under Accounts), without `includeSubDomains` so other `georgerodier.com` hosts are unaffected. #254 sets up the custom domain.
-- [ ] **Deploy the backup job with its image.**
-  Render pulls `rss-backup:main` only when the cron job is deployed, so a change to `deploy/backup` runs only after a manual deploy in Render's dashboard (see "Backups and restore" in `infra/README.md`).
-  Have CI deploy it by digest like the app, which needs its ID as a secret.
-- [ ] **External uptime check.**
-  Deferred from #217 while pre-alpha.
-  A free UptimeRobot (or Better Stack) keyword monitor on `<url>/healthcheck` for `available`, every 5 minutes, alerting by email; note the monitor (not its credentials) in `infra/README.md`.
-  Before other people rely on the app.
-- [ ] **Stop the lifecycle rules from changing on every apply.**
-  Cloudflare returns the `rss-backups` lifecycle rules in the opposite order from `infra/backup.tf`, so every apply plans an in-place update of `cloudflare_r2_bucket_lifecycle.backups` that only swaps the two rules.
-  Harmless, but a plan that always shows a change hides real ones.
-  List the rules in the order Cloudflare returns them (the multipart-upload rule first) and check that the next plan shows no change for it.
 - [ ] **Upgrade `render-oss/render` once its digest fix ships.**
   Provider v1.9.1 can't update a service pinned by digest, which deploys always leave `rss` on: it sends `ghcr.io/grodier/rss:<hex>` and Render refuses with "unable to fetch image with provided input" ([render-oss/terraform-provider-render#106](https://github.com/render-oss/terraform-provider-render/issues/106), fix in PR #109).
   The #254 apply hit it.
@@ -241,20 +222,12 @@ Each with when it pays off:
   Its own small issue.
 - [ ] **Measure untitled articles.**
   Before investing in better titles, query the share of articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 / count(*) FROM articles`).
-- [ ] **Image proxy.**
-  Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times (tracking pixels work like email open tracking).
-  Why it's its own project:
-  - SSRF: the proxy fetches stranger-chosen URLs; must go through `internal/fetch` (already blocks private addresses).
-  - Open-proxy abuse: only URLs we emitted may be fetched, so image URLs need an HMAC signature.
-  - Content-type safety: serving an attacker's SVG or HTML from our origin is XSS; allow only raster types, send `nosniff` and a sandboxing CSP, or use a separate domain.
-  - Decoding untrusted images (if we resize for thumbnails) is attack surface, including decompression bombs.
-  - Bandwidth, caching, size limits and timeouts for every image.
-  - Our server may get rate-limited or blocked by hosts; caching publishers' images raises copyright questions.
-
-  Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked and stored once a month.
+- [ ] **Image proxy (needs planning).**
+  Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times.
+  Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
+  Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
 - [ ] **Keyboard shortcuts.**
-  E.g.
-  `j`/`k` to move between rows, `o` to open, `v` to open the original.
+  E.g. `j`/`k` to move between rows, `o` to open, `v` to open the original.
 - [ ] **"You were here" divider.**
   A subtle marker in the timeline at your last visit (possible because positions never change).
   No counts.
@@ -316,13 +289,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
 ## Error-state walkthrough (needs planning)
 
 A way to see every error state an end user can hit and judge the experience (wording, what the user can do next, tone, layout) without having to provoke each one by hand.
-Do it once after the initial feature set is built, then repeat periodically and whenever a feature adds a failure mode.
-Nothing here is built yet.
+The first pass, by hand, is #392: it builds the catalog (`docs/error-states.md`) from "States to cover" below and reviews each state.
+What's left needs planning once that pass shows how many states there are and how much needs fixing.
 
-- [ ] **Catalog.**
-  `docs/error-states.md`: one row per user-visible error state with *trigger* (how to reproduce it), *where it shows* (page / status code), *current message*, *can the user recover?*, and a *reviewed on* date and verdict.
-  Seed it by grepping handlers for `CheckField`, `notFoundResponse`, `serverErrorHTML`, `errorHTML`, `sessionManager.Put(ctx, "flash"` and the sentinel errors in `internal/rss/errors.go`, and every template that renders an error or status.
-  Rule for contributors: a PR that adds a user-visible failure adds a row.
 - [ ] **Walkthrough tool.**
   Something that renders every state in one place so they can be clicked through in a browser, preferably a dev-only route group (e.g. `/dev/states`, mounted only with a flag, never in production) that lists each state and renders it with fake data.
   A test table (`name`, `setup`, `request`, `want status`) can drive the same list, so the catalog can't drift: a test fails if a state is in the code but not the catalog.
@@ -339,13 +308,6 @@ Nothing here is built yet.
   - Empty states that aren't errors but read like one: a new account with no feeds, an empty site page.
   - Subscriptions: a subscribe or unsubscribe that fails.
   - Reading: an empty timeline (no subscriptions), "No older articles.", an invalid `before` cursor (400), an article with no text in its feed, an article with no URL, an unknown or malformed article ID, a failed read ping (silent by design).
-- [ ] **Review pass.**
-  For each state ask: does the user know what happened and what to do next?
-  Is the message free of internals (SQL, stack traces, raw Go errors)?
-  Is the status code right?
-  Does the form keep what they typed?
-  Is it usable on a narrow screen and with a screen reader (focus, `role="alert"`)?
-  Record findings in the catalog and turn the ones that need work into issues.
 - [ ] **Cadence.**
   Repeat after any change to a template, middleware or error path, and at least before each release.
   Note the date of the last pass at the top of the catalog.
@@ -357,6 +319,7 @@ Rough capacity: feeds per hour ≈ workers × 3600 s ÷ average fetch duration (
 The poll interval only matters when nothing is due, so it doesn't limit throughput.
 Measure before relying on these numbers.
 Worth doing before production, or once there are a few thousand feeds.
+#388 measures the reading queries at realistic scale first (a dev-only seed tool), and its numbers feed into this plan.
 
 - [ ] **Load-test harness.**
   A program that seeds N fake feeds pointing at a local fake feed server and runs the refresh workers against them.
@@ -396,6 +359,7 @@ Worth doing before production, or once there are a few thousand feeds.
 
 Things that are fine at today's scale but could become performance problems as feeds, articles, users or instances grow: what each is, the issue that introduced it, the signal that it has become a problem, and the planned fix.
 Don't fix these early: watch the signal, and use the load tests above to measure (see "Writing issues" in CLAUDE.md).
+Add a new entry next to related ones, not at the end, so parallel PRs don't conflict.
 
 Background refresh:
 

@@ -3,7 +3,7 @@
 Decisions made while planning, with the reason for each and the issue or PR where it was made.
 Don't reopen one without a new reason.
 A plan or PR that changes one edits it here and says so in its description.
-Planned work is in [backlog.md](backlog.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
+Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), and work without an issue is in [backlog.md](backlog.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
 
 ## Overall
 
@@ -451,6 +451,13 @@ Planned in #187 (issues #182–#186).
 - **Sessions: see "Accounts"** (#258). #248 kept them to 30 days from login, with no idle timeout, until they could be revoked. scs's own idle timeout writes the session row on every page view, which is why #258 tracks `last_seen_at` itself, at most once a day.
 - **Malformed form bodies get 400 and bodies over 64 KiB get 413** (#249), as HTML error pages, not logged as server errors.
   The cap is applied in `decodePostForm`, so only routes that decode a form are capped; a future upload sets its own limit.
+- **One canonical host** (#390): in production, a request for any host but `-base-url`'s gets a 308 to the same path there, for every method (308 keeps the method, so feed readers polling an old shared-feed link follow it).
+  `/healthcheck` is served on every host, for Render's health checks.
+  Sessions are per host, so serving several splits them.
+- **HSTS: `max-age=31536000`, in production, on the canonical host's responses only** (#390).
+  No `includeSubDomains` or preload: other hosts on the domain may not be HTTPS, and preload is hard to undo.
+  Redirects from other hosts don't send it, so the old `rss.georgerodier.com` is never pinned.
+  It waited for "the domain to be settled"; #389 settles it.
 
 ## Accounts
 
@@ -527,10 +534,14 @@ In these flows, trade-offs favor the user's experience.
   Its DNS record is DNS-only, since a proxied one would add a third `X-Forwarded-For` hop.
   DMARC starts at `p=none`, with reports.
   The SMTP password is set in Render's dashboard and ignored by Terraform, like the invite code.
-- **Support mail goes to `rss-support@georgerodier.com`, a Google alias** (changed in
-  #254 from `support@rss.georgerodier.com`). The app's CNAME on `rss.georgerodier.com`
-  can't share its name with Email Routing's MX records, and Cloudflare's Email Routing would have replaced the Google MX records on `georgerodier.com`.
+- **The app moves to its own domain before testers arrive** (#389), registered in Cloudflare, while there are no links or sessions to lose.
+  It's served at the apex, with `www` redirecting to it, and sends its email from the apex too: a new domain has no personal mail to keep apart.
+  The DNS record stays DNS-only and DMARC starts at `p=none`, for the reasons above.
+  `rss.georgerodier.com` stays a custom domain on the service, redirecting to the new one (#390), so old links keep working.
+- **Support mail goes to `rss-support@georgerodier.com`, a Google alias** (changed in #254 from `support@rss.georgerodier.com`).
+  The app's CNAME on `rss.georgerodier.com` can't share its name with Email Routing's MX records, and Cloudflare's Email Routing would have replaced the Google MX records on `georgerodier.com`.
   The domain is temporary, so the address only has to work until the product has its own.
+  #389 keeps it: moving it to the new domain is a separate change (a backlog item).
 - **No `_dmarc.rss` record** (#254): mail from `rss.georgerodier.com` falls back to the `p=none` record on `georgerodier.com`, whose reports Cloudflare's DMARC Management reads; it doesn't support subdomains.
   Tightening DMARC for the app means adding `_dmarc.rss` with its own policy, or `sp=` on the parent's record.
 - **A support address** (`-support-email`) is the Reply-To of every email, and is shown on the reset pages and in Settings (#259, #265, #269).
@@ -550,8 +561,8 @@ Planned in #218; issues #208–#217.
 - **Terraform**, with the official Render provider and the Cloudflare provider (for R2).
   State lives in an R2 bucket.
   After the first apply (by hand, during setup), applies run only from GitHub Actions, one at a time.
-- **No domain yet.** The app is served at its `*.onrender.com` URL with Render's HTTPS.
-  A custom domain (possibly a subdomain of georgerodier.com) is a later, separate change: Cloudflare DNS plus a Render custom domain, both in Terraform.
+- **The domain is Cloudflare DNS plus a Render custom domain, both in Terraform** (#218, #254).
+  Which domain is under "Accounts".
 - **Migrations are built into the binary** (`www migrate`) and run before each deploy, not at app startup, so they also work with several instances, and a failed migration aborts the deploy while the old version keeps serving.
   One artifact carries the code and the migrations it expects, and the same command runs everywhere.
 - **Wiping the database is never automatic.** While pre-alpha, `migrate` refuses to run when `migrations/*.sql` have changed since they were applied (code-only changes never touch the database).
@@ -582,6 +593,13 @@ Planned in #218; issues #208–#217.
   (#228)
 - **Backups:** Render's point-in-time recovery (3 days on the Hobby workspace) plus a nightly `pg_dump` to R2 from a Render cron job, kept 35 days.
   The R2 copy is at a different provider from the database, and restoring it is also how the database moves to a new host.
+- **The backup job is deployed by digest with every app deploy** (#386), from `deploy.yml`, so it runs the image CI built and a rollback rolls it back too.
+  Render only pulls a tag when a job is deployed, so a manual deploy was easy to forget, and the backup image's `pg_dump` must match the database's major version.
+  Terraform ignores the job's image, like the web service's.
+- **Terraform plans must be clean when nothing changed** (#387): a plan that always shows a change hides real ones, and the PR's plan is how infrastructure changes are approved.
+  The R2 lifecycle rules are listed in the order Cloudflare returns them, rather than ignored with `ignore_changes`, which would also hide a real change to a rule.
+- **An external uptime monitor** (#391): a free keyword monitor on `/healthcheck` every 5 minutes, alerting the owner by email, so someone hears when the app is down for visitors and not only when Render restarts it.
+  It checks that the app is reachable, not the database.
 - **Logs** stay in Render's log viewer for as long as Render keeps them (a few days on the Hobby workspace; the README records the current figure).
   No log shipping, so client IPs aren't kept anywhere else.
 - **Deploys:** every push to `main` that passes CI deploys automatically; merging the PR is the approval.
@@ -596,3 +614,23 @@ Planned in #218; issues #208–#217.
   A deploy Render queues behind a running one (202, no ID) fails the job rather than being tracked down: our deploys never overlap (one concurrency group), and changing a variable through the API doesn't start one, so only a dashboard deploy or a Terraform apply can be running.
   The Render CLI's `deploys create --wait` would do the polling, but it's a binary to download and pin in a job holding an account-wide API key.
   (#215)
+
+## Planning and docs
+
+Settled when the docs were slimmed and the Roadmap issue started (#385).
+The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md.
+
+- **The order of planned work is the Roadmap issue (#385), not a file.** Each planned issue is a sub-issue; a PR's `Closes #N` ticks it off, and implementation PRs never edit it.
+  "Next up" in `todo.md` changed in 27 of 30 commits, almost always on the same few lines, so PRs built in parallel conflicted there.
+- **Work without an issue stays in a file, `docs/backlog.md`**, with the Performance watchlist.
+  Few PRs change it, so it rarely conflicts; it's reviewed in PRs and readable without GitHub access; and an issue body would lose edits silently when two sessions save it (the last save wins) and has a size limit the backlog is close to.
+- **Docs are one sentence per line.** A change touches only its own sentences instead of rewrapping a paragraph, which is what made parallel PRs conflict on neighbouring text.
+  New entries in lists and tables go next to related ones, not at the end.
+  No `merge=union`: it would merge both sides silently and can break tables and lose edits.
+- **Docs say what the code can't**: reasons, flows across packages, and invariants that aren't obvious.
+  `features.md` names a feature's entry points and test files, not every symbol and test, and none of the docs repeat user-facing strings, CSS classes, column lists or Terraform values.
+  Before this, every name the docs mentioned still existed, but 3,700 lines of them were a cost on every PR and every read.
+- **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
+- **Measure the reading queries before planning load testing** (#388), with a dev-only seed tool outside `cmd/www`, so seeding code never ships, measuring the repository methods themselves rather than copied SQL.
+  The timeline query collapses copies over a user's whole history before paginating, so it's the likeliest to break first; its numbers decide what load testing covers.
+- **The first error-state pass is by hand, with no tool** (#392), and fixes nothing itself: it shows how many states there are and how much needs work before deciding whether a walkthrough tool is worth building.

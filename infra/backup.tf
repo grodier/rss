@@ -34,8 +34,9 @@ resource "render_cron_job" "backup" {
   region   = "virginia"
   schedule = "0 8 * * *" # 08:00 UTC
 
-  # Built from deploy/backup by CI. Render pulls the tag when the job is
-  # deployed, not on every run; see README.md.
+  # Built from deploy/backup by CI. Render pulls the image only when the job is
+  # deployed, so deploys (the deploy workflow) pin it by digest with every app
+  # deploy; this tag is only the image the job was created with. See README.md.
   runtime_source = {
     image = {
       image_url = "ghcr.io/grodier/rss-backup"
@@ -56,5 +57,13 @@ resource "render_cron_job" "backup" {
     # rejected for streamed uploads. Send them only where S3 requires them.
     AWS_REQUEST_CHECKSUM_CALCULATION = { value = "when_required" }
     AWS_RESPONSE_CHECKSUM_VALIDATION = { value = "when_required" }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      # Deploys (the deploy workflow) set the image by digest; apply must
+      # never roll them back.
+      runtime_source.image,
+    ]
   }
 }

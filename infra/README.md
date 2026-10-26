@@ -6,7 +6,7 @@ Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisio
 
 Terraform doesn't own four things that change outside it, and ignores them:
 
-- **The image.** Deploys set it by digest; `apply` never rolls a deploy back.
+- **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
 - **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
 - **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
@@ -87,19 +87,20 @@ Set it up once:
 ## Deploys
 
 Three workflows in `.github/workflows` run production.
-They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
+They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
 
 ### How deploys happen
 
 Every push to `main` that passes CI deploys; merging the PR is the approval.
-CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>`, then its `deploy` job calls `deploy.yml` (environment `production`, one deploy at a time), which:
+CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss-backup:sha-<sha>`, then its `deploy` job calls `deploy.yml` (environment `production`, one deploy at a time), which:
 
 1. resolves the tag to its digest, and fails if CI pushed no image for that commit;
 2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`.
    Render never builds; it runs the image CI tested;
 3. follows the deploy until it's live.
    Render runs `/www migrate` first; if it fails, the deploy fails within seconds and the old version keeps serving;
-4. checks that `/healthcheck` reports the commit's SHA as its `version`.
+4. checks that `/healthcheck` reports the commit's SHA as its `version`;
+5. deploys `ghcr.io/grodier/rss-backup@<digest>` to the `rss-backup` cron job, resolved the same way, and follows that deploy until it's live.
 
 If another deploy is already running (one from the dashboard, or one a Terraform apply started), Render queues ours behind it without saying which deploy it is, so the job fails.
 The queued deploy still goes ahead; follow it in Render's dashboard.
@@ -141,13 +142,14 @@ Nothing seeds an account after a reset.
 While an apply waits for approval, other `infra.yml` runs wait behind it, and GitHub keeps only the newest waiting run: an older one shows as cancelled.
 Re-run it if it was an apply you still want.
 
-### Changing the web service
+### Changing the web service or the backup job
 
 Until the provider is upgraded (a backlog item), an apply that changes `render_web_service.rss` fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).
+Deploys pin `render_cron_job.backup` to a digest too, so expect the same of an apply that changes it.
 Plans aren't affected.
 Before approving such an apply:
 
-1. On the `rss` service's **Settings → Image** in Render's dashboard, set **Source** to `ghcr.io/grodier/rss:main` and save.
+1. On the `rss` service's (or the `rss-backup` job's) **Settings → Image** in Render's dashboard, set **Source** to `ghcr.io/grodier/rss:main` (or `ghcr.io/grodier/rss-backup:main`) and save.
    CI pushes `:main` for every commit on `main`, so this redeploys the image that's running; wait until it's live.
 2. Approve the apply (or re-run it if it already failed).
 
@@ -165,9 +167,9 @@ Two layers, both for the database only:
 
 Terraform sets the bucket's lifecycle rules but doesn't own the bucket, which was created by hand (#208) like `rss-tfstate`.
 
-**The backup image.** CI pushes `ghcr.io/grodier/rss-backup:main` from `deploy/backup` on every push to `main`.
+**The backup image.** CI builds `ghcr.io/grodier/rss-backup` from `deploy/backup` and pushes it on every push to `main`.
 The package must be public, like `rss`, or Render can't pull it.
-Render pulls the tag when the cron job is deployed, not on every run, so after a change to `deploy/backup` (a Dependabot update of `postgres:17-alpine`, say) deploy the job again: **`rss-backup` in Render's dashboard → Manual Deploy → Deploy latest reference**.
+Render pulls a cron job's image only when the job is deployed, so every app deploy also deploys the job by digest (step 5 of "How deploys happen"), and a rollback rolls it back too.
 Its Postgres major version must stay that of the database.
 
 ### Listing and downloading dumps

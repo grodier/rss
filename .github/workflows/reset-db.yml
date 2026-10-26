@@ -74,6 +74,7 @@ jobs:
     secrets:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      RENDER_BACKUP_JOB_ID: ${{ secrets.RENDER_BACKUP_JOB_ID }}
 
   summary:
     needs: deploy

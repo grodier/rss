@@ -133,8 +133,8 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-      # Render's rss-backup cron job runs :main; see "Backups and restore" in
-      # infra/README.md.
+      # deploy.yml deploys it to Render's rss-backup cron job by digest; see
+      # "Backups and restore" in infra/README.md.
       - name: build backup
         id: build-backup
         uses: docker/build-push-action@v7
@@ -164,3 +164,4 @@ jobs:
     secrets:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      RENDER_BACKUP_JOB_ID: ${{ secrets.RENDER_BACKUP_JOB_ID }}

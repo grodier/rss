@@ -421,6 +421,29 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **When a layout is an open question, the implementer proposes options before finishing** (#309, for #299 and #308): a draft PR with two or three layouts behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 
+## Mobile
+
+Planned in #395, from a discussion of what would stop people switching to the app; the first issue is #394.
+
+- **Mobile comes in three steps, each only when the one before it isn't enough.**
+  First the web app made installable (#394); then, shortly after launch if the app should be in the App Store, a native shell around the server-rendered pages (Hotwire Native or Capacitor), adding native screens only where they pay off; a fully native app only if offline reading or performance decides it, built screen by screen inside the shell rather than as a rewrite.
+  A fully native app needs its own JSON API and token login, and every feature built twice, which a small team can't keep up with; the server-rendered pages already work without JavaScript, which is what a shell needs.
+- **Installable, not offline** (#394): a manifest and icons, no service worker.
+  Chrome no longer needs one to offer installing, and iOS never did; offline reading is a backlog item.
+- **No install button or banner of our own** (#394).
+  `beforeinstallprompt` is Chromium-only, and asking to install is the kind of nagging the app avoids; people use the browser's own install.
+- **The manifest is served by its own handler at a fixed URL** (`/manifest.webmanifest`), not from `/static` (#394).
+  Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would serve it as `text/plain`.
+- **`start_url`, `scope` and `id` are `/`, with `display: standalone`** (#394).
+  `/` is the timeline when logged in and the landing page when not; a fixed `id` keeps the installed app the same app if `start_url` changes.
+- **No pull-to-refresh of our own** (#394).
+  Tapping the current tab loads its page again, which is how new articles show up, since the timeline doesn't update live ("Reading").
+- **The app is installed on its final domain only**: an installed app belongs to the origin it was installed from, so #394 waits for the domain move (#389).
+- **The manifest repeats the light theme's background color** (`theme_color`, `background_color`), since it can't read CSS custom properties; themes add a dark `theme-color` (#394).
+- **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
+  People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.
+  Revisit if trial users or cancellations keep asking for it, or if the app's own mobile experience can't get good enough; the small Fever API would be the first step, possibly on a paid plan.
+
 ## Security
 
 Planned in #187 (issues #182–#186).

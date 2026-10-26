@@ -133,7 +133,7 @@ func (r *SaveRepository) SavedArticleIDs(ctx context.Context, userID string, art
 // for their subscriptions where they've set one. Summary and Content are left empty.
 func (r *SaveRepository) ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
 	// A scan of the user's saves, filtered with ILIKE: a user's saves are a
-	// small set (see the Performance watchlist in docs/todo.md). Saved
+	// small set (see the Performance watchlist in docs/backlog.md). Saved
 	// articles can come from feeds the user no longer subscribes to (hence
 	// the LEFT JOIN), which keep their own title.
 	stmt := `SELECT ` + qualifiedListArticleColumns + `, ` + qualifiedFeedColumnsTitled(subscriptionTitle) + `, s.saved_at

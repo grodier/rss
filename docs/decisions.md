@@ -3,14 +3,14 @@
 Decisions made while planning, with the reason for each and the issue or PR where it was made.
 Don't reopen one without a new reason.
 A plan or PR that changes one edits it here and says so in its description.
-Planned work is in [todo.md](todo.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
+Planned work is in [backlog.md](backlog.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
 
 ## Overall
 
 - **One binary, one database.** `www` runs the web server and the background workers (lookups, feed refresh) as goroutines; Postgres is the only other infrastructure.
   It holds the job queues and the sessions too.
   One thing to deploy and operate, which is enough at this scale.
-  Splitting out a worker process is a todo item with its trigger.
+  Splitting out a worker process is a backlog item with its trigger.
   (#50, #126)
 - **Postgres tables are the job queues**, claimed with `FOR UPDATE SKIP LOCKED`, so several instances never take the same job and no queue service is needed.
   `lookups` has a status column; `feeds` is claimed with a lease on `next_fetch_at` instead of a status column.
@@ -54,7 +54,7 @@ Its purpose is exploration more than bug fixing: showing how pages are put toget
   (#327)
 - **Nothing new is stored.** There's no schema change, no fetch history and no copies of raw responses.
   Panels read existing rows, and inspectors fetch live.
-  A fetch history is a todo item.
+  A fetch history is a backlog item.
   (#327, #328)
 - **Inspectors are read-only POSTs:**
   - they fetch through `internal/fetch` (GET handlers never fetch URLs);
@@ -79,7 +79,7 @@ Its purpose is exploration more than bug fixing: showing how pages are put toget
 - **Discovery records every candidate it checks** (`Result.Checked`), and returns what it has so far when its deadline passes.
   The lookup and import runners ignore both.
   (#330)
-- **No subscriber counts or other cross-user data.** Those belong to an owner admin page, which would build on the same allowlist (todo).
+- **No subscriber counts or other cross-user data.** Those belong to an owner admin page, which would build on the same allowlist (backlog).
   (#327)
 
 ## Feed discovery
@@ -91,14 +91,14 @@ Planned in #50 (issues #51–#67).
   (#61)
 - **Search only reads the database** (site title and host, feed title and URL).
   Results are sites, each with its feeds.
-- **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a todo item.
+- **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it finished, or 1 hour after it failed.
 - **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that refreshes itself with `<meta http-equiv="refresh">` (no JavaScript).
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.
   A feed belongs to the first site it was discovered from.
   Sites under a path on a shared host (`medium.com/@user`) aren't handled yet.
-- **Search, site pages and lookups are login-only** for now (logged-out access is a todo item), and lookups are rate-limited per user.
+- **Search, site pages and lookups are login-only** for now (logged-out access is a backlog item), and lookups are rate-limited per user.
   (#67)
 - **Feeds are parsed with `gofeed`**, which reads RSS 0.9x–2.0, RSS 1.0, Atom and JSON Feed.
   (#54)
@@ -113,7 +113,7 @@ Planned in #126, with issues #128–#133.
 - **The Refresh button stays synchronous** and goes through the same `ingest.Refresher` as the workers, so there is one fetch-and-save path.
 - **The schedule is ours:** a fixed interval with jitter, backoff after failures, and the server's `Retry-After` / `Cache-Control` hints, which can only delay a fetch.
   RSS `<ttl>` and `sy:updatePeriod` are ignored.
-  A posting-frequency interval is a todo item.
+  A posting-frequency interval is a backlog item.
   (#126, #133)
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
@@ -196,13 +196,13 @@ Planned in #163 (issues #147–#162).
   (#340, #341, #343)
 - **Article HTML is sanitized at render time** with bluemonday: relative URLs resolved, iframes replaced by a link, links opened in a new tab with `noopener noreferrer`.
   Images load from the publisher with `referrerpolicy="no-referrer"` and lazy loading; the CSP allows `img-src https:`.
-  No image proxy yet (a todo item, with why it's its own project).
+  No image proxy yet (a backlog item, with why it's its own project).
   (#151) Changed in #309 for two cases:
   - Content with no block-level markup (plain text, such as JSON Feed's `content_text`) is split into paragraphs at blank lines, with `<br>` for single line breaks, and bare URLs become links everywhere (#294).
     Stored HTML is unchanged.
   - YouTube and Vimeo iframes become click-to-play previews (#296): nothing loads from them but YouTube's thumbnail until the reader clicks, then a sandboxed player from `youtube-nocookie.com` or `player.vimeo.com` (the CSP's only `frame-src` hosts).
     Without JavaScript the preview links to the video.
-    Every other iframe stays a link; more embed types wait for the measurements in todo.md.
+    Every other iframe stays a link; more embed types wait for the measurements in backlog.md.
 - **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the article page gets better defaults first: wide tables scroll inside the column, styled code, lists and rules (#295).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.
   No player yet.
@@ -318,21 +318,21 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Presets on New timeline, not built-in tabs:** Starred (all feeds, starred only), Quiet posters (at most 2 a week), and From a tag.
   Each is an ordinary timeline you can rename, filter, share or delete.
   (#356, #358, #359)
-- **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a todo item.
+- **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
   (#350, #359)
 - **Keyword filters match whole words and phrases, ignoring case, in the title, page title and excerpt**, never the full content (lists don't load it, and it's unbounded).
   A term matches where the characters just before and after it aren't letters or digits, so terms like `C++`, `C#`, `.NET` and `#hashtag` work (symbols are matched literally), and `AI` still matches "#AI" but not "said".
   Accepted: `C` alone also matches "C++"; counting symbols as letters would stop `AI` matching "#AI".
   A term needs a letter or digit.
   Any term matches; leave-out wins.
-  Plain matching only: smarter matching belongs with related articles (todo).
+  Plain matching only: smarter matching belongs with related articles (backlog).
   (#360)
 - **Audio or video means an enclosure** (`articles.media_type`), not a video embedded in the HTML.
   (#359)
 - **Home shows every feed you subscribe to and can't be edited; there's no muting.** To keep a noisy feed out of view, make a timeline that leaves it out.
   Muting on Home (#362, not built) was dropped: a feed missing from the main view, with the reason only on its Edit page, raises "why don't I see X?" with no answer on the page, and it would have been a second way to filter beside the timeline form.
   Home has no `timelines` row.
-  The cost: `/` always opens on Home, so someone who reads a filtered timeline first taps its tab each visit (a todo item, "Start on a chosen timeline").
+  The cost: `/` always opens on Home, so someone who reads a filtered timeline first taps its tab each visit (a backlog item, "Start on a chosen timeline").
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280.
   (#356)
 - **The form stores only what has an effect.** With Show set to all feeds, the tags and feeds ticked under Show are dropped on save; a tag or feed both shown and left out is stored as left out; IDs that aren't the user's are ignored.
@@ -370,7 +370,7 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   (#381)
 - **Public routes are a deliberate exception** to "Search, site pages and lookups are login-only" (Feed discovery): their owner opted in.
 - **Shared timelines aren't listed in Search** for now: their names and descriptions would be the first user-written text shown to strangers, which brings spam, impersonation and reporting.
-  A todo item.
+  A backlog item.
 - **The privacy policy says what's kept and what sharing publishes**, in the same PR (#381).
 
 ### Cross-user use (later)
@@ -378,7 +378,7 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Stars and tags may later feed anonymous totals across users**, e.g. "people who starred this also starred…" or a feed's usual tags as its category.
   Only as aggregates above a minimum count, never traceable to one person, and after a privacy policy update.
   The tag hint says "Only you see your tags", which stays true; it doesn't promise the data is never used.
-  It would relax "no subscriber counts" (Subscriptions) for aggregates only, when planned (see "Related articles" in todo.md).
+  It would relax "no subscriber counts" (Subscriptions) for aggregates only, when planned (see "Related articles" in backlog.md).
   The data is shaped for it now: tags on subscriptions add up per feed, and stars are on articles with `starred_at`, matched across copies by `canonical_url`.
 
 ## Enrichment
@@ -387,11 +387,11 @@ Planned in #309 (issues #298, #306, #307).
 
 - **Articles missing an image, title or excerpt get their web page fetched once**, in the background, for its `og:image` (else `twitter:image`), `og:title` (else `<title>`) and description.
   Articles complete from their feed cost nothing.
-  No full text (an on-demand "Load full article" is a todo item, never automatic: storage, failed extractions, and the copyright question of storing publishers' text) and no AI.
+  No full text (an on-demand "Load full article" is a backlog item, never automatic: storage, failed extractions, and the copyright question of storing publishers' text) and no AI.
 - **Enriched values have their own `page_*` columns** and only fill gaps: the feed's own image, title and excerpt always win.
   `saveArticles` overwrites the feed's fields on every changed fetch, so enrichment never writes them.
 - **How far back:** a feed's first save (a lookup or an import) queues only its 20 newest articles, at a lower priority than new arrivals; after that, every new article that qualifies.
-  Older articles wait for a low-priority backlog queue (a todo item, for future search and related-article features).
+  Older articles wait for a low-priority backlog queue (a backlog item, for future search and related-article features).
 - **Its own queue table (`enrich_jobs`) and runner**, one worker by default.
   Jobs are only claimed for feeds someone subscribes to, as refresh only fetches subscribed feeds, so a looked-up site nobody follows costs no page fetches.
 - **Polite, with a retry story:** one request at a time through `internal/fetch`; a network error, 429 or 5xx is retried after 1 hour, then 6, then given up; any other 4xx or a non-HTML response is given up at once, as is a fetch `internal/fetch` refuses (a blocked address, a body over 5 MiB, too many redirects), which a retry wouldn't change (#306).
@@ -411,7 +411,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   - Only PNG, JPEG, GIF and ICO up to 256 KiB, served with a sandboxing CSP and `nosniff`.
     Never SVG, which could run script from our origin; no WebP for now (its size needs `golang.org/x/image`).
   - At least 32 px on the shorter side and roughly square, else the letter stays: a 16 px favicon stretched to 40 px looks worse than the letter.
-    Generated avatars for those sites are a todo item.
+    Generated avatars for those sites are a backlog item.
   - Checked by their own runner soon after a site is created, then about every 30 days for sites with subscribers, with a conditional request so an unchanged icon costs almost nothing.
     A failed check keeps the current icon; it's removed only when the site's page loads and none of its icons is usable.
   - Site and feed avatars become rounded squares, icon or letter, since most icons are designed as squares.
@@ -426,7 +426,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 Planned in #187 (issues #182–#186).
 
 - **In-memory rate limits** (`internal/server/ratelimit.go`) are enough for one instance; they reset on restart.
-  Whether to keep them long term is a todo item.
+  Whether to keep them long term is a backlog item.
 - **IPv6 clients are keyed by their /64**, since one client usually controls a whole /64.
 - **A limited login or signup re-renders its form with 429** and `Retry-After`, keeping the email filled in.
   The generic 429 page is only for lookups.
@@ -480,7 +480,7 @@ In these flows, trade-offs favor the user's experience.
 - **The email is how you log in and how we reach you, and it's never shown to other people.** You're shown by your name and a letter avatar.
   No usernames until something public or social needs one: they bring "taken" errors at signup, squatting, and broken links on renames.
 - **No credentials table yet.** The password hash stays on `users`.
-  Passkeys (a todo item) add their own table, one user to many passkeys, and make `hashed_password` nullable.
+  Passkeys (a backlog item) add their own table, one user to many passkeys, and make `hashed_password` nullable.
   Revisit before production if Google or Apple sign-in is planned.
 - **The name stays required at signup** (#261): it's what we call you in emails.
   One field, what you'd like to be called, with no first/last split (which fails for many names); at most 100 characters, trimmed.
@@ -501,7 +501,7 @@ In these flows, trade-offs favor the user's experience.
 - **Passwords: 8 to 256 characters, not a common password, not your email** (#256), normalized to NFKC.
   No composition rules or expiry.
   NIST's 15-character minimum for password-only login was considered; the common-password list gets most of its benefit with less friction.
-  Checking Have I Been Pwned is a todo item.
+  Checking Have I Been Pwned is a backlog item.
 - **Re-enter your password to change your email or password, or to delete your account** (#263, #266, #268).
   No "sudo mode" window that skips it for a while.
 - **Account deletion is immediate** (#268), after your password, with no grace period: it's rare and deliberate, and a pending state adds a scheduled job and doubt about whether the data is gone.
@@ -513,7 +513,7 @@ In these flows, trade-offs favor the user's experience.
   Import: see "OPML import" under Subscriptions.
 - **Security emails:** password changed, email changed (to the old address), and account deleted.
   No "new login" alerts: they're noisy, and people learn to ignore them.
-- **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by configuration: Resend's free tier while testing, Amazon SES later (a todo item).
+- **Email goes over SMTP behind `mail.Sender`** (#259), so the provider changes by configuration: Resend's free tier while testing, Amazon SES later (a backlog item).
   Without an SMTP host, emails are logged instead, in development only; production refuses to start without one, since emails carry one-time links.
   Links use `-base-url`, never the request's `Host` header.
 - **An outbox table, sent by a background worker** (#260), so pages don't wait on the provider and failures retry.

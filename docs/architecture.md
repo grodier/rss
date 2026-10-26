@@ -421,7 +421,7 @@ The other packages test against fakes of their own interfaces, and use `httptest
 ## Deployment
 
 Production runs on Render since #214.
-Why this setup is under "Deployment" in [decisions.md](decisions.md); the remaining work is in "Next up" in [todo.md](todo.md).
+Why this setup is under "Deployment" in [decisions.md](decisions.md); the remaining work is in "Next up" in [backlog.md](backlog.md).
 Update this section as it lands.
 
 **Container image.** The `Dockerfile` builds `www` in a `golang` stage (the version in `go.mod`) as a static binary (`CGO_ENABLED=0`) and copies it into `gcr.io/distroless/static-debian12:nonroot`, which has the CA certificates feed fetching needs and runs as a non-root user.

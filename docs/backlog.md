@@ -1,4 +1,4 @@
-# TODO
+# Backlog
 
 Open work only: what's next, work that has no GitHub issue yet, and the Performance watchlist.
 Items marked "needs planning" are too large or open-ended to hand to an agent as-is; plan them first and split them into issues.

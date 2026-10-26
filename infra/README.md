@@ -143,7 +143,7 @@ Re-run it if it was an apply you still want.
 
 ### Changing the web service
 
-Until the provider is upgraded (a todo item), an apply that changes `render_web_service.rss` fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).
+Until the provider is upgraded (a backlog item), an apply that changes `render_web_service.rss` fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).
 Plans aren't affected.
 Before approving such an apply:
 

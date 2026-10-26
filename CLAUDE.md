@@ -66,7 +66,7 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
 - `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`
-- `docs`: architecture, feature walkthroughs, decisions and todo (see "Docs")
+- `docs`: architecture, feature walkthroughs, decisions and backlog (see "Docs")
 
 ## Docs
 
@@ -80,12 +80,12 @@ Update docs in the same PR as the code or plan they describe.
 | `docs/architecture.md` | Glossary, the process, packages and third-party modules, middleware and routes, schema, background workers, outbound HTTP, security measures and rate limits, frontend | You add, remove or rename a package, module, route, middleware, table or column, worker, rate limit or security measure, or change how components connect or start |
 | `docs/features.md` | One section per feature: the flow, the files and symbols to read in order, its tests, and its decisions section | A feature ships or its flow, files or symbols change. A user-visible capability with its own flow gets a new section; anything else extends the closest one |
 | `docs/decisions.md` | Decisions with their reasons and issue numbers, by area | Planning settles a question (add it under the area's section, citing the planning issue or PR); a PR makes a choice later work must respect; a PR deliberately changes a decision (edit it and say so in the PR description) |
-| `docs/todo.md` | "Next up", planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item and its "Next up" line); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
+| `docs/backlog.md` | "Next up", planned work that has no issue, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it; list the issue in "Next up" if it's soon); work ships (delete its item and its "Next up" line); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
 | `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
 
-- A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `todo.md`, its performance risks in the watchlist, and the issue order in "Next up".
+- A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `backlog.md`, its performance risks in the watchlist, and the issue order in "Next up".
   It doesn't describe unbuilt code in `architecture.md` or `features.md`.
-- An implementation PR updates `architecture.md` and `features.md` for what it builds, and removes what it finishes from `todo.md`.
+- An implementation PR updates `architecture.md` and `features.md` for what it builds, and removes what it finishes from `backlog.md`.
 - When you rename or remove a symbol, file, route or docs section, grep for the old name in the docs and the code: `grep -rn OldName docs internal cmd README.md CLAUDE.md`.
 
 ## Code conventions
@@ -155,7 +155,7 @@ Update docs in the same PR as the code or plan they describe.
 - Branch from the latest `main`.
   Before opening a PR, merge the latest `main` into your branch and re-run the checks.
 - Keep PRs scoped to their issue.
-  Note unrelated problems in the PR description (or add them to `docs/todo.md`); don't fix them in the same PR.
+  Note unrelated problems in the PR description (or add them to `docs/backlog.md`); don't fix them in the same PR.
 - Update the docs the change affects in the same PR (see "Docs").
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository.
@@ -166,7 +166,7 @@ Update docs in the same PR as the code or plan they describe.
 ## Finding work
 
 GitHub issues are the source of truth for scoped tasks.
-`docs/todo.md` has "Next up" (what to do, in which order), planned work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
+`docs/backlog.md` has "Next up" (what to do, in which order), planned work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
 Before working on a feature, read its section in `docs/features.md` (the flow and where the code is) and in `docs/decisions.md` (what's decided and why, so you don't reopen it); `docs/architecture.md` has the overall shape.
 
 ## Writing issues
@@ -181,6 +181,6 @@ Issues are written for an implementer with no context from the planning conversa
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).
 - Performance risks: when planning, look at what the planned work could cost as data and traffic grow (queries that can't use an index, unpaginated lists, writes on page views, polling, per-row loops, unbounded tables).
-  Add each risk to the Performance watchlist in `docs/todo.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix.
+  Add each risk to the Performance watchlist in `docs/backlog.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix.
   Don't fix risks early, but don't leave them unrecorded.
   A PR that adds a risk the plan missed adds it to the watchlist too.

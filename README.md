@@ -142,6 +142,11 @@ Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
 `make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`.
 `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
 
+`make db/loadseed` seeds the local database at realistic scale (1,000 feeds, two years of articles, a user with 300 subscriptions) with `tools/loadseed`, then prints how long the timeline, starred, shared and feed queries take, with their plans.
+`make db/loadseed/measure` prints the report again without reseeding.
+Both need the local database (`make db/start` and migrations first); the tool refuses to run unless the database's name ends in `_dev` or `_test`.
+Run `go run ./tools/loadseed -h` for its flags (sizes, prefix, random seed).
+
 ## Tests
 
 ```sh

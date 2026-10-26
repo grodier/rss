@@ -32,6 +32,7 @@ go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, 
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
 go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
+make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
 make db/migrations/new name=<name>       # new migration (only once in production)
 docker build -t rss .                    # build the container image (or: make docker/build)
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
@@ -63,6 +64,7 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates, emails and static files
 - `internal/validator`: form validation
+- `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
 - `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/net/html"
+
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -607,6 +609,96 @@ func TestArticleHandlerStarred(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
+}
+
+// TestShareButton checks the Share button on a row and on the article page:
+// for an article with a canonical URL, a hidden icon-only button carrying the
+// URL and the title, between the Star and Save forms; for one without, no
+// button and Star and Save unchanged.
+func TestShareButton(t *testing.T) {
+	row := func(t *testing.T, a rss.Article) string {
+		t.Helper()
+		a.ID = testArticleID
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				return []rss.ArticleWithFeed{{Article: a, Feed: rss.Feed{ID: "feed-1", Title: "Feed One"}}}, nil
+			},
+		}})
+		return getHome(t, s, "/", true).Body.String()
+	}
+	page := func(t *testing.T, a rss.Article) string {
+		t.Helper()
+		return serveArticle(t, articleServer(t, a, nil, nil, nil), testArticleID).Body.String()
+	}
+
+	for _, surface := range []struct {
+		name   string
+		render func(*testing.T, rss.Article) string
+	}{
+		{"row", row},
+		{"article page", page},
+	} {
+		t.Run(surface.name, func(t *testing.T) {
+			for _, tt := range []struct {
+				name      string
+				article   rss.Article
+				wantTitle string // "" for no Share button
+				rawTitle  string // how data-share-title is written in the HTML, if set
+			}{
+				{"canonical URL", rss.Article{Title: "A post", CanonicalURL: "https://example.com/post"}, "A post", ""},
+				{"no canonical URL", rss.Article{Title: "A post", URL: "not a url"}, "", ""},
+				{"title escaped", rss.Article{Title: `"Quotes" & <tags>`, CanonicalURL: "https://example.com/post"}, `"Quotes" & <tags>`, `data-share-title="&#34;Quotes&#34; &amp; &lt;tags&gt;"`},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					body := surface.render(t, tt.article)
+					if tt.rawTitle != "" {
+						assertBodyContains(t, body, tt.rawTitle)
+					}
+					doc, err := html.Parse(strings.NewReader(body))
+					if err != nil {
+						t.Fatal(err)
+					}
+					bars := findAll(doc, func(n *html.Node) bool { return n.Data == "div" && hasClass(n, "article-actions") })
+					if len(bars) != 1 {
+						t.Fatalf("found %d .article-actions, want 1", len(bars))
+					}
+					var got []string
+					var share *html.Node
+					for c := bars[0].FirstChild; c != nil; c = c.NextSibling {
+						if c.Type == html.ElementNode {
+							got = append(got, c.Data+"."+attr(c, "class"))
+							if hasClass(c, "share-button") {
+								share = c
+							}
+						}
+					}
+					want := []string{"form.star-form", "form.save-form"}
+					if tt.wantTitle != "" {
+						want = []string{"form.star-form", "button.share-button", "form.save-form"}
+					}
+					if !slices.Equal(got, want) {
+						t.Fatalf("actions = %v, want %v", got, want)
+					}
+					if share == nil {
+						return
+					}
+					for key, want := range map[string]string{
+						"type":             "button",
+						"aria-label":       "Share",
+						"data-share-url":   "https://example.com/post",
+						"data-share-title": tt.wantTitle,
+					} {
+						if got := attr(share, key); got != want {
+							t.Errorf("Share button %s = %q, want %q", key, got, want)
+						}
+					}
+					if !hasAttr(share, "hidden") {
+						t.Error("Share button isn't hidden")
+					}
+				})
+			}
+		})
+	}
 }
 
 func postSave(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, returnTo string) *httptest.ResponseRecorder {

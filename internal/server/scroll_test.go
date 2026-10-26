@@ -137,6 +137,47 @@ func TestToggleButtonMarkup(t *testing.T) {
 	}
 }
 
+// TestShareButtonMarkup checks the markup app.js's Share buttons rely on:
+// each row of an article with a canonical URL has one hidden
+// button[data-share-url] with its URL and a data-share-title.
+func TestShareButtonMarkup(t *testing.T) {
+	items := timelineItems(2)
+	for i := range items {
+		items[i].Article.CanonicalURL = fmt.Sprintf("https://example.com/%d", i)
+	}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
+		listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			return items, nil
+		},
+	}})
+	doc, err := html.Parse(strings.NewReader(getHome(t, s, "/", true).Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rows := findAll(doc, func(n *html.Node) bool { return n.Data == "article" && hasClass(n, "article-row") })
+	if len(rows) != len(items) {
+		t.Fatalf("found %d rows, want %d", len(rows), len(items))
+	}
+	for i, row := range rows {
+		buttons := findAll(row, func(n *html.Node) bool { return n.Data == "button" && hasAttr(n, "data-share-url") })
+		if len(buttons) != 1 {
+			t.Errorf("row %d: found %d button[data-share-url], want 1", i, len(buttons))
+			continue
+		}
+		b := buttons[0]
+		if got, want := attr(b, "data-share-url"), items[i].Article.CanonicalURL; got != want {
+			t.Errorf("row %d: data-share-url = %q, want %q", i, got, want)
+		}
+		if got, want := attr(b, "data-share-title"), items[i].Article.DisplayTitle(); got != want {
+			t.Errorf("row %d: data-share-title = %q, want %q", i, got, want)
+		}
+		if !hasAttr(b, "hidden") {
+			t.Errorf("row %d: Share button isn't hidden", i)
+		}
+	}
+}
+
 // toggleFormMarkup is what app.js reads from a Save or Star form.
 type toggleFormMarkup struct {
 	Action   string // the form's action

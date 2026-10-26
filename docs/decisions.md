@@ -178,6 +178,17 @@ Planned in #163 (issues #147–#162).
   Duplicates are collapsed at query time on `canonical_url`, keeping the earliest arrival, with "Also in" on the row.
   Feed pages show every copy.
   (#154, #162)
+- **Timelines read each followed feed's newest entries, then merge them** (#388, #404).
+  A page reads at most a page of entries from each subscribed feed and keeps the newest, so its cost follows the number of feeds followed (about 0.1 ms each at #388's scale), not how much history is kept.
+  Copies are still collapsed at query time, but ingest flags articles that have a copy (`has_copies`, set and never cleared), so only those get the earlier-copy check; a stale flag costs a lookup, never a wrong result.
+  Chosen over a per-reader timeline table, which measured faster (under 1 ms) but stores a row per reader per article, needs a backfill job on every subscribe and import, and must repair copies when someone unsubscribes; it's in backlog.md for when the per-feed cost shows.
+  It doesn't wait for the article-retention decision, since its cost doesn't depend on history; retention is decided before a per-reader table, whose size it bounds.
+- **JIT is off for the app's database connections** (#404).
+  Postgres compiles queries whose estimated cost is high, which added 20–70 ms to each timeline query in #388 and saves nothing on queries this size.
+  It's set per connection in `psql.OpenDB`, so production, dev and CI match without an owner step.
+- **Word filters will use a full-text index, not trigrams** (#388).
+  On #388's seed a `pg_trgm` index was 127 MB (a quarter of `articles`) and didn't help common words, while a `simple` full-text index was 26 MB and took a rare-word timeline from ~0.9 s to ~50 ms.
+  The exact word match stays as the final check, so results don't change.
 - **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
   The whole card links to the in-app article page.
   Feed pages leave out the avatar and name.

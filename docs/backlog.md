@@ -153,6 +153,8 @@ Each with when it pays off:
   Read state doesn't drive it (the timeline isn't an inbox), so a time- or count-based rule works (e.g. keep 6 months, or the newest N per feed), with `reads` rows deleted along with their articles (`ON DELETE CASCADE`).
   Before launch, weigh deleting against keeping: storage and backup cost and the "Articles grow without bound" watchlist entry on one side; the value of a long article archive (search, history, business uses of the data) and its copyright and privacy implications on the other.
   Saved articles (#299) must survive whatever rule is chosen: deleting an article cascades to its `saves` rows.
+  Decide it before "A timeline table per reader" (under Reading), whose size it bounds.
+  For scale: #388's seed takes about 1 KB per article on disk with `content` empty, so real full-text articles take several times that.
 - [ ] **Operational visibility.**
   An admin page or metrics (due backlog, failure rate, 304 rate).
   When the app runs somewhere the logs aren't at hand.
@@ -198,6 +200,16 @@ Each with when it pays off:
   Search across every article in your subscriptions, not just Saved: "that post I read last month".
   Postgres full-text search (`tsvector` with a GIN index) over the title, page title and excerpt, scoped to the user's feeds; whether it covers the full content too is a storage and copyright question.
   Plan after "Article retention" (under Feed ingestion), which decides how far back there is to search; it would also replace the Saved search's `ILIKE` ("Saved search scans with `ILIKE`" in the watchlist).
+- [ ] **A timeline table per reader (needs planning).**
+  One shared table with a small row per reader per article in the feeds they follow, written when the article arrives, with copies collapsed on write (as Tiny Tiny RSS, Miniflux and Mastodon do).
+  Home is then one index lookup: 0.5–0.9 ms on any page at #388's scale, against ~30 ms for #404's per-feed query, and it stops growing with the number of feeds followed.
+  Storage: about 225 bytes per entry, growing with articles × followers: 69 MB (and ~35 MB a year) for #388's heavy reader with 300 feeds, ~4 MB a year for a reader with 100 ordinary feeds.
+  Subscribing and importing must backfill the feed's existing articles (4.8 s for 300 feeds of two years), in a background job like imports, so a new feed's articles appear a few seconds late, and the job competes with other queries while it runs.
+  Ingest writes a row per follower for every new article; unsubscribing deletes rows and promotes the next copy when the feed holding the first one goes; and the rows are a derived copy that bugs can make drift, so it needs a rebuild tool.
+  It doesn't speed up word filters (860 ms measured).
+  A cheaper version keeps only each reader's recent entries (Mastodon keeps a few hundred) and serves older pages with #404's query.
+  Decide "Article retention" (under Feed ingestion) first: it bounds this table's size.
+  Only when timelines get slow again after #404 (its watchlist entry for the cost per followed feed).
 - [ ] **AI-assisted titles and summaries.**
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
   Deferred from #306.
@@ -280,6 +292,15 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **Start on a chosen timeline.**
   A setting for which tab `/` opens, for someone who reads a filtered timeline (say, everything but a news wire) more than Home, which can't be edited (see "Timelines" in decisions.md).
   When someone asks.
+- [ ] **Word filters from a full-text index.**
+  Word filters (#360) check the text of every article in the reader's feeds: ~0.9 s at #388's scale, and a shared word timeline pays it on every poll of its feed.
+  Store each article's words as a `tsvector` (`simple` dictionary, so no stemming: "run" doesn't match "running") with a GIN index, find candidates with it, and keep today's exact match (`wordsPattern`) as the final check, so results don't change.
+  Measured on #388's seed: rare words ~0.9 s → ~50 ms; very common words (in a quarter of articles) only ~1.0 → 0.4 s, since every match still gets sorted; a 26 MB index (about 3% on top of `articles`, growing with it) that every new article updates.
+  Today's text expression (`concat_ws`) can't be indexed because Postgres doesn't count it as immutable, so build the text with `||` (same result: the columns are never NULL).
+  Words with punctuation (`c++`, `node.js`) are split differently by the index, so they skip it and use the exact match alone.
+  If common words matter in practice, look at recent weeks first and widen only when a page isn't full.
+  The same index could serve "Search your articles" (under Reading).
+  Plan after #404, so it's measured against the new timeline query.
 - [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures.
   A flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos; decide with "Measure embeds and media".
 
@@ -479,14 +500,14 @@ Pages and queries:
   Page 20 costs the same (980 ms), because the cursor applies only after the whole history is collapsed and joined.
   With 30 subscriptions (37k articles) it's still 205 ms and the same full scan, so the cost grows with the user's history and the table's size, not with the page.
   The signal is met.
-  *Fix:* a `LATERAL` top-N per subscribed feed merged in the query, or a per-user timeline table filled at ingest.
+  *Fix:* #404 (each feed's newest entries, merged); if the per-feed cost shows later, "A timeline table per reader" under Reading.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).
   A restrictive filter (one quiet tag, a rarely matched keyword, quiet posters) still makes `ListTimeline` collapse copies over all the matching subscriptions' articles, and keyword matches (`~*` over title, page title and excerpt) can't use an index, so a page that matches few articles reads many to fill 30 rows.
   *Signal:* `/timelines/{id}` p95 above `/`'s, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
   *Measured 2026-10-26* (#388, same seed): page 1 of every filtered timeline reads all 748k articles (about 62,700 buffers, 72,300 for Words) to return 31: Tag only (one tag of 5 weekly feeds, 611 articles) 258 ms, Quiet posters 267 ms, Media 160 ms, Words (3 words in 1% of titles) 898 ms.
   For Tag only, the planner estimates 150 matching subscriptions instead of 5 (the tag condition is an `OR` with an `EXISTS` inside `COALESCE`), so it scans the table rather than the 5 feeds' index entries; for Words, the `~*` over every row is most of the time.
   The signal is met.
-  *Fix:* the per-user timeline table above; for words, a `pg_trgm` or full-text index on the matched text, or bounding the scan to recent articles.
+  *Fix:* #404 for tags, posting rates and media (prototyped at 2–41 ms); for words, "Word filters from a full-text index" under Filtering and timelines.
 - [ ] **Timeline tabs on every Home view** (#356).
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.
   *Signal:* it shows up in `pg_stat_statements` totals.
@@ -519,6 +540,10 @@ Pages and queries:
   Opening an article page, and each click through to the original, runs an `INSERT … ON CONFLICT DO NOTHING` on `reads`.
   *Signal:* `MarkRead` in `pg_stat_statements` totals, or lock waits on `reads`.
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
+- [ ] **Copy flag on every save** (#404).
+  `saveArticles` runs one more statement per save: an indexed `UPDATE` that flags the saved articles' copies by `canonical_url`.
+  *Signal:* `saveArticles` slower in the refresh logs, or that `UPDATE` in `pg_stat_statements` totals, especially for feeds that resend many edited items.
+  *Fix:* only check the URLs of inserted rows and of updates that changed `canonical_url`.
 - [ ] **Timeline marks on every timeline view** (#397).
   Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and each time a timeline page is hidden its beacon upserts that row, so an active reader writes it every few minutes.
   *Signal:* `MarkSeen` in `pg_stat_statements` totals, or bloat on `timeline_marks` from frequent updates of the same rows.
@@ -550,7 +575,7 @@ Data growth:
   *Signal:* timeline queries slow for users with many subscriptions or overlapping feeds.
   *Measured 2026-10-26* (#388): for 300 subscriptions, Home sorts all 323k subscribed articles on every page to collapse copies, spilling 15,723 temp blocks (123 MB) to disk at the default `work_mem` of 4 MB; collapsing takes about 530 ms of page 1's 1,068 ms.
   The signal is met.
-  *Fix:* precompute per-user timeline entries (the same table as "Timeline query merges many feeds").
+  *Fix:* #404 (copies flagged at ingest, so only flagged articles get the earlier-copy check); "A timeline table per reader" under Reading would collapse them on write.
 - [ ] **`reads` grows with every article read** (#156).
   One row per user per article opened, kept until the article is deleted.
   *Signal:* `reads` table and index size.

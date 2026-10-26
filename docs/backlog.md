@@ -68,6 +68,15 @@ The decisions are under "Accounts" in decisions.md.
   What a new account sees after signup: today, an empty timeline pointing to Search and to OPML import.
   Perhaps suggested sites or a short tour.
 
+## Plans and billing
+
+- [ ] **Paid plans and billing (needs planning before launch).**
+  What's free and what's paid, a payment provider (e.g. Stripe), what happens when a subscription lapses, and receipts and refunds.
+  Limits that already exist (20 timelines, 1,000 feeds an import, how often feeds are fetched) may become plan limits, so plan this before features depend on them.
+  Selling inside an iOS app means Apple's in-app purchase and its 15–30% cut, under rules that have been changing (linking out to pay on the web): one common pattern is to sell on the web and let the app only log in.
+  Decide that with the native shell (under Mobile), and before pricing, since it changes the margins.
+  The privacy policy and terms need updating for payments and the processor.
+
 ## Deployment
 
 - [ ] **Upgrade `render-oss/render` once its digest fix ships.**
@@ -169,6 +178,9 @@ Each with when it pays off:
   This is for browsing a site's feeds in context.
   It isn't a way to organise subscriptions (no folders or pinned feeds).
   Open question: how it relates to the standalone feed page.
+- [ ] **Newsletters by email (needs planning).**
+  Each user gets an address that turns the newsletters sent to it into a feed they subscribe to, as Feedbin and Inoreader do.
+  Needs receiving email (an inbound webhook from the email provider, or Email Routing to a worker), a way to create feeds that discovery didn't find, spam and size limits, and sanitizing email HTML, which is messier than feed HTML.
 - [ ] **Names from OPML imports.**
   Other readers' exports carry each feed's name as the outline's `text`/`title`; an import could set it as the subscription's name (#342) when it differs from the feed's title.
   Deferred from #344.
@@ -182,6 +194,10 @@ Each with when it pays off:
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.
   Needs a failure story ("Couldn't load the article; read it on {site}").
+- [ ] **Search your articles (needs planning).**
+  Search across every article in your subscriptions, not just Saved: "that post I read last month".
+  Postgres full-text search (`tsvector` with a GIN index) over the title, page title and excerpt, scoped to the user's feeds; whether it covers the full content too is a storage and copyright question.
+  Plan after "Article retention" (under Feed ingestion), which decides how far back there is to search; it would also replace the Saved search's `ILIKE` ("Saved search scans with `ILIKE`" in the watchlist).
 - [ ] **AI-assisted titles and summaries.**
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
   Deferred from #306.
@@ -217,9 +233,10 @@ Each with when it pays off:
   Spotify, SoundCloud and Bandcamp players as click-to-play previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.**
   Style the blockquote that X, Bluesky and Mastodon embeds arrive as into a quote card with the author and a link, without loading their scripts.
-- [ ] **Share button.**
-  In the row's action bar, between Star and Save (#299, #349): the Web Share API on phones, else copy the article's link.
-  Its own small issue.
+- [ ] **Save any web page.**
+  Save a link that isn't in any feed to Saved, from a bookmarklet, a "Save a link" form on Saved, or the phone's share sheet (a share target added to the manifest from #394).
+  Read-later apps keep closing (Pocket in 2025), and Saved plus enrichment already shows a page's title, image and description.
+  Needs articles without a feed, or a feed per user for saved links: decide in planning.
 - [ ] **Measure untitled articles.**
   Before investing in better titles, query the share of articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 / count(*) FROM articles`).
 - [ ] **Image proxy (needs planning).**
@@ -227,10 +244,9 @@ Each with when it pays off:
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
 - [ ] **Keyboard shortcuts.**
-  E.g. `j`/`k` to move between rows, `o` to open, `v` to open the original.
-- [ ] **"You were here" divider.**
-  A subtle marker in the timeline at your last visit (possible because positions never change).
-  No counts.
+  E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.
+  Single-key shortcuts must be possible to turn off (WCAG 2.1.4: they collide with screen readers and speech input), so plan an off switch in Settings, a typed column on `users`.
+  Deferred while planning #396 and #397; open questions are the letters for Star and Save (`s` meant star in older readers, but could read as Save).
 - [ ] **Unread filter.**
   Maybe never; it pulls toward the inbox model.
 - [ ] **Timezone setting and day headers.**
@@ -279,12 +295,33 @@ The decisions are under "Filtering and timelines" in decisions.md.
   A theme choice (light, dark, follow the system) on the Settings page (#261), applied as a `data-theme` attribute on `<html>` that redefines the color tokens.
   Stored as a typed column on `users`, not a key-value table ("Accounts" in decisions.md).
   The avatar tints (`.tone-1` to `.tone-6`) and the icon tile (#305) need dark variants too.
+  So does the `theme-color` meta tag (#394), with a `media` query for the system's dark mode.
   Reading preferences go here as well: text size, serif or sans, and line width on the article page (deferred from #295).
 - [ ] **Asset build step (needs planning).**
   Bundle and minify the CSS and JavaScript for production, writing content-hashed file names.
   Templates link assets through `asset` (#199), so only `asset` changes: it looks names up in the build's manifest instead of hashing files at startup, and every file under `/static` gets the immutable `Cache-Control`.
   This reverses the "no build step" decision ("Overall" in decisions.md, and CLAUDE.md), so planning it updates both.
   Pages must still work without JavaScript.
+
+## Mobile
+
+The plan, and why, is under "Mobile" in decisions.md; installing the web app is #394.
+
+- [ ] **Phone review pass.**
+  Every page on a phone, in the browser and installed (#394): tap targets, the bottom tab bar over long pages and forms, the keyboard covering inputs, wide tables and code, and anything under the status bar or the home indicator.
+  By hand, like the first error-state pass (#392), listing fixes as issues; best done right after #394 ships.
+- [ ] **Install hint.**
+  If testers don't find the browser's install, a short "Add rss to your home screen" note in Settings with the steps for iOS and Android.
+  Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).
+- [ ] **Offline reading.**
+  A service worker that keeps the recent timeline pages and the articles opened from them, so the installed app opens without a connection.
+  Needs a cache budget, what to show offline for everything else, and care that a logged-out or other user's page is never served from the cache (logged-in pages are `no-store` today).
+  When testers ask for it, or with the native shell.
+- [ ] **Native app shell (needs planning, shortly after launch).**
+  An iOS and Android app (Hotwire Native or Capacitor) around the server-rendered pages, with native navigation and share sheet, and native screens only where they pay off (the article reader first).
+  Plan with it: App Store review (guideline 4.2 rejects apps that are just a website, so it needs real native parts), in-app payments (under "Plans and billing"), Sign in with Apple (Apple requires it when other social logins are offered; see "Sign in with Google or Apple" under Accounts), and whether there are any push notifications at all: never "N new articles", which is the inbox the timeline isn't.
+- [ ] **Third-party client API.**
+  Not at launch (see "Mobile" in decisions.md); only on the signals there, starting with the Fever API.
 
 ## Error-state walkthrough (needs planning)
 
@@ -471,6 +508,10 @@ Pages and queries:
   Opening an article page, and each click through to the original, runs an `INSERT … ON CONFLICT DO NOTHING` on `reads`.
   *Signal:* `MarkRead` in `pg_stat_statements` totals, or lock waits on `reads`.
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
+- [ ] **Timeline marks on every timeline view** (#397).
+  Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and each time a timeline page is hidden its beacon upserts that row, so an active reader writes it every few minutes.
+  *Signal:* `MarkSeen` in `pg_stat_statements` totals, or bloat on `timeline_marks` from frequent updates of the same rows.
+  *Fix:* have `app.js` skip the beacon when the position hasn't changed since its last report, or report at most once a minute per page.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.

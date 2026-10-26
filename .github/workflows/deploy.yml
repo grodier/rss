@@ -1,9 +1,9 @@
 name: Deploy
 
-# Deploys the image CI built for a commit to the Render service, by digest.
-# CI calls it for every push to main; run it by hand with an earlier commit's
-# SHA to roll back (that doesn't undo migrations). See "Deploys" in
-# infra/README.md.
+# Deploys the images CI built for a commit to the Render service and the
+# backup cron job, by digest. CI calls it for every push to main; run it by
+# hand with an earlier commit's SHA to roll back (that doesn't undo
+# migrations). See "Deploys" in infra/README.md.
 on:
   workflow_call:
     inputs:
@@ -15,6 +15,8 @@ on:
       RENDER_API_KEY:
         required: true
       RENDER_SERVICE_ID:
+        required: true
+      RENDER_BACKUP_JOB_ID:
         required: true
   workflow_dispatch:
     inputs:
@@ -39,6 +41,7 @@ jobs:
       SHA: ${{ inputs.sha }}
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      RENDER_BACKUP_JOB_ID: ${{ secrets.RENDER_BACKUP_JOB_ID }}
     steps:
       # The tag only says which image; the deploy names the digest, so it runs
       # exactly the image CI built and tested.
@@ -109,3 +112,50 @@ jobs:
           done
           echo "::error::The deploy is live, but $url/healthcheck reports version '$version', not $SHA."
           exit 1
+
+      # Render pulls a cron job's image only when the job is deployed, so the
+      # backup job is deployed with every app deploy (and rolled back with it).
+      - name: resolve the backup digest
+        id: backup-digest
+        run: |
+          image=ghcr.io/grodier/rss-backup
+          if ! digest=$(docker buildx imagetools inspect "$image:sha-$SHA" --format '{{.Manifest.Digest}}'); then
+            echo "::error::No image $image:sha-$SHA. CI pushes one for every commit on main that passes its tests."
+            exit 1
+          fi
+          echo "ref=$image@$digest" >> "$GITHUB_OUTPUT"
+
+      # No health check: a cron job has none, and deploying it doesn't run it.
+      - name: deploy the backup job
+        env:
+          REF: ${{ steps.backup-digest.outputs.ref }}
+        run: |
+          render() {
+            curl -sS --fail-with-body -H "Authorization: Bearer $RENDER_API_KEY" -H 'Accept: application/json' "$@"
+          }
+          job=https://api.render.com/v1/services/$RENDER_BACKUP_JOB_ID
+
+          if ! resp=$(render -X POST -H 'Content-Type: application/json' \
+              -d "$(jq -n --arg ref "$REF" '{imageUrl: $ref}')" "$job/deploys") ||
+            ! id=$(jq -re .id <<<"$resp"); then
+            echo "$resp"
+            echo "::error::Render didn't return a deploy ID for the backup job. If it queued the deploy behind one already running, it still deploys afterwards; follow it in Render's dashboard."
+            exit 1
+          fi
+          echo "Deploying $REF ($id)"
+
+          while :; do
+            sleep 10
+            status=$(render --retry 3 "$job/deploys/$id" | jq -r .status)
+            case $status in
+              live)
+                break
+                ;;
+              build_failed | update_failed | canceled | deactivated)
+                echo "::error::The backup job's deploy ended with status $status; nightly backups keep running the previous image."
+                exit 1
+                ;;
+            esac
+            echo "Status: $status"
+          done
+          echo "Deployed \`$REF\` to the rss-backup cron job." >> "$GITHUB_STEP_SUMMARY"

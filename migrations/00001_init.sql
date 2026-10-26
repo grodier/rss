@@ -144,6 +144,18 @@ CREATE TABLE reads (
 
 CREATE INDEX reads_article_id_idx ON reads (article_id);
 
+-- Where each user's "You were here" divider goes (see rss.TimelineMark).
+-- One row per user, written by the timeline's beacon; no row until the
+-- first report.
+CREATE TABLE timeline_marks (
+    user_id UUID PRIMARY KEY
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    seen_up_to TIMESTAMPTZ NOT NULL, -- the newest timeline_at the user has had on screen
+    seen_at TIMESTAMPTZ NOT NULL,    -- when seen_up_to was last reported: the end of the latest visit so far
+    divider_at TIMESTAMPTZ           -- the divider of the visit seen_at belongs to; NULL during the first visit
+);
+
 -- Articles a user saved to keep. Saving covers every copy of an article
 -- (same canonical_url); see psql.SaveRepository.
 CREATE TABLE saves (
@@ -410,6 +422,7 @@ DROP TABLE subscription_tags;
 DROP TABLE tags;
 DROP TABLE stars;
 DROP TABLE saves;
+DROP TABLE timeline_marks;
 DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;

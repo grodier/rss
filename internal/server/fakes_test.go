@@ -251,6 +251,8 @@ func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filte
 type fakeReadStore struct {
 	markReadFn       func(ctx context.Context, userID, articleID string) error
 	readArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
+	timelineMarkFn   func(ctx context.Context, userID string) (rss.TimelineMark, error)
+	markSeenFn       func(ctx context.Context, userID string, upTo time.Time) error
 }
 
 func (f *fakeReadStore) MarkRead(ctx context.Context, userID, articleID string) error {
@@ -265,6 +267,20 @@ func (f *fakeReadStore) ReadArticleIDs(ctx context.Context, userID string, artic
 		return map[string]bool{}, nil
 	}
 	return f.readArticleIDsFn(ctx, userID, articleIDs)
+}
+
+func (f *fakeReadStore) TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error) {
+	if f.timelineMarkFn == nil {
+		return rss.TimelineMark{}, nil
+	}
+	return f.timelineMarkFn(ctx, userID)
+}
+
+func (f *fakeReadStore) MarkSeen(ctx context.Context, userID string, upTo time.Time) error {
+	if f.markSeenFn == nil {
+		return nil
+	}
+	return f.markSeenFn(ctx, userID, upTo)
 }
 
 type fakeSubscriptionStore struct {

@@ -258,6 +258,7 @@ type articleRow struct {
 	Icon     string           // the URL of Feed's site icon, or "" for its letter
 	ReturnTo string           // where the row's Save and Star buttons send the user back to
 	Debug    *articleRowDebug // the row's debug line; nil unless debug mode is on
+	Divider  bool             // the "You were here" line goes above this row
 }
 
 // fillIcons sets Icon on each row whose feed's site has an icon. Icons are

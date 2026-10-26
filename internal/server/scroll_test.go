@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -83,6 +84,51 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 				t.Errorf("next href = %q, want %s?before=…", href, tt.nextPath)
 			}
 		})
+	}
+}
+
+// TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
+// and infinite scroll rely on: a timeline's first page puts data-seen-up-to
+// on .article-list itself, and the divider is a .timeline-divider directly
+// inside .article-list, so appending a later page's children in order keeps
+// it in place.
+func TestYouWereHereMarkup(t *testing.T) {
+	items := timelineItems(3)
+	s := newTestServerWith(t, Services{
+		ReadService: &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
+			return rss.TimelineMark{SeenAt: time.Now(), DividerAt: items[1].Article.TimelineAt}, nil
+		}},
+		SaveService: &fakeSaveStore{},
+		ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			return items, nil
+		}},
+	})
+	doc, err := html.Parse(strings.NewReader(getHome(t, s, "/", true).Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lists := findAll(doc, func(n *html.Node) bool { return n.Data == "div" && hasClass(n, "article-list") })
+	if len(lists) != 1 {
+		t.Fatalf("found %d .article-list, want 1", len(lists))
+	}
+	if !hasAttr(lists[0], "data-seen-up-to") {
+		t.Errorf(".article-list has no data-seen-up-to")
+	}
+	var children []string
+	for c := lists[0].FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode {
+			children = append(children, attr(c, "class"))
+		}
+	}
+	want := []string{"article-row", "timeline-divider", "article-row", "article-row"}
+	if len(children) != len(want) {
+		t.Fatalf(".article-list children = %q, want classes %q", children, want)
+	}
+	for i, c := range children {
+		if !slices.Contains(strings.Fields(c), want[i]) {
+			t.Errorf("child %d class = %q, want %s", i, c, want[i])
+		}
 	}
 }
 

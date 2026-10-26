@@ -228,3 +228,130 @@ func TestReadRepository(t *testing.T) {
 		}
 	})
 }
+
+// timelineMarkRow reads userID's timeline_marks row; ok is false if there's
+// none.
+func timelineMarkRow(t *testing.T, db *sql.DB, userID string) (m rss.TimelineMark, dividerNull, ok bool) {
+	t.Helper()
+	var dividerAt sql.NullTime
+	err := db.QueryRow(`SELECT seen_up_to, seen_at, divider_at FROM timeline_marks WHERE user_id = $1`, userID).Scan(&m.SeenUpTo, &m.SeenAt, &dividerAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.TimelineMark{}, false, false
+	}
+	if err != nil {
+		t.Fatalf("select timeline_marks: %v", err)
+	}
+	m.DividerAt = dividerAt.Time
+	return m, !dividerAt.Valid, true
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestTimelineMarkNone(t *testing.T) {
+	db := psqltest.NewDB(t)
+	user := newTestUser(t, db)
+
+	m, err := NewReadRepository(db).TimelineMark(t.Context(), user)
+	if err != nil {
+		t.Fatalf("TimelineMark: %v", err)
+	}
+	if m != (rss.TimelineMark{}) {
+		t.Errorf("TimelineMark = %+v, want zero", m)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestMarkSeen(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewReadRepository(db)
+	ctx := t.Context()
+	user := newTestUser(t, db)
+	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
+
+	// The first report stores the position and when, with no divider yet.
+	if err := repo.MarkSeen(ctx, user, base); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	m, dividerNull, ok := timelineMarkRow(t, db, user)
+	if !ok || !m.SeenUpTo.Equal(base) || m.SeenAt.IsZero() || !dividerNull {
+		t.Fatalf("after the first report: %+v (divider NULL: %v, row: %v), want seen_up_to %v, seen_at set, divider_at NULL", m, dividerNull, ok, base)
+	}
+	got, err := repo.TimelineMark(ctx, user)
+	if err != nil {
+		t.Fatalf("TimelineMark: %v", err)
+	}
+	if !got.SeenUpTo.Equal(m.SeenUpTo) || !got.SeenAt.Equal(m.SeenAt) || !got.DividerAt.IsZero() {
+		t.Errorf("TimelineMark = %+v, want %+v", got, m)
+	}
+
+	// A later position in the same visit raises seen_up_to and keeps divider_at.
+	if _, err := db.Exec(`UPDATE timeline_marks SET divider_at = $2 WHERE user_id = $1`, user, base.Add(-time.Hour)); err != nil {
+		t.Fatalf("set divider_at: %v", err)
+	}
+	later := base.Add(10 * time.Minute)
+	if err := repo.MarkSeen(ctx, user, later); err != nil {
+		t.Fatalf("MarkSeen later: %v", err)
+	}
+	m, _, _ = timelineMarkRow(t, db, user)
+	if !m.SeenUpTo.Equal(later) || !m.DividerAt.Equal(base.Add(-time.Hour)) {
+		t.Errorf("after a later report: %+v, want seen_up_to %v and divider_at %v", m, later, base.Add(-time.Hour))
+	}
+
+	// An earlier position doesn't lower seen_up_to.
+	if err := repo.MarkSeen(ctx, user, base); err != nil {
+		t.Fatalf("MarkSeen earlier: %v", err)
+	}
+	if m, _, _ = timelineMarkRow(t, db, user); !m.SeenUpTo.Equal(later) {
+		t.Errorf("after an earlier report: seen_up_to = %v, want %v", m.SeenUpTo, later)
+	}
+
+	// A position in the future is stored as at most now.
+	if err := repo.MarkSeen(ctx, user, time.Now().Add(24*time.Hour)); err != nil {
+		t.Fatalf("MarkSeen future: %v", err)
+	}
+	if m, _, _ = timelineMarkRow(t, db, user); m.SeenUpTo.After(m.SeenAt) {
+		t.Errorf("after a future report: seen_up_to = %v, after seen_at %v", m.SeenUpTo, m.SeenAt)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestMarkSeenNewVisit(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewReadRepository(db)
+	ctx := t.Context()
+	user := newTestUser(t, db)
+	old := time.Now().Add(-2 * time.Hour).Truncate(time.Microsecond)
+
+	if err := repo.MarkSeen(ctx, user, old); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE timeline_marks SET seen_at = now() - interval '1 hour' WHERE user_id = $1`, user); err != nil {
+		t.Fatalf("set seen_at: %v", err)
+	}
+	if err := repo.MarkSeen(ctx, user, old.Add(time.Hour)); err != nil {
+		t.Fatalf("MarkSeen again: %v", err)
+	}
+
+	m, dividerNull, _ := timelineMarkRow(t, db, user)
+	if dividerNull || !m.DividerAt.Equal(old) {
+		t.Errorf("divider_at = %v (NULL: %v), want the old seen_up_to %v", m.DividerAt, dividerNull, old)
+	}
+	if !m.SeenUpTo.Equal(old.Add(time.Hour)) {
+		t.Errorf("seen_up_to = %v, want %v", m.SeenUpTo, old.Add(time.Hour))
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestTimelineMarkDeletedWithUser(t *testing.T) {
+	db := psqltest.NewDB(t)
+	user := newTestUser(t, db)
+	if err := NewReadRepository(db).MarkSeen(t.Context(), user, time.Now()); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+
+	if _, err := db.Exec(`DELETE FROM users WHERE id = $1`, user); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	if _, _, ok := timelineMarkRow(t, db, user); ok {
+		t.Errorf("the mark outlived its user")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/lib/pq"
@@ -82,4 +83,41 @@ func (r *ReadRepository) ReadArticleIDs(ctx context.Context, userID string, arti
 	}
 
 	return read, nil
+}
+
+// TimelineMark returns the user's mark, or a zero TimelineMark if the
+// timeline has never reported one.
+func (r *ReadRepository) TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error) {
+	stmt := `SELECT seen_up_to, seen_at, divider_at FROM timeline_marks WHERE user_id = $1`
+
+	var m rss.TimelineMark
+	var dividerAt sql.NullTime
+	err := r.DB.QueryRowContext(ctx, stmt, userID).Scan(&m.SeenUpTo, &m.SeenAt, &dividerAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.TimelineMark{}, nil // the first visit hasn't reported yet
+	}
+	if err != nil {
+		return rss.TimelineMark{}, err
+	}
+	m.DividerAt = dividerAt.Time
+	return m, nil
+}
+
+// MarkSeen records that the user has had the timeline position upTo on
+// screen. A report after rss.VisitGap without one starts a new visit: the
+// visit's divider becomes where the previous visit ended.
+func (r *ReadRepository) MarkSeen(ctx context.Context, userID string, upTo time.Time) error {
+	// A client-supplied position is never stored later than now, so a bad
+	// clock or a forged report can't hide future articles above the line.
+	stmt := `INSERT INTO timeline_marks (user_id, seen_up_to, seen_at)
+		VALUES ($1, LEAST($2, now()), now())
+		ON CONFLICT (user_id) DO UPDATE SET
+		    divider_at = CASE WHEN timeline_marks.seen_at <= now() - make_interval(secs => $3)
+		                      THEN timeline_marks.seen_up_to
+		                      ELSE timeline_marks.divider_at END,
+		    seen_up_to = GREATEST(timeline_marks.seen_up_to, EXCLUDED.seen_up_to),
+		    seen_at = now()`
+
+	_, err := r.DB.ExecContext(ctx, stmt, userID, upTo, rss.VisitGap.Seconds())
+	return err
 }

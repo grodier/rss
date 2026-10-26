@@ -296,15 +296,20 @@ The card image shows above the text unless `sanitize.ShowsImage` finds the conte
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows and swaps in the new pager.
+**"You were here."** A timeline's first page (not starred-only) carries its first row's `timeline_at` in `.article-list[data-seen-up-to]`, and `app.js` sends it to `POST /timeline/seen` with a beacon each time the page is hidden.
+`MarkSeen` keeps the newest position reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`).
+At render, `TimelineMark.Divider` picks the visit's divider, and `fillDivider` puts the line above the first row at or before it, only when something newer is above: an earlier row, or the previous page (the cursor).
+A store error renders the page without the line.
+
+**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
 Without JavaScript the link just works.
 
 **Start at:**
 
-1. `internal/server/home.go` (`renderTimeline`) and `cursor.go`.
+1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go`.
+3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineMark`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
 5. `partials/article_row.html` and `internal/ui/static/js/app.js`.
 

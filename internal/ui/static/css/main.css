@@ -975,8 +975,8 @@
     text-decoration: underline;
   }
 
-  /* Article actions: an icon-only Star and a labelled Save, in one row so
-     Share can join it. Under the card on rows, under the title on the
+  /* Article actions: icon-only Star and Share and a labelled Save, in one
+     row. Under the card on rows, under the title on the
      article page. */
   .article-actions {
     display: flex;
@@ -985,7 +985,8 @@
   }
 
   .save-button,
-  .star-button {
+  .star-button,
+  .share-button {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -1000,24 +1001,33 @@
     cursor: pointer;
   }
 
-  .star-button {
+  .star-button,
+  .share-button {
     padding: 0.375rem;
   }
 
+  /* The button's display would override hidden; app.js unhides it. */
+  .share-button[hidden] {
+    display: none;
+  }
+
   .save-button:hover,
-  .star-button:hover {
+  .star-button:hover,
+  .share-button:hover {
     background: var(--surface);
     color: var(--text);
   }
 
   .save-button:focus-visible,
-  .star-button:focus-visible {
+  .star-button:focus-visible,
+  .share-button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 
   .save-button .icon,
-  .star-button .icon {
+  .star-button .icon,
+  .share-button .icon {
     inline-size: 1.125rem;
     block-size: 1.125rem;
     stroke-width: 2;
@@ -1036,8 +1046,14 @@
   .save-button[aria-pressed="true"] .icon-bookmark,
   .save-button[aria-pressed="false"] .icon-bookmark-fill,
   .star-button[aria-pressed="true"] .icon-star,
-  .star-button[aria-pressed="false"] .icon-star-fill {
+  .star-button[aria-pressed="false"] .icon-star-fill,
+  .share-button[data-copied] .icon-share,
+  .share-button:not([data-copied]) .icon-check {
     display: none;
+  }
+
+  .share-button[data-copied] {
+    color: var(--accent);
   }
 
   .save-button[disabled],

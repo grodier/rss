@@ -18,8 +18,15 @@
 </form>
 {{end}}
 
-{{/* The actions on an article: an icon-only Star left of a labelled Save.
-     One group, so more actions (Share) can join it. */}}
+{{/* The Share button: icon-only, named by its aria-label. Rendered hidden:
+     app.js's "Share buttons" shows it and does the sharing, so it never
+     appears without JavaScript. Only for articles with a canonical URL. */}}
+{{define "share-button"}}
+{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}</button>{{end}}
+{{end}}
+
+{{/* The actions on an article: icon-only Star and Share left of a labelled
+     Save, in one group. */}}
 {{define "article-actions"}}
-<div class="article-actions">{{template "star-button" .}}{{template "save-button" .}}</div>
+<div class="article-actions">{{template "star-button" .}}{{template "share-button" .}}{{template "save-button" .}}</div>
 {{end}}

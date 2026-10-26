@@ -59,6 +59,52 @@
     }
   });
 
+  // Share buttons: button[data-share-url] (the share-button partial) is
+  // rendered hidden, since it needs JavaScript; show it. On click, open the
+  // share sheet with data-share-title and the URL where there is one, else
+  // copy the URL, set data-copied for 2 seconds (main.css swaps the icon for
+  // a check) and announce it. Takes a root so rows added to the page later
+  // can be enhanced too; the click is delegated.
+  const enhanceShare = (root) => {
+    for (const b of root.querySelectorAll("button[data-share-url]")) b.hidden = false;
+  };
+  enhanceShare(document);
+  let shareStatus;
+  const announce = (msg) => {
+    if (!shareStatus) {
+      shareStatus = document.createElement("p");
+      shareStatus.className = "visually-hidden";
+      shareStatus.setAttribute("aria-live", "polite");
+      document.body.append(shareStatus);
+    }
+    // Clear it first so the same message is announced again.
+    shareStatus.textContent = "";
+    setTimeout(() => { shareStatus.textContent = msg; }, 50);
+  };
+  document.addEventListener("click", async (e) => {
+    const button = e.target instanceof Element && e.target.closest("button[data-share-url]");
+    if (!button) return;
+    const url = button.dataset.shareUrl;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: button.dataset.shareTitle, url });
+        return;
+      } catch (err) {
+        if (err.name === "AbortError") return; // the reader closed the sheet
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      announce("Couldn't copy the link");
+      return;
+    }
+    button.dataset.copied = "";
+    clearTimeout(button.copiedTimer);
+    button.copiedTimer = setTimeout(() => { delete button.dataset.copied; }, 2000);
+    announce("Link copied");
+  });
+
   // Video embeds: figure.embed[data-embed] (sanitize's videoEmbed) holds a
   // link to the video. On a plain click, swap the link for the player, built
   // from the validated data-embed-id, never from a URL in the feed.
@@ -189,6 +235,7 @@
           list.append(row);
           localizeTimes(row);
           enhancePings(row);
+          enhanceShare(row);
           rows.observe(row);
         }
         const pager = link.closest(".pager");

@@ -324,6 +324,11 @@ Saving is quiet: no flash, and it doesn't mark the article read.
 The Star button sits next to Save and works the same way (`toggleAction`); `StarRepository` mirrors `SaveRepository`.
 Stars are private, with no counts; starred-only timelines list them (see "Timelines").
 
+**Share.** Between Star and Save, an icon-only Share button (the `share-button` partial) carries the article's `CanonicalURL` and `DisplayTitle`; an article without a canonical URL has none.
+It's rendered `hidden` and "Share buttons" in `app.js` shows it, so it never appears without JavaScript.
+A click opens the system share sheet (`navigator.share`) where there is one, else copies the link and announces "Link copied" in a polite live region.
+It never talks to the server: nothing about a share is recorded.
+
 **Saved page** (`/saved`). Modelled on the timeline: `ListSaved` returns the user's saves newest first, paged by `(saved_at, article_id)` (served by `saves_user_saved_at_idx`), and left-joins the user's subscriptions so a named feed shows its name.
 Unsaving from the page keeps the row until reload when JavaScript is on, so an accidental unsave can be undone in place.
 Search (`/saved?q=…`) trims `q` and cuts it to 200 runes, then matches it with `ILIKE` (`likePattern` escapes the wildcards) against the article's title, page title and excerpt, the feed's title and the user's name for it.
@@ -333,7 +338,7 @@ There's no count anywhere.
 
 1. `internal/server/articles.go` (`toggleAction` and the save and star handlers) and `saved.go`.
 2. `internal/psql/saves.go` and `stars.go`.
-3. `partials/save_button.html`, and "Save and Star buttons" in `app.js`.
+3. `partials/save_button.html`, and "Save and Star buttons" and "Share buttons" in `app.js`.
 
 **Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `internal/psql/saves_test.go`, `stars_test.go`.
 

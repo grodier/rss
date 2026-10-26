@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -404,6 +406,268 @@ func TestHomeHandlerTabs(t *testing.T) {
 		t.Cleanup(func() { timelines.listFn = nil })
 		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+}
+
+// dividerItems returns timeline items at the given positions, titled
+// "Article {hour}:{minute}".
+func dividerItems(at ...time.Time) []rss.ArticleWithFeed {
+	items := make([]rss.ArticleWithFeed, len(at))
+	for i, t := range at {
+		items[i] = rss.ArticleWithFeed{
+			Article: rss.Article{ID: fmt.Sprintf(timelineUUID, i), Title: "Article " + t.Format("15:04"), TimelineAt: t},
+			Feed:    rss.Feed{ID: "feed-1", Title: "Feed One"},
+		}
+	}
+	return items
+}
+
+// dividerAbove returns the titles of the rows the "You were here" line is
+// right above in body, in order.
+func dividerAbove(t *testing.T, body string) []string {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var above []string
+	for _, d := range findAll(doc, func(n *html.Node) bool { return hasClass(n, "timeline-divider") }) {
+		next := d.NextSibling
+		for next != nil && next.Type != html.ElementNode {
+			next = next.NextSibling
+		}
+		if next == nil || !hasClass(next, "article-row") {
+			t.Errorf("the divider isn't followed by a row")
+			continue
+		}
+		titles := findAll(next, func(n *html.Node) bool { return hasClass(n, "article-title") })
+		if len(titles) == 0 {
+			t.Fatalf("row without .article-title")
+		}
+		var text strings.Builder
+		for c := range titles[0].Descendants() {
+			if c.Type == html.TextNode {
+				text.WriteString(c.Data)
+			}
+		}
+		above = append(above, strings.TrimSpace(text.String()))
+	}
+	return above
+}
+
+func TestTimelineDivider(t *testing.T) {
+	at := func(hour, min int) time.Time { return time.Date(2026, 1, 1, hour, min, 0, 0, time.UTC) }
+	var items []rss.ArticleWithFeed
+	var mark rss.TimelineMark
+	var markErr error
+	markCalls := 0
+	reads := &fakeReadStore{timelineMarkFn: func(ctx context.Context, userID string) (rss.TimelineMark, error) {
+		markCalls++
+		if userID != "user-1" {
+			return rss.TimelineMark{}, errors.New("wrong user")
+		}
+		return mark, markErr
+	}}
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+		return items, nil
+	}}
+	s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, ArticleService: articles})
+	// withDivider is a mark whose current visit's divider is d.
+	withDivider := func(d time.Time) rss.TimelineMark {
+		return rss.TimelineMark{SeenUpTo: at(10, 0), SeenAt: time.Now().Add(-10 * time.Minute), DividerAt: d}
+	}
+
+	tests := []struct {
+		name    string
+		target  string
+		items   []rss.ArticleWithFeed
+		mark    rss.TimelineMark
+		markErr error
+		want    []string
+	}{
+		{"above the first row at or before the divider", "/", dividerItems(at(10, 0), at(9, 0), at(8, 0)), withDivider(at(9, 0)), nil, []string{"Article 09:00"}},
+		{"nothing new", "/", dividerItems(at(10, 0), at(9, 0), at(8, 0)), withDivider(at(10, 30)), nil, nil},
+		{"all new on this page", "/", dividerItems(at(10, 0), at(9, 0), at(8, 0)), withDivider(at(7, 0)), nil, nil},
+		{"a later page whose cursor is newer", "/?before=" + encodeCursor(rss.ArticleCursor{At: at(8, 0), ID: fmt.Sprintf(timelineUUID, 2)}),
+			dividerItems(at(7, 30), at(7, 0), at(6, 0)), withDivider(at(7, 0)), nil, []string{"Article 07:00"}},
+		{"a later page starting at the divider", "/?before=" + encodeCursor(rss.ArticleCursor{At: at(8, 0), ID: fmt.Sprintf(timelineUUID, 2)}),
+			dividerItems(at(7, 0), at(6, 0)), withDivider(at(7, 0)), nil, []string{"Article 07:00"}},
+		{"first visit", "/", dividerItems(at(10, 0), at(9, 0)), rss.TimelineMark{SeenUpTo: at(10, 0), SeenAt: time.Now()}, nil, nil},
+		{"a new visit moves it to where the last one ended", "/", dividerItems(at(11, 0), at(10, 0), at(9, 0)),
+			rss.TimelineMark{SeenUpTo: at(10, 0), SeenAt: time.Now().Add(-2 * time.Hour), DividerAt: at(9, 0)}, nil, []string{"Article 10:00"}},
+		{"no mark", "/", dividerItems(at(10, 0), at(9, 0)), rss.TimelineMark{}, nil, nil},
+		{"store error", "/", dividerItems(at(10, 0), at(9, 0)), rss.TimelineMark{}, errors.New("db down"), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items, mark, markErr = tt.items, tt.mark, tt.markErr
+			rr := getHome(t, s, tt.target, true)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rr.Code)
+			}
+			if got := dividerAbove(t, rr.Body.String()); !slices.Equal(got, tt.want) {
+				t.Errorf("divider above %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("starred-only timeline", func(t *testing.T) {
+		markCalls = 0
+		stars := &fakeStarStore{listStarredFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.StarredArticle, error) {
+			return starredItems(3), nil
+		}}
+		s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, StarService: stars,
+			TimelineService: userTimeline(rss.Timeline{Name: "Stars", Filter: rss.TimelineFilter{StarredOnly: true}})})
+		mark = withDivider(time.Now().Add(-24 * time.Hour))
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if got := dividerAbove(t, rr.Body.String()); got != nil {
+			t.Errorf("divider above %q, want none", got)
+		}
+		if markCalls != 0 {
+			t.Errorf("TimelineMark called %d times, want 0", markCalls)
+		}
+	})
+}
+
+func TestTimelineSeenUpTo(t *testing.T) {
+	first := time.Date(2026, 1, 1, 10, 0, 0, 123456789, time.FixedZone("EST", -5*3600))
+	var items []rss.ArticleWithFeed
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+		return items, nil
+	}}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles})
+	seenUpTo := func(t *testing.T, body string) (string, bool) {
+		t.Helper()
+		doc, err := html.Parse(strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		lists := findAll(doc, func(n *html.Node) bool { return hasClass(n, "article-list") && hasAttr(n, "data-seen-up-to") })
+		if len(lists) == 0 {
+			return "", false
+		}
+		return attr(lists[0], "data-seen-up-to"), true
+	}
+
+	t.Run("Home's first page", func(t *testing.T) {
+		items = dividerItems(first, first.Add(-time.Hour))
+		got, ok := seenUpTo(t, getHome(t, s, "/", true).Body.String())
+		if want := "2026-01-01T15:00:00.123456789Z"; !ok || got != want {
+			t.Errorf("data-seen-up-to = %q (present: %v), want %q", got, ok, want)
+		}
+	})
+
+	t.Run("a later page", func(t *testing.T) {
+		items = dividerItems(first, first.Add(-time.Hour))
+		target := "/?before=" + encodeCursor(rss.ArticleCursor{At: first.Add(time.Hour), ID: fmt.Sprintf(timelineUUID, 9)})
+		if got, ok := seenUpTo(t, getHome(t, s, target, true).Body.String()); ok {
+			t.Errorf("data-seen-up-to = %q, want none", got)
+		}
+	})
+
+	t.Run("an empty timeline", func(t *testing.T) {
+		items = nil
+		body := getHome(t, s, "/", true).Body.String()
+		if strings.Contains(body, "data-seen-up-to") {
+			t.Errorf("body has data-seen-up-to: %s", body)
+		}
+	})
+
+	t.Run("a starred-only timeline", func(t *testing.T) {
+		stars := &fakeStarStore{listStarredFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.StarredArticle, error) {
+			return starredItems(2), nil
+		}}
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, StarService: stars,
+			TimelineService: userTimeline(rss.Timeline{Name: "Stars", Filter: rss.TimelineFilter{StarredOnly: true}})})
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if got, ok := seenUpTo(t, rr.Body.String()); ok {
+			t.Errorf("data-seen-up-to = %q, want none", got)
+		}
+	})
+}
+
+func postTimelineSeen(t *testing.T, s *Server, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/timeline/seen", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.timelineSeenHandler)).ServeHTTP(rr, req)
+	return rr
+}
+
+func TestTimelineSeenHandler(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		var gotUser string
+		var gotUpTo time.Time
+		calls := 0
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(ctx context.Context, userID string, upTo time.Time) error {
+			calls++
+			gotUser, gotUpTo = userID, upTo
+			return nil
+		}}})
+
+		rr := postTimelineSeen(t, s, url.Values{"up_to": {"2026-01-01T15:00:00.123456789Z"}})
+
+		if rr.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+		}
+		want := time.Date(2026, 1, 1, 15, 0, 0, 123456789, time.UTC)
+		if calls != 1 || gotUser != "user-1" || !gotUpTo.Equal(want) {
+			t.Errorf("MarkSeen called %d times with (%q, %v), want once with (user-1, %v)", calls, gotUser, gotUpTo, want)
+		}
+	})
+
+	for _, tt := range []struct {
+		name string
+		form url.Values
+	}{
+		{"missing up_to", url.Values{}},
+		{"invalid up_to", url.Values{"up_to": {"yesterday"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
+				calls++
+				return nil
+			}}})
+			rr := postTimelineSeen(t, s, tt.form)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+			}
+			if calls != 0 {
+				t.Errorf("MarkSeen called %d times, want 0", calls)
+			}
+		})
+	}
+
+	t.Run("store error", func(t *testing.T) {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
+			return errors.New("db down")
+		}}})
+		rr := postTimelineSeen(t, s, url.Values{"up_to": {"2026-01-01T15:00:00Z"}})
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("logged out", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/timeline/seen", strings.NewReader("up_to=2026-01-01T15:00:00Z"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
 		}
 	})
 }

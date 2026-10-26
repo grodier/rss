@@ -275,6 +275,30 @@ type TimelineFilter struct {
 	ExcludeWords    []string // an article mentioning one is left out
 }
 
+// VisitGap is how long a reader must be away before their next visit
+// starts and the "You were here" divider moves.
+const VisitGap = 30 * time.Minute
+
+// TimelineMark is what decides where a user's "You were here" divider goes.
+type TimelineMark struct {
+	SeenUpTo  time.Time // the newest timeline position the user has had on screen
+	SeenAt    time.Time // when SeenUpTo was last reported
+	DividerAt time.Time // the divider of the visit SeenAt belongs to; zero during the first visit
+}
+
+// Divider returns the position the divider goes at for a page rendered at
+// now: everything newer arrived after the reader's previous visit. Zero means
+// no divider.
+func (m TimelineMark) Divider(now time.Time) time.Time {
+	if m.SeenAt.IsZero() {
+		return time.Time{}
+	}
+	if now.Sub(m.SeenAt) >= VisitGap {
+		return m.SeenUpTo // a new visit: the line goes where the last one ended
+	}
+	return m.DividerAt
+}
+
 // TagName normalizes a tag name: trimmed, with each run of whitespace
 // replaced by one space.
 func TagName(s string) string {

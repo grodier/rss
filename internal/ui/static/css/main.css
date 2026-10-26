@@ -941,6 +941,26 @@
     text-decoration: underline;
   }
 
+  /* "You were here": a quiet labelled rule between two rows, where the
+     articles that arrived since the reader's last visit end. */
+  .timeline-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    line-height: 1.3;
+  }
+
+  .timeline-divider::before,
+  .timeline-divider::after {
+    content: "";
+    flex: 1;
+    border-block-start: 1px solid var(--border-strong);
+  }
+
   /* Read rows: a tinted card, quieter text and image. Still a timeline, not an inbox. */
   .article-row.read .article-card {
     background: var(--surface);

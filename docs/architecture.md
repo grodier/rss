@@ -148,6 +148,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /timelines/{id}`, `GET, POST /timelines/{id}/edit` | yes | A custom timeline, and editing it |
 | `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
+| `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen; 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
@@ -185,6 +186,7 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                             sites ──< lookups (site_id, once found)
                               └──< site_icons
 
+users ──  timeline_marks (one row per user, once reported)
 users ──< tags
 subscriptions ──< subscription_tags >── tags
 users ──< timelines ──< timeline_tags (>── tags) / timeline_feeds (>── subscriptions)
@@ -201,13 +203,14 @@ emails   (the outbox: no foreign keys)
 - **`articles`:** `timeline_at` is set once on insert and never updated.
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
+- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to place the "You were here" divider; its positions compare with `articles.timeline_at`, with no foreign key to an article.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
-Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads and enrich job; deleting a user cascades to their subscriptions, reads, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
+Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads and enrich job; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
 Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean; deleting a tag removes it from subscriptions and timelines.
 Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 
@@ -327,7 +330,7 @@ Beyond those:
   People's avatars (the nav, Settings) stay circles.
 - **The tab row** (`partials/timeline_tabs.html`) heads Home and each custom timeline in place of the page's visible heading (the `<h1>` is visually hidden).
   It's a `nav` of links with `aria-current`, not ARIA tabs, and shows no counts.
-- **`app.js`** has eight enhancements, each hooked onto server-rendered markup: local times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), Save and Star buttons (`form[data-toggle]`, posted with `fetch`; on any failure the form submits normally), Share buttons (`button[data-share-url]`, rendered hidden and shown by `app.js`; the share sheet, else the clipboard), video embeds (`figure.embed[data-embed]`), infinite scroll (`.pager a[rel=next]`), scrolling the tab row to its current tab, and a show/hide toggle on every password input.
+- **`app.js`** has nine enhancements, each hooked onto server-rendered markup: local times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), Save and Star buttons (`form[data-toggle]`, posted with `fetch`; on any failure the form submits normally), Share buttons (`button[data-share-url]`, rendered hidden and shown by `app.js`; the share sheet, else the clipboard), video embeds (`figure.embed[data-embed]`), the "You were here" beacon (`.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is hidden), infinite scroll (`.pager a[rel=next]`, appending rows and the `.timeline-divider`), scrolling the tab row to its current tab, and a show/hide toggle on every password input.
   `internal/server/scroll_test.go` pins the markup the script relies on.
 
 ## Testing

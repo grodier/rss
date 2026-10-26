@@ -171,6 +171,19 @@
     }
   }
 
+  // "You were here": a timeline's first page carries the position of its
+  // first row in .article-list[data-seen-up-to]. Each time the page is
+  // hidden (another tab, the app backgrounded, the page closed, where unload
+  // doesn't fire on phones), report it; the server moves the divider at the
+  // reader's next visit.
+  const seen = document.querySelector(".article-list[data-seen-up-to]");
+  if (seen) {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "hidden") return;
+      navigator.sendBeacon("/timeline/seen", new URLSearchParams({ up_to: seen.dataset.seenUpTo }));
+    });
+  }
+
   // Infinite scroll: when the "Older articles" link (.pager a[rel=next])
   // nears the viewport, fetch the page it links to and append its rows to
   // .article-list. The link stays the source of truth: on any failure it is
@@ -198,7 +211,7 @@
       current = top;
       // At the very top of the page, keep the plain URL rather than
       // anchoring on the first row.
-      const url = top === list.firstElementChild
+      const url = top === list.querySelector(":scope > .article-row")
         ? top.dataset.pageUrl
         : top.dataset.pageUrl + "#" + top.id;
       history.replaceState(null, "", url);
@@ -230,13 +243,16 @@
         if (res.status !== 200 || res.redirected) throw new Error(`status ${res.status}`);
         const doc = new DOMParser().parseFromString(await res.text(), "text/html");
         if (!doc.querySelector(".article-list")) throw new Error("no article list");
-        for (const row of doc.querySelectorAll(".article-list > .article-row")) {
-          row.dataset.pageUrl = pageUrl;
-          list.append(row);
-          localizeTimes(row);
-          enhancePings(row);
-          enhanceShare(row);
-          rows.observe(row);
+        // Rows and the "You were here" divider, in order; only rows anchor
+        // the URL.
+        for (const el of doc.querySelectorAll(".article-list > .article-row, .article-list > .timeline-divider")) {
+          list.append(el);
+          if (!el.matches(".article-row")) continue;
+          el.dataset.pageUrl = pageUrl;
+          localizeTimes(el);
+          enhancePings(el);
+          enhanceShare(el);
+          rows.observe(el);
         }
         const pager = link.closest(".pager");
         const next = doc.querySelector(".pager");

@@ -1,429 +1,198 @@
 # Features
 
-How each feature works and which code to read, in order. Read
-[architecture.md](architecture.md) first for the overall shape and the glossary.
+How each feature works and which code to read, in order.
+Read [architecture.md](architecture.md) first for the overall shape and the glossary.
 
-Each section has the flow, a reading list (file and symbol, in the order a request or job
-goes through them), the tests that pin the behavior, and where the reasons behind it are
-in [decisions.md](decisions.md).
+Each section has the flow, a reading list (file and symbol, in the order a request or job goes through them), the tests that pin the behavior, and where the reasons behind it are in [decisions.md](decisions.md).
 
 ## Accounts and sessions
 
-**Flow.** Signup exists only when the app runs with `-invite-code`, and no page links to
-it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into
-the "Invite code" field. `signupFormHandler` checks the per-IP limit, validates the form
-(the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount`
-for the name, email and password, after trimming the name), and creates the user with an
-Argon2id hash. An email that already has an account gets "There's already an account
-with this email." on the email field, with "Log in instead, or reset your password."
-under it, linking to `/login` and `/password/forgot?email=…` (`DuplicateEmail` on
-`signupPage`). Login checks the per-IP limit, validates, then counts
-the attempt against the submitted email *before* checking the password (refunded unless
-the password was wrong), so parallel guesses can't slip past the limit. `Authenticate`
-returns `rss.ErrNoAccount` for an unknown email ("There's no account with this email."
-on the email field) and `rss.ErrWrongPassword` for a wrong password ("That password
-isn't right." on the password field). Under the password field, "Forgot password?" links
-to `/password/forgot`, with `?email=` and the address typed when re-rendered after a
-failed attempt; a rate-limited login page also says "Forgot your password? Reset it."
-(`RateLimited` on `loginPage`). On a successful login or signup, `startSession` renews
-the session token, creates a `user_sessions` row for this device (deleting the user's
-rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler
-redirects to `popReturnTo`: when `requireAuthentication` sends an anonymous GET or HEAD
-to `/login`, it stores the request URI in the session as `returnTo`, and `popReturnTo`
-returns it through `safeReturnPath` (else the timeline, `/`) and removes it. Other
-methods aren't remembered, since replaying one as a GET would give a 405. A logged-in
-user who opens `/login` or `/signup` is sent to the timeline. On every later request, `authenticate` loads that row
-with its user in one query. A missing row, or one unused for 90 days
-(`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it
-updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's
-ID and the session in the request context, where handlers read them with
-`s.authenticatedUserID(r)` and `s.authenticatedSession(r)`. Logging out (the Log out
-button on Settings) deletes the row, renews the token and removes `sessionID`. A login lasts at most a year (scs's
-`Lifetime`).
+**Flow.** Signup exists only when the app runs with `-invite-code`, and no page links to it: people arrive through `/signup?invite=<code>`, which `signupHandler` pre-fills into the "Invite code" field.
+`signupFormHandler` checks the per-IP limit, validates the form (the code, compared with `subtle.ConstantTimeCompare`, then `validator.CheckNewAccount` for the name, email and password, after trimming the name), and creates the user with an Argon2id hash.
+An email that already has an account gets "There's already an account with this email." on the email field, with "Log in instead, or reset your password." under it, linking to `/login` and `/password/forgot?email=…` (`DuplicateEmail` on `signupPage`).
+Login checks the per-IP limit, validates, then counts the attempt against the submitted email *before* checking the password (refunded unless the password was wrong), so parallel guesses can't slip past the limit.
+`Authenticate` returns `rss.ErrNoAccount` for an unknown email ("There's no account with this email." on the email field) and `rss.ErrWrongPassword` for a wrong password ("That password isn't right." on the password field).
+Under the password field, "Forgot password?" links to `/password/forgot`, with `?email=` and the address typed when re-rendered after a failed attempt; a rate-limited login page also says "Forgot your password? Reset it." (`RateLimited` on `loginPage`).
+On a successful login or signup, `startSession` renews the session token, creates a `user_sessions` row for this device (deleting the user's rows idle for 90 days), stores its ID in the session as `sessionID`, and the handler redirects to `popReturnTo`: when `requireAuthentication` sends an anonymous GET or HEAD to `/login`, it stores the request URI in the session as `returnTo`, and `popReturnTo` returns it through `safeReturnPath` (else the timeline, `/`) and removes it.
+Other methods aren't remembered, since replaying one as a GET would give a 405.
+A logged-in user who opens `/login` or `/signup` is sent to the timeline.
+On every later request, `authenticate` loads that row with its user in one query.
+A missing row, or one unused for 90 days (`sessionIdleTimeout`, the row is deleted), makes the request anonymous; otherwise it updates `last_seen_at` if it's over a day old (`sessionTouchInterval`) and puts the user's ID and the session in the request context, where handlers read them with `s.authenticatedUserID(r)` and `s.authenticatedSession(r)`.
+Logging out (the Log out button on Settings) deletes the row, renews the token and removes `sessionID`.
+A login lasts at most a year (scs's `Lifetime`).
 
-Both forms show each field's error under it, tied to the input with `aria-describedby`,
-and signup shows the name and password hints there all the time. After a failed submit
-the server puts `autofocus` on the first invalid field (`Validator.FirstError`); nothing
-is focused when a form first loads. `app.js` adds a Show/Hide toggle to the password
-inputs.
+Both forms show each field's error under it, tied to the input with `aria-describedby`, and signup shows the name and password hints there all the time.
+After a failed submit the server puts `autofocus` on the first invalid field (`Validator.FirstError`); nothing is focused when a form first loads.
+`app.js` adds a Show/Hide toggle to the password inputs.
 
-The other way accounts are made is `www create-user` (`runCreateUser`), for your local
-account: it reads the password from the first line of stdin, checks the account with the
-same `CheckNewAccount`, and creates it with the same `Create`. Unlike signup, it says
-when the email is taken. `make db/seed` runs it with `RSS_DEV_EMAIL` and
-`RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL`
-is set.
+The other way accounts are made is `www create-user` (`runCreateUser`), for your local account: it reads the password from the first line of stdin, checks the account with the same `CheckNewAccount`, and creates it with the same `Create`.
+Unlike signup, it says when the email is taken.
+`make db/seed` runs it with `RSS_DEV_EMAIL` and `RSS_DEV_PASSWORD` from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
-**Settings.** The nav's account entry (the user's letter avatar, labelled Settings) opens
-`/settings` (`settingsHandler`): a header with the avatar, name and email, then an
-"Account" section of rows (`.settings-list`), each a label, a value and, on links, a
-chevron, and a Log out button at the bottom. Each row that can be changed opens its own
-small page with one form. Name (`/settings/name`) is the first:
-`settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most
-100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid,
-and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects
-to `/settings`. The Email row links to `/settings/email` (under "Changing email") and
-has a "Not confirmed" tag (`.chip`) until the address is confirmed. A "Your data" section below has
-the subscriptions export (under "Subscriptions").
+**Settings.** The nav's account entry (the user's letter avatar, labelled Settings) opens `/settings` (`settingsHandler`): a header with the avatar, name and email, then an "Account" section of rows (`.settings-list`), each a label, a value and, on links, a chevron, and a Log out button at the bottom.
+Each row that can be changed opens its own small page with one form.
+Name (`/settings/name`) is the first: `settingsNameFormHandler` trims the name, checks it with `CheckName` (required, at most 100 characters; `CheckNewAccount` uses it too), re-renders with 422 when it's invalid, and otherwise saves it with `UpdateName`, flashes "Your name was updated." and redirects to `/settings`.
+The Email row links to `/settings/email` (under "Changing email") and has a "Not confirmed" tag (`.chip`) until the address is confirmed.
+A "Your data" section below has the subscriptions export (under "Subscriptions").
 
-**Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler`
-in `policy.go`) are logged-out `.solo` pages with a `.prose` column; their text is HTML
-in `privacy.html` and `terms.html`, with a "Last updated" date at the top, and they show
-the support address through the `support-link` partial. They're linked from under the
-signup button, the `policy-links` footer on the login page and the logged-out home page,
-Settings' Help section, and every email's footer (`Privacy: <base URL>/privacy` in
-`layout.tmpl`). When the text changes, change its date too.
+**Privacy policy and terms.** `/privacy` and `/terms` (`privacyHandler`, `termsHandler` in `policy.go`) are logged-out `.solo` pages with a `.prose` column; their text is HTML in `privacy.html` and `terms.html`, with a "Last updated" date at the top, and they show the support address through the `support-link` partial.
+They're linked from under the signup button, the `policy-links` footer on the login page and the logged-out home page, Settings' Help section, and every email's footer (`Privacy: <base URL>/privacy` in `layout.tmpl`).
+When the text changes, change its date too.
 
-Password (`/settings/password`) changes the password. Its form has a read-only email
-field (`autocomplete="username"`, so password managers update the right entry), the
-current password and the new one, and says beforehand that every other device will be
-logged out. `settingsPasswordFormHandler` checks the per-user limit
-(`passwordChangeLimiter`), that the current password isn't blank, the new one with
-`CheckNewPassword`, and that the two differ, re-rendering with 422 (never echoing the
-passwords) when something is wrong. `UserRepository.ChangePassword` then verifies the
-current password before starting a transaction (Argon2 is slow; a wrong one is
-`rss.ErrWrongPassword`, "That password isn't right." on the current password field), and
-in one transaction stores the new hash and deletes the user's other `user_sessions` rows,
-keeping this device's. The handler queues the `password_changed` email ("Your rss
-password was changed", with a link to `/password/forgot` in case it wasn't them;
-`sendPasswordChanged`) to the account's address, logging an error rather than failing if
-it can't, flashes "Your password was changed. Other devices were logged out." and
-redirects to `/settings`. `/.well-known/change-password` redirects there, so password
-managers can link to it; it's outside the login group, so an anonymous visitor logs in
-first and `returnTo` brings them back. Another device finds its row gone on its next
-request and continues as anonymous.
+Password (`/settings/password`) changes the password.
+Its form has a read-only email field (`autocomplete="username"`, so password managers update the right entry), the current password and the new one, and says beforehand that every other device will be logged out.
+`settingsPasswordFormHandler` checks the per-user limit (`passwordChangeLimiter`), that the current password isn't blank, the new one with `CheckNewPassword`, and that the two differ, re-rendering with 422 (never echoing the passwords) when something is wrong.
+`UserRepository.ChangePassword` then verifies the current password before starting a transaction (Argon2 is slow; a wrong one is `rss.ErrWrongPassword`, "That password isn't right." on the current password field), and in one transaction stores the new hash and deletes the user's other `user_sessions` rows, keeping this device's.
+The handler queues the `password_changed` email ("Your rss password was changed", with a link to `/password/forgot` in case it wasn't them; `sendPasswordChanged`) to the account's address, logging an error rather than failing if it can't, flashes "Your password was changed. Other devices were logged out." and redirects to `/settings`.
+`/.well-known/change-password` redirects there, so password managers can link to it; it's outside the login group, so an anonymous visitor logs in first and `returnTo` brings them back.
+Another device finds its row gone on its next request and continues as anonymous.
 
-A "Devices" section under Account has a "Log out of all other devices" button
-(`logOutOthersHandler`), which needs no password since it can only protect:
-`UserSessionRepository.DeleteOthers` deletes the user's other sessions and returns how
-many, and the flash says "You're logged out on every other device." or, when there were
-none, "There were no other devices to log out."
+A "Devices" section under Account has a "Log out of all other devices" button (`logOutOthersHandler`), which needs no password since it can only protect: `UserSessionRepository.DeleteOthers` deletes the user's other sessions and returns how many, and the flash says "You're logged out on every other device." or, when there were none, "There were no other devices to log out."
 
-A last "Help" section has a `mailto:` row for the support address
-(`Config.SupportEmail`; left out when it isn't set) and rows for the privacy policy and
-terms.
+A last "Help" section has a `mailto:` row for the support address (`Config.SupportEmail`; left out when it isn't set) and rows for the privacy policy and terms.
 
-**Deleting an account.** At the very bottom of Settings, under Log out, a "Delete
-account" link in danger text opens `/settings/delete` (`settingsDeleteHandler`). The page
-says what goes (the account, subscriptions and reading history) and what stays (feeds and
-articles, which are shared), offers the OPML export first ("Export them first"), and has
-a read-only email field (`autocomplete="username"`), a password field and a "Delete my
-account" button (`.btn-danger`). `settingsDeleteFormHandler` checks the per-user limit
-(`deleteAccountLimiter`, 429), that the password isn't blank ("Enter your password."),
-then calls `UserRepository.Delete`, which reads the user and verifies the password
-outside any transaction (a wrong one is `rss.ErrWrongPassword`: "That password isn't
-right.", 422) and deletes the `users` row; the foreign keys cascade to the user's
-subscriptions, reads, `user_sessions` and `user_tokens`. Deletion is immediate. `Delete`
-returns the user as they were, and the handler queues the `account_deleted` email ("Your
-rss account was deleted", which says backup copies go within 35 days) to the old address
-(the outbox has no foreign key to users), logging an error rather than failing if it
-can't. Then it renews the session token, removes `sessionID`, flashes "Your account was
-deleted. Thanks for trying rss." and redirects to `/`, whose logged-out page shows the
-flash.
+**Deleting an account.** At the very bottom of Settings, under Log out, a "Delete account" link in danger text opens `/settings/delete` (`settingsDeleteHandler`).
+The page says what goes (the account, subscriptions and reading history) and what stays (feeds and articles, which are shared), offers the OPML export first ("Export them first"), and has a read-only email field (`autocomplete="username"`), a password field and a "Delete my account" button (`.btn-danger`).
+`settingsDeleteFormHandler` checks the per-user limit (`deleteAccountLimiter`, 429), that the password isn't blank ("Enter your password."), then calls `UserRepository.Delete`, which reads the user and verifies the password outside any transaction (a wrong one is `rss.ErrWrongPassword`: "That password isn't right.", 422) and deletes the `users` row; the foreign keys cascade to the user's subscriptions, reads, `user_sessions` and `user_tokens`.
+Deletion is immediate.
+`Delete` returns the user as they were, and the handler queues the `account_deleted` email ("Your rss account was deleted", which says backup copies go within 35 days) to the old address (the outbox has no foreign key to users), logging an error rather than failing if it can't.
+Then it renews the session token, removes `sessionID`, flashes "Your account was deleted. Thanks for trying rss." and redirects to `/`, whose logged-out page shows the flash.
 
-**Email.** A handler that sends email (the password change and reset, email
-confirmation and change, and account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl`
-(parsed at startup by `mail.ParseTemplates` with the app's base URL and support email;
-links are built with `s.absoluteURL`, never from the request) and queues it with
-`mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then
-the queue wakes this process's `mail.Runner`, so the page responds without waiting on the
-provider. Over the per-address cap, the email isn't queued and `sendEmail` logs a warning
-and returns nil. A runner worker claims the email (`ClaimNext`), sends it with the
-configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time
-(`retryDelay`), or `GiveUp`. The cap, retries, lease and retention are under "Background
-work" and "Security measures" in [architecture.md](architecture.md).
+**Email.** A handler that sends email (the password change and reset, email confirmation and change, and account deletion) calls `s.sendEmail(ctx, to, name, data)`, which renders `internal/ui/emails/<name>.tmpl` (parsed at startup by `mail.ParseTemplates` with the app's base URL and support email; links are built with `s.absoluteURL`, never from the request) and queues it with `mail.Queue.Enqueue`: `EmailRepository.Enqueue` inserts it into the `emails` outbox, then the queue wakes this process's `mail.Runner`, so the page responds without waiting on the provider.
+Over the per-address cap, the email isn't queued and `sendEmail` logs a warning and returns nil.
+A runner worker claims the email (`ClaimNext`), sends it with the configured sender, and records the outcome: `MarkSent`, `MarkFailed` with a retry time (`retryDelay`), or `GiveUp`.
+The cap, retries, lease and retention are under "Background work" and "Security measures" in [architecture.md](architecture.md).
 
-**Email confirmation.** Confirmation is soft: nothing requires it yet. After signup's
-`startSession`, `signupFormHandler` calls `sendConfirmation`, which makes a token with
-`token.New` (32 random bytes, base64url; only its SHA-256 is stored), saves it with
-`TokenRepository.Create` (purpose `confirm_email`, the address it's sent to, a 7-day
-expiry; `Create` first deletes the user's expired tokens), and queues the `confirm_email`
-email with the link `<base URL>/confirm-email?token=<token>`. If that fails, signup still
-succeeds and the error is logged: the notice offers Resend. Asking again doesn't cancel
-earlier links, since emails arrive out of order.
+**Email confirmation.** Confirmation is soft: nothing requires it yet.
+After signup's `startSession`, `signupFormHandler` calls `sendConfirmation`, which makes a token with `token.New` (32 random bytes, base64url; only its SHA-256 is stored), saves it with `TokenRepository.Create` (purpose `confirm_email`, the address it's sent to, a 7-day expiry; `Create` first deletes the user's expired tokens), and queues the `confirm_email` email with the link `<base URL>/confirm-email?token=<token>`.
+If that fails, signup still succeeds and the error is logged: the notice offers Resend.
+Asking again doesn't cancel earlier links, since emails arrive out of order.
 
-Until the address is confirmed, the timeline and Settings show the `confirm-notice`
-partial (`.notice`; its data is `s.confirmNotice(r)`, nil for anonymous or confirmed
-users): "Confirm your email address: we sent a link to <address>." with a Resend button
-and a "Wrong address?" link to `/settings/email`. Resend posts to `/confirm-email/resend` with the page as `return_to`.
-`confirmResendHandler` flashes "Your email address is already confirmed." for a
-confirmed user, refuses past `confirmResendLimiter` (3 per user per hour) with "We've
-already sent you several links. …", and otherwise calls `sendConfirmation` and flashes
-"We sent a new link to <address>."; then it redirects to `safeReturnPath(return_to,
-"/settings")`. The timeline shows flash messages, like other pages.
+Until the address is confirmed, the timeline and Settings show the `confirm-notice` partial (`.notice`; its data is `s.confirmNotice(r)`, nil for anonymous or confirmed users): "Confirm your email address: we sent a link to <address>." with a Resend button and a "Wrong address?" link to `/settings/email`.
+Resend posts to `/confirm-email/resend` with the page as `return_to`.
+`confirmResendHandler` flashes "Your email address is already confirmed." for a confirmed user, refuses past `confirmResendLimiter` (3 per user per hour) with "We've already sent you several links. …", and otherwise calls `sendConfirmation` and flashes "We sent a new link to <address>."; then it redirects to `safeReturnPath(return_to, "/settings")`.
+The timeline shows flash messages, like other pages.
 
-The link works in any browser, logged in or not. `GET /confirm-email`
-(`confirmEmailHandler`) sets `Referrer-Policy: no-referrer` and `Cache-Control:
-no-store`, and looks the token up with `TokenRepository.Get`, which only returns an
-unexpired token whose address is still the account's. A valid one gets
-`confirm_email.html`: "Confirm <address> for your rss account." and a Confirm email
-address button that posts the token back; the GET never writes, so a mail scanner that
-opens the link can't confirm. `POST /confirm-email` (`confirmEmailFormHandler`) calls
-`UserRepository.ConfirmEmail`, which in one transaction deletes the token (checking the
-same conditions), sets `email_confirmed_at` (keeping an earlier time), and deletes the
-user's other `confirm_email` tokens; then it flashes "Thanks, your email address is
-confirmed." and redirects to the timeline, or to `/login` when not logged in. An unknown,
-expired, used or outdated token gets `link_expired.html` with a 410: "This link has
-expired" and "Confirmation links work for 7 days and only once.", then a Send a new link
-button (logged in, unconfirmed), "Your email address is already confirmed." and a link to
-Settings (confirmed), or "Log in to get a new link" (anonymous). The page takes its
-title, text and action from `linkExpiredPage`, so other email links can reuse it.
+The link works in any browser, logged in or not.
+`GET /confirm-email` (`confirmEmailHandler`) sets `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and looks the token up with `TokenRepository.Get`, which only returns an unexpired token whose address is still the account's.
+A valid one gets `confirm_email.html`: "Confirm <address> for your rss account." and a Confirm email address button that posts the token back; the GET never writes, so a mail scanner that opens the link can't confirm.
+`POST /confirm-email` (`confirmEmailFormHandler`) calls `UserRepository.ConfirmEmail`, which in one transaction deletes the token (checking the same conditions), sets `email_confirmed_at` (keeping an earlier time), and deletes the user's other `confirm_email` tokens; then it flashes "Thanks, your email address is confirmed." and redirects to the timeline, or to `/login` when not logged in.
+An unknown, expired, used or outdated token gets `link_expired.html` with a 410: "This link has expired" and "Confirmation links work for 7 days and only once.", then a Send a new link button (logged in, unconfirmed), "Your email address is already confirmed." and a link to Settings (confirmed), or "Log in to get a new link" (anonymous).
+The page takes its title, text and action from `linkExpiredPage`, so other email links can reuse it.
 
-**Password reset.** `GET /password/forgot` (`forgotPasswordHandler`,
-`forgot_password.html`) asks for the email you signed up with, prefilled from `?email=`.
-`forgotPasswordFormHandler` validates the address's format, then checks
-`resetIPLimiter` (10 per client IP per hour) and `resetEmailLimiter` (3 per lowercased
-email per hour), re-rendering with 429 past either. `UserRepository.GetByEmail` finds
-the account (none: "There's no account with this email.", 422), and
-`sendPasswordReset` makes a token (purpose `reset_password`, 1-hour expiry) and queues
-the `reset_password` email ("Reset your rss password") with the link
-`<base URL>/password/reset?token=<token>`. The handler puts the address in the session
-as `resetSentTo` and redirects to `/password/forgot/sent`
-(`forgotPasswordSentHandler`, `forgot_password_sent.html`): "We sent a link to
+**Password reset.** `GET /password/forgot` (`forgotPasswordHandler`, `forgot_password.html`) asks for the email you signed up with, prefilled from `?email=`.
+`forgotPasswordFormHandler` validates the address's format, then checks `resetIPLimiter` (10 per client IP per hour) and `resetEmailLimiter` (3 per lowercased email per hour), re-rendering with 429 past either.
+`UserRepository.GetByEmail` finds the account (none: "There's no account with this email.", 422), and `sendPasswordReset` makes a token (purpose `reset_password`, 1-hour expiry) and queues the `reset_password` email ("Reset your rss password") with the link `<base URL>/password/reset?token=<token>`.
+The handler puts the address in the session as `resetSentTo` and redirects to `/password/forgot/sent` (`forgotPasswordSentHandler`, `forgot_password_sent.html`): "We sent a link to
 <address>. It works for 1 hour.", with a button that posts the address to
-`/password/forgot` again; without `resetSentTo` it redirects to the form. Both pages
-show the support address for people who can't get into their email. Asking again
-doesn't cancel earlier links.
+`/password/forgot` again; without `resetSentTo` it redirects to the form.
+Both pages show the support address for people who can't get into their email.
+Asking again doesn't cancel earlier links.
 
-`GET /password/reset` (`resetPasswordHandler`) sets the same no-referrer and no-store
-headers as confirmation (`resetToken`), and `TokenRepository.Get` checks the token. A
-valid one gets `reset_password.html`: a read-only email field with the token's address
-(`autocomplete="username"`), a new-password field with its hint, and the token hidden; the
-GET never writes. `POST /password/reset` (`resetPasswordFormHandler`) checks the token
-again, then the password with `CheckNewPassword` (422 without using the token).
-`UserRepository.ResetPassword` hashes the password, then in one transaction deletes the
-token (unexpired, and its address still the account's), sets the new hash, confirms the
-email (receiving the link proves the address), and deletes the user's other
-`reset_password` tokens and every `user_sessions` row. The handler then `startSession`s
-here, queues `password_changed`, flashes "Your password was changed, and you're logged
-in." and redirects to the timeline. An unknown, expired, used or outdated token gets
-`link_expired.html` (410) with "Reset links work for 1 hour and only once." and a Send a
-new link link to `/password/forgot`.
+`GET /password/reset` (`resetPasswordHandler`) sets the same no-referrer and no-store headers as confirmation (`resetToken`), and `TokenRepository.Get` checks the token.
+A valid one gets `reset_password.html`: a read-only email field with the token's address (`autocomplete="username"`), a new-password field with its hint, and the token hidden; the GET never writes.
+`POST /password/reset` (`resetPasswordFormHandler`) checks the token again, then the password with `CheckNewPassword` (422 without using the token).
+`UserRepository.ResetPassword` hashes the password, then in one transaction deletes the token (unexpired, and its address still the account's), sets the new hash, confirms the email (receiving the link proves the address), and deletes the user's other `reset_password` tokens and every `user_sessions` row.
+The handler then `startSession`s here, queues `password_changed`, flashes "Your password was changed, and you're logged in." and redirects to the timeline.
+An unknown, expired, used or outdated token gets `link_expired.html` (410) with "Reset links work for 1 hour and only once." and a Send a new link link to `/password/forgot`.
 
-**Changing email.** `GET /settings/email` (`settingsEmailHandler`,
-`settings_email.html`) shows the current address, a new-email field, the current
-password, and "We'll send a link to your new address. Your email won't change until you
-open it." `settingsEmailFormHandler` checks `emailChangeLimiter` (5 per user per hour,
-429), then the new address's format, that it isn't the current one ignoring case
-("That's already your email address."), and that the password isn't blank, re-rendering
-with 422 (never echoing the password). `UserRepository.CheckPassword` verifies the
-password (`rss.ErrWrongPassword`: "That password isn't right."), and `GetByEmail` checks
-the address is free ("There's already an account with this email."). Then it makes a
-token (purpose `change_email`, the **new** address, a 24-hour expiry), queues the
-`confirm_new_email` email to the new address with the link
-`<base URL>/email-change?token=<token>`, flashes "We sent a link to <new>. Open it to
-finish changing your email." and redirects to `/settings`. Nothing changes until the link
-is used: you keep logging in with the old address, and asking again doesn't cancel
-earlier links.
+**Changing email.** `GET /settings/email` (`settingsEmailHandler`, `settings_email.html`) shows the current address, a new-email field, the current password, and "We'll send a link to your new address. Your email won't change until you open it." `settingsEmailFormHandler` checks `emailChangeLimiter` (5 per user per hour, 429), then the new address's format, that it isn't the current one ignoring case ("That's already your email address."), and that the password isn't blank, re-rendering with 422 (never echoing the password).
+`UserRepository.CheckPassword` verifies the password (`rss.ErrWrongPassword`: "That password isn't right."), and `GetByEmail` checks the address is free ("There's already an account with this email.").
+Then it makes a token (purpose `change_email`, the **new** address, a 24-hour expiry), queues the `confirm_new_email` email to the new address with the link `<base URL>/email-change?token=<token>`, flashes "We sent a link to <new>. Open it to finish changing your email." and redirects to `/settings`.
+Nothing changes until the link is used: you keep logging in with the old address, and asking again doesn't cancel earlier links.
 
-The link works in any browser. `GET /email-change` (`emailChangeHandler`) sets the
-no-referrer and no-store headers and checks the token with `TokenRepository.Get` (for
-`change_email` it skips the address check, since the address is the new one). A valid
-one gets `confirm_email_change.html`: "Make <new> the email for your rss account?" and a
-Change email address button that posts the token. `POST /email-change`
-(`emailChangeFormHandler`) calls `UserRepository.ChangeEmail`, which in one transaction
-deletes the token, reads the user, sets the email to the new address and
-`email_confirmed_at` to now, and deletes the user's other `change_email` tokens. If
-another account took the address in the meantime (`23505`, `rss.ErrDuplicateEmail`)
-nothing changes and the page re-renders with 409, "That address is taken". On success
-the handler queues `email_changed` to the **old** address (logging rather than failing
-if it can't), flashes "Your email address is now <new>." and redirects to `/settings`,
-or, when not logged in, adds "Log in with it to continue." and redirects to `/login`.
-Sessions stay. Confirmation and reset links sent to the old address stop working by
-themselves, since `Get` and the repositories only accept them while the account still
-has the address they were sent to. An unknown, expired or used token gets
-`link_expired.html` (410) with "Links to change your email work for 24 hours and only
-once." and a Try again link to `/settings/email`.
+The link works in any browser.
+`GET /email-change` (`emailChangeHandler`) sets the no-referrer and no-store headers and checks the token with `TokenRepository.Get` (for `change_email` it skips the address check, since the address is the new one).
+A valid one gets `confirm_email_change.html`: "Make <new> the email for your rss account?" and a Change email address button that posts the token.
+`POST /email-change` (`emailChangeFormHandler`) calls `UserRepository.ChangeEmail`, which in one transaction deletes the token, reads the user, sets the email to the new address and `email_confirmed_at` to now, and deletes the user's other `change_email` tokens.
+If another account took the address in the meantime (`23505`, `rss.ErrDuplicateEmail`) nothing changes and the page re-renders with 409, "That address is taken".
+On success the handler queues `email_changed` to the **old** address (logging rather than failing if it can't), flashes "Your email address is now <new>." and redirects to `/settings`, or, when not logged in, adds "Log in with it to continue." and redirects to `/login`.
+Sessions stay.
+Confirmation and reset links sent to the old address stop working by themselves, since `Get` and the repositories only accept them while the account still has the address they were sent to.
+An unknown, expired or used token gets `link_expired.html` (410) with "Links to change your email work for 24 hours and only once." and a Try again link to `/settings/email`.
 
 **Read:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginHandler`,
-   `loginFormHandler`, `popReturnTo`, `startSession`, `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the
-   password with `CheckNewPassword` (`password.go`: length, not the email, not on the
-   embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html`
-   and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle
-   in `internal/ui/static/js/app.js`.
-3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go`
-   (`Server.clientIP`, `ipRateLimitKey`).
-4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`),
-   `Authenticate` (`rss.ErrNoAccount`, `rss.ErrWrongPassword`).
-5. `internal/password/password.go`: `Hash`, `Verify` (both NFKC-normalize first), the
-   `slots` cap.
-6. `internal/server/middleware.go` (`authenticate`, `sessionIdleTimeout`,
-   `sessionTouchInterval`, `requireAuthentication`, which stores `returnTo`) and
-   `helpers.go` (`authenticatedUserID`, `authenticatedSession`, `safeReturnPath`); `internal/psql/user_sessions.go`
-   (`UserSessionRepository`: `Create`, `Get`, `Touch`, `Delete`).
-7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings
-   (`sessionLifetime`, one year).
-8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in
-   `Makefile`.
-9. Settings: `internal/server/html.go` (`navData`, `nav`) and
-   `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry);
-   `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`,
-   `settingsNameFormHandler`, `settingsPasswordFormHandler`, `logOutOthersHandler`,
-   `changePasswordWellKnownHandler`, `settingsDeleteFormHandler`);
-   `internal/validator/account.go` (`CheckName`); `internal/psql/users.go`
-   (`UpdateName`, `ChangePassword`, `Delete`) and `user_sessions.go` (`DeleteOthers`);
-   `settings.html`, `settings_name.html`, `settings_password.html`,
-   `settings_delete.html`; `home.go` (`homeHandler`'s logged-out flash) and `home.html`;
-   `internal/ui/emails/password_changed.tmpl`, `account_deleted.tmpl`.
-   The policy pages: `internal/server/policy.go`, `privacy.html`, `terms.html` and
-   `partials/policy.html` (`policy-links`, `support-link`).
-10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go`
-    (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go`
-    (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail
-    runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
-11. Email confirmation: `internal/token/token.go` (`New`, `Hash`);
-    `internal/server/confirm.go` (`sendConfirmation`, `confirmNotice`,
-    `confirmEmailHandler`, `confirmEmailFormHandler`, `confirmResendHandler`,
-    `confirmLinkExpired`, `linkExpiredPage`); `internal/psql/tokens.go`
-    (`TokenRepository`: `Create`, `Get`) and `users.go` (`ConfirmEmail`);
-    `confirm_email.html`, `link_expired.html`, `partials/confirm_notice.html`;
-    `internal/ui/emails/confirm_email.tmpl`.
-12. Password reset: `internal/server/password_reset.go` (`sendPasswordReset`,
-    `sendPasswordChanged`, `forgotPasswordFormHandler`, `forgotPasswordSentHandler`,
-    `resetToken`, `resetPasswordHandler`, `resetPasswordFormHandler`,
-    `resetLinkExpired`); `internal/psql/users.go` (`GetByEmail`, `ResetPassword`);
-    `forgot_password.html`, `forgot_password_sent.html`, `reset_password.html`;
-    `internal/ui/emails/reset_password.tmpl`.
-13. Changing email: `internal/server/email_change.go` (`settingsEmailFormHandler`,
-    `emailChangeHandler`, `emailChangeFormHandler`, `changeEmailLinkExpired`);
-    `internal/psql/users.go` (`CheckPassword`, `ChangeEmail`); `settings_email.html`,
-    `confirm_email_change.html`; `internal/ui/emails/confirm_new_email.tmpl`,
-    `email_changed.tmpl`.
+2. `internal/server/user.go`: `signupHandler`, `signupFormHandler`, `loginHandler`, `loginFormHandler`, `popReturnTo`, `startSession`, `logoutHandler`; `internal/validator/account.go`: `CheckNewAccount`, which checks the password with `CheckNewPassword` (`password.go`: length, not the email, not on the embedded common-password list, `isCommonPassword`); `internal/ui/templates/login.html` and `signup.html` (the field pattern), `Validator.FirstError`, and the password toggle in `internal/ui/static/js/app.js`.
+3. `internal/server/ratelimit.go` (`rateLimiter`, `Refund`) and `clientip.go` (`Server.clientIP`, `ipRateLimitKey`).
+4. `internal/psql/users.go`: `Create` (duplicate → `rss.ErrDuplicateEmail`), `Authenticate` (`rss.ErrNoAccount`, `rss.ErrWrongPassword`).
+5. `internal/password/password.go`: `Hash`, `Verify` (both NFKC-normalize first), the `slots` cap.
+6. `internal/server/middleware.go` (`authenticate`, `sessionIdleTimeout`, `sessionTouchInterval`, `requireAuthentication`, which stores `returnTo`) and `helpers.go` (`authenticatedUserID`, `authenticatedSession`, `safeReturnPath`); `internal/psql/user_sessions.go` (`UserSessionRepository`: `Create`, `Get`, `Touch`, `Delete`).
+7. `cmd/www/application.go`: `newSessionManager`, the session manager's settings (`sessionLifetime`, one year).
+8. `cmd/www/create_user.go`: `runCreateUser`, `readPassword`; the `db/seed` target in `Makefile`.
+9. Settings: `internal/server/html.go` (`navData`, `nav`) and `internal/ui/templates/partials/nav.html` (`app-nav`, the account entry); `internal/server/settings.go` (`settingsHandler`, `settingsNameHandler`, `settingsNameFormHandler`, `settingsPasswordFormHandler`, `logOutOthersHandler`, `changePasswordWellKnownHandler`, `settingsDeleteFormHandler`); `internal/validator/account.go` (`CheckName`); `internal/psql/users.go` (`UpdateName`, `ChangePassword`, `Delete`) and `user_sessions.go` (`DeleteOthers`); `settings.html`, `settings_name.html`, `settings_password.html`, `settings_delete.html`; `home.go` (`homeHandler`'s logged-out flash) and `home.html`; `internal/ui/emails/password_changed.tmpl`, `account_deleted.tmpl`.
+   The policy pages: `internal/server/policy.go`, `privacy.html`, `terms.html` and `partials/policy.html` (`policy-links`, `support-link`).
+10. Email: `internal/server/email.go` (`sendEmail`, `absoluteURL`); `internal/mail/queue.go` (`Queue`), `runner.go` (`Runner`, `retryDelay`) and `templates.go` (`ParseTemplates`, `Render`); `internal/psql/emails.go` (`EmailRepository`); the mail runner's wiring and `newMailSender` in `cmd/www/application.go` and `config.go`.
+11. Email confirmation: `internal/token/token.go` (`New`, `Hash`); `internal/server/confirm.go` (`sendConfirmation`, `confirmNotice`, `confirmEmailHandler`, `confirmEmailFormHandler`, `confirmResendHandler`, `confirmLinkExpired`, `linkExpiredPage`); `internal/psql/tokens.go` (`TokenRepository`: `Create`, `Get`) and `users.go` (`ConfirmEmail`); `confirm_email.html`, `link_expired.html`, `partials/confirm_notice.html`; `internal/ui/emails/confirm_email.tmpl`.
+12. Password reset: `internal/server/password_reset.go` (`sendPasswordReset`, `sendPasswordChanged`, `forgotPasswordFormHandler`, `forgotPasswordSentHandler`, `resetToken`, `resetPasswordHandler`, `resetPasswordFormHandler`, `resetLinkExpired`); `internal/psql/users.go` (`GetByEmail`, `ResetPassword`); `forgot_password.html`, `forgot_password_sent.html`, `reset_password.html`; `internal/ui/emails/reset_password.tmpl`.
+13. Changing email: `internal/server/email_change.go` (`settingsEmailFormHandler`, `emailChangeHandler`, `emailChangeFormHandler`, `changeEmailLinkExpired`); `internal/psql/users.go` (`CheckPassword`, `ChangeEmail`); `settings_email.html`, `confirm_email_change.html`; `internal/ui/emails/confirm_new_email.tmpl`, `email_changed.tmpl`.
 
-**Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`,
-`TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`,
-`TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`,
-`TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`,
-`TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`,
-`policy_test.go` (`TestPolicyPages`, `TestPolicyLinks`),
-`templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`,
-`TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`,
-`ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go`
-(`TestCheckNewAccount`, `TestCheckName`),
-`password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`),
-`validator_test.go` (`TestFirstError`);
-`cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`),
-`create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`,
-`emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`,
-`TestResetPassword`, `TestChangeEmail`);
-`internal/token/token_test.go`; `internal/server/confirm_test.go`
-(`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`,
-`TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`,
-`TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `password_reset_test.go`
-(`TestForgotPasswordHandler`, `TestForgotPasswordFormHandler`,
-`TestForgotPasswordSentHandlerWithoutEmail`, `TestResetPasswordHandler`,
-`TestResetPasswordFormHandler`, `TestLoginLinksToReset`); `email_change_test.go`
-(`TestSettingsEmailHandler`, `TestSettingsEmailForm`, `TestEmailChangeHandler`,
-`TestEmailChangeFormHandler`); `settings_test.go` (`TestSettingsDeleteForm`,
-`TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`, `TestUserRepositoryCheckPassword`); `internal/password/password_test.go`; `internal/server/email_test.go`;
-`internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go`
-(`TestEmailFooterLinksPrivacy`).
+**Tests:** `internal/server/user_test.go` (`TestSignupHandlerInvitePrefill`, `TestSignupFormHandlerInviteCode`, `TestSignupFormHandlerTrimsName`, `TestSignupFormHandlerLogsIn`, `TestSignupFormHandlerDuplicateEmail`, `TestLoginFormHandlerErrors`, `TestLoginFormHandlerFailureLimit`, `TestReturnTo`, `TestLoggedInRedirect`), `router_test.go` (`TestSignupRoutes`), `settings_test.go`, `policy_test.go` (`TestPolicyPages`, `TestPolicyLinks`), `templates_test.go` (`TestNoSignupLinks`, `TestFormFieldErrorsDescribed`, `TestFormAutofocus`, `TestSignupHints`, `TestAppNav`), `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`; `internal/validator/account_test.go` (`TestCheckNewAccount`, `TestCheckName`), `password_test.go` (`TestCheckNewPassword`, `TestCommonPasswordsFile`), `validator_test.go` (`TestFirstError`); `cmd/www/config_test.go` (`TestParseConfigInviteCode`, `TestParseConfigMailWorkers`), `create_user_test.go`; `internal/psql/users_test.go`, `user_sessions_test.go`, `emails_test.go`, `tokens_test.go` (`TestTokenRepository`, `TestConfirmEmail`, `TestResetPassword`, `TestChangeEmail`); `internal/token/token_test.go`; `internal/server/confirm_test.go` (`TestSignupSendsConfirmation`, `TestConfirmEmailHandler`, `TestConfirmEmailFormHandler`, `TestConfirmResendHandler`, `TestConfirmNotice`, `TestSettingsNotConfirmedTag`, `TestTimelineFlash`); `password_reset_test.go` (`TestForgotPasswordHandler`, `TestForgotPasswordFormHandler`, `TestForgotPasswordSentHandlerWithoutEmail`, `TestResetPasswordHandler`, `TestResetPasswordFormHandler`, `TestLoginLinksToReset`); `email_change_test.go` (`TestSettingsEmailHandler`, `TestSettingsEmailForm`, `TestEmailChangeHandler`, `TestEmailChangeFormHandler`); `settings_test.go` (`TestSettingsDeleteForm`, `TestDeleteAccountLogsOut`); `internal/psql/users_test.go` (`TestDeleteUser`, `TestUserRepositoryCheckPassword`); `internal/password/password_test.go`; `internal/server/email_test.go`; `internal/mail/runner_test.go`, `queue_test.go`, `templates_test.go` (`TestEmailFooterLinksPrivacy`).
 
 **Why:** "Security" and "Accounts" in decisions.md.
 
 ## Search, site lookups and discovery
 
-**Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or
-one of whose feeds' title or URL, contains `q`. When `q` looks like a website address,
-the page also offers a "Look up example.com" button, which posts to `/lookups`. That handler
-normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls
-`LookupRepository.Request`, which returns the site key's lookup, creating it or
-re-queuing it if its result is older than its TTL (24 h done, 1 h failed). The handler
-then polls the row for up to 3 s and redirects to the site page if the lookup found one.
-Otherwise it redirects to `/lookups/{id}`, which reloads itself every 2 s while the lookup
-runs, then redirects to the site or says that no feeds were found or the site couldn't
-be reached.
+**Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or one of whose feeds' title or URL, contains `q`.
+When `q` looks like a website address, the page also offers a "Look up example.com" button, which posts to `/lookups`.
+That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h done, 1 h failed).
+The handler then polls the row for up to 3 s and redirects to the site page if the lookup found one.
+Otherwise it redirects to `/lookups/{id}`, which reloads itself every 2 s while the lookup runs, then redirects to the site or says that no feeds were found or the site couldn't be reached.
 
-Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL;
-if it is itself a feed, that's the result. Otherwise read the HTML page's title,
-description and `<link rel="alternate">` feeds, or, if there are none, try
-`CommonFeedPaths`. (`ParsePage` also reads a page's own title, Open Graph image and
-icon links, for the icon worker and article enrichment; discovery doesn't use them.)
+Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
+Otherwise read the HTML page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`.
+(`ParsePage` also reads a page's own title, Open Graph image and icon links, for the icon worker and article enrichment; discovery doesn't use them.)
 Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
-`Result.Checked` records every candidate (its source, `page` or `common path`, final
-URL, status, and outcome: `feed`, `duplicate`, over a limit, not fetched, or why it
-isn't a feed; `Direct` instead when the URL was itself a feed), for the debug
-inspector. If the deadline ends the checking, `Discover` returns the site and the
-`Checked` so far alongside the error; the lookup and import runners return on any error
-without reading the result. The worker
-turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds
-and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed
-has articles right away. The site page lists the feeds with subscribe
-buttons and offers "Check for new feeds" once the last lookup's TTL has passed. Its
-"Feeds last checked" time is rendered with the `local-time` partial
-(`partials/time.html`), so `app.js` shows it in the reader's time zone.
+`Result.Checked` records every candidate (its source, `page` or `common path`, final URL, status, and outcome: `feed`, `duplicate`, over a limit, not fetched, or why it isn't a feed; `Direct` instead when the URL was itself a feed), for the debug inspector.
+If the deadline ends the checking, `Discover` returns the site and the `Checked` so far alongside the error; the lookup and import runners return on any error without reading the result.
+The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
+The site page lists the feeds with subscribe buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
+Its "Feeds last checked" time is rendered with the `local-time` partial (`partials/time.html`), so `app.js` shows it in the reader's time zone.
 
 **Read:**
 
 1. `internal/server/search.go` (`searchHandler`) and `internal/psql/search.go` (`Search`).
 2. `internal/discovery/normalize.go`: `ParseInput`, `SiteKey`, `CanonicalFeedURL`.
 3. `internal/server/lookups.go`: `lookupCreateHandler`, `waitForLookup`, `lookupHandler`.
-4. `internal/psql/lookups.go`: `Request`, then the worker side: `ClaimNext`, `Finish`,
-   `Fail`, `ResetStale`.
+4. `internal/psql/lookups.go`: `Request`, then the worker side: `ClaimNext`, `Finish`, `Fail`, `ResetStale`.
 5. `internal/lookup/lookup.go`: `Runner.Run`, `work`, `process`, `run`.
-6. `internal/discovery/discover.go` (`Discover`, `checkCandidates`) and `page.go`
-   (`ParsePage`).
+6. `internal/discovery/discover.go` (`Discover`, `checkCandidates`) and `page.go` (`ParsePage`).
 7. `internal/feedparse/feedparse.go`: `Sniff`, `Parse`.
-8. `internal/psql/discoveries.go` (`Save`), with `upsertSite` in `sites.go` and
-   `upsertFeed` in `feeds.go`.
+8. `internal/psql/discoveries.go` (`Save`), with `upsertSite` in `sites.go` and `upsertFeed` in `feeds.go`.
 9. `internal/server/sites.go`: `siteHandler`, `canRecheck`.
 
-**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`;
-`internal/lookup/lookup_test.go`; `internal/discovery/*_test.go`;
-`internal/feedparse/feedparse_test.go` (fixtures in `testdata/`);
-`internal/psql/search_test.go`, `lookups_test.go`, `discoveries_test.go`,
-`sites_test.go`.
+**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/lookup/lookup_test.go`; `internal/discovery/*_test.go`; `internal/feedparse/feedparse_test.go` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 
 ## Feed ingestion and background refresh
 
-**Flow.** Three things fetch a feed's articles: discovery (the first save, above), the
-Refresh button, and the refresh workers. The last two share one path,
-`ingest.Refresher.Refresh`:
+**Flow.** Three things fetch a feed's articles: discovery (the first save, above), the Refresh button, and the refresh workers.
+The last two share one path, `ingest.Refresher.Refresh`:
 
 1. A conditional GET with the stored `ETag` / `Last-Modified`.
-2. The outcome is recorded and the next fetch scheduled. After a success (2xx or 304) the
-   feed is due again in an hour ±10% (`NextFetch`), or later if the response's
-   `Cache-Control` / `Expires` says it stays fresh longer (`freshness`, capped at 24 h).
+2. The outcome is recorded and the next fetch scheduled.
+   After a success (2xx or 304) the feed is due again in an hour ±10% (`NextFetch`), or later if the response's `Cache-Control` / `Expires` says it stays fresh longer (`freshness`, capped at 24 h).
    - **304:** `RecordNotModified`.
    - **410:** `MarkGone`; not fetched again until a lookup finds the feed again.
-   - **Network error, other non-2xx, or not a feed:** `RecordFailure`, with backoff
-     (`RetryAt`: 1 h, 2 h, 4 h, … up to 24 h), delayed further by a 429's or 503's
-     `Retry-After`.
-   - **2xx feed:** parse it, turn the items into articles (`Articles`), and `SaveFetch`
-     in one transaction: update the feed's metadata, validators and `next_fetch_at`, then
-     upsert the articles and record the success.
+   - **Network error, other non-2xx, or not a feed:** `RecordFailure`, with backoff (`RetryAt`: 1 h, 2 h, 4 h, … up to 24 h), delayed further by a 429's or 503's `Retry-After`.
+   - **2xx feed:** parse it, turn the items into articles (`Articles`), and `SaveFetch` in one transaction: update the feed's metadata, validators and `next_fetch_at`, then upsert the articles and record the success.
 
-Turning items into articles (`ingest.Articles`): each item's identity within its feed is
-its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are
-kept. Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters
-removed) for matching copies across feeds, and the MIME type of the item's first audio or
-video enclosure or `media:content` (`feedparse.Item.MediaType`, set by `itemMediaType`),
-which nothing displays yet. Which elements `Parse` reads, directly or through gofeed's
-translators, is also kept by hand in `usedChannelFields` and `usedItemFields`
-(`feedparse/inspect.go`), for the feed inspector (see "Debug mode"): a change to what
-`Parse` reads updates them too. Saving (`saveArticles`) locks the feed row, computes each new
-article's `timeline_at` (see Reading), and upserts by `(feed_id, external_id)`: unchanged
-articles aren't written, and an existing `published_at` is kept because some feeds bump
-it on every edit. A newly inserted article missing an image, title or excerpt gets an
-enrichment job in the same transaction (see "Article enrichment").
+Turning items into articles (`ingest.Articles`): each item's identity within its feed is its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are kept.
+Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters removed) for matching copies across feeds, and the MIME type of the item's first audio or video enclosure or `media:content` (`feedparse.Item.MediaType`, set by `itemMediaType`), which nothing displays yet.
+Which elements `Parse` reads, directly or through gofeed's translators, is also kept by hand in `usedChannelFields` and `usedItemFields` (`feedparse/inspect.go`), for the feed inspector (see "Debug mode"): a change to what `Parse` reads updates them too.
+Saving (`saveArticles`) locks the feed row, computes each new article's `timeline_at` (see Reading), and upserts by `(feed_id, external_id)`: unchanged articles aren't written, and an existing `published_at` is kept because some feeds bump it on every edit.
+A newly inserted article missing an image, title or excerpt gets an enrichment job in the same transaction (see "Article enrichment").
 
-Posting rate: `feeds.posts_per_week` is the feed's articles published in the last 30 days
-(by `COALESCE(published_at, created_at)`, so undated ones count from when they were
-saved) × 7 ÷ 30 (`postsPerWeek` in `internal/psql/feeds.go`). It's recomputed in the
-same transaction at the end of every `saveArticles` (refresh, the Refresh button,
-lookups and imports) and by `RecordNotModified`, so the window keeps sliding for feeds
-that stopped changing. My feeds and the feed page show it (see Subscriptions).
+Posting rate: `feeds.posts_per_week` is the feed's articles published in the last 30 days (by `COALESCE(published_at, created_at)`, so undated ones count from when they were saved) × 7 ÷ 30 (`postsPerWeek` in `internal/psql/feeds.go`).
+It's recomputed in the same transaction at the end of every `saveArticles` (refresh, the Refresh button, lookups and imports) and by `RecordNotModified`, so the window keeps sliding for feeds that stopped changing.
+My feeds and the feed page show it (see Subscriptions).
 
-Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a
-pending refresh request, requested ones first. A request is made when someone views a
-stale feed's page (`feedHandler` calls `RequestRefresh`, and the page says "Checking for
-new articles…"). The Refresh button instead fetches right away, within 8 s, and reports
-the result in a flash message. It refuses gone feeds, feeds fetched successfully (2xx or
+Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a pending refresh request, requested ones first.
+A request is made when someone views a stale feed's page (`feedHandler` calls `RequestRefresh`, and the page says "Checking for new articles…").
+The Refresh button instead fetches right away, within 8 s, and reports the result in a flash message.
+It refuses gone feeds, feeds fetched successfully (2xx or
 304) in the last 5 minutes, and users over the per-user limit.
 
 **Read:**
@@ -431,813 +200,378 @@ the result in a flash message. It refuses gone feeds, feeds fetched successfully
 1. `internal/refresh/refresh.go`: `Runner.work`, `refresh`.
 2. `internal/psql/feeds.go`: `ClaimDue`, `RequestRefresh`.
 3. `internal/feedparse/feedparse.go`: `itemImage`, `itemMediaType`.
-4. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`,
-   `ExternalID`.
-5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `RetryAfter`, `freshness`) and
-   `canonical.go` (`CanonicalURL`).
-6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`,
-   `MarkGone`, `postsPerWeek`.
+4. `internal/ingest/ingest.go`: `Refresher.Refresh`, `fetch`, `record`, `Articles`, `ExternalID`.
+5. `internal/ingest/schedule.go` (`NextFetch`, `RetryAt`, `RetryAfter`, `freshness`) and `canonical.go` (`CanonicalURL`).
+6. `internal/psql/feeds.go`: `SaveFetch`, `RecordFailure`, `RecordNotModified`, `MarkGone`, `postsPerWeek`.
 7. `internal/psql/articles.go`: `saveArticles`, `timelineAt`.
-8. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the
-   `RequestRefresh` call in `feedHandler`.
+8. `internal/server/feeds.go`: `feedRefreshHandler`, `refreshFlash`, and the `RequestRefresh` call in `feedHandler`.
 
-**Tests:** `internal/feedparse/feedparse_test.go` (`TestParseItemImage`,
-`TestParseItemMediaType`); `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`;
-`internal/psql/feeds_test.go` (`TestSaveFetchPostsPerWeek`), `articles_test.go`;
-`internal/server/feeds_test.go`.
+**Tests:** `internal/feedparse/feedparse_test.go` (`TestParseItemImage`, `TestParseItemMediaType`); `internal/ingest/*_test.go`; `internal/refresh/refresh_test.go`; `internal/psql/feeds_test.go` (`TestSaveFetchPostsPerWeek`), `articles_test.go`; `internal/server/feeds_test.go`.
 
 **Why:** "Feed ingestion" in decisions.md.
 
 ## Subscriptions
 
-**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on
-My feeds) post to
-`/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path; the handler changes
-the subscription, flashes a message, and redirects back (`safeReturnPath` keeps it
-local). Gone feeds can't be subscribed to but can be unsubscribed from. "My feeds"
-(`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest
-article date and posting rate ("About 3 posts a week", `postingRate`; only for feeds
-with articles) and a warning after 3 failed fetches in a row. A fetched feed's page shows
-the rate after "Last fetched". Site, feed and search pages
-mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`).
-Subscriptions also decide which feeds are refreshed in the background and what's in the
-timeline.
+**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path; the handler changes the subscription, flashes a message, and redirects back (`safeReturnPath` keeps it local).
+Gone feeds can't be subscribed to but can be unsubscribed from.
+"My feeds" (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest article date and posting rate ("About 3 posts a week", `postingRate`; only for feeds with articles) and a warning after 3 failed fetches in a row.
+A fetched feed's page shows the rate after "Last fetched".
+Site, feed and search pages mark the feeds the user subscribes to with one extra query (`SubscribedFeedIDs`).
+Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
-**Names.** A subscription can have the user's own name for the feed
-(`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed
-that changes its title still updates). Edit on My feeds, and next to Unsubscribe on a
-subscribed feed's page, links to `/feeds/{id}/edit?return_to=…`
-(`subscriptionEditHandler`), which loads the subscription with `Get` (404 if the user
-doesn't subscribe) and shows a Name field with the feed's title as placeholder, then the
-subscription's tags (see "On a subscription" under "Tags"). The post
-(`subscriptionEditPostHandler`) trims the name, re-renders with 422 over 100 characters,
-stores `""` for a blank name or one equal to the feed's current title (`Rename`),
-flashes "Subscription updated." and redirects to `safeReturnPath(return_to, "/feeds")`.
-My feeds shows the name (else the feed's title, else its URL) and sorts a site's feeds
-by it. Unsubscribing drops the name and the subscription's tags (see "Tags").
+**Names.** A subscription can have the user's own name for the feed (`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed that changes its title still updates).
+Edit on My feeds, and next to Unsubscribe on a subscribed feed's page, links to `/feeds/{id}/edit?return_to=…` (`subscriptionEditHandler`), which loads the subscription with `Get` (404 if the user doesn't subscribe) and shows a Name field with the feed's title as placeholder, then the subscription's tags (see "On a subscription" under "Tags").
+The post (`subscriptionEditPostHandler`) trims the name, re-renders with 422 over 100 characters, stores `""` for a blank name or one equal to the feed's current title (`Rename`), flashes "Subscription updated." and redirects to `safeReturnPath(return_to, "/feeds")`.
+My feeds shows the name (else the feed's title, else its URL) and sorts a site's feeds by it.
+Unsubscribing drops the name and the subscription's tags (see "Tags").
 
-The name shows wherever the user's own reading shows the feed. Per-user list queries
-(`ListTimeline` and `fillAlsoIn` for the timeline, `ListSaved` for the saved list)
-select `subscriptionTitle` (`COALESCE(NULLIF(sub.title, ''), f.title)`) as the feed's
-title through `qualifiedFeedColumnsTitled`, so rows, avatars and "Also in" show it
-without template changes. The feed page and the article page load the subscription with
-`Get` (`ErrNoRecord` means not subscribed): the feed page's `<title>`, heading, avatar
-and Subscribe/Unsubscribe labels show the name, with "Feed title “…”" after "From
-{site}" when it's set; the article page's header and "Read on" button use it. The OPML
-export writes it too. Catalog pages (site, search) and debug panels keep the feed's own
-title.
+The name shows wherever the user's own reading shows the feed.
+Per-user list queries (`ListTimeline` and `fillAlsoIn` for the timeline, `ListSaved` for the saved list) select `subscriptionTitle` (`COALESCE(NULLIF(sub.title, ''), f.title)`) as the feed's title through `qualifiedFeedColumnsTitled`, so rows, avatars and "Also in" show it without template changes.
+The feed page and the article page load the subscription with `Get` (`ErrNoRecord` means not subscribed): the feed page's `<title>`, heading, avatar and Subscribe/Unsubscribe labels show the name, with "Feed title “…”" after "From {site}" when it's set; the article page's header and "Read on" button use it.
+The OPML export writes it too.
+Catalog pages (site, search) and debug panels keep the feed's own title.
 
-**Export.** "Export subscriptions", under "Your data" in Settings, opens
-`/settings/export` (`settingsExportHandler`): a GET form asking "Turn each tag into a
-folder" (the default) or "Ignore tags", which downloads `/settings/subscriptions.opml`
-(`exportOPMLHandler`; the delete account page links to it directly). It writes every
-subscription from `ListByUser`, gone feeds included, as OPML 2.0 with one `<outline>`
-per feed (`feedOutline`: `type="rss"`, `text` and `title` the user's name for the feed
-or else its title, `text` falling back to its URL, `xmlUrl`, and `htmlUrl` the feed's
-site URL or else its site's). By default (`tagFolders`) the feeds are nested in a
-folder outline per tag (`text` and `title` the tag's name, no `type` or `xmlUrl`),
-ordered by name ignoring case, a feed with two tags in both, then the untagged feeds
-at the top level; with `?tags=ignore`, or for someone without tags, it's a flat list
-in `ListByUser` order. It's encoded into a buffer first, so a store or
-encoding error is an HTML 500 instead of half a file, and sent as
-`rss-subscriptions-YYYY-MM-DD.opml` (UTC).
+**Export.** "Export subscriptions", under "Your data" in Settings, opens `/settings/export` (`settingsExportHandler`): a GET form asking "Turn each tag into a folder" (the default) or "Ignore tags", which downloads `/settings/subscriptions.opml` (`exportOPMLHandler`; the delete account page links to it directly).
+It writes every subscription from `ListByUser`, gone feeds included, as OPML 2.0 with one `<outline>` per feed (`feedOutline`: `type="rss"`, `text` and `title` the user's name for the feed or else its title, `text` falling back to its URL, `xmlUrl`, and `htmlUrl` the feed's site URL or else its site's).
+By default (`tagFolders`) the feeds are nested in a folder outline per tag (`text` and `title` the tag's name, no `type` or `xmlUrl`), ordered by name ignoring case, a feed with two tags in both, then the untagged feeds at the top level; with `?tags=ignore`, or for someone without tags, it's a flat list in `ListByUser` order.
+It's encoded into a buffer first, so a store or encoding error is an HTML 500 instead of half a file, and sent as `rss-subscriptions-YYYY-MM-DD.opml` (UTC).
 
-**Import.** "Import subscriptions", under "Your data" in Settings and linked from the
-empty timeline, opens `/settings/import` (`settingsImportHandler`): an upload form,
-with a choice to "Turn each folder into a tag" (the default, `folders=tags`) or "Ignore
-folders", and
-the user's last 5 imports from `ImportRepository.ListByUser`, each with its date,
-filename, feed count and "importing…" or how many couldn't be added. The form posts the
-file as multipart to `settingsImportFormHandler`, which caps the body with
-`http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and
-re-renders the form with the error on the `file` field for no file (422), a file over
-1 MiB (413), a file that isn't OPML, has no feeds or has more than 1,000 (422), or a
-sixth import within the hour (`importLimiter`, 429 with `Retry-After`), keeping the
-folders choice. Otherwise it turns each outline's `Folders` into its `Tags` with
-`importTags` (when folders become tags: commas become spaces, names are normalized like
-typed tags, cut to 50 characters, and empty names and repeats ignoring case dropped),
-creates the import, with the file's base name, and redirects to `/settings/imports/{id}`
-(`importHandler`; another user's import is a 404). While any feed is pending or running
-that page shows "Checked {done} of {total} feeds." and refreshes itself with
-`<meta http-equiv="refresh">`; then "Import finished" and a one-line summary. Feeds
-finished so far are listed in three groups: Subscribed and Already subscribed (the
-outline's title, else the feed's from `Get`, linking to the feed), and Couldn't add,
-with the URL, a plain reason for its `Failure` (`importReasons`) and a link to search
-for its host.
+**Import.** "Import subscriptions", under "Your data" in Settings and linked from the empty timeline, opens `/settings/import` (`settingsImportHandler`): an upload form, with a choice to "Turn each folder into a tag" (the default, `folders=tags`) or "Ignore folders", and the user's last 5 imports from `ImportRepository.ListByUser`, each with its date, filename, feed count and "importing…" or how many couldn't be added.
+The form posts the file as multipart to `settingsImportFormHandler`, which caps the body with `http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and re-renders the form with the error on the `file` field for no file (422), a file over 1 MiB (413), a file that isn't OPML, has no feeds or has more than 1,000 (422), or a sixth import within the hour (`importLimiter`, 429 with `Retry-After`), keeping the folders choice.
+Otherwise it turns each outline's `Folders` into its `Tags` with `importTags` (when folders become tags: commas become spaces, names are normalized like typed tags, cut to 50 characters, and empty names and repeats ignoring case dropped), creates the import, with the file's base name, and redirects to `/settings/imports/{id}` (`importHandler`; another user's import is a 404).
+While any feed is pending or running that page shows "Checked {done} of {total} feeds." and refreshes itself with `<meta http-equiv="refresh">`; then "Import finished" and a one-line summary.
+Feeds finished so far are listed in three groups: Subscribed and Already subscribed (the outline's title, else the feed's from `Get`, linking to the feed), and Couldn't add, with the URL, a plain reason for its `Failure` (`importReasons`) and a link to search for its host.
 
-The import itself is a queue worked in the background. `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any
-depth, in file order and without repeats; an outline without one is a folder, and each
-feed's `Folders` are the names of the folders it's nested in, at any depth (a feed in
-`Tech › AI` has both), plus those of any repeat of its URL. It parses non-strictly
-and decodes legacy charsets, since older readers' exports are sloppy.
-`ImportRepository.Create` stores the import and one pending `import_feeds` row per feed,
-with its `tags`.
-The import runner (`importer.Runner`, `-import-workers`) claims one row at a time, oldest
-import first, and in `run`: parses the URL with `discovery.ParseInput` (else `failed` /
-`invalid_url`); looks up its `CanonicalFeedURL` with `FeedRepository.GetByURL`; for an
-unknown or gone feed, runs discovery (an error is `unreachable`, no feeds `not_feed`),
-saves what it found with `lookup.ToSave` and `DiscoveryRepository.Save` exactly like a
-lookup, and takes the first feed; then records `already_subscribed`, or subscribes and
-records `subscribed`; either way it adds the row's tags with
-`TagRepository.AddToSubscription` (`addTags`), which reuses the user's tags by name
-ignoring case, creates the rest while the user has fewer than 100, skips those past the
-cap, and never removes a tag. A tag error is only logged: the feed stays subscribed. Failures aren't retried; a crashed row is re-queued by
-`ResetStale`. Subscribing bumps nothing onto the timeline: the backlog keeps its
-published dates.
+The import itself is a queue worked in the background.
+`opml.Parse` reads every `<outline>` with an `xmlUrl`, at any depth, in file order and without repeats; an outline without one is a folder, and each feed's `Folders` are the names of the folders it's nested in, at any depth (a feed in `Tech › AI` has both), plus those of any repeat of its URL.
+It parses non-strictly and decodes legacy charsets, since older readers' exports are sloppy.
+`ImportRepository.Create` stores the import and one pending `import_feeds` row per feed, with its `tags`.
+The import runner (`importer.Runner`, `-import-workers`) claims one row at a time, oldest import first, and in `run`: parses the URL with `discovery.ParseInput` (else `failed` / `invalid_url`); looks up its `CanonicalFeedURL` with `FeedRepository.GetByURL`; for an unknown or gone feed, runs discovery (an error is `unreachable`, no feeds `not_feed`), saves what it found with `lookup.ToSave` and `DiscoveryRepository.Save` exactly like a lookup, and takes the first feed; then records `already_subscribed`, or subscribes and records `subscribed`; either way it adds the row's tags with `TagRepository.AddToSubscription` (`addTags`), which reuses the user's tags by name ignoring case, creates the rest while the user has fewer than 100, skips those past the cap, and never removes a tag.
+A tag error is only logged: the feed stays subscribed.
+Failures aren't retried; a crashed row is re-queued by `ResetStale`.
+Subscribing bumps nothing onto the timeline: the backlog keeps its published dates.
 
 **Read:**
 
-1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`,
-   `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler` and `postingRate`; names:
-   `subscriptionEditHandler`, `subscriptionEditPostHandler`, `subscriptionFromURL`,
-   `renderSubscriptionEdit`.
+1. `internal/server/feeds.go`: `feedSubscribeHandler`, `feedUnsubscribeHandler`, `subscriptionTarget`, `redirectWithFlash`, then `feedsHandler` and `postingRate`; names: `subscriptionEditHandler`, `subscriptionEditPostHandler`, `subscriptionFromURL`, `renderSubscriptionEdit`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
-3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`,
-   `ListByUser`, `Get`, `Rename`, `scanSubscription`.
+3. `internal/psql/subscriptions.go`: `Subscribe`, `Unsubscribe`, `SubscribedFeedIDs`, `ListByUser`, `Get`, `Rename`, `scanSubscription`.
 4. Templates: `feed.html`, `site.html`, `feeds.html`, `subscription_edit.html`.
-5. Export: `internal/server/settings.go` (`settingsExportHandler`, `opmlDoc`,
-   `exportOPMLHandler`, `feedOutline`, `tagFolders`); the "Your data" section of
-   `settings.html`; `settings_export.html`.
-6. Import: `internal/server/import.go` (`settingsImportHandler`,
-   `settingsImportFormHandler`, `importTags`, `importFilename`, `importHandler`, `importSummary`);
-   templates `settings_import.html`, `import.html`; `internal/opml/opml.go` (`Parse`);
-   `internal/psql/imports.go` (`ImportRepository`); `internal/importer/importer.go`
-   (`Runner.process`, `run`, `addTags`, `discover`); `TagRepository.AddToSubscription`
-   in `internal/psql/tags.go`; `internal/lookup/lookup.go` (`ToSave`);
-   `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
+5. Export: `internal/server/settings.go` (`settingsExportHandler`, `opmlDoc`, `exportOPMLHandler`, `feedOutline`, `tagFolders`); the "Your data" section of `settings.html`; `settings_export.html`.
+6. Import: `internal/server/import.go` (`settingsImportHandler`, `settingsImportFormHandler`, `importTags`, `importFilename`, `importHandler`, `importSummary`); templates `settings_import.html`, `import.html`; `internal/opml/opml.go` (`Parse`); `internal/psql/imports.go` (`ImportRepository`); `internal/importer/importer.go` (`Runner.process`, `run`, `addTags`, `discover`); `TagRepository.AddToSubscription` in `internal/psql/tags.go`; `internal/lookup/lookup.go` (`ToSave`); `FeedRepository.GetByURL` in `internal/psql/feeds.go`.
 
-**Tests:** `internal/server/feeds_test.go` (`TestPostingRate`; names:
-`TestSubscriptionEdit`, `TestSubscriptionEditPost`, `TestFeedHandlerSubscriptionName`),
-`articles_test.go` (`TestArticleHandlerSubscriptionName`, `TestReadOnLabel`),
-`sites_test.go`, `search_test.go`, `settings_test.go` (`TestSettingsExportHandler`,
-`TestExportOPML`);
-`internal/psql/subscriptions_test.go` (`TestSubscriptionGet`, `TestSubscriptionRename`),
-`articles_test.go` (`TestListTimelineSubscriptionNames`), `saves_test.go`
-(`TestListSavedSubscriptionNames`); import:
-`internal/server/import_test.go` (`TestSettingsImportForm`, `TestImportTags`,
-`TestSettingsImportHandler`, `TestImportHandler`), `internal/opml/opml_test.go`,
-`internal/psql/imports_test.go`, `internal/psql/tags_test.go` (`TestAddToSubscription`),
-`internal/importer/importer_test.go` (`TestProcessAddsTags`).
+**Tests:** `internal/server/feeds_test.go` (`TestPostingRate`; names: `TestSubscriptionEdit`, `TestSubscriptionEditPost`, `TestFeedHandlerSubscriptionName`), `articles_test.go` (`TestArticleHandlerSubscriptionName`, `TestReadOnLabel`), `sites_test.go`, `search_test.go`, `settings_test.go` (`TestSettingsExportHandler`, `TestExportOPML`); `internal/psql/subscriptions_test.go` (`TestSubscriptionGet`, `TestSubscriptionRename`), `articles_test.go` (`TestListTimelineSubscriptionNames`), `saves_test.go` (`TestListSavedSubscriptionNames`); import: `internal/server/import_test.go` (`TestSettingsImportForm`, `TestImportTags`, `TestSettingsImportHandler`, `TestImportHandler`), `internal/opml/opml_test.go`, `internal/psql/imports_test.go`, `internal/psql/tags_test.go` (`TestAddToSubscription`), `internal/importer/importer_test.go` (`TestProcessAddsTags`).
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 
 ## Tags
 
-**Flow.** A Tags button in My feeds' page head links to `/tags` (`tagsHandler`): a New
-tag form, then the user's tags from `TagRepository.List` (ordered by name ignoring case,
-each with its number of subscriptions, "1 feed" / "N feeds"), each linking to its page.
-Creating (`tagCreateHandler`) normalizes the name with `rss.TagName` (trimmed, runs of
-whitespace collapsed to one space) and checks it with `tagForm.check` (not blank, at
-most 50 runes, no commas, since Edit subscription separates new tags with commas);
-`Create` reports `ErrDuplicateTag` for a name the user already has, ignoring case
-(`citext`), and `ErrTooManyTags` at 100 (`addStoreError` turns both into the field's
-error). Any error re-renders the page with 422 and the typed value; success redirects
-to the new tag's page.
+**Flow.** A Tags button in My feeds' page head links to `/tags` (`tagsHandler`): a New tag form, then the user's tags from `TagRepository.List` (ordered by name ignoring case, each with its number of subscriptions, "1 feed" / "N feeds"), each linking to its page.
+Creating (`tagCreateHandler`) normalizes the name with `rss.TagName` (trimmed, runs of whitespace collapsed to one space) and checks it with `tagForm.check` (not blank, at most 50 runes, no commas, since Edit subscription separates new tags with commas); `Create` reports `ErrDuplicateTag` for a name the user already has, ignoring case (`citext`), and `ErrTooManyTags` at 100 (`addStoreError` turns both into the field's error).
+Any error re-renders the page with 422 and the typed value; success redirects to the new tag's page.
 
-A tag's page (`/tags/{id}`, `tagHandler`; another user's tag or a non-UUID is a 404 via
-`tagFromURL`) is one form with a checkbox per subscription, in `ListByUser` order, each
-with its avatar, name and site, ticked where `FeedIDs` has it. Save (also above the
-list when there are more than 20 subscriptions) posts the ticked feeds to
-`tagFeedsHandler`, which drops malformed IDs and any feed the user no longer subscribes
-to (`SubscribedFeedIDs`, e.g. unsubscribed in another tab), then calls `SetFeeds`: in
-one transaction it removes the tag from the user's subscriptions not in the list and
-adds it to the rest, leaving their other tags alone. It flashes "Saved the feeds tagged
-“…”." and comes back to the page. Below the list, Rename (`tagRenameHandler`, the same
-validation; a 422 re-renders the page) flashes "Tag renamed."; Delete tag
-(`tagDeleteHandler`, no confirmation) cascades to `subscription_tags` and
-`timeline_tags`, flashes "Deleted the tag “…”." and goes back to `/tags`. All of it works
-without JavaScript.
+A tag's page (`/tags/{id}`, `tagHandler`; another user's tag or a non-UUID is a 404 via `tagFromURL`) is one form with a checkbox per subscription, in `ListByUser` order, each with its avatar, name and site, ticked where `FeedIDs` has it.
+Save (also above the list when there are more than 20 subscriptions) posts the ticked feeds to `tagFeedsHandler`, which drops malformed IDs and any feed the user no longer subscribes to (`SubscribedFeedIDs`, e.g. unsubscribed in another tab), then calls `SetFeeds`: in one transaction it removes the tag from the user's subscriptions not in the list and adds it to the rest, leaving their other tags alone.
+It flashes "Saved the feeds tagged “…”." and comes back to the page.
+Below the list, Rename (`tagRenameHandler`, the same validation; a 422 re-renders the page) flashes "Tag renamed."; Delete tag (`tagDeleteHandler`, no confirmation) cascades to `subscription_tags` and `timeline_tags`, flashes "Deleted the tag “…”." and goes back to `/tags`.
+All of it works without JavaScript.
 
-**On a subscription.** Edit subscription (`/feeds/{id}/edit`, see "Names" under
-"Subscriptions") has a Tags fieldset after the Name field: a checkbox per tag from
-`List` (`tagOption`), ticked for those in the subscription's `Tags`, then a New tags
-field for comma-separated names and a Manage tags link to `/tags`. The post
-(`subscriptionEditPostHandler`) keeps only ticked IDs that are in the user's list
-(`ownTagIDs`; a tag deleted in another tab is ignored), splits New tags with
-`splitTagNames` (normalized with `rss.TagName`, empty ones and repeats, ignoring case,
-dropped) and re-renders with 422 on `new_tags` for a name over 50 runes. It then calls
-`SetForSubscription` before `Rename`, so a refusal changes nothing: in one transaction it
-checks the subscription exists, refuses (`ErrTooManyTags`, a 422 on `new_tags`) if the
-new names would take the user past `MaxTags`, creates them with `INSERT … ON CONFLICT
-(user_id, name) DO UPDATE` (so a name the user already has, ignoring case, reuses that
-tag), and replaces the subscription's `subscription_tags` rows with the ticked tags plus
-the new ones. A 422 keeps the ticks and the typed text. `ListByUser` and `Get` fill
-`Subscription.Tags` with one more query each (`tagsByFeed`: the user's
-`subscription_tags` joined to `tags`, grouped by feed in Go), and My feeds shows a
-feed's tags under its title as small links to their pages (`.feed-tags`). Unsubscribing
-cascades to the subscription's `subscription_tags` rows; the tags stay.
+**On a subscription.** Edit subscription (`/feeds/{id}/edit`, see "Names" under "Subscriptions") has a Tags fieldset after the Name field: a checkbox per tag from `List` (`tagOption`), ticked for those in the subscription's `Tags`, then a New tags field for comma-separated names and a Manage tags link to `/tags`.
+The post (`subscriptionEditPostHandler`) keeps only ticked IDs that are in the user's list (`ownTagIDs`; a tag deleted in another tab is ignored), splits New tags with `splitTagNames` (normalized with `rss.TagName`, empty ones and repeats, ignoring case, dropped) and re-renders with 422 on `new_tags` for a name over 50 runes.
+It then calls `SetForSubscription` before `Rename`, so a refusal changes nothing: in one transaction it checks the subscription exists, refuses (`ErrTooManyTags`, a 422 on `new_tags`) if the new names would take the user past `MaxTags`, creates them with `INSERT … ON CONFLICT (user_id, name) DO UPDATE` (so a name the user already has, ignoring case, reuses that tag), and replaces the subscription's `subscription_tags` rows with the ticked tags plus the new ones.
+A 422 keeps the ticks and the typed text.
+`ListByUser` and `Get` fill `Subscription.Tags` with one more query each (`tagsByFeed`: the user's `subscription_tags` joined to `tags`, grouped by feed in Go), and My feeds shows a feed's tags under its title as small links to their pages (`.feed-tags`).
+Unsubscribing cascades to the subscription's `subscription_tags` rows; the tags stay.
 
 **Read:**
 
-1. `internal/server/tags.go`: `tagsHandler`, `tagCreateHandler`, `tagForm` (`check`,
-   `addStoreError`), `renderTags`; then `tagHandler`, `tagFromURL`, `renderTag`,
-   `tagFeedsHandler`, `tagRenameHandler`, `tagDeleteHandler`. On a subscription:
-   `subscriptionEditHandler`, `subscriptionEditPostHandler`, `ownTagIDs`,
-   `splitTagNames`, `renderSubscriptionEdit` in `internal/server/feeds.go`.
-2. `internal/rss/rss.go`: `Tag`, `TagName`, `Subscription.Tags`; `ErrDuplicateTag`, `ErrTooManyTags` in
-   `errors.go`.
-3. `internal/psql/tags.go`: `Create`, `List`, `Get`, `Rename`, `Delete`, `FeedIDs`,
-   `SetFeeds`, `SetForSubscription`, `tagError`; `tagsByFeed` in
-   `internal/psql/subscriptions.go`.
-4. Templates: `tags.html`, `tag.html`, the Tags link and `.feed-tags` in `feeds.html`,
-   the Tags fieldset in `subscription_edit.html`; `.tag-feeds`, `.check-row`,
-   `.tag-checks` and `.feed-tags` in `main.css`.
+1. `internal/server/tags.go`: `tagsHandler`, `tagCreateHandler`, `tagForm` (`check`, `addStoreError`), `renderTags`; then `tagHandler`, `tagFromURL`, `renderTag`, `tagFeedsHandler`, `tagRenameHandler`, `tagDeleteHandler`.
+   On a subscription: `subscriptionEditHandler`, `subscriptionEditPostHandler`, `ownTagIDs`, `splitTagNames`, `renderSubscriptionEdit` in `internal/server/feeds.go`.
+2. `internal/rss/rss.go`: `Tag`, `TagName`, `Subscription.Tags`; `ErrDuplicateTag`, `ErrTooManyTags` in `errors.go`.
+3. `internal/psql/tags.go`: `Create`, `List`, `Get`, `Rename`, `Delete`, `FeedIDs`, `SetFeeds`, `SetForSubscription`, `tagError`; `tagsByFeed` in `internal/psql/subscriptions.go`.
+4. Templates: `tags.html`, `tag.html`, the Tags link and `.feed-tags` in `feeds.html`, the Tags fieldset in `subscription_edit.html`; `.tag-feeds`, `.check-row`, `.tag-checks` and `.feed-tags` in `main.css`.
 
-**Tests:** `internal/server/tags_test.go` (`TestTagsHandler`, `TestTagCreateHandler`,
-`TestTagHandler`, `TestTagFeedsHandler`, `TestTagRenameHandler`, `TestTagDeleteHandler`,
-`TestFeedsHandlerTagsLink`), `feeds_test.go` (`TestSubscriptionEdit`,
-`TestSubscriptionEditPost`, and My feeds' tag links in `TestFeedsHandler`);
-`internal/psql/tags_test.go` (`TestTagCreate`, `TestTagList`, `TestTagGet`,
-`TestTagRename`, `TestTagDelete`, `TestTagFeedIDs`, `TestTagSetFeeds`,
-`TestSetForSubscription`), `subscriptions_test.go` (`TestSubscriptionTags`); `internal/rss/rss_test.go` (`TestTagName`).
+**Tests:** `internal/server/tags_test.go` (`TestTagsHandler`, `TestTagCreateHandler`, `TestTagHandler`, `TestTagFeedsHandler`, `TestTagRenameHandler`, `TestTagDeleteHandler`, `TestFeedsHandlerTagsLink`), `feeds_test.go` (`TestSubscriptionEdit`, `TestSubscriptionEditPost`, and My feeds' tag links in `TestFeedsHandler`); `internal/psql/tags_test.go` (`TestTagCreate`, `TestTagList`, `TestTagGet`, `TestTagRename`, `TestTagDelete`, `TestTagFeedIDs`, `TestTagSetFeeds`, `TestSetForSubscription`), `subscriptions_test.go` (`TestSubscriptionTags`); `internal/rss/rss_test.go` (`TestTagName`).
 
 **Why:** "Stars and tags" under "Filtering and timelines" in decisions.md.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline are headed by a tab row (`timeline-tabs`, from
-`TimelineRepository.List`): Home, the user's timelines in tab order, then New timeline
-(or Timelines when there are some), underlined tabs that scroll sideways when they
-don't fit; `app.js` scrolls the row so the current tab shows. The page's `<h1>` (the
-timeline's name, or Home) is visually hidden; the description and Edit link follow in
-a row under the tabs. A timeline is a name, an optional description and a
-`rss.TimelineFilter` over the user's subscriptions: Show is all feeds, or
-(`OnlyIncluded`) only the feeds with any of `IncludeTagIDs` or in `IncludeFeedIDs`;
-Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins; Only show `StarredOnly`
-limits it to the user's stars, `MaxPostsPerWeek` (0: any) to feeds whose
-`feeds.posts_per_week` (the 30-day average) is at most that, so a feed that gets
-busier takes its older articles with it, and `MediaOnly` to articles with an audio or
-video enclosure (`media_type <> ''`; videos embedded in the HTML don't count);
-`IncludeWords` keeps only articles that mention one of its words or phrases, and an
-article that mentions one of `ExcludeWords` is left out, even when it mentions an
-`IncludeWords` term too. Tag-based timelines stay current, since the filter reads
-`subscription_tags` on every page.
+**Flow.** Home and each custom timeline are headed by a tab row (`timeline-tabs`, from `TimelineRepository.List`): Home, the user's timelines in tab order, then New timeline (or Timelines when there are some), underlined tabs that scroll sideways when they don't fit; `app.js` scrolls the row so the current tab shows.
+The page's `<h1>` (the timeline's name, or Home) is visually hidden; the description and Edit link follow in a row under the tabs.
+A timeline is a name, an optional description and a `rss.TimelineFilter` over the user's subscriptions: Show is all feeds, or (`OnlyIncluded`) only the feeds with any of `IncludeTagIDs` or in `IncludeFeedIDs`; Leave out (`ExcludeTagIDs`, `ExcludeFeedIDs`) always wins; Only show `StarredOnly` limits it to the user's stars, `MaxPostsPerWeek` (0: any) to feeds whose `feeds.posts_per_week` (the 30-day average) is at most that, so a feed that gets busier takes its older articles with it, and `MediaOnly` to articles with an audio or video enclosure (`media_type <> ''`; videos embedded in the HTML don't count); `IncludeWords` keeps only articles that mention one of its words or phrases, and an article that mentions one of `ExcludeWords` is left out, even when it mentions an `IncludeWords` term too.
+Tag-based timelines stay current, since the filter reads `subscription_tags` on every page.
 
-Words and phrases match whole words, ignoring case, in `concat_ws(' ', title,
-page_title, excerpt)` (never the full content): `wordsPattern` turns a list into one
-Postgres regular expression for `~*`, `(?<![[:alnum:]])(?:…|…)(?![[:alnum:]])`, with
-each ASCII character that isn't a letter or digit backslash-escaped (so `C++`, `.NET`
-and `a|b` match literally) and each run of whitespace as `\s+`. So `AI` matches "AI's"
-and "#AI" but not "said", `C++` matches "(C++)" but not "C++20", and `C` matches "C++"
-too (the accepted trade-off). `[[:alnum:]]` follows the database's `LC_CTYPE`, so in a
-UTF-8 database `café` doesn't match "cafés". They're stored as the `include_words` and
-`exclude_words` arrays.
+Words and phrases match whole words, ignoring case, in `concat_ws(' ', title, page_title, excerpt)` (never the full content): `wordsPattern` turns a list into one Postgres regular expression for `~*`, `(?<![[:alnum:]])(?:…|…)(?![[:alnum:]])`, with each ASCII character that isn't a letter or digit backslash-escaped (so `C++`, `.NET` and `a|b` match literally) and each run of whitespace as `\s+`.
+So `AI` matches "AI's" and "#AI" but not "said", `C++` matches "(C++)" but not "C++20", and `C` matches "C++" too (the accepted trade-off).
+`[[:alnum:]]` follows the database's `LC_CTYPE`, so in a UTF-8 database `café` doesn't match "cafés".
+They're stored as the `include_words` and `exclude_words` arrays.
 
-`/timelines` (`timelinesHandler`) lists them in tab order with an Edit link each, and
-Move up and Move down buttons (`aria-label` "Move {name} up" / "down"; none on the
-first row's Move up or the last row's Move down, and no buttons with one timeline).
-Each posts `direction` to `timelineMoveHandler` (400 for anything but `up` or `down`),
-whose `TimelineRepository.Move` locks the user's timelines (`FOR UPDATE`) in a
-transaction and renumbers them 0…n−1 in tab order with the timeline swapped with its
-neighbour, which also repairs ties and gaps from deletes; at either end it changes
-nothing. It 303s to `/timelines#timeline-{id}`, back at the row, with no flash. Home
-is always first and can't move. New timeline
-(`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after
-the tag and shows only that tag) and Edit (`timelineEditHandler`) render one form,
-`timeline_form.html`: Name, Description, then a Show fieldset (radios, the user's tags
-as checkboxes, their feeds in a `<details>` that's open when any is ticked), a Leave
-out fieldset (tags and feeds) and an Only show fieldset (the `starred_only` checkbox,
-"Articles I've starred"; "Feeds that post at most [`max_posts_per_week`] times a
-week", a number field; the `media_only` checkbox, "Articles with audio or video";
-"Articles that mention" (`include_words`) and "Leave out articles that mention"
-(`exclude_words`), text fields sharing one hint, "Separate words or phrases with
-commas, …"). New
-timeline also offers presets as links, "Start from: Starred, Quiet posters":
-`?preset=starred` prefills the name Starred, Show all and starred only;
-`?preset=quiet` the name Quiet posters, Show all and at most 2 posts a week; with
-`?tag=` too, the tag names it and sets Show. Posting (`timelineCreateHandler`,
-`timelineEditPostHandler`, both through `decodeTimelineForm`) answers 400 for a `show`
-other than `all` or `some`, then `timelineForm.check` trims the text, keeps only the
-user's own tags and feeds (each once), and validates: a name of 1–50 runes, a
-description up to 280, with Show "some", at least one tag or feed, and a posting
-rate that's blank or a whole number from 1 to 100 ("Enter a whole number from 1 to
-100, or leave it blank."). Each words field is split by `splitTerms` (on commas,
-trimmed, inner whitespace collapsed, blanks and repeats ignoring case dropped) and
-holds at most 20 terms ("At most 20 words or phrases."), each up to 50 runes ("Each
-word or phrase must be 50 characters or fewer.") with a letter or digit ("Each word
-or phrase needs at least one letter or number.", so `+++` is refused and `C++`
-accepted); the edit form shows them joined with ", ". Any error
-re-renders the form with 422 and everything kept; `ErrTooManyTimelines` (20) is a form
-error. `timelineForm.timeline` drops the Show checkboxes when Show is all. Saving
-flashes "Timeline created." or "Timeline saved." and goes to the timeline; Delete
-timeline on the edit page (`timelineDeleteHandler`, unconfirmed) flashes "Deleted the
-timeline “…”." and goes to `/timelines`. `timelineFromURL` makes a non-UUID or another
-user's timeline a 404.
+`/timelines` (`timelinesHandler`) lists them in tab order with an Edit link each, and Move up and Move down buttons (`aria-label` "Move {name} up" / "down"; none on the first row's Move up or the last row's Move down, and no buttons with one timeline).
+Each posts `direction` to `timelineMoveHandler` (400 for anything but `up` or `down`), whose `TimelineRepository.Move` locks the user's timelines (`FOR UPDATE`) in a transaction and renumbers them 0…n−1 in tab order with the timeline swapped with its neighbour, which also repairs ties and gaps from deletes; at either end it changes nothing.
+It 303s to `/timelines#timeline-{id}`, back at the row, with no flash.
+Home is always first and can't move.
+New timeline (`timelineNewHandler`; a tag's page links to it with `?tag={id}`, which names it after the tag and shows only that tag) and Edit (`timelineEditHandler`) render one form, `timeline_form.html`: Name, Description, then a Show fieldset (radios, the user's tags as checkboxes, their feeds in a `<details>` that's open when any is ticked), a Leave out fieldset (tags and feeds) and an Only show fieldset (the `starred_only` checkbox, "Articles I've starred"; "Feeds that post at most [`max_posts_per_week`] times a week", a number field; the `media_only` checkbox, "Articles with audio or video"; "Articles that mention" (`include_words`) and "Leave out articles that mention" (`exclude_words`), text fields sharing one hint, "Separate words or phrases with commas, …").
+New timeline also offers presets as links, "Start from: Starred, Quiet posters": `?preset=starred` prefills the name Starred, Show all and starred only; `?preset=quiet` the name Quiet posters, Show all and at most 2 posts a week; with `?tag=` too, the tag names it and sets Show.
+Posting (`timelineCreateHandler`, `timelineEditPostHandler`, both through `decodeTimelineForm`) answers 400 for a `show` other than `all` or `some`, then `timelineForm.check` trims the text, keeps only the user's own tags and feeds (each once), and validates: a name of 1–50 runes, a description up to 280, with Show "some", at least one tag or feed, and a posting rate that's blank or a whole number from 1 to 100 ("Enter a whole number from 1 to 100, or leave it blank.").
+Each words field is split by `splitTerms` (on commas, trimmed, inner whitespace collapsed, blanks and repeats ignoring case dropped) and holds at most 20 terms ("At most 20 words or phrases."), each up to 50 runes ("Each word or phrase must be 50 characters or fewer.") with a letter or digit ("Each word or phrase needs at least one letter or number.", so `+++` is refused and `C++` accepted); the edit form shows them joined with ", ".
+Any error re-renders the form with 422 and everything kept; `ErrTooManyTimelines` (20) is a form error.
+`timelineForm.timeline` drops the Show checkboxes when Show is all.
+Saving flashes "Timeline created." or "Timeline saved." and goes to the timeline; Delete timeline on the edit page (`timelineDeleteHandler`, unconfirmed) flashes "Deleted the timeline “…”." and goes to `/timelines`.
+`timelineFromURL` makes a non-UUID or another user's timeline a 404.
 
-A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero
-`rss.Timeline`: every subscription, not editable)
-share `renderTimeline`, so they follow the same rules (see "Reading" below), paging at
-their own URL. `ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it
-reads, before collapsing copies, so a left-out feed's copy never stands in for an
-entry; "Also in" still lists every subscribed feed with a copy.
+A timeline's page (`timelineHandler`) and Home (`homeHandler`, with the zero `rss.Timeline`: every subscription, not editable) share `renderTimeline`, so they follow the same rules (see "Reading" below), paging at their own URL.
+`ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it reads, before collapsing copies, so a left-out feed's copy never stands in for an entry; "Also in" still lists every subscribed feed with a copy.
 
-A starred-only timeline lists stars instead (`timelineRows`): `StarRepository.ListStarred`
-reads the user's `stars` newest starred first, paged by `starred_at` (the cursor's
-time is `StarredAt`), with rows `Starred: true` and no "Also in" (starring covers every
-copy already). It LEFT JOINs `subscriptions`, so with Show all a star from a feed the
-user has since unsubscribed from still shows, as on Saved; `timelineWhere` handles the
-missing subscription: Show conditions fail for it (its tags went with it) and Leave out
-conditions pass. Empty states: "This timeline has no feeds to show. Edit it to choose
-some." when it shows only some feeds but has none (say its only tag was deleted), then
-"Nothing starred here yet. Star articles in your timelines and they'll show up here."
-for a starred-only one, else "Nothing in this timeline yet.".
+A starred-only timeline lists stars instead (`timelineRows`): `StarRepository.ListStarred` reads the user's `stars` newest starred first, paged by `starred_at` (the cursor's time is `StarredAt`), with rows `Starred: true` and no "Also in" (starring covers every copy already).
+It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has since unsubscribed from still shows, as on Saved; `timelineWhere` handles the missing subscription: Show conditions fail for it (its tags went with it) and Leave out conditions pass.
+Empty states: "This timeline has no feeds to show. Edit it to choose some." when it shows only some feeds but has none (say its only tag was deleted), then "Nothing starred here yet. Star articles in your timelines and they'll show up here." for a starred-only one, else "Nothing in this timeline yet.".
 
-**Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at
-the same link. Its edit page ends with a Sharing section (`timelineSharing`): with an
-unconfirmed email, "Confirm your email address to share timelines." and a Resend
-button back to `#sharing`; not shared, what sharing shows and a Share this timeline
-button; shared, read-only Feed link (`{base URL}/shared/{token}/feed.atom`) and Page
-link (`{base URL}/shared/{token}`) fields, from `sharedURLs`, with Stop sharing and New
-link. `timelineShareHandler` gives the timeline a `token.Random` token unless it has
-one (`TimelineRepository.Share`); `timelineNewLinkHandler` replaces it
-(`NewShareLink`, a 404 if it isn't shared); `timelineUnshareHandler` clears it
-(`Unshare`). Each goes through `timelineFromURL` and flashes, then 303s to
-`/timelines/{id}/edit#sharing`; Share and New link with an unconfirmed email only flash
-"Confirm your email address to share timelines.". `/timelines` marks shared timelines
-with a Shared chip.
+**Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at the same link.
+Its edit page ends with a Sharing section (`timelineSharing`): with an unconfirmed email, "Confirm your email address to share timelines." and a Resend button back to `#sharing`; not shared, what sharing shows and a Share this timeline button; shared, read-only Feed link (`{base URL}/shared/{token}/feed.atom`) and Page link (`{base URL}/shared/{token}`) fields, from `sharedURLs`, with Stop sharing and New link.
+`timelineShareHandler` gives the timeline a `token.Random` token unless it has one (`TimelineRepository.Share`); `timelineNewLinkHandler` replaces it (`NewShareLink`, a 404 if it isn't shared); `timelineUnshareHandler` clears it (`Unshare`).
+Each goes through `timelineFromURL` and flashes, then 303s to `/timelines/{id}/edit#sharing`; Share and New link with an unconfirmed email only flash "Confirm your email address to share timelines.".
+`/timelines` marks shared timelines with a Shared chip.
 
-The public routes are outside the session group. `sharedTimelineFromURL` 404s a token
-that isn't 43 base64url characters (`shareTokenRX`) or that `GetShared` doesn't know,
-which reads the timeline with its filter and its owner's ID. The page
-(`sharedTimelineHandler`, `shared_timeline.html`, `.solo`) shows the name, description,
-"A timeline shared from rss.", how to follow it in a reader, the feed's URL and an Open
-the feed link, and advertises the feed with `<link rel="alternate"
-type="application/atom+xml">`; it reads no articles. The feed (`sharedFeedHandler`)
-reads the newest 50 with `ArticleRepository.ListShared`: `ListTimeline`'s query
-(`timelineStmt`), or `ListStarred`'s (`starredStmt`) for a starred-only timeline, with
-`shared` set, so feeds have their own titles (never the owner's names) and articles
-without a URL are left out; no "Also in". `sharedAtomFeed` and `sharedAtomEntry` build
-the `atomFeed` structs: the page URL as the feed's ID, the timeline's name as title and
-author, its description as subtitle; each entry's ID is its canonical URL (else
-`urn:uuid:{id}`), with its link, `DisplayTitle`, `DisplayExcerpt` as a text summary,
-published date, an updated time (the star time for a starred-only timeline, else
-published, else `timeline_at`) and a `<source>` naming its feed. The feed's updated time
-is the latest entry's, else the timeline's `updated_at`. It's encoded into a buffer,
-then sent with an `ETag` (the first 16 bytes of its SHA-256, in hex) and
-`Last-Modified`; a matching `If-None-Match` is a 304 (`etagMatches`, shared with site
-icons). Both send `X-Robots-Tag: noindex` and `Cache-Control: public` (5 minutes for
-the page, 15 for the feed).
+The public routes are outside the session group.
+`sharedTimelineFromURL` 404s a token that isn't 43 base64url characters (`shareTokenRX`) or that `GetShared` doesn't know, which reads the timeline with its filter and its owner's ID.
+The page (`sharedTimelineHandler`, `shared_timeline.html`, `.solo`) shows the name, description, "A timeline shared from rss.", how to follow it in a reader, the feed's URL and an Open the feed link, and advertises the feed with `<link rel="alternate" type="application/atom+xml">`; it reads no articles.
+The feed (`sharedFeedHandler`) reads the newest 50 with `ArticleRepository.ListShared`: `ListTimeline`'s query (`timelineStmt`), or `ListStarred`'s (`starredStmt`) for a starred-only timeline, with `shared` set, so feeds have their own titles (never the owner's names) and articles without a URL are left out; no "Also in".
+`sharedAtomFeed` and `sharedAtomEntry` build the `atomFeed` structs: the page URL as the feed's ID, the timeline's name as title and author, its description as subtitle; each entry's ID is its canonical URL (else `urn:uuid:{id}`), with its link, `DisplayTitle`, `DisplayExcerpt` as a text summary, published date, an updated time (the star time for a starred-only timeline, else published, else `timeline_at`) and a `<source>` naming its feed.
+The feed's updated time is the latest entry's, else the timeline's `updated_at`.
+It's encoded into a buffer, then sent with an `ETag` (the first 16 bytes of its SHA-256, in hex) and `Last-Modified`; a matching `If-None-Match` is a 304 (`etagMatches`, shared with site icons).
+Both send `X-Robots-Tag: noindex` and `Cache-Control: public` (5 minutes for the page, 15 for the feed).
 
 **Read:**
 
 1. `internal/server/home.go`: `homeHandler`, `renderTimeline`, `timelineRows`, `timelineTabs`.
-2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`,
-   `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`,
-   `maxPostsPerWeek`, `checkTerms`, `timeline`, `checks`), `splitTerms`, `timelineHandler`, `timelineFromURL`, `timelineEditHandler`,
-   `timelineEditPostHandler`, `timelineDeleteHandler`, `timelineMoveHandler`,
-   `renderTimelineForm`; sharing:
-   `timelineShareHandler`, `timelineUnshareHandler`, `timelineNewLinkHandler`,
-   `timelineSharing`.
-3. `internal/server/shared.go`: `sharedTimelineFromURL`, `sharedTimelineHandler`,
-   `sharedFeedHandler`, `sharedAtomFeed`, `sharedAtomEntry`, `sharedURLs`; and
-   `token.Random` in `internal/token/token.go`.
-4. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`, `SharedArticle`;
-   `ErrTooManyTimelines` in `errors.go`.
-5. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`, `Move`, `Share`,
-   `NewShareLink`, `Unshare`, `GetShared`, `insertTimelineSources`, `wordsPattern`; then
-   `timelineWhere`, `ListTimeline`, `ListShared` and `timelineStmt` in `articles.go`,
-   and `ListStarred` and `starredStmt` in `stars.go`.
-6. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`,
-   `shared_timeline.html`, `partials/timeline_tabs.html`, the Make a timeline link in
-   `tag.html`; `.timeline-tabs`, `.timeline-list`, `.timeline-move`, `.timeline-presets`, `.timeline-form`,
-   `.rate-field`, `.words-field`, `.timeline-sharing` and `.shared-timeline` in
-   `main.css`; the tab row's enhancement in `app.js`.
+2. `internal/server/timelines.go`: `timelinesHandler`, `timelineNewHandler`, `timelineCreateHandler`, `decodeTimelineForm`, `timelineForm` (`check`, `maxPostsPerWeek`, `checkTerms`, `timeline`, `checks`), `splitTerms`, `timelineHandler`, `timelineFromURL`, `timelineEditHandler`, `timelineEditPostHandler`, `timelineDeleteHandler`, `timelineMoveHandler`, `renderTimelineForm`; sharing: `timelineShareHandler`, `timelineUnshareHandler`, `timelineNewLinkHandler`, `timelineSharing`.
+3. `internal/server/shared.go`: `sharedTimelineFromURL`, `sharedTimelineHandler`, `sharedFeedHandler`, `sharedAtomFeed`, `sharedAtomEntry`, `sharedURLs`; and `token.Random` in `internal/token/token.go`.
+4. `internal/rss/rss.go`: `Timeline`, `TimelineFilter`, `StarredArticle`, `SharedArticle`; `ErrTooManyTimelines` in `errors.go`.
+5. `internal/psql/timelines.go`: `Create`, `Get`, `List`, `Update`, `Delete`, `Move`, `Share`, `NewShareLink`, `Unshare`, `GetShared`, `insertTimelineSources`, `wordsPattern`; then `timelineWhere`, `ListTimeline`, `ListShared` and `timelineStmt` in `articles.go`, and `ListStarred` and `starredStmt` in `stars.go`.
+6. Templates: `timeline.html`, `timelines.html`, `timeline_form.html`, `shared_timeline.html`, `partials/timeline_tabs.html`, the Make a timeline link in `tag.html`; `.timeline-tabs`, `.timeline-list`, `.timeline-move`, `.timeline-presets`, `.timeline-form`, `.rate-field`, `.words-field`, `.timeline-sharing` and `.shared-timeline` in `main.css`; the tab row's enhancement in `app.js`.
 
-**Tests:** `internal/server/timelines_test.go` (sharing: `TestTimelineEditSharing`,
-`TestTimelineSharingHandlers`), `internal/server/shared_test.go`
-(`TestSharedTimelinePage`, `TestSharedFeed`, `TestSharedNotFound`),
-`TestPrivacySharedTimelines` in `policy_test.go`, `TestHomeHandlerTabs` in
-`home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`,
-`TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`,
-`TestTimelineMove`,
-`TestTimelineSharing`, `TestTimelineCascades`, `TestWordsPattern`,
-`TestWordsPatternMatches`), `TestListTimelineFilter`, `TestListTimelineConditions`,
-`TestListTimelineWords` and `TestListShared` in `articles_test.go`, `TestListStarred`
-and `TestListStarredConditions` in `stars_test.go`; `TestRandom` in
-`internal/token/token_test.go`.
+**Tests:** `internal/server/timelines_test.go` (sharing: `TestTimelineEditSharing`, `TestTimelineSharingHandlers`), `internal/server/shared_test.go` (`TestSharedTimelinePage`, `TestSharedFeed`, `TestSharedNotFound`), `TestPrivacySharedTimelines` in `policy_test.go`, `TestHomeHandlerTabs` in `home_test.go`; `internal/psql/timelines_test.go` (`TestTimelineCreate`, `TestTimelineGet`, `TestTimelineUpdate`, `TestTimelineList`, `TestTimelineDelete`, `TestTimelineMove`, `TestTimelineSharing`, `TestTimelineCascades`, `TestWordsPattern`, `TestWordsPatternMatches`), `TestListTimelineFilter`, `TestListTimelineConditions`, `TestListTimelineWords` and `TestListShared` in `articles_test.go`, `TestListStarred` and `TestListStarredConditions` in `stars_test.go`; `TestRandom` in `internal/token/token_test.go`.
 
 **Why:** "Timelines" and "Sharing" under "Filtering and timelines" in decisions.md.
 
 ## Reading: timeline, article pages and read state
 
 **Timeline** (Home, `/` when logged in, and each custom timeline; see "Timelines").
-`renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page,
-and shows 30. `ListTimeline` joins the user's subscriptions (those the timeline's filter
-shows; all of them on Home) to their feeds' articles, collapses copies of one article (same
-`canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending,
-and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
-`fillAlsoIn` then lists the other subscribed feeds that carry each entry. Both show the
-user's name for a feed in place of its title (see "Names" under "Subscriptions"). Feed
-pages work the same way with `ListByFeed`, but in publication order and without
-collapsing copies.
-The feed page's status times ("Last fetched", failed attempt, "Next check around") use the
-`local-time` partial, like article times; "Latest article" on Feeds and the import date use
-`local-date`. Both render UTC for `app.js` to localize.
+`renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page, and shows 30.
+`ListTimeline` joins the user's subscriptions (those the timeline's filter shows; all of them on Home) to their feeds' articles, collapses copies of one article (same `canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending, and pages with a keyset cursor: `?before=<time>_<id>` (`encodeCursor`, `decodeCursor`).
+`fillAlsoIn` then lists the other subscribed feeds that carry each entry.
+Both show the user's name for a feed in place of its title (see "Names" under "Subscriptions").
+Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
+The feed page's status times ("Last fetched", failed attempt, "Next check around") use the `local-time` partial, like article times; "Latest article" on Feeds and the import date use `local-date`.
+Both render UTC for `app.js` to localize.
 List queries never load `summary` or `content`.
 
-**Card values.** Rows and the article page show an article through accessors on
-`rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's),
-`DisplayTitle` (the title, else the page's title, else the start of the excerpt, else
-"(untitled)") and `DisplayExcerpt` (the excerpt, else the page's description). The
-page's values come from enrichment (see "Article enrichment") and only fill gaps. Debug
-mode shows where each shown value came from (see "Debug mode": the article panel and the
-list line).
+**Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's), `DisplayTitle` (the title, else the page's title, else the start of the excerpt, else "(untitled)") and `DisplayExcerpt` (the excerpt, else the page's description).
+The page's values come from enrichment (see "Article enrichment") and only fill gaps.
+Debug mode shows where each shown value came from (see "Debug mode": the article panel and the list line).
 
-**Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first
-saved. *News* (undated, or published since a day before the feed's previous successful
-fetch) goes at the save time, 1 µs apart, newest-published first. *Backlog* (every dated
-item on a feed's first save, or older items appearing later) goes at its published date,
-or now if that's in the future. So new items always land on top, and an imported archive
-doesn't.
+**Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
+*News* (undated, or published since a day before the feed's previous successful fetch) goes at the save time, 1 µs apart, newest-published first.
+*Backlog* (every dated item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
+So new items always land on top, and an imported archive doesn't.
 
-**Article page.** `articleHandler` records the read and loads the user's subscription
-to the feed (`Get`; not subscribed is fine) so the header shows their name for it. The
-"Read on" button (`readOnLabel`) names the article's domain when it's on another site,
-else the user's name for the feed, else the site's title, else its host. The page then
-renders the content (else the summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL
-(else the feed's); with neither, the page's description (plain text, escaped by the
-template), else "This article has no text in its feed." Plain text (no block-level markup) is split into paragraphs at blank
-lines, with `<br>` for single line breaks, and bare http(s) URLs become links. The
-article's card image (`CardImageURL`) shows above the text as a lead image unless
-`sanitize.ShowsImage` finds the content already shows it: the content starts with an
-image, the block after its first paragraph is one, or any image in it is the same file
-(ignoring host case, `www.`, the query and WordPress size suffixes). Wide tables scroll
-inside the column. YouTube and Vimeo player iframes (`/embed/{id}` on a YouTube host,
-`player.vimeo.com/video/{id}`) become a `figure.embed` preview linking to the video,
-with YouTube's thumbnail; clicking it makes `app.js` swap in the player
-(`youtube-nocookie.com` or `player.vimeo.com`, sandboxed, autoplaying). Without
-JavaScript the link opens the video in a new tab. Any other iframe becomes an "Open
-embedded content" link.
+**Article page.** `articleHandler` records the read and loads the user's subscription to the feed (`Get`; not subscribed is fine) so the header shows their name for it.
+The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the user's name for the feed, else the site's title, else its host.
+The page then renders the content (else the summary) through `sanitize.HTML`, with relative URLs resolved against the article's URL (else the feed's); with neither, the page's description (plain text, escaped by the template), else "This article has no text in its feed." Plain text (no block-level markup) is split into paragraphs at blank lines, with `<br>` for single line breaks, and bare http(s) URLs become links.
+The article's card image (`CardImageURL`) shows above the text as a lead image unless `sanitize.ShowsImage` finds the content already shows it: the content starts with an image, the block after its first paragraph is one, or any image in it is the same file (ignoring host case, `www.`, the query and WordPress size suffixes).
+Wide tables scroll inside the column.
+YouTube and Vimeo player iframes (`/embed/{id}` on a YouTube host, `player.vimeo.com/video/{id}`) become a `figure.embed` preview linking to the video, with YouTube's thumbnail; clicking it makes `app.js` swap in the player (`youtube-nocookie.com` or `player.vimeo.com`, sandboxed, autoplaying).
+Without JavaScript the link opens the video in a new tab.
+Any other iframe becomes an "Open embedded content" link.
 
-**Read state.** An article is read when its page is opened, or when the reader clicks
-through to the original from a row: the link has `ping="/articles/{id}/read"`, which
-`app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`. List pages
-ask `ReadArticleIDs` which rows are read (matching any copy with the same
-`canonical_url`) and the `article-row` partial marks them (tinted card, dimmed text and image).
+**Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
+List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`) and the `article-row` partial marks them (tinted card, dimmed text and image).
 
-**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the
-viewport it fetches that page, appends its rows, and swaps in the new pager. It keeps the
-address bar on the topmost visible row (`history.replaceState`), so reload and Back land
-nearby. Without JavaScript the link just works.
+**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows, and swaps in the new pager.
+It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
+Without JavaScript the link just works.
 
 **Read:**
 
 1. `internal/server/home.go`: `homeHandler`, `renderTimeline`; `cursor.go`.
-2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`,
-   `articleListColumns`, then `timelineAt`; `subscriptionTitle` and
-   `qualifiedFeedColumnsTitled` in `feeds.go`.
-3. `internal/server/articles.go`: `articleHandler`, `readOnLabel`, `articleReadHandler`,
-   `articleRow`, `fillRead`.
+2. `internal/psql/articles.go`: `ListTimeline`, `fillAlsoIn`, `ListByFeed`, `articleListColumns`, then `timelineAt`; `subscriptionTitle` and `qualifiedFeedColumnsTitled` in `feeds.go`.
+3. `internal/server/articles.go`: `articleHandler`, `readOnLabel`, `articleReadHandler`, `articleRow`, `fillRead`.
 4. `internal/psql/reads.go`: `MarkRead`, `ReadArticleIDs`.
-5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`,
-   `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
+5. `internal/sanitize/sanitize.go`: `HTML`, `prepare`, `rewrite`, `reflow`, `linkify`, `videoEmbed`, `embedLink`, `newPolicy`, then `ShowsImage` and `imageKey`.
 6. Templates: `timeline.html`, `article.html`, `partials/article_row.html`.
 7. `internal/ui/static/js/app.js`.
-8. Also: `rss.Article.CardImageURL`, `DisplayTitle`, `DisplayExcerpt` and `FeedSortAt`
-   in `internal/rss/rss.go`.
+8. Also: `rss.Article.CardImageURL`, `DisplayTitle`, `DisplayExcerpt` and `FeedSortAt` in `internal/rss/rss.go`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`,
-`scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`;
-`internal/sanitize/sanitize_test.go`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`; `internal/sanitize/sanitize_test.go`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 
 ## Saved articles
 
-**Flow.** Every article row (timeline and feed pages) and the article page has a Save
-button with a bookmark icon, in the `article-actions` group: on rows it's right-aligned
-under the card (the row's `article-foot`, with "Also in" on the left), on the article
-page under the title. The button is the `save-button` partial, a form posting to
-`/articles/{id}/save`, or `/unsave` when the article is saved, with a `return_to` of the
-page's request URI. `articleSaveHandler` and `articleUnsaveHandler` (both `toggleAction`)
-call `SaveRepository.Save` or `Unsave` and redirect to `return_to` with
-`#article-{id}` appended, so without JavaScript the page comes back at the same row.
-Saving is quiet: no flash, and it doesn't mark the article read. With JavaScript,
-`app.js` posts the form with `fetch` and flips the button in place; the accessible name
-stays "Save" and `aria-pressed` carries the state, from which `main.css` shows the
-outline or the filled icon.
+**Flow.** Every article row (timeline and feed pages) and the article page has a Save button with a bookmark icon, in the `article-actions` group: on rows it's right-aligned under the card (the row's `article-foot`, with "Also in" on the left), on the article page under the title.
+The button is the `save-button` partial, a form posting to `/articles/{id}/save`, or `/unsave` when the article is saved, with a `return_to` of the page's request URI.
+`articleSaveHandler` and `articleUnsaveHandler` (both `toggleAction`) call `SaveRepository.Save` or `Unsave` and redirect to `return_to` with `#article-{id}` appended, so without JavaScript the page comes back at the same row.
+Saving is quiet: no flash, and it doesn't mark the article read.
+With JavaScript, `app.js` posts the form with `fetch` and flips the button in place; the accessible name stays "Save" and `aria-pressed` carries the state, from which `main.css` shows the outline or the filled icon.
 
-**Copies.** Saving covers every copy of an article (same non-empty `canonical_url`),
-like read state. `Save` inserts nothing when the user already saved a copy, and reports
-`rss.ErrNoRecord` for an unknown article; `Unsave` deletes the saves of the article and
-of every copy. List pages ask `SavedArticleIDs` which rows are saved (`fillSaved`), with
-the same query shape as `ReadArticleIDs`; the article page asks it for its one article.
+**Copies.** Saving covers every copy of an article (same non-empty `canonical_url`), like read state.
+`Save` inserts nothing when the user already saved a copy, and reports `rss.ErrNoRecord` for an unknown article; `Unsave` deletes the saves of the article and of every copy.
+List pages ask `SavedArticleIDs` which rows are saved (`fillSaved`), with the same query shape as `ReadArticleIDs`; the article page asks it for its one article.
 
-**Stars.** A star means "this is good" (Saved stays "keep"). Every row (timeline, feed
-pages, Saved) and the article page has an icon-only Star button (`star-button`,
-`aria-label="Star"`) to Save's left in `article-actions`, a form posting to
-`/articles/{id}/star`, or `/unstar` when starred. `articleStarHandler` and
-`articleUnstarHandler` share `toggleAction` with Save, so they behave the same way: 404
-for a bad or unknown article, then a 303 back to `return_to#article-{id}`, quiet, and
-without marking the article read. `StarRepository` mirrors `SaveRepository`: `Star`
-skips an article whose copy is already starred, `Unstar` removes every copy's star, and
-`StarredArticleIDs` (`fillStarred` on list pages, `articleHandler` for its article)
-matches copies. Stars are private: no counts. They're listed by starred-only
-timelines (see "Timelines"; New timeline's Starred preset makes one). `app.js` flips the Star in place with the same listener as Save.
+**Stars.** A star means "this is good" (Saved stays "keep").
+Every row (timeline, feed pages, Saved) and the article page has an icon-only Star button (`star-button`, `aria-label="Star"`) to Save's left in `article-actions`, a form posting to `/articles/{id}/star`, or `/unstar` when starred.
+`articleStarHandler` and `articleUnstarHandler` share `toggleAction` with Save, so they behave the same way: 404 for a bad or unknown article, then a 303 back to `return_to#article-{id}`, quiet, and without marking the article read.
+`StarRepository` mirrors `SaveRepository`: `Star` skips an article whose copy is already starred, `Unstar` removes every copy's star, and `StarredArticleIDs` (`fillStarred` on list pages, `articleHandler` for its article) matches copies.
+Stars are private: no counts.
+They're listed by starred-only timelines (see "Timelines"; New timeline's Starred preset makes one).
+`app.js` flips the Star in place with the same listener as Save.
 
-**Saved page** (`/saved`, "Saved" in the nav, after Home). `savedHandler` is modelled on
-the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest
-saved first, paged with a `?before=` cursor whose time is the `saved_at` (infinite
-scroll with JavaScript, "Older saved articles" without). `ListSaved` joins `saves` to
-`articles` and `feeds`, and left-joins the user's `subscriptions` so a feed they named
-shows the name (a feed they've since unsubscribed from shows its own title), with keyset
-paging on `(saved_at, article_id)`, served by `saves_user_saved_at_idx`. Each row is an
-`articleRow` with its feed, `Saved: true`, `fillRead`'s read marker and `fillStarred`'s star. Unsaving from the page comes back to
-`/saved`; with JavaScript the row stays (its button flips) until the page is reloaded, so an
-accidental unsave can be undone in place. There's no count anywhere.
+**Saved page** (`/saved`, "Saved" in the nav, after Home).
+`savedHandler` is modelled on the timeline: it asks `SaveRepository.ListSaved` for 31 articles and shows 30, newest saved first, paged with a `?before=` cursor whose time is the `saved_at` (infinite scroll with JavaScript, "Older saved articles" without).
+`ListSaved` joins `saves` to `articles` and `feeds`, and left-joins the user's `subscriptions` so a feed they named shows the name (a feed they've since unsubscribed from shows its own title), with keyset paging on `(saved_at, article_id)`, served by `saves_user_saved_at_idx`.
+Each row is an `articleRow` with its feed, `Saved: true`, `fillRead`'s read marker and `fillStarred`'s star.
+Unsaving from the page comes back to `/saved`; with JavaScript the row stays (its button flips) until the page is reloaded, so an accidental unsave can be undone in place.
+There's no count anywhere.
 
-**Search** (`/saved?q=…`). A GET form above the list (`saved-search`), shown when there
-are saves or a query, so a search with no results can be changed. `savedHandler` trims
-`q` and cuts it to 200 runes (`savedSearchMaxRunes`), passes it to `ListSaved`, and keeps
-it in the pager and "Back to newest" links (`savedURL`) and in each row's `ReturnTo`.
-`ListSaved` matches `q` against the article's title, page title and excerpt, the
-feed's title and the user's name for the feed with `ILIKE` (`likePattern` escapes `\`,
-`%` and `_`), on the same order and paging; an empty `q` matches everything. With a
-query, "Clear" links back to `/saved`, and an empty page says "No saved articles match “…”." (or "No older matches."
-on a later page).
+**Search** (`/saved?q=…`).
+A GET form above the list (`saved-search`), shown when there are saves or a query, so a search with no results can be changed.
+`savedHandler` trims `q` and cuts it to 200 runes (`savedSearchMaxRunes`), passes it to `ListSaved`, and keeps it in the pager and "Back to newest" links (`savedURL`) and in each row's `ReturnTo`.
+`ListSaved` matches `q` against the article's title, page title and excerpt, the feed's title and the user's name for the feed with `ILIKE` (`likePattern` escapes `\`, `%` and `_`), on the same order and paging; an empty `q` matches everything.
+With a query, "Clear" links back to `/saved`, and an empty page says "No saved articles match “…”." (or "No older matches." on a later page).
 
 **Read:**
 
-1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`,
-   `articleStarHandler`, `articleUnstarHandler`, `toggleAction`, `withFragment`, then
-   `articleRow`, `fillSaved` and `fillStarred`; `articleHandler`'s `Saved` and
-   `Starred`; `internal/server/saved.go`: `savedHandler`, `savedURL`.
+1. `internal/server/articles.go`: `articleSaveHandler`, `articleUnsaveHandler`, `articleStarHandler`, `articleUnstarHandler`, `toggleAction`, `withFragment`, then `articleRow`, `fillSaved` and `fillStarred`; `articleHandler`'s `Saved` and `Starred`; `internal/server/saved.go`: `savedHandler`, `savedURL`.
 2. `internal/server/helpers.go`: `returnForm`, `safeReturnPath`.
-3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`;
-   `internal/psql/stars.go`: `Star`, `Unstar`, `StarredArticleIDs`.
-4. Templates: `partials/save_button.html` (`save-button`, `star-button`,
-   `article-actions`), `partials/article_row.html`, `article.html`, `saved.html`,
-   `partials/nav.html`; `icon-bookmark`, `icon-bookmark-fill`, `icon-star` and
-   `icon-star-fill` in `partials/icons.html`.
+3. `internal/psql/saves.go`: `Save`, `Unsave`, `SavedArticleIDs`, `ListSaved`; `internal/psql/stars.go`: `Star`, `Unstar`, `StarredArticleIDs`.
+4. Templates: `partials/save_button.html` (`save-button`, `star-button`, `article-actions`), `partials/article_row.html`, `article.html`, `saved.html`, `partials/nav.html`; `icon-bookmark`, `icon-bookmark-fill`, `icon-star` and `icon-star-fill` in `partials/icons.html`.
 5. `internal/ui/static/js/app.js`: "Save and Star buttons".
 
-**Tests:** `internal/server/articles_test.go` (`TestArticleSaveHandler`,
-`TestArticleUnsaveHandler`, `TestArticleStarHandler`, `TestArticleUnstarHandler`,
-`TestArticleHandlerSaved`, `TestArticleHandlerStarred`), `saved_test.go`
-(`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`,
-`TestFeedHandlerStarredRows`), `scroll_test.go` (`TestToggleButtonMarkup`,
-`TestInfiniteScrollMarkup`), `templates_test.go` (`TestAppNav`);
-`internal/psql/saves_test.go` (`TestSaveRepository`, `TestListSaved`,
-`TestListSavedSearch`, `TestListSavedSubscriptionNames`), `stars_test.go` (`TestStar`,
-`TestUnstar`, `TestStarredArticleIDs`, `TestListStarred`).
+**Tests:** `internal/server/articles_test.go` (`TestArticleSaveHandler`, `TestArticleUnsaveHandler`, `TestArticleStarHandler`, `TestArticleUnstarHandler`, `TestArticleHandlerSaved`, `TestArticleHandlerStarred`), `saved_test.go` (`TestSavedHandler`), `home_test.go`, `feeds_test.go` (`TestFeedHandlerSavedRows`, `TestFeedHandlerStarredRows`), `scroll_test.go` (`TestToggleButtonMarkup`, `TestInfiniteScrollMarkup`), `templates_test.go` (`TestAppNav`); `internal/psql/saves_test.go` (`TestSaveRepository`, `TestListSaved`, `TestListSavedSearch`, `TestListSavedSubscriptionNames`), `stars_test.go` (`TestStar`, `TestUnstar`, `TestStarredArticleIDs`, `TestListStarred`).
 
-**Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and
-timelines" in decisions.md.
+**Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and timelines" in decisions.md.
 
 ## Site icons
 
-**Flow.** The site icon runner (`siteicon.Runner`, `-icon-workers`) claims one site at a
-time with `SiteRepository.ClaimIconCheck`: a site whose `icon_next_check_at` has passed
-and that has never been checked (`icon_checked_at IS NULL`, so a site created by a
-lookup or an import gets its first check soon, subscribed or not) or has a subscribed
-feed. The claim moves `icon_next_check_at` 5 minutes ahead as a lease, and returns the
-current icon's `source_url` and validators.
+**Flow.** The site icon runner (`siteicon.Runner`, `-icon-workers`) claims one site at a time with `SiteRepository.ClaimIconCheck`: a site whose `icon_next_check_at` has passed and that has never been checked (`icon_checked_at IS NULL`, so a site created by a lookup or an import gets its first check soon, subscribed or not) or has a subscribed feed.
+The claim moves `icon_next_check_at` 5 minutes ahead as a lease, and returns the current icon's `source_url` and validators.
 
-`Runner.check` fetches the site's home page with the shared `fetch.Client`; an error or
-a non-2xx keeps the icon (`KeepIcon`, not checked) and retries in a day. Otherwise it
-reads the icons the page declares (`discovery.ParsePage(...).Icons`; a non-HTML body
-declares none) and builds the candidates (`candidates`), deduplicated and at most four:
-apple-touch icons, then `rel="icon"` links that aren't SVG, each largest declared size
-first and unknown sizes last; then `/apple-touch-icon.png` and `/favicon.ico` on the
-page's origin. An icon declaring a size under 32 isn't downloaded.
+`Runner.check` fetches the site's home page with the shared `fetch.Client`; an error or a non-2xx keeps the icon (`KeepIcon`, not checked) and retries in a day.
+Otherwise it reads the icons the page declares (`discovery.ParsePage(...).Icons`; a non-HTML body declares none) and builds the candidates (`candidates`), deduplicated and at most four: apple-touch icons, then `rel="icon"` links that aren't SVG, each largest declared size first and unknown sizes last; then `/apple-touch-icon.png` and `/favicon.ico` on the page's origin.
+An icon declaring a size under 32 isn't downloaded.
 
-Each candidate is downloaded with a second `fetch.Client` capped at 256 KiB. The current
-icon's URL gets `If-None-Match` / `If-Modified-Since`, and a 304 keeps it (`KeepIcon`,
-checked). `usable` recognizes PNG, JPEG and GIF from the bytes (`http.DetectContentType`)
-and reads their size with `image.DecodeConfig`; an ICO by its signature, its size from
-its directory (`icoSize`, largest entry). The first icon at least 32 px on its shorter
-side and at most twice as long as wide is stored (`SaveIcon`, with its SHA-256 `hash`,
-`ETag` and `Last-Modified`). If none is usable, the icon is removed (`RemoveIcon`),
-unless a candidate failed with a network error, a 429 or a 5xx: then it's kept, not
-checked, and retried in a day. A check that reached the site schedules the next one in
-30 days ±10% (`nextCheck`). Each check logs one `site icon checked` line with the
-outcome (`saved`, `unchanged`, `removed` or `failed`).
+Each candidate is downloaded with a second `fetch.Client` capped at 256 KiB.
+The current icon's URL gets `If-None-Match` / `If-Modified-Since`, and a 304 keeps it (`KeepIcon`, checked).
+`usable` recognizes PNG, JPEG and GIF from the bytes (`http.DetectContentType`) and reads their size with `image.DecodeConfig`; an ICO by its signature, its size from its directory (`icoSize`, largest entry).
+The first icon at least 32 px on its shorter side and at most twice as long as wide is stored (`SaveIcon`, with its SHA-256 `hash`, `ETag` and `Last-Modified`).
+If none is usable, the icon is removed (`RemoveIcon`), unless a candidate failed with a network error, a 429 or a 5xx: then it's kept, not checked, and retried in a day.
+A check that reached the site schedules the next one in 30 days ±10% (`nextCheck`).
+Each check logs one `site icon checked` line with the outcome (`saved`, `unchanged`, `removed` or `failed`).
 
-**Serving and showing.** `GET /sites/{id}/icon` (`siteIconHandler`, no session) serves
-the stored bytes (`SiteRepository.GetIcon`) with the stored `Content-Type`, an `ETag` of
-the hash (a matching `If-None-Match` is a 304) and a CSP of `default-src 'none';
-sandbox`; it's cached for a year when `?v=` is the current hash, else for an hour. A site
-without an icon is a 404.
+**Serving and showing.** `GET /sites/{id}/icon` (`siteIconHandler`, no session) serves the stored bytes (`SiteRepository.GetIcon`) with the stored `Content-Type`, an `ETag` of the hash (a matching `If-None-Match` is a 304) and a CSP of `default-src 'none'; sandbox`; it's cached for a year when `?v=` is the current hash, else for an hour.
+A site without an icon is a 404.
 
-Pages build icon URLs with `siteIconURLs`: one `IconHashes` query for the page's
-deduplicated site IDs, giving `/sites/{id}/icon?v={hash}` for each site with an icon.
-Article rows get theirs from `fillIcons` (`articleRow.Icon`); the feed, article, site,
-My feeds and search pages pass an `Icons` map. Templates call the `avatar` partial with
-`(avatar siteID name iconURL)`: an `<img>` of the icon on a white tile, else the letter on
-its tint. Icons are decoration: if `IconHashes` fails, `pageIcons` logs the error and the
-page shows letters.
+Pages build icon URLs with `siteIconURLs`: one `IconHashes` query for the page's deduplicated site IDs, giving `/sites/{id}/icon?v={hash}` for each site with an icon.
+Article rows get theirs from `fillIcons` (`articleRow.Icon`); the feed, article, site, My feeds and search pages pass an `Icons` map.
+Templates call the `avatar` partial with `(avatar siteID name iconURL)`: an `<img>` of the icon on a white tile, else the letter on its tint.
+Icons are decoration: if `IconHashes` fails, `pageIcons` logs the error and the page shows letters.
 
 **Read:**
 
-1. `internal/siteicon/siteicon.go`: `Runner.work`, `check`, `find`, `candidates`,
-   `usable`, `nextCheck`; `ico.go`: `icoSize`.
-2. `internal/psql/sites.go`: `ClaimIconCheck`, `SaveIcon`, `RemoveIcon`, `KeepIcon`,
-   `GetIcon`, `IconHashes`.
+1. `internal/siteicon/siteicon.go`: `Runner.work`, `check`, `find`, `candidates`, `usable`, `nextCheck`; `ico.go`: `icoSize`.
+2. `internal/psql/sites.go`: `ClaimIconCheck`, `SaveIcon`, `RemoveIcon`, `KeepIcon`, `GetIcon`, `IconHashes`.
 3. `internal/discovery/page.go`: `Icon`, `ParsePage`.
 4. `cmd/www/application.go`: the runner and its two `fetch.Client`s.
-5. `internal/server/sites.go`: `siteIconHandler`, `siteIconURLs`, `pageIcons`;
-   `articles.go`: `fillIcons`; `html.go`: `avatar`.
-6. `internal/ui/templates/partials/avatar.html`; `.avatar` and `.avatar-icon` in
-   `main.css`.
+5. `internal/server/sites.go`: `siteIconHandler`, `siteIconURLs`, `pageIcons`; `articles.go`: `fillIcons`; `html.go`: `avatar`.
+6. `internal/ui/templates/partials/avatar.html`; `.avatar` and `.avatar-icon` in `main.css`.
 
-**Tests:** `internal/siteicon/siteicon_test.go` (an `httptest` site with generated PNG,
-JPEG, GIF and ICO fixtures), `ico_test.go`; `internal/psql/sites_test.go`
-(`TestSiteRepositoryClaimIconCheck`, `TestSiteRepositoryIcons`); `cmd/www/config_test.go`
-(`TestParseConfigIconWorkers`); `internal/server/sites_test.go` (`TestSiteIconHandler`),
-the `…SiteIcons` page tests (built on `testSiteIcons` in `testutils_test.go`) and
-`templates_test.go` (`TestAvatarPartial`).
+**Tests:** `internal/siteicon/siteicon_test.go` (an `httptest` site with generated PNG, JPEG, GIF and ICO fixtures), `ico_test.go`; `internal/psql/sites_test.go` (`TestSiteRepositoryClaimIconCheck`, `TestSiteRepositoryIcons`); `cmd/www/config_test.go` (`TestParseConfigIconWorkers`); `internal/server/sites_test.go` (`TestSiteIconHandler`), the `…SiteIcons` page tests (built on `testSiteIcons` in `testutils_test.go`) and `templates_test.go` (`TestAvatarPartial`).
 
 **Why:** "Design" in decisions.md.
 
 ## Article enrichment
 
-**Flow.** Many feed items arrive without an image, a title or any text; enrichment
-fetches their web page in the background and stores what its meta tags say.
+**Flow.** Many feed items arrive without an image, a title or any text; enrichment fetches their web page in the background and stores what its meta tags say.
 
-1. **Queuing.** `saveArticles` (see "Feed ingestion") gets each upserted article's ID
-   and whether it was inserted (`RETURNING id, (xmax = 0)`). A newly inserted article
-   that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets
-   an `enrich_jobs` row (`ON CONFLICT DO NOTHING`), if `enrichCandidates` allows it: on
-   a feed's first save (a lookup or an import: no previous fetch) only the 20 articles
-   with the latest `timeline_at` (`enrichFirstSave`), at priority 1; on later saves every
-   one, at priority 0. Updated articles aren't queued again, and older articles never.
-2. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`, one worker by
-   default) claims one job at a time with `EnrichRepository.ClaimNext`: a due job
-   (`next_attempt_at <= now()`) whose article's feed has a subscriber, priority 0 first,
-   then by `next_attempt_at`. The claim moves `next_attempt_at` 2 minutes ahead as a lease
-   and counts the attempt. A looked-up site nobody subscribes to costs no page fetches;
-   its jobs wait.
-3. **Fetching.** `Runner.attempt` fetches the article's URL with the shared
-   `fetch.Client` (20 s per job):
-   - **network error, 429 or 5xx:** `Retry` 1 hour after the first attempt, 6 hours after
-     the second (or later if a 429's or 503's `Retry-After` says so, capped at 24 h),
-     and `GiveUp` after the third;
-   - **any other non-2xx, a body that isn't HTML, or a fetch the client refuses** (a
-     blocked address, too large, too many redirects): `GiveUp` at once;
-   - **an HTML page** (`IsHTML`): `discovery.ParsePage` reads its `og:image` (else
-     `twitter:image`), `og:title` (else `<title>`) and description, and `PageOf` turns
-     them into an `rss.ArticlePage`, the description collapsed and shortened like an
-     excerpt (`ingest.ExcerptLen`). `SavePage` stores them in the
-     article's `page_image_url`, `page_title` and `page_description` and deletes the
-     job, in one transaction. A page with none of the tags saves empty values.
-4. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and
-   the lease retries the job. Each job logs one `article enriched` line with the
-   article ID, the URL's host, the outcome (`saved`, `retry` or `gave up`), the attempt
-   and the duration.
+1. **Queuing.** `saveArticles` (see "Feed ingestion") gets each upserted article's ID and whether it was inserted (`RETURNING id, (xmax = 0)`).
+   A newly inserted article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row (`ON CONFLICT DO NOTHING`), if `enrichCandidates` allows it: on a feed's first save (a lookup or an import: no previous fetch) only the 20 articles with the latest `timeline_at` (`enrichFirstSave`), at priority 1; on later saves every one, at priority 0.
+   Updated articles aren't queued again, and older articles never.
+2. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`, one worker by default) claims one job at a time with `EnrichRepository.ClaimNext`: a due job (`next_attempt_at <= now()`) whose article's feed has a subscriber, priority 0 first, then by `next_attempt_at`.
+   The claim moves `next_attempt_at` 2 minutes ahead as a lease and counts the attempt.
+   A looked-up site nobody subscribes to costs no page fetches; its jobs wait.
+3. **Fetching.** `Runner.attempt` fetches the article's URL with the shared `fetch.Client` (20 s per job):
+   - **network error, 429 or 5xx:** `Retry` 1 hour after the first attempt, 6 hours after the second (or later if a 429's or 503's `Retry-After` says so, capped at 24 h), and `GiveUp` after the third;
+   - **any other non-2xx, a body that isn't HTML, or a fetch the client refuses** (a blocked address, too large, too many redirects): `GiveUp` at once;
+   - **an HTML page** (`IsHTML`): `discovery.ParsePage` reads its `og:image` (else `twitter:image`), `og:title` (else `<title>`) and description, and `PageOf` turns them into an `rss.ArticlePage`, the description collapsed and shortened like an excerpt (`ingest.ExcerptLen`).
+     `SavePage` stores them in the article's `page_image_url`, `page_title` and `page_description` and deletes the job, in one transaction.
+     A page with none of the tags saves empty values.
+4. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and the lease retries the job.
+   Each job logs one `article enriched` line with the article ID, the URL's host, the outcome (`saved`, `retry` or `gave up`), the attempt and the duration.
 
-The `page_*` columns are never the feed's values: `saveArticles` overwrites `image_url`,
-`title` and `excerpt` on every changed fetch and leaves `page_*` alone.
+The `page_*` columns are never the feed's values: `saveArticles` overwrites `image_url`, `title` and `excerpt` on every changed fetch and leaves `page_*` alone.
 
-**Showing.** Pages read the values only through `rss.Article`'s `CardImageURL`,
-`DisplayTitle` and `DisplayExcerpt`, where the feed's own values win and the page's fill
-gaps (see "Card values" under "Reading"): the card image, the title of untitled items,
-the excerpt of empty ones and the article page's lead image. An article page with no
-content or summary shows the page's description as its body.
+**Showing.** Pages read the values only through `rss.Article`'s `CardImageURL`, `DisplayTitle` and `DisplayExcerpt`, where the feed's own values win and the page's fill gaps (see "Card values" under "Reading"): the card image, the title of untitled items, the excerpt of empty ones and the article page's lead image.
+An article page with no content or summary shows the page's description as its body.
 
 **Read:**
 
 1. `internal/psql/articles.go`: `saveArticles`, `needsEnrichment`, `enrichCandidates`.
 2. `internal/psql/enrich.go`: `ClaimNext`, `SavePage`, `Retry`, `GiveUp`.
-3. `internal/enrich/enrich.go`: `Runner.work`, `process`, `attempt`, `PageOf`, `retry`,
-   `retryAt`.
+3. `internal/enrich/enrich.go`: `Runner.work`, `process`, `attempt`, `PageOf`, `retry`, `retryAt`.
 4. `internal/discovery/page.go`: `ParsePage`.
 5. `cmd/www/application.go`: the runner.
 
-**Tests:** `internal/psql/articles_test.go` (`TestSaveFetchQueuesEnrichment`,
-`TestGetByIDReadsPageColumns`); `internal/psql/enrich_test.go`
-(`TestEnrichRepositoryClaimNext`, `TestEnrichRepositoryRecord`);
-`internal/enrich/enrich_test.go` (an `httptest` server); `cmd/www/config_test.go`
-(`TestParseConfigEnrichWorkers`).
+**Tests:** `internal/psql/articles_test.go` (`TestSaveFetchQueuesEnrichment`, `TestGetByIDReadsPageColumns`); `internal/psql/enrich_test.go` (`TestEnrichRepositoryClaimNext`, `TestEnrichRepositoryRecord`); `internal/enrich/enrich_test.go` (an `httptest` server); `cmd/www/config_test.go` (`TestParseConfigEnrichWorkers`).
 
 **Why:** "Enrichment" in decisions.md.
 
 ## Debug mode
 
-**Flow.** Debug mode shows the stored data behind site, feed and article pages and
-article rows, and inspects feeds, article pages and site discovery live, for the
-accounts listed in `-debug-emails` only.
+**Flow.** Debug mode shows the stored data behind site, feed and article pages and article rows, and inspects feeds, article pages and site discovery live, for the accounts listed in `-debug-emails` only.
 
-1. **Flag.** `parseConfig` splits `-debug-emails` on commas, trims and lowercases each
-   entry (`parseDebugEmails`), and `Validate` rejects anything that isn't a bare address.
+1. **Flag.** `parseConfig` splits `-debug-emails` on commas, trims and lowercases each entry (`parseDebugEmails`), and `Validate` rejects anything that isn't a bare address.
    It reaches the server as `Config.DebugEmails`.
-2. **Settings toggle.** For an allowed account (`debugAllowed`: the user's email is
-   listed, ignoring case), Settings shows a Debug section whose button posts
-   `POST /settings/debug` with `on=1` or `on=0`. `settingsDebugFormHandler` puts or
-   removes `"debug"` in the scs session, so it's per device and logging out ends it;
-   for anyone else the route is a 404.
-3. **`debugEnabled`** is `debugAllowed` and the session flag, checked on every request,
-   so removing an account from the flag turns debug mode off at once. `s.nav` sets
-   `navData.Debug` from it, and the nav shows a Debug badge linking to
-   `/settings#debug`.
-4. **Panels.** When `debugEnabled`, `siteHandler` loads `DebugStore.SiteDebug` (icon
-   bookkeeping and the stored icon without its bytes) and `FeedDebug` for the site's
-   feeds, and `feedHandler` loads `FeedDebug` for the feed (article and enrich job
-   counts, newest `created_at` and `timeline_at`). `siteDebugFields` and
-   `feedDebugFields` turn them into `debugField` rows (times through `debugTime`: RFC
-   3339 in UTC and how long ago), and the `debug-panel` partial renders a collapsed
-   `<details class="debug">` after the page header. The site panel also has one line
-   per feed (`siteFeedDebugLine`: status, last attempt, articles). Off, none of these
-   queries run.
-5. **Feed inspector.** Under the feed panel, a form (`Send the stored ETag and
-   Last-Modified`, `Fetch and inspect`) posts `POST /debug/feeds/{id}/inspect`. Routes
-   under `/debug/` are behind `requireDebug` (404 unless `debugEnabled`).
-   `feedInspectHandler` loads the feed, extends its write deadline past the server's
-   `WriteTimeout` (`extendWriteDeadline`), and fetches the feed through
-   `Services.Fetcher` within 30 s (`inspectTimeout`), sending the stored validators only
-   when asked. Nothing is saved. On a 2xx it calls `feedparse.Inspect`: what `Parse`
-   returns, every field of the channel and of the items (marked used or ignored from
-   `usedChannelFields` / `usedItemFields`, with a count and a sample), and each item's
-   raw source (cut out of the document with `xml.Decoder.InputOffset`, or re-indented
-   JSON) and gofeed item. Then `ingest.Articles` and
-   `DebugStore.ArticlesByExternalID` give each item its outcome: `new`, `unchanged`,
-   `differs: <columns>` (`compareArticle`), or dropped (no ID, a duplicate, over the
-   200-article limit). The form's `item` (an external ID) shows that item first, open.
-   A fetch error, a non-2xx or a body that isn't a feed is shown as text on the same
-   page (`debug_feed.html`); the body is cut at 256 KiB, items' source at 20 000 bytes,
-   all as escaped text.
-6. **Article panel.** When `debugEnabled`, `articleHandler` loads
-   `DebugStore.ArticleDebug` (the article's `enrich_jobs` row, up to 20 copies in other
-   feeds by `canonical_url`, oldest first, and this user's `read_at` and `saved_at`) and
-   `newArticleDebugView` builds an `id="debug"` panel after the article's actions:
-   `articleDebugFields` (every column in schema order, `summary` and `content` as their
-   lengths; the shown title, excerpt and image with where each came from; timeline
-   placement; `external_id` kind; the enrich job, or why there's none; this user's
-   rows), the sanitized body's length and the lead image decision, the copies as links,
-   the raw `summary` and `content` (cut at 20 000 bytes) in `<pre>`, and a **Source
-   item** form posting to the feed inspector with the article's `external_id` as
-   `item`, and, when the article has a URL, an **Inspect page** form. `?debug=1`
-   renders the panel open; it changes rendering only.
-7. **Provenance.** `articleProvenance` is a pure function of the article that says where
-   each shown value comes from: title `feed`, `page`, `excerpt` or `none`; excerpt and
-   image `feed`, `page` or `none`; timeline `backlog` (`timeline_at` equals
-   `published_at`) or `news` (a backlog item clamped to its arrival time reads as news);
-   external ID `hash`, `link` or `guid`. Its rules mirror `DisplayTitle`,
-   `DisplayExcerpt` and `CardImageURL`, whose comments point to it.
-8. **List line.** `feedHandler`, `renderTimeline` and `savedHandler` call `fillDebug` after
-   building their rows; when `debugEnabled` it sets each `articleRow.Debug`
-   (`newArticleRowDebug`, from columns the lists already load, so no queries) and the
-   `article-row` partial adds a `.debug-line`: the short ID, timeline placement and
-   time, published date, title and image provenance, and a `debug` link to
-   `/articles/{id}?debug=1#debug` (which marks the article read, like any visit).
+2. **Settings toggle.** For an allowed account (`debugAllowed`: the user's email is listed, ignoring case), Settings shows a Debug section whose button posts `POST /settings/debug` with `on=1` or `on=0`.
+   `settingsDebugFormHandler` puts or removes `"debug"` in the scs session, so it's per device and logging out ends it; for anyone else the route is a 404.
+3. **`debugEnabled`** is `debugAllowed` and the session flag, checked on every request, so removing an account from the flag turns debug mode off at once.
+   `s.nav` sets `navData.Debug` from it, and the nav shows a Debug badge linking to `/settings#debug`.
+4. **Panels.** When `debugEnabled`, `siteHandler` loads `DebugStore.SiteDebug` (icon bookkeeping and the stored icon without its bytes) and `FeedDebug` for the site's feeds, and `feedHandler` loads `FeedDebug` for the feed (article and enrich job counts, newest `created_at` and `timeline_at`).
+   `siteDebugFields` and `feedDebugFields` turn them into `debugField` rows (times through `debugTime`: RFC 3339 in UTC and how long ago), and the `debug-panel` partial renders a collapsed `<details class="debug">` after the page header.
+   The site panel also has one line per feed (`siteFeedDebugLine`: status, last attempt, articles).
+   Off, none of these queries run.
+5. **Feed inspector.** Under the feed panel, a form (`Send the stored ETag and Last-Modified`, `Fetch and inspect`) posts `POST /debug/feeds/{id}/inspect`.
+   Routes under `/debug/` are behind `requireDebug` (404 unless `debugEnabled`).
+   `feedInspectHandler` loads the feed, extends its write deadline past the server's `WriteTimeout` (`extendWriteDeadline`), and fetches the feed through `Services.Fetcher` within 30 s (`inspectTimeout`), sending the stored validators only when asked.
+   Nothing is saved.
+   On a 2xx it calls `feedparse.Inspect`: what `Parse` returns, every field of the channel and of the items (marked used or ignored from `usedChannelFields` / `usedItemFields`, with a count and a sample), and each item's raw source (cut out of the document with `xml.Decoder.InputOffset`, or re-indented JSON) and gofeed item.
+   Then `ingest.Articles` and `DebugStore.ArticlesByExternalID` give each item its outcome: `new`, `unchanged`, `differs: <columns>` (`compareArticle`), or dropped (no ID, a duplicate, over the 200-article limit).
+   The form's `item` (an external ID) shows that item first, open.
+   A fetch error, a non-2xx or a body that isn't a feed is shown as text on the same page (`debug_feed.html`); the body is cut at 256 KiB, items' source at 20 000 bytes, all as escaped text.
+6. **Article panel.** When `debugEnabled`, `articleHandler` loads `DebugStore.ArticleDebug` (the article's `enrich_jobs` row, up to 20 copies in other feeds by `canonical_url`, oldest first, and this user's `read_at` and `saved_at`) and `newArticleDebugView` builds an `id="debug"` panel after the article's actions: `articleDebugFields` (every column in schema order, `summary` and `content` as their lengths; the shown title, excerpt and image with where each came from; timeline placement; `external_id` kind; the enrich job, or why there's none; this user's rows), the sanitized body's length and the lead image decision, the copies as links, the raw `summary` and `content` (cut at 20 000 bytes) in `<pre>`, and a **Source item** form posting to the feed inspector with the article's `external_id` as `item`, and, when the article has a URL, an **Inspect page** form.
+   `?debug=1` renders the panel open; it changes rendering only.
+7. **Provenance.** `articleProvenance` is a pure function of the article that says where each shown value comes from: title `feed`, `page`, `excerpt` or `none`; excerpt and image `feed`, `page` or `none`; timeline `backlog` (`timeline_at` equals `published_at`) or `news` (a backlog item clamped to its arrival time reads as news); external ID `hash`, `link` or `guid`.
+   Its rules mirror `DisplayTitle`, `DisplayExcerpt` and `CardImageURL`, whose comments point to it.
+8. **List line.** `feedHandler`, `renderTimeline` and `savedHandler` call `fillDebug` after building their rows; when `debugEnabled` it sets each `articleRow.Debug` (`newArticleRowDebug`, from columns the lists already load, so no queries) and the `article-row` partial adds a `.debug-line`: the short ID, timeline placement and time, published date, title and image provenance, and a `debug` link to `/articles/{id}?debug=1#debug` (which marks the article read, like any visit).
 9. **Page inspector.** **Inspect page** posts `POST /debug/articles/{id}/inspect-page`.
-   `articlePageInspectHandler` loads the article (404 if missing or without a URL) and,
-   like the feed inspector, extends its write deadline and fetches within 30 s, saving
-   nothing. It renders `debug_page.html`: the response (the `debug-response` partial,
-   shared with the feed inspector); what enrichment would do (`Enrichment would retry
-   or give up: status N` for a non-2xx, `Enrichment would give up: not HTML` when
-   `enrich.IsHTML` says no, otherwise `enrich.PageOf` of the page next to the stored
-   `page_*` columns); then `discovery.InspectPage`'s tags (the `debug-tags` partial:
-   tag, key, value cut at 300 runes, type and sizes, `used` or `ignored` from
-   `usedPageKeys`, a hand-kept list next to `ParsePage`) and its JSON-LD (the `@type`s
-   at the top level and in `@graph`, then each block, indented if it parses, cut at
-   20 000 bytes, in a `<pre>`).
-10. **Discovery inspector.** Under the site panel, **Run discovery** posts
-    `POST /debug/sites/{id}/discover`. `siteDiscoverHandler` loads the site and its
-    feeds, fetches the home page (`InspectPage`: the title and description `ParsePage`
-    gives next to the stored ones, and the tags), then runs `Services.Discoverer`
-    (the `discovery.Discoverer` the runners use; it fetches the home page again) and
-    renders `debug_site.html`: `Direct`, one row per `Result.Checked` entry (source,
-    candidate URL and title, final URL, status, outcome), the feeds found marked `known`
-    or `new` against the stored feeds' URLs, and `Stored but not found by this run`. A
-    discovery error shows as `Discovery failed: …` above whatever `Checked` holds.
+   `articlePageInspectHandler` loads the article (404 if missing or without a URL) and, like the feed inspector, extends its write deadline and fetches within 30 s, saving nothing.
+   It renders `debug_page.html`: the response (the `debug-response` partial, shared with the feed inspector); what enrichment would do (`Enrichment would retry or give up: status N` for a non-2xx, `Enrichment would give up: not HTML` when `enrich.IsHTML` says no, otherwise `enrich.PageOf` of the page next to the stored `page_*` columns); then `discovery.InspectPage`'s tags (the `debug-tags` partial: tag, key, value cut at 300 runes, type and sizes, `used` or `ignored` from `usedPageKeys`, a hand-kept list next to `ParsePage`) and its JSON-LD (the `@type`s at the top level and in `@graph`, then each block, indented if it parses, cut at 20 000 bytes, in a `<pre>`).
+10. **Discovery inspector.** Under the site panel, **Run discovery** posts `POST /debug/sites/{id}/discover`.
+    `siteDiscoverHandler` loads the site and its feeds, fetches the home page (`InspectPage`: the title and description `ParsePage` gives next to the stored ones, and the tags), then runs `Services.Discoverer` (the `discovery.Discoverer` the runners use; it fetches the home page again) and renders `debug_site.html`: `Direct`, one row per `Result.Checked` entry (source, candidate URL and title, final URL, status, outcome), the feeds found marked `known` or `new` against the stored feeds' URLs, and `Stored but not found by this run`.
+    A discovery error shows as `Discovery failed: …` above whatever `Checked` holds.
     Nothing is saved: no site, lookup or feed row changes.
 
 **Read:**
 
 1. `cmd/www/config.go`: `-debug-emails`, `parseDebugEmails`, `Validate`.
-2. `internal/server/debug.go`: `debugAllowed`, `debugEnabled`,
-   `settingsDebugFormHandler`, `debugTime`, `siteDebugFields`, `feedDebugFields`,
-   `siteFeedDebugLine`, `articleProvenance`, `articleDebugFields`,
-   `newArticleDebugView`, `newArticleRowDebug`, `fillDebug`.
-3. `internal/server/sites.go`: `siteHandler`, `siteDebug`; `feeds.go`: `feedHandler`;
-   `settings.go`: `settingsHandler`; `html.go`: `nav`; `articles.go`: `articleHandler`.
-4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`, `ArticleDebug`,
-   `ArticlesByExternalID`.
-5. `internal/ui/templates/partials/debug.html`, `partials/nav.html` (the badge),
-   `settings.html` (`#debug`), the panel in `article.html`, the line in
-   `partials/article_row.html`; `.debug…` in `main.css`.
-6. The feed inspector: `internal/server/debug.go` (`requireDebug`,
-   `extendWriteDeadline`, `feedInspectHandler`, `inspectFeed`, `compareArticle`);
-   `internal/feedparse/inspect.go` (`Inspect`, `usedChannelFields`, `usedItemFields`,
-   `inspectXML`, `inspectJSON`); `internal/ingest/ingest.go` (`ExternalID`);
-   `templates/debug_feed.html` and the form in `feed.html`.
-7. The page and discovery inspectors: `internal/server/debug.go`
-   (`articlePageInspectHandler`, `siteDiscoverHandler`); `internal/discovery/inspect.go`
-   (`InspectPage`, `usedPageKeys`) and `discover.go` (`CandidateCheck`,
-   `checkCandidates`); `internal/enrich/enrich.go` (`PageOf`, `IsHTML`);
-   `templates/debug_page.html`, `debug_site.html`, and the forms in `article.html` and
-   `site.html`.
+2. `internal/server/debug.go`: `debugAllowed`, `debugEnabled`, `settingsDebugFormHandler`, `debugTime`, `siteDebugFields`, `feedDebugFields`, `siteFeedDebugLine`, `articleProvenance`, `articleDebugFields`, `newArticleDebugView`, `newArticleRowDebug`, `fillDebug`.
+3. `internal/server/sites.go`: `siteHandler`, `siteDebug`; `feeds.go`: `feedHandler`; `settings.go`: `settingsHandler`; `html.go`: `nav`; `articles.go`: `articleHandler`.
+4. `internal/psql/debug.go`: `SiteDebug`, `FeedDebug`, `ArticleDebug`, `ArticlesByExternalID`.
+5. `internal/ui/templates/partials/debug.html`, `partials/nav.html` (the badge), `settings.html` (`#debug`), the panel in `article.html`, the line in `partials/article_row.html`; `.debug…` in `main.css`.
+6. The feed inspector: `internal/server/debug.go` (`requireDebug`, `extendWriteDeadline`, `feedInspectHandler`, `inspectFeed`, `compareArticle`); `internal/feedparse/inspect.go` (`Inspect`, `usedChannelFields`, `usedItemFields`, `inspectXML`, `inspectJSON`); `internal/ingest/ingest.go` (`ExternalID`); `templates/debug_feed.html` and the form in `feed.html`.
+7. The page and discovery inspectors: `internal/server/debug.go` (`articlePageInspectHandler`, `siteDiscoverHandler`); `internal/discovery/inspect.go` (`InspectPage`, `usedPageKeys`) and `discover.go` (`CandidateCheck`, `checkCandidates`); `internal/enrich/enrich.go` (`PageOf`, `IsHTML`); `templates/debug_page.html`, `debug_site.html`, and the forms in `article.html` and `site.html`.
 
-**Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`);
-`internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the
-field builders, the site, feed, article and settings pages with debug mode on, off and
-not allowed, `articleProvenance`, the list rows' debug lines, `requireDebug`,
-`compareArticle`, the feed inspector's outcomes and errors,
-`TestExtendWriteDeadline` through the router, `TestArticlePageInspectHandler`,
-`TestSiteDiscoverHandler` and `TestPageInspectorsDebugOff`);
-`internal/feedparse/inspect_test.go`; `internal/discovery/inspect_test.go` (fixture
-`testdata/page.html`) and the `TestDiscoverChecked…` tests in `discover_test.go`;
-`TestPageOf` in `internal/enrich/enrich_test.go`.
+**Tests:** `cmd/www/config_test.go` (`TestParseConfigDebugEmails`); `internal/psql/debug_test.go`; `internal/server/debug_test.go` (gating, the toggle, the field builders, the site, feed, article and settings pages with debug mode on, off and not allowed, `articleProvenance`, the list rows' debug lines, `requireDebug`, `compareArticle`, the feed inspector's outcomes and errors, `TestExtendWriteDeadline` through the router, `TestArticlePageInspectHandler`, `TestSiteDiscoverHandler` and `TestPageInspectorsDebugOff`); `internal/feedparse/inspect_test.go`; `internal/discovery/inspect_test.go` (fixture `testdata/page.html`) and the `TestDiscoverChecked…` tests in `discover_test.go`; `TestPageOf` in `internal/enrich/enrich_test.go`.
 
 **Why:** "Debug mode" in decisions.md.
 
@@ -1246,15 +580,10 @@ not allowed, `articleProvenance`, the list rows' debug lines, `requireDebug`,
 The usual path for a new page or action, following the conventions in CLAUDE.md:
 
 1. **Schema:** edit `migrations/00001_init.sql` and run `make db/reset`.
-2. **Domain type:** add or extend a type in `internal/rss`, and a sentinel error in
-   `errors.go` if handlers need to tell a case apart.
+2. **Domain type:** add or extend a type in `internal/rss`, and a sentinel error in `errors.go` if handlers need to tell a case apart.
 3. **Repository:** a method in `internal/psql` with a DB test.
-4. **Interface:** add the method to the store interface in `internal/server/server.go`
-   (or a new interface, a `Services` field, the compile-time check, and the wiring in
-   `cmd/www/application.go`), and a function field to the fake in `fakes_test.go`.
-5. **Handler and route:** a method on `*Server`, registered in `router.go` (see "Code
-   conventions" in CLAUDE.md for forms, flash messages and error pages).
+4. **Interface:** add the method to the store interface in `internal/server/server.go` (or a new interface, a `Services` field, the compile-time check, and the wiring in `cmd/www/application.go`), and a function field to the fake in `fakes_test.go`.
+5. **Handler and route:** a method on `*Server`, registered in `router.go` (see "Code conventions" in CLAUDE.md for forms, flash messages and error pages).
 6. **Template:** a page in `internal/ui/templates`, with shared parts in `partials/`.
-7. **Tests:** handler tests with fakes for the new behavior, and DB tests for the
-   repository method.
+7. **Tests:** handler tests with fakes for the new behavior, and DB tests for the repository method.
 8. **Docs:** see "Docs" in CLAUDE.md for which files to update.

@@ -8,12 +8,15 @@ A server-rendered RSS reader written in Go, using [chi](https://github.com/go-ch
 
 - Go (version in `go.mod`)
 - Docker and Docker Compose
-- [goose](https://github.com/pressly/goose), only for `make db/migrations/new` and `make db/migrations/down`: `go install github.com/pressly/goose/v3/cmd/goose@latest`. The app applies migrations itself (`www migrate`).
+- [goose](https://github.com/pressly/goose), only for `make db/migrations/new` and `make db/migrations/down`: `go install github.com/pressly/goose/v3/cmd/goose@latest`.
+  The app applies migrations itself (`www migrate`).
 - Optional: `psql` (for `make db/psql`)
 
 ## Configuration
 
-The `Makefile` includes and exports a gitignored `.env` file. It is not enforced by `make`, but `make run` and the database targets need `RSS_DB_DSN` from it. Copy the example, whose value matches `compose.yml`:
+The `Makefile` includes and exports a gitignored `.env` file.
+It is not enforced by `make`, but `make run` and the database targets need `RSS_DB_DSN` from it.
+Copy the example, whose value matches `compose.yml`:
 
 ```sh
 cp .env.example .env
@@ -25,10 +28,8 @@ RSS_SMTP_HOST=localhost
 RSS_SMTP_PORT=1025
 ```
 
-`make db/start` also starts [Mailpit](https://mailpit.axllent.org), which catches the
-app's email: with the two `RSS_SMTP_` lines above, every email the app sends shows up at
-http://localhost:8025 instead of reaching anyone. Remove them and the app logs each
-email instead, links included.
+`make db/start` also starts [Mailpit](https://mailpit.axllent.org), which catches the app's email: with the two `RSS_SMTP_` lines above, every email the app sends shows up at http://localhost:8025 instead of reaching anyone.
+Remove them and the app logs each email instead, links included.
 
 ## Quick start
 
@@ -43,7 +44,10 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 
 ## Command-line flags and environment variables
 
-`cmd/www` accepts these flags. Each can also be set by its environment variable, so `go run ./cmd/www` (and `make run`) reads `RSS_DB_DSN` from the environment. A flag on the command line wins over its variable, which wins over the default; a variable set to the empty string counts as unset. `-help` lists them all.
+`cmd/www` accepts these flags.
+Each can also be set by its environment variable, so `go run ./cmd/www` (and `make run`) reads `RSS_DB_DSN` from the environment.
+A flag on the command line wins over its variable, which wins over the default; a variable set to the empty string counts as unset.
+`-help` lists them all.
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
@@ -72,11 +76,15 @@ Instead of `make db/migrations/up` you can run `go run ./cmd/www migrate`.
 
 In production (`-env production`) the app refuses to start without `-base-url`, `-support-email`, `-smtp-host` and `-mail-from`: emails carry one-time links, which must never end up in the logs there.
 
-Signup is off by default. To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`. Locally, `make db/seed` makes your account without signing up (see [`www create-user`](#www-create-user)).
+Signup is off by default.
+To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`.
+Locally, `make db/seed` makes your account without signing up (see [`www create-user`](#www-create-user)).
 
 ### `www migrate`
 
-`www migrate [flags]` applies the migrations embedded in the binary and exits; hosts run it before new code goes live. While pre-alpha, it refuses to run if `migrations/*.sql` have changed since the database was migrated, instead of wiping it: locally, rebuild the database with `make db/reset`. It takes its own flags, also settable by environment variables:
+`www migrate [flags]` applies the migrations embedded in the binary and exits; hosts run it before new code goes live.
+While pre-alpha, it refuses to run if `migrations/*.sql` have changed since the database was migrated, instead of wiping it: locally, rebuild the database with `make db/reset`.
+It takes its own flags, also settable by environment variables:
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
@@ -89,13 +97,16 @@ To wipe and rebuild a database other than the local one: `go run ./cmd/www migra
 
 ### `www create-user`
 
-`www create-user -name <name> -email <email> [-db-dsn <dsn>]` creates an account and exits. The password is the first line of stdin (a trailing `\n` or `\r\n` is dropped; other whitespace is kept); it is never a flag, so it stays out of shell history and process listings:
+`www create-user -name <name> -email <email> [-db-dsn <dsn>]` creates an account and exits.
+The password is the first line of stdin (a trailing `\n` or `\r\n` is dropped; other whitespace is kept); it is never a flag, so it stays out of shell history and process listings:
 
 ```sh
 printf '%s\n' "$PASSWORD" | go run ./cmd/www create-user -name You -email you@example.com
 ```
 
-The name, email and password must pass signup's rules. It's for local development: in production, accounts come from signing up with the invite code. Its flags, also settable by environment variables:
+The name, email and password must pass signup's rules.
+It's for local development: in production, accounts come from signing up with the invite code.
+Its flags, also settable by environment variables:
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
@@ -107,13 +118,15 @@ It exits 0 when the account is created, 1 when it can't be (including when an ac
 
 ### `www send-test-email`
 
-`www send-test-email -to <address> [flags]` renders the test email and sends it with the mail settings, to check them; with no SMTP host, it logs the email instead. It doesn't open the database:
+`www send-test-email -to <address> [flags]` renders the test email and sends it with the mail settings, to check them; with no SMTP host, it logs the email instead.
+It doesn't open the database:
 
 ```sh
 go run ./cmd/www send-test-email -to you@example.com
 ```
 
-Locally, with Mailpit's settings from `.env.example`, the email shows up at http://localhost:8025. Its flags are `-to` and the mail flags of `www` (above), with the same environment variables: `-base-url`, `-support-email`, `-smtp-host`, `-smtp-port`, `-smtp-username`, `-smtp-password` and `-mail-from`.
+Locally, with Mailpit's settings from `.env.example`, the email shows up at http://localhost:8025.
+Its flags are `-to` and the mail flags of `www` (above), with the same environment variables: `-base-url`, `-support-email`, `-smtp-host`, `-smtp-port`, `-smtp-username`, `-smtp-password` and `-mail-from`.
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
@@ -123,9 +136,11 @@ It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 aft
 
 ## Make targets
 
-Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports). Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
+Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports).
+Others: `make run`, `make build` (outputs `bin/www`), `make clean`.
 
-`make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`. `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
+`make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`.
+`make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
 
 ## Tests
 
@@ -134,11 +149,13 @@ make test      # go test ./... ; database tests are skipped
 make test/db   # runs all tests, including database tests, against the local database
 ```
 
-Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make test/db` uses `RSS_DB_DSN`). CI sets it and fails if it is missing.
+Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make test/db` uses `RSS_DB_DSN`).
+CI sets it and fails if it is missing.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md): how the app fits together: the process, packages, routes, data model, background workers and security measures. Start here.
+- [`docs/architecture.md`](docs/architecture.md): how the app fits together: the process, packages, routes, data model, background workers and security measures.
+  Start here.
 - [`docs/features.md`](docs/features.md): how each feature works and which code to read, in order.
 - [`docs/decisions.md`](docs/decisions.md): decisions made while planning, and why.
 - [`docs/todo.md`](docs/todo.md): what's next, planned work that has no issue yet, and the performance watchlist.

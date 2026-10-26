@@ -214,6 +214,13 @@ Planned in #163 (issues #147–#162).
   (#157, #160) This covers every user-visible time, not just articles: feed and site status times ("Last fetched", "Next check around") and list dates ("Latest article") too, still absolute, with no time zone setting.
   (#337)
 - **New articles don't appear live** while you scroll; a reload shows them on top.
+- **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
+  It's stored per user on the server (`timeline_marks`), so it follows the reader across devices; a marker in the browser would need no schema but differ on every device.
+  The page reports the first row's position with a beacon when it's hidden, never from the GET that renders it ("Overall").
+  One position per user serves Home and every custom timeline, since they share `timeline_at`; starred-only timelines, ordered by star time, show no line.
+  The line moves only after 30 minutes away (`rss.VisitGap`), so a reload or a quick tab switch keeps it in place.
+  There's no line before the second visit, at the top of the page, or without JavaScript (no beacon, so it would never move).
+  Accepted: reading only a filtered timeline moves the line for Home too, so articles only Home shows can sit below it unseen; per-timeline markers would cost a row per timeline for a rare case.
 
 ### Saved articles
 
@@ -237,6 +244,17 @@ Planned in #309 (issues #299–#301).
 - **The Star is an icon-only button to Save's left** (owner's pick in #349, from three layouts: a labelled Star next to Save, this icon-only Star, a Star in the meta line).
   It stays compact next to the labelled Save and leaves room for Share, which goes between them.
   Its accessible name is its `aria-label`, "Star"; `aria-pressed` carries the state, as on Save.
+
+### Sharing articles
+
+Planned in #395 (issue #396).
+
+- **Share sends the original article's link, never the in-app page**, which only logged-in users can open: its canonical URL, so tracking parameters don't travel on, with the title.
+  Articles without a usable URL have no Share button.
+- **The system share sheet where there is one, else copy the link** (the link alone, so it pastes cleanly).
+- **It needs JavaScript, so without it there's no button**, rather than a button that does nothing; "Read on" and the browser's own share remain.
+- **An icon-only button between Star and Save**, as "Saved articles" planned.
+- **Nothing about sharing is recorded**: no counts, no request to the server.
 
 ### Hiding articles (not taken in)
 

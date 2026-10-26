@@ -233,9 +233,6 @@ Each with when it pays off:
   Spotify, SoundCloud and Bandcamp players as click-to-play previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.**
   Style the blockquote that X, Bluesky and Mastodon embeds arrive as into a quote card with the author and a link, without loading their scripts.
-- [ ] **Share button.**
-  In the row's action bar, between Star and Save (#299, #349): the Web Share API on phones, else copy the article's link.
-  Its own small issue.
 - [ ] **Save any web page.**
   Save a link that isn't in any feed to Saved, from a bookmarklet, a "Save a link" form on Saved, or the phone's share sheet (a share target added to the manifest from #394).
   Read-later apps keep closing (Pocket in 2025), and Saved plus enrichment already shows a page's title, image and description.
@@ -247,10 +244,9 @@ Each with when it pays off:
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
 - [ ] **Keyboard shortcuts.**
-  E.g. `j`/`k` to move between rows, `o` to open, `v` to open the original.
-- [ ] **"You were here" divider.**
-  A subtle marker in the timeline at your last visit (possible because positions never change).
-  No counts.
+  E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.
+  Single-key shortcuts must be possible to turn off (WCAG 2.1.4: they collide with screen readers and speech input), so plan an off switch in Settings, a typed column on `users`.
+  Deferred while planning #396 and #397; open questions are the letters for Star and Save (`s` meant star in older readers, but could read as Save).
 - [ ] **Unread filter.**
   Maybe never; it pulls toward the inbox model.
 - [ ] **Timezone setting and day headers.**
@@ -512,6 +508,10 @@ Pages and queries:
   Opening an article page, and each click through to the original, runs an `INSERT … ON CONFLICT DO NOTHING` on `reads`.
   *Signal:* `MarkRead` in `pg_stat_statements` totals, or lock waits on `reads`.
   *Fix:* skip the insert when the page already knows the article is read, or batch writes.
+- [ ] **Timeline marks on every timeline view** (#397).
+  Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and each time a timeline page is hidden its beacon upserts that row, so an active reader writes it every few minutes.
+  *Signal:* `MarkSeen` in `pg_stat_statements` totals, or bloat on `timeline_marks` from frequent updates of the same rows.
+  *Fix:* have `app.js` skip the beacon when the position hasn't changed since its last report, or report at most once a minute per page.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.

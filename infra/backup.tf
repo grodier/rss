@@ -8,21 +8,22 @@ resource "cloudflare_r2_bucket_lifecycle" "backups" {
 
   # These rules replace all of the bucket's rules, so this keeps R2's default
   # rule for incomplete multipart uploads (a backup that failed midway) too.
+  # Listed in the order Cloudflare returns them, or every plan shows a change.
   rules = [
-    {
-      id         = "delete-after-35-days"
-      enabled    = true
-      conditions = { prefix = "" }
-      delete_objects_transition = {
-        condition = { type = "Age", max_age = 35 * 24 * 60 * 60 }
-      }
-    },
     {
       id         = "abort-multipart-uploads-after-7-days"
       enabled    = true
       conditions = { prefix = "" }
       abort_multipart_uploads_transition = {
         condition = { type = "Age", max_age = 7 * 24 * 60 * 60 }
+      }
+    },
+    {
+      id         = "delete-after-35-days"
+      enabled    = true
+      conditions = { prefix = "" }
+      delete_objects_transition = {
+        condition = { type = "Age", max_age = 35 * 24 * 60 * 60 }
       }
     },
   ]

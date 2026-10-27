@@ -650,6 +650,7 @@ Planned in #218; issues #208–#217.
   Terraform ignores the job's image, like the web service's.
 - **Terraform plans must be clean when nothing changed** (#387): a plan that always shows a change hides real ones, and the PR's plan is how infrastructure changes are approved.
   The R2 lifecycle rules are listed in the order Cloudflare returns them, rather than ignored with `ignore_changes`, which would also hide a real change to a rule.
+  `ignore_changes` covers only each rule's unused transition, which the provider reads back as an empty condition that no valid config can match (cloudflare/terraform-provider-cloudflare#7338); it comes out once the provider is fixed (#387).
 - **An external uptime monitor** (#391): a free keyword monitor on `/healthcheck` every 5 minutes, alerting the owner by email, so someone hears when the app is down for visitors and not only when Render restarts it.
   It checks that the app is reachable, not the database.
 - **Logs** stay in Render's log viewer for as long as Render keeps them (a few days on the Hobby workspace; the README records the current figure).

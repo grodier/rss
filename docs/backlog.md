@@ -83,6 +83,9 @@ The decisions are under "Accounts" in decisions.md.
   Provider v1.9.1 can't update a service pinned by digest, which deploys always leave `rss` and `rss-backup` (since #386) on: it sends `ghcr.io/grodier/rss:<hex>` and Render refuses with "unable to fetch image with provided input" ([render-oss/terraform-provider-render#106](https://github.com/render-oss/terraform-provider-render/issues/106), fix in PR #109).
   The #254 apply hit it.
   When a release includes #109 (Dependabot opens the upgrade PR; check its changelog), upgrade, check that a plan changing the service applies without the workaround, and remove "Changing the web service or the backup job" from `infra/README.md`.
+- [ ] **Drop the R2 lifecycle rules' `ignore_changes` once the Cloudflare provider is fixed.**
+  Provider 5.28 reads back an empty condition for the transition a rule doesn't use, which no valid config can match ([cloudflare/terraform-provider-cloudflare#7338](https://github.com/cloudflare/terraform-provider-cloudflare/issues/7338), closed without a fix), so #387 ignores those transitions in `infra/backup.tf`.
+  When a provider upgrade's changelog mentions `r2_bucket_lifecycle`, remove the `ignore_changes` and check that the plan is still clean.
 - [ ] **PR preview environments.**
   Render preview environments need the Professional workspace (about $19 per user a month plus compute).
   Only from same-repo branches: never `pull_request_target` with fork code, since this repository is public.

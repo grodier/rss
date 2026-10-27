@@ -8,7 +8,8 @@ resource "cloudflare_r2_bucket_lifecycle" "backups" {
 
   # These rules replace all of the bucket's rules, so this keeps R2's default
   # rule for incomplete multipart uploads (a backup that failed midway) too.
-  # Listed in the order Cloudflare returns them, or every plan shows a change.
+  # Listed in the order Cloudflare returns them, so the plan compares the right
+  # rules (#387).
   rules = [
     {
       id         = "abort-multipart-uploads-after-7-days"
@@ -27,6 +28,18 @@ resource "cloudflare_r2_bucket_lifecycle" "backups" {
       }
     },
   ]
+
+  lifecycle {
+    ignore_changes = [
+      # The provider reads back an empty condition for the transition a rule
+      # doesn't use, which no valid config can match, so every plan would show
+      # a change (cloudflare/terraform-provider-cloudflare#7338). Only these
+      # unused transitions are ignored; a change to a rule still shows. Remove
+      # once the provider is fixed.
+      rules[0].delete_objects_transition,
+      rules[1].abort_multipart_uploads_transition,
+    ]
+  }
 }
 
 resource "render_cron_job" "backup" {

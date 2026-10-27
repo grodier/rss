@@ -245,7 +245,7 @@ New timeline offers presets (`?preset=starred`, `?preset=quiet` for at most 2 po
 `ErrTooManyTimelines` (20) is a form error; another user's timeline is a 404 (`timelineFromURL`).
 
 A timeline's page and Home (the zero `rss.Timeline`) share `renderTimeline` (see "Reading").
-`ListTimeline` adds `timelineWhere`'s conditions to the subscriptions it reads *before* collapsing copies, so a left-out feed's copy never stands in for an entry; "Also in" still lists every subscribed feed with a copy.
+`ListTimeline` applies `timelineWhere`'s conditions to the earlier copy it looks for as well as to the entry, so copies collapse after filtering and a left-out feed's copy never stands in for an entry; "Also in" still lists every subscribed feed with a copy.
 A starred-only timeline lists stars instead (`StarRepository.ListStarred`), newest starred first, paged by `starred_at`, without "Also in".
 It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has since left still shows; `timelineWhere` handles the missing subscription (Show conditions fail, Leave out conditions pass).
 
@@ -273,7 +273,8 @@ It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 30
 ## Reading: timeline, article pages and read state
 
 **Timeline.** `renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page, and shows 30.
-`ListTimeline` joins the user's subscriptions (those the timeline's filter shows) to their feeds' articles, collapses copies of one article (same `canonical_url`) into the earliest to arrive, orders by `(timeline_at, id)` descending, and pages with a keyset cursor, `?before=<time>_<id>` (`cursor.go`).
+`ListTimeline` reads, for each of the user's subscriptions (those the timeline's filter shows), that feed's newest entries before the cursor from `articles_feed_timeline_idx`, merges them by `(timeline_at, id)` descending and keeps the page, which it pages with a keyset cursor, `?before=<time>_<id>` (`cursor.go`).
+Copies of one article (same `canonical_url`) collapse into the earliest to arrive: an entry is skipped when an earlier copy is in one of the user's feeds, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.

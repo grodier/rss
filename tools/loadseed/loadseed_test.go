@@ -21,6 +21,7 @@ type seedCounts struct {
 	tags, taggedSubscriptions, stars          int
 	timelines, sharedTimelines, emptyFeeds    int
 	copiedURLs, feedsWithMoreArticlesThanBusy int
+	unflaggedCopies                           int
 }
 
 func countSeed(t *testing.T, db *sql.DB, prefix string) seedCounts {
@@ -52,6 +53,12 @@ func countSeed(t *testing.T, db *sql.DB, prefix string) seedCounts {
 			JOIN sites s ON s.id = f.site_id
 			JOIN articles b ON b.canonical_url = a.canonical_url AND b.feed_id <> a.feed_id
 			WHERE s.host ~ $1 AND a.canonical_url <> ''`, host},
+		{&c.unflaggedCopies, `SELECT count(*)
+			FROM articles a
+			JOIN feeds f ON f.id = a.feed_id
+			JOIN sites s ON s.id = f.site_id
+			WHERE s.host ~ $1 AND a.canonical_url <> '' AND NOT a.has_copies
+				AND EXISTS (SELECT 1 FROM articles b WHERE b.canonical_url = a.canonical_url AND b.id <> a.id)`, host},
 		{&c.mainSubscriptions, `SELECT count(*) FROM subscriptions sub JOIN users u ON u.id = sub.user_id WHERE u.email = $1`, mainEmail(prefix)},
 		{&c.smallSubscriptions, `SELECT count(*) FROM subscriptions sub JOIN users u ON u.id = sub.user_id WHERE u.email = $1`, smallEmail(prefix)},
 		{&c.tags, `SELECT count(*) FROM tags t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, mainEmail(prefix)},
@@ -117,6 +124,9 @@ func TestSeedSmall(t *testing.T) {
 	}
 	if first.copiedURLs == 0 {
 		t.Error("no canonical_url is shared across feeds")
+	}
+	if first.unflaggedCopies != 0 {
+		t.Errorf("%d articles share their canonical_url but lack has_copies", first.unflaggedCopies)
 	}
 
 	// Seeding again cleans up the first seed.

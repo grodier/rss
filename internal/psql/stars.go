@@ -169,7 +169,7 @@ func starredStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
 		JOIN feeds f ON f.id = a.feed_id
 		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
 		WHERE s.user_id = $1
-		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, args) + sharedWhere(shared) + `
+		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, args, "sub", "a") + sharedWhere(shared, "a") + `
 		ORDER BY s.starred_at DESC, s.article_id DESC
 		LIMIT $4`
 }

@@ -296,6 +296,15 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 		return fmt.Errorf("insert articles: %w", err)
 	}
 
+	// The seed bypasses saveArticles, so flag both copies of each pair as it
+	// would.
+	stmt = `UPDATE articles a SET has_copies = true
+		WHERE a.feed_id = ANY($1) AND a.canonical_url IN (
+			SELECT canonical_url FROM articles WHERE feed_id = ANY($1) AND external_id LIKE 'copy-%')`
+	if _, err := tx.ExecContext(ctx, stmt, pq.Array(ids)); err != nil {
+		return fmt.Errorf("flag copies: %w", err)
+	}
+
 	return tx.Commit()
 }
 

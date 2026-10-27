@@ -16,11 +16,12 @@ type querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// OpenDB opens a pool of connections to dsn and pings it. Every connection
-// starts with JIT off: Postgres would compile the timeline queries for their
-// high estimated cost, which adds tens of milliseconds and saves nothing on
-// queries this size.
-func OpenDB(dsn string, maxOpenConns, maxIdleConns int, maxIdleTime time.Duration) (*sql.DB, error) {
+// NewConnector returns a connector to dsn whose connections start with JIT
+// off: Postgres would compile the timeline queries for their high estimated
+// cost, which adds tens of milliseconds and saves nothing on queries this
+// size. OpenDB uses it; so does anything that should measure the app's
+// queries as the app runs them.
+func NewConnector(dsn string) (*pq.Connector, error) {
 	cfg, err := pq.NewConfig(dsn)
 	if err != nil {
 		return nil, err
@@ -29,7 +30,12 @@ func OpenDB(dsn string, maxOpenConns, maxIdleConns int, maxIdleTime time.Duratio
 		cfg.Runtime = map[string]string{}
 	}
 	cfg.Runtime["jit"] = "off"
-	connector, err := pq.NewConnectorConfig(cfg)
+	return pq.NewConnectorConfig(cfg)
+}
+
+// OpenDB opens a pool of connections to dsn (see NewConnector) and pings it.
+func OpenDB(dsn string, maxOpenConns, maxIdleConns int, maxIdleTime time.Duration) (*sql.DB, error) {
+	connector, err := NewConnector(dsn)
 	if err != nil {
 		return nil, err
 	}

@@ -185,7 +185,7 @@ Planned in #163 (issues #147–#162).
   It doesn't wait for the article-retention decision, since its cost doesn't depend on history; retention is decided before a per-reader table, whose size it bounds.
 - **JIT is off for the app's database connections** (#404).
   Postgres compiles queries whose estimated cost is high, which added 20–70 ms to each timeline query in #388 and saves nothing on queries this size.
-  It's set per connection in `psql.OpenDB`, so production, dev and CI match without an owner step.
+  It's set per connection in `psql.NewConnector` (used by `psql.OpenDB` and by `tools/loadseed`'s measurements), so production, dev, CI and the measurements match without an owner step.
 - **Word filters will use a full-text index, not trigrams** (#388).
   On #388's seed a `pg_trgm` index was 127 MB (a quarter of `articles`) and didn't help common words, while a `simple` full-text index was 26 MB and took a rare-word timeline from ~0.9 s to ~50 ms.
   The exact word match stays as the final check, so results don't change.

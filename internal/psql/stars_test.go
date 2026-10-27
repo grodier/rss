@@ -445,4 +445,23 @@ func TestListStarredConditions(t *testing.T) {
 			}
 		})
 	}
+
+	// The posting rate is the article's feed's, so it applies to a star from
+	// a feed the user has left too.
+	t.Run("at most 2 posts a week includes an unsubscribed quiet feed", func(t *testing.T) {
+		if _, err := db.Exec(`DELETE FROM subscriptions s USING articles a WHERE s.user_id = $1 AND s.feed_id = a.feed_id AND a.id = $2`, user, articleID["C-audio"]); err != nil {
+			t.Fatalf("unsubscribe C: %v", err)
+		}
+		items, err := repo.ListStarred(t.Context(), user, rss.TimelineFilter{StarredOnly: true, MaxPostsPerWeek: 2}, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListStarred: %v", err)
+		}
+		got := []string{}
+		for _, item := range items {
+			got = append(got, extOf[item.Article.ID])
+		}
+		if want := []string{"A-audio", "A-text", "C-audio"}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
 }

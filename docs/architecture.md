@@ -338,7 +338,7 @@ Beyond those:
 
 Server and DB test conventions are in CLAUDE.md.
 The other packages test against fakes of their own interfaces, and use `httptest` servers with `fetch.Options{AllowPrivate: true}` where real HTTP matters (`fetch`, `discovery`, `ingest`).
-`tools/loadseed` (`make db/loadseed`, dev only, not in the `www` binary) seeds a development database at realistic scale and times the `psql` reading methods themselves, printing their plans from `auto_explain`.
+`tools/loadseed` (`make db/loadseed`, dev only, not in the `www` binary) seeds a development database at realistic scale and times the `psql` reading methods themselves, printing their plans from `auto_explain`, on a connection set up as the app's (`psql.NewConnector`).
 
 ## Deployment
 

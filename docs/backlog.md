@@ -495,22 +495,19 @@ Pages and queries:
   Sites and feeds are matched with `%q%`, which can't use a b-tree index.
   *Signal:* search latency growing with the number of sites and feeds.
   *Fix:* see "Better search ranking" under Feed discovery (`pg_trgm` or full-text search, with an index).
-- [ ] **Timeline query merges many feeds** (#154).
-  `ListTimeline` joins the user's subscriptions to their articles and sorts by `timeline_at`.
-  Postgres can't merge the per-feed `(feed_id, timeline_at)` index scans, so it may read and sort every subscribed article to return one page, and deeper pages cost more.
-  *Signal:* `/` p95 rising with subscription count, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
-  *Measured 2026-10-26* (#388, `make db/loadseed`: 1,000 feeds, 748k articles, on a dev container, not production): Home page 1 for 300 subscriptions (323k articles) returns 31 rows in 1,068 ms (median), reading 62,678 buffers (16,395 hit, 46,283 read) and all 748k rows of `articles` with a sequential scan.
-  Page 20 costs the same (980 ms), because the cursor applies only after the whole history is collapsed and joined.
-  With 30 subscriptions (37k articles) it's still 205 ms and the same full scan, so the cost grows with the user's history and the table's size, not with the page.
-  The signal is met.
-  *Fix:* #404 (each feed's newest entries, merged); if the per-feed cost shows later, "A timeline table per reader" under Reading.
+- [ ] **Timeline cost per followed feed** (#404).
+  `ListTimeline` reads each subscription's newest page of entries from `articles_feed_timeline_idx` and merges them, so a page costs about one index scan per followed feed (about 0.2 ms each), however deep the page or long the history.
+  *Signal:* `/` p95 rising with subscription count, or Home page 1 over 100 ms for heavy readers.
+  *Measured 2026-10-27* (#404, #388's seed, on a dev container): Home page 1 for 300 subscriptions 54–76 ms (19,590 buffers, 13,618 rows read), page 20 the same; for 30 subscriptions 6–9 ms.
+  Before, they took 1,187 ms and 243 ms.
+  *Fix:* "A timeline table per reader" under Reading.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).
-  A restrictive filter (one quiet tag, a rarely matched keyword, quiet posters) still makes `ListTimeline` collapse copies over all the matching subscriptions' articles, and keyword matches (`~*` over title, page title and excerpt) can't use an index, so a page that matches few articles reads many to fill 30 rows.
+  Keyword matches (`~*` over title, page title and excerpt) can't use an index, and Postgres can't estimate how many articles they match, so a page that matches few articles reads many to fill 30 rows.
   *Signal:* `/timelines/{id}` p95 above `/`'s, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
-  *Measured 2026-10-26* (#388, same seed): page 1 of every filtered timeline reads all 748k articles (about 62,700 buffers, 72,300 for Words) to return 31: Tag only (one tag of 5 weekly feeds, 611 articles) 258 ms, Quiet posters 267 ms, Media 160 ms, Words (3 words in 1% of titles) 898 ms.
-  For Tag only, the planner estimates 150 matching subscriptions instead of 5 (the tag condition is an `OR` with an `EXISTS` inside `COALESCE`), so it scans the table rather than the 5 feeds' index entries; for Words, the `~*` over every row is most of the time.
-  The signal is met.
-  *Fix:* #404 for tags, posting rates and media (prototyped at 2–41 ms); for words, "Word filters from a full-text index" under Filtering and timelines.
+  *Measured 2026-10-26* (#388, same seed): page 1 of every filtered timeline read all 748k articles to return 31: Tag only 258 ms, Quiet posters 267 ms, Media 160 ms, Words (3 words in 1% of titles) 898 ms.
+  *Measured 2026-10-27* (#404's per-feed query, same seed): Tag only 8–14 ms, Quiet posters 39–52 ms, Media 31–66 ms (the planner hash-joins `feeds` inside each subscription's loop), Words 1,286–1,527 ms (it reads all 324k subscribed articles, now with the earlier-copy check on flagged ones).
+  Only words are left.
+  *Fix:* "Word filters from a full-text index" under Filtering and timelines.
 - [ ] **Timeline tabs on every Home view** (#356).
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.
   *Signal:* it shows up in `pg_stat_statements` totals.
@@ -533,7 +530,8 @@ Pages and queries:
   `ETag`, 304s and `Cache-Control: public` cut the bytes, not the query.
   *Signal:* `/shared/` requests in the logs, their latency, or `ListShared` in `pg_stat_statements`.
   *Measured 2026-10-26* (#388): `ListShared` for a shared Words timeline takes 852 ms and reads 72,095 buffers (all 748k articles) on every request, since it's the owner's timeline query, so each poll costs nearly a second of database time.
-  It gets cheaper with the timeline query's fix, but a cache still bounds what polls cost.
+  *Measured 2026-10-27* (#404): still 1,256–1,433 ms (39,017 buffers, 324k rows read), since #404 doesn't speed up word filters; a shared timeline without words costs what its owner's timeline does (tens of milliseconds).
+  A cache still bounds what polls cost.
   *Fix:* an in-memory cache per token (keyed by the timeline's `updated_at` and newest article), a CDN in front of `/shared/`, or a per-IP limit.
 - [ ] **Sanitizing article HTML on every view** (#151).
   `sanitize.HTML` parses and renders the article with `x/net/html`, then bluemonday parses it again, on each article page view; cost grows with the size of the HTML, which feeds don't bound.
@@ -573,12 +571,6 @@ Data growth:
   Raw `summary` and `content` HTML is stored for every article forever.
   *Signal:* `articles` table and index size, slower `ListByFeed` and timeline queries, backup size.
   *Fix:* see "Article retention" under Feed ingestion.
-- [ ] **Timeline deduplication at query time** (#162).
-  The timeline collapses duplicate articles across a user's feeds with `DISTINCT ON (canonical_url)` over all of the user's subscribed articles, for every page.
-  *Signal:* timeline queries slow for users with many subscriptions or overlapping feeds.
-  *Measured 2026-10-26* (#388): for 300 subscriptions, Home sorts all 323k subscribed articles on every page to collapse copies, spilling 15,723 temp blocks (123 MB) to disk at the default `work_mem` of 4 MB; collapsing takes about 530 ms of page 1's 1,068 ms.
-  The signal is met.
-  *Fix:* #404 (copies flagged at ingest, so only flagged articles get the earlier-copy check); "A timeline table per reader" under Reading would collapse them on write.
 - [ ] **`reads` grows with every article read** (#156).
   One row per user per article opened, kept until the article is deleted.
   *Signal:* `reads` table and index size.

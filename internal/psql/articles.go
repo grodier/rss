@@ -216,14 +216,14 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
 			FROM articles a
 			WHERE a.feed_id = sub.feed_id
 				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` +
-		timelineWhere(filter, args, "sub", "a") + sharedWhere(shared, "a") + `
+		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a") + `
 				AND NOT (a.has_copies AND EXISTS (
 					SELECT 1
 					FROM articles b
 					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id
 					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
 						AND (b.timeline_at, b.id) < (a.timeline_at, a.id)` +
-		timelineWhere(filter, args, "sub2", "b") + sharedWhere(shared, "b") + `
+		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
 				))
 			ORDER BY a.timeline_at DESC, a.id DESC
 			LIMIT $4
@@ -275,9 +275,9 @@ func scanArticleWithFeed(rows *sql.Rows, extra ...any) (rss.Article, rss.Feed, e
 }
 
 // timelineWhere returns the SQL conditions on the aliases sub
-// (subscriptions) and a (articles) for filter, appending its parameters to args. Each condition
-// starts with AND, so the result follows another condition; it's "" for the
-// zero filter.
+// (subscriptions) and a (articles) for filter, appending its parameters to
+// args. Each condition starts with AND, so the result follows another
+// condition; it's "" for the zero filter.
 //
 // Show: with OnlyIncluded, only the feeds in IncludeFeedIDs or with a tag in
 // IncludeTagIDs. Leave out: never the feeds in ExcludeFeedIDs or with a tag
@@ -288,10 +288,16 @@ func scanArticleWithFeed(rows *sql.Rows, extra ...any) (rss.Article, rss.Feed, e
 // articles whose title, page title or excerpt mention one of them; with
 // ExcludeWords, never articles that mention one of them (see wordsPattern).
 //
+// feed is the expression of the feed ID whose posting rate counts: the
+// article's feed. Where sub is never NULL, passing sub's feed_id (the same
+// feed) lets Postgres check the rate once per subscription instead of per
+// article.
+//
 // sub can be NULL (a LEFT JOIN, as in ListStarred: a star from a feed the
 // user no longer subscribes to). Then Show conditions fail (the feed has no
-// tags and isn't chosen) and Leave out conditions pass.
-func timelineWhere(filter rss.TimelineFilter, args *[]any, sub, a string) string {
+// tags and isn't chosen) and Leave out conditions pass; feed must then be
+// a's feed_id.
+func timelineWhere(filter rss.TimelineFilter, args *[]any, sub, a, feed string) string {
 	ids := func(s []string) string {
 		if s == nil {
 			// NULL would make = ANY and NOT (= ANY) both NULL.
@@ -324,7 +330,7 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any, sub, a string) string
 		// (Home among them) don't read feeds.
 		*args = append(*args, filter.MaxPostsPerWeek)
 		fmt.Fprintf(&where, `
-				AND EXISTS (SELECT 1 FROM feeds rate WHERE rate.id = %s.feed_id AND rate.posts_per_week <= $%d)`, a, len(*args))
+				AND EXISTS (SELECT 1 FROM feeds rate WHERE rate.id = %s AND rate.posts_per_week <= $%d)`, feed, len(*args))
 	}
 	if filter.MediaOnly {
 		where.WriteString(`

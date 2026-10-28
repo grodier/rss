@@ -108,10 +108,11 @@ Third-party modules and what they're for (CLAUDE.md asks for a justification bef
 
 1. `logRequest`: one log line per request with status, size and duration.
 2. `recoverPanic`: a panic becomes the 500 page.
-3. `http.CrossOriginProtection`: rejects cross-origin non-GET browser requests (`Sec-Fetch-Site` / `Origin`) with the 403 page.
+3. `redirectToCanonicalHost`: in production, a request for any host but `-base-url`'s gets a 308 to the same path and query there, except `/healthcheck`, which Render calls on the service's internal address.
+4. `http.CrossOriginProtection`: rejects cross-origin non-GET browser requests (`Sec-Fetch-Site` / `Origin`) with the 403 page.
    There are no CSRF tokens.
-4. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`.
-5. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
+5. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
+6. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
 Then routes are split into groups.
 `/static/*`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
@@ -262,6 +263,8 @@ Where each protection lives.
 The reasons are in [decisions.md](decisions.md); the rules for writing code that keeps them (GET handlers, article HTML, inline scripts) are in CLAUDE.md.
 
 - **Cross-site requests:** `CrossOriginProtection` in the middleware (see HTTP); there are no CSRF tokens.
+- **HTTPS and one host:** in production, `redirectToCanonicalHost` sends every other host (the old `rss.georgerodier.com`, the `onrender.com` URL) to `-base-url`'s, and `commonHeaders` sends `Strict-Transport-Security: max-age=31536000` on the canonical host's responses only, without `includeSubDomains` or preload.
+  Render redirects HTTP to HTTPS.
 - **Untrusted HTML:** `sanitize.HTML` (see "Reading" in features.md).
   The CSP is `default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com`: no inline scripts or styles, images from any `https:` host.
   YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `app.js` builds from the validated video ID.

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,6 +27,28 @@ func (s *Server) recoverPanic(next http.Handler) http.Handler {
 	})
 }
 
+// redirectToCanonicalHost sends requests for any host but -base-url's to the
+// same path there, in production. /healthcheck is served on every host, for
+// Render's health checks.
+func (s *Server) redirectToCanonicalHost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.config.Env != "production" || r.URL.Path == "/healthcheck" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if strings.EqualFold(host, s.canonicalHost) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// 308 keeps the method, so feed readers and form posts follow it.
+		http.Redirect(w, r, s.config.BaseURL+r.URL.RequestURI(), http.StatusPermanentRedirect)
+	})
+}
+
 func (s *Server) commonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com")
@@ -32,6 +56,11 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "deny")
 		w.Header().Set("X-XSS-Protection", "0")
+		// Only the canonical host gets here in production (see
+		// redirectToCanonicalHost), so no other host is pinned to HTTPS.
+		if s.config.Env == "production" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
 
 		next.ServeHTTP(w, r)
 	})

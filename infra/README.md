@@ -247,7 +247,7 @@ What lives where:
 - **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, all DNS-only, and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
   The service's `custom_domains` makes Render verify the domain and issue its certificates; Render adds `www` with the apex and redirects it.
 - **The old host** `rss.georgerodier.com`: its CNAME stays in `domain.tf`, in the `georgerodier.com` zone, and it stays a custom domain on the service, so old links and bookmarks keep working.
-  Both hosts serve the app until #390 redirects the old one; sessions don't carry over between them.
+  The app redirects it, and the service's `onrender.com` URL, to `https://paperround.app` with a 308 (`redirectToCanonicalHost`), except `/healthcheck`.
 - **The Resend domain** `paperround.app`, in region us-east-1, and its API key, which is the SMTP password (`RSS_SMTP_PASSWORD`).
   The other SMTP settings are in `main.tf`.
 - **Support mail** to `rss-support@georgerodier.com`, an alias in Google, which handles the `georgerodier.com` mail.

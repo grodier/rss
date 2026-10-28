@@ -291,6 +291,78 @@ func TestCommonHeadersCSP(t *testing.T) {
 	}
 }
 
+func TestRedirectToCanonicalHost(t *testing.T) {
+	production := Config{Env: "production", BaseURL: "https://example.app"}
+	tests := []struct {
+		name         string
+		cfg          Config
+		method       string
+		target       string
+		host         string
+		wantLocation string // "" means not redirected
+	}{
+		{name: "canonical host", cfg: production, method: http.MethodGet, target: "https://example.app/feeds"},
+		{name: "old host", cfg: production, method: http.MethodGet, target: "/timelines/abc?before=x", host: "rss.georgerodier.com", wantLocation: "https://example.app/timelines/abc?before=x"},
+		{name: "POST to another host", cfg: production, method: http.MethodPost, target: "/logout", host: "rss.georgerodier.com", wantLocation: "https://example.app/logout"},
+		{name: "healthcheck on another host", cfg: production, method: http.MethodGet, target: "/healthcheck", host: "something.onrender.com"},
+		{name: "case and port ignored", cfg: production, method: http.MethodGet, target: "/feeds", host: "EXAMPLE.APP:443"},
+		{name: "development", cfg: Config{Env: "development", BaseURL: "http://localhost:4000"}, method: http.MethodGet, target: "/feeds", host: "127.0.0.1:4000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerConfig(t, tt.cfg, Services{})
+			req := httptest.NewRequest(tt.method, tt.target, nil)
+			if tt.host != "" {
+				req.Host = tt.host
+			}
+			rr := httptest.NewRecorder()
+			s.router().ServeHTTP(rr, req)
+
+			if tt.wantLocation == "" {
+				if rr.Code == http.StatusPermanentRedirect {
+					t.Fatalf("status = 308 (Location %q), want not redirected", rr.Header().Get("Location"))
+				}
+				if tt.target == "/healthcheck" && rr.Code != http.StatusOK {
+					t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+				}
+				return
+			}
+			if rr.Code != http.StatusPermanentRedirect {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusPermanentRedirect)
+			}
+			if got := rr.Header().Get("Location"); got != tt.wantLocation {
+				t.Errorf("Location = %q, want %q", got, tt.wantLocation)
+			}
+		})
+	}
+}
+
+func TestCommonHeadersHSTS(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		host string
+		want string
+	}{
+		{name: "production", cfg: Config{Env: "production", BaseURL: "https://example.app"}, host: "example.app", want: "max-age=31536000"},
+		{name: "development", cfg: Config{Env: "development", BaseURL: "http://localhost:4000"}, host: "localhost:4000"},
+		{name: "redirect from another host", cfg: Config{Env: "production", BaseURL: "https://example.app"}, host: "rss.georgerodier.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerConfig(t, tt.cfg, Services{})
+			req := httptest.NewRequest(http.MethodGet, "/privacy", nil)
+			req.Host = tt.host
+			rr := httptest.NewRecorder()
+			s.router().ServeHTTP(rr, req)
+
+			if got := rr.Header().Get("Strict-Transport-Security"); got != tt.want {
+				t.Errorf("Strict-Transport-Security = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	t.Helper()
 	var lines []map[string]any

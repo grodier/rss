@@ -192,7 +192,7 @@ func sharedAtomFeed(t rss.Timeline, items []rss.SharedArticle, pageURL, feedURL 
 			{Rel: "alternate", Type: "text/html", Href: pageURL},
 		},
 		Author:    atomPerson{Name: t.Name},
-		Generator: "rss",
+		Generator: "Paper Round",
 		Entries:   make([]atomEntry, 0, len(items)),
 	}
 	if t.Description != "" {

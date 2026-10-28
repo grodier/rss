@@ -26,12 +26,12 @@ func TestRender(t *testing.T) {
 		if m.To != "" {
 			t.Errorf("To = %q, want empty", m.To)
 		}
-		if want := "Test email from rss"; m.Subject != want {
+		if want := "Test email from Paper Round"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"This is a test email from rss at https://rss.example.com. If you can read it, sending works.",
-			"—\nrss · https://rss.example.com\nPrivacy: https://rss.example.com/privacy\nQuestions? Reply to this email or write to help@example.com.\n",
+			"This is a test email from Paper Round at https://rss.example.com. If you can read it, sending works.",
+			"—\nPaper Round · https://rss.example.com\nPrivacy: https://rss.example.com/privacy\nQuestions? Reply to this email or write to help@example.com.\n",
 		} {
 			if !strings.Contains(m.Text, want) {
 				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
@@ -53,11 +53,11 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Your rss password was changed"; m.Subject != want {
+		if want := "Your Paper Round password was changed"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"Hi Ada <3,\n\nThe password for your rss account was just changed, and every other device was logged out.",
+			"Hi Ada <3,\n\nThe password for your Paper Round account was just changed, and every other device was logged out.",
 			"If it wasn't, reset your password now (" + resetURL + ") and reply to this email.",
 		} {
 			if !strings.Contains(m.Text, want) {
@@ -80,11 +80,11 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Your rss account was deleted"; m.Subject != want {
+		if want := "Your Paper Round account was deleted"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"Hi Ada <3,\n\nYour rss account, your subscriptions and your reading history were deleted, as you asked. Copies in our backups are deleted within 35 days.\n\nThanks for trying rss.",
+			"Hi Ada <3,\n\nYour Paper Round account, your subscriptions and your reading history were deleted, as you asked. Copies in our backups are deleted within 35 days.\n\nThanks for trying Paper Round.",
 		} {
 			if !strings.Contains(m.Text, want) {
 				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
@@ -92,7 +92,7 @@ func TestRender(t *testing.T) {
 		}
 		for _, want := range []string{
 			"<p>Hi Ada &lt;3,</p>",
-			"<p>Thanks for trying rss.</p>",
+			"<p>Thanks for trying Paper Round.</p>",
 		} {
 			if !strings.Contains(m.HTML, want) {
 				t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
@@ -106,12 +106,12 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Confirm your email address for rss"; m.Subject != want {
+		if want := "Confirm your email address for Paper Round"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"Hi Ada,\n\nWelcome to rss! Confirm your email address by opening this link:\n\n" + url + "\n\nThe link works for 7 days.",
-			"If you didn't sign up for rss, you can ignore this email.",
+			"Hi Ada,\n\nWelcome to Paper Round! Confirm your email address by opening this link:\n\n" + url + "\n\nThe link works for 7 days.",
+			"If you didn't sign up for Paper Round, you can ignore this email.",
 		} {
 			if !strings.Contains(m.Text, want) {
 				t.Errorf("Text = %q, want it to contain %q", m.Text, want)
@@ -134,11 +134,11 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Reset your rss password"; m.Subject != want {
+		if want := "Reset your Paper Round password"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"Hi Ada,\n\nSomeone, hopefully you, asked to reset the password for your rss account. Choose a new one here:\n\n" + url + "\n\n",
+			"Hi Ada,\n\nSomeone, hopefully you, asked to reset the password for your Paper Round account. Choose a new one here:\n\n" + url + "\n\n",
 			"The link works for 1 hour and only once. If you didn't ask for this, ignore this email; your password hasn't changed.",
 		} {
 			if !strings.Contains(m.Text, want) {
@@ -162,11 +162,11 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Confirm your new email address for rss"; m.Subject != want {
+		if want := "Confirm your new email address for Paper Round"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		for _, want := range []string{
-			"Hi Ada,\n\nOpen this link to make new@example.com the email address for your rss account:\n\n" + url + "\n\n",
+			"Hi Ada,\n\nOpen this link to make new@example.com the email address for your Paper Round account:\n\n" + url + "\n\n",
 			"The link works for 24 hours. If you didn't ask for this, ignore this email.",
 		} {
 			if !strings.Contains(m.Text, want) {
@@ -174,7 +174,7 @@ func TestRender(t *testing.T) {
 			}
 		}
 		for _, want := range []string{
-			"<p>Open this link to make new@example.com the email address for your rss account:</p>",
+			"<p>Open this link to make new@example.com the email address for your Paper Round account:</p>",
 			`<a href="` + url + `"`,
 			"The link works for 24 hours. If you didn't ask for this, ignore this email.",
 		} {
@@ -189,10 +189,10 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if want := "Your rss email address was changed"; m.Subject != want {
+		if want := "Your Paper Round email address was changed"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
-		const changed = "The email address for your rss account was changed from old@example.com to new@example.com. From now on, log in with new@example.com."
+		const changed = "The email address for your Paper Round account was changed from old@example.com to new@example.com. From now on, log in with new@example.com."
 		for _, want := range []string{
 			"Hi Ada,\n\n" + changed,
 			"If you didn't make this change, reply to this email right away.",

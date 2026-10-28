@@ -116,7 +116,7 @@ func TestForgotPasswordFormHandler(t *testing.T) {
 		if m.To != resetUser.Email {
 			t.Errorf("To = %q, want %q", m.To, resetUser.Email)
 		}
-		if want := "Reset your rss password"; m.Subject != want {
+		if want := "Reset your Paper Round password"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		match := resetLinkRX.FindStringSubmatch(m.Text)
@@ -316,7 +316,7 @@ func TestResetPasswordFormHandler(t *testing.T) {
 		if len(msgs) != 1 {
 			t.Fatalf("queued %d emails, want 1", len(msgs))
 		}
-		if msgs[0].To != resetUser.Email || msgs[0].Subject != "Your rss password was changed" {
+		if msgs[0].To != resetUser.Email || msgs[0].Subject != "Your Paper Round password was changed" {
 			t.Errorf("queued %q to %q, want the password_changed email to %q", msgs[0].Subject, msgs[0].To, resetUser.Email)
 		}
 		if want := "reset your password now (https://rss.example.com/password/forgot)"; !strings.Contains(msgs[0].Text, want) {

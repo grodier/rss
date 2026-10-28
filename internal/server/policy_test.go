@@ -33,7 +33,7 @@ func TestPolicyPages(t *testing.T) {
 			assertBodyContains(t, rr.Body.String(),
 				`<a href="mailto:help@example.com">help@example.com</a>`,
 				`Last updated <time datetime="`,
-				`<a href="/">Back to rss</a>`,
+				`<a href="/">Back to Paper Round</a>`,
 			)
 		})
 	}

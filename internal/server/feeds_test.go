@@ -486,8 +486,8 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 
 	body := serveFeed(t, s, testFeedID).Body.String()
 
-	if n := strings.Count(body, "<img"); n != 1 {
-		t.Fatalf("<img elements = %d, want 1: %s", n, body)
+	if n := strings.Count(body, `<img class="article-image"`); n != 1 {
+		t.Fatalf("article images = %d, want 1: %s", n, body)
 	}
 	for _, want := range []string{
 		`src="https://example.com/pic.jpg"`,
@@ -909,7 +909,7 @@ func TestFeedHandlerEmptyTitleShowsURL(t *testing.T) {
 				}},
 			})
 			body := serveFeed(t, s, testFeedID).Body.String()
-			for _, want := range []string{"<h1>" + tt.want + "</h1>", "<title>rss - " + tt.want + "</title>"} {
+			for _, want := range []string{"<h1>" + tt.want + "</h1>", "<title>Paper Round - " + tt.want + "</title>"} {
 				if !strings.Contains(body, want) {
 					t.Errorf("body does not contain %q: %s", want, body)
 				}
@@ -1581,7 +1581,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 				return rss.Subscription{Title: "Pro Football Talk"}, nil
 			},
 			want: []string{
-				"<title>rss - Pro Football Talk</title>",
+				"<title>Paper Round - Pro Football Talk</title>",
 				"<h1>Pro Football Talk</h1>",
 				`aria-label="Unsubscribe from Pro Football Talk"`,
 				`From <a href="/sites/` + testSiteID + `">Example Site</a> ` + feedTitleLine + `</p>`,

@@ -29,7 +29,7 @@ const (
 	defaultTimeout      = 10 * time.Second
 	defaultMaxBodyBytes = 5 << 20
 	defaultMaxRedirects = 5
-	defaultUserAgent    = "rss (+https://github.com/grodier/rss)"
+	defaultUserAgent    = "Paper Round (+https://paperround.app)"
 
 	acceptHeader = "application/rss+xml, application/atom+xml, application/feed+json, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5"
 )
@@ -39,7 +39,7 @@ type Options struct {
 	Timeout      time.Duration // whole request incl. body; default 10s
 	MaxBodyBytes int64         // default 5 << 20 (5 MiB)
 	MaxRedirects int           // default 5
-	UserAgent    string        // default "rss (+https://github.com/grodier/rss)"
+	UserAgent    string        // default "Paper Round (+https://paperround.app)"
 	// AllowPrivate disables the address check. Tests only (httptest servers
 	// listen on 127.0.0.1). Never set it in cmd/www.
 	AllowPrivate bool

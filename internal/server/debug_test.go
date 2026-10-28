@@ -684,7 +684,7 @@ func TestFeedInspectHandler(t *testing.T) {
 		}
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			"<title>rss - inspect feed</title>",
+			"<title>Paper Round - inspect feed</title>",
 			"<h1>Inspect feed</h1>",
 			`<a href="/feeds/`+testFeedID+`">Back to the feed</a>`,
 			"<dt>conditional headers</dt><dd>none</dd>",
@@ -1264,7 +1264,7 @@ func TestArticlePageInspectHandler(t *testing.T) {
 		fetcher := htmlResponse(t, "https://example.com/1", inspectPageHTML)
 		body := serve(t, pageInspectServer(t, article, fetcher))
 		assertBodyContains(t, body,
-			"<title>rss - inspect page</title>",
+			"<title>Paper Round - inspect page</title>",
 			`<a href="/articles/`+testArticleID+`">Back to the article</a>`,
 			"<dt>status</dt><dd>200 OK</dd>",
 			"What enrichment would do",
@@ -1378,7 +1378,7 @@ func TestSiteDiscoverHandler(t *testing.T) {
 		fetcher := htmlResponse(t, "https://example.com/", home)
 		body := serve(t, siteDiscoverServer(t, stored, fetcher, d))
 		assertBodyContains(t, body,
-			"<title>rss - run discovery</title>",
+			"<title>Paper Round - run discovery</title>",
 			`<a href="/sites/`+testSiteID+`">Back to the site</a>`,
 			`<th scope="row">title</th><td>Fetched title</td><td>Stored title</td>`,
 			`<tr><th scope="row">link</th><td>alternate</td><td>https://example.com/feed.xml</td><td>application/rss&#43;xml</td><td>used</td></tr>`,

@@ -45,8 +45,8 @@ func TestRunSendTestEmail(t *testing.T) {
 		for _, want := range []string{
 			"email not sent (no SMTP host)",
 			"to=ada@example.com",
-			`subject="Test email from rss"`,
-			"This is a test email from rss at https://rss.example.com.",
+			`subject="Test email from Paper Round"`,
+			"This is a test email from Paper Round at https://rss.example.com.",
 		} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)

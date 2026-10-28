@@ -5,8 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="robots" content="noindex" />
-  <title>{{.Timeline.Name}} - rss</title>
+  <title>{{.Timeline.Name}} - Paper Round</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "favicons"}}
   <link rel="alternate" type="application/atom+xml" title="{{.Timeline.Name}}" href="{{.FeedPath}}" />
 </head>
 
@@ -16,7 +17,7 @@
       {{template "brand"}}
       <h1>{{.Timeline.Name}}</h1>
       {{with .Timeline.Description}}<p class="shared-timeline-description">{{.}}</p>{{end}}
-      <p class="solo-note">A timeline shared from rss.</p>
+      <p class="solo-note">A timeline shared from Paper Round.</p>
 
       <div class="shared-timeline-follow">
         <p>Follow it in a feed reader: paste this page's address, or the feed link, into your reader to get its new articles.</p>
@@ -27,7 +28,7 @@
         <a class="btn btn-block" href="{{.FeedPath}}">{{template "icon-rss"}} Open the feed</a>
       </div>
 
-      <footer class="solo-foot"><a href="/">rss</a></footer>
+      <footer class="solo-foot"><a href="/">Paper Round</a></footer>
     </div>
   </main>
 </body>

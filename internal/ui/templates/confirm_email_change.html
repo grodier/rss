@@ -4,8 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>rss - change your email address</title>
+  <title>Paper Round - change your email address</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "favicons"}}
 </head>
 
 <body>
@@ -19,7 +20,7 @@
       <h1>Change your email address</h1>
 
       <form action="/email-change" method="post">
-        <p class="solo-text">Make {{.NewEmail}} the email for your rss account?</p>
+        <p class="solo-text">Make {{.NewEmail}} the email for your Paper Round account?</p>
         <input type="hidden" name="token" value="{{.Token}}" />
         <div>
           <button class="btn-primary btn-block" type="submit">Change email address</button>

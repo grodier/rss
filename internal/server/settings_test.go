@@ -354,7 +354,7 @@ func TestSettingsPasswordForm(t *testing.T) {
 		if msgs[0].To != settingsSession.User.Email {
 			t.Errorf("To = %q, want %q", msgs[0].To, settingsSession.User.Email)
 		}
-		if want := "Your rss password was changed"; msgs[0].Subject != want {
+		if want := "Your Paper Round password was changed"; msgs[0].Subject != want {
 			t.Errorf("Subject = %q, want %q", msgs[0].Subject, want)
 		}
 		for _, want := range []string{"Hi Ada Lovelace,", "reset your password now (/password/forgot)"} {
@@ -528,7 +528,7 @@ func parseOPML(t *testing.T, rr *httptest.ResponseRecorder) opmlDoc {
 	// The date is UTC; allow for the request straddling midnight.
 	var dates []string
 	for _, d := range []time.Time{time.Now().UTC(), time.Now().UTC().Add(-time.Minute)} {
-		dates = append(dates, `attachment; filename="rss-subscriptions-`+d.Format(time.DateOnly)+`.opml"`)
+		dates = append(dates, `attachment; filename="paper-round-subscriptions-`+d.Format(time.DateOnly)+`.opml"`)
 	}
 	if got := rr.Header().Get("Content-Disposition"); got != dates[0] && got != dates[1] {
 		t.Errorf("Content-Disposition = %q, want %q", got, dates[0])
@@ -545,8 +545,8 @@ func parseOPML(t *testing.T, rr *httptest.ResponseRecorder) opmlDoc {
 	if doc.Version != "2.0" {
 		t.Errorf("version = %q, want %q", doc.Version, "2.0")
 	}
-	if doc.Head.Title != "rss subscriptions" {
-		t.Errorf("head title = %q, want %q", doc.Head.Title, "rss subscriptions")
+	if doc.Head.Title != "Paper Round subscriptions" {
+		t.Errorf("head title = %q, want %q", doc.Head.Title, "Paper Round subscriptions")
 	}
 	if _, err := time.Parse(time.RFC1123Z, doc.Head.DateCreated); err != nil {
 		t.Errorf("dateCreated %q isn't RFC 1123: %v", doc.Head.DateCreated, err)
@@ -803,7 +803,7 @@ func TestSettingsDeleteForm(t *testing.T) {
 		if msgs[0].To != settingsSession.User.Email {
 			t.Errorf("To = %q, want %q", msgs[0].To, settingsSession.User.Email)
 		}
-		if want := "Your rss account was deleted"; msgs[0].Subject != want {
+		if want := "Your Paper Round account was deleted"; msgs[0].Subject != want {
 			t.Errorf("Subject = %q, want %q", msgs[0].Subject, want)
 		}
 		if want := "Hi Ada Lovelace,"; !strings.Contains(msgs[0].Text, want) {

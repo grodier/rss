@@ -302,7 +302,7 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	doc := opmlDoc{
 		Version: "2.0",
-		Head:    opmlHead{Title: "rss subscriptions", DateCreated: now.Format(time.RFC1123Z)},
+		Head:    opmlHead{Title: "Paper Round subscriptions", DateCreated: now.Format(time.RFC1123Z)},
 	}
 	if r.URL.Query().Get("tags") == "ignore" {
 		for _, sub := range subs {
@@ -324,7 +324,7 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	buf.WriteByte('\n')
 
 	w.Header().Set("Content-Type", "text/x-opml; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="rss-subscriptions-`+now.Format(time.DateOnly)+`.opml"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="paper-round-subscriptions-`+now.Format(time.DateOnly)+`.opml"`)
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		s.logError(r, err)
 	}

@@ -581,12 +581,12 @@ In these flows, trade-offs favor the user's experience.
   About 20 emails to one address an hour: a backstop under each flow's own limit, so nobody can use the app to flood an inbox.
   It's a count before the insert, so simultaneous requests can slightly exceed it (#260); a backstop doesn't need a per-address lock.
   On shutdown the mail runner finishes the send in flight instead of aborting it (#260): an aborted send can still be delivered, then sent again on the retry, and it delays the email by the lease.
-- **`rss.georgerodier.com` serves the app and sends its email** (#254) until there's a product name.
+- **`rss.georgerodier.com` served the app and sent its email** (#254) until the move to the app's own domain (#389).
   A subdomain keeps the email provider's records away from the personal mail on `georgerodier.com`.
   Its DNS record is DNS-only, since a proxied one would add a third `X-Forwarded-For` hop.
   DMARC starts at `p=none`, with reports.
   The SMTP password is set in Render's dashboard and ignored by Terraform, like the invite code.
-- **The app moves to its own domain before testers arrive** (#389), registered in Cloudflare, while there are no links or sessions to lose.
+- **The app moves to its own domain before testers arrive** (#389), `paperround.app`, registered in Cloudflare, while there are no links or sessions to lose.
   It's served at the apex, with `www` redirecting to it, and sends its email from the apex too: a new domain has no personal mail to keep apart.
   The DNS record stays DNS-only and DMARC starts at `p=none`, for the reasons above.
   `rss.georgerodier.com` stays a custom domain on the service, redirecting to the new one (#390), so old links keep working.
@@ -594,8 +594,8 @@ In these flows, trade-offs favor the user's experience.
   The app's CNAME on `rss.georgerodier.com` can't share its name with Email Routing's MX records, and Cloudflare's Email Routing would have replaced the Google MX records on `georgerodier.com`.
   The domain is temporary, so the address only has to work until the product has its own.
   #389 keeps it: moving it to the new domain is a separate change (a backlog item).
-- **No `_dmarc.rss` record** (#254): mail from `rss.georgerodier.com` falls back to the `p=none` record on `georgerodier.com`, whose reports Cloudflare's DMARC Management reads; it doesn't support subdomains.
-  Tightening DMARC for the app means adding `_dmarc.rss` with its own policy, or `sp=` on the parent's record.
+- **No `_dmarc.rss` record** (#254): mail from `rss.georgerodier.com` fell back to the `p=none` record on `georgerodier.com`, whose reports Cloudflare's DMARC Management reads; it doesn't support subdomains.
+  Since #389 the app sends from `paperround.app`, whose own `p=none` record DMARC Management manages.
 - **A support address** (`-support-email`) is the Reply-To of every email, and is shown on the reset pages and in Settings (#259, #265, #269).
 - **A privacy policy and terms before people we don't know use the app** (#269).
   The app sets only the essential session cookie, so there's no cookie banner; anything else (analytics, third-party scripts) means revisiting that.

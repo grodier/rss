@@ -31,8 +31,9 @@ resource "render_web_service" "rss" {
   # Matches the 30-second graceful shutdown in internal/server/server.go.
   max_shutdown_delay_seconds = 30
 
-  # Its DNS record is cloudflare_dns_record.app in domain.tf.
-  custom_domains = [{ name = "rss.georgerodier.com" }]
+  # Their DNS records are in domain.tf. Render adds www.paperround.app with
+  # the apex and redirects it there; rss.georgerodier.com is the old host.
+  custom_domains = [{ name = "paperround.app" }, { name = "rss.georgerodier.com" }]
 
   env_vars = {
     RSS_ENV = { value = "production" }
@@ -48,11 +49,11 @@ resource "render_web_service" "rss" {
     PORT     = { value = "8080" }
     # Email (see "Domain and email" in infra/README.md). The app reads these
     # once #259 adds the flags; until then it ignores them.
-    RSS_BASE_URL      = { value = "https://rss.georgerodier.com" }
+    RSS_BASE_URL      = { value = "https://paperround.app" }
     RSS_SMTP_HOST     = { value = "smtp.resend.com" }
     RSS_SMTP_PORT     = { value = "465" }
     RSS_SMTP_USERNAME = { value = "resend" }
-    RSS_MAIL_FROM     = { value = "rss <hello@rss.georgerodier.com>" }
+    RSS_MAIL_FROM     = { value = "rss <hello@paperround.app>" }
     RSS_SUPPORT_EMAIL = { value = "rss-support@georgerodier.com" }
   }
 

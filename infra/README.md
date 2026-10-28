@@ -30,6 +30,7 @@ export RENDER_OWNER_ID=...          # starts with tea- or usr-
 export CLOUDFLARE_API_TOKEN=...     # the rss-terraform token
 export TF_VAR_cloudflare_account_id=...
 export TF_VAR_cloudflare_zone_id=...           # the georgerodier.com zone's ID
+export TF_VAR_cloudflare_app_zone_id=...       # the paperround.app zone's ID
 export TF_VAR_backup_r2_access_key_id=...      # the rss-backups R2 token's Access Key ID
 export TF_VAR_backup_r2_secret_access_key=...  # the rss-backups R2 token's Secret Access Key
 ```
@@ -57,7 +58,7 @@ Set it up once:
    - `r2-tfstate`: `access-key-id` (Text), `secret-access-key` (Password), `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
    - `r2-backups`: `access-key-id` (Text), `secret-access-key` (Password)
    - `render`: `api-key` (Password), `owner-id` (Text)
-   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text), `zone-id` (Text)
+   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text), `zone-id` (Text, `georgerodier.com`), `app-zone-id` (Text, `paperround.app`)
 3. Outside the repository, create `~/.config/rss/infra.env`.
    It holds references, not secrets:
 
@@ -70,6 +71,7 @@ Set it up once:
    CLOUDFLARE_API_TOKEN=op://rss/cloudflare/api-token
    TF_VAR_cloudflare_account_id=op://rss/cloudflare/account-id
    TF_VAR_cloudflare_zone_id=op://rss/cloudflare/zone-id
+   TF_VAR_cloudflare_app_zone_id=op://rss/cloudflare/app-zone-id
    TF_VAR_backup_r2_access_key_id=op://rss/r2-backups/access-key-id
    TF_VAR_backup_r2_secret_access_key=op://rss/r2-backups/secret-access-key
    ```
@@ -87,7 +89,7 @@ Set it up once:
 ## Deploys
 
 Three workflows in `.github/workflows` run production.
-They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
+They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_APP_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
 
 ### How deploys happen
 
@@ -237,42 +239,42 @@ The code may appear in the request logs, which log the URI.
 
 ## Domain and email
 
-The app is served at `https://rss.georgerodier.com` and sends its email from it, through Resend over SMTP.
+The app is served at `https://paperround.app` and sends its email from it, through Resend over SMTP.
+`www.paperround.app` redirects to it.
 Why: "Accounts" in [`docs/decisions.md`](../docs/decisions.md).
 What lives where:
 
-- **DNS records** in `domain.tf`, in the `georgerodier.com` zone: the app's CNAME (DNS-only), and Resend's records (CNAMEs on `send.rss` and `rsend.rss`, the DKIM key on `resend._domainkey.rss`), with the names and values Resend's dashboard showed.
-  The service's `custom_domains` makes Render verify the domain and issue its certificate.
-- **The Resend domain** `rss.georgerodier.com`, in region us-east-1, and its API key, which is the SMTP password (`RSS_SMTP_PASSWORD`).
+- **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, all DNS-only, and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
+  The service's `custom_domains` makes Render verify the domain and issue its certificates; Render adds `www` with the apex and redirects it.
+- **The old host** `rss.georgerodier.com`: its CNAME stays in `domain.tf`, in the `georgerodier.com` zone, and it stays a custom domain on the service, so old links and bookmarks keep working.
+  Both hosts serve the app until #390 redirects the old one; sessions don't carry over between them.
+- **The Resend domain** `paperround.app`, in region us-east-1, and its API key, which is the SMTP password (`RSS_SMTP_PASSWORD`).
   The other SMTP settings are in `main.tf`.
 - **Support mail** to `rss-support@georgerodier.com`, an alias in Google, which handles the `georgerodier.com` mail.
-  It isn't on `rss.georgerodier.com`, since the app's CNAME can't share its name with MX records.
-- **DMARC**: no record on `_dmarc.rss`, so mail from `rss.georgerodier.com` falls back to the `p=none` record on `_dmarc.georgerodier.com`.
-  Cloudflare's **DMARC Management** (**`georgerodier.com` → Email → DMARC Management**) created it outside Terraform and shows its reports.
-  It doesn't support subdomains.
+  It's the Reply-To of every email; `paperround.app` has no MX records, so it receives no mail.
+- **DMARC**: the `p=none` record on `_dmarc.paperround.app`, which Cloudflare's **DMARC Management** (**`paperround.app` → Email → DMARC Management**) created outside Terraform, and whose reports it shows.
 
 Resend's free tier allows 100 emails a day and 3,000 a month.
 `www send-test-email` (#259) checks deliverability.
 
 ### Setting up
 
-Done once, in dashboards, for #254:
+Done once, in dashboards, for #389:
 
-1. **Cloudflare API token:** on the account-owned `rss-terraform` token, add a policy for the zone `georgerodier.com` with **DNS: Edit**.
-   Add the zone's ID (the zone's **Overview** page) as the repository secret `CLOUDFLARE_ZONE_ID`, and as `zone-id` in 1Password.
-2. **Resend:** add the domain `rss.georgerodier.com` in region us-east-1 with **Manual setup**: Terraform owns the records, so don't let Resend configure Cloudflare, and don't add its suggested `_dmarc` record.
+1. **Cloudflare API token:** on the account-owned `rss-terraform` token, add a policy for the zone `paperround.app` with **DNS: Edit**.
+   Add the zone's ID (the zone's **Overview** page) as the repository secret `CLOUDFLARE_APP_ZONE_ID`, and as `app-zone-id` in 1Password.
+2. **Resend:** add the domain `paperround.app` in region us-east-1 with **Manual setup**: Terraform owns the records, so don't let Resend configure Cloudflare, and don't add its suggested `_dmarc` record.
    Leave click and open tracking off, since they would rewrite the links in emails.
-3. **Support address:** add `rss-support@georgerodier.com` as an alias of your Google user.
-4. **DMARC Management:** enable it for the zone; it adds the `_dmarc.georgerodier.com` record.
-5. **Apply** the PR.
-   Then, in Resend, verify the domain, and check that Render shows the custom domain as verified, with a certificate.
-6. **The SMTP password:** in Resend, create an API key with **Sending access** for `rss.georgerodier.com` only (Resend offers only "All domains" until the domain is verified).
-   Save it in 1Password, then set it as `RSS_SMTP_PASSWORD` on the `rss` service's **Environment** page.
-   Only once the apply has run: before it, Terraform didn't ignore the variable, and an apply would have deleted it.
+3. **DMARC Management:** enable it for the zone; it adds the `_dmarc.paperround.app` record.
+4. **Apply** the PR, after following "Changing the web service or the backup job" (the apply changes the service).
+   Then, in Resend, verify the domain, and check that Render shows `paperround.app` and `www.paperround.app` as verified, with certificates.
+5. **The SMTP password:** in Resend, create an API key with **Sending access** for `paperround.app` only (Resend offers only "All domains" until the domain is verified), as in "Rotating the SMTP password".
+   Until it's set, sending fails if the old key only sends from `rss.georgerodier.com`.
+6. **The old Resend domain:** once email arrives from `paperround.app`, delete `rss.georgerodier.com` in Resend; the apply removed its records.
 
 ### Rotating the SMTP password
 
-1. In Resend, create a new API key as in step 6 above.
+1. In Resend, create a new API key with **Sending access** for `paperround.app` only.
 2. Set `RSS_SMTP_PASSWORD` to it on the service's **Environment** page (saving redeploys), and update 1Password.
 3. Once the deploy is live, delete the old key in Resend.
 
@@ -285,7 +287,7 @@ The service sets `RSS_PROXY_HOPS=2`: requests reach the app through Cloudflare a
 To check that the app sees visitors' real addresses, run:
 
 ```sh
-curl -4 -H 'X-Forwarded-For: 203.0.113.9' https://rss.georgerodier.com/login >/dev/null
+curl -4 -H 'X-Forwarded-For: 203.0.113.9' https://paperround.app/login >/dev/null
 curl -4 https://api.ipify.org    # your public IPv4 address
 ```
 

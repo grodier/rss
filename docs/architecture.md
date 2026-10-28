@@ -203,6 +203,7 @@ emails   (the outbox: no foreign keys)
 - **`articles`:** `timeline_at` is set once on insert and never updated.
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
+  Ingest flags copies (`articles.has_copies`, set by `saveArticles` and never cleared), and timelines check for an earlier copy only on flagged rows.
 - **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to place the "You were here" divider; its positions compare with `articles.timeline_at`, with no foreign key to an article.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
@@ -337,7 +338,7 @@ Beyond those:
 
 Server and DB test conventions are in CLAUDE.md.
 The other packages test against fakes of their own interfaces, and use `httptest` servers with `fetch.Options{AllowPrivate: true}` where real HTTP matters (`fetch`, `discovery`, `ingest`).
-`tools/loadseed` (`make db/loadseed`, dev only, not in the `www` binary) seeds a development database at realistic scale and times the `psql` reading methods themselves, printing their plans from `auto_explain`.
+`tools/loadseed` (`make db/loadseed`, dev only, not in the `www` binary) seeds a development database at realistic scale and times the `psql` reading methods themselves, printing their plans from `auto_explain`, on a connection set up as the app's (`psql.NewConnector`).
 
 ## Deployment
 

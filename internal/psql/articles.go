@@ -202,25 +202,34 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 // ID, and the limit. With shared (for ListShared), feeds have their own
 // titles, and articles without a URL are left out.
 func timelineStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
-	// Articles with no canonical URL key on their own ID, so they're never
-	// collapsed. Copies collapse after filtering, so a left-out feed's copy
-	// never takes an entry's place.
-	return `WITH mine AS (
-			SELECT ` + qualifiedListArticleColumns + `,
-				CASE WHEN a.canonical_url = '' THEN a.id::text ELSE a.canonical_url END AS dedup_key
-			FROM subscriptions sub
-			JOIN articles a ON a.feed_id = sub.feed_id
-			WHERE sub.user_id = $1` + timelineWhere(filter, args) + sharedWhere(shared) + `
-		), firsts AS (
-			SELECT DISTINCT ON (dedup_key) *
-			FROM mine
-			ORDER BY dedup_key, timeline_at, id
-		)
-		SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
-		FROM firsts a
+	// For each subscription, read the feed's newest limit entries before the
+	// cursor from articles_feed_timeline_idx, then merge them and keep limit.
+	// An entry is left out when an earlier copy (same canonical URL, smaller
+	// timeline_at then ID) is in one of the user's feeds that filter shows:
+	// copies collapse after filtering, so a left-out feed's copy never takes
+	// an entry's place. Only rows flagged has_copies at ingest are checked;
+	// articles with no canonical URL never are.
+	return `SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
+		FROM subscriptions sub
+		CROSS JOIN LATERAL (
+			SELECT ` + qualifiedListArticleColumns + `
+			FROM articles a
+			WHERE a.feed_id = sub.feed_id
+				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` +
+		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a") + `
+				AND NOT (a.has_copies AND EXISTS (
+					SELECT 1
+					FROM articles b
+					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id
+					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
+						AND (b.timeline_at, b.id) < (a.timeline_at, a.id)` +
+		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
+				))
+			ORDER BY a.timeline_at DESC, a.id DESC
+			LIMIT $4
+		) a
 		JOIN feeds f ON f.id = a.feed_id
-		JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = a.feed_id
-		WHERE ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))
+		WHERE sub.user_id = $1
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
 }
@@ -235,14 +244,14 @@ func listFeedColumns(shared bool) string {
 	return qualifiedFeedColumnsTitled(subscriptionTitle)
 }
 
-// sharedWhere returns the condition a shared timeline adds on a
-// (articles): only articles with a link. "" unless shared.
-func sharedWhere(shared bool) string {
+// sharedWhere returns the condition a shared timeline adds on the articles
+// alias a: only articles with a link. "" unless shared.
+func sharedWhere(shared bool, a string) string {
 	if !shared {
 		return ""
 	}
 	return `
-				AND a.url <> ''`
+				AND ` + a + `.url <> ''`
 }
 
 // scanArticleWithFeed scans a row of an article's columns (as scanArticle),
@@ -265,10 +274,10 @@ func scanArticleWithFeed(rows *sql.Rows, extra ...any) (rss.Article, rss.Feed, e
 	return article, feed, nil
 }
 
-// timelineWhere returns the SQL conditions on sub (subscriptions) and a
-// (articles) for filter, appending its parameters to args. Each condition
-// starts with AND, so the result follows another condition; it's "" for the
-// zero filter.
+// timelineWhere returns the SQL conditions on the aliases sub
+// (subscriptions) and a (articles) for filter, appending its parameters to
+// args. Each condition starts with AND, so the result follows another
+// condition; it's "" for the zero filter.
 //
 // Show: with OnlyIncluded, only the feeds in IncludeFeedIDs or with a tag in
 // IncludeTagIDs. Leave out: never the feeds in ExcludeFeedIDs or with a tag
@@ -279,10 +288,16 @@ func scanArticleWithFeed(rows *sql.Rows, extra ...any) (rss.Article, rss.Feed, e
 // articles whose title, page title or excerpt mention one of them; with
 // ExcludeWords, never articles that mention one of them (see wordsPattern).
 //
+// feed is the expression of the feed ID whose posting rate counts: the
+// article's feed. Where sub is never NULL, passing sub's feed_id (the same
+// feed) lets Postgres check the rate once per subscription instead of per
+// article.
+//
 // sub can be NULL (a LEFT JOIN, as in ListStarred: a star from a feed the
 // user no longer subscribes to). Then Show conditions fail (the feed has no
-// tags and isn't chosen) and Leave out conditions pass.
-func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
+// tags and isn't chosen) and Leave out conditions pass; feed must then be
+// a's feed_id.
+func timelineWhere(filter rss.TimelineFilter, args *[]any, sub, a, feed string) string {
 	ids := func(s []string) string {
 		if s == nil {
 			// NULL would make = ANY and NOT (= ANY) both NULL.
@@ -294,17 +309,17 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 	hasTag := func(tagIDs string) string {
 		return `EXISTS (
 				SELECT 1 FROM subscription_tags st
-				WHERE st.user_id = sub.user_id AND st.feed_id = sub.feed_id AND st.tag_id = ANY(` + tagIDs + `))`
+				WHERE st.user_id = ` + sub + `.user_id AND st.feed_id = ` + sub + `.feed_id AND st.tag_id = ANY(` + tagIDs + `))`
 	}
 
 	var where strings.Builder
 	if filter.OnlyIncluded {
 		where.WriteString(`
-				AND COALESCE(sub.feed_id = ANY(` + ids(filter.IncludeFeedIDs) + `) OR ` + hasTag(ids(filter.IncludeTagIDs)) + `, false)`)
+				AND COALESCE(` + sub + `.feed_id = ANY(` + ids(filter.IncludeFeedIDs) + `) OR ` + hasTag(ids(filter.IncludeTagIDs)) + `, false)`)
 	}
 	if len(filter.ExcludeFeedIDs) > 0 {
 		where.WriteString(`
-				AND NOT COALESCE(sub.feed_id = ANY(` + ids(filter.ExcludeFeedIDs) + `), false)`)
+				AND NOT COALESCE(` + sub + `.feed_id = ANY(` + ids(filter.ExcludeFeedIDs) + `), false)`)
 	}
 	if len(filter.ExcludeTagIDs) > 0 {
 		where.WriteString(`
@@ -315,13 +330,13 @@ func timelineWhere(filter rss.TimelineFilter, args *[]any) string {
 		// (Home among them) don't read feeds.
 		*args = append(*args, filter.MaxPostsPerWeek)
 		fmt.Fprintf(&where, `
-				AND EXISTS (SELECT 1 FROM feeds rate WHERE rate.id = a.feed_id AND rate.posts_per_week <= $%d)`, len(*args))
+				AND EXISTS (SELECT 1 FROM feeds rate WHERE rate.id = %s AND rate.posts_per_week <= $%d)`, feed, len(*args))
 	}
 	if filter.MediaOnly {
 		where.WriteString(`
-				AND a.media_type <> ''`)
+				AND ` + a + `.media_type <> ''`)
 	}
-	const text = `concat_ws(' ', a.title, a.page_title, a.excerpt)`
+	text := fmt.Sprintf(`concat_ws(' ', %[1]s.title, %[1]s.page_title, %[1]s.excerpt)`, a)
 	if len(filter.IncludeWords) > 0 {
 		*args = append(*args, wordsPattern(filter.IncludeWords))
 		fmt.Fprintf(&where, `
@@ -487,7 +502,9 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // last_attempt_at to now() and clears last_error and consecutive_failures.
 // A new article's timeline_at is set on insert (see timelineAt) and never
 // changes. A newly inserted article that needsEnrichment and is among
-// enrichCandidates gets an enrich_jobs row. It locks the feed row so
+// enrichCandidates gets an enrich_jobs row. Every article sharing a
+// non-empty canonical_url with an inserted or updated one, that one
+// included, gets has_copies (never cleared). It locks the feed row so
 // concurrent saves of a feed are ordered. Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
 	var prevFetched sql.NullTime
@@ -524,6 +541,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 	enrichStmt := `INSERT INTO enrich_jobs (article_id, priority) VALUES ($1, $2) ON CONFLICT DO NOTHING`
 
 	var res rss.FetchResult
+	var saved []string // the non-empty canonical URLs of inserted or updated articles
 	for i, a := range articles {
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
@@ -546,6 +564,20 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			}
 		default:
 			res.Updated++
+		}
+		if err == nil && a.CanonicalURL != "" {
+			saved = append(saved, a.CanonicalURL)
+		}
+	}
+
+	// An update can change an article's canonical_url, so updated rows count
+	// too. This flags the existing copies as well as the saved article.
+	if len(saved) > 0 {
+		copiesStmt := `UPDATE articles a SET has_copies = true
+			WHERE a.canonical_url = ANY($1) AND a.canonical_url <> '' AND NOT a.has_copies
+				AND EXISTS (SELECT 1 FROM articles b WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> '' AND b.id <> a.id)`
+		if _, err := q.ExecContext(ctx, copiesStmt, pq.Array(saved)); err != nil {
+			return rss.FetchResult{}, err
 		}
 	}
 

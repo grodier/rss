@@ -917,7 +917,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		assertEntries(t, entries(all), want)
 	})
 
-	// x has copies in other feeds, so it comes through DISTINCT ON.
+	// x has copies in other feeds, so it goes through the earlier-copy check.
 	t.Run("leaves Summary and Content empty", func(t *testing.T) {
 		for _, item := range all {
 			if item.Article.ExternalID != "x" {
@@ -972,6 +972,93 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 			t.Fatalf("ListTimeline: %v", err)
 		}
 		assertEntries(t, entries(got), []entry{{"x", feedB.ID, at(3 * time.Hour), nil}})
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineFillsPagePastCopies(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	feedA, feedB := newTestFeed(t, db), newTestFeed(t, db)
+	reader := newTestUser(t, db)
+	for _, f := range []rss.Feed{feedA, feedB} {
+		if err := subs.Subscribe(ctx, reader, f.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+
+	// B has b1…b8 at 1…8 h. A has later copies of them, a11…a18 at 11…18 h,
+	// so A's newest entries all collapse, and a9 (no copy) at 0.5 h.
+	nano := time.Now().UnixNano()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	type item struct {
+		feed   rss.Feed
+		ext    string
+		url    string
+		offset time.Duration
+	}
+	items := []item{{feedA, "a9", "", 30 * time.Minute}}
+	for i := 1; i <= 8; i++ {
+		url := fmt.Sprintf("https://example.com/fills-%d-%d", nano, i)
+		items = append(items,
+			item{feedB, fmt.Sprintf("b%d", i), url, time.Duration(i) * time.Hour},
+			item{feedA, fmt.Sprintf("a%d", 10+i), url, time.Duration(10+i) * time.Hour})
+	}
+	for _, it := range items {
+		a := rss.Article{ExternalID: it.ext, URL: it.url, CanonicalURL: it.url, Title: it.ext}
+		if _, err := feeds.SaveFetch(ctx, it.feed, []rss.Article{a}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(it.offset), it.feed.ID, it.ext); err != nil {
+			t.Fatalf("set timeline_at: %v", err)
+		}
+	}
+
+	pages := func(t *testing.T, filter rss.TimelineFilter) [][]string {
+		t.Helper()
+		var got [][]string
+		cursor := rss.ArticleCursor{}
+		for range 10 {
+			page, err := articles.ListTimeline(ctx, reader, filter, cursor, 5)
+			if err != nil {
+				t.Fatalf("ListTimeline: %v", err)
+			}
+			if len(page) == 0 {
+				break
+			}
+			var exts []string
+			for _, it := range page {
+				exts = append(exts, it.Article.ExternalID)
+			}
+			got = append(got, exts)
+			last := page[len(page)-1].Article
+			cursor = rss.ArticleCursor{At: last.TimelineAt, ID: last.ID}
+		}
+		return got
+	}
+	assertPages := func(t *testing.T, got, want [][]string) {
+		t.Helper()
+		if !slices.EqualFunc(got, want, slices.Equal) {
+			t.Errorf("got pages %v, want %v", got, want)
+		}
+	}
+
+	t.Run("Home skips A's collapsed copies and reaches a9", func(t *testing.T) {
+		assertPages(t, pages(t, rss.TimelineFilter{}), [][]string{
+			{"b8", "b7", "b6", "b5", "b4"},
+			{"b3", "b2", "b1", "a9"},
+		})
+	})
+
+	t.Run("leaving out B shows A's copies at their own positions", func(t *testing.T) {
+		assertPages(t, pages(t, rss.TimelineFilter{ExcludeFeedIDs: []string{feedB.ID}}), [][]string{
+			{"a18", "a17", "a16", "a15", "a14"},
+			{"a13", "a12", "a11", "a9"},
+		})
 	})
 }
 

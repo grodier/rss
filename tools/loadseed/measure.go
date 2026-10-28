@@ -92,8 +92,9 @@ func parsePlanNotice(msg string) (duration, text string, ok bool) {
 
 // measure times the reading queries of prefix's seed, on one connection so
 // auto_explain's settings apply to every call, and prints a report to out.
+// The connection is set up as the app's are (psql.NewConnector).
 func measure(ctx context.Context, dsn, prefix string, out io.Writer) error {
-	connector, err := pq.NewConnector(dsn)
+	connector, err := psql.NewConnector(dsn)
 	if err != nil {
 		return err
 	}

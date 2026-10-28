@@ -448,6 +448,85 @@ func TestFeedRepositoryRecordNotModified(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchMarksCopies(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+	feedA, feedB, feedC := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+
+	nano := time.Now().UnixNano()
+	post := fmt.Sprintf("https://example.com/copies-%d", nano)
+	other := fmt.Sprintf("https://example.com/copies-other-%d", nano)
+	moved := fmt.Sprintf("https://example.com/copies-moved-%d", nano)
+
+	save := func(t *testing.T, feed rss.Feed, articles ...rss.Article) {
+		t.Helper()
+		if _, err := repo.SaveFetch(ctx, feed, articles); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+	}
+	// hasCopies returns has_copies of the articles with externalIDs in feed.
+	hasCopies := func(t *testing.T, feed rss.Feed, externalIDs ...string) []bool {
+		t.Helper()
+		var got []bool
+		for _, ext := range externalIDs {
+			var flagged bool
+			if err := db.QueryRow(`SELECT has_copies FROM articles WHERE feed_id = $1 AND external_id = $2`, feed.ID, ext).Scan(&flagged); err != nil {
+				t.Fatalf("select has_copies of %s: %v", ext, err)
+			}
+			got = append(got, flagged)
+		}
+		return got
+	}
+	check := func(t *testing.T, got []bool, want bool) {
+		t.Helper()
+		for i, g := range got {
+			if g != want {
+				t.Errorf("has_copies[%d] = %v, want %v", i, g, want)
+			}
+		}
+	}
+	article := func(ext, url string) rss.Article {
+		return rss.Article{ExternalID: ext, URL: url, CanonicalURL: url, Title: ext}
+	}
+
+	t.Run("a canonical URL no other article has", func(t *testing.T) {
+		save(t, feedA, article("p1", post))
+		check(t, hasCopies(t, feedA, "p1"), false)
+	})
+
+	t.Run("a copy in another feed flags both", func(t *testing.T) {
+		save(t, feedB, article("p2", post))
+		check(t, append(hasCopies(t, feedA, "p1"), hasCopies(t, feedB, "p2")...), true)
+	})
+
+	t.Run("a third copy flags all three", func(t *testing.T) {
+		save(t, feedC, article("p3", post))
+		got := append(hasCopies(t, feedA, "p1"), hasCopies(t, feedB, "p2")...)
+		check(t, append(got, hasCopies(t, feedC, "p3")...), true)
+	})
+
+	t.Run("two copies in the same feed", func(t *testing.T) {
+		save(t, feedA, article("o1", other), article("o2", other))
+		check(t, hasCopies(t, feedA, "o1", "o2"), true)
+	})
+
+	t.Run("articles with no canonical URL are never flagged", func(t *testing.T) {
+		save(t, feedB, rss.Article{ExternalID: "e1", Title: "e1"}, rss.Article{ExternalID: "e2", Title: "e2"})
+		save(t, feedC, rss.Article{ExternalID: "e3", Title: "e3"})
+		check(t, append(hasCopies(t, feedB, "e1", "e2"), hasCopies(t, feedC, "e3")...), false)
+	})
+
+	t.Run("an update to another article's canonical URL flags both", func(t *testing.T) {
+		save(t, feedB, article("m1", moved))
+		save(t, feedC, article("m2", fmt.Sprintf("https://example.com/copies-before-%d", nano)))
+		check(t, hasCopies(t, feedC, "m2"), false)
+		save(t, feedC, article("m2", moved))
+		check(t, append(hasCopies(t, feedB, "m1"), hasCopies(t, feedC, "m2")...), true)
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetchPostsPerWeek(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)

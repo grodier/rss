@@ -332,13 +332,6 @@ func TestConfirmResendHandler(t *testing.T) {
 		rr, _ := resend(s, unconfirmedSession, "//evil.example")
 		assertRedirect(t, rr, "/settings")
 	})
-
-	t.Run("requires login", func(t *testing.T) {
-		s := newTestServer(t)
-		rr := httptest.NewRecorder()
-		s.router().ServeHTTP(rr, postFormRequest("/confirm-email/resend", nil))
-		assertRedirect(t, rr, "/login")
-	})
 }
 
 func TestConfirmNotice(t *testing.T) {

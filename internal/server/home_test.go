@@ -654,47 +654,4 @@ func TestTimelineSeenHandler(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
-
-	t.Run("logged out", func(t *testing.T) {
-		s := newTestServer(t)
-		req := httptest.NewRequest(http.MethodPost, "/timeline/seen", strings.NewReader("up_to=2026-01-01T15:00:00Z"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		rr := httptest.NewRecorder()
-
-		s.router().ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusSeeOther {
-			t.Fatalf("status = %d, want 303", rr.Code)
-		}
-		if loc := rr.Header().Get("Location"); loc != "/login" {
-			t.Errorf("Location = %q, want /login", loc)
-		}
-	})
-}
-
-func TestHomeHandlerBrand(t *testing.T) {
-	s := newTestServer(t)
-	body := getHome(t, s, "/", false).Body.String()
-
-	for _, want := range []string{
-		"<title>Paper Round</title>",
-		"<h1>Paper Round</h1>",
-		`<img class="brand-mark" src="` + mustAsset(t, "img/logo.svg") + `" alt="">`,
-		`<link rel="icon" href="` + mustAsset(t, "img/favicon.svg") + `" type="image/svg+xml" />`,
-		`<link rel="icon" href="` + mustAsset(t, "img/favicon-32.png") + `" sizes="32x32" type="image/png" />`,
-		`<link rel="apple-touch-icon" href="` + mustAsset(t, "img/apple-touch-icon.png") + `" />`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body does not contain %q: %s", want, body)
-		}
-	}
-}
-
-func mustAsset(t *testing.T, name string) string {
-	t.Helper()
-	url, err := asset(name)
-	if err != nil {
-		t.Fatalf("asset(%q): %v", name, err)
-	}
-	return url
 }

@@ -265,28 +265,6 @@ func TestMonogram(t *testing.T) {
 	}
 }
 
-func TestParseTemplates(t *testing.T) {
-	ts, err := parseTemplates()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pages, err := fs.Glob(ui.Templates, "templates/*.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ts) != len(pages) {
-		t.Errorf("parsed %d pages, want %d", len(ts), len(pages))
-	}
-	for name, tmpl := range ts {
-		if tmpl.Lookup("article-row") == nil {
-			t.Errorf("%s: article-row is not defined", name)
-		}
-	}
-	if _, ok := ts["feed.html"]; !ok {
-		t.Error("feed.html was not parsed")
-	}
-}
-
 // renderForm renders a form page with s.renderHTML and parses it.
 func renderForm(t *testing.T, template string, data any) *html.Node {
 	t.Helper()

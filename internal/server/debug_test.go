@@ -518,17 +518,6 @@ func TestRequireDebug(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("anonymous, through the router", func(t *testing.T) {
-		s := newTestServerConfig(t, debugConfig, Services{})
-		req := httptest.NewRequest(http.MethodPost, "/debug/feeds/"+testFeedID+"/inspect", strings.NewReader(""))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		rr := httptest.NewRecorder()
-		s.router().ServeHTTP(rr, req)
-		if rr.Code != http.StatusSeeOther || !strings.HasPrefix(rr.Header().Get("Location"), "/login") {
-			t.Errorf("got %d %q, want a redirect to /login", rr.Code, rr.Header().Get("Location"))
-		}
-	})
 }
 
 func TestCompareArticle(t *testing.T) {

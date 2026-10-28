@@ -17,6 +17,10 @@ func (s *Server) router() http.Handler {
 	router.Use(s.logRequest)
 	router.Use(s.recoverPanic)
 
+	// After logRequest and recoverPanic, so redirects are logged; before
+	// everything else, so a request for another host never reaches a handler.
+	router.Use(s.redirectToCanonicalHost)
+
 	// Rejects cross-origin, non-safe browser requests using Sec-Fetch-Site/Origin.
 	cop := http.NewCrossOriginProtection()
 	cop.SetDenyHandler(http.HandlerFunc(s.forbiddenResponse))

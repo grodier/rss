@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -328,6 +329,10 @@ type Server struct {
 	emails      *mail.Templates
 	formDecoder *form.Decoder
 
+	// canonicalHost is BaseURL's host, lowercase and without its port.
+	// redirectToCanonicalHost sends requests for other hosts there.
+	canonicalHost string
+
 	sessionManager *scs.SessionManager
 	services       Services
 
@@ -391,10 +396,18 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 	if err != nil {
 		return nil, err
 	}
+	baseURL, err := url.Parse(cfg.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing base URL: %w", err)
+	}
+	if cfg.Env == "production" && baseURL.Host == "" {
+		return nil, fmt.Errorf("base URL %q has no host", cfg.BaseURL)
+	}
 
 	s := &Server{
 		logger:                logger,
 		config:                cfg,
+		canonicalHost:         strings.ToLower(baseURL.Hostname()),
 		templates:             templates,
 		emails:                emails,
 		formDecoder:           form.NewDecoder(),

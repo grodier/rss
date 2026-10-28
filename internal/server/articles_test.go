@@ -253,21 +253,6 @@ func TestArticleHandlerErrors(t *testing.T) {
 	}
 }
 
-func TestArticleRouteRequiresAuthentication(t *testing.T) {
-	s := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/articles/"+testArticleID, nil)
-	rr := httptest.NewRecorder()
-
-	s.router().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want 303", rr.Code)
-	}
-	if loc := rr.Header().Get("Location"); loc != "/login" {
-		t.Errorf("Location = %q, want /login", loc)
-	}
-}
-
 func TestArticleHandlerMarksRead(t *testing.T) {
 	var gotUser, gotArticle string
 	calls := 0
@@ -427,21 +412,6 @@ func TestArticleReadHandler(t *testing.T) {
 		rr := postArticleRead(t, s, "user-1", testArticleID)
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-	})
-
-	t.Run("logged out", func(t *testing.T) {
-		s := newTestServer(t)
-		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/read", nil)
-		rr := httptest.NewRecorder()
-
-		s.router().ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusSeeOther {
-			t.Fatalf("status = %d, want 303", rr.Code)
-		}
-		if loc := rr.Header().Get("Location"); loc != "/login" {
-			t.Errorf("Location = %q, want /login", loc)
 		}
 	})
 
@@ -814,21 +784,6 @@ func testToggleAction(t *testing.T, path string, handler func(*Server) http.Hand
 		s := newServer(func(context.Context, string, string) error { return errors.New("db down") })
 		if rr := postSave(t, s, handler(s), "user-1", testArticleID, "/"); rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-	})
-
-	t.Run("logged out", func(t *testing.T) {
-		s := newTestServer(t)
-		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/"+path, nil)
-		rr := httptest.NewRecorder()
-
-		s.router().ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusSeeOther {
-			t.Fatalf("status = %d, want 303", rr.Code)
-		}
-		if loc := rr.Header().Get("Location"); loc != "/login" {
-			t.Errorf("Location = %q, want /login", loc)
 		}
 	})
 }

@@ -266,12 +266,6 @@ func TestSavedHandler(t *testing.T) {
 			t.Errorf("status = %d, want 500", rr.Code)
 		}
 	})
-
-	t.Run("anonymous is sent to log in", func(t *testing.T) {
-		rr := httptest.NewRecorder()
-		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/saved", nil))
-		assertRedirect(t, rr, "/login")
-	})
 }
 
 func TestSavedHandlerSiteIcons(t *testing.T) {

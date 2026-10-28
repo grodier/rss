@@ -260,17 +260,6 @@ func TestSettingsImportForm(t *testing.T) {
 		assertBodyContains(t, rr.Body.String(), "That form submission couldn&#39;t be read.")
 	})
 
-	t.Run("anonymous", func(t *testing.T) {
-		s := importServer(t, noCreate(t))
-		body, contentType := multipartBody(t, "feeds.opml", importOPML)
-		req := httptest.NewRequest(http.MethodPost, "/settings/import", body)
-		req.Header.Set("Content-Type", contentType)
-		rr := httptest.NewRecorder()
-		s.router().ServeHTTP(rr, req)
-
-		assertRedirect(t, rr, "/login")
-	})
-
 	t.Run("cross-origin", func(t *testing.T) {
 		s := importServer(t, noCreate(t))
 		body, contentType := multipartBody(t, "feeds.opml", importOPML)

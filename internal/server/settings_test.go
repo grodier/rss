@@ -90,40 +90,6 @@ func TestSettingsHandler(t *testing.T) {
 	})
 }
 
-func TestSettingsRoutesRequireAuthentication(t *testing.T) {
-	tests := []struct {
-		method, target string
-	}{
-		{http.MethodGet, "/settings"},
-		{http.MethodGet, "/settings/name"},
-		{http.MethodPost, "/settings/name"},
-		{http.MethodGet, "/settings/password"},
-		{http.MethodPost, "/settings/password"},
-		{http.MethodGet, "/settings/email"},
-		{http.MethodPost, "/settings/email"},
-		{http.MethodPost, "/settings/log-out-others"},
-		{http.MethodPost, "/settings/debug"},
-		{http.MethodGet, "/settings/export"},
-		{http.MethodGet, "/settings/subscriptions.opml"},
-		{http.MethodGet, "/settings/import"},
-		{http.MethodPost, "/settings/import"},
-		{http.MethodGet, "/settings/imports/44444444-4444-4444-8444-444444444444"},
-		{http.MethodGet, "/settings/delete"},
-		{http.MethodPost, "/settings/delete"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.method+" "+tt.target, func(t *testing.T) {
-			s := newTestServer(t)
-			req := httptest.NewRequest(tt.method, tt.target, nil)
-			rr := httptest.NewRecorder()
-
-			s.router().ServeHTTP(rr, req)
-
-			assertRedirect(t, rr, "/login")
-		})
-	}
-}
-
 func TestSettingsNameHandler(t *testing.T) {
 	s := newTestServer(t)
 	rr := httptest.NewRecorder()

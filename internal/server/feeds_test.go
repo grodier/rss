@@ -278,17 +278,6 @@ func TestFeedHandlerReadRows(t *testing.T) {
 	assertReadMarkers(t, rr.Body.String(), ids[0], ids[1])
 }
 
-func TestFeedHandlerReadArticleIDsError(t *testing.T) {
-	s := feedServer(t, nil)
-	s.services.ReadService = &fakeReadStore{readArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-		return nil, errors.New("db down")
-	}}
-
-	if rr := serveFeed(t, s, testFeedID); rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
-}
-
 func TestFeedHandlerSavedRows(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
@@ -311,17 +300,6 @@ func TestFeedHandlerSavedRows(t *testing.T) {
 	assertSaveButtons(t, rr.Body.String(), "/feeds/"+testFeedID, ids[1], ids[0])
 }
 
-func TestFeedHandlerSavedArticleIDsError(t *testing.T) {
-	s := feedServer(t, nil)
-	s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-		return nil, errors.New("db down")
-	}}
-
-	if rr := serveFeed(t, s, testFeedID); rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
-}
-
 func TestFeedHandlerStarredRows(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
@@ -342,17 +320,6 @@ func TestFeedHandlerStarredRows(t *testing.T) {
 		t.Errorf("StarredArticleIDs(%q, %v), want (user-1, %v)", gotUser, gotIDs, ids)
 	}
 	assertStarButtons(t, rr.Body.String(), "/feeds/"+testFeedID, ids[0], ids[1])
-}
-
-func TestFeedHandlerStarredArticleIDsError(t *testing.T) {
-	s := feedServer(t, nil)
-	s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-		return nil, errors.New("db down")
-	}}
-
-	if rr := serveFeed(t, s, testFeedID); rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
 }
 
 // feedArticles returns n articles, newest first, the odd ones undated.
@@ -552,25 +519,45 @@ func TestFeedHandlerNoArticles(t *testing.T) {
 	}
 }
 
-func TestFeedHandlerArticlesError(t *testing.T) {
-	s := feedServerWithArticles(t, nil, &fakeArticleStore{
-		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
-			return nil, errors.New("boom")
-		},
-	})
-
-	rr := serveFeed(t, s, testFeedID)
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+func TestFeedHandlerStoreErrors(t *testing.T) {
+	boom := errors.New("boom")
+	tests := []struct {
+		name  string
+		serve func(t *testing.T) *Server
+	}{
+		{"site", func(t *testing.T) *Server { return feedServer(t, boom) }},
+		{"articles", func(t *testing.T) *Server {
+			return feedServerWithArticles(t, nil, &fakeArticleStore{
+				listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) { return nil, boom },
+			})
+		}},
+		{"read article IDs", func(t *testing.T) *Server {
+			s := feedServer(t, nil)
+			s.services.ReadService = &fakeReadStore{readArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) { return nil, boom }}
+			return s
+		}},
+		{"saved article IDs", func(t *testing.T) *Server {
+			s := feedServer(t, nil)
+			s.services.SaveService = &fakeSaveStore{savedArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) { return nil, boom }}
+			return s
+		}},
+		{"starred article IDs", func(t *testing.T) *Server {
+			s := feedServer(t, nil)
+			s.services.StarService = &fakeStarStore{starredArticleIDsFn: func(context.Context, string, []string) (map[string]bool, error) { return nil, boom }}
+			return s
+		}},
+		{"subscription", func(t *testing.T) *Server {
+			s := feedServer(t, nil)
+			s.services.SubscriptionService = &fakeSubscriptionStore{getFn: func(context.Context, string, string) (rss.Subscription, error) { return rss.Subscription{}, boom }}
+			return s
+		}},
 	}
-}
-
-func TestFeedHandlerSiteError(t *testing.T) {
-	rr := serveFeed(t, feedServer(t, errors.New("boom")), testFeedID)
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if rr := serveFeed(t, tt.serve(t), testFeedID); rr.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+			}
+		})
 	}
 }
 
@@ -1224,21 +1211,6 @@ func TestFeedRefreshHandlerDeadline(t *testing.T) {
 	}
 }
 
-func TestFeedRefreshRouteRequiresAuthentication(t *testing.T) {
-	s := newTestServer(t)
-	req := httptest.NewRequest(http.MethodPost, "/feeds/"+testFeedID+"/refresh", nil)
-	rr := httptest.NewRecorder()
-
-	s.router().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want 303", rr.Code)
-	}
-	if loc := rr.Header().Get("Location"); loc != "/login" {
-		t.Errorf("Location = %q, want /login", loc)
-	}
-}
-
 // postSubscription posts to handler as userID, with returnTo as the form's
 // return_to if it is not empty. It returns the response and the flash message
 // left in the session.
@@ -1446,25 +1418,6 @@ func TestFeedUnsubscribeHandler(t *testing.T) {
 	})
 }
 
-func TestSubscriptionRoutesRequireAuthentication(t *testing.T) {
-	s := newTestServer(t)
-	for _, action := range []string{"subscribe", "unsubscribe"} {
-		t.Run(action, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/feeds/"+testFeedID+"/"+action, nil)
-			rr := httptest.NewRecorder()
-
-			s.router().ServeHTTP(rr, req)
-
-			if rr.Code != http.StatusSeeOther {
-				t.Fatalf("status = %d, want 303", rr.Code)
-			}
-			if loc := rr.Header().Get("Location"); loc != "/login" {
-				t.Errorf("Location = %q, want /login", loc)
-			}
-		})
-	}
-}
-
 func TestFeedHandlerSubscribeControl(t *testing.T) {
 	const (
 		subscribeForm   = `action="/feeds/` + testFeedID + `/subscribe"`
@@ -1549,21 +1502,6 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestFeedHandlerSubscriptionError(t *testing.T) {
-	s := feedServer(t, nil)
-	s.services.SubscriptionService = &fakeSubscriptionStore{
-		getFn: func(context.Context, string, string) (rss.Subscription, error) {
-			return rss.Subscription{}, errors.New("db down")
-		},
-	}
-
-	rr := serveFeed(t, s, testFeedID)
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 	}
 }
 

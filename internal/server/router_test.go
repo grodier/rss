@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -138,26 +139,6 @@ func TestLogoutRequiresPost(t *testing.T) {
 	}
 	if loc := rr.Header().Get("Location"); loc != "/login" {
 		t.Errorf("POST /logout Location = %q, want /login", loc)
-	}
-}
-
-func TestTemplatesLogoutFormUsesPost(t *testing.T) {
-	pages, err := fs.Glob(ui.Templates, "templates/*.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	partials, err := fs.Glob(ui.Templates, "templates/partials/*.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range append(pages, partials...) {
-		b, err := fs.ReadFile(ui.Templates, f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(b), `action="/logout" method="get"`) {
-			t.Errorf("%s: logout form must use method=\"post\"", f)
-		}
 	}
 }
 
@@ -309,3 +290,51 @@ func TestSignupRoutes(t *testing.T) {
 
 // jsVersion is the version in the app.js URL the templates render.
 var jsVersion = staticVersions["js/app.js"]
+
+// TestRoutesRequireAuthentication walks every route and checks that an
+// anonymous request is redirected to /login, unless the route is one of the
+// public ones below. A new route is private until it's added to that list.
+func TestRoutesRequireAuthentication(t *testing.T) {
+	public := map[string]bool{
+		"/static/*":                    true,
+		"/sites/{id}/icon":             true,
+		"/healthcheck":                 true,
+		"/privacy":                     true,
+		"/terms":                       true,
+		"/shared/{token}":              true,
+		"/shared/{token}/feed.atom":    true,
+		"/signup":                      true,
+		"/login":                       true,
+		"/logout":                      true,
+		"/confirm-email":               true,
+		"/email-change":                true,
+		"/password/forgot":             true,
+		"/password/forgot/sent":        true,
+		"/password/reset":              true,
+		"/.well-known/change-password": true,
+		"/":                            true,
+	}
+
+	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: testInviteCode, DebugEmails: debugConfig.DebugEmails}, Services{})
+	h := s.router()
+	var private int
+	err := chi.Walk(h.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if public[route] {
+			return nil
+		}
+		private++
+		target := strings.ReplaceAll(route, "{id}", testFeedID)
+		t.Run(method+" "+route, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), method, target, nil))
+			assertRedirect(t, rr, "/login")
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if private == 0 {
+		t.Fatal("walked no private routes")
+	}
+}

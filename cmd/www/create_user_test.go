@@ -29,13 +29,10 @@ func TestRunCreateUserInvalidInput(t *testing.T) {
 		stdin string
 		want  string
 	}{
+		// The rules themselves are tested in internal/validator; these check
+		// that flags and stdin reach them, before the database is opened.
 		{"missing name", []string{"-email", "ada@example.com"}, "correct horse\n", "name: Name is required"},
-		{"blank name", []string{"-name", "  ", "-email", "ada@example.com"}, "correct horse\n", "name: Name is required"},
-		{"101-character name", []string{"-name", strings.Repeat("a", 101), "-email", "ada@example.com"}, "correct horse\n", "name: Name must not be more than 100 characters long"},
-		{"invalid email", []string{"-name", "Ada", "-email", "not-an-email"}, "correct horse\n", "email: Email must be a valid email address"},
 		{"empty stdin", []string{"-name", "Ada", "-email", "ada@example.com"}, "", "password: Password is required"},
-		{"7-character password", []string{"-name", "Ada", "-email", "ada@example.com"}, "1234567\n", "password: Password must be at least 8 characters long"},
-		{"common password", []string{"-name", "Ada", "-email", "ada@example.com"}, "password123\n", "password: This password is too common. Try a longer one, or a few unrelated words."},
 	}
 
 	for _, tt := range tests {

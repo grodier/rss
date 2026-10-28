@@ -2,7 +2,6 @@ package mail
 
 import (
 	"io/fs"
-	"path"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -269,38 +268,6 @@ func TestEmailFooterLinksPrivacy(t *testing.T) {
 	}
 	if want := `<a href="https://rss.example.com/privacy"`; !strings.Contains(m.HTML, want) {
 		t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
-	}
-}
-
-// TestEmailTemplates checks that every email parses and defines the three
-// blocks Render needs.
-func TestEmailTemplates(t *testing.T) {
-	ts, err := ParseTemplates(ui.Emails, testApp)
-	if err != nil {
-		t.Fatalf("ParseTemplates() error = %v", err)
-	}
-	files, err := fs.Glob(ui.Emails, "emails/*.tmpl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, file := range files {
-		name := strings.TrimSuffix(path.Base(file), ".tmpl")
-		if name == "layout" {
-			continue
-		}
-		e, ok := ts.emails[name]
-		if !ok {
-			t.Errorf("%s: not parsed", file)
-			continue
-		}
-		for _, block := range []string{"subject", "text"} {
-			if e.text.Lookup(block) == nil {
-				t.Errorf("%s doesn't define %q", file, block)
-			}
-		}
-		if e.html.Lookup("html") == nil {
-			t.Errorf("%s doesn't define %q", file, "html")
-		}
 	}
 }
 

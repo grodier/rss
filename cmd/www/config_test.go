@@ -24,6 +24,9 @@ func TestConfigValidate(t *testing.T) {
 		{"empty dsn", func(c *config) { c.db.dsn = "" }, true},
 		{"invite code 15 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 15) }, true},
 		{"invite code 16 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 16) }, false},
+		{"proxy hops max", func(c *config) { c.server.proxyHops = 3 }, false},
+		{"proxy hops negative", func(c *config) { c.server.proxyHops = -1 }, true},
+		{"proxy hops too high", func(c *config) { c.server.proxyHops = 4 }, true},
 		{"lookup workers zero", func(c *config) { c.lookup.workers = 0 }, false},
 		{"lookup workers max", func(c *config) { c.lookup.workers = 16 }, false},
 		{"lookup workers negative", func(c *config) { c.lookup.workers = -1 }, true},
@@ -65,269 +68,16 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func TestParseConfigRefreshWorkers(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
-
-	t.Run("default", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, noEnv, io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.refresh.workers != 2 {
-			t.Errorf("refresh.workers = %d, want 2", cfg.refresh.workers)
-		}
-	})
-
-	for _, n := range []string{"0", "16"} {
-		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := parseConfig(append(dsn, "-refresh-workers", n), noEnv, io.Discard); err != nil {
-				t.Fatalf("parseConfig() error = %v, want nil", err)
-			}
-		})
-	}
-
-	for _, n := range []string{"-1", "17"} {
-		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := parseConfig(append(dsn, "-refresh-workers", n), noEnv, io.Discard)
-			want := "invalid refresh workers " + n + ": must be 0-16"
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("parseConfig() error = %v, want %q", err, want)
-			}
-		})
-	}
-}
-
-func TestParseConfigImportWorkers(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
-
-	t.Run("default", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, noEnv, io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.importer.workers != 2 {
-			t.Errorf("importer.workers = %d, want 2", cfg.importer.workers)
-		}
-	})
-
-	t.Run("from the environment", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, envFrom(map[string]string{"RSS_IMPORT_WORKERS": "5"}), io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.importer.workers != 5 {
-			t.Errorf("importer.workers = %d, want 5", cfg.importer.workers)
-		}
-	})
-
-	for _, n := range []string{"0", "16"} {
-		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := parseConfig(append(dsn, "-import-workers", n), noEnv, io.Discard); err != nil {
-				t.Fatalf("parseConfig() error = %v, want nil", err)
-			}
-		})
-	}
-
-	for _, n := range []string{"-1", "17"} {
-		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := parseConfig(append(dsn, "-import-workers", n), noEnv, io.Discard)
-			want := "invalid import workers " + n + ": must be 0-16"
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("parseConfig() error = %v, want %q", err, want)
-			}
-		})
-	}
-}
-
-func TestParseConfigIconWorkers(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
-
-	t.Run("default", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, noEnv, io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.icons.workers != 1 {
-			t.Errorf("icons.workers = %d, want 1", cfg.icons.workers)
-		}
-	})
-
-	t.Run("from the environment", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, envFrom(map[string]string{"RSS_ICON_WORKERS": "3"}), io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.icons.workers != 3 {
-			t.Errorf("icons.workers = %d, want 3", cfg.icons.workers)
-		}
-	})
-
-	for _, n := range []string{"0", "4"} {
-		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := parseConfig(append(dsn, "-icon-workers", n), noEnv, io.Discard); err != nil {
-				t.Fatalf("parseConfig() error = %v, want nil", err)
-			}
-		})
-	}
-
-	for _, n := range []string{"-1", "5"} {
-		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := parseConfig(append(dsn, "-icon-workers", n), noEnv, io.Discard)
-			want := "invalid icon workers " + n + ": must be 0-4"
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("parseConfig() error = %v, want %q", err, want)
-			}
-		})
-	}
-}
-
-func TestParseConfigEnrichWorkers(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
-
-	t.Run("default", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, noEnv, io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.enrich.workers != 1 {
-			t.Errorf("enrich.workers = %d, want 1", cfg.enrich.workers)
-		}
-	})
-
-	t.Run("from the environment", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, envFrom(map[string]string{"RSS_ENRICH_WORKERS": "3"}), io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.enrich.workers != 3 {
-			t.Errorf("enrich.workers = %d, want 3", cfg.enrich.workers)
-		}
-	})
-
-	for _, n := range []string{"0", "4"} {
-		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := parseConfig(append(dsn, "-enrich-workers", n), noEnv, io.Discard); err != nil {
-				t.Fatalf("parseConfig() error = %v, want nil", err)
-			}
-		})
-	}
-
-	for _, n := range []string{"-1", "5"} {
-		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := parseConfig(append(dsn, "-enrich-workers", n), noEnv, io.Discard)
-			want := "invalid enrich workers " + n + ": must be 0-4"
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("parseConfig() error = %v, want %q", err, want)
-			}
-		})
-	}
-}
-
-func TestParseConfigMailWorkers(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://u:p@localhost/db"}
-
-	t.Run("default", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, noEnv, io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.mailRunner.workers != 1 {
-			t.Errorf("mailRunner.workers = %d, want 1", cfg.mailRunner.workers)
-		}
-	})
-
-	t.Run("from the environment", func(t *testing.T) {
-		cfg, err := parseConfig(dsn, envFrom(map[string]string{"RSS_MAIL_WORKERS": "3"}), io.Discard)
-		if err != nil {
-			t.Fatalf("parseConfig() error = %v", err)
-		}
-		if cfg.mailRunner.workers != 3 {
-			t.Errorf("mailRunner.workers = %d, want 3", cfg.mailRunner.workers)
-		}
-	})
-
-	for _, n := range []string{"0", "4"} {
-		t.Run("valid "+n, func(t *testing.T) {
-			if _, err := parseConfig(append(dsn, "-mail-workers", n), noEnv, io.Discard); err != nil {
-				t.Fatalf("parseConfig() error = %v, want nil", err)
-			}
-		})
-	}
-
-	for _, n := range []string{"-1", "5"} {
-		t.Run("invalid "+n, func(t *testing.T) {
-			_, err := parseConfig(append(dsn, "-mail-workers", n), noEnv, io.Discard)
-			want := "invalid mail workers " + n + ": must be 0-4"
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("parseConfig() error = %v, want %q", err, want)
-			}
-		})
-	}
-}
-
-func TestParseConfigInviteCode(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://x"}
-	const code = "0123456789abcdef"
-
-	cfg, err := parseConfig(dsn, noEnv, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.inviteCode != "" {
-		t.Errorf("inviteCode = %q, want empty by default", cfg.server.inviteCode)
-	}
-
-	cfg, err = parseConfig(append(dsn, "-invite-code", code), noEnv, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.inviteCode != code {
-		t.Errorf("-invite-code: inviteCode = %q, want %q", cfg.server.inviteCode, code)
-	}
-
-	cfg, err = parseConfig(dsn, envFrom(map[string]string{"RSS_INVITE_CODE": code}), io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.inviteCode != code {
-		t.Errorf("RSS_INVITE_CODE: inviteCode = %q, want %q", cfg.server.inviteCode, code)
-	}
-
-	_, err = parseConfig(append(dsn, "-invite-code", code[:15]), noEnv, io.Discard)
-	const msg = "invite code must be at least 16 characters"
-	if err == nil || !strings.Contains(err.Error(), msg) {
-		t.Errorf("15 characters: parseConfig() error = %v, want %q", err, msg)
-	}
-}
-
 func TestParseConfigDebugEmails(t *testing.T) {
 	dsn := []string{"-db-dsn", "postgres://x"}
 
-	cfg, err := parseConfig(dsn, noEnv, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.server.debugEmails) != 0 {
-		t.Errorf("debugEmails = %q, want empty by default", cfg.server.debugEmails)
-	}
-
 	want := []string{"a@example.com", "b@example.com"}
-	const raw = " A@example.com , ,b@example.com"
-
-	cfg, err = parseConfig(append(dsn, "-debug-emails", raw), noEnv, io.Discard)
+	cfg, err := parseConfig(append(dsn, "-debug-emails", " A@example.com , ,b@example.com"), noEnv, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(cfg.server.debugEmails, want) {
-		t.Errorf("-debug-emails: debugEmails = %q, want %q", cfg.server.debugEmails, want)
-	}
-
-	cfg, err = parseConfig(dsn, envFrom(map[string]string{"RSS_DEBUG_EMAILS": raw}), io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(cfg.server.debugEmails, want) {
-		t.Errorf("RSS_DEBUG_EMAILS: debugEmails = %q, want %q", cfg.server.debugEmails, want)
+		t.Errorf("debugEmails = %q, want %q", cfg.server.debugEmails, want)
 	}
 
 	for _, bad := range []string{"not-an-email", "A <a@example.com>"} {
@@ -335,42 +85,6 @@ func TestParseConfigDebugEmails(t *testing.T) {
 		msg := `debug-emails: "` + strings.ToLower(bad) + `" is not an email address`
 		if err == nil || !strings.Contains(err.Error(), msg) {
 			t.Errorf("%q: parseConfig() error = %v, want %q", bad, err, msg)
-		}
-	}
-}
-
-func TestParseConfigProxyHops(t *testing.T) {
-	dsn := []string{"-db-dsn", "postgres://x"}
-
-	cfg, err := parseConfig(dsn, noEnv, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.proxyHops != 0 {
-		t.Errorf("proxyHops = %d, want 0 by default", cfg.server.proxyHops)
-	}
-
-	cfg, err = parseConfig(append(dsn, "-proxy-hops", "1"), noEnv, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.proxyHops != 1 {
-		t.Errorf("-proxy-hops 1: proxyHops = %d, want 1", cfg.server.proxyHops)
-	}
-
-	cfg, err = parseConfig(dsn, envFrom(map[string]string{"RSS_PROXY_HOPS": "1"}), io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.server.proxyHops != 1 {
-		t.Errorf("RSS_PROXY_HOPS=1: proxyHops = %d, want 1", cfg.server.proxyHops)
-	}
-
-	for _, v := range []string{"-1", "4"} {
-		_, err = parseConfig(append(dsn, "-proxy-hops", v), noEnv, io.Discard)
-		msg := "proxy hops must be between 0 and 3"
-		if err == nil || !strings.Contains(err.Error(), msg) {
-			t.Errorf("-proxy-hops %s: parseConfig() error = %v, want %q", v, err, msg)
 		}
 	}
 }

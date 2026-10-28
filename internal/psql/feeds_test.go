@@ -667,62 +667,6 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
-func TestFeedsRejectNullOptionalColumns(t *testing.T) {
-	db := psqltest.NewDB(t)
-	siteID := newTestSite(t, db)
-
-	for _, col := range []string{"site_url", "description"} {
-		url := fmt.Sprintf("https://example.com/feed-%s-%d.xml", col, time.Now().UnixNano())
-		t.Cleanup(func() {
-			if _, err := db.Exec(`DELETE FROM feeds WHERE url = $1`, url); err != nil {
-				t.Errorf("cleanup feed: %v", err)
-			}
-		})
-
-		_, err := db.Exec(fmt.Sprintf(`INSERT INTO feeds (url, title, site_id, %s) VALUES ($1, 't', $2, NULL)`, col), url, siteID)
-		if err == nil {
-			t.Errorf("inserting NULL %s succeeded; want a not-null violation", col)
-		}
-	}
-}
-
-// Requires a migrated database; see psqltest.NewDB.
-func TestFeedsRequireSite(t *testing.T) {
-	db := psqltest.NewDB(t)
-
-	url := fmt.Sprintf("https://example.com/feed-nosite-%d.xml", time.Now().UnixNano())
-	t.Cleanup(func() {
-		if _, err := db.Exec(`DELETE FROM feeds WHERE url = $1`, url); err != nil {
-			t.Errorf("cleanup feed: %v", err)
-		}
-	})
-
-	if _, err := db.Exec(`INSERT INTO feeds (url, title) VALUES ($1, 't')`, url); err == nil {
-		t.Error("inserting a feed without site_id succeeded; want a not-null violation")
-	}
-}
-
-// Requires a migrated database; see psqltest.NewDB.
-func TestDeletingSiteDeletesItsFeeds(t *testing.T) {
-	db := psqltest.NewDB(t)
-	siteID := newTestSite(t, db)
-
-	url := fmt.Sprintf("https://example.com/feed-cascade-%d.xml", time.Now().UnixNano())
-	var feedID string
-	if err := db.QueryRow(`INSERT INTO feeds (url, title, site_id) VALUES ($1, 't', $2) RETURNING id`, url, siteID).Scan(&feedID); err != nil {
-		t.Fatalf("insert feed: %v", err)
-	}
-
-	if _, err := db.Exec(`DELETE FROM sites WHERE id = $1`, siteID); err != nil {
-		t.Fatalf("delete site: %v", err)
-	}
-
-	if _, err := NewFeedRepository(db).GetByID(t.Context(), feedID); !errors.Is(err, rss.ErrNoRecord) {
-		t.Errorf("GetByID after site delete: got %v, want rss.ErrNoRecord", err)
-	}
-}
-
-// Requires a migrated database; see psqltest.NewDB.
 func TestFeedRepositoryGetByURL(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)

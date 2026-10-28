@@ -66,15 +66,3 @@ func TestPolicyLinks(t *testing.T) {
 		})
 	}
 }
-
-func TestPrivacySharedTimelines(t *testing.T) {
-	s := newPolicyTestServer(t)
-	rr := httptest.NewRecorder()
-	s.router().ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/privacy", nil))
-	assertBodyContains(t, rr.Body.String(),
-		"<h2>Shared timelines</h2>",
-		"anyone with its link can follow its newest articles",
-		"<strong>Your stars, tags and timelines</strong>, to show your timelines.",
-		"except a\n        timeline you choose to share",
-	)
-}

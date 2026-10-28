@@ -144,6 +144,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   rctx.URLParams.Add("id", "abc")
   req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
   ```
+- `TestRoutesRequireAuthentication` (`router_test.go`) checks every route that isn't on its public list redirects anonymous requests to `/login`; add a new public route to that list rather than writing a per-route login test.
 - `Services` holds the `FeedStore` / `UserStore` interfaces.
   For handler tests that need store results, build a server with `newTestServerWith(t, Services{...})` and the function-field fakes in `internal/server/fakes_test.go`.
   Keep DB tests for repository code in `internal/psql`.

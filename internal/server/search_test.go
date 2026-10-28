@@ -135,15 +135,6 @@ func TestSearchEscapesQuery(t *testing.T) {
 	}
 }
 
-func TestSearchRequiresAuthentication(t *testing.T) {
-	h := newTestServer(t).router()
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/search", nil))
-	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
-		t.Errorf("got %d %q, want 303 /login", rr.Code, rr.Header().Get("Location"))
-	}
-}
-
 func TestSearchHandlerSubscribedMarker(t *testing.T) {
 	results := []rss.SiteWithFeeds{
 		{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}, {ID: "feed-2", Title: "F2"}}},

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/grodier/rss/internal/rss"
@@ -80,7 +81,10 @@ func (s *Server) nav(r *http.Request, section string) navData {
 	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r)}
 }
 
-func parseTemplates() (map[string]*template.Template, error) {
+// parseTemplates parses the page templates once per process: they're
+// embedded, so every Server can share them (tests build hundreds of Servers).
+// Callers must not modify the map or the templates.
+var parseTemplates = sync.OnceValues(func() (map[string]*template.Template, error) {
 	pages, err := fs.Glob(ui.Templates, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -96,7 +100,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 		ts[name] = t
 	}
 	return ts, nil
-}
+})
 
 func (s *Server) renderHTML(w http.ResponseWriter, status int, name string, data any) error {
 	t, ok := s.templates[name]

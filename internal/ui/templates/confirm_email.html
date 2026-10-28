@@ -4,8 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>rss - confirm your email address</title>
+  <title>Paper Round - confirm your email address</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "favicons"}}
 </head>
 
 <body>
@@ -15,7 +16,7 @@
       <h1>Confirm your email address</h1>
 
       <form action="/confirm-email" method="post">
-        <p class="solo-text">Confirm {{.Email}} for your rss account.</p>
+        <p class="solo-text">Confirm {{.Email}} for your Paper Round account.</p>
         <input type="hidden" name="token" value="{{.Token}}" />
         <div>
           <button class="btn-primary btn-block" type="submit">Confirm email address</button>

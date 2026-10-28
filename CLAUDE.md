@@ -2,7 +2,7 @@
 
 ## Project
 
-A server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations.
+Paper Round (paperround.app), a server-rendered RSS reader in Go: chi, embedded `html/template`, Postgres via `lib/pq`, scs sessions stored in Postgres, goose migrations.
 Pre-alpha (see "Prototype stage"); `docs/features.md` describes what works.
 
 Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles.

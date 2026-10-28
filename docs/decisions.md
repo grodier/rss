@@ -446,7 +446,17 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   - Site and feed avatars become rounded squares, icon or letter, since most icons are designed as squares.
     The user's own avatar stays a circle: people are circles, sites squares.
 - **Light theme only for now.** Colors are custom properties on `:root` in `main.css`, so a theme can redefine them in one place.
-  System font stack; icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
+  Reading text uses the system font stack; icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
+- **The app is called Paper Round** (paperround.app), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
+  The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
+- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
+  It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
+  The favicon (`static/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
+  The P is outlined in both files, so they don't depend on the font loading.
+- **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
+  Green and gold, maroon and an orange box were tried and dropped.
+- **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
+  It's subset to Latin and weights 600–800 (77 KB, cached for a year); reading text stays in the system font.
 - **When a layout is an open question, the implementer proposes options before finishing** (#309, for #299 and #308): a draft PR with two or three layouts behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 

@@ -81,7 +81,7 @@ func TestSignupSendsConfirmation(t *testing.T) {
 		if m.To != "dup@example.com" {
 			t.Errorf("To = %q, want dup@example.com", m.To)
 		}
-		if want := "Confirm your email address for rss"; m.Subject != want {
+		if want := "Confirm your email address for Paper Round"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		match := confirmLinkRX.FindStringSubmatch(m.Text)
@@ -145,7 +145,7 @@ func TestConfirmEmailHandler(t *testing.T) {
 		}
 		assertBodyContains(t, rr.Body.String(),
 			"<h1>Confirm your email address</h1>",
-			"Confirm ada@example.com for your rss account.",
+			"Confirm ada@example.com for your Paper Round account.",
 			`<form action="/confirm-email" method="post">`,
 			`<input type="hidden" name="token" value="valid-token" />`,
 			"Confirm email address</button>",

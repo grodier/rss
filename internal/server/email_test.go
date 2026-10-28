@@ -28,8 +28,8 @@ func TestSendEmail(t *testing.T) {
 		if m.To != "someone@example.com" {
 			t.Errorf("To = %q, want someone@example.com", m.To)
 		}
-		if m.Subject != "Test email from rss" {
-			t.Errorf("Subject = %q, want %q", m.Subject, "Test email from rss")
+		if m.Subject != "Test email from Paper Round" {
+			t.Errorf("Subject = %q, want %q", m.Subject, "Test email from Paper Round")
 		}
 		if !strings.Contains(m.Text, "https://rss.example.com") || !strings.Contains(m.HTML, "https://rss.example.com") {
 			t.Errorf("bodies don't link to the base URL:\ntext: %s\nhtml: %s", m.Text, m.HTML)

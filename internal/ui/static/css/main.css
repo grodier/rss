@@ -79,22 +79,31 @@
 }
 
 @layer base {
-  /* Colors are tokens so a theme can redefine them in one place. */
+  /* Bricolage Grotesque (SIL Open Font License, fonts/bricolage-grotesque-OFL.txt),
+     subset to Latin, weights 600-800, for the name and headlines only. */
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("../fonts/bricolage-grotesque.woff2") format("woff2");
+    font-weight: 600 800;
+    font-display: swap;
+  }
+
+  /* Colors are tokens so a theme can redefine them in one place.
+     The palette is the logo's: ink, sky and tomato. */
   :root {
     color-scheme: light;
     --bg: #fff;
     --bg-glass: rgb(255 255 255 / 0.82);
-    --surface: #f4f5f7;
-    --border: #e8e9ed;
-    --border-strong: #d4d7dd;
-    --text: #111318;
-    --text-2: #5a616c;
-    --text-3: #868d98;
-    --accent: #2160e8;
-    --brand: #f26b1d;
-    --on-brand: #fff;
+    --surface: #eff4fa;
+    --border: #e3e9f1;
+    --border-strong: #ccd6e2;
+    --text: #14213a;
+    --text-2: #56627a;
+    --text-3: #8490a4;
+    --accent: #1f5fa8;
+    --brand: #ff6a3d;
     --danger: #c0281e;
-    --embed-bg: #111318;
+    --embed-bg: #14213a;
     --on-embed: #fff;
     --embed-play: rgb(0 0 0 / 0.7);
     --danger-bg: #fdf1f0;
@@ -118,10 +127,12 @@
     --radius-sm: 10px;
     --column: 40rem;
     --blur: saturate(180%) blur(14px);
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: "Bricolage Grotesque", var(--font);
   }
 
   body {
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font);
     font-size: 0.9375rem;
     color: var(--text);
     background: var(--bg);
@@ -263,26 +274,17 @@
     margin-block-end: 0.75rem;
     padding: 0.5rem 0.75rem;
     color: var(--text);
+    font-family: var(--font-display);
     font-size: 1.375rem;
     font-weight: 800;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.04em;
     text-decoration: none;
   }
 
   .brand-mark {
-    display: grid;
-    place-items: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    border-radius: 9px;
-    background: var(--brand);
-    color: var(--on-brand);
-  }
-
-  .brand-mark .icon {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    stroke-width: 2.5;
+    flex: none;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
   }
 
   .rail-links {
@@ -357,6 +359,7 @@
   }
 
   .page-head h1 {
+    font-family: var(--font-display);
     font-size: 1.25rem;
     font-weight: 750;
     letter-spacing: -0.01em;
@@ -457,9 +460,8 @@
     }
 
     .brand-mark {
-      inline-size: 1.75rem;
-      block-size: 1.75rem;
-      border-radius: 8px;
+      inline-size: 2rem;
+      block-size: 2rem;
     }
 
     .brand-name,
@@ -894,6 +896,7 @@
   }
 
   .article-title {
+    font-family: var(--font-display);
     font-size: 1.0625rem;
     font-weight: 650;
     line-height: 1.3;
@@ -1128,6 +1131,7 @@
 
   .profile h1,
   .profile-name {
+    font-family: var(--font-display);
     margin-block-start: 0.875rem;
     font-size: 1.5rem;
     font-weight: 800;
@@ -1896,6 +1900,7 @@
   }
 
   .result-head h2 {
+    font-family: var(--font-display);
     font-size: 1rem;
   }
 
@@ -1978,6 +1983,7 @@
   }
 
   .reader h1 {
+    font-family: var(--font-display);
     margin-block-start: 0.875rem;
     font-size: 1.875rem;
     font-weight: 800;
@@ -2195,11 +2201,12 @@
   }
 
   .solo-panel .brand-mark {
-    inline-size: 2.25rem;
-    block-size: 2.25rem;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
   }
 
   .solo-panel h1 {
+    font-family: var(--font-display);
     margin-block-end: 1.5rem;
     font-size: 1.5rem;
     font-weight: 800;
@@ -2330,24 +2337,19 @@
   }
 
   .hero .brand-mark {
-    margin: 0 auto 1.25rem;
-    inline-size: 4rem;
-    block-size: 4rem;
-    border-radius: 18px;
-  }
-
-  .hero .brand-mark .icon {
-    inline-size: 2.25rem;
-    block-size: 2.25rem;
+    margin: 0 auto 1rem;
+    inline-size: 5.5rem;
+    block-size: 5.5rem;
   }
 
   .hero h1 {
+    font-family: var(--font-display);
     margin-block-end: 0.5rem;
   }
 
   .hero .brand-mark + h1 {
     font-size: 2.5rem;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.045em;
   }
 
   .hero p {

@@ -124,7 +124,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | Route | Login | What it does |
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, environment and build version, for health checks |
-| `GET /static/*` | no | Embedded CSS and JS; `?v=<hash>` URLs are cached for a year |
+| `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
@@ -324,6 +324,7 @@ Beyond those:
 
 - **Static files** are embedded and served at `/static/…?v=<hash>`.
   The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
+  Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted headline font (`fonts/`, with its licence); every page links the favicons through `partials/head.html`.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
   Log out is a button on the Settings page.

@@ -671,3 +671,30 @@ func TestTimelineSeenHandler(t *testing.T) {
 		}
 	})
 }
+
+func TestHomeHandlerBrand(t *testing.T) {
+	s := newTestServer(t)
+	body := getHome(t, s, "/", false).Body.String()
+
+	for _, want := range []string{
+		"<title>Paper Round</title>",
+		"<h1>Paper Round</h1>",
+		`<img class="brand-mark" src="` + mustAsset(t, "img/logo.svg") + `" alt="">`,
+		`<link rel="icon" href="` + mustAsset(t, "img/favicon.svg") + `" type="image/svg+xml" />`,
+		`<link rel="icon" href="` + mustAsset(t, "img/favicon-32.png") + `" sizes="32x32" type="image/png" />`,
+		`<link rel="apple-touch-icon" href="` + mustAsset(t, "img/apple-touch-icon.png") + `" />`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
+	}
+}
+
+func mustAsset(t *testing.T, name string) string {
+	t.Helper()
+	url, err := asset(name)
+	if err != nil {
+		t.Fatalf("asset(%q): %v", name, err)
+	}
+	return url
+}

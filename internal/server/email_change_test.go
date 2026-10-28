@@ -142,7 +142,7 @@ func TestSettingsEmailForm(t *testing.T) {
 		if m.To != "new@example.com" {
 			t.Errorf("To = %q, want new@example.com", m.To)
 		}
-		if want := "Confirm your new email address for rss"; m.Subject != want {
+		if want := "Confirm your new email address for Paper Round"; m.Subject != want {
 			t.Errorf("Subject = %q, want %q", m.Subject, want)
 		}
 		match := changeEmailLinkRX.FindStringSubmatch(m.Text)
@@ -209,7 +209,7 @@ func TestEmailChangeHandler(t *testing.T) {
 		}
 		assertBodyContains(t, rr.Body.String(),
 			"<h1>Change your email address</h1>",
-			"Make new@example.com the email for your rss account?",
+			"Make new@example.com the email for your Paper Round account?",
 			`<form action="/email-change" method="post">`,
 			`<input type="hidden" name="token" value="valid-token" />`,
 			"Change email address</button>",
@@ -288,7 +288,7 @@ func TestEmailChangeFormHandler(t *testing.T) {
 			if msgs[0].To != "ada@example.com" {
 				t.Errorf("To = %q, want the old address", msgs[0].To)
 			}
-			if want := "Your rss email address was changed"; msgs[0].Subject != want {
+			if want := "Your Paper Round email address was changed"; msgs[0].Subject != want {
 				t.Errorf("Subject = %q, want %q", msgs[0].Subject, want)
 			}
 			if want := "changed from ada@example.com to new@example.com."; !strings.Contains(msgs[0].Text, want) {

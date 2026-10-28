@@ -4,8 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>rss</title>
+  <title>Paper Round</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "favicons"}}
 </head>
 
 <body>
@@ -14,8 +15,8 @@
       {{with .Flash}}
       <div class="flash">{{.}}</div>
       {{end}}
-      <span class="brand-mark">{{template "icon-rss"}}</span>
-      <h1>rss</h1>
+      <img class="brand-mark" src="{{asset "img/logo.svg"}}" alt="">
+      <h1>Paper Round</h1>
       <p>One quiet timeline for the sites you follow.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="/login">Login</a>

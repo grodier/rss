@@ -100,16 +100,16 @@ func TestSharedTimelinePage(t *testing.T) {
 	}
 	assertBodyContains(t, rr.Body.String(),
 		`<meta name="robots" content="noindex" />`,
-		`<title>Ada&#39;s picks - rss</title>`,
+		`<title>Ada&#39;s picks - Paper Round</title>`,
 		`<link rel="alternate" type="application/atom+xml" title="Ada&#39;s picks" href="/shared/`+testShareToken+`/feed.atom" />`,
 		"<h1>Ada&#39;s picks</h1>",
 		`<p class="shared-timeline-description">Good reads</p>`,
-		"A timeline shared from rss.",
+		"A timeline shared from Paper Round.",
 		"paste this page's address, or the feed link, into your reader",
 		`<input type="text" id="feed-url" value="https://rss.example/shared/`+testShareToken+`/feed.atom" readonly />`,
 		`href="/shared/`+testShareToken+`/feed.atom">`,
 		"Open the feed</a>",
-		`<a href="/">rss</a>`,
+		`<a href="/">Paper Round</a>`,
 	)
 	if got := rr.Header().Get("X-Robots-Tag"); got != "noindex" {
 		t.Errorf("X-Robots-Tag = %q, want noindex", got)
@@ -193,7 +193,7 @@ func TestSharedFeed(t *testing.T) {
 		}
 		page := "https://rss.example/shared/" + testShareToken
 		if feed.ID != page || feed.Title != plainText("Ada's picks") || feed.Subtitle == nil || *feed.Subtitle != plainText("Good reads") ||
-			feed.Author.Name != "Ada's picks" || feed.Generator != "rss" {
+			feed.Author.Name != "Ada's picks" || feed.Generator != "Paper Round" {
 			t.Errorf("feed = %+v", feed)
 		}
 		wantLinks := []atomLink{

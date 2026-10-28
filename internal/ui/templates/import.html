@@ -7,8 +7,9 @@
   {{if .InProgress}}
   <meta http-equiv="refresh" content="2" />
   {{end}}
-  <title>rss - {{if .InProgress}}importing {{.Filename}}{{else}}import finished{{end}}</title>
+  <title>Paper Round - {{if .InProgress}}importing {{.Filename}}{{else}}import finished{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "favicons"}}
 </head>
 
 <body>

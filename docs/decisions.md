@@ -447,7 +447,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
     The user's own avatar stays a circle: people are circles, sites squares.
 - **Light theme only for now.** Colors are custom properties on `:root` in `main.css`, so a theme can redefine them in one place.
   Reading text uses the system font stack; icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
-- **The app is called Paper Round** (paperround.app), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
+- **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
   It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).

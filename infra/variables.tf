@@ -23,3 +23,10 @@ variable "cloudflare_zone_id" {
   # A repository secret like the account ID, so plans don't print it either.
   sensitive = true
 }
+
+variable "cloudflare_app_zone_id" {
+  description = "ID of the paperround.app zone in Cloudflare (TF_VAR_cloudflare_app_zone_id)."
+  type        = string
+  # A repository secret like the other IDs, so plans don't print it either.
+  sensitive = true
+}

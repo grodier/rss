@@ -13,7 +13,7 @@ import (
 // App is what every email template can use, as {{appURL}} and
 // {{supportEmail}}.
 type App struct {
-	URL          string // the base URL, e.g. https://rss.georgerodier.com
+	URL          string // the base URL, e.g. https://paperround.app
 	SupportEmail string
 }
 

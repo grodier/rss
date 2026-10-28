@@ -51,7 +51,7 @@ The decisions are under "Accounts" in decisions.md.
 - [ ] **Move email to Amazon SES.**
   When Resend's free tier (100 emails a day, 3,000 a month) gets tight or costs more than SES.
   Sending is SMTP (#259), so the app only changes configuration.
-  The rest: request SES production access (it asks how bounces and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL FROM domain, move DMARC from `p=none` to `quarantine` once its reports are clean (the app has no `_dmarc.rss` record yet: add one, or `sp=` on `georgerodier.com`'s), and check the result with mail-tester.com.
+  The rest: request SES production access (it asks how bounces and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL FROM domain, move DMARC on `_dmarc.paperround.app` from `p=none` to `quarantine` once its reports are clean, and check the result with mail-tester.com.
 - [ ] **Product name in the app.**
   Moving to the new domain is #389; the app still calls itself "rss" in page titles, emails and the policy pages.
 - [ ] **Support address on the new domain.**

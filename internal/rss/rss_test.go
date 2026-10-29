@@ -65,6 +65,24 @@ func TestArticleByline(t *testing.T) {
 	}
 }
 
+func TestArticleShortByline(t *testing.T) {
+	tests := []struct {
+		authors []string
+		want    string
+	}{
+		{nil, ""},
+		{[]string{"A"}, "A"},
+		{[]string{"A", "B"}, "A and B"},
+		{[]string{"A", "B", "C"}, "A and 2 others"},
+		{[]string{"A", "B", "C", "D", "E"}, "A and 4 others"},
+	}
+	for _, tt := range tests {
+		if got := (Article{Authors: tt.authors}).ShortByline(); got != tt.want {
+			t.Errorf("ShortByline of %q = %q, want %q", tt.authors, got, tt.want)
+		}
+	}
+}
+
 func TestArticleCardImageURL(t *testing.T) {
 	tests := []struct {
 		name string

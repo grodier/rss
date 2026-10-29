@@ -4,15 +4,19 @@
   <div class="article-main">
     <p class="article-meta">
       {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
-      {{with .Article.Byline}}{{if $.Feed.ID}}<span aria-hidden="true">·</span>{{end}}<span class="article-author">{{.}}</span>{{end}}
-      {{if not .Article.PublishedAt.IsZero}}{{if or .Feed.ID .Article.Authors}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
+      {{if not .Article.PublishedAt.IsZero}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
     </p>
     <div class="article-card">
       {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
       <div class="article-text">
         <h3 class="article-title"><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
         {{with .Article.DisplayExcerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
-        {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
+        {{$source := and .Article.URL .Article.URLHost}}
+        {{if or .Article.Authors $source}}<p class="article-source-line">
+          {{- with .Article.ShortByline}}<span class="article-author"{{if gt (len $.Article.Authors) 2}} title="{{$.Article.Byline}}"{{end}}>{{.}}</span>{{end}}
+          {{- if and .Article.Authors $source}}<span aria-hidden="true">·</span>{{end}}
+          {{- if $source}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end -}}
+        </p>{{end}}
       </div>
     </div>
     <div class="article-foot">

@@ -97,16 +97,23 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
-	t.Run("authors follow the feed name", func(t *testing.T) {
-		result, storeErr = timelineItems(2), nil
+	t.Run("authors in the card", func(t *testing.T) {
+		result, storeErr = timelineItems(3), nil
 		result[0].Article.Authors = []string{"Ada"}
+		result[1].Article.Authors = []string{"Ada", "Grace", "Linus"}
 		body := getHome(t, s, "/", true).Body.String()
-		want := regexp.MustCompile(`Feed One</a>\s*<span aria-hidden="true">·</span><span class="article-author">Ada</span>`)
-		if !want.MatchString(body) {
-			t.Errorf("missing %s in: %s", want, body)
+		// No URL, so no source link or separator.
+		assertBodyContains(t, body,
+			`<p class="article-source-line"><span class="article-author">Ada</span></p>`,
+			`<p class="article-source-line"><span class="article-author" title="Ada, Grace and Linus">Ada and 2 others</span></p>`,
+		)
+		if got := strings.Count(body, "article-source-line"); got != 2 {
+			t.Errorf("article-source-line appears %d times, want 2 (only the rows with authors)", got)
 		}
-		if got := strings.Count(body, "article-author"); got != 1 {
-			t.Errorf("article-author appears %d times, want 1 (only the row with authors)", got)
+		for _, meta := range regexp.MustCompile(`(?s)<p class="article-meta">.*?</p>`).FindAllString(body, -1) {
+			if strings.Contains(meta, "article-author") {
+				t.Errorf("authors in the meta line: %s", meta)
+			}
 		}
 	})
 

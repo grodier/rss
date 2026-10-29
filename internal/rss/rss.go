@@ -2,6 +2,7 @@
 package rss
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -119,6 +120,15 @@ func (a Article) Byline() string {
 	default:
 		return strings.Join(a.Authors[:n-1], ", ") + " and " + a.Authors[n-1]
 	}
+}
+
+// ShortByline returns Byline for up to two authors, else the first author
+// and how many others ("A and 2 others"), for rows where space is short.
+func (a Article) ShortByline() string {
+	if n := len(a.Authors); n > 2 {
+		return fmt.Sprintf("%s and %d others", a.Authors[0], n-1)
+	}
+	return a.Byline()
 }
 
 // CardImageURL returns the feed's image for the article, else the image of

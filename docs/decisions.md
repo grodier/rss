@@ -121,6 +121,9 @@ Planned in #126, with issues #128–#133.
   RSS's `<author>` is an email address by spec, often a placeholder (`noreply@blogger.com (Unknown)`), so only the name in it is kept, and "Unknown" is dropped.
   For RSS every `dc:creator` is read, since that's how multi-author posts list their authors; otherwise the first source with an author wins, as in gofeed.
   An item without authors doesn't inherit the feed's: on a single-author blog that only repeats the feed's name on every row.
+  Rows name them in the card, before the link to the original ("Jane Doe · example.com ↗"), shortened past two to "Jane Doe and 4 others", so no row grows taller or pushes its date to a second line on phones.
+  The article page names them all in a dateline under the title ("By … · date"), and its line above the title keeps only the feed, like a newspaper.
+  Picked from layouts compared at 0, 1, 2 and 5 authors over authors in the meta line, which wrapped on phones, and a byline under a row's title, which made cards with authors taller.
   At most 10 per article.
 
 ## Subscriptions
@@ -194,7 +197,7 @@ Planned in #163 (issues #147–#162).
 - **Word filters will use a full-text index, not trigrams** (#388).
   On #388's seed a `pg_trgm` index was 127 MB (a quarter of `articles`) and didn't help common words, while a `simple` full-text index was 26 MB and took a rare-word timeline from ~0.9 s to ~50 ms.
   The exact word match stays as the final check, so results don't change.
-- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the article's authors and the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
+- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
   The whole card links to the in-app article page.
   Feed pages leave out the avatar and name.
   Untitled articles use the start of the excerpt.

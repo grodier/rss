@@ -19,10 +19,13 @@
         <p class="reader-meta">
           {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index .Icons .Feed.SiteID))}}
           <a href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-          {{if not .Article.PublishedAt.IsZero}}<span aria-hidden="true">·</span>{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
         </p>
         <h1>{{.Article.DisplayTitle}}</h1>
-        {{with .Article.Byline}}<p class="reader-byline">By {{.}}</p>{{end}}
+        {{if or .Article.Authors (not .Article.PublishedAt.IsZero)}}<p class="reader-dateline">
+          {{- with .Article.Byline}}<span class="reader-byline">By {{.}}</span>{{end}}
+          {{- if and .Article.Authors (not .Article.PublishedAt.IsZero)}} <span aria-hidden="true">·</span> {{end}}
+          {{- if not .Article.PublishedAt.IsZero}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end -}}
+        </p>{{end}}
         {{template "article-actions" .}}
         {{with .Debug}}
         <details class="debug" id="debug"{{if .Open}} open{{end}}>

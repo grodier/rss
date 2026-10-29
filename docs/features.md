@@ -282,7 +282,7 @@ List queries never load `summary` or `content`.
 Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-date` partials).
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
-`Byline` joins the article's authors ("A, B and C"), shown after the feed name in a row and under the title on the article page.
+`Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) before the source link.
 The page's values come from enrichment and only fill gaps.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.

@@ -101,9 +101,8 @@ func TestArticleHandler(t *testing.T) {
 	assertBodyContains(t, body,
 		"<title>Paper Round - A &lt;b&gt;title&lt;/b&gt;</title>",
 		"<h1>A &lt;b&gt;title&lt;/b&gt;</h1>",
-		`<p class="reader-byline">By Ada and &lt;b&gt;Grace&lt;/b&gt;</p>`,
 		`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
-		`<time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time>`,
+		`<p class="reader-dateline"><span class="reader-byline">By Ada and &lt;b&gt;Grace&lt;/b&gt;</span> <span aria-hidden="true">·</span> <time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time></p>`,
 		`<script src="/static/js/app.js?v=`+jsVersion+`" defer></script>`,
 		`<div class="article-body">`,
 		"<strong>world</strong>",
@@ -125,7 +124,7 @@ func TestArticleHandlerDateOnly(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	body := rr.Body.String()
-	assertBodyContains(t, body, `<time datetime="2026-10-09">9 Oct 2026</time>`)
+	assertBodyContains(t, body, `<p class="reader-dateline"><time datetime="2026-10-09">9 Oct 2026</time></p>`)
 	if strings.Contains(body, "data-local") || strings.Contains(body, "00:00 UTC") {
 		t.Errorf("date-only date is localized or shows a time: %s", body)
 	}
@@ -141,6 +140,10 @@ func TestArticleHandlerSummaryWhenNoContent(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	assertBodyContains(t, rr.Body.String(), "<p>Just a summary</p>")
+	// Neither authors nor a date: no dateline.
+	if body := rr.Body.String(); strings.Contains(body, "reader-dateline") {
+		t.Errorf("shows an empty dateline: %s", body)
+	}
 }
 
 func TestArticleHandlerNoText(t *testing.T) {

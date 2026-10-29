@@ -172,7 +172,6 @@ Planned in #163 (issues #147–#162).
 - **A timeline, not an inbox.** Read state is recorded but only shown as a quiet marker on read rows (tinted card, dimmed text and image).
   No unread counts, badges, "N new" indicators, "mark all read", or manual mark read/unread.
   No unread filter for now.
-- **Hovering a card never looks like reading it** (#421): hover doesn't use the read tint, on unread or read cards, and applies only on devices that hover, since a quiet marker has to be unambiguous.
 - **What counts as read:** opening the article page, or clicking through to the original from a row.
   Scrolling past doesn't; "seen" isn't recorded.
   Reads are per user and article, independent of subscriptions; an article counts as read if any copy with the same `canonical_url` was read.
@@ -459,8 +458,6 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
-- **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (#419): buttons name actions, as "Log out" already did.
-  The `/login` route and the code's identifiers keep their names.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
   It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
   The favicon (`static/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
@@ -472,12 +469,6 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Text colors pass WCAG AA** (4.5:1) on white and on the read-card tint (#414); the lightest grey was 3.2:1 before.
 - **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
   The timeline's tab head keeps a plain divider, since the active tab's underline sits on it.
-- **Every logged-in page has a page head, and detail and edit pages a back link in it** (#423, planned in #425): the article, feed and site pages had none, and on a phone the article page's only way out was the tab bar.
-  Home and custom timelines keep the tab head; debug pages are exempt.
-  The back link is a plain link to a fixed parent page, which `app.js` may turn into going back in history.
-- **Every solo page shows the brand, error and expired-link pages included** (#420), so a reader always knows which site they're on.
-- **Destructive actions look the same on every page, and red marks only actions that lose data** (#422).
-  They stay one click where they were ("Subscriptions", "Stars and tags"); only their look and placement change.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
   It's subset to Latin and weights 600–800 (77 KB, cached for a year).
 - **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.
@@ -490,6 +481,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   One option is enough when it's clearly right, but it's still shown and justified.
   An issue can say a change needs no checkpoint: copy changes, and changes that reuse an existing pattern exactly (#419, #420).
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
+- **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.
+  Until then the issue holds them as the current thinking, and the implementation PR adds them to this file.
 
 ## Mobile
 

@@ -315,12 +315,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Ideas only so far.
 - [ ] **Icons a feed declares.**
   RSS `<image>`, Atom `<icon>` / `<logo>` and JSON Feed `icon` as extra candidates for #304, if many sites end up without an icon.
-- [ ] **Themes, including dark mode (needs planning).**
-  A theme choice (light, dark, follow the system) on the Settings page (#261), applied as a `data-theme` attribute on `<html>` that redefines the color tokens.
-  Stored as a typed column on `users`, not a key-value table ("Accounts" in decisions.md).
-  The avatar tints (`.tone-1` to `.tone-6`) and the icon tile (#305) need dark variants too.
-  So does the `theme-color` meta tag (#394), with a `media` query for the system's dark mode.
-  Reading preferences go here as well: text size, serif or sans, and line width on the article page (deferred from #295).
+- [ ] **Reading preferences (needs planning).**
+  Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as choices on the Settings page (#261) next to the theme (#413).
+  Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).
 - [ ] **Asset build step (needs planning).**
   Bundle and minify the CSS and JavaScript for production, writing content-hashed file names.
   Templates link assets through `asset` (#199), so only `asset` changes: it looks names up in the build's manifest instead of hashing files at startup, and every file under `/static` gets the immutable `Cache-Control`.

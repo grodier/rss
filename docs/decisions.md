@@ -445,8 +445,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
     A failed check keeps the current icon; it's removed only when the site's page loads and none of its icons is usable.
   - Site and feed avatars become rounded squares, icon or letter, since most icons are designed as squares.
     The user's own avatar stays a circle: people are circles, sites squares.
-- **Light theme only for now.** Colors are custom properties on `:root` in `main.css`, so a theme can redefine them in one place.
-  Reading text uses the system font stack; icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
+- **Light theme only for now; the dark theme is #413.** Colors are custom properties on `:root` in `main.css`, so a theme can redefine them in one place.
+  Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
@@ -455,8 +455,18 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The P is outlined in both files, so they don't depend on the font loading.
 - **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
   Green and gold, maroon and an orange box were tried and dropped.
+- **Tomato is the one accent, used sparingly** (#414): the active timeline tab, starred articles (so Star no longer looks like Saved's blue) and the "You were here" marker.
+  It's a deeper shade than the logo's (`--brand-strong`), so the marker's label passes AA as small text.
+- **Text colors pass WCAG AA** (4.5:1) on white and on the read-card tint (#414); the lightest grey was 3.2:1 before.
+- **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
+  The timeline's tab head keeps a plain divider, since the active tab's underline sits on it.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
-  It's subset to Latin and weights 600–800 (77 KB, cached for a year); reading text stays in the system font.
+  It's subset to Latin and weights 600–800 (77 KB, cached for a year).
+- **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.
+  It has optical sizes, so one file is sturdy in a 17 px excerpt and refined in 20 px article text.
+  It was picked over Literata on a warm paper background (drifts from the logo's cool palette) and an all-sans option with Instrument Sans and ink outlines on every card (busier).
+  Self-hosted like Bricolage, subset to Latin and weights 400–700 (93 KB; the italic, 103 KB, loads only on pages that use it).
+  Nav, buttons and forms stay in the system font, so the interface feels native.
 - **When a layout is an open question, the implementer proposes options before finishing** (#309, for #299 and #308): a draft PR with two or three layouts behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 

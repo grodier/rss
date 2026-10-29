@@ -88,6 +88,25 @@
     font-display: swap;
   }
 
+  /* Newsreader (SIL Open Font License, fonts/newsreader-OFL.txt), subset to
+     Latin, weights 400-700, for what people read: article text and card
+     excerpts. The italic loads only on pages that use it. */
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader-italic.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: italic;
+    font-display: swap;
+  }
+
   /* Colors are tokens so a theme can redefine them in one place.
      The palette is the logo's: ink, sky and tomato. */
   :root {
@@ -95,13 +114,15 @@
     --bg: #fff;
     --bg-glass: rgb(255 255 255 / 0.82);
     --surface: #eff4fa;
-    --border: #e3e9f1;
-    --border-strong: #ccd6e2;
+    --border: #dfe6ef;
+    --border-strong: #c3cfdd;
     --text: #14213a;
     --text-2: #56627a;
-    --text-3: #8490a4;
+    --text-3: #627089;
     --accent: #1f5fa8;
     --brand: #ff6a3d;
+    --brand-strong: #c8431a;
+    --selection: #cfe6fa;
     --danger: #c0281e;
     --embed-bg: #14213a;
     --on-embed: #fff;
@@ -129,6 +150,7 @@
     --blur: saturate(180%) blur(14px);
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: "Bricolage Grotesque", var(--font);
+    --font-reading: "Newsreader", Charter, Georgia, serif;
   }
 
   body {
@@ -148,6 +170,11 @@
 
   a:hover {
     text-decoration-thickness: 2px;
+  }
+
+  ::selection {
+    background: var(--selection);
+    color: var(--text);
   }
 
   :focus-visible {
@@ -342,6 +369,8 @@
     outline-offset: 2px;
   }
 
+  /* Page heads end in the logo's nameplate rule: a thick line over a thin
+     one. */
   .page-head {
     position: sticky;
     inset-block-start: 0;
@@ -352,7 +381,8 @@
     gap: 1rem;
     min-block-size: 3.5rem;
     padding: 0.625rem 1rem;
-    border-block-end: 1px solid var(--border);
+    border-block-end: 2px solid var(--text);
+    box-shadow: 0 2px 0 var(--bg), 0 3px 0 var(--text);
     background: var(--bg-glass);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
@@ -874,7 +904,7 @@
   }
 
   .article-card:hover {
-    border-color: var(--border-strong);
+    border-color: color-mix(in srgb, var(--text) 30%, transparent);
     background: var(--surface);
   }
 
@@ -897,10 +927,10 @@
 
   .article-title {
     font-family: var(--font-display);
-    font-size: 1.0625rem;
-    font-weight: 650;
+    font-size: 1.125rem;
+    font-weight: 700;
     line-height: 1.3;
-    letter-spacing: -0.005em;
+    letter-spacing: -0.01em;
   }
 
   .article-title a {
@@ -919,11 +949,15 @@
     outline: none;
   }
 
+  /* A grotesque headline over a serif excerpt, like a front page. */
   .article-excerpt {
     display: -webkit-box;
     margin-block-start: 0.3125rem;
     overflow: hidden;
     color: var(--text-2);
+    font-family: var(--font-reading);
+    font-size: 1.0625rem;
+    line-height: 1.45;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -944,7 +978,7 @@
     text-decoration: underline;
   }
 
-  /* "You were here": a quiet labelled rule between two rows, where the
+  /* "You were here": a labelled rule between two rows, where the
      articles that arrived since the reader's last visit end. */
   .timeline-divider {
     display: flex;
@@ -952,8 +986,9 @@
     gap: 0.75rem;
     padding: 0.5rem 1rem;
     border-block-end: 1px solid var(--border);
-    color: var(--text-3);
+    color: var(--brand-strong);
     font-size: 0.8125rem;
+    font-weight: 600;
     line-height: 1.3;
   }
 
@@ -961,7 +996,7 @@
   .timeline-divider::after {
     content: "";
     flex: 1;
-    border-block-start: 1px solid var(--border-strong);
+    border-block-start: 1px solid color-mix(in srgb, var(--brand-strong) 45%, transparent);
   }
 
   /* Read rows: a tinted card, quieter text and image. Still a timeline, not an inbox. */
@@ -1061,9 +1096,13 @@
     fill: currentColor;
   }
 
-  .save-button[aria-pressed="true"],
-  .star-button[aria-pressed="true"] {
+  .save-button[aria-pressed="true"] {
     color: var(--accent);
+  }
+
+  /* Starred is "this is good": the logo's sunrise, apart from Saved's blue. */
+  .star-button[aria-pressed="true"] {
+    color: var(--brand-strong);
   }
 
   .save-button[aria-pressed="true"] .icon-bookmark,
@@ -1149,7 +1188,8 @@
 
   .profile-desc {
     margin-block-start: 0.75rem;
-    font-size: 1rem;
+    font-family: var(--font-reading);
+    font-size: 1.125rem;
   }
 
   .facts {
@@ -1629,8 +1669,12 @@
   /* The tabs fill the page head in place of its heading, and scroll
      sideways when they don't fit. The scrollbar stays (thin) where a mouse
      may need it, and is hidden on touch screens, which swipe. */
+  /* The active tab's underline sits on the head's edge, so tabs keep a
+     plain divider instead of the nameplate rule. */
   .page-head.tabs-head {
     padding-block: 0;
+    border-block-end: 1px solid var(--border);
+    box-shadow: none;
   }
 
   .timeline-tabs {
@@ -1669,7 +1713,7 @@
   }
 
   .timeline-tabs a[aria-current="page"] {
-    border-color: var(--accent);
+    border-color: var(--brand-strong);
     color: var(--text);
   }
 
@@ -1985,10 +2029,10 @@
   .reader h1 {
     font-family: var(--font-display);
     margin-block-start: 0.875rem;
-    font-size: 1.875rem;
+    font-size: clamp(1.875rem, 1.5rem + 1.2vw, 2.25rem);
     font-weight: 800;
-    line-height: 1.15;
-    letter-spacing: -0.025em;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
   }
 
   .reader > .empty {
@@ -2005,25 +2049,51 @@
 
   .article-body {
     margin-block-start: 1.5rem;
-    font-size: 1.0625rem;
-    line-height: 1.7;
+    font-family: var(--font-reading);
+    font-size: 1.25rem;
+    line-height: 1.6;
   }
 
   .article-body > * + * {
     margin-block-start: 1.1em;
   }
 
-  .article-body h2,
+  .article-body :is(h2, h3, h4, h5, h6) {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .article-body h2 {
+    margin-block-start: 1.75em;
+    font-size: 1.375rem;
+  }
+
   .article-body h3 {
     margin-block-start: 1.75em;
-    font-size: 1.3rem;
+    font-size: 1.1875rem;
   }
 
   .article-body h4,
   .article-body h5,
   .article-body h6 {
     margin-block: 1.5em 0;
-    font-size: 1.125rem;
+    font-size: 1.0625rem;
+  }
+
+  .article-body :is(h2, h3, h4, h5, h6) + * {
+    margin-block-start: 0.6em;
+  }
+
+  /* Softer underlines than other links, which firm up on hover. */
+  .article-body a {
+    text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    text-underline-offset: 0.2em;
+  }
+
+  .article-body a:hover {
+    text-decoration-color: currentColor;
   }
 
   .article-body img {
@@ -2034,15 +2104,17 @@
 
   .article-body figcaption {
     margin-block-start: 0.5rem;
-    color: var(--text-3);
+    color: var(--text-2);
     font-size: 0.875rem;
     text-align: center;
   }
 
   .article-body blockquote {
     padding-inline-start: 1rem;
-    border-inline-start: 3px solid var(--border-strong);
-    color: var(--text-2);
+    border-inline-start: 3px solid var(--brand-strong);
+    font-size: 1.1em;
+    font-style: italic;
+    line-height: 1.5;
   }
 
   .article-body pre {
@@ -2072,10 +2144,20 @@
     margin-block: 0;
   }
 
+  .article-body li + li {
+    margin-block-start: 0.35em;
+  }
+
+  .article-body ::marker {
+    color: var(--text-3);
+  }
+
+  /* A short centered rule, like a section break in print. */
   .article-body hr {
-    margin-block: 2em;
+    inline-size: 4rem;
+    margin: 2em auto;
     border: 0;
-    border-block-start: 1px solid var(--border);
+    border-block-start: 2px solid var(--text);
   }
 
   /* Wide tables scroll inside the column instead of widening the page. */
@@ -2084,6 +2166,7 @@
     max-inline-size: 100%;
     overflow-x: auto;
     border-collapse: collapse;
+    font-family: var(--font);
     font-size: 0.9375rem;
     line-height: 1.5;
   }
@@ -2390,6 +2473,16 @@
     .feed-row button {
       padding: 0.3125rem 0.75rem;
       font-size: 0.8125rem;
+    }
+
+    /* Phone lines are short, so slightly smaller text, hyphenated to keep
+       the right edge even. */
+    .article-body {
+      font-size: 1.1875rem;
+    }
+
+    .article-body p {
+      hyphens: auto;
     }
   }
 

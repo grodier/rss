@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ type Item struct {
 	Title     string    // plain text, trimmed and collapsed; may be ""
 	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
 	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
+	Authors   []string  // names of the item's authors (see itemAuthors); nil if none
 	Published time.Time // published date, else updated date, in UTC; zero if neither parses
 
 	PublishedDateOnly bool // Published came from a date with no time of day
@@ -175,6 +177,7 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 			ImageURL: resolveHTTP(feedURL, itemImage(it)),
 
 			MediaType: itemMediaType(it),
+			Authors:   itemAuthors(it, format),
 		}
 		for _, l := range it.Links {
 			if item.URL != "" {
@@ -254,6 +257,68 @@ func firstThumbnail(thumbs []ext.Extension) string {
 		}
 	}
 	return ""
+}
+
+// MaxAuthors is the most author names kept for an item.
+const MaxAuthors = 10
+
+// itemAuthors returns the names of an item's authors, in document order:
+// for RSS, every dc:creator (gofeed keeps only the first), else gofeed's
+// item author (<author>, dc:author, dc:creator, itunes:author, then an
+// atom:author); for Atom and JSON Feed, every author. Names are trimmed and
+// collapsed, an email address is reduced to the name it carries ("jo@x.com
+// (Jo)", "Jo <jo@x.com>") or dropped, "Unknown" (Blogger's placeholder) is
+// dropped, duplicates are dropped ignoring case, and at most MaxAuthors are
+// kept. nil if none.
+func itemAuthors(it *gofeed.Item, format string) []string {
+	var raw []string
+	if (format == "rss" || format == "rdf") && it.DublinCoreExt != nil {
+		raw = it.DublinCoreExt.Creator
+	}
+	if len(raw) == 0 {
+		for _, p := range it.Authors {
+			if p != nil {
+				raw = append(raw, p.Name)
+			}
+		}
+	}
+	var names []string
+	for _, r := range raw {
+		name := personName(r)
+		if name == "" || strings.EqualFold(name, "unknown") ||
+			slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, name) }) {
+			continue
+		}
+		names = append(names, name)
+		if len(names) == MaxAuthors {
+			break
+		}
+	}
+	return names
+}
+
+var (
+	// emailNameRX matches "jo@example.com (Jo)", RSS <author>'s usual form.
+	emailNameRX = regexp.MustCompile(`^\S+@\S+\s*\((.*)\)$`)
+	// nameEmailRX matches "Jo <jo@example.com>".
+	nameEmailRX = regexp.MustCompile(`^(.*?)\s*<\S+@\S+>$`)
+)
+
+// personName returns the name in s, a person as a feed gives one: s
+// trimmed and collapsed, the name from "email (name)" or "name <email>",
+// or "" for a bare email address.
+func personName(s string) string {
+	s = collapseSpace(s)
+	if m := emailNameRX.FindStringSubmatch(s); m != nil {
+		return collapseSpace(m[1])
+	}
+	if m := nameEmailRX.FindStringSubmatch(s); m != nil {
+		return collapseSpace(m[1])
+	}
+	if !strings.Contains(s, " ") && strings.Contains(s, "@") {
+		return ""
+	}
+	return s
 }
 
 // itemMediaType returns the media type of an item's audio or video, from the

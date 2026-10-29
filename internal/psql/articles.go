@@ -16,7 +16,7 @@ import (
 
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
-	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "title", "summary", "content",
+	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "authors", "title", "summary", "content",
 	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
 }
 
@@ -53,7 +53,7 @@ func articleListColumns(prefix string) string {
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
 	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
@@ -519,13 +519,14 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 	// An existing published_at is kept: some feeds bump the date on every edit.
 	// published_date_only follows the kept published_at.
 	// timeline_at is deliberately not updated.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, title, summary, content, excerpt, published_at, published_date_only, timeline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, authors, title, summary, content, excerpt, published_at, published_date_only, timeline_at)
+		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
 			canonical_url = EXCLUDED.canonical_url,
 			image_url = EXCLUDED.image_url,
 			media_type = EXCLUDED.media_type,
+			authors = EXCLUDED.authors,
 			title = EXCLUDED.title,
 			summary = EXCLUDED.summary,
 			content = EXCLUDED.content,
@@ -534,8 +535,8 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			published_date_only = CASE WHEN articles.published_at IS NULL
 				THEN EXCLUDED.published_date_only ELSE articles.published_date_only END,
 			updated_at = now()
-		WHERE (articles.url, articles.image_url, articles.media_type, articles.title, articles.summary, articles.content, articles.excerpt)
-				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.image_url, EXCLUDED.media_type, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
+		WHERE (articles.url, articles.image_url, articles.media_type, articles.authors, articles.title, articles.summary, articles.content, articles.excerpt)
+				IS DISTINCT FROM (EXCLUDED.url, EXCLUDED.image_url, EXCLUDED.media_type, EXCLUDED.authors, EXCLUDED.title, EXCLUDED.summary, EXCLUDED.content, EXCLUDED.excerpt)
 			OR (articles.published_at IS NULL AND EXCLUDED.published_at IS NOT NULL)
 		RETURNING id, (xmax = 0) AS inserted`
 	enrichStmt := `INSERT INTO enrich_jobs (article_id, priority) VALUES ($1, $2) ON CONFLICT DO NOTHING`
@@ -549,7 +550,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			id       string
 			inserted bool
 		)
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&id, &inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, pq.Array(a.Authors), a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&id, &inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.

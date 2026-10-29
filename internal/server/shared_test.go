@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func sharedItems() []rss.SharedArticle {
 		{
 			Article: rss.Article{
 				ID: sharedArticleID, URL: "https://one.example/posts/1", CanonicalURL: "https://one.example/posts/1",
-				Title: "First <post>", Excerpt: "An excerpt & more", PublishedAt: published,
+				Title: "First <post>", Excerpt: "An excerpt & more", PublishedAt: published, Authors: []string{"Ada", "Grace <Hopper>"},
 				TimelineAt: time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC),
 			},
 			Feed:      rss.Feed{Url: "https://one.example/feed.xml", SiteUrl: "https://one.example/", Title: "Feed One"},
@@ -181,6 +182,11 @@ func TestSharedFeed(t *testing.T) {
 		if !first.Published.Equal(time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC)) {
 			t.Errorf("first Published = %v", first.Published)
 		}
+		// The second has no authors of its own; the feed's (the timeline's
+		// name) isn't taken for them.
+		if !slices.Equal(first.Authors, []string{"Ada", "Grace <Hopper>"}) || len(second.Authors) != 0 {
+			t.Errorf("authors = %q, %q; want %q, none", first.Authors, second.Authors, []string{"Ada", "Grace <Hopper>"})
+		}
 		if second.ID != "urn:uuid:"+sharedArticle2ID || second.URL != "https://two.example/p" || second.Title != "Second" {
 			t.Errorf("second item = %+v", second)
 		}
@@ -221,6 +227,9 @@ func TestSharedFeed(t *testing.T) {
 		}
 		if first.Summary == nil || *first.Summary != plainText("An excerpt & more") {
 			t.Errorf("first summary = %+v", first.Summary)
+		}
+		if want := []atomPerson{{Name: "Ada"}, {Name: "Grace <Hopper>"}}; !slices.Equal(first.Authors, want) || len(second.Authors) != 0 {
+			t.Errorf("authors = %+v, %+v; want %+v, none", first.Authors, second.Authors, want)
 		}
 		if first.Title != plainText("First <post>") || len(first.Links) != 1 || first.Links[0] != (atomLink{Rel: "alternate", Href: "https://one.example/posts/1"}) {
 			t.Errorf("first = %+v", first)

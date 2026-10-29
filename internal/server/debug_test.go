@@ -523,7 +523,7 @@ func TestRequireDebug(t *testing.T) {
 func TestCompareArticle(t *testing.T) {
 	base := rss.Article{
 		URL: "https://example.com/a", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg",
-		MediaType: "audio/mpeg", Title: "A", Summary: "<p>s</p>", Content: "<p>c</p>", Excerpt: "s",
+		MediaType: "audio/mpeg", Authors: []string{"Ada"}, Title: "A", Summary: "<p>s</p>", Content: "<p>c</p>", Excerpt: "s",
 		PublishedAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
 	}
 	tests := []struct {
@@ -536,6 +536,7 @@ func TestCompareArticle(t *testing.T) {
 		{"canonical_url", func(a *rss.Article) { a.CanonicalURL = "" }, []string{"canonical_url"}},
 		{"image_url", func(a *rss.Article) { a.ImageURL = "" }, []string{"image_url"}},
 		{"media_type", func(a *rss.Article) { a.MediaType = "video/mp4" }, []string{"media_type"}},
+		{"authors", func(a *rss.Article) { a.Authors = []string{"Ada", "Grace"} }, []string{"authors"}},
 		{"title", func(a *rss.Article) { a.Title = "B" }, []string{"title"}},
 		{"summary", func(a *rss.Article) { a.Summary = "<p>longer</p>" }, []string{"summary (13 → 8 bytes)"}},
 		{"content", func(a *rss.Article) { a.Content = "" }, []string{"content (0 → 8 bytes)"}},
@@ -554,6 +555,13 @@ func TestCompareArticle(t *testing.T) {
 			}
 		})
 	}
+
+	// The database returns no authors as an empty list, the parser as nil.
+	fetched, stored := base, base
+	fetched.Authors, stored.Authors = nil, []string{}
+	if got := compareArticle(fetched, stored); got != nil {
+		t.Errorf("compareArticle with nil and empty authors = %q, want none", got)
+	}
 }
 
 // inspectRSS is an RSS feed for the feed inspector tests: items "n" (new),
@@ -564,7 +572,7 @@ const inspectRSS = `<?xml version="1.0"?>
   <channel>
     <title>Inspected</title>
     <link>https://example.com/</link>
-    <item><guid>n</guid><title>New post</title><dc:creator>Ada</dc:creator></item>
+    <item><guid>n</guid><title>New post</title><dc:subject>Notes</dc:subject></item>
     <item><guid>u</guid><title>Same post</title><description>Same</description></item>
     <item><guid>d</guid><title>Fetched title</title></item>
     <item><guid>u</guid><title>Same again</title></item>
@@ -682,7 +690,7 @@ func TestFeedInspectHandler(t *testing.T) {
 			`<dt>Etag</dt><dd>&#34;v2&#34;</dd>`,
 			"<th scope=\"row\">title</th><td>Inspected</td><td>Stored feed title</td>",
 			"Item fields",
-			`<tr class="debug-ignored"><th scope="row">dc:creator</th><td>1/5</td><td>ignored</td><td>Ada</td></tr>`,
+			`<tr class="debug-ignored"><th scope="row">dc:subject</th><td>1/5</td><td>ignored</td><td>Notes</td></tr>`,
 			`<th scope="row">guid</th><td>5/5</td><td>used</td>`,
 			"<summary>new · New post</summary>",
 			"<summary>unchanged · Same post</summary>",

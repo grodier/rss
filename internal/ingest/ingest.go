@@ -54,6 +54,7 @@ func Articles(items []feedparse.Item) []rss.Article {
 			CanonicalURL: CanonicalURL(it.URL),
 			ImageURL:     it.ImageURL,
 			MediaType:    it.MediaType,
+			Authors:      it.Authors,
 			Title:        it.Title,
 			Summary:      it.Summary,
 			Content:      it.Content,

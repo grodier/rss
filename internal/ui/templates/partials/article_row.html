@@ -11,7 +11,12 @@
       <div class="article-text">
         <h3 class="article-title"><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
         {{with .Article.DisplayExcerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
-        {{if and .Article.URL .Article.URLHost}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end}}
+        {{$source := and .Article.URL .Article.URLHost}}
+        {{if or .Article.Authors $source}}<p class="article-source-line">
+          {{- with .Article.ShortByline}}<span class="article-author"{{if gt (len $.Article.Authors) 2}} title="{{$.Article.Byline}}"{{end}}>{{.}}</span>{{end}}
+          {{- if and .Article.Authors $source}}<span aria-hidden="true">·</span>{{end}}
+          {{- if $source}}<a class="article-source" href="{{.Article.URL}}" ping="/articles/{{.Article.ID}}/read" target="_blank" rel="noopener noreferrer">{{.Article.URLHost}} ↗</a>{{end -}}
+        </p>{{end}}
       </div>
     </div>
     <div class="article-foot">

@@ -45,7 +45,7 @@ func TestInspectRSS(t *testing.T) {
 	checkField(t, insp.ItemFields, "title", 3, true)
 	checkField(t, insp.ItemFields, "guid", 2, true)
 	checkField(t, insp.ItemFields, "guid@isPermaLink", 1, false)
-	checkField(t, insp.ItemFields, "dc:creator", 1, false)
+	checkField(t, insp.ItemFields, "dc:creator", 1, true)
 	checkField(t, insp.ItemFields, "category", 2, false)
 	checkField(t, insp.ItemFields, "enclosure@type", 1, true)
 	checkField(t, insp.ItemFields, "enclosure@length", 1, false)
@@ -148,7 +148,7 @@ func TestInspectJSONFeed(t *testing.T) {
 	checkField(t, insp.ItemFields, "id", 2, true)
 	checkField(t, insp.ItemFields, "attachments[].url", 1, true)
 	checkField(t, insp.ItemFields, "attachments[].mime_type", 1, true)
-	checkField(t, insp.ItemFields, "authors[].name", 1, false)
+	checkField(t, insp.ItemFields, "authors[].name", 1, true)
 	checkField(t, insp.Channel, "title", 1, true)
 	checkField(t, insp.Channel, "feed_url", 1, false)
 	for _, f := range insp.Channel {

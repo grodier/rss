@@ -117,6 +117,14 @@ Planned in #126, with issues #128–#133.
   (#126, #133)
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
+- **Articles keep their authors' names, never their email addresses** (`articles.authors`).
+  RSS's `<author>` is an email address by spec, often a placeholder (`noreply@blogger.com (Unknown)`), so only the name in it is kept, and "Unknown" is dropped.
+  For RSS every `dc:creator` is read, since that's how multi-author posts list their authors; otherwise the first source with an author wins, as in gofeed.
+  An item without authors doesn't inherit the feed's: on a single-author blog that only repeats the feed's name on every row.
+  Rows name them in the card, before the link to the original ("Jane Doe · example.com ↗"), shortened past two to "Jane Doe and 4 others", so no row grows taller or pushes its date to a second line on phones.
+  The article page names them all in a dateline under the title ("By … · date"), and its line above the title keeps only the feed, like a newspaper.
+  Picked from layouts compared at 0, 1, 2 and 5 authors over authors in the meta line, which wrapped on phones, and a byline under a row's title, which made cards with authors taller.
+  At most 10 per article.
 
 ## Subscriptions
 
@@ -383,7 +391,8 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   Home can't be shared.
   Needs a confirmed email ("Accounts").
   (#381)
-- **Each entry is the title, a link to the original, the dates, the excerpt and the source feed.** Never the content: republishing publishers' text is the copyright question under "Enrichment".
+- **Each entry is the title, a link to the original, the dates, the excerpt, the article's authors and the source feed.** Never the content: republishing publishers' text is the copyright question under "Enrichment".
+  The authors were added after #381, with the privacy policy's list of what sharing publishes; an entry without them falls back to the feed's author (the timeline's name), as Atom specifies.
   Articles without a link are left out.
   The feed has the newest 50.
   (#381)

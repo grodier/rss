@@ -138,13 +138,14 @@ type (
 	}
 
 	atomEntry struct {
-		ID        string     `xml:"id"`
-		Title     atomText   `xml:"title"`
-		Links     []atomLink `xml:"link"`
-		Published string     `xml:"published,omitempty"`
-		Updated   string     `xml:"updated"`
-		Summary   *atomText  `xml:"summary,omitempty"`
-		Source    atomSource `xml:"source"`
+		ID        string       `xml:"id"`
+		Title     atomText     `xml:"title"`
+		Links     []atomLink   `xml:"link"`
+		Published string       `xml:"published,omitempty"`
+		Updated   string       `xml:"updated"`
+		Authors   []atomPerson `xml:"author"`
+		Summary   *atomText    `xml:"summary,omitempty"`
+		Source    atomSource   `xml:"source"`
 	}
 
 	atomSource struct {
@@ -182,7 +183,8 @@ func atomTime(t time.Time) string {
 
 // sharedAtomFeed returns the Atom feed of shared timeline t with items, and
 // its updated time: the latest entry's, else the timeline's UpdatedAt. The
-// author is the timeline's name, never its owner: Atom requires one.
+// author is the timeline's name, never its owner: Atom requires one. An
+// entry names the article's own authors, which take precedence.
 func sharedAtomFeed(t rss.Timeline, items []rss.SharedArticle, pageURL, feedURL string) (atomFeed, time.Time) {
 	feed := atomFeed{
 		ID:    pageURL,
@@ -243,6 +245,9 @@ func sharedAtomEntry(item rss.SharedArticle, starredOnly bool) (atomEntry, time.
 	}
 	if !a.PublishedAt.IsZero() {
 		entry.Published = atomTime(a.PublishedAt)
+	}
+	for _, name := range a.Authors {
+		entry.Authors = append(entry.Authors, atomPerson{Name: name})
 	}
 	if excerpt := a.DisplayExcerpt(); excerpt != "" {
 		sum := plainText(excerpt)

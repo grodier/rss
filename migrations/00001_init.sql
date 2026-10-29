@@ -97,6 +97,7 @@ CREATE TABLE articles (
     page_title TEXT NOT NULL DEFAULT '',       -- og:title, else <title>, of the article's web page; plain text
     page_description TEXT NOT NULL DEFAULT '', -- <meta name="description">, else og:description; plain text
     media_type TEXT NOT NULL DEFAULT '',       -- MIME type of the item's first audio or video enclosure; "" if none
+    authors TEXT[] NOT NULL DEFAULT '{}',      -- names of the item's authors, plain text; see feedparse.Item.Authors
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     published_date_only BOOLEAN NOT NULL DEFAULT false, -- the feed's date had no time of day

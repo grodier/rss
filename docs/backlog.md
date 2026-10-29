@@ -335,7 +335,7 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
   Every page on a phone, in the browser and installed (#394): tap targets, the bottom tab bar over long pages and forms, the keyboard covering inputs, wide tables and code, and anything under the status bar or the home indicator.
   By hand, like the first error-state pass (#392), listing fixes as issues; best done right after #394 ships.
 - [ ] **Install hint.**
-  If testers don't find the browser's install, a short "Add rss to your home screen" note in Settings with the steps for iOS and Android.
+  If testers don't find the browser's install, a short "Add Paper Round to your home screen" note in Settings with the steps for iOS and Android.
   Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).
 - [ ] **Offline reading.**
   A service worker that keeps the recent timeline pages and the articles opened from them, so the installed app opens without a connection.

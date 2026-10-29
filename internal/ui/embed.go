@@ -10,3 +10,6 @@ var Static embed.FS
 
 //go:embed emails/*.tmpl
 var Emails embed.FS
+
+//go:embed manifest.webmanifest
+var Manifest []byte

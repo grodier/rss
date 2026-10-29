@@ -376,6 +376,23 @@ Icons are decoration: if `IconHashes` fails, the error is logged and the page sh
 
 **Why:** "Design" in decisions.md.
 
+## Installing the app
+
+**Flow.** Every page includes `app-head`, which links the favicons, the web app manifest and a `theme-color`.
+That is all the browser needs to offer installing: Safari's Share → Add to Home Screen on iOS, Chrome's Install app on Android and desktop.
+The installed app opens `/` full screen (`display: standalone`): the timeline when logged in, the landing page when not.
+There is no service worker, install button or banner, and no pull-to-refresh: tapping the current tab loads its page again.
+
+**Start at:**
+
+1. `internal/server/manifest.go` (`manifestHandler`) and `internal/ui/manifest.webmanifest`.
+2. `internal/ui/templates/partials/head.html` (`app-head`).
+3. `internal/ui/static/img/app-icon.svg` (the source of the install icons).
+
+**Tests:** `internal/server/manifest_test.go`.
+
+**Why:** "Mobile" in decisions.md.
+
 ## Article enrichment
 
 **Flow.** Many feed items arrive without an image, a title or any text; enrichment fetches their web page in the background and stores what its meta tags say.

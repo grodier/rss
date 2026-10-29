@@ -115,7 +115,7 @@ Third-party modules and what they're for (CLAUDE.md asks for a justification bef
 6. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
 Then routes are split into groups.
-`/static/*`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
+`/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
 All other routes load the session (`sessionManager.LoadAndSave`) and `authenticate` (see "Accounts and sessions" in features.md).
 Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set `Cache-Control: no-store`.
 Routes under `/debug/` are a group inside it with `requireDebug`, which answers 404 unless debug mode is on (see "Debug mode" in features.md).
@@ -126,6 +126,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, environment and build version, for health checks |
 | `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year |
+| `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
@@ -328,6 +329,10 @@ Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`.
   The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
   Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted headline font (`fonts/`, with its licence); every page links the favicons through `partials/head.html`.
+  The install icons (`img/icon-192.png`, `img/icon-512.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
+- **The web app manifest** (`ui/manifest.webmanifest`) is embedded and served by its own handler, not from `/static`: Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would sniff it as `text/plain`.
+  Pages are standalone, so each includes `app-head` (`partials/head.html`: icons, manifest link, `theme-color`); a test fails for a page without it.
+  The manifest and the `theme-color` meta repeat the light theme's `--bg`, as they can't read CSS custom properties.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
   Log out is a button on the Settings page.

@@ -117,6 +117,11 @@ Planned in #126, with issues #128–#133.
   (#126, #133)
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
+- **Articles keep their authors' names, never their email addresses** (`articles.authors`).
+  RSS's `<author>` is an email address by spec, often a placeholder (`noreply@blogger.com (Unknown)`), so only the name in it is kept, and "Unknown" is dropped.
+  For RSS every `dc:creator` is read, since that's how multi-author posts list their authors; otherwise the first source with an author wins, as in gofeed.
+  An item without authors doesn't inherit the feed's: on a single-author blog that only repeats the feed's name on every row.
+  At most 10 per article.
 
 ## Subscriptions
 
@@ -189,7 +194,7 @@ Planned in #163 (issues #147–#162).
 - **Word filters will use a full-text index, not trigrams** (#388).
   On #388's seed a `pg_trgm` index was 127 MB (a quarter of `articles`) and didn't help common words, while a `simple` full-text index was 26 MB and took a rare-word timeline from ~0.9 s to ~50 ms.
   The exact word match stays as the final check, so results don't change.
-- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
+- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the article's authors and the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
   The whole card links to the in-app article page.
   Feed pages leave out the avatar and name.
   Untitled articles use the start of the excerpt.
@@ -383,7 +388,8 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   Home can't be shared.
   Needs a confirmed email ("Accounts").
   (#381)
-- **Each entry is the title, a link to the original, the dates, the excerpt and the source feed.** Never the content: republishing publishers' text is the copyright question under "Enrichment".
+- **Each entry is the title, a link to the original, the dates, the excerpt, the article's authors and the source feed.** Never the content: republishing publishers' text is the copyright question under "Enrichment".
+  The authors were added after #381, with the privacy policy's list of what sharing publishes; an entry without them falls back to the feed's author (the timeline's name), as Atom specifies.
   Articles without a link are left out.
   The feed has the newest 50.
   (#381)

@@ -79,6 +79,7 @@ func TestArticleHandler(t *testing.T) {
 		URL:         "https://example.com/posts/a",
 		Content:     `<p>Hello <strong>world</strong></p><script>CONTENT-MARKER</script><img src="/pic.png">`,
 		Summary:     "SUMMARY-MARKER",
+		Authors:     []string{"Ada", "<b>Grace</b>"},
 		PublishedAt: time.Date(2024, time.March, 2, 10, 5, 0, 0, time.UTC),
 	}
 	s := articleServer(t, article, nil, nil, nil)
@@ -100,6 +101,7 @@ func TestArticleHandler(t *testing.T) {
 	assertBodyContains(t, body,
 		"<title>Paper Round - A &lt;b&gt;title&lt;/b&gt;</title>",
 		"<h1>A &lt;b&gt;title&lt;/b&gt;</h1>",
+		`<p class="reader-byline">By Ada and &lt;b&gt;Grace&lt;/b&gt;</p>`,
 		`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
 		`<time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time>`,
 		`<script src="/static/js/app.js?v=`+jsVersion+`" defer></script>`,
@@ -108,7 +110,7 @@ func TestArticleHandler(t *testing.T) {
 		`src="https://example.com/pic.png"`,
 		`href="https://example.com/posts/a" target="_blank" rel="noopener noreferrer" title="Read on Example Site">Read on <span class="btn-label">Example Site</span> ↗`,
 	)
-	for _, bad := range []string{"<script>", "CONTENT-MARKER", "SUMMARY-MARKER", "<b>title</b>"} {
+	for _, bad := range []string{"<script>", "CONTENT-MARKER", "SUMMARY-MARKER", "<b>title</b>", "<b>Grace</b>"} {
 		if strings.Contains(body, bad) {
 			t.Errorf("body contains %q: %s", bad, body)
 		}
@@ -126,6 +128,9 @@ func TestArticleHandlerDateOnly(t *testing.T) {
 	assertBodyContains(t, body, `<time datetime="2026-10-09">9 Oct 2026</time>`)
 	if strings.Contains(body, "data-local") || strings.Contains(body, "00:00 UTC") {
 		t.Errorf("date-only date is localized or shows a time: %s", body)
+	}
+	if strings.Contains(body, "reader-byline") {
+		t.Errorf("shows a byline for an article without authors: %s", body)
 	}
 }
 

@@ -131,6 +131,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 					URL:         "https://example.com/a",
 					PublishedAt: time.Date(2024, time.March, 2, 10, 0, 0, 0, time.UTC),
 					Excerpt:     "First excerpt",
+					Authors:     []string{"Ada", "Grace"},
 					Summary:     "<script>SUMMARY-MARKER</script>",
 					Content:     "<script>SUMMARY-MARKER</script>",
 				},
@@ -158,6 +159,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 		`<a href="/articles/art-3">Microblog post start</a>`,
 		`<a href="/articles/art-4">No link title</a>`,
 		`<p class="article-excerpt">First excerpt</p>`,
+		`<span class="article-author">Ada and Grace</span>`,
 		`<time data-local datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
 		`<script src="/static/js/app.js?v=` + jsVersion + `" defer></script>`,
 	} {

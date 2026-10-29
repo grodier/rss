@@ -195,6 +195,9 @@ Each with when it pays off:
 - [ ] **Enrich older articles (low priority).** #306 only enriches a feed's 20 newest articles on its first save, then new arrivals.
   A second, lowest-priority queue could work back through older articles that are missing an image, title or excerpt, when nothing else is waiting.
   Worth it once something reads the old archive: searching all articles, related articles, or saved articles from far back that look bare.
+- [ ] **Authors from the article's web page.**
+  Feeds that name no author could get one from enrichment (`article:author`, `<meta name="author">`, JSON-LD), stored apart from the feed's authors like the other page values.
+  Only worth it if many feeds turn out to name none: `SELECT count(*) FILTER (WHERE authors = '{}') * 100 / count(*) FROM articles;`.
 - [ ] **Load full article (on demand).**
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.

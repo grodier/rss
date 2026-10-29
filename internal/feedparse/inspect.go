@@ -84,13 +84,15 @@ var mediaItemFields = []string{
 // directly or through gofeed's DefaultRSSTranslator, including the
 // elements the translator falls back to (title: dc:title; description:
 // dc:description, itunes:summary, atom:summary; content: atom:content;
-// published: dc:date, atom:published; updated: dc:date, atom:updated).
+// published: dc:date, atom:published; updated: dc:date, atom:updated;
+// authors: see itemAuthors).
 var rssItemFields = append([]string{
 	"guid", "link",
 	"title", "dc:title",
 	"description", "dc:description", "itunes:summary", "atom:summary",
 	"content:encoded", "atom:content",
 	"pubDate", "dc:date", "atom:published", "atom:updated",
+	"dc:creator", "author", "dc:author", "itunes:author", "atom:author/atom:name",
 	"enclosure@url", "enclosure@type",
 	"media:content@url", // a media:content image is gofeed's item image
 	"itunes:image@href",
@@ -138,11 +140,13 @@ var (
 			"summary", "summary@type",
 			"content", "content@type",
 			"published", "updated",
+			"author/name",
 		}, mediaItemFields...)...),
 		"json": pathSet(
 			"id", "url", "external_url", "title", "summary",
 			"content_html", "content_text",
 			"date_published", "date_modified",
+			"authors[].name", "author.name", // JSON Feed 1.0 has one author
 			"image", "banner_image",
 			"attachments[].url", "attachments[].mime_type",
 		),

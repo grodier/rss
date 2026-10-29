@@ -48,6 +48,23 @@ func TestArticleDisplayExcerpt(t *testing.T) {
 	}
 }
 
+func TestArticleByline(t *testing.T) {
+	tests := []struct {
+		authors []string
+		want    string
+	}{
+		{nil, ""},
+		{[]string{"A"}, "A"},
+		{[]string{"A", "B"}, "A and B"},
+		{[]string{"A", "B", "C"}, "A, B and C"},
+	}
+	for _, tt := range tests {
+		if got := (Article{Authors: tt.authors}).Byline(); got != tt.want {
+			t.Errorf("Byline of %q = %q, want %q", tt.authors, got, tt.want)
+		}
+	}
+}
+
 func TestArticleCardImageURL(t *testing.T) {
 	tests := []struct {
 		name string

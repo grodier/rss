@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -93,6 +94,19 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		want := `aria-hidden="true">Z</span><span>Settings</span>`
 		if body := rr.Body.String(); !strings.Contains(body, want) {
 			t.Errorf("missing %s in: %s", want, body)
+		}
+	})
+
+	t.Run("authors follow the feed name", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		result[0].Article.Authors = []string{"Ada"}
+		body := getHome(t, s, "/", true).Body.String()
+		want := regexp.MustCompile(`Feed One</a>\s*<span aria-hidden="true">·</span><span class="article-author">Ada</span>`)
+		if !want.MatchString(body) {
+			t.Errorf("missing %s in: %s", want, body)
+		}
+		if got := strings.Count(body, "article-author"); got != 1 {
+			t.Errorf("article-author appears %d times, want 1 (only the row with authors)", got)
 		}
 	})
 

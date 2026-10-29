@@ -132,6 +132,7 @@ The last two share one path, `ingest.Refresher.Refresh`:
 
 Turning items into articles (`ingest.Articles`): each item's identity within its feed is its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are kept.
 Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters removed) for matching copies across feeds, and the MIME type of its first audio or video enclosure (`media_type`).
+Its `authors` are the names `feedparse.itemAuthors` finds: every `dc:creator` for RSS (gofeed keeps only the first), else gofeed's single pick (`<author>`, `itunes:author`, …), and every author for Atom and JSON Feed, with email addresses reduced to their name or dropped.
 What `Parse` reads is also listed by hand in `usedChannelFields` and `usedItemFields` (`feedparse/inspect.go`) for the feed inspector, so a change to `Parse` updates them too.
 Saving (`saveArticles`) locks the feed row, sets each new article's `timeline_at` (see "Reading"), and upserts by `(feed_id, external_id)`: unchanged articles aren't written, and an existing `published_at` is kept because some feeds bump it on every edit.
 A newly inserted article missing an image, title or excerpt gets an enrichment job in the same transaction (see "Article enrichment").
@@ -256,7 +257,7 @@ The public routes are outside the session group.
 `sharedTimelineFromURL` 404s a malformed token or one `GetShared` doesn't know.
 The page (`sharedTimelineHandler`) shows the name and description, how to follow it, and `<link rel="alternate">` to the feed; it reads no articles.
 The feed (`sharedFeedHandler`) reads the newest 50 with `ArticleRepository.ListShared`: the same query as the timeline (or starred list), with `shared` set, so feeds keep their own titles (never the owner's names) and articles without a URL are left out.
-`sharedAtomFeed` builds the feed: the page URL as its ID, each entry's ID its canonical URL (else `urn:uuid:{id}`), and a `<source>` naming its feed.
+`sharedAtomFeed` builds the feed: the page URL as its ID, each entry's ID its canonical URL (else `urn:uuid:{id}`), an `<author>` for each of the article's authors, and a `<source>` naming its feed.
 It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 304), `X-Robots-Tag: noindex` and `Cache-Control: public`.
 
 **Start at:**
@@ -281,6 +282,7 @@ List queries never load `summary` or `content`.
 Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-date` partials).
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
+`Byline` joins the article's authors ("A, B and C"), shown after the feed name in a row and under the title on the article page.
 The page's values come from enrichment and only fill gaps.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.

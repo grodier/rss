@@ -138,6 +138,16 @@ func debugDuration(d time.Duration) string {
 	}
 }
 
+// debugList formats a list of strings, each quoted so its spaces show; "" if
+// empty.
+func debugList(items []string) string {
+	quoted := make([]string, len(items))
+	for i, it := range items {
+		quoted[i] = strconv.Quote(it)
+	}
+	return strings.Join(quoted, ", ")
+}
+
 // debugBytes formats a size in bytes, or KiB from 1 KiB.
 func debugBytes(n int) string {
 	if n < 1024 {
@@ -558,6 +568,7 @@ func parsedItemFields(it feedparse.Item) []debugField {
 		{Name: "URL", Value: it.URL},
 		{Name: "ImageURL", Value: it.ImageURL},
 		{Name: "MediaType", Value: it.MediaType},
+		{Name: "Authors", Value: debugList(it.Authors)},
 		{Name: "Title", Value: it.Title},
 		{Name: "Summary", Value: cutText(it.Summary, inspectItemMax), Note: debugBytes(len(it.Summary))},
 		{Name: "Content", Value: cutText(it.Content, inspectItemMax), Note: debugBytes(len(it.Content))},
@@ -585,6 +596,9 @@ func compareArticle(fetched, stored rss.Article) []string {
 	text("canonical_url", fetched.CanonicalURL, stored.CanonicalURL)
 	text("image_url", fetched.ImageURL, stored.ImageURL)
 	text("media_type", fetched.MediaType, stored.MediaType)
+	if !slices.Equal(fetched.Authors, stored.Authors) {
+		diffs = append(diffs, "authors")
+	}
 	text("title", fetched.Title, stored.Title)
 	long("summary", fetched.Summary, stored.Summary)
 	long("content", fetched.Content, stored.Content)
@@ -615,6 +629,8 @@ func storedDiffFields(stored rss.Article, diffs []string) []debugField {
 			v = stored.ImageURL
 		case "media_type":
 			v = stored.MediaType
+		case "authors":
+			v = debugList(stored.Authors)
 		case "title":
 			v = stored.Title
 		case "summary":
@@ -714,6 +730,7 @@ func articleDebugFields(a rss.Article, d rss.ArticleDebug, now time.Time) []debu
 		{Name: "page_title", Value: a.PageTitle},
 		{Name: "page_description", Value: a.PageDescription},
 		{Name: "media_type", Value: a.MediaType},
+		{Name: "authors", Value: debugList(a.Authors)},
 		{Name: "published_at", Value: debugTime(a.PublishedAt, now)},
 		{Name: "published_date_only", Value: strconv.FormatBool(a.PublishedDateOnly)},
 		{Name: "timeline_at", Value: debugTime(a.TimelineAt, now)},

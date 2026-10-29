@@ -5,6 +5,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -134,12 +137,14 @@ func TestParseItems(t *testing.T) {
 			want: []Item{
 				{
 					// Trimmed <guid>, entity-encoded <description> stays
-					// HTML, CDATA <content:encoded>, <pubDate> in UTC.
+					// HTML, CDATA <content:encoded>, <pubDate> in UTC,
+					// <dc:creator>.
 					ID:        "https://example.com/?p=1",
 					URL:       "https://example.com/first",
 					Title:     "First post",
 					Summary:   "<p>Hello &amp; welcome</p>",
 					Content:   "<p>Full <b>text</b></p>",
+					Authors:   []string{"Ada"},
 					Published: time.Date(2026, 10, 5, 7, 30, 0, 0, time.UTC),
 				},
 				{
@@ -214,6 +219,7 @@ func TestParseItems(t *testing.T) {
 					Title:     "One",
 					Summary:   "First item",
 					Content:   "<p>Hello <b>world</b></p>",
+					Authors:   []string{"Ada"},
 					Published: time.Date(2026, 10, 4, 17, 0, 0, 0, time.UTC),
 				},
 				{
@@ -243,7 +249,7 @@ func TestParseItems(t *testing.T) {
 					t.Errorf("item %d: Published = %v, want %v (UTC)", i, g.Published, w.Published)
 				}
 				g.Published, w.Published = time.Time{}, time.Time{}
-				if g != w {
+				if !reflect.DeepEqual(g, w) {
 					t.Errorf("item %d:\n got %+v\nwant %+v", i, g, w)
 				}
 			}
@@ -533,6 +539,128 @@ func TestParseItemMediaType(t *testing.T) {
 			}
 			if got.Items[0].ImageURL != tt.wantImage {
 				t.Errorf("ImageURL = %q, want %q", got.Items[0].ImageURL, tt.wantImage)
+			}
+		})
+	}
+}
+
+func TestParseItemAuthors(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	const ns = ` xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom"`
+	rssItem := func(item string) string {
+		return `<rss version="2.0"` + ns + `><channel><title>F</title><item><title>A</title>` + item + `</item></channel></rss>`
+	}
+	atomEntry := func(entry string) string {
+		return `<feed xmlns="http://www.w3.org/2005/Atom"><title>F</title><author><name>Feed Author</name></author><entry><title>A</title>` + entry + `</entry></feed>`
+	}
+	creators := func(names ...string) string {
+		return "<dc:creator>" + strings.Join(names, "</dc:creator><dc:creator>") + "</dc:creator>"
+	}
+	jsonItem := func(version, item string) string {
+		return `{"version":"https://jsonfeed.org/version/` + version + `","title":"F","items":[{"id":"1",` + item + `}]}`
+	}
+	tests := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			name: "rss dc:creator",
+			body: rssItem(`<dc:creator><![CDATA[ Jane   Doe ]]></dc:creator>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "rss several dc:creator",
+			body: rssItem(`<dc:creator>Jane Doe</dc:creator><dc:creator>John Smith</dc:creator>`),
+			want: []string{"Jane Doe", "John Smith"},
+		},
+		{
+			name: "rss dc:creator before author",
+			body: rssItem(`<author>jane@example.com (Jane)</author><dc:creator>Jane Doe</dc:creator>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "rss author email with name",
+			body: rssItem(`<author>jane@example.com (Jane Doe)</author>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "rss author bare email",
+			body: rssItem(`<author>jane@example.com</author>`),
+			want: nil,
+		},
+		{
+			name: "rss itunes:author",
+			body: rssItem(`<itunes:author>The Hosts</itunes:author>`),
+			want: []string{"The Hosts"},
+		},
+		{
+			name: "rss atom:author",
+			body: rssItem(`<atom:author><atom:name>Jane Doe</atom:name></atom:author>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "rss dc:creator name and email",
+			body: rssItem(`<dc:creator>Jane Doe &lt;jane@example.com&gt;</dc:creator>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "blogger unknown dropped",
+			body: rssItem(`<author>noreply@blogger.com (Unknown)</author>`),
+			want: nil,
+		},
+		{
+			name: "duplicates dropped ignoring case",
+			body: rssItem(`<dc:creator>Jane Doe</dc:creator><dc:creator>jane doe</dc:creator><dc:creator> </dc:creator>`),
+			want: []string{"Jane Doe"},
+		},
+		{
+			name: "at most MaxAuthors",
+			body: rssItem(creators("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K")),
+			want: []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"},
+		},
+		{
+			name: "rss none",
+			body: rssItem(`<description>text</description>`),
+			want: nil,
+		},
+		{
+			name: "atom authors",
+			body: atomEntry(`<author><name>Jane Doe</name><email>jane@example.com</email></author><author><name>John Smith</name></author>`),
+			want: []string{"Jane Doe", "John Smith"},
+		},
+		{
+			name: "atom author without name",
+			body: atomEntry(`<author><email>jane@example.com</email></author>`),
+			want: nil,
+		},
+		{
+			name: "atom feed author not inherited",
+			body: atomEntry(`<id>1</id>`),
+			want: nil,
+		},
+		{
+			name: "json feed 1.1 authors",
+			body: jsonItem("1.1", `"authors":[{"name":"Jane Doe"},{"url":"https://example.com/"},{"name":"John Smith"}]`),
+			want: []string{"Jane Doe", "John Smith"},
+		},
+		{
+			name: "json feed 1.0 author",
+			body: jsonItem("1", `"author":{"name":"Jane Doe"}`),
+			want: []string{"Jane Doe"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			if !slices.Equal(got.Items[0].Authors, tt.want) {
+				t.Errorf("Authors = %q, want %q", got.Items[0].Authors, tt.want)
 			}
 		})
 	}

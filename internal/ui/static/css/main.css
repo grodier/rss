@@ -893,6 +893,10 @@
     text-decoration: underline;
   }
 
+  .article-author {
+    color: var(--text-2);
+  }
+
   .article-card {
     position: relative;
     margin-block-start: 0.375rem;
@@ -2019,6 +2023,12 @@
 
   .reader-meta a:hover {
     text-decoration: underline;
+  }
+
+  .reader-byline {
+    margin-block-start: 0.5rem;
+    color: var(--text-2);
+    font-size: 0.9375rem;
   }
 
   .reader .article-actions {

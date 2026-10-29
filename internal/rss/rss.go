@@ -39,9 +39,10 @@ type Article struct {
 	FeedID       string
 	ExternalID   string
 	URL          string
-	CanonicalURL string // see ingest.CanonicalURL; "" if the article has no usable URL
-	ImageURL     string // feed-declared image; "" if none
-	MediaType    string // see feedparse.Item.MediaType
+	CanonicalURL string   // see ingest.CanonicalURL; "" if the article has no usable URL
+	ImageURL     string   // feed-declared image; "" if none
+	MediaType    string   // see feedparse.Item.MediaType
+	Authors      []string // see feedparse.Item.Authors
 	Title        string
 	Summary      string
 	Content      string
@@ -105,6 +106,19 @@ func (a Article) DisplayExcerpt() string {
 		return a.Excerpt
 	}
 	return a.PageDescription
+}
+
+// Byline returns the article's authors as one phrase ("A", "A and B",
+// "A, B and C"); "" if it has none.
+func (a Article) Byline() string {
+	switch n := len(a.Authors); n {
+	case 0:
+		return ""
+	case 1:
+		return a.Authors[0]
+	default:
+		return strings.Join(a.Authors[:n-1], ", ") + " and " + a.Authors[n-1]
+	}
 }
 
 // CardImageURL returns the feed's image for the article, else the image of

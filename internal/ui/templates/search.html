@@ -14,22 +14,23 @@
     {{template "app-nav" .Nav}}
 
     <main class="column">
-      <header class="page-head stack">
+      <header class="page-head">
         <h1>Search</h1>
-        <form class="search-form" action="/search" method="get">
-          <label class="visually-hidden" for="q">Search</label>
-          {{with .Form.FieldErrors.q}}
-          <span class="error">{{.}}</span>
-          {{end}}
-          <div class="search-row">
-            <div class="search-field">
-              {{template "icon-search"}}
-              <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" />
-            </div>
-            <button class="btn-primary" type="submit">Search</button>
-          </div>
-        </form>
       </header>
+
+      <form class="page-search" role="search" action="/search" method="get">
+        <label class="visually-hidden" for="q">Search</label>
+        {{with .Form.FieldErrors.q}}
+        <span class="error">{{.}}</span>
+        {{end}}
+        <div class="search-row">
+          <div class="search-field">
+            {{template "icon-search"}}
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" />
+          </div>
+          <button class="btn-primary" type="submit">Search</button>
+        </div>
+      </form>
 
       {{with .Flash}}
       <div class="flash">{{.}}</div>

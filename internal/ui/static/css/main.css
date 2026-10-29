@@ -713,9 +713,11 @@
     background: var(--bg);
   }
 
-  /* The Saved page's search, above its list; Clear sits under the row. */
+  /* The Saved page's search, above its list; Clear sits under the row.
+     The top padding clears the page head's box-shadow rule, which takes no
+     layout space. */
   .saved-search {
-    padding: 0 1rem 0.75rem;
+    padding: 0.75rem 1rem;
   }
 
   .saved-search > a {

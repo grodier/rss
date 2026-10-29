@@ -49,6 +49,11 @@ func (s *Server) router() http.Handler {
 		fileServer.ServeHTTP(w, r)
 	}))
 
+	// The manifest needs no session, like /static: browsers fetch it without
+	// cookies. It has its own handler because the file server would sniff
+	// its type (see "Mobile" in docs/decisions.md).
+	router.Get("/manifest.webmanifest", s.manifestHandler)
+
 	// Icons need no session, like /static: they aren't private.
 	router.Get("/sites/{id}/icon", s.siteIconHandler)
 

@@ -2054,7 +2054,11 @@
     line-height: 1.6;
   }
 
-  .article-body > * + * {
+  /* Feeds often wrap the whole article in a <div>, <section> or <article>
+     (and the reset zeroes <p> margins), so space the blocks inside those
+     wrappers like top-level ones. */
+  .article-body > * + *,
+  .article-body :is(div, section, article) > * + * {
     margin-block-start: 1.1em;
   }
 

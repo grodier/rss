@@ -169,7 +169,7 @@ func TestSavedHandler(t *testing.T) {
 		result, storeErr = nil, nil
 		body := getSaved(t, s, "/saved").Body.String()
 		assertBodyContains(t, body, "Nothing saved yet. Use the bookmark on any article to keep it here.")
-		if strings.Contains(body, `class="saved-search"`) {
+		if strings.Contains(body, `class="page-search"`) {
 			t.Errorf("search form shown with nothing to search: %s", body)
 		}
 	})
@@ -178,7 +178,7 @@ func TestSavedHandler(t *testing.T) {
 		result, storeErr = savedItems(2), nil
 		body := getSaved(t, s, "/saved").Body.String()
 		assertBodyContains(t, body,
-			`<form class="saved-search" role="search" method="get" action="/saved">`,
+			`<form class="page-search" role="search" method="get" action="/saved">`,
 			`<label for="saved-q" class="visually-hidden">Search saved articles</label>`,
 			`<input type="search" id="saved-q" name="q" value="" placeholder="Search saved articles" />`)
 		if strings.Contains(body, ">Clear</a>") {
@@ -225,7 +225,7 @@ func TestSavedHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			`No saved articles match “&lt;b&gt;&#34;x&#34;&lt;/b&gt;”.`,
 			`<a href="/saved">Clear</a>`,
-			`class="saved-search"`)
+			`class="page-search"`)
 		if strings.Contains(body, "<b>") || strings.Contains(body, "Nothing saved yet") {
 			t.Errorf("wrong or unescaped empty message: %s", body)
 		}

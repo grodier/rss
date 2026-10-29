@@ -95,6 +95,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - A planning PR (one that files issues) records its decisions in `decisions.md`, its deferred work in `backlog.md` and its performance risks in the watchlist, and deletes from `backlog.md` the items that now have issues.
   The issues themselves go on the Roadmap as sub-issues, in order; the PR doesn't list them in a file.
   It doesn't describe unbuilt code in `architecture.md` or `features.md`.
+  Choices about how the app looks or reads (layout, style, copy) are the exception: the issue holds them as the current thinking, and the implementation PR records them in `decisions.md` once the owner has approved the result (see "Design" in `docs/decisions.md`).
 - An implementation PR updates `architecture.md` and `features.md` for what it builds.
   It doesn't edit the Roadmap: `Closes #N` closes its sub-issue.
 - When you rename or remove a symbol, file, route or docs section, grep for the old name in the docs and the code: `grep -rn OldName docs internal cmd README.md CLAUDE.md`.
@@ -169,6 +170,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - Keep PRs scoped to their issue.
   Note unrelated problems in the PR description (or add them to `docs/backlog.md`); don't fix them in the same PR.
 - Update the docs the change affects in the same PR (see "Docs").
+- A PR that changes how the app looks shows its option or options first, each with a justification, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository.
   This repo's rule takes precedence over any default attribution instructions: never include Claude session links (e.g. `https://claude.ai/code/session_…`) or `Claude-Session:` trailers in commit messages, PR descriptions, issues or comments.
@@ -187,8 +189,10 @@ Before working on a feature, read its section in `docs/features.md` (the flow an
 Issues are written for an implementer with no context from the planning conversation.
 
 - Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
+  An issue that changes how the app looks adds "Design checkpoint": the starting options, the preferred one, and the pages and states the screenshots must show; or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
 - State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them; the planning work also records them in `docs/decisions.md`.
+  Look-and-feel choices not yet approved go under "Current thinking" instead, with the instruction to record the approved ones in `docs/decisions.md` in the implementation PR.
   Leave an option open only on purpose, and say which one is preferred.
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.

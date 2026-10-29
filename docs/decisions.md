@@ -476,8 +476,13 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   It was picked over Literata on a warm paper background (drifts from the logo's cool palette) and an all-sans option with Instrument Sans and ink outlines on every card (busier).
   Self-hosted like Bricolage, subset to Latin and weights 400–700 (93 KB; the italic, 103 KB, loads only on pages that use it).
   Nav, buttons and forms stay in the system font, so the interface feels native.
-- **When a layout is an open question, the implementer proposes options before finishing** (#309, for #299 and #308): a draft PR with two or three layouts behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
+- **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the option or options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
+  Every option comes with a justification (what it fixes, why this way, and what it trades away), so the pick rests on reasons that can be recorded here rather than on taste alone.
+  One option is enough when it's clearly right, but it's still shown and justified.
+  An issue can say a change needs no checkpoint: copy changes, and changes that reuse an existing pattern exactly (#419, #420).
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
+- **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.
+  Until then the issue holds them as the current thinking, and the implementation PR adds them to this file.
 
 ## Mobile
 

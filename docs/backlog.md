@@ -52,8 +52,6 @@ The decisions are under "Accounts" in decisions.md.
   When Resend's free tier (100 emails a day, 3,000 a month) gets tight or costs more than SES.
   Sending is SMTP (#259), so the app only changes configuration.
   The rest: request SES production access (it asks how bounces and complaints are handled; see above), verify the domain with DKIM, set a custom MAIL FROM domain, move DMARC on `_dmarc.paperround.app` from `p=none` to `quarantine` once its reports are clean, and check the result with mail-tester.com.
-- [ ] **Product name in the app.**
-  Moving to the new domain is #389; the app still calls itself "rss" in page titles, emails and the policy pages.
 - [ ] **Support address on the new domain.**
   The support address stays `rss-support@georgerodier.com` after #389; moving it needs Email Routing on the new domain's zone.
 - [ ] **Full data export.**
@@ -318,6 +316,16 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Ideas only so far.
 - [ ] **Icons a feed declares.**
   RSS `<image>`, Atom `<icon>` / `<logo>` and JSON Feed `icon` as extra candidates for #304, if many sites end up without an icon.
+- [ ] **Design review leftovers.**
+  Found in the design review that filed #419–#424 (#425), and not filed yet; each needs a design checkpoint ("Design" in decisions.md) unless it's copy only.
+  - Dates differ: rows and feed pages say "Oct 29, 2026, 2:22 AM", My feeds "29 Oct 2026"; a feed page's facts end "Last fetched … ." with a stray spaced full stop, and "About 5 posts a week." has a full stop My feeds doesn't.
+  - Article rows repeat themselves: the feed name above the card and the domain inside it, a full date and time where a relative one may do, and the actions detached under the card.
+  - The timeline form's spacing: hints at different indents, checkbox hints in divided rows of their own (they read as options), a bare box for "at most [N] times a week", and Save above the Sharing section it doesn't save.
+  - Settings: the "Log out of all other devices" button nearly touches the "Your data" header below it.
+  - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
+  - Timelines: Move up / Move down pills next to an Edit text link.
+  - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
+  - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
 - [ ] **Reading preferences (needs planning).**
   Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as choices on the Settings page (#261) next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).

@@ -2,8 +2,17 @@
   <link rel="icon" href="{{asset "img/favicon-32.png"}}" sizes="32x32" type="image/png" />
   <link rel="apple-touch-icon" href="{{asset "img/apple-touch-icon.png"}}" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  {{- /* The browser bar follows the user's theme on logged-in pages (dot is
+       their navData), else the system's. The colors repeat --bg. */}}
+  {{- $theme := ""}}{{with .}}{{$theme = .Theme}}{{end}}
+  {{- if eq $theme "dark"}}
+  <meta name="theme-color" content="#0f1626" />
+  {{- else if eq $theme "light"}}
+  <meta name="theme-color" content="#ffffff" />
+  {{- else}}
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0f1626" media="(prefers-color-scheme: dark)" />
+  {{- end}}
   <meta name="apple-mobile-web-app-title" content="Paper Round" />{{end}}
 
 {{/* html-theme is the data-theme attribute of a logged-in page's <html>,

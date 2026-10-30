@@ -468,7 +468,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Avatars are mid-tone colored tiles with near-white letters, the dark counterpart of light's pastel tiles; the error, flash and debug boxes are mid-tone tints with light text (`--on-danger-bg` for errors); the sky accent is saturated.
   The page, cards, text and images stay low-chroma, since saturated large areas glare at night.
   A first version mixed the tints almost into the background and read as dull next to light.
-  Logged-out and error pages always follow the system, since they don't know the user; the browser bar (`theme-color`) also follows the system, and the installed app's splash stays light, since the manifest can't vary.
+  Logged-out and error pages always follow the system, since they don't know the user, and the installed app's splash stays light, since the manifest can't vary.
+  The browser bar (`theme-color`) follows the user's choice on logged-in pages, so a dark page doesn't sit under a white bar; the issue had accepted the system's, but the page knows the choice, so it costs one argument per page.
 - **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), the sky tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
 - **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.
 - **Reading text is a little heavier in dark** (#413): Newsreader at weight 440 rather than 400, since light text on dark reads thinner.

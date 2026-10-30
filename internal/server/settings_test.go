@@ -339,13 +339,16 @@ func TestSettingsTheme(t *testing.T) {
 }
 
 func TestThemeAttribute(t *testing.T) {
+	const systemColors = `<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f1626" media="(prefers-color-scheme: dark)" />`
 	tests := []struct {
-		theme string
-		want  string // the <html> tag
+		theme      string
+		want       string // the <html> tag
+		themeColor string // the theme-color metas
 	}{
-		{rss.ThemeDark, `<html lang="en" data-theme="dark">`},
-		{rss.ThemeLight, `<html lang="en" data-theme="light">`},
-		{rss.ThemeSystem, `<html lang="en">`},
+		{rss.ThemeDark, `<html lang="en" data-theme="dark">`, `<meta name="theme-color" content="#0f1626" />`},
+		{rss.ThemeLight, `<html lang="en" data-theme="light">`, `<meta name="theme-color" content="#ffffff" />`},
+		{rss.ThemeSystem, `<html lang="en">`, systemColors},
 	}
 	for _, tt := range tests {
 		t.Run(tt.theme, func(t *testing.T) {
@@ -355,7 +358,11 @@ func TestThemeAttribute(t *testing.T) {
 			rr := httptest.NewRecorder()
 			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(sess))
 
-			assertBodyContains(t, rr.Body.String(), tt.want)
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want, tt.themeColor)
+			if got := strings.Count(body, `name="theme-color"`); got != strings.Count(tt.themeColor, `name="theme-color"`) {
+				t.Errorf("%d theme-color metas, want only %q", got, tt.themeColor)
+			}
 		})
 	}
 
@@ -368,13 +375,13 @@ func TestThemeAttribute(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
 		body := rr.Body.String()
-		assertBodyContains(t, body, `<html lang="en">`)
+		assertBodyContains(t, body, `<html lang="en">`, systemColors)
 		if strings.Contains(body, "data-theme") {
 			t.Error("the login page has a data-theme")
 		}
 	})
 
-	// Every logged-in page must carry the user's theme, or it would flash
+	// Every logged-in page must carry the user's theme, or it would show
 	// the system's.
 	t.Run("every logged-in page has the attribute", func(t *testing.T) {
 		files, err := fs.Glob(ui.Templates, "templates/*.html")
@@ -387,8 +394,14 @@ func TestThemeAttribute(t *testing.T) {
 				t.Fatal(err)
 			}
 			src := string(b)
-			if strings.Contains(src, `{{template "app-nav" .Nav}}`) && !strings.Contains(src, `<html lang="en"{{template "html-theme" .Nav}}>`) {
+			if !strings.Contains(src, `{{template "app-nav" .Nav}}`) {
+				continue
+			}
+			if !strings.Contains(src, `<html lang="en"{{template "html-theme" .Nav}}>`) {
 				t.Errorf("%s has the app nav but not the html-theme attribute", f)
+			}
+			if !strings.Contains(src, `{{template "app-head" .Nav}}`) {
+				t.Errorf("%s has the app nav but doesn't pass .Nav to app-head, so its theme-color ignores the user's theme", f)
 			}
 		}
 	})

@@ -333,9 +333,10 @@ Beyond those:
   The install icons (`img/icon-192.png`, `img/icon-512.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
 - **The web app manifest** (`ui/manifest.webmanifest`) is embedded and served by its own handler, not from `/static`: Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would sniff it as `text/plain`.
   Pages are standalone, so each includes `app-head` (`partials/head.html`: icons, manifest link, `theme-color`); a test fails for a page without it.
-  The manifest and the `theme-color` metas repeat `--bg`, as they can't read CSS custom properties: the manifest the light one, and `app-head` a pair, light and dark, each with a `prefers-color-scheme` media query, so the browser bar follows the system (not the user's choice).
+  The manifest and the `theme-color` metas repeat `--bg`, as they can't read CSS custom properties: the manifest the light one, and `app-head` the user's theme's on logged-in pages (they pass it their navData), else a light and dark pair with `prefers-color-scheme` media queries.
 - **Themes:** `main.css` defines the color tokens on `:root` (light), then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme="light"])`, and for `:root[data-theme="dark"]`.
-  A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System; a test fails for a page with the nav but without it.
+  A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
+  The dark values are written twice (system and chosen), and `internal/ui/css_test.go` fails if the two differ or a color token has no dark value.
   Logged-out and error pages have no user, so they always follow the system.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.

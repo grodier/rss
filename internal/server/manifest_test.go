@@ -82,8 +82,8 @@ func TestPagesIncludeAppHead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(b), `{{template "app-head"}}`) {
-			t.Errorf("%s: pages are standalone, so each needs {{template \"app-head\"}} for its icons and manifest", f)
+		if src := string(b); !strings.Contains(src, `{{template "app-head"}}`) && !strings.Contains(src, `{{template "app-head" .Nav}}`) {
+			t.Errorf("%s: pages are standalone, so each needs {{template \"app-head\"}} (or, logged in, {{template \"app-head\" .Nav}}) for its icons and manifest", f)
 		}
 	}
 }

@@ -324,7 +324,7 @@ Without JavaScript the link just works.
 ## Saved articles
 
 **Flow.** Every article row and the article page has a Save button (the `save-button` partial): a form posting to `/articles/{id}/save`, or `/unsave`, with a `return_to` of the page.
-The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `app.js` posts the form with `fetch` and flips the button in place (`aria-pressed` carries the state).
+The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `app.js` posts the form with `fetch`, which the handlers tell apart by its `Sec-Fetch-Mode` header and answer with a `204`, and flips the button in place (`aria-pressed` carries the state); on anything but a `204`, such as the redirect to Login when the session has ended, it submits the form normally.
 Saving is quiet: no flash, and it doesn't mark the article read.
 
 **Copies.** Saving covers every copy of an article (same non-empty `canonical_url`), like read state: `Save` inserts nothing when a copy is already saved, `Unsave` removes every copy's save, and `SavedArticleIDs` matches copies.

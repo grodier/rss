@@ -462,7 +462,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Colors are custom properties on `:root` in `main.css`, so a theme redefines them in one place.**
   Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
 - **A dark theme follows the system, with a choice of System, Light or Dark in Settings** (#413).
-  The dark palette is the light one's, darkened: the logo's ink, darkened, for the background, its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more and input and button borders at 3:1.
+  The dark palette is the light one's, darkened: the logo's ink, darkened, for the background, its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more.
   The values live in one block per theme (repeated once for the media query and once for the explicit choice), so another theme is one more block.
 - **Dark keeps the light theme's color where color means something, and stays calm everywhere else** (#413).
   Avatars are mid-tone colored tiles with near-white letters, the dark counterpart of light's pastel tiles; the error, flash and debug boxes are mid-tone tints with light text (`--on-danger-bg` for errors); the sky accent is saturated.
@@ -488,6 +488,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Tomato is the one accent, used sparingly** (#414): the active timeline tab, starred articles (so Star no longer looks like Saved's blue) and the "You were here" marker.
   It's a deeper shade than the logo's (`--brand-strong`), so the marker's label passes AA as small text.
 - **Text colors pass WCAG AA** (4.5:1) on white and on the read-card tint (#414); the lightest grey was 3.2:1 before.
+- **Input and outline-button borders are 3:1 in both themes** (`--border-strong`, #413), WCAG's minimum for a form field's edge; light's was 1.6:1 before.
+  Filled fields (the search boxes) have no border and keep it that way.
 - **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
   The timeline's tab head keeps a plain divider, since the active tab's underline sits on it.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.

@@ -253,6 +253,10 @@ Planned in #309 (issues #299–#301).
   The star is a separate action that does mean "this is good" (#349, "Filtering and timelines").
 - **Saving covers every copy** (same `canonical_url`), like read state: `saves` keys on `article_id`, and copies are matched at query time.
   Saving a copy of an already saved article adds nothing; unsaving removes them all.
+- **With JavaScript, a Save or Star succeeds only on a `204`** (#429, from the first error-state pass, #392).
+  The toggle routes answer a script (`Sec-Fetch-Mode` `cors` or `same-origin`, which a page can't set) with `204` and a form submission with the `303` back to the row; `app.js` submits the form normally on anything else.
+  Before this, both a success and the redirect to the login page after a session ended came back to `fetch` as the same opaque redirect, so Save looked done when nothing was saved.
+  A browser that doesn't send `Sec-Fetch-Mode` gets the `303` and falls back to a reload: slower, but right.
 - **Saved has its own nav entry**: Home, Saved, My feeds, Search.
   Newest saved first, paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt and feed title; a user's saves are a small set).
 - **Saved articles must survive article retention**, and go into the full data export.
@@ -687,7 +691,9 @@ Planned in #218; issues #208–#217.
   The R2 lifecycle rules are listed in the order Cloudflare returns them, rather than ignored with `ignore_changes`, which would also hide a real change to a rule.
   `ignore_changes` covers only each rule's unused transition, which the provider reads back as an empty condition that no valid config can match (cloudflare/terraform-provider-cloudflare#7338); it comes out once the provider is fixed (#387).
 - **An external uptime monitor** (#391), UptimeRobot: a free keyword monitor on `/healthcheck` every 5 minutes, alerting the owner by email, so someone hears when the app is down for visitors and not only when Render restarts it.
-  It checks that the app is reachable, not the database.
+  It checks the database too (#430, changed from "reachable, not the database" after the first error-state pass, #392, found the monitor would stay green through a database outage).
+- **`/healthcheck` reports the database but always answers `200`** (#430): `status` is `available` when a ping (1-second timeout) succeeds and `degraded` when it doesn't, so the monitor's keyword `available` stops matching while Render's check, which reads only the status code, doesn't restart an instance a restart can't fix.
+  Never `unavailable`, which contains the keyword.
 - **Logs** stay in Render's log viewer for as long as Render keeps them (a few days on the Hobby workspace; the README records the current figure).
   No log shipping, so client IPs aren't kept anywhere else.
 - **Deploys:** every push to `main` that passes CI deploys automatically; merging the PR is the approval.

@@ -358,28 +358,20 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
 ## Error-state walkthrough (needs planning)
 
 A way to see every error state an end user can hit and judge the experience (wording, what the user can do next, tone, layout) without having to provoke each one by hand.
-The first pass, by hand, is #392: it builds the catalog (`docs/error-states.md`) from "States to cover" below and reviews each state.
-What's left needs planning once that pass shows how many states there are and how much needs fixing.
+The first pass, by hand, was #392: the states and their verdicts are in [error-states.md](error-states.md).
+It catalogued about 135 states in 15 areas and found 28 needing work, two of them broken behaviour (S4, H9).
 
 - [ ] **Walkthrough tool.**
   Something that renders every state in one place so they can be clicked through in a browser, preferably a dev-only route group (e.g. `/dev/states`, mounted only with a flag, never in production) that lists each state and renders it with fake data.
   A test table (`name`, `setup`, `request`, `want status`) can drive the same list, so the catalog can't drift: a test fails if a state is in the code but not the catalog.
   Prefer this over screenshots, which go stale.
-- [ ] **States to cover.**
-  - Forms: signup (invalid email, short, common or email-as-password password (#256), a duplicate email (#262), signup turned off (#186), rate limited (#182)), login (unknown email, wrong password (#262), rate limited per IP (#182) or per email (#183)), empty or oversized input, a form posted from another site (403), a malformed form body.
-  - Auth and sessions: visiting a login-only page while logged out (redirect and message), an expired or idle session mid-action (#258), logging out, a logged-in user on `/login`.
-  - Account emails and settings (#254–#269): a confirmation, reset or email-change link that's expired, used, or for an address the account no longer has; reset for an unknown email; the rate limits on reset, resend, password change, email change and deletion; an address over the outbox's hourly cap; a wrong current password in Settings; an email change to a taken address; the confirmation notice; deleting an account.
-  - HTTP errors: 403, 404 (unknown feed, site or lookup id; malformed id), 405, 413, 429 (the lookup rate limit; login and signup re-render their form instead), and 500, including a database outage.
-  - Lookups and discovery: invalid URL, a URL that is blocked (private address, bad scheme), a site that is unreachable, times out, redirects too often, returns a non-HTML or huge body, has no feeds, or has a feed that fails to parse; a lookup that is pending, running, failed or done; the status page after the lookup row is gone.
-  - OPML import: an upload with no file, over 1 MiB, that isn't OPML, with no feeds or over 1,000, or over the hourly limit; an import still running; an import with failures (invalid URL, unreachable, no feed); another user's import.
-  - Feeds: a refresh that fails (and the backoff / failure display from #129), a feed that has never been fetched, a feed with no articles, the Refresh button during a refresh, 410 Gone feeds (#132).
-  - Search: no results, empty query, very long query, special characters.
-  - Empty states that aren't errors but read like one: a new account with no feeds, an empty site page.
-  - Subscriptions: a subscribe or unsubscribe that fails.
-  - Reading: an empty timeline (no subscriptions), "No older articles.", an invalid `before` cursor (400), an article with no text in its feed, an article with no URL, an unknown or malformed article ID, a failed read ping (silent by design).
+  What #392 suggests: fake data would show the copy and layout of most states (form errors, empty states, error pages), but the two broken behaviours it found only show against a real app: Save and Star with an expired session need JavaScript and a session (S4), and the plain-text 500 needs the database down (H9).
+  The pass was driven by a throwaway browser script against the running app, which reached every state but the code-read ones; the slow parts were setup (feed rows by SQL, email links, rate-limit windows that lock a flow for up to an hour), not the clicking.
+  So an end-to-end script that makes its own rows may be worth more than a fake-data route; plan it with the fixes in hand.
 - [ ] **Cadence.**
   Repeat after any change to a template, middleware or error path, and at least before each release.
   Note the date of the last pass at the top of the catalog.
+  What #392 suggests: a PR already updates the rows it touches, so a full pass is for before inviting testers and before each release; by hand it takes a few hours, mostly setup.
 
 ## Load and performance testing (needs planning)
 

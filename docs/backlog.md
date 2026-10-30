@@ -62,9 +62,6 @@ The decisions are under "Accounts" in decisions.md.
   `www` commands can't run in production, so the self-service flows are the support path.
   If support requests need more (looking up an account, resending a confirmation for someone), plan an owner-only admin page.
   It would build on debug mode's allowlist (#327), and is where cross-user data such as subscriber counts belongs.
-- [ ] **First-run experience (needs planning).**
-  What a new account sees after signup: today, an empty timeline pointing to Search and to OPML import.
-  Perhaps suggested sites or a short tour.
 
 ## Plans and billing
 
@@ -120,9 +117,6 @@ The decisions are under "Accounts" in decisions.md.
   YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
 - [ ] **`<a href>` heuristics.**
   When a page has no `<link rel="alternate">`, look for links whose URL or text mentions RSS/Atom/feed before probing common paths.
-- [ ] **Search autosuggest** showing matching sites and their related feeds as you type.
-- [ ] **Better search ranking.**
-  `pg_trgm` or full-text search instead of `ILIKE` substring matching, with an index.
 
 ## Feed ingestion
 
@@ -184,9 +178,6 @@ Each with when it pays off:
 - [ ] **Newsletters by email (needs planning).**
   Each user gets an address that turns the newsletters sent to it into a feed they subscribe to, as Feedbin and Inoreader do.
   Needs receiving email (an inbound webhook from the email provider, or Email Routing to a worker), a way to create feeds that discovery didn't find, spam and size limits, and sanitizing email HTML, which is messier than feed HTML.
-- [ ] **Names from OPML imports.**
-  Other readers' exports carry each feed's name as the outline's `text`/`title`; an import could set it as the subscription's name (#342) when it differs from the feed's title.
-  Deferred from #344.
 
 ## Reading
 
@@ -428,6 +419,7 @@ Background refresh:
   The `EXISTS` subscription check and `refresh_requested_at` can't be in the partial `feeds_next_fetch_at_idx`.
   Unsubscribed feeds keep an old `next_fetch_at`, so they pile up at the front of the order and every claim skips them.
   Ordering requested feeds first (`refresh_requested_at IS NULL, next_fetch_at`) also stops the index from serving the sort.
+  The site catalog (#447) adds every catalog site's feeds as unsubscribed feeds from the start.
   *Signal:* `EXPLAIN ANALYZE` of `ClaimDue` reads far more rows than it returns, or idle claims get slow, once most feeds are unsubscribed.
   *Fix:* keep a `subscriber_count` on `feeds` (updated by `Subscribe`/`Unsubscribe` in the same transaction) and index `next_fetch_at WHERE gone_at IS NULL AND (subscriber_count > 0 OR refresh_requested_at IS NOT NULL)`.
 - [ ] **Polling latency and idle queries.**
@@ -463,12 +455,18 @@ Other background work (#302, #304, #306):
   *Fix:* per-host pacing (skip jobs whose host was fetched in the last few seconds), more `-enrich-workers`, or a lower first-save count.
 - [ ] **Enrichment and icon claims skip unsubscribed work** (#304, #306).
   Like `ClaimDue`, `ClaimNext` and `ClaimIconCheck` filter on an `EXISTS` subscription check the index can't serve, so jobs for feeds nobody subscribes to (looked up, never followed) stay at the front and every claim walks past them.
+  The site catalog (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
   *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
   *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
 - [ ] **One import at a time** (#302).
   The import queue takes the oldest import's feeds first, so a 1,000-feed import delays a small one started after it, up to an hour with two workers.
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
+  #448 measures imports and builds this if production shows overlapping imports.
+- [ ] **Catalog lookups queue ahead of readers' after a reset** (#447).
+  If the catalog is seeded through the lookup queue at start, as #447 proposes, `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
+  *Signal:* lookups in the first minutes after a deploy ending on the status page instead of the site page, or the catalog growing past a few hundred sites.
+  *Fix:* a priority on `lookups` (readers' first), or queue the catalog's lookups with a later `requested_at`.
 
 Pages and queries:
 
@@ -492,9 +490,10 @@ Pages and queries:
   *Signal:* it shows up in `pg_stat_statements` totals.
   *Fix:* fold it into the page's main query.
 - [ ] **Search scans with `ILIKE`.**
-  Sites and feeds are matched with `%q%`, which can't use a b-tree index.
-  *Signal:* search latency growing with the number of sites and feeds.
-  *Fix:* see "Better search ranking" under Feed discovery (`pg_trgm` or full-text search, with an index).
+  Sites and feeds are matched with `%q%`, which can't use a b-tree index; topic matching for the catalog (#447) would be the same.
+  Search as you type (#449) runs it once per pause in typing, not once per search.
+  *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
+  *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
 - [ ] **Timeline cost per followed feed** (#404).
   `ListTimeline` reads each subscription's newest page of entries from `articles_feed_timeline_idx` and merges them, so a page costs about one index scan per followed feed (about 0.2 ms each), however deep the page or long the history.
   *Signal:* `/` p95 rising with subscription count, or Home page 1 over 100 ms for heavy readers.
@@ -558,7 +557,7 @@ Pages and queries:
   Search within Saved matches `%q%` against each of the user's saved articles.
   Fine for hundreds of saves.
   *Signal:* `/saved?q=` latency rising for users with thousands of saves.
-  *Fix:* `pg_trgm` or full-text search, with the site search ("Better search ranking").
+  *Fix:* `pg_trgm` or full-text search, chosen with the site search's (#451).
 - [ ] **Site icons served from Postgres** (#305).
   Each icon request that misses the browser's cache reads its `bytea` row.
   URLs carry the icon's hash and are cached for a year, so repeat views cost nothing, but every new visitor's first timeline asks for up to 30 icons.

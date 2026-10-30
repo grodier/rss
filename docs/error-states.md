@@ -85,7 +85,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | S1 Login-only page while logged out | Open `/feeds` in a private window | 303 to Login | None | Yes: login returns to `/feeds` | needs work: nothing says the page needs logging in |
 | S2 Session ended mid-action | Open Settings → Name, then `DELETE FROM user_sessions WHERE user_id = '{A}'` (or "Log out other devices" elsewhere), then save | 303 to Login | None | Partly: what they typed is lost, and after login they land on Home, not the form (only GETs are remembered) | needs work: say they were logged out; return to the page the form was on |
 | S3 Session idle for 90 days | `UPDATE user_sessions SET last_seen_at = now() - interval '91 days' WHERE user_id = '{A}'`, open `/` | Logged-out landing page, 200 | None | Yes, by logging in | needs work: as S2 |
-| S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | The button turns on; the post was redirected to Login | None | No: it looks saved but isn't (`app.js` counts the redirect to `/login` as success) | needs work: bug, treat a redirect to Login as a failure (#429) |
+| S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | 303 to Login (`app.js` gets the login page instead of a 204, so it submits the form normally) | None | Yes: nothing is saved and the button never turned on; after login they land on Home (as S2) and can Save again | ok (saying they were logged out is S2's) |
 | S5 Older articles after the session ended (JavaScript) | Code read: infinite scroll gets a redirect | The timeline stops loading more; "Older articles" stays | None | Yes: clicking it goes to Login | ok |
 | S6 Log out | Settings → Log out | Login, flash | "You've been logged out successfully!" | n/a | ok (flash not announced; see N1) |
 | S7 Logged in, opens Login or Signup | `/login` or `/signup?invite=<code>` | 303 to Home | None | n/a | ok |
@@ -229,7 +229,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | P6 Article with no title, text or URL | The `nothing` article | Article page, 200 | "(untitled)" and P4's text | n/a | ok |
 | P7 Unknown or malformed article | `/articles/{uuid}`, `/articles/abc` | 404 (H2) | As H2 | Home only | ok |
 | P8 Read ping fails | `curl` a post to `/articles/{uuid}/read` | 404, unseen | None | n/a | ok (silent by design) |
-| P9 Save or Star fails | Without JavaScript: a post for `/articles/{uuid}/save`; with it, see S4 | 404 (H2) | As H2 | Home only | ok (S4 is the problem with JavaScript) |
+| P9 Save or Star fails | A post for `/articles/{uuid}/save`; with JavaScript, a click on a row whose article was deleted (anything but a 204 submits the form normally) | 404 (H2) | As H2 | Home only | ok |
 
 ## Timelines
 

@@ -33,8 +33,9 @@
   // Save and Star buttons: form[data-toggle] posts to /articles/{id}/save,
   // /unsave, /star or /unstar. Post it with fetch instead, then flip
   // aria-pressed (main.css swaps the icon) and the action, so the page
-  // doesn't reload. On any failure, submit the form normally so the round
-  // trip shows what happened. Delegated, so rows added by infinite scroll
+  // doesn't reload. Success is a 204; on anything else, including a
+  // redirect to the login page, submit the form normally so the round trip
+  // shows what happened. Delegated, so rows added by infinite scroll
   // work too.
   document.addEventListener("submit", async (e) => {
     const form = e.target;
@@ -47,9 +48,8 @@
       const res = await fetch(form.action, {
         method: "POST",
         body: new URLSearchParams(new FormData(form)),
-        redirect: "manual",
       });
-      if (res.type !== "opaqueredirect" && !res.ok) throw new Error(`status ${res.status}`);
+      if (res.status !== 204) throw new Error(`status ${res.status}`);
       const pressed = button.getAttribute("aria-pressed") !== "true";
       button.setAttribute("aria-pressed", String(pressed));
       form.setAttribute("action", form.getAttribute("action").replace(/\/(un)?(save|star)$/, (_, un, verb) => (pressed ? `/un${verb}` : `/${verb}`)));

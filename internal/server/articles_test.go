@@ -681,9 +681,20 @@ func TestShareButton(t *testing.T) {
 
 func postSave(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, returnTo string) *httptest.ResponseRecorder {
 	t.Helper()
+	return postSaveMode(t, s, handler, userID, id, returnTo, "")
+}
+
+// postSaveMode is postSave with the Sec-Fetch-Mode header set to mode, as a
+// browser sets it for fetch ("cors", "same-origin") or a form submission
+// ("navigate"); an empty mode sends no header.
+func postSaveMode(t *testing.T, s *Server, handler http.HandlerFunc, userID, id, returnTo, mode string) *httptest.ResponseRecorder {
+	t.Helper()
 	form := url.Values{"return_to": {returnTo}}
 	req := httptest.NewRequest(http.MethodPost, "/articles/x/save", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if mode != "" {
+		req.Header.Set("Sec-Fetch-Mode", mode)
+	}
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", id)
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
@@ -754,6 +765,56 @@ func testToggleAction(t *testing.T, path string, handler func(*Server) http.Hand
 		// session cookie.
 		if c := rr.Header().Get("Set-Cookie"); c != "" {
 			t.Errorf("Set-Cookie = %q, want none (no flash)", c)
+		}
+	})
+
+	for name, mode := range map[string]string{"204 for a script": "cors", "204 for a same-origin script": "same-origin"} {
+		t.Run(name, func(t *testing.T) {
+			var gotUser, gotArticle string
+			calls := 0
+			s := newServer(func(ctx context.Context, userID, articleID string) error {
+				calls++
+				gotUser, gotArticle = userID, articleID
+				return nil
+			})
+
+			rr := postSaveMode(t, s, handler(s), "user-1", testArticleID, "/", mode)
+
+			if rr.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+			}
+			if loc := rr.Header().Get("Location"); loc != "" {
+				t.Errorf("Location = %q, want none", loc)
+			}
+			if c := rr.Header().Get("Set-Cookie"); c != "" {
+				t.Errorf("Set-Cookie = %q, want none", c)
+			}
+			if calls != 1 || gotUser != "user-1" || gotArticle != testArticleID {
+				t.Errorf("store called %d times with (%q, %q), want once with (user-1, %q)", calls, gotUser, gotArticle, testArticleID)
+			}
+		})
+	}
+
+	t.Run("303 for a form submission", func(t *testing.T) {
+		s := newServer(nil)
+		rr := postSaveMode(t, s, handler(s), "user-1", testArticleID, "/feeds/"+testFeedID+"?before=abc", "navigate")
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
+		}
+		if want := "/feeds/" + testFeedID + "?before=abc#article-" + testArticleID; rr.Header().Get("Location") != want {
+			t.Errorf("Location = %q, want %q", rr.Header().Get("Location"), want)
+		}
+	})
+
+	t.Run("script, unknown article", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return rss.ErrNoRecord })
+		assertNotFoundHTML(t, postSaveMode(t, s, handler(s), "user-1", testArticleID, "/", "cors"))
+	})
+
+	t.Run("script, store error", func(t *testing.T) {
+		s := newServer(func(context.Context, string, string) error { return errors.New("db down") })
+		if rr := postSaveMode(t, s, handler(s), "user-1", testArticleID, "/", "cors"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
 

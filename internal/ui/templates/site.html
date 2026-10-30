@@ -73,7 +73,7 @@
             {{if index $.Subscribed .ID}}
             <form action="/feeds/{{.ID}}/unsubscribe" method="post">
               <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
-              <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
+              <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
             </form>
             {{else if .GoneAt.IsZero}}
             <form action="/feeds/{{.ID}}/subscribe" method="post">

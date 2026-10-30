@@ -715,8 +715,8 @@ func TestTimelineEditHandler(t *testing.T) {
 			`name="include_words" value="AI, machine learning"`,
 			`name="exclude_words" value="Sponsored"`,
 			`<a class="btn" href="/timelines/`+testTimelineID+`">Cancel</a>`,
-			`<form class="tag-delete" action="/timelines/`+testTimelineID+`/delete" method="post">`,
-			`<button class="btn-sm" type="submit">Delete timeline</button>`,
+			`<form class="danger-zone" action="/timelines/`+testTimelineID+`/delete" method="post">`,
+			`<button class="btn-sm btn-danger-quiet" type="submit">Delete timeline</button>`,
 		)
 	})
 

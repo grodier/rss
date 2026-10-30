@@ -52,7 +52,7 @@
               <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{or .Title .Feed.Title .Feed.Url}}">Edit</a>
               <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
                 <input type="hidden" name="return_to" value="/feeds">
-                <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Title .Feed.Title .Feed.Url}}">Unsubscribe</button>
+                <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Title .Feed.Title .Feed.Url}}">Unsubscribe</button>
               </form>
             </div>
           </li>

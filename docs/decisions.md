@@ -172,6 +172,10 @@ Planned in #163 (issues #147–#162).
 - **A timeline, not an inbox.** Read state is recorded but only shown as a quiet marker on read rows (tinted card, dimmed text and image).
   No unread counts, badges, "N new" indicators, "mark all read", or manual mark read/unread.
   No unread filter for now.
+- **Hovering a card never looks like reading it** (#421): hover never tints a card, on unread or read cards, in either theme, so the quiet read marker stays unambiguous.
+  Instead the border firms up and the title takes the link color (`--accent`), the opposite of a read card's dimmed title, so a read card being reconsidered gets the same clear feedback as an unread one.
+  Rejected: the border alone (too faint for a card that is all link), an underlined title (heavy on two-line Bricolage headlines) and a shadow (unused elsewhere, and invisible in dark).
+  Hover styles apply only under `(hover: hover)`, so a tap on a phone doesn't leave a card looking hovered.
 - **What counts as read:** opening the article page, or clicking through to the original from a row.
   Scrolling past doesn't; "seen" isn't recorded.
   Reads are per user and article, independent of subscriptions; an article counts as read if any copy with the same `canonical_url` was read.

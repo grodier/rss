@@ -992,12 +992,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
-    transition: background-color 0.15s, border-color 0.15s;
-  }
-
-  .article-card:hover {
-    border-color: color-mix(in srgb, var(--text) 30%, transparent);
-    background: var(--surface);
+    transition: border-color 0.15s;
   }
 
   .article-card:has(.article-title a:focus-visible) {
@@ -1123,6 +1118,21 @@
   .article-row.read .article-image {
     opacity: 0.65;
     filter: saturate(0.6);
+  }
+
+  /* Hovering a card never tints it: the tint is the read marker, so it has
+     to stay unambiguous. Instead the border firms up and the title takes the
+     link color, the opposite of a read card's dimmed title. Only on devices
+     that really hover, so a tap on a phone doesn't leave a card looking
+     hovered. After the read rules, so hover wins on read cards too. */
+  @media (hover: hover) {
+    .article-card:hover {
+      border-color: color-mix(in srgb, var(--text) 40%, transparent);
+    }
+
+    .article-card:hover .article-title a {
+      color: var(--accent);
+    }
   }
 
   .article-also-in {

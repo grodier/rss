@@ -281,7 +281,7 @@ Feed pages work the same way with `ListByFeed`, but in publication order and wit
 List queries never load `summary` or `content`.
 Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-date` partials).
 
-**Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
+**Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) before the source link.
 The page's values come from enrichment and only fill gaps.
 
@@ -293,7 +293,7 @@ So new items always land on top, and an imported archive doesn't.
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.
 The body is the content, else the summary, through `sanitize.HTML` (relative URLs resolved against the article's URL); with neither, the page's description as plain text.
-`sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`app.js` swaps in the sandboxed player; without JavaScript the link opens the video), and turns any other iframe into a link.
+`sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`app.js` swaps in the sandboxed player; without JavaScript the link opens the video), and turns any other iframe into a link, and makes `http:` images load over `https:`.
 The card image shows above the text unless `sanitize.ShowsImage` finds the content already shows it.
 
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.

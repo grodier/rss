@@ -268,6 +268,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Render redirects HTTP to HTTPS.
 - **Untrusted HTML:** `sanitize.HTML` (see "Reading" in features.md).
   The CSP is `default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com`: no inline scripts or styles, images from any `https:` host.
+  `http:` image URLs would be blocked, so `CardImageURL` and `sanitize.HTML` rewrite them to `https:` when rendering; the database keeps the publisher's URLs.
   YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `app.js` builds from the validated video ID.
   Every other iframe becomes a link.
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.

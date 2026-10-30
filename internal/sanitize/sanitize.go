@@ -32,7 +32,8 @@ func newPolicy() *bluemonday.Policy {
 }
 
 // HTML returns raw as HTML that is safe to render: relative URLs in href and
-// src are resolved against base (left as is if base is nil), YouTube and
+// src are resolved against base (left as is if base is nil), http images
+// load over https (see httpsImage), YouTube and
 // Vimeo iframes become click-to-play previews (see videoEmbed), every other
 // <iframe> with an http(s) src is replaced by <p><a href="SRC">Open embedded
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
@@ -190,9 +191,9 @@ func hasImage(n *html.Node, base *url.URL, want string) bool {
 var sizeSuffix = regexp.MustCompile(`-\d+x\d+(\.[^./]+)$`)
 
 // imageKey returns rawURL, resolved against base, in a form that is the same
-// for copies of one image: the host lowercased and without "www.", no query
-// or fragment, and no WordPress size suffix. ok is false if rawURL doesn't
-// parse.
+// for copies of one image: https for http (see httpsImage), the host
+// lowercased and without "www.", no query or fragment, and no WordPress size
+// suffix. ok is false if rawURL doesn't parse.
 func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -201,6 +202,9 @@ func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 	if base != nil {
 		u = base.ResolveReference(u)
 	}
+	if u.Scheme == "http" {
+		u.Scheme = "https"
+	}
 	u.Host = strings.TrimPrefix(strings.ToLower(u.Host), "www.")
 	u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
 	u.Path = sizeSuffix.ReplaceAllString(u.Path, "$1")
@@ -208,9 +212,22 @@ func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 	return u.String(), true
 }
 
+// httpsImage returns the image URL rawURL with https for http, since the
+// CSP's img-src allows only https: images: a host that serves both loads, one
+// that serves only http was blocked anyway. Any other URL is returned as is.
+// rss.Article.CardImageURL does the same for card images.
+func httpsImage(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme != "http" {
+		return rawURL
+	}
+	u.Scheme = "https"
+	return u.String()
+}
+
 // rewrite walks the children of n: it resolves href and src against base,
 // replaces iframes with video previews or links (or drops them), removes srcset and sizes, and
-// makes images load lazily without a referrer.
+// makes images load over https, lazily and without a referrer.
 func rewrite(n *html.Node, base *url.URL) {
 	for c := n.FirstChild; c != nil; {
 		next := c.NextSibling
@@ -228,6 +245,11 @@ func rewrite(n *html.Node, base *url.URL) {
 				c = next
 				continue
 			case atom.Img:
+				for i, a := range c.Attr {
+					if a.Namespace == "" && a.Key == "src" {
+						c.Attr[i].Val = httpsImage(a.Val)
+					}
+				}
 				setAttr(c, "loading", "lazy")
 				setAttr(c, "referrerpolicy", "no-referrer")
 			}

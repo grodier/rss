@@ -91,6 +91,8 @@ func TestArticleCardImageURL(t *testing.T) {
 	}{
 		{"feed image wins", Article{ImageURL: "https://a/feed.jpg", PageImageURL: "https://a/page.jpg"}, "https://a/feed.jpg"},
 		{"page image", Article{PageImageURL: "https://a/page.jpg"}, "https://a/page.jpg"},
+		{"http feed image over https", Article{ImageURL: "http://a/feed.jpg?w=1", PageImageURL: "https://a/page.jpg"}, "https://a/feed.jpg?w=1"},
+		{"http page image over https", Article{PageImageURL: "http://a/page.jpg"}, "https://a/page.jpg"},
 		{"neither", Article{}, ""},
 	}
 	for _, tt := range tests {

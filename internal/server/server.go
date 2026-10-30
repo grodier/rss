@@ -67,6 +67,7 @@ type UserStore interface {
 	Authenticate(ctx context.Context, email, password string) (string, error)
 	GetByEmail(ctx context.Context, email string) (rss.User, error)
 	UpdateName(ctx context.Context, id, name string) error
+	UpdateTheme(ctx context.Context, id, theme string) error
 	ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error
 	ConfirmEmail(ctx context.Context, hash []byte) (string, error)
 	ResetPassword(ctx context.Context, hash []byte, newPassword string) (rss.User, error)

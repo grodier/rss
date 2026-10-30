@@ -459,8 +459,19 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
     A failed check keeps the current icon; it's removed only when the site's page loads and none of its icons is usable.
   - Site and feed avatars become rounded squares, icon or letter, since most icons are designed as squares.
     The user's own avatar stays a circle: people are circles, sites squares.
-- **Light theme only for now; the dark theme is #413.** Colors are custom properties on `:root` in `main.css`, so a theme can redefine them in one place.
+- **Colors are custom properties on `:root` in `main.css`, so a theme redefines them in one place.**
   Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
+- **A dark theme follows the system, with a choice of System, Light or Dark in Settings** (#413).
+  The dark palette is the light one's, darkened: the logo's ink, darkened, for the background, its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more and input and button borders at 3:1.
+  The values live in one block per theme (repeated once for the media query and once for the explicit choice), so another theme is one more block.
+  Logged-out and error pages always follow the system, since they don't know the user; the browser bar (`theme-color`) also follows the system, and the installed app's splash stays light, since the manifest can't vary.
+- **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), the sky tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
+- **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.
+- **Reading text is a little heavier in dark** (#413): Newsreader at weight 440 rather than 400, since light text on dark reads thinner.
+  Pure white text is avoided, since it glares.
+- **The logo stays as it is in dark** (#413): its ink outline disappears, but the white page still reads as the mark; the favicon stays too, since browser tabs have their own background.
+  Site icons keep a light tile in dark, softened to the text color, since many are drawn for white.
+- **Images in articles are left as they are in dark** (#413), even transparent diagrams and logos with black text, since a white tile behind every image looks worse for the common case; revisit if testers report them.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
@@ -507,7 +518,7 @@ Planned in #395, from a discussion of what would stop people switching to the ap
 - **No pull-to-refresh of our own** (#394).
   Tapping the current tab loads its page again, which is how new articles show up, since the timeline doesn't update live ("Reading").
 - **The app is installed on its final domain only**: an installed app belongs to the origin it was installed from, so #394 waits for the domain move (#389).
-- **The manifest repeats the light theme's background color** (`theme_color`, `background_color`), since it can't read CSS custom properties; themes add a dark `theme-color` (#394).
+- **The manifest repeats the light theme's background color** (`theme_color`, `background_color`), since it can't read CSS custom properties; the pages add a dark `theme-color` (#394, #413).
 - **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
   People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.
   Revisit if trial users or cancellations keep asking for it, or if the app's own mobile experience can't get good enough; the small Fever API would be the first step, possibly on a paid plan.
@@ -587,7 +598,7 @@ In these flows, trade-offs favor the user's experience.
   No Gravatar: it sends a hash of your email to a third party.
 - **One Settings page** (#261): rows like a phone's settings, each opening its own small page with one form.
   The nav's Logout button becomes an account entry (the avatar, labelled Settings), and Log out moves to Settings: with sessions this long, a prominent Logout mostly invites accidental logouts.
-  Preferences (themes) will be typed columns on `users`, not a key-value table.
+  Preferences are typed columns on `users`, not a key-value table: the first is `theme` (#413).
 - **A `user_sessions` row per logged-in device** (#258), its ID kept in the scs session.
   You stay logged in while you visit at least every 90 days, for at most a year (scs's lifetime; browsers cap cookies at 400 days).
   `last_seen_at` is written at most once a day, not on every page view.

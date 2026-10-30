@@ -114,6 +114,7 @@
     --bg: #fff;
     --bg-glass: rgb(255 255 255 / 0.82);
     --surface: #eff4fa;
+    --read-bg: #eff4fa;
     --border: #dfe6ef;
     --border-strong: #c3cfdd;
     --text: #14213a;
@@ -151,6 +152,92 @@
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: "Bricolage Grotesque", var(--font);
     --font-reading: "Newsreader", Charter, Georgia, serif;
+    --font-reading-weight: 400;
+  }
+
+  /* The dark theme: the same tokens, when the device is dark and the user
+     hasn't chosen light, or when they chose dark (data-theme on <html>, from
+     Settings). The two blocks hold the same values; change them together. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f1626;
+      --bg-glass: rgb(15 22 38 / 0.82);
+      --surface: #18233a;
+      --read-bg: #0a101c;
+      --border: #26324a;
+      --border-strong: #56647f;
+      --text: #e8edf5;
+      --text-2: #b3bdcc;
+      --text-3: #98a3b5;
+      --accent: #8ec5f2;
+      --brand: #ff6a3d;
+      --brand-strong: #ff7a52;
+      --selection: #23406a;
+      --danger: #ff8a80;
+      --embed-bg: #222e47;
+      --on-embed: #fff;
+      --embed-play: rgb(0 0 0 / 0.7);
+      --danger-bg: #3a1c22;
+      --info-bg: #172a4a;
+      --tone-1: #f4a77c;
+      --tone-1-bg: #3a2418;
+      --tone-2: #8fd3a3;
+      --tone-2-bg: #1b3324;
+      --tone-3: #9dbcf5;
+      --tone-3-bg: #1c2b4d;
+      --tone-4: #c9a6ef;
+      --tone-4-bg: #2e2142;
+      --tone-5: #f19ab0;
+      --tone-5-bg: #3b1d27;
+      --tone-6: #86d2d4;
+      --tone-6-bg: #173336;
+      --avatar-icon-bg: #e8edf5;
+      --debug-bg: #2a2410;
+      --debug-border: #c99a06;
+      /* Light text on dark reads thinner, so the reading font gets a
+         little heavier. */
+      --font-reading-weight: 440;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f1626;
+    --bg-glass: rgb(15 22 38 / 0.82);
+    --surface: #18233a;
+    --read-bg: #0a101c;
+    --border: #26324a;
+    --border-strong: #56647f;
+    --text: #e8edf5;
+    --text-2: #b3bdcc;
+    --text-3: #98a3b5;
+    --accent: #8ec5f2;
+    --brand: #ff6a3d;
+    --brand-strong: #ff7a52;
+    --selection: #23406a;
+    --danger: #ff8a80;
+    --embed-bg: #222e47;
+    --on-embed: #fff;
+    --embed-play: rgb(0 0 0 / 0.7);
+    --danger-bg: #3a1c22;
+    --info-bg: #172a4a;
+    --tone-1: #f4a77c;
+    --tone-1-bg: #3a2418;
+    --tone-2: #8fd3a3;
+    --tone-2-bg: #1b3324;
+    --tone-3: #9dbcf5;
+    --tone-3-bg: #1c2b4d;
+    --tone-4: #c9a6ef;
+    --tone-4-bg: #2e2142;
+    --tone-5: #f19ab0;
+    --tone-5-bg: #3b1d27;
+    --tone-6: #86d2d4;
+    --tone-6-bg: #173336;
+    --avatar-icon-bg: #e8edf5;
+    --debug-bg: #2a2410;
+    --debug-border: #c99a06;
+    --font-reading-weight: 440;
   }
 
   body {
@@ -951,6 +1038,7 @@
     overflow: hidden;
     color: var(--text-2);
     font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
     font-size: 1.0625rem;
     line-height: 1.45;
     -webkit-box-orient: vertical;
@@ -1006,9 +1094,11 @@
     border-block-start: 1px solid color-mix(in srgb, var(--brand-strong) 45%, transparent);
   }
 
-  /* Read rows: a tinted card, quieter text and image. Still a timeline, not an inbox. */
+  /* Read rows: a tinted card, quieter text and image. Still a timeline, not an
+     inbox. The tint is darker than the page in both themes, so read cards
+     always recede. */
   .article-row.read .article-card {
-    background: var(--surface);
+    background: var(--read-bg);
   }
 
   .article-row.read .article-title a {
@@ -1196,6 +1286,7 @@
   .profile-desc {
     margin-block-start: 0.75rem;
     font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
     font-size: 1.125rem;
   }
 
@@ -1362,6 +1453,31 @@
   }
 
   .settings-form {
+    padding: 1.25rem 1rem;
+  }
+
+  /* Settings > Theme: the choices run edge to edge, like the settings list. */
+  .theme-form fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .theme-form .hint {
+    margin: 0;
+    padding: 1.25rem 1rem 0.75rem;
+    border-block-end: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+
+  .theme-form fieldset > p.error {
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+  }
+
+  .theme-form .form-actions {
+    margin: 0;
     padding: 1.25rem 1rem;
   }
 
@@ -2067,6 +2183,7 @@
   .article-body {
     margin-block-start: 1.5rem;
     font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
     font-size: 1.25rem;
     line-height: 1.6;
   }

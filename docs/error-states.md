@@ -85,7 +85,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | S1 Login-only page while logged out | Open `/feeds` in a private window | 303 to Login | None | Yes: login returns to `/feeds` | needs work: nothing says the page needs logging in |
 | S2 Session ended mid-action | Open Settings → Name, then `DELETE FROM user_sessions WHERE user_id = '{A}'` (or "Log out other devices" elsewhere), then save | 303 to Login | None | Partly: what they typed is lost, and after login they land on Home, not the form (only GETs are remembered) | needs work: say they were logged out; return to the page the form was on |
 | S3 Session idle for 90 days | `UPDATE user_sessions SET last_seen_at = now() - interval '91 days' WHERE user_id = '{A}'`, open `/` | Logged-out landing page, 200 | None | Yes, by logging in | needs work: as S2 |
-| S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | The button turns on; the post was redirected to Login | None | No: it looks saved but isn't (`app.js` counts the redirect to `/login` as success) | needs work: bug, treat a redirect to Login as a failure |
+| S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | The button turns on; the post was redirected to Login | None | No: it looks saved but isn't (`app.js` counts the redirect to `/login` as success) | needs work: bug, treat a redirect to Login as a failure (#429) |
 | S5 Older articles after the session ended (JavaScript) | Code read: infinite scroll gets a redirect | The timeline stops loading more; "Older articles" stays | None | Yes: clicking it goes to Login | ok |
 | S6 Log out | Settings → Log out | Login, flash | "You've been logged out successfully!" | n/a | ok (flash not announced; see N1) |
 | S7 Logged in, opens Login or Signup | `/login` or `/signup?invite=<code>` | 303 to Home | None | n/a | ok |
@@ -116,7 +116,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E20 Settings rate limits | 11 password changes or deletion attempts in 10 minutes; 6 email changes in an hour | Each form, 429, alert | "Too many attempts. Try again in N minutes." | After the wait | ok (code read) |
 | E21 Name blank | Settings → Name, blank | 422, under Name | "Name is required" | Yes | ok |
 | E22 Delete account: wrong or empty password | Settings → Delete | 422, under Password | "That password isn't right."; "Enter your password." | Yes | ok |
-| E23 Account deleted | Delete with the right password | Logged-out landing page, flash | "Your account was deleted. Thanks for trying rss." | n/a | needs work: says "rss", not "Paper Round" |
+| E23 Account deleted | Delete with the right password | Logged-out landing page, flash | "Your account was deleted. Thanks for trying rss." | n/a | needs work: says "rss", not "Paper Round" (#419) |
 | E24 Log out other devices, none | Settings → Log out other devices with one session | Settings, flash | "There were no other devices to log out." | n/a | ok |
 
 ## HTTP errors
@@ -135,7 +135,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | H8 500 from a handler | Code read: any store error | 500 error page | "Something went wrong" / "The server encountered a problem and could not process your request." | Home only | needs work: see H1 |
 | H9 Database down, with a session cookie | Stop Postgres, reload a logged-in page | 500, plain text | "Internal Server Error" | Reload later; nothing says so | needs work: scs's default error handler answers before ours; set `sessionManager.ErrorFunc` |
 | H10 Database down, without a session | Stop Postgres, open `/`, `/privacy` logged out; then log in | Pages without the database work; posting Login gets H8 | As H8 | As H8 | ok |
-| H11 Database down: health check | Stop Postgres, `curl localhost:8080/healthcheck` | 200 | `{"status":"available",…}` | n/a | needs work (discuss): the uptime monitor (#391) watches `/healthcheck`, which doesn't touch the database, so it misses an outage every logged-in page has |
+| H11 Database down: health check | Stop Postgres, `curl localhost:8080/healthcheck` | 200 | `{"status":"available",…}` | n/a | needs work (discuss): the uptime monitor (#391) watches `/healthcheck`, which doesn't touch the database, so it misses an outage every logged-in page has (#430) |
 | H12 Another host (production only) | Code read: a request for any host but `-base-url`'s | 308 to the same path on `-base-url` (#390); not `/healthcheck` | None | n/a | ok |
 
 ## Lookups and discovery
@@ -181,7 +181,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | D7 Refresh a gone feed, or subscribe to one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't subscribe to it." | n/a | ok |
 | D8 Refresh rate limited | 11 refreshes in 10 minutes | Feed page, flash | "You've refreshed a lot of feeds recently. Please wait a few minutes and try again." | After the wait | ok |
 | D9 Refresh while one is running | Code read: click Refresh twice | The second waits, then gets D5 if the first succeeded | As D5 | Yes | ok |
-| D10 Feed page at 375 px, subscribed | Any feed A follows, at 375 px | Feed page | n/a | The Unsubscribe button is cut off and the page scrolls sideways | needs work: the profile's buttons overflow at phone width |
+| D10 Feed page at 375 px, subscribed | Any feed A follows, at 375 px | Feed page | n/a | The Unsubscribe button is cut off and the page scrolls sideways | needs work: the profile's buttons overflow below about 405 px (#431) |
 
 ## Search
 

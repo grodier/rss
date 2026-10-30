@@ -299,6 +299,11 @@ var (
 	_ SiteDiscoverer    = (*discovery.Discoverer)(nil)
 )
 
+// DatabasePinger checks that the database answers; *sql.DB is one.
+type DatabasePinger interface {
+	PingContext(ctx context.Context) error
+}
+
 type Services struct {
 	FeedService         FeedStore
 	UserService         UserStore
@@ -320,6 +325,7 @@ type Services struct {
 	EmailQueue          EmailQueue
 	Fetcher             URLFetcher
 	Discoverer          SiteDiscoverer
+	Database            DatabasePinger
 }
 
 type Server struct {

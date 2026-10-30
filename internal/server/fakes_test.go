@@ -643,3 +643,14 @@ func (f *fakeTimelineStore) GetShared(ctx context.Context, token string) (rss.Ti
 	}
 	return f.getSharedFn(ctx, token)
 }
+
+type fakeDatabase struct {
+	pingFn func(ctx context.Context) error
+}
+
+func (f *fakeDatabase) PingContext(ctx context.Context) error {
+	if f.pingFn == nil {
+		return nil
+	}
+	return f.pingFn(ctx)
+}

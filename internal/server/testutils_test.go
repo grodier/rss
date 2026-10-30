@@ -48,6 +48,11 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}
 	}
+	// /healthcheck pings the database; a test that doesn't care gets one
+	// that answers.
+	if svc.Database == nil {
+		svc.Database = &fakeDatabase{}
+	}
 	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)

@@ -124,7 +124,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 
 | Route | Login | What it does |
 | --- | --- | --- |
-| `GET /healthcheck` | no | JSON status, environment and build version, for health checks |
+| `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
 | `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
@@ -363,7 +363,7 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
 - **Images.** The `Dockerfile` builds `www` as a static binary into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`).
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
-- **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate`, health check `/healthcheck`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
+- **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
   Values that change outside Terraform (the images, the invite code, the SMTP password, `RSS_ALLOW_RESET_TO`) are in `ignore_changes`.
 - **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `reset-db.yml` allows a pre-alpha schema reset, then deploys; `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.

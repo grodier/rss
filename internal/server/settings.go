@@ -292,7 +292,7 @@ func (s *Server) settingsDeleteFormHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.sessionManager.Remove(r.Context(), "sessionID")
-	s.sessionManager.Put(r.Context(), "flash", "Your account was deleted. Thanks for trying rss.")
+	s.sessionManager.Put(r.Context(), "flash", "Your account was deleted. Thanks for trying Paper Round.")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

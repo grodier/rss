@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>{{if .Home}}Home{{else}}Paper Round - {{.Timeline.Name}}{{end}}</title>
+  <title>Paper Round - {{if .Home}}Home{{else}}{{.Timeline.Name}}{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
   <script src="{{asset "js/app.js"}}" defer></script>

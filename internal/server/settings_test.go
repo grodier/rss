@@ -902,7 +902,7 @@ func postSettingsDelete(t *testing.T, s *Server, password string) (rr *httptest.
 
 func TestSettingsDeleteForm(t *testing.T) {
 	const password = "correct-horse-battery"
-	const wantFlash = "Your account was deleted. Thanks for trying rss."
+	const wantFlash = "Your account was deleted. Thanks for trying Paper Round."
 
 	tests := []struct {
 		name      string
@@ -1137,7 +1137,7 @@ func TestDeleteAccountLogsOut(t *testing.T) {
 		t.Fatalf("GET /: status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	assertBodyContains(t, string(b),
-		`<a class="btn btn-primary" href="/login">Login</a>`,
-		`<div class="flash">Your account was deleted. Thanks for trying rss.</div>`,
+		`<a class="btn btn-primary" href="/login">Log in</a>`,
+		`<div class="flash">Your account was deleted. Thanks for trying Paper Round.</div>`,
 	)
 }

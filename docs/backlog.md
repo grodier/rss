@@ -455,7 +455,7 @@ Other background work (#302, #304, #306):
   *Fix:* per-host pacing (skip jobs whose host was fetched in the last few seconds), more `-enrich-workers`, or a lower first-save count.
 - [ ] **Enrichment and icon claims skip unsubscribed work** (#304, #306).
   Like `ClaimDue`, `ClaimNext` and `ClaimIconCheck` filter on an `EXISTS` subscription check the index can't serve, so jobs for feeds nobody subscribes to (looked up, never followed) stay at the front and every claim walks past them.
-  The site catalog (#447) queues up to 20 enrichment jobs for each of its feeds on their first save, most of them never claimed.
+  The site catalog (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
   *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
   *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
 - [ ] **One import at a time** (#302).
@@ -464,7 +464,7 @@ Other background work (#302, #304, #306):
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 measures imports and builds this if production shows overlapping imports.
 - [ ] **Catalog lookups queue ahead of readers' after a reset** (#447).
-  On a fresh database, `www` queues a lookup for every catalog site at start, and `ClaimNext` takes lookups oldest first, so a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
+  If the catalog is seeded through the lookup queue at start, as #447 proposes, `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
   *Signal:* lookups in the first minutes after a deploy ending on the status page instead of the site page, or the catalog growing past a few hundred sites.
   *Fix:* a priority on `lookups` (readers' first), or queue the catalog's lookups with a later `requested_at`.
 
@@ -490,7 +490,7 @@ Pages and queries:
   *Signal:* it shows up in `pg_stat_statements` totals.
   *Fix:* fold it into the page's main query.
 - [ ] **Search scans with `ILIKE`.**
-  Sites and feeds are matched with `%q%`, which can't use a b-tree index; the catalog's topics are matched the same way (#447).
+  Sites and feeds are matched with `%q%`, which can't use a b-tree index; topic matching for the catalog (#447) would be the same.
   Search as you type (#449) runs it once per pause in typing, not once per search.
   *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.

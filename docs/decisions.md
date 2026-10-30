@@ -91,22 +91,12 @@ Planned in #50 (issues #51–#67).
   (#61)
 - **Search only reads the database** (site title and host, feed title and URL).
   Results are sites, each with its feeds.
-- **The search box is for names and addresses, not prose** (#441): it turns off autocorrect, auto-capitalization and spellcheck, which on phones broke addresses ("npr. org").
-  Whitespace next to `.`, `/` or `:` is dropped before deciding whether the query is an address; any other whitespace means it isn't one, so free text isn't glued into a domain.
-  When the query is an address, search also matches its site key exactly and ranks that site first; the box keeps the query as typed.
-- **Results update as you type** with JavaScript (#449): `app.js` fetches the same `/search` page and swaps in its results, debounced and from 2 characters, with the URL following the query.
-  No JSON and no second endpoint; without JavaScript, Search works as before.
-  Lookups still need a click, since GET never fetches.
-- **A hand-picked catalog of well-known sites seeds the database** (#447), so a new reader can find sites by name, or by browsing topics on the Search page before typing.
-  It's a text file in the repository (`[Topic]` headings, one address per line, each site once), edited by the owner in PRs, not chosen by popularity: subscriptions are private (see "Subscriptions").
-  On every start, `www` stores the file in `catalog_sites` and queues a lookup for each site never looked up, so catalog feeds are still created by discovery and a pre-alpha reset brings the catalog back by itself.
-  Topics belong to the catalog, never to subscriptions (tags stay private and free text), and search matches them ("science" finds the Science sites).
-  Catalog feeds follow the usual refresh rules, so one nobody follows can be days old until someone subscribes or opens it.
-  Accepted: after a reset, readers' own lookups wait behind the catalog's for a few minutes (watchlist).
+- **The search box is for names and addresses, not prose** (#441): it turns off autocorrect, auto-capitalization and spellcheck, which on phones broke addresses ("npr. org"), and an address typed with stray spaces is still offered as a lookup.
+- **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
+  How it's chosen, stored, seeded and shown is settled in #447.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
-- **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds.
-  A finished lookup re-runs at once for a different address on the same site (#439), so one failed or empty result doesn't hide a site's feed URLs, and a feed or section URL can add feeds to a known site; only a site's home page keeps a found site's 24 hours.
-  A lookup in progress is never re-queued.
+- **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it finished, or 1 hour after it failed.
+  A failed or empty lookup re-runs at once for a different address on the same site (#439), so one bad result doesn't hide the site's other addresses, such as its feed URLs; a lookup that found a site stays cached by site.
 - **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that refreshes itself with `<meta http-equiv="refresh">` (no JavaScript).
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.
@@ -173,8 +163,7 @@ Planned in #309 (issues #302, #303).
 - **The results page reports every feed**: subscribed, already subscribed, or couldn't add, with a plain reason ("Not a valid web address.", "Couldn't reach the site.", "There's no feed at this address.") and a link to search for the site.
   Failures aren't retried automatically and there's no "Try again"; uploading the file again retries them.
   While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.
-- **An outline's name becomes the subscription's name when it differs from the feed's title** (#442), ignoring case and whitespace, so a reader's renames survive export and import; a matching name stays `""`, so the feed's own title changes still reach them.
-  Only feeds the import subscribes to get it (an existing subscription keeps its name), and an empty name, the outline's URL or one over 100 characters is ignored rather than failing the feed.
+- **An outline's name becomes the subscription's name when it differs from the feed's title** (#442), so a reader's renames survive export and import; a name matching the feed's title stays `""`, so the feed's own title changes still reach them.
 - **Offered in Settings, next to Export, and on the empty timeline.**
 - **Files up to 1 MiB and 1,000 feeds, 5 imports per user an hour.** The upload is a multipart form with its own size cap, not `decodePostForm`'s 64 KiB.
 - **The file input has no `accept` filter.** iOS turns `accept` into system file types, has none for `.opml`, and so greys out OPML files in the picker, including our own export.
@@ -199,7 +188,7 @@ Planned in #163 (issues #147–#162).
 - **Timeline order is arrival order.** Each article gets `timeline_at` once, on insert: the save time for news, its published date for backlog (how the two are told apart is under Reading in features.md).
   New items can't land below ones already seen, and republished archives don't flood the top.
   No bump on subscribe.
-  Undated items on a feed's first save are backlog too (#438): they go just below the save's oldest dated item, in document order, or 30 days back when nothing in the save is dated, since we can't know when they were published and an undated feed would otherwise fill the top of Home on import; on later saves an undated item is news.
+  Undated items on a feed's first save are backlog too (#438), placed below the save's dated items in document order, since we can't know when they were published and an undated feed would otherwise fill the top of Home on import; on later saves an undated item is news.
   Displayed dates may look out of order; accepted.
   Feed pages keep publication order.
   (#147)
@@ -382,7 +371,7 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   Each is an ordinary timeline you can rename, filter, share or delete.
   (#356, #358, #359)
 - **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
-  The average is over the time the feed's articles cover, at least 7 and at most 30 days (#443): a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet; 7 days keeps a weekly feed whose file holds only its latest post from counting as busy.
+  The average is over the time the feed's articles cover, up to 30 days and never less than a minimum span (#443, which settles the minimum): a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
   (#350, #359)
 - **Keyword filters match whole words and phrases, ignoring case, in the title, page title and excerpt**, never the full content (lists don't load it, and it's unbounded).
   A term matches where the characters just before and after it aren't letters or digits, so terms like `C++`, `C#`, `.NET` and `#hashtag` work (symbols are matched literally), and `AI` still matches "#AI" but not "said".
@@ -617,9 +606,8 @@ In these flows, trade-offs favor the user's experience.
   Confirmation links last 7 days, email change 24 hours, reset 1 hour.
   Confirmation and reset links only work while the account still has the address they were sent to.
   Pages with a token in the URL send `Referrer-Policy: no-referrer`.
-- **Confirming on a device where you aren't logged in to that account says it's done** (#444): a static "Email address confirmed" page with a way on, rather than the login page with a flash, which read as if logging in were part of confirming.
+- **Confirming on a device where you aren't logged in says it's done** (#444): a page saying the address is confirmed, with a way on, rather than the login page with a flash, which read as if logging in were part of confirming.
   It never logs anyone in: a confirmation link isn't a login link.
-  Only the account that was confirmed gets Home with the flash, so a device logged in to another account isn't told its own address is confirmed.
 - **The email is how you log in and how we reach you, and it's never shown to other people.** You're shown by your name and a letter avatar.
   No usernames until something public or social needs one: they bring "taken" errors at signup, squatting, and broken links on renames.
 - **No credentials table yet.** The password hash stays on `users`.

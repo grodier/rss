@@ -95,6 +95,19 @@ func TestHTML(t *testing.T) {
 			has:  []string{`src="https://example.com/posts/i.png"`},
 		},
 		{
+			name:   "http image loads over https",
+			raw:    `<img src="http://assets1.example.com/2017/picard.jpg"><a href="http://example.com/p">x</a>`,
+			has:    []string{`src="https://assets1.example.com/2017/picard.jpg"`, `href="http://example.com/p"`},
+			hasNot: []string{`src="http:`},
+		},
+		{
+			name:   "relative image under an http base loads over https",
+			raw:    `<img src="i.png">`,
+			base:   &url.URL{Scheme: "http", Host: "example.com", Path: "/posts/1"},
+			has:    []string{`src="https://example.com/posts/i.png"`},
+			hasNot: []string{`src="http:`},
+		},
+		{
 			name:   "fragment link kept in the article",
 			raw:    `<a href="#fn1">1</a>`,
 			base:   base,
@@ -407,6 +420,7 @@ func TestShowsImage(t *testing.T) {
 		// The same image anywhere.
 		{name: "same URL", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: true},
 		{name: "different query", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg?w=600">`, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "http and https", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "http://example.com/photo.jpg", want: true},
 		{name: "www and host case", raw: `<p>one</p><p>two</p><img src="https://WWW.Example.com/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: true},
 		{name: "relative src", raw: `<p>one</p><p>two</p><img src="/photo.jpg">`, base: base, imageURL: "https://example.com/photo.jpg", want: true},
 		{name: "WordPress size suffix", raw: `<p>one</p><p>two</p><img src="https://example.com/wp/photo-1024x768.jpg">`, imageURL: "https://example.com/wp/photo.jpg", want: true},

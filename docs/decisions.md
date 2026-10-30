@@ -215,6 +215,7 @@ Planned in #163 (issues #147–#162).
   (#340, #341, #343)
 - **Article HTML is sanitized at render time** with bluemonday: relative URLs resolved, iframes replaced by a link, links opened in a new tab with `noopener noreferrer`.
   Images load from the publisher with `referrerpolicy="no-referrer"` and lazy loading; the CSP allows `img-src https:`.
+  An `http:` image URL (card image or `<img>` in the body) loads over `https:` instead, rewritten at render time so stored values stay as published: a host that serves both loads, and one that serves only `http:` was blocked anyway, so upgrading beats dropping the image (#426).
   No image proxy yet (a backlog item, with why it's its own project).
   (#151) Changed in #309 for two cases:
   - Content with no block-level markup (plain text, such as JSON Feed's `content_text`) is split into paragraphs at blank lines, with `<br>` for single line breaks, and bare URLs become links everywhere (#294).

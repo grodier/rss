@@ -132,13 +132,20 @@ func (a Article) ShortByline() string {
 }
 
 // CardImageURL returns the feed's image for the article, else the image of
-// its web page; "" if neither. A change here updates server.articleProvenance
-// too.
+// its web page, with https for http since the CSP's img-src allows only
+// https: images (sanitize.HTML does the same for images in article HTML);
+// "" if neither. A change here updates server.articleProvenance too.
 func (a Article) CardImageURL() string {
-	if a.ImageURL != "" {
-		return a.ImageURL
+	img := a.ImageURL
+	if img == "" {
+		img = a.PageImageURL
 	}
-	return a.PageImageURL
+	u, err := url.Parse(img)
+	if err != nil || u.Scheme != "http" {
+		return img
+	}
+	u.Scheme = "https"
+	return u.String()
 }
 
 // Shorten returns s unchanged if it has at most n runes. Otherwise it cuts

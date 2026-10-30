@@ -12,6 +12,7 @@
 <body>
   <main class="solo">
     <div class="solo-panel hero">
+      {{template "brand"}}
       <h1>{{.Title}}</h1>
       <p>{{.Text}}</p>
       {{with .Note}}<p>{{.}}</p>{{end}}

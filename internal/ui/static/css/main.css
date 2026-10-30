@@ -2568,7 +2568,7 @@
     text-align: center;
   }
 
-  .hero .brand-mark {
+  .hero > .brand-mark {
     margin: 0 auto 1rem;
     inline-size: 5.5rem;
     block-size: 5.5rem;
@@ -2579,7 +2579,7 @@
     margin-block-end: 0.5rem;
   }
 
-  .hero .brand-mark + h1 {
+  .hero > .brand-mark + h1 {
     font-size: 2.5rem;
     letter-spacing: -0.045em;
   }

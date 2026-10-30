@@ -125,6 +125,7 @@ func (app *Application) Run() error {
 	}
 
 	services := server.Services{
+		Database:            db,
 		FeedService:         psql.NewFeedRepository(db),
 		UserService:         psql.NewUserRepository(db),
 		SessionService:      psql.NewUserSessionRepository(db),

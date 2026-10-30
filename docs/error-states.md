@@ -136,7 +136,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | H8 500 from a handler | Code read: any store error | 500 error page | "Something went wrong" / "The server encountered a problem and could not process your request." | Home only | needs work: see H1 |
 | H9 Database down, with a session cookie | Stop Postgres, reload a logged-in page | 500, plain text | "Internal Server Error" | Reload later; nothing says so | needs work: scs's default error handler answers before ours; set `sessionManager.ErrorFunc` |
 | H10 Database down, without a session | Stop Postgres, open `/`, `/privacy` logged out; then log in | Pages without the database work; posting Login gets H8 | As H8 | As H8 | ok |
-| H11 Database down: health check | Stop Postgres, `curl localhost:8080/healthcheck` | 200 | `{"status":"available",…}` | n/a | needs work (discuss): the uptime monitor (#391) watches `/healthcheck`, which doesn't touch the database, so it misses an outage every logged-in page has (#430) |
+| H11 Database down: health check | Stop Postgres, `curl localhost:8080/healthcheck` | 200 | `{"status":"degraded","database":"unreachable",…}` within 1 s, so the uptime monitor's keyword `available` stops matching (#430) | n/a | ok |
 | H12 Another host (production only) | Code read: a request for any host but `-base-url`'s | 308 to the same path on `-base-url` (#390); not `/healthcheck` | None | n/a | ok |
 
 ## Lookups and discovery

@@ -310,6 +310,6 @@ Filled in by #214, checked on 2026-10-13.
   That bounds how far back an incident can be investigated, and how long the client IPs in the request logs are kept.
   Logs past it are gone even after upgrading; keeping them longer needs a log stream.
 - **Cost:** Render's projection for October 2026 was $10.67 for the web service and database, created on 13 October, so a partial month.
-- **Uptime monitor:** UptimeRobot (free plan), keyword `available` on `https://paperround.app/healthcheck` every 5 minutes, alerts by email to the owner. Set up on 2026-10-30 (#391).
+- **Uptime monitor:** UptimeRobot (free plan), keyword `available` on `https://paperround.app/healthcheck` every 5 minutes (the keyword also stops matching when the database doesn't answer: `degraded`), alerts by email to the owner. Set up on 2026-10-30 (#391).
   It lives in UptimeRobot's dashboard, not in Terraform, and watches from outside Render.
   The login is in 1Password.

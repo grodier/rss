@@ -817,3 +817,23 @@ func TestLoggedInRedirect(t *testing.T) {
 		})
 	}
 }
+
+func TestLoginPageSaysLogIn(t *testing.T) {
+	s := newSignupTestServer(t, Services{})
+	get := func(target string) string {
+		rec := httptest.NewRecorder()
+		s.router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d, want %d", target, rec.Code, http.StatusOK)
+		}
+		return rec.Body.String()
+	}
+
+	login := get("/login")
+	assertBodyContains(t, login, `<h1>Log in</h1>`, `type="submit">Log in</button>`)
+	if strings.Contains(login, ">Login<") {
+		t.Error("GET /login contains >Login<")
+	}
+	assertBodyContains(t, get("/"), `href="/login">Log in</a>`)
+	assertBodyContains(t, get("/signup?invite="+testInviteCode), `<a href="/login">Log in</a>`)
+}

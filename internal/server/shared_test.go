@@ -101,7 +101,7 @@ func TestSharedTimelinePage(t *testing.T) {
 	}
 	assertBodyContains(t, rr.Body.String(),
 		`<meta name="robots" content="noindex" />`,
-		`<title>Ada&#39;s picks - Paper Round</title>`,
+		`<title>Paper Round - Ada&#39;s picks</title>`,
 		`<link rel="alternate" type="application/atom+xml" title="Ada&#39;s picks" href="/shared/`+testShareToken+`/feed.atom" />`,
 		"<h1>Ada&#39;s picks</h1>",
 		`<p class="shared-timeline-description">Good reads</p>`,

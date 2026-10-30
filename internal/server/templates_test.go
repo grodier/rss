@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -564,5 +565,33 @@ func TestPageTitlesNameTheApp(t *testing.T) {
 		if !strings.HasPrefix(string(m[1]), "Paper Round") {
 			t.Errorf("%s: <title> = %q, want it to start with Paper Round", f, m[1])
 		}
+	}
+}
+
+func TestSoloPagesShowBrand(t *testing.T) {
+	expired := newTestServerWith(t, Services{TokenService: &fakeTokenStore{
+		getFn: func(context.Context, []byte, string) (rss.Token, error) { return rss.Token{}, rss.ErrNoRecord },
+	}})
+
+	tests := []struct {
+		name   string
+		s      *Server
+		method string
+		target string
+		status int
+	}{
+		{"404", newTestServer(t), http.MethodGet, "/does-not-exist", http.StatusNotFound},
+		{"405", newTestServer(t), http.MethodGet, "/logout", http.StatusMethodNotAllowed},
+		{"expired link", expired, http.MethodGet, "/confirm-email?token=used-token", http.StatusGone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			tt.s.router().ServeHTTP(rr, httptest.NewRequest(tt.method, tt.target, nil))
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.status)
+			}
+			assertBodyContains(t, rr.Body.String(), `class="brand"`, `href="/"`)
+		})
 	}
 }

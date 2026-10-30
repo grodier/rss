@@ -463,6 +463,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
+- **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
+  The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
   It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
   The favicon (`static/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.

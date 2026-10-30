@@ -545,3 +545,24 @@ func TestAvatarPartial(t *testing.T) {
 		})
 	}
 }
+
+func TestPageTitlesNameTheApp(t *testing.T) {
+	files, err := fs.Glob(ui.Templates, "templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleRe := regexp.MustCompile(`<title>([^<]*)</title>`)
+	for _, f := range files {
+		b, err := fs.ReadFile(ui.Templates, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := titleRe.FindSubmatch(b)
+		if m == nil {
+			continue
+		}
+		if !strings.HasPrefix(string(m[1]), "Paper Round") {
+			t.Errorf("%s: <title> = %q, want it to start with Paper Round", f, m[1])
+		}
+	}
+}

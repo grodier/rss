@@ -64,7 +64,7 @@ func TestSavedHandler(t *testing.T) {
 		if gotUser != "user-1" || gotQ != "" || gotLimit != 31 || !gotBefore.IsZero() {
 			t.Errorf("store called with (%q, %q, %+v, %d)", gotUser, gotQ, gotBefore, gotLimit)
 		}
-		assertBodyContains(t, body, "<title>Saved</title>", "<h1>Saved</h1>", `href="/feeds/feed-1"`, "Feed One", `href="/saved" aria-current="page"`)
+		assertBodyContains(t, body, "<title>Paper Round - saved</title>", "<h1>Saved</h1>", `href="/feeds/feed-1"`, "Feed One", `href="/saved" aria-current="page"`)
 		i0, i1 := strings.Index(body, "Article 0"), strings.Index(body, "Article 1")
 		if i0 < 0 || i0 > i1 {
 			t.Errorf("articles out of order: %d %d", i0, i1)

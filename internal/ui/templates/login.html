@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Paper Round - login</title>
+  <title>Paper Round - log in</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head"}}
   <script src="{{asset "js/app.js"}}" defer></script>
@@ -14,7 +14,7 @@
   <main class="solo">
     <div class="solo-panel">
       {{template "brand"}}
-      <h1>Login</h1>
+      <h1>Log in</h1>
 
       {{with .Flash}}
       <div class="flash">{{.}}</div>
@@ -45,7 +45,7 @@
           <p class="hint"><a href="/password/forgot{{with .Form.Email}}?email={{.}}{{end}}">Forgot password?</a></p>
         </div>
         <div>
-          <button class="btn-primary btn-block" type="submit">Login</button>
+          <button class="btn-primary btn-block" type="submit">Log in</button>
         </div>
       </form>
 

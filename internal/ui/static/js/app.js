@@ -2,6 +2,15 @@
 (() => {
   "use strict";
 
+  // DESIGN CHECKPOINT (#421): ?card-hover=a|b|c|d picks a card hover option
+  // and remembers it in this browser. Removed once one is chosen.
+  try {
+    const pick = new URLSearchParams(location.search).get("card-hover");
+    if (pick) localStorage.setItem("card-hover", pick);
+    const opt = localStorage.getItem("card-hover");
+    if (opt) document.documentElement.dataset.cardHover = opt;
+  } catch {}
+
   // Local times: <time data-local datetime="…">, rendered in UTC by the
   // server (the local-time and local-date partials), is shown in the
   // reader's time zone; data-local="date" shows the date only. Takes a root

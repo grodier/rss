@@ -115,6 +115,7 @@
     --bg-glass: rgb(255 255 255 / 0.82);
     --surface: #eff4fa;
     --read-bg: #eff4fa;
+    --card-shadow: rgb(20 33 58 / 0.14);
     --border: #dfe6ef;
     --border-strong: #8794a8;
     --text: #14213a;
@@ -166,6 +167,7 @@
       --bg-glass: rgb(15 22 38 / 0.82);
       --surface: #18233a;
       --read-bg: #0a101c;
+    --card-shadow: rgb(0 0 0 / 0.5);
       --border: #26324a;
       --border-strong: #56647f;
       --text: #e8edf5;
@@ -209,6 +211,7 @@
     --bg-glass: rgb(15 22 38 / 0.82);
     --surface: #18233a;
     --read-bg: #0a101c;
+    --card-shadow: rgb(0 0 0 / 0.5);
     --border: #26324a;
     --border-strong: #56647f;
     --text: #e8edf5;
@@ -992,12 +995,32 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
-    transition: background-color 0.15s, border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
 
-  .article-card:hover {
-    border-color: color-mix(in srgb, var(--text) 30%, transparent);
-    background: var(--surface);
+  /* Hovering a card never tints it: the tint is the read marker, so it has
+     to stay unambiguous. Only devices that really hover, so a tap on a
+     phone doesn't leave a card looking hovered.
+     DESIGN CHECKPOINT (#421): options switch on html[data-card-hover],
+     set by ?card-hover=a|b|c|d in app.js; (a) is the default. */
+  @media (hover: hover) {
+    .article-card:hover {
+      border-color: color-mix(in srgb, var(--text) 40%, transparent);
+    }
+
+    [data-card-hover="b"] .article-card:hover .article-title a {
+      text-decoration: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 0.15em;
+    }
+
+    [data-card-hover="c"] .article-card:hover {
+      box-shadow: 0 2px 10px var(--card-shadow);
+    }
+
+    [data-card-hover="d"] .article-card:hover .article-title a {
+      color: var(--accent);
+    }
   }
 
   .article-card:has(.article-title a:focus-visible) {

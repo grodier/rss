@@ -78,6 +78,9 @@ func TestUserSessionRepository(t *testing.T) {
 		if !u.EmailConfirmedAt.IsZero() {
 			t.Errorf("EmailConfirmedAt = %v, want zero", u.EmailConfirmedAt)
 		}
+		if u.Theme != rss.ThemeSystem {
+			t.Errorf("Theme = %q, want %q", u.Theme, rss.ThemeSystem)
+		}
 		if u.CreatedAt.IsZero() {
 			t.Error("CreatedAt is zero")
 		}

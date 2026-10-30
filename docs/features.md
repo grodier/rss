@@ -29,6 +29,7 @@ The other way to make an account is `www create-user` (`runCreateUser`), for you
 
 **Settings.** The nav's account entry opens `/settings`: the account's name and email, then rows that each open a small page with one form.
 Name trims and checks the name (`CheckName`, also used by signup).
+Theme ("Appearance") offers System, Light or Dark as radio buttons; `UserRepository.UpdateTheme` stores it in `users.theme`, which `authenticate` loads with the session, so every logged-in page then renders it as `data-theme` on `<html>` (see "Frontend" in [architecture.md](architecture.md)).
 The Email row shows "Not confirmed" until the address is confirmed (see "Changing email").
 Password asks for the current and the new password; `UserRepository.ChangePassword` verifies the current one before starting a transaction (Argon2 is slow), then in one transaction stores the new hash and deletes the user's other sessions, keeping this device's.
 The handler queues the `password_changed` email, logging rather than failing if it can't.
@@ -380,7 +381,7 @@ Icons are decoration: if `IconHashes` fails, the error is logged and the page sh
 
 ## Installing the app
 
-**Flow.** Every page includes `app-head`, which links the favicons, the web app manifest and a `theme-color`.
+**Flow.** Every page includes `app-head`, which links the favicons, the web app manifest and a `theme-color` (the user's theme's, else the system's; see "Themes" in [architecture.md](architecture.md)).
 That is all the browser needs to offer installing: Safari's Share → Add to Home Screen on iOS, Chrome's Install app on Android and desktop.
 The installed app opens `/` full screen (`display: standalone`): the timeline when logged in, the landing page when not.
 There is no service worker, install button or banner, and no pull-to-refresh: tapping the current tab loads its page again.

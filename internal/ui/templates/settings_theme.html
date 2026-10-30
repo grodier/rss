@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - theme</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Theme</h1>
+      </header>
+
+      {{$focus := .Form.FirstError "theme"}}
+      <form class="theme-form" action="/settings/theme" method="post">
+        {{range .Form.NonFieldErrors}}
+        <div class="error" role="alert">{{.}}</div>
+        {{end}}
+        <fieldset aria-describedby="theme-hint{{if .Form.FieldErrors.theme}} theme-error{{end}}">
+          <legend class="visually-hidden">Theme</legend>
+          <p class="hint" id="theme-hint">System matches your device's light or dark setting.</p>
+          <label class="choice">
+            <input type="radio" name="theme" value="system"{{if eq .Form.Theme "system"}} checked{{end}}
+              {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}}
+              {{if eq $focus "theme"}}autofocus{{end}} />
+            System
+          </label>
+          <label class="choice">
+            <input type="radio" name="theme" value="light"{{if eq .Form.Theme "light"}} checked{{end}}
+              {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
+            Light
+          </label>
+          <label class="choice">
+            <input type="radio" name="theme" value="dark"{{if eq .Form.Theme "dark"}} checked{{end}}
+              {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
+            Dark
+          </label>
+          {{with .Form.FieldErrors.theme}}<p class="error" id="theme-error">{{.}}</p>{{end}}
+        </fieldset>
+        <div class="form-actions">
+          <button class="btn-primary" type="submit">Save</button>
+          <a class="btn" href="/settings">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

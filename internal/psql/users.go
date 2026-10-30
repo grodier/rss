@@ -90,6 +90,26 @@ func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error 
 	return nil
 }
 
+// UpdateTheme sets the theme of the user with id: rss.ThemeSystem,
+// rss.ThemeLight or rss.ThemeDark (the column's CHECK rejects anything else).
+// It returns rss.ErrNoRecord if there is no such user.
+func (r *UserRepository) UpdateTheme(ctx context.Context, id, theme string) error {
+	stmt := `UPDATE users SET theme = $2 WHERE id = $1`
+
+	res, err := r.DB.ExecContext(ctx, stmt, id, theme)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return rss.ErrNoRecord
+	}
+	return nil
+}
+
 // ChangePassword replaces the password of the user with userID, if current
 // is right, and logs out every other device: it deletes the user's sessions
 // except keepSessionID. A wrong current password returns

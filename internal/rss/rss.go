@@ -465,8 +465,17 @@ type User struct {
 	Name             string
 	Email            string
 	EmailConfirmedAt time.Time // zero until the email is confirmed
+	Theme            string    // ThemeSystem, ThemeLight or ThemeDark; only a Session's User has it
 	CreatedAt        time.Time
 }
+
+// Themes a user can choose (users.theme). ThemeSystem follows the device's
+// light or dark setting.
+const (
+	ThemeSystem = "system"
+	ThemeLight  = "light"
+	ThemeDark   = "dark"
+)
 
 // Token is a one-time email link (a user_tokens row).
 type Token struct {

@@ -86,6 +86,52 @@ func (s *Server) settingsNameFormHandler(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
+type themeForm struct {
+	Theme               string `form:"theme"`
+	validator.Validator `form:"-"`
+}
+
+type settingsThemePage struct {
+	Nav  navData
+	Form themeForm
+}
+
+// renderSettingsTheme renders settings_theme.html with status.
+func (s *Server) renderSettingsTheme(w http.ResponseWriter, r *http.Request, status int, form themeForm) {
+	data := settingsThemePage{Nav: s.nav(r, "settings"), Form: form}
+	if err := s.renderHTML(w, status, "settings_theme.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+func (s *Server) settingsThemeHandler(w http.ResponseWriter, r *http.Request) {
+	sess, _ := s.authenticatedSession(r)
+	s.renderSettingsTheme(w, r, http.StatusOK, themeForm{Theme: sess.User.Theme})
+}
+
+func (s *Server) settingsThemeFormHandler(w http.ResponseWriter, r *http.Request) {
+	var form themeForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+
+	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light or Dark.")
+	if !form.Valid() {
+		s.renderSettingsTheme(w, r, http.StatusUnprocessableEntity, form)
+		return
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	if err := s.services.UserService.UpdateTheme(r.Context(), userID, form.Theme); err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	s.sessionManager.Put(r.Context(), "flash", "Your theme was updated.")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
 type passwordForm struct {
 	CurrentPassword     string `form:"current_password"`
 	NewPassword         string `form:"new_password"`

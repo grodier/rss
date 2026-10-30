@@ -110,6 +110,34 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("UpdateTheme saves each theme", func(t *testing.T) {
+		for _, theme := range []string{rss.ThemeDark, rss.ThemeLight, rss.ThemeSystem} {
+			if err := repo.UpdateTheme(t.Context(), id, theme); err != nil {
+				t.Fatalf("UpdateTheme(%q): %v", theme, err)
+			}
+			var got string
+			if err := db.QueryRow(`SELECT theme FROM users WHERE id = $1`, id).Scan(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got != theme {
+				t.Errorf("theme = %q; want %q", got, theme)
+			}
+		}
+	})
+
+	t.Run("UpdateTheme rejects another value", func(t *testing.T) {
+		if err := repo.UpdateTheme(t.Context(), id, "sepia"); err == nil {
+			t.Error("UpdateTheme(sepia) succeeded; want the CHECK to reject it")
+		}
+	})
+
+	t.Run("UpdateTheme with unknown id", func(t *testing.T) {
+		err := repo.UpdateTheme(t.Context(), "00000000-0000-4000-8000-000000000000", rss.ThemeDark)
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
+		}
+	})
+
 	t.Run("UpdateName with unknown id", func(t *testing.T) {
 		err := repo.UpdateName(t.Context(), "00000000-0000-4000-8000-000000000000", "Nobody")
 		if !errors.Is(err, rss.ErrNoRecord) {

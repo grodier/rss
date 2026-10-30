@@ -48,14 +48,14 @@ func (r *UserSessionRepository) Create(ctx context.Context, userID string, idleB
 // Get returns the session with its user. rss.ErrNoRecord if there's no
 // session with id.
 func (r *UserSessionRepository) Get(ctx context.Context, id string) (rss.Session, error) {
-	stmt := `SELECT s.id, s.last_seen_at, u.id, u.name, u.email, u.email_confirmed_at, u.created_at
+	stmt := `SELECT s.id, s.last_seen_at, u.id, u.name, u.email, u.email_confirmed_at, u.theme, u.created_at
 		FROM user_sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.id = $1`
 
 	var s rss.Session
 	var emailConfirmedAt sql.NullTime
 	err := r.DB.QueryRowContext(ctx, stmt, id).Scan(
-		&s.ID, &s.LastSeenAt, &s.User.ID, &s.User.Name, &s.User.Email, &emailConfirmedAt, &s.User.CreatedAt)
+		&s.ID, &s.LastSeenAt, &s.User.ID, &s.User.Name, &s.User.Email, &emailConfirmedAt, &s.User.Theme, &s.User.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Session{}, rss.ErrNoRecord

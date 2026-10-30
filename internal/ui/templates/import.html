@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{template "html-theme" .Nav}}>
 
 <head>
   <meta charset="UTF-8" />
@@ -9,7 +9,7 @@
   {{end}}
   <title>Paper Round - {{if .InProgress}}importing {{.Filename}}{{else}}import finished{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
-  {{template "app-head"}}
+  {{template "app-head" .Nav}}
 </head>
 
 <body>

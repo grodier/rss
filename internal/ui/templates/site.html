@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{template "html-theme" .Nav}}>
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - {{or .Site.Title .Site.Host}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
-  {{template "app-head"}}
+  {{template "app-head" .Nav}}
 </head>
 
 <body>

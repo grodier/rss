@@ -62,6 +62,7 @@ type fakeUserStore struct {
 	authenticateFn   func(ctx context.Context, email, password string) (string, error)
 	getByEmailFn     func(ctx context.Context, email string) (rss.User, error)
 	updateNameFn     func(ctx context.Context, id, name string) error
+	updateThemeFn    func(ctx context.Context, id, theme string) error
 	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
 	confirmEmailFn   func(ctx context.Context, hash []byte) (string, error)
 	resetPasswordFn  func(ctx context.Context, hash []byte, newPassword string) (rss.User, error)
@@ -84,6 +85,10 @@ func (f *fakeUserStore) GetByEmail(ctx context.Context, email string) (rss.User,
 
 func (f *fakeUserStore) UpdateName(ctx context.Context, id, name string) error {
 	return f.updateNameFn(ctx, id, name)
+}
+
+func (f *fakeUserStore) UpdateTheme(ctx context.Context, id, theme string) error {
+	return f.updateThemeFn(ctx, id, theme)
 }
 
 func (f *fakeUserStore) ChangePassword(ctx context.Context, userID, keepSessionID, current, next string) error {

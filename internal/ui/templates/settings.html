@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{template "html-theme" .Nav}}>
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - settings</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
-  {{template "app-head"}}
+  {{template "app-head" .Nav}}
 </head>
 
 <body>
@@ -56,6 +56,21 @@
             <a class="settings-row" href="/settings/password">
               <span class="settings-label">Password</span>
               <span class="settings-value"></span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="list-head">
+          <h2>Appearance</h2>
+        </div>
+        <ul class="settings-list" role="list">
+          <li>
+            <a class="settings-row" href="/settings/theme">
+              <span class="settings-label">Theme</span>
+              <span class="settings-value">{{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span>
               {{template "icon-chevron"}}
             </a>
           </li>

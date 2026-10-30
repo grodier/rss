@@ -672,16 +672,15 @@
   }
 
   /* An action that loses something you can't get back, where it isn't the
-     final step of a confirmation: red text, no border, a red tint on hover.
-     Hover uses --on-danger-bg, since dark's --danger is too light on
-     --danger-bg. */
+     final step of a confirmation: a normal pill with red text, tinted red
+     on hover. Hover uses --on-danger-bg, since dark's --danger is too light
+     on --danger-bg. */
   .btn-danger-quiet {
-    border-color: transparent;
-    background: none;
     color: var(--danger);
   }
 
   .btn-danger-quiet:hover {
+    border-color: var(--danger);
     background: var(--danger-bg);
     color: var(--on-danger-bg);
   }
@@ -1767,11 +1766,6 @@
   .danger-zone {
     padding: 0.75rem 1rem 1.5rem;
     border-block-start: 1px solid var(--border);
-  }
-
-  /* Line the borderless button's text up with the content above. */
-  .danger-zone .btn-danger-quiet {
-    margin-inline-start: -0.875rem;
   }
 
   /* The timeline edit page's Sharing section, between the form and Delete. */

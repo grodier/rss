@@ -129,6 +129,7 @@
     --on-embed: #fff;
     --embed-play: rgb(0 0 0 / 0.7);
     --danger-bg: #fdf1f0;
+    --on-danger-bg: #c0281e;
     --info-bg: #eef3fe;
     --tone-1: #9a4316;
     --tone-1-bg: #fde7d9;
@@ -178,8 +179,9 @@
       --embed-bg: #222e47;
       --on-embed: #fff;
       --embed-play: rgb(0 0 0 / 0.7);
-      --danger-bg: #4d1c1c;
-      --info-bg: #152e4e;
+      --danger-bg: #742e2b;
+      --on-danger-bg: #ffe7e4;
+      --info-bg: #203e64;
       --tone-1: #ffecdd;
       --tone-1-bg: #7d3f17;
       --tone-2: #e2f9e6;
@@ -193,8 +195,8 @@
       --tone-6: #d8faf9;
       --tone-6-bg: #006060;
       --avatar-icon-bg: #e8edf5;
-      --debug-bg: #2a2410;
-      --debug-border: #c99a06;
+      --debug-bg: #473506;
+      --debug-border: #e1b75c;
       /* Light text on dark reads thinner, so the reading font gets a
          little heavier. */
       --font-reading-weight: 440;
@@ -220,8 +222,9 @@
     --embed-bg: #222e47;
     --on-embed: #fff;
     --embed-play: rgb(0 0 0 / 0.7);
-    --danger-bg: #4d1c1c;
-    --info-bg: #152e4e;
+    --danger-bg: #742e2b;
+    --on-danger-bg: #ffe7e4;
+    --info-bg: #203e64;
     --tone-1: #ffecdd;
     --tone-1-bg: #7d3f17;
     --tone-2: #e2f9e6;
@@ -235,8 +238,8 @@
     --tone-6: #d8faf9;
     --tone-6-bg: #006060;
     --avatar-icon-bg: #e8edf5;
-    --debug-bg: #2a2410;
-    --debug-border: #c99a06;
+    --debug-bg: #473506;
+    --debug-border: #e1b75c;
     --font-reading-weight: 440;
   }
 
@@ -758,6 +761,7 @@
     padding: 0.625rem 0.875rem;
     border-radius: var(--radius-sm);
     background: var(--danger-bg);
+    color: var(--on-danger-bg);
   }
 
   .search-row {
@@ -1322,6 +1326,7 @@
     padding: 0.625rem 0.875rem;
     border-radius: var(--radius-sm);
     background: var(--danger-bg);
+    color: var(--on-danger-bg);
     font-size: 0.875rem;
   }
 

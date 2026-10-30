@@ -464,6 +464,10 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **A dark theme follows the system, with a choice of System, Light or Dark in Settings** (#413).
   The dark palette is the light one's, darkened: the logo's ink, darkened, for the background, its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more and input and button borders at 3:1.
   The values live in one block per theme (repeated once for the media query and once for the explicit choice), so another theme is one more block.
+- **Dark keeps the light theme's color where color means something, and stays calm everywhere else** (#413).
+  Avatars are mid-tone colored tiles with near-white letters, the dark counterpart of light's pastel tiles; the error, flash and debug boxes are mid-tone tints with light text (`--on-danger-bg` for errors); the sky accent is saturated.
+  The page, cards, text and images stay low-chroma, since saturated large areas glare at night.
+  A first version mixed the tints almost into the background and read as dull next to light.
   Logged-out and error pages always follow the system, since they don't know the user; the browser bar (`theme-color`) also follows the system, and the installed app's splash stays light, since the manifest can't vary.
 - **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), the sky tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
 - **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.

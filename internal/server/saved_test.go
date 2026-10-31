@@ -151,7 +151,7 @@ func TestSavedHandler(t *testing.T) {
 		if !gotBefore.At.Equal(want.At) || gotBefore.ID != want.ID {
 			t.Errorf("store before = %+v, want %+v", gotBefore, want)
 		}
-		assertBodyContains(t, rr.Body.String(), `<a href="/saved">Back to newest</a>`)
+		assertBodyContains(t, rr.Body.String(), `<a class="btn btn-sm" href="/saved">Back to newest</a>`)
 	})
 
 	t.Run("malformed before is 400", func(t *testing.T) {
@@ -216,7 +216,7 @@ func TestSavedHandler(t *testing.T) {
 		wantNext := url.Values{"q": {"a&b"}, "before": {next}}.Encode()
 		assertBodyContains(t, body,
 			`rel="next" href="/saved?`+strings.ReplaceAll(wantNext, "&", "&amp;")+`"`,
-			`<a href="/saved?q=a%26b">Back to newest</a>`)
+			`<a class="btn btn-sm" href="/saved?q=a%26b">Back to newest</a>`)
 	})
 
 	t.Run("no matches", func(t *testing.T) {

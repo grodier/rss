@@ -495,6 +495,18 @@
     font-size: 0.875rem;
   }
 
+  /* A head with two actions keeps them on one line. */
+  .head-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .head-actions-links {
+    gap: 1rem;
+  }
+
   @media (max-width: 69.99rem) {
     .shell {
       grid-template-columns: 1fr auto minmax(0, var(--column)) 1fr;
@@ -1686,6 +1698,141 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  /* My feeds' rows (#424 design checkpoint: .my-feed-a, -b and -c are the
+     row options). */
+  .my-feed {
+    position: relative;
+  }
+
+  .feed-row .feed-site a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .feed-row .feed-site a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  /* A site's group ends in the nameplate's thin rule doubled, so the
+     single-feed rows after it don't read as part of it. */
+  .my-feeds-group + .my-feeds-site:not(.my-feeds-group) {
+    border-block-start: 3px double var(--border-strong);
+  }
+
+  /* Option a: the whole row opens the feed, through its title link's
+     ::after; the row's other links sit above it. */
+  .my-feed-a .feed-row-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .my-feed-a :is(.feed-tags a, .feed-site a, .row-icon-btn) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .my-feed-a:hover {
+    background: var(--surface);
+  }
+
+  .my-feed-a .feed-row-title:hover {
+    text-decoration: none;
+  }
+
+  /* Option c: the actions sit under the text, so the text keeps the
+     width. */
+  .my-feed-c {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .my-feed-c .feed-row-actions {
+    margin-block-start: 0.5rem;
+  }
+
+  .row-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    border-radius: 999px;
+    color: var(--text-3);
+    cursor: pointer;
+  }
+
+  .row-icon-btn:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .row-icon-btn .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    stroke-width: 2;
+  }
+
+  /* Option b: a menu per row, a <details> so it works without
+     JavaScript. */
+  .row-menu {
+    position: relative;
+  }
+
+  .row-menu summary {
+    list-style: none;
+  }
+
+  .row-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .row-menu[open] summary {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .row-menu-items {
+    position: absolute;
+    inset-block-start: calc(100% + 0.25rem);
+    inset-inline-end: 0;
+    z-index: 5;
+    min-inline-size: 10rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+  }
+
+  .row-menu-items form {
+    display: block;
+  }
+
+  .row-menu-items a,
+  .row-menu .row-menu-items button {
+    display: block;
+    inline-size: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-weight: 400;
+    text-align: start;
+    text-decoration: none;
+  }
+
+  .row-menu-items a:hover,
+  .row-menu-items button:hover {
+    background: var(--surface);
+  }
+
+  .row-menu .row-menu-items .row-menu-danger {
+    color: var(--danger);
   }
 
   /* A tag's page: a checklist of the user's subscriptions. */

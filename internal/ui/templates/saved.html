@@ -17,7 +17,7 @@
     <main class="column">
       <header class="page-head">
         <h1>Saved</h1>
-        {{if .Before}}<a href="{{.Newest}}">Back to newest</a>{{end}}
+        {{if .Before}}<a class="{{if eq .Nav.Design.Heads "pills"}}btn btn-sm{{end}}" href="{{.Newest}}">Back to newest</a>{{end}}
       </header>
 
       {{with .Flash}}

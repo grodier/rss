@@ -66,6 +66,14 @@
           <a class="btn" href="{{.ReturnTo}}">Cancel</a>
         </div>
       </form>
+
+      {{if eq .Nav.Design.Rows "a"}}
+      <form class="danger-zone" action="/feeds/{{.Sub.Feed.ID}}/unsubscribe" method="post">
+        <input type="hidden" name="return_to" value="/feeds">
+        <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Sub.Title .Sub.Feed.Title .Sub.Feed.Url}}">Unsubscribe</button>
+        <p class="hint">Unsubscribing also removes your name and tags for this feed.</p>
+      </form>
+      {{end}}
     </main>
   </div>
 </body>

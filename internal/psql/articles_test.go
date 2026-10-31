@@ -309,6 +309,12 @@ func TestSaveFetch(t *testing.T) {
 			}
 		}
 
+		// The second save's news, dated before the first save, is spread
+		// between that save and this one.
+		var prevFetched time.Time
+		if err := db.QueryRow(`SELECT last_fetched_at FROM feeds WHERE id = $1`, tf.ID).Scan(&prevFetched); err != nil {
+			t.Fatalf("select last_fetched_at: %v", err)
+		}
 		before := dbNow(t, db)
 		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
 			{ExternalID: "recent", Title: "Recent", PublishedAt: before.Add(-time.Hour)},
@@ -320,8 +326,8 @@ func TestSaveFetch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListByFeed: %v", err)
 		}
-		if r := articleByExternalID(t, got, "recent"); r.TimelineAt.Before(before) {
-			t.Errorf("recent: got TimelineAt %v, want at or after %v", r.TimelineAt, before)
+		if r := articleByExternalID(t, got, "recent"); !r.TimelineAt.After(prevFetched) || r.TimelineAt.After(dbNow(t, db)) {
+			t.Errorf("recent: got TimelineAt %v, want after the previous fetch %v and not after now", r.TimelineAt, prevFetched)
 		}
 		if a := articleByExternalID(t, got, "ancient"); !a.TimelineAt.Equal(a.PublishedAt) {
 			t.Errorf("ancient: got TimelineAt %v, want %v", a.TimelineAt, a.PublishedAt)
@@ -357,7 +363,7 @@ func TestSaveFetch(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
-		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -665,6 +671,7 @@ func TestTimelineAt(t *testing.T) {
 	prev := now.Add(-6 * time.Hour)
 	us := time.Microsecond
 	h := time.Hour
+	m := time.Minute
 	art := func(published time.Time) rss.Article { return rss.Article{PublishedAt: published} }
 	undated := rss.Article{}
 
@@ -716,21 +723,83 @@ func TestTimelineAt(t *testing.T) {
 			name:     "later save: news, backlog and undated",
 			articles: []rss.Article{art(now.Add(-time.Hour)), art(prev.Add(-backlogSlack - time.Second)), art(time.Time{})},
 			prev:     prev,
-			want:     []time.Time{now.Add(-us), prev.Add(-backlogSlack - time.Second), now},
+			want:     []time.Time{now.Add(-time.Hour), prev.Add(-backlogSlack - time.Second), now},
 		},
 		{
-			name: "later save: several news items, newest first, undated ahead",
+			name: "later save: several news items at their dates, undated on top in document order",
 			articles: []rss.Article{
 				art(now.Add(-3 * time.Hour)), art(time.Time{}), art(now.Add(-time.Hour)), art(time.Time{}), art(now.Add(-2 * time.Hour)),
 			},
 			prev: prev,
-			want: []time.Time{now.Add(-4 * us), now, now.Add(-2 * us), now.Add(-us), now.Add(-3 * us)},
+			want: []time.Time{now.Add(-3 * time.Hour), now, now.Add(-time.Hour), now.Add(-us), now.Add(-2 * time.Hour)},
 		},
 		{
+			// At prev - backlogSlack it's news, but below the floor (prev), so
+			// it's spread between the floor and now.
 			name:     "exactly at the boundary is news",
 			articles: []rss.Article{art(prev.Add(-backlogSlack))},
 			prev:     prev,
+			want:     []time.Time{now.Add(-3 * h)},
+		},
+		{
+			name:     "later save: news at its published date",
+			articles: []rss.Article{art(now.Add(-30 * m))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now.Add(-30 * m)},
+		},
+		{
+			name:     "later save: news dated before the previous fetch is spread above it",
+			articles: []rss.Article{art(now.Add(-2 * h)), art(now.Add(-3 * h))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now.Add(-20 * m), now.Add(-40 * m)},
+		},
+		{
+			name:     "later save: spread newest-published first",
+			articles: []rss.Article{art(now.Add(-3 * h)), art(now.Add(-2 * h))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now.Add(-40 * m), now.Add(-20 * m)},
+		},
+		{
+			name:     "later save: spread below the lowest news placed by date",
+			articles: []rss.Article{art(now.Add(-10 * m)), art(now.Add(-2 * h))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now.Add(-10 * m), now.Add(-35 * m)},
+		},
+		{
+			name:     "later save: the floor is at most newsWindow back",
+			articles: []rss.Article{art(now.Add(-20 * h))},
+			prev:     now.Add(-24 * h),
+			want:     []time.Time{now.Add(-3 * h)},
+		},
+		{
+			name:     "later save: undated news on top in document order, dated below it",
+			articles: []rss.Article{undated, undated, art(now.Add(-5 * m))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now, now.Add(-us), now.Add(-5 * m)},
+		},
+		{
+			name:     "later save: future-dated news just below undated news",
+			articles: []rss.Article{undated, art(now.Add(h))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now, now.Add(-us)},
+		},
+		{
+			name:     "later save: future-dated news without undated news at now",
+			articles: []rss.Article{art(now.Add(h))},
+			prev:     now.Add(-h),
 			want:     []time.Time{now},
+		},
+		{
+			name:     "later save: spread below the undated news",
+			articles: []rss.Article{undated, art(now.Add(-2 * h))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now, now.Add(-us - (time.Hour-us)/2)},
+		},
+		{
+			name:     "later save: backlog at its date",
+			articles: []rss.Article{art(now.Add(-h - backlogSlack - time.Second))},
+			prev:     now.Add(-h),
+			want:     []time.Time{now.Add(-h - backlogSlack - time.Second)},
 		},
 		{name: "no articles", prev: prev, want: []time.Time{}},
 	}
@@ -842,7 +911,7 @@ func TestListTimeline(t *testing.T) {
 		}
 	}
 
-	all, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
+	all, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 	if err != nil {
 		t.Fatalf("ListTimeline: %v", err)
 	}
@@ -879,7 +948,7 @@ func TestListTimeline(t *testing.T) {
 		var got []string
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, cursor, 2)
+			page, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.TimelineAnchors{}, cursor, 2)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -906,12 +975,146 @@ func TestListTimeline(t *testing.T) {
 	})
 
 	t.Run("no subscriptions gives an empty slice", func(t *testing.T) {
-		got, err := articles.ListTimeline(ctx, newTestUser(t, db), rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
+		got, err := articles.ListTimeline(ctx, newTestUser(t, db), rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 10)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
 		if got == nil || len(got) != 0 {
 			t.Errorf("got %v, want empty non-nil slice", got)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListTimelineGroups(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	feedA, feedB, feedX := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+	user := newTestUser(t, db)
+	for _, f := range []rss.Feed{feedA, feedB, feedX} {
+		if err := subs.Subscribe(ctx, user, f.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+
+	// The previous visit's latest look was at T - 10h, with T - 10h on
+	// screen; this visit's latest look was at T - 15m.
+	base := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) time.Time { return base.Add(-d) }
+	h, m := time.Hour, time.Minute
+	visit := rss.TimelineAnchors{Visit: at(10 * h), Line: at(10 * h)}
+	reload := rss.TimelineAnchors{Look: at(15 * m), Visit: at(10 * h), Line: at(10 * h)}
+
+	copyURL := fmt.Sprintf("https://example.com/copy-%d", time.Now().UnixNano())
+	for _, a := range []struct {
+		title             string
+		feed              rss.Feed
+		timeline, created time.Time
+		canonical         string
+	}{
+		{"reload", feedA, at(20 * m), at(5 * m), ""},             // arrived since the latest look
+		{"above2", feedB, at(h), at(h), ""},                      // arrived during this visit, before the look
+		{"reload2", feedA, at(2 * h), at(10 * m), ""},            // published before the look, arrived after it
+		{"x", feedX, at(3 * h), at(3 * h), ""},                   // from the feed the filter leaves out
+		{"copy", feedB, at(3*h + 30*m), at(3*h + 30*m), copyURL}, // a late copy of orig
+		{"above", feedA, at(5 * h), at(5 * h), ""},
+		{"late", feedB, at(10*h + 30*m), at(9 * h), ""}, // arrived since the visit, positioned below the line
+		{"old2", feedA, at(11 * h), at(11 * h), ""},
+		{"old1", feedB, at(12 * h), at(12 * h), ""},
+		{"orig", feedA, at(13 * h), at(13 * h), copyURL},
+		{"backlog", feedA, at(30 * h), at(3 * h), ""}, // arrived since the visit, but more than rss.NewsWindow below that
+	} {
+		if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, title, canonical_url, has_copies, timeline_at, created_at)
+			VALUES ($1, $2, $2, $3, $3 <> '', $4, $5)`, a.feed.ID, a.title, a.canonical, a.timeline, a.created); err != nil {
+			t.Fatalf("insert %s: %v", a.title, err)
+		}
+	}
+
+	// list returns the timeline as "group:title" entries.
+	list := func(t *testing.T, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]string, []rss.ArticleWithFeed) {
+		t.Helper()
+		items, err := articles.ListTimeline(ctx, user, filter, anchors, before, limit)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		var got []string
+		for _, item := range items {
+			got = append(got, fmt.Sprintf("%d:%s", item.Group, item.Article.Title))
+		}
+		return got, items
+	}
+	check := func(t *testing.T, got, want []string) {
+		t.Helper()
+		if !slices.Equal(got, want) {
+			t.Errorf("got  %v\nwant %v", got, want)
+		}
+	}
+	all := rss.TimelineFilter{}
+
+	t.Run("no anchors: publish order", func(t *testing.T) {
+		got, _ := list(t, all, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
+		check(t, got, []string{"0:reload", "0:above2", "0:reload2", "0:x", "0:above", "0:late", "0:old2", "0:old1", "0:orig", "0:backlog"})
+	})
+
+	t.Run("an arrival below the line goes just above it", func(t *testing.T) {
+		got, _ := list(t, all, visit, rss.ArticleCursor{}, 100)
+		check(t, got, []string{"1:reload", "1:above2", "1:reload2", "1:x", "1:above", "1:late", "0:old2", "0:old1", "0:orig", "0:backlog"})
+	})
+
+	t.Run("backlog that arrived since isn't new", func(t *testing.T) {
+		got, _ := list(t, all, visit, rss.ArticleCursor{}, 100)
+		if !slices.Contains(got, "0:backlog") {
+			t.Errorf("got %v, want backlog in group 0", got)
+		}
+	})
+
+	want := []string{"2:reload", "2:reload2", "1:above2", "1:x", "1:above", "1:late", "0:old2", "0:old1", "0:orig", "0:backlog"}
+
+	t.Run("a reload puts what arrived since the latest look first", func(t *testing.T) {
+		got, _ := list(t, all, reload, rss.ArticleCursor{}, 100)
+		check(t, got, want)
+	})
+
+	t.Run("a visit's first look without a previous visit", func(t *testing.T) {
+		got, _ := list(t, all, rss.TimelineAnchors{Look: reload.Look}, rss.ArticleCursor{}, 100)
+		check(t, got, []string{"2:reload", "2:reload2", "0:above2", "0:x", "0:above", "0:late", "0:old2", "0:old1", "0:orig", "0:backlog"})
+	})
+
+	t.Run("paging across groups has no overlap or gap", func(t *testing.T) {
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 20 {
+			page, items := list(t, all, reload, cursor, 2)
+			if len(page) > 2 {
+				t.Fatalf("page has %d rows, want at most 2", len(page))
+			}
+			if len(page) == 0 {
+				break
+			}
+			got = append(got, page...)
+			last := items[len(items)-1]
+			cursor = rss.ArticleCursor{Group: last.Group, At: last.Article.TimelineAt, ID: last.Article.ID}
+		}
+		check(t, got, want)
+	})
+
+	t.Run("filters apply within groups", func(t *testing.T) {
+		got, _ := list(t, rss.TimelineFilter{ExcludeFeedIDs: []string{feedX.ID}}, reload, rss.ArticleCursor{}, 100)
+		check(t, got, []string{"2:reload", "2:reload2", "1:above2", "1:above", "1:late", "0:old2", "0:old1", "0:orig", "0:backlog"})
+	})
+
+	t.Run("copies collapse across groups", func(t *testing.T) {
+		_, items := list(t, all, reload, rss.ArticleCursor{}, 100)
+		for _, item := range items {
+			if item.Article.Title == "copy" {
+				t.Errorf("the late copy is listed in group %d", item.Group)
+			}
+			if item.Article.Title == "orig" && (item.Group != 0 || len(item.AlsoIn) != 1 || item.AlsoIn[0].ID != feedB.ID) {
+				t.Errorf("orig: group %d, AlsoIn %v, want group 0, also in feed B", item.Group, item.AlsoIn)
+			}
 		}
 	})
 }
@@ -967,7 +1170,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		}
 	}
 
-	all, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
+	all, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 	if err != nil {
 		t.Fatalf("ListTimeline: %v", err)
 	}
@@ -1048,7 +1251,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		var got []rss.ArticleWithFeed
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, cursor, 1)
+			page, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, rss.TimelineAnchors{}, cursor, 1)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -1066,7 +1269,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 	})
 
 	t.Run("a user subscribed only to B sees B's copy without AlsoIn", func(t *testing.T) {
-		got, err := articles.ListTimeline(ctx, bOnly, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
+		got, err := articles.ListTimeline(ctx, bOnly, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1122,7 +1325,7 @@ func TestListTimelineFillsPagePastCopies(t *testing.T) {
 		var got [][]string
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, reader, filter, cursor, 5)
+			page, err := articles.ListTimeline(ctx, reader, filter, rss.TimelineAnchors{}, cursor, 5)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -1199,7 +1402,7 @@ func TestListTimelineSubscriptionNames(t *testing.T) {
 		other:   {feedA.ID: "Old title", feedB.ID: "Old title"},
 	}
 	for user, want := range names {
-		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 100)
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1389,7 +1592,7 @@ func TestListTimelineFilter(t *testing.T) {
 	// entries lists filter's timeline as "ext@feed", newest first.
 	entries := func(t *testing.T, filter rss.TimelineFilter) []string {
 		t.Helper()
-		items, err := articles.ListTimeline(ctx, user, filter, rss.ArticleCursor{}, 100)
+		items, err := articles.ListTimeline(ctx, user, filter, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1432,7 +1635,7 @@ func TestListTimelineFilter(t *testing.T) {
 	}
 
 	t.Run("also in still lists every other subscribed copy", func(t *testing.T) {
-		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{ExcludeFeedIDs: []string{feedOf["C"]}}, rss.ArticleCursor{}, 1)
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{ExcludeFeedIDs: []string{feedOf["C"]}}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 1)
 		if err != nil {
 			t.Fatalf("ListTimeline: %v", err)
 		}
@@ -1446,7 +1649,7 @@ func TestListTimelineFilter(t *testing.T) {
 		var got []string
 		cursor := rss.ArticleCursor{}
 		for range 10 {
-			page, err := articles.ListTimeline(ctx, user, filter, cursor, 1)
+			page, err := articles.ListTimeline(ctx, user, filter, rss.TimelineAnchors{}, cursor, 1)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -1541,7 +1744,7 @@ func TestListTimelineConditions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.ArticleCursor{}, 100)
+			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}
@@ -1611,7 +1814,7 @@ func TestListTimelineWords(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.ArticleCursor{}, 100)
+			items, err := articles.ListTimeline(t.Context(), user, tt.filter, rss.TimelineAnchors{}, rss.ArticleCursor{}, 100)
 			if err != nil {
 				t.Fatalf("ListTimeline: %v", err)
 			}

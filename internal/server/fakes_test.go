@@ -224,7 +224,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
-	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	listSharedFn   func(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
 }
 
@@ -239,11 +239,11 @@ func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before
 	return f.listByFeedFn(ctx, feedID, before, limit)
 }
 
-func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	if f.listTimelineFn == nil {
 		return nil, nil
 	}
-	return f.listTimelineFn(ctx, userID, filter, before, limit)
+	return f.listTimelineFn(ctx, userID, filter, anchors, before, limit)
 }
 
 func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
@@ -257,7 +257,7 @@ type fakeReadStore struct {
 	markReadFn       func(ctx context.Context, userID, articleID string) error
 	readArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 	timelineMarkFn   func(ctx context.Context, userID string) (rss.TimelineMark, error)
-	markSeenFn       func(ctx context.Context, userID string, upTo time.Time) error
+	markSeenFn       func(ctx context.Context, userID string, upTo, asOf time.Time) error
 }
 
 func (f *fakeReadStore) MarkRead(ctx context.Context, userID, articleID string) error {
@@ -281,11 +281,11 @@ func (f *fakeReadStore) TimelineMark(ctx context.Context, userID string) (rss.Ti
 	return f.timelineMarkFn(ctx, userID)
 }
 
-func (f *fakeReadStore) MarkSeen(ctx context.Context, userID string, upTo time.Time) error {
+func (f *fakeReadStore) MarkSeen(ctx context.Context, userID string, upTo, asOf time.Time) error {
 	if f.markSeenFn == nil {
 		return nil
 	}
-	return f.markSeenFn(ctx, userID, upTo)
+	return f.markSeenFn(ctx, userID, upTo, asOf)
 }
 
 type fakeSubscriptionStore struct {

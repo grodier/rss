@@ -223,8 +223,8 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | P1 Empty timeline | Y1 | | | | see Y1 |
-| P2 No older articles | `/?before=2000-01-01T00:00:00Z_00000000-0000-0000-0000-000000000000` (also feed pages, Saved) | 200 | "No older articles." (Saved: "No older saved articles.", "No older matches.") | Yes | ok |
-| P3 Invalid `before` cursor | `/?before=garbage`, `/feeds/{feed}?before=garbage`, `/saved?before=garbage` | 400 error page | "Bad request" / "That link to older articles isn't valid." | Home only | needs work: see H1 |
+| P2 No older articles | `/?before=0_2000-01-01T00:00:00Z_00000000-0000-0000-0000-000000000000` (also feed pages, Saved) | 200 | "No older articles." (Saved: "No older saved articles.", "No older matches.") | Yes | ok |
+| P3 Invalid `before` cursor | `/?before=garbage`, `/feeds/{feed}?before=garbage`, `/saved?before=garbage`; on a timeline, also a valid `before` with `&anchors=garbage` | 400 error page | "Bad request" / "That link to older articles isn't valid." | Home only | needs work: see H1 |
 | P4 Article with no text in its feed | The `notext` article | Article page, 200 | "This article has no text in its feed." + "Read on {site}" | Yes | ok |
 | P5 Article with no URL | The `nourl` article | Article page, 200, no "Read on" | None | n/a | ok |
 | P6 Article with no title, text or URL | The `nothing` article | Article page, 200 | "(untitled)" and P4's text | n/a | ok |

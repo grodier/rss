@@ -254,7 +254,9 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 	}
 
 	// Each article's published date is uniform over the period, and
-	// timeline_at is the published date, as for a feed's backlog. About
+	// timeline_at is the published date, as for a feed's backlog; created_at
+	// is up to an hour after that (capped at now), so the grouped timeline's
+	// news has arrivals to find. About
 	// copyShare of articles also get a copy in another feed (the LATERAL
 	// adds it): the same canonical URL, a tracking parameter on its link, and
 	// a position up to 6 hours later.
@@ -263,7 +265,7 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 	// in the derived table's select list keeps it from being flattened, so
 	// each article draws its values once, in a fixed order: the same -seed
 	// seeds the same articles.
-	stmt = `INSERT INTO articles (feed_id, external_id, url, canonical_url, media_type, title, summary, excerpt, published_at, timeline_at)
+	stmt = `INSERT INTO articles (feed_id, external_id, url, canonical_url, media_type, title, summary, excerpt, published_at, timeline_at, created_at)
 		SELECT
 			CASE WHEN c.copy THEN ($1::uuid[])[s.target] ELSE s.feed_id END,
 			CASE WHEN c.copy THEN 'copy-' || s.k || '-' || s.i ELSE 'item-' || s.i END,
@@ -271,7 +273,8 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 			s.link, s.media_type, s.title,
 			'<p>' || s.excerpt || '</p><p>' || s.excerpt || '</p>', s.excerpt,
 			CASE WHEN c.copy THEN LEAST(now(), s.p + s.lag) ELSE s.p END,
-			CASE WHEN c.copy THEN LEAST(now(), s.p + s.lag) ELSE s.p END
+			CASE WHEN c.copy THEN LEAST(now(), s.p + s.lag) ELSE s.p END,
+			LEAST(now(), CASE WHEN c.copy THEN LEAST(now(), s.p + s.lag) ELSE s.p END + s.arrival)
 		FROM (
 			SELECT f.id AS feed_id, f.k, i,
 				'https://' || f.host || '/posts/' || i AS link,
@@ -285,7 +288,8 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 				$10 > 1 AND random() < $9 AS copied,
 				-- Any feed but the article's own (k is 1-based).
 				(1 + (f.k + floor(random() * ($10::int - 1))::int) % $10::int)::int AS target,
-				random() * interval '6 hours' AS lag
+				random() * interval '6 hours' AS lag,
+				random() * interval '1 hour' AS arrival
 			FROM unnest($1::uuid[], $2::text[], $3::int[]) WITH ORDINALITY AS f (id, host, n, k),
 				generate_series(1, f.n) AS i
 		) s

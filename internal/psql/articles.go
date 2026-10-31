@@ -119,36 +119,64 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 }
 
 // ListTimeline returns up to limit entries from the feeds userID subscribes
-// to that filter shows (see timelineWhere), ordered by timeline_at then ID,
-// newest first, starting after before (from the start if before is zero).
+// to that filter shows (see timelineWhere), starting after before (from the
+// start if before is zero).
+//
+// Entries are in groups, each ordered by timeline_at then ID, newest first,
+// with Group set; anchors turn the groups on (see timelineGroups):
+//
+//   - 2, when anchors.Look is set (a reload during a visit): news that arrived
+//     since the reader's latest look;
+//   - 1, when anchors.Visit is set: news that arrived since the reader's
+//     previous visit, and everything positioned above anchors.Line;
+//   - 0: everything else, below the "You were here" line.
+//
+// News arrives at its created_at; an article is news when it's positioned no
+// more than rss.NewsWindow below that (see newsCond), so backlog never
+// counts as arriving. The groups run as separate queries, from before's group down,
+// until the page is full; the cursor applies only in its own group. With zero
+// anchors there's one group, 0, in timeline order.
 //
 // Copies of one article (same non-empty canonical_url) in several of those
 // feeds are one entry: the earliest copy to arrive (smallest timeline_at,
-// then ID), at that copy's position, with AlsoIn listing the other feeds
-// that have a copy, ordered by title. Feed titles are the user's names for
-// their subscriptions where they've set one.
+// then ID), at that copy's position and in that copy's group, with AlsoIn
+// listing the other feeds that have a copy, ordered by title. Feed titles
+// are the user's names for their subscriptions where they've set one.
 //
 // Summary and Content are left empty.
-func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
-	at, id := cursorArgs(before)
-	args := []any{userID, at, id, limit}
-
-	rows, err := r.DB.QueryContext(ctx, timelineStmt(filter, false, &args), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	items := []rss.ArticleWithFeed{}
-	for rows.Next() {
-		var item rss.ArticleWithFeed
-		if item.Article, item.Feed, err = scanArticleWithFeed(rows); err != nil {
+	for _, g := range timelineGroups(anchors) {
+		if len(items) >= limit {
+			break
+		}
+		if !before.IsZero() && g.group > before.Group {
+			continue // already shown
+		}
+		cursor := rss.ArticleCursor{}
+		if g.group == before.Group {
+			cursor = before
+		}
+		at, id := cursorArgs(cursor)
+		args := []any{userID, at, id, limit - len(items)}
+		cond := g.cond(&args)
+
+		rows, err := r.DB.QueryContext(ctx, timelineStmt(filter, false, cond, &args), args...)
+		if err != nil {
 			return nil, err
 		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		for rows.Next() {
+			item := rss.ArticleWithFeed{Group: g.group}
+			if item.Article, item.Feed, err = scanArticleWithFeed(rows); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			items = append(items, item)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := r.fillAlsoIn(ctx, userID, items); err != nil {
@@ -156,6 +184,72 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	}
 
 	return items, nil
+}
+
+// timelineGroup is one of ListTimeline's groups: its number and the
+// condition it adds on each feed's articles a (see timelineStmt), which
+// appends its parameters to args.
+type timelineGroup struct {
+	group int
+	cond  func(args *[]any) string
+}
+
+// timelineGroups returns the groups anchors turn on, highest first.
+//
+// The first two bound timeline_at from below, so each feed's scan is a
+// short range on articles_feed_timeline_idx: news is never placed more than
+// rss.NewsWindow below its created_at, so news created after t is
+// positioned after t - rss.NewsWindow.
+func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
+	param := func(args *[]any, t time.Time) string {
+		*args = append(*args, t)
+		return fmt.Sprintf("$%d::timestamptz", len(*args))
+	}
+	// arrived is the condition that a is news created after t.
+	arrived := func(t string) string {
+		return `(a.created_at > ` + t + ` AND ` + newsCond("a") + `)`
+	}
+	window := fmt.Sprintf("make_interval(secs => %d)", int(rss.NewsWindow.Seconds()))
+
+	var groups []timelineGroup
+	if !anchors.Look.IsZero() {
+		groups = append(groups, timelineGroup{2, func(args *[]any) string {
+			look := param(args, anchors.Look)
+			return `
+				AND a.created_at > ` + look + ` AND a.timeline_at > ` + look + ` - ` + window + ` AND ` + newsCond("a")
+		}})
+	}
+	if !anchors.Visit.IsZero() {
+		groups = append(groups, timelineGroup{1, func(args *[]any) string {
+			line, visit := param(args, anchors.Line), param(args, anchors.Visit)
+			cond := `
+				AND a.timeline_at > LEAST(` + line + `, ` + visit + ` - ` + window + `)
+				AND (a.timeline_at > ` + line + ` OR ` + arrived(visit) + `)`
+			if !anchors.Look.IsZero() {
+				cond += `
+				AND NOT ` + arrived(param(args, anchors.Look))
+			}
+			return cond
+		}})
+	}
+	groups = append(groups, timelineGroup{0, func(args *[]any) string {
+		switch {
+		case !anchors.Visit.IsZero():
+			return `
+				AND a.timeline_at <= ` + param(args, anchors.Line) + ` AND NOT ` + arrived(param(args, anchors.Visit))
+		case !anchors.Look.IsZero():
+			return `
+				AND NOT ` + arrived(param(args, anchors.Look))
+		}
+		return ""
+	}})
+	return groups
+}
+
+// newsCond returns the condition that the article a is news: positioned no
+// more than rss.NewsWindow below its created_at (rss.Article.IsNews in SQL).
+func newsCond(a string) string {
+	return fmt.Sprintf("%[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
 }
 
 // ListShared returns the newest limit articles with a URL of ownerID's
@@ -171,7 +265,7 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 	if filter.StarredOnly {
 		stmt = starredStmt(filter, true, &args)
 	} else {
-		stmt = timelineStmt(filter, true, &args)
+		stmt = timelineStmt(filter, true, "", &args)
 	}
 	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
@@ -199,9 +293,11 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 
 // timelineStmt returns ListTimeline's query for filter, appending filter's
 // parameters to args, which starts with the user ID, the cursor's time and
-// ID, and the limit. With shared (for ListShared), feeds have their own
-// titles, and articles without a URL are left out.
-func timelineStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
+// ID, and the limit. group is a condition on each feed's articles a (a
+// group's, see timelineGroups; "" for none); it doesn't apply to the copies
+// an entry collapses with. With shared (for ListShared), feeds have their
+// own titles, and articles without a URL are left out.
+func timelineStmt(filter rss.TimelineFilter, shared bool, group string, args *[]any) string {
 	// For each subscription, read the feed's newest limit entries before the
 	// cursor from articles_feed_timeline_idx, then merge them and keep limit.
 	// An entry is left out when an earlier copy (same canonical URL, smaller
@@ -215,7 +311,7 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
 			SELECT ` + qualifiedListArticleColumns + `
 			FROM articles a
 			WHERE a.feed_id = sub.feed_id
-				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` +
+				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` + group +
 		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a") + `
 				AND NOT (a.has_copies AND EXISTS (
 					SELECT 1
@@ -420,12 +516,13 @@ const undatedBacklogStep = 24 * time.Hour
 // articles, for a save at now of a feed whose previous successful fetch
 // was prevFetched (zero for the feed's first save).
 //
-// News (on a later save: undated, or published since prevFetched -
-// backlogSlack) is placed at now, newest-published first with undated items
-// ahead of dated ones, each 1 µs below the one before. Backlog (every dated
-// item of a first save, and older items of later saves) is placed at its
-// published date, clamped to now. A first save's undated items are backlog
-// too, spaced out below the items before them (see placeUndated).
+// Backlog (every dated item of a first save, and items of later saves
+// published before prevFetched - backlogSlack) is placed at its published
+// date, clamped to now. A first save's undated items are backlog too, spaced
+// out below the items before them (see placeUndated).
+//
+// The rest of a later save is news, placed no lower than a floor: the later
+// of prevFetched and now - rss.NewsWindow (see placeNews).
 func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
 	cutoff := prevFetched.Add(-backlogSlack)
 	positions := make([]time.Time, len(articles))
@@ -447,23 +544,64 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 	}
 	if prevFetched.IsZero() {
 		placeUndated(articles, positions, now)
+	} else {
+		placeNews(articles, news, positions, prevFetched, now)
 	}
-
-	// Undated items count as published now, so they sort ahead of dated ones.
-	published := func(i int) time.Time {
-		if t := articles[i].PublishedAt; !t.IsZero() {
-			return t
-		}
-		return now
-	}
-	sort.SliceStable(news, func(x, y int) bool {
-		return published(news[x]).After(published(news[y]))
-	})
-	for n, i := range news {
-		positions[i] = now.Add(-time.Duration(n) * time.Microsecond)
-	}
-
 	return positions
+}
+
+// placeNews sets the positions of a later save's news, the articles at the
+// indexes news (in document order). Undated news goes at now, then 1 µs
+// apart in document order. News dated after the floor (the later of
+// prevFetched and now - rss.NewsWindow) goes at its published date, but no
+// higher than just below the undated news. News dated at or below the floor
+// (an aggregator's submission dates, a day-only date, a feed that was down)
+// is spread evenly, newest-published first, between the floor and the
+// lowest news placed by date (else just below the undated news, else now),
+// at least 1 µs apart, so it's neither buried below what the reader saw
+// nor stacked in a block.
+func placeNews(articles []rss.Article, news []int, positions []time.Time, prevFetched, now time.Time) {
+	floor := now.Add(-rss.NewsWindow)
+	if prevFetched.After(floor) {
+		floor = prevFetched
+	}
+
+	ceiling := now // the highest a dated article goes
+	var undated int
+	for _, i := range news {
+		if articles[i].PublishedAt.IsZero() {
+			positions[i] = now.Add(-time.Duration(undated) * time.Microsecond)
+			undated++
+			ceiling = now.Add(-time.Duration(undated) * time.Microsecond)
+		}
+	}
+
+	var spread []int
+	lowest := ceiling // the lowest position of news placed by date
+	for _, i := range news {
+		published := articles[i].PublishedAt
+		switch {
+		case published.IsZero():
+		case published.After(floor):
+			positions[i] = published
+			if published.After(ceiling) {
+				positions[i] = ceiling
+			}
+			if positions[i].Before(lowest) {
+				lowest = positions[i]
+			}
+		default:
+			spread = append(spread, i)
+		}
+	}
+
+	sort.SliceStable(spread, func(x, y int) bool {
+		return articles[spread[x]].PublishedAt.After(articles[spread[y]].PublishedAt)
+	})
+	step := max(lowest.Sub(floor)/time.Duration(len(spread)+1), time.Microsecond)
+	for k, i := range spread {
+		positions[i] = lowest.Add(-time.Duration(k+1) * step)
+	}
 }
 
 // placeUndated sets the positions of a first save's undated articles, given

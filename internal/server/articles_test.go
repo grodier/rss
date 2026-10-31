@@ -598,7 +598,7 @@ func TestShareButton(t *testing.T) {
 		t.Helper()
 		a.ID = testArticleID
 		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return []rss.ArticleWithFeed{{Article: a, Feed: rss.Feed{ID: "feed-1", Title: "Feed One"}}}, nil
 			},
 		}})

@@ -269,7 +269,7 @@ Planned in #163 (issues #147–#162).
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 - **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
   It's stored per user on the server (`timeline_marks`), so it follows the reader across devices; a marker in the browser would need no schema but differ on every device.
-  The page reports the first row's position with a beacon when it's hidden, never from the GET that renders it ("Overall").
+  The page reports the newest position on it (with #455, which needn't be the first row's) with a beacon when it's hidden, never from the GET that renders it ("Overall").
   One position per user serves Home and every custom timeline, since they share `timeline_at`; starred-only timelines, ordered by star time, show no line.
   The line moves only after 30 minutes away (`rss.VisitGap`), so a reload or a quick tab switch keeps it in place.
   With #455 the line is also where grouping splits the timeline, so the mark keeps when each look was rendered, not only when it was reported: articles fetched while a page is open weren't on it.

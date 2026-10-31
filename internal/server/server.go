@@ -117,9 +117,9 @@ type ArticleStore interface {
 	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	// ListTimeline returns a page of the user's subscriptions' articles that
-	// filter shows (the zero filter for Home). Summary and Content are left
-	// empty.
-	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	// filter shows (the zero filter for Home), grouped by anchors (zero
+	// anchors: one group). Summary and Content are left empty.
+	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	// ListShared returns the newest limit articles with a URL of the owner's
 	// timeline with filter, with each feed's own title, for its shared feed.
 	// Summary and Content are left empty.
@@ -144,12 +144,13 @@ type SubscriptionStore interface {
 type ReadStore interface {
 	MarkRead(ctx context.Context, userID, articleID string) error
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
-	// TimelineMark returns where the user's "You were here" divider is
-	// decided from; a zero mark if the timeline has never reported one.
+	// TimelineMark returns what the user's timeline groups and "You were
+	// here" divider are decided from; a zero mark if the timeline has never
+	// reported one.
 	TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error)
 	// MarkSeen records that the user has had the timeline position upTo on
-	// screen.
-	MarkSeen(ctx context.Context, userID string, upTo time.Time) error
+	// screen, on a page rendered at asOf.
+	MarkSeen(ctx context.Context, userID string, upTo, asOf time.Time) error
 }
 
 // SaveStore records and lists which articles a user has saved.

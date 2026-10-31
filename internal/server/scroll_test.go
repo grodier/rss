@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"regexp"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/ui"
 )
 
 // TestInfiniteScrollMarkup checks the markup app.js's infinite scroll relies
@@ -19,7 +21,7 @@ import (
 // .article-list, and the next page is linked by .pager a[rel=next].
 func TestInfiniteScrollMarkup(t *testing.T) {
 	timeline := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			return timelineItems(31), nil
 		},
 	}})
@@ -89,7 +91,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 
 // TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
 // and infinite scroll rely on: a timeline's first page puts data-seen-up-to
-// on .article-list itself, and the divider is a .timeline-divider directly
+// and data-seen-as-of on .article-list itself, app.js sends both, and the divider is a .timeline-divider directly
 // inside .article-list, so appending a later page's children in order keeps
 // it in place.
 func TestYouWereHereMarkup(t *testing.T) {
@@ -99,8 +101,8 @@ func TestYouWereHereMarkup(t *testing.T) {
 			return rss.TimelineMark{SeenAt: time.Now(), DividerAt: items[1].Article.TimelineAt}, nil
 		}},
 		SaveService: &fakeSaveStore{},
-		ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
-			return items, nil
+		ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			return inGroups(items, 1, 0, 0), nil
 		}},
 	})
 	doc, err := html.Parse(strings.NewReader(getHome(t, s, "/", true).Body.String()))
@@ -112,8 +114,10 @@ func TestYouWereHereMarkup(t *testing.T) {
 	if len(lists) != 1 {
 		t.Fatalf("found %d .article-list, want 1", len(lists))
 	}
-	if !hasAttr(lists[0], "data-seen-up-to") {
-		t.Errorf(".article-list has no data-seen-up-to")
+	for _, name := range []string{"data-seen-up-to", "data-seen-as-of"} {
+		if !hasAttr(lists[0], name) {
+			t.Errorf(".article-list has no %s", name)
+		}
 	}
 	var children []string
 	for c := lists[0].FirstChild; c != nil; c = c.NextSibling {
@@ -128,6 +132,18 @@ func TestYouWereHereMarkup(t *testing.T) {
 	for i, c := range children {
 		if !slices.Contains(strings.Fields(c), want[i]) {
 			t.Errorf("child %d class = %q, want %s", i, c, want[i])
+		}
+	}
+
+	// The beacon reports both attributes, under the names
+	// timelineSeenHandler reads.
+	js, err := fs.ReadFile(ui.Static, "static/js/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sent := range []string{"up_to: seen.dataset.seenUpTo", "as_of: seen.dataset.seenAsOf"} {
+		if !strings.Contains(string(js), sent) {
+			t.Errorf("app.js doesn't send %q", sent)
 		}
 	}
 }
@@ -148,7 +164,7 @@ func TestToggleButtonMarkup(t *testing.T) {
 			return map[string]bool{items[1].Article.ID: true}, nil
 		}},
 		ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return items, nil
 			},
 		},
@@ -192,7 +208,7 @@ func TestShareButtonMarkup(t *testing.T) {
 		items[i].Article.CanonicalURL = fmt.Sprintf("https://example.com/%d", i)
 	}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 			return items, nil
 		},
 	}})

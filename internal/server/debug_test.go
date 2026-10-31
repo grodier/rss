@@ -886,18 +886,28 @@ func TestArticleProvenance(t *testing.T) {
 		{
 			name: "all from the feed, backlog, guid",
 			a: rss.Article{Title: "T", PageTitle: "PT", Excerpt: "E", PageDescription: "PD", ImageURL: "https://example.com/a.png", PageImageURL: "https://example.com/b.png",
-				ExternalID: "tag:example.com,2026:1", URL: "https://example.com/1", PublishedAt: published, TimelineAt: published},
+				ExternalID: "tag:example.com,2026:1", URL: "https://example.com/1", PublishedAt: published, TimelineAt: published, CreatedAt: published.Add(48 * time.Hour)},
 			want: provenance{Title: "feed", Excerpt: "feed", Image: "feed", Timeline: "backlog", ExternalID: "guid"},
+		},
+		{
+			name: "news at its published date",
+			a:    rss.Article{Title: "T", ExternalID: "x", PublishedAt: published, TimelineAt: published, CreatedAt: published.Add(30 * time.Minute)},
+			want: provenance{Title: "feed", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
+		},
+		{
+			name: "news exactly NewsWindow below its arrival",
+			a:    rss.Article{Title: "T", ExternalID: "x", PublishedAt: published, TimelineAt: published, CreatedAt: published.Add(rss.NewsWindow)},
+			want: provenance{Title: "feed", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
 		},
 		{
 			name: "all from the page, news (undated), link",
 			a: rss.Article{PageTitle: "PT", PageDescription: "PD", PageImageURL: "https://example.com/b.png",
-				ExternalID: "https://example.com/1", URL: "https://example.com/1", TimelineAt: published},
+				ExternalID: "https://example.com/1", URL: "https://example.com/1", TimelineAt: published, CreatedAt: published},
 			want: provenance{Title: "page", Excerpt: "page", Image: "page", Timeline: "news", ExternalID: "link"},
 		},
 		{
-			name: "title from the excerpt, news (dated but placed later), hash",
-			a:    rss.Article{Excerpt: "E", ExternalID: "sha256:abc", PublishedAt: published, TimelineAt: published.Add(time.Hour)},
+			name: "title from the excerpt, news (dated but spread later), hash",
+			a:    rss.Article{Excerpt: "E", ExternalID: "sha256:abc", PublishedAt: published, TimelineAt: published.Add(time.Hour), CreatedAt: published.Add(2 * time.Hour)},
 			want: provenance{Title: "excerpt", Excerpt: "feed", Image: "none", Timeline: "news", ExternalID: "hash"},
 		},
 		{
@@ -1154,7 +1164,7 @@ func TestArticleRowsDebugLine(t *testing.T) {
 		}},
 		{"timeline", func(s *Server) http.HandlerFunc { return s.homeHandler }, "/", func(t *testing.T) *Server {
 			return newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 					return timeline, nil
 				},
 			}})

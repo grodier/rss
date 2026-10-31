@@ -38,7 +38,7 @@
       {{end}}
 
       {{if .Rows}}
-      <div class="article-list"{{if not .SeenUpTo.IsZero}} data-seen-up-to="{{.SeenUpTo.UTC.Format "2006-01-02T15:04:05.999999999Z07:00"}}"{{end}}>
+      <div class="article-list"{{if not .SeenUpTo.IsZero}} data-seen-up-to="{{.SeenUpTo.UTC.Format "2006-01-02T15:04:05.999999999Z07:00"}}" data-seen-as-of="{{.SeenAsOf.UTC.Format "2006-01-02T15:04:05.999999999Z07:00"}}"{{end}}>
         {{range .Rows}}
         {{if .Divider}}<div class="timeline-divider" role="separator" aria-label="You were here"><span>You were here</span></div>{{end}}
         {{template "article-row" .}}
@@ -62,7 +62,7 @@
       {{end}}
 
       {{if .Next}}
-      <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}">Older articles</a></nav>
+      <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}{{with .Anchors}}&anchors={{.}}{{end}}">Older articles</a></nav>
       {{end}}
     </main>
   </div>

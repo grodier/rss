@@ -102,9 +102,9 @@ CREATE TABLE articles (
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     published_date_only BOOLEAN NOT NULL DEFAULT false, -- the feed's date had no time of day
-    timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines: arrival time for news, published date for backlog; set on insert, never updated
+    timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines (psql.timelineAt): news by its published date above a floor, backlog at its published date; set on insert, never updated
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when it arrived; timelines group news by it (rss.Article.IsNews)
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE (feed_id, external_id)
@@ -156,8 +156,10 @@ CREATE TABLE timeline_marks (
         REFERENCES users(id)
         ON DELETE CASCADE,
     seen_up_to TIMESTAMPTZ NOT NULL, -- the newest timeline_at the user has had on screen
+    seen_as_of TIMESTAMPTZ NOT NULL, -- when the page that reported seen_up_to was rendered: the latest look
     seen_at TIMESTAMPTZ NOT NULL,    -- when seen_up_to was last reported: the end of the latest visit so far
-    divider_at TIMESTAMPTZ           -- the divider of the visit seen_at belongs to; NULL during the first visit
+    divider_at TIMESTAMPTZ,          -- the divider of the visit seen_at belongs to; NULL during the first visit
+    divider_as_of TIMESTAMPTZ        -- the previous visit's latest look (its seen_as_of); NULL during the first visit
 );
 
 -- Articles a user saved to keep. Saving covers every copy of an article

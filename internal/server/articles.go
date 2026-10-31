@@ -265,6 +265,7 @@ type articleRow struct {
 	ReturnTo string           // where the row's Save and Star buttons send the user back to
 	Debug    *articleRowDebug // the row's debug line; nil unless debug mode is on
 	Divider  bool             // the "You were here" line goes above this row
+	Group    int              // the row's timeline group (see rss.ArticleWithFeed); 0 elsewhere
 }
 
 // fillIcons sets Icon on each row whose feed's site has an icon. Icons are

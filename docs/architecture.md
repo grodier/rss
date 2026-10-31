@@ -159,7 +159,10 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /sites/{id}` | yes | A site and its feeds |
 | `GET /search` | yes | Search sites and feeds in the database |
 | `POST /lookups`, `GET /lookups/{id}` | yes | Queue a site lookup; its status page |
-| `GET /settings` and its pages (`/name`, `/theme`, `/password`, `/email`, `/delete`) | yes | Settings |
+| `GET /settings` | yes | The Settings home: the account and the other categories |
+| `GET /settings/account`, `/reading`, `/data`, `/help` | yes | Settings' category pages |
+| `POST /settings/reading` | yes | Save the reading preferences (the theme) |
+| `GET, POST /settings/name`, `/password`, `/email`, `/delete` | yes | Account's one-form pages |
 | `POST /settings/log-out-others`, `/settings/debug` | yes | Log out other devices; turn debug mode on or off |
 | `GET /settings/export`, `GET /settings/subscriptions.opml` | yes | OPML export |
 | `GET, POST /settings/import`, `GET /settings/imports/{id}` | yes | OPML import, and an import's progress |
@@ -342,7 +345,7 @@ Beyond those:
   Logged-out and error pages have no user, so they always follow the system.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
-  Log out is a button on the Settings page.
+  Log out is a button on the Settings home.
 - **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the site's icon on a white tile, else its letter on its tint.
   People's avatars (the nav, Settings) stay circles.
 - **The tab row** (`partials/timeline_tabs.html`) heads Home and each custom timeline in place of the page's visible heading (the `<h1>` is visually hidden).

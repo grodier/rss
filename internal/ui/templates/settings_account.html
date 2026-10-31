@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - account</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Account</h1>
+      </header>
+
+      {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      <ul class="settings-list" role="list">
+        <li>
+          <a class="settings-row" href="/settings/name">
+            <span class="settings-label">Name</span>
+            <span class="settings-value">{{.User.Name}}</span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/settings/email">
+            <span class="settings-stack">
+              <span class="settings-label">Email</span>
+              <span class="settings-sub">
+                <span class="settings-email">{{.User.Email}}</span>
+                {{if .User.EmailConfirmedAt.IsZero}}<span class="chip">Not confirmed</span>{{end}}
+              </span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/settings/password">
+            <span class="settings-label">Password</span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li class="settings-action">
+          <span class="settings-stack">
+            <span class="settings-label" id="devices-label">Other devices</span>
+            <span class="hint" id="devices-hint">Logged in somewhere you shouldn't be?</span>
+          </span>
+          <form action="/settings/log-out-others" method="post">
+            <button type="submit" aria-describedby="devices-label devices-hint">Log them out</button>
+          </form>
+        </li>
+      </ul>
+
+      <div class="danger-zone">
+        <p class="hint">Deletes your account, subscriptions, tags and timelines.</p>
+        <a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>
+      </div>
+    </main>
+  </div>
+</body>
+
+</html>

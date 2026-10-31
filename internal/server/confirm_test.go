@@ -371,6 +371,7 @@ func TestConfirmNotice(t *testing.T) {
 	}{
 		{"timeline", "/", func(s *Server) http.HandlerFunc { return s.homeHandler }},
 		{"settings", "/settings", func(s *Server) http.HandlerFunc { return s.settingsHandler }},
+		{"settings account", "/settings/account", func(s *Server) http.HandlerFunc { return s.settingsAccountHandler }},
 	}
 	for _, p := range pages {
 		t.Run(p.name, func(t *testing.T) {
@@ -399,22 +400,33 @@ func TestConfirmNotice(t *testing.T) {
 	}
 }
 
+// TestSettingsNotConfirmedTag checks the tag beside the email on the
+// Settings home's account row and on Account's Email row.
 func TestSettingsNotConfirmedTag(t *testing.T) {
 	s := newTestServer(t)
-	for _, tt := range []struct {
-		name string
-		sess rss.Session
-		want bool
+	pages := []struct {
+		target  string
+		handler http.HandlerFunc
 	}{
-		{"unconfirmed", unconfirmedSession, true},
-		{"confirmed", confirmedSession, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			rr, _ := serveConfirm(t, s, s.settingsHandler, httptest.NewRequest(http.MethodGet, "/settings", nil), &tt.sess)
-			if got := strings.Contains(rr.Body.String(), `<span class="chip">Not confirmed</span>`); got != tt.want {
-				t.Errorf("Not confirmed tag shown = %v, want %v", got, tt.want)
-			}
-		})
+		{"/settings", s.settingsHandler},
+		{"/settings/account", s.settingsAccountHandler},
+	}
+	for _, p := range pages {
+		for _, tt := range []struct {
+			name string
+			sess rss.Session
+			want bool
+		}{
+			{"unconfirmed", unconfirmedSession, true},
+			{"confirmed", confirmedSession, false},
+		} {
+			t.Run(p.target+" "+tt.name, func(t *testing.T) {
+				rr, _ := serveConfirm(t, s, p.handler, httptest.NewRequest(http.MethodGet, p.target, nil), &tt.sess)
+				if got := strings.Contains(rr.Body.String(), `<span class="chip">Not confirmed</span>`); got != tt.want {
+					t.Errorf("Not confirmed tag shown = %v, want %v", got, tt.want)
+				}
+			})
+		}
 	}
 }
 

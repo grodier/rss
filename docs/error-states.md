@@ -83,7 +83,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | S1 Login-only page while logged out | Open `/feeds` in a private window | 303 to Login | None | Yes: login returns to `/feeds` | needs work: nothing says the page needs logging in |
-| S2 Session ended mid-action | Open Settings → Name, then `DELETE FROM user_sessions WHERE user_id = '{A}'` (or "Log out other devices" elsewhere), then save | 303 to Login | None | Partly: what they typed is lost, and after login they land on Home, not the form (only GETs are remembered) | needs work: say they were logged out; return to the page the form was on |
+| S2 Session ended mid-action | Open Settings → Account → Name, then `DELETE FROM user_sessions WHERE user_id = '{A}'` (or "Log them out" under Other devices elsewhere), then save | 303 to Login | None | Partly: what they typed is lost, and after login they land on Home, not the form (only GETs are remembered) | needs work: say they were logged out; return to the page the form was on |
 | S3 Session idle for 90 days | `UPDATE user_sessions SET last_seen_at = now() - interval '91 days' WHERE user_id = '{A}'`, open `/` | Logged-out landing page, 200 | None | Yes, by logging in | needs work: as S2 |
 | S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | 303 to Login (`app.js` gets the login page instead of a 204, so it submits the form normally) | None | Yes: nothing is saved and the button never turned on; after login they land on Home (as S2) and can Save again | ok (saying they were logged out is S2's) |
 | S5 Older articles after the session ended (JavaScript) | Code read: infinite scroll gets a redirect | The timeline stops loading more; "Older articles" stays | None | Yes: clicking it goes to Login | ok |
@@ -98,7 +98,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E2 Confirmation link used again, logged out | Open a used confirmation link in a private window | As E1 | As E1, with "Log in to get a new link" | Yes | ok |
 | E3 Confirmation link expired, logged in and unconfirmed | `UPDATE user_tokens SET expires_at = now() - interval '1 minute' WHERE purpose = 'confirm_email'`, open the link | As E1 | As E1, with a "Send a new link" button | Yes | ok |
 | E4 Confirmation link used again, already confirmed | Open the link again after confirming | As E1 | As E1, plus "Your email address is already confirmed." and "Go to Settings" | n/a | ok |
-| E5 Unconfirmed address notice | A new account's Home and Settings | Notice with a Resend button | (the notice) | Yes | ok |
+| E5 Unconfirmed address notice | A new account's Home, Settings and Account | Notice with a Resend button | (the notice) | Yes | ok |
 | E6 Resend confirmation | Resend from the notice | Flash on the same page | "We sent a new link to {email}." | n/a | ok |
 | E6a Confirmation link opened on another device, logged out (or as another account) | Open a confirmation link in a private window and confirm | "Email address confirmed" page, 200 | "Thanks! You can keep reading wherever you're logged in to Paper Round." with "Log in on this device" (logged in: "Go to Home") | Yes | ok |
 | E7 Resend rate limited | A 4th resend in an hour | Flash | "We've already sent you several links. Check your spam folder, or try again in an hour." | Yes | ok |
@@ -108,18 +108,18 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E11 Reset link unknown, used, expired, or for an address the account no longer has | `/password/reset?token=garbage`, or `UPDATE user_tokens SET expires_at = now() - interval '1 minute' WHERE purpose = 'reset_password'` | Link-expired page, 410 | "This link has expired" / "Reset links work for 1 hour and only once." + "Send a new link" | Yes | ok |
 | E12 Reset: new password invalid | Password `short` on the reset page | Reset, 422, under Password | As F2–F4 | Yes; the password isn't echoed | ok |
 | E13 An email over the outbox's hourly cap | `INSERT INTO emails (to_address, subject, text_body, html_body) SELECT '{email}', 'x', 'x', 'x' FROM generate_series(1, 20)`, then ask for a reset | "Check your email" page | "We sent a link to {email}. It works for 1 hour." | No: nothing was sent (only the log says so) | needs work (discuss): pages say an email was sent when the cap dropped it; same for Resend (E6) and the email change (E17) |
-| E14 Change password: wrong current password | Settings → Password | 422, under Current password | "That password isn't right." | Yes | ok |
+| E14 Change password: wrong current password | Settings → Account → Password | 422, under Current password | "That password isn't right." | Yes | ok |
 | E15 Change password: same as current, or empty | New password = current; or submit empty | 422 | "Your new password must be different from your current one."; "Enter your current password." with "Password is required" | Yes | needs work: two styles of "required" message on one form (see N2) |
-| E16 Change email: wrong password, same address, taken, invalid | Settings → Email | 422, under the field | "That password isn't right."; "That's already your email address."; "There's already an account with this email."; "Email must be a valid email address" and "Enter your password." | Yes | ok |
-| E17 Change email requested | A valid new address and password | Settings, flash | "We sent a link to {new}. Open it to finish changing your email." | n/a | ok |
+| E16 Change email: wrong password, same address, taken, invalid | Settings → Account → Email | 422, under the field | "That password isn't right."; "That's already your email address."; "There's already an account with this email."; "Email must be a valid email address" and "Enter your password." | Yes | ok |
+| E17 Change email requested | A valid new address and password | Account, flash | "We sent a link to {new}. Open it to finish changing your email." | n/a | ok |
 | E18 Change-email link unknown, used or expired | `/email-change?token=garbage` | Link-expired page, 410 | "This link has expired" / "Links to change your email work for 24 hours and only once." + "Try again" | Yes | ok |
 | E19 Change-email link, address taken since | Request a change, then give another account that address (`UPDATE users SET email = '{new}' WHERE id = '{B}'`), then confirm | 409 page | "That address is taken" / "Another account started using {new} in the meantime. Your email is still {old}." | No way on: the page has no link or button | needs work: add a way on (Settings) |
 | E20 Settings rate limits | 11 password changes or deletion attempts in 10 minutes; 6 email changes in an hour | Each form, 429, alert | "Too many attempts. Try again in N minutes." | After the wait | ok (code read) |
-| E21 Name blank | Settings → Name, blank | 422, under Name | "Name is required" | Yes | ok |
-| E25 Theme: no choice or an unknown one | Settings → Theme, then in devtools change a radio's value to `sepia` and submit it (the radios always have one checked, so only a tampered post gets here) | 422, under the choices; System is focused | "Choose System, Light or Dark." | Yes | ok (2026-10-30, #413) |
-| E22 Delete account: wrong or empty password | Settings → Delete | 422, under Password | "That password isn't right."; "Enter your password." | Yes | ok |
+| E21 Name blank | Settings → Account → Name, blank | 422, under Name | "Name is required" | Yes | ok |
+| E25 Theme: no choice or an unknown one | Settings → Reading, then in devtools change a radio's value to `sepia` and submit it (the radios always have one checked, so only a tampered post gets here) | Reading, 422, under the choices; System is focused | "Choose System, Light or Dark." | Yes | ok (2026-10-30, #413) |
+| E22 Delete account: wrong or empty password | Settings → Account → Delete account | 422, under Password | "That password isn't right."; "Enter your password." | Yes | ok |
 | E23 Account deleted | Delete with the right password | Logged-out landing page, flash | "Your account was deleted. Thanks for trying rss." | n/a | needs work: says "rss", not "Paper Round" (#419) |
-| E24 Log out other devices, none | Settings → Log out other devices with one session | Settings, flash | "There were no other devices to log out." | n/a | ok |
+| E24 Log out other devices, none | Settings → Account → Other devices → "Log them out" with one session | Account, flash | "There were no other devices to log out." | n/a | ok |
 
 ## HTTP errors
 
@@ -159,7 +159,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| O1 No file | Settings → Import without a file (the input is `required`, so turn off validation or use `curl`) | Import, 422, under the file | "Choose an OPML file to import." | Yes | ok |
+| O1 No file | Settings → Your data → Import without a file (the input is `required`, so turn off validation or use `curl`) | Import, 422, under the file | "Choose an OPML file to import." | Yes | ok |
 | O2 Not OPML | Upload a text file | Import, 422 | "That file isn't an OPML file. Export one from your other reader's settings." | Yes | ok |
 | O3 No feeds | An OPML file with an empty `<body>` | Import, 422 | "That file has no feeds in it." | Yes | ok |
 | O4 Over 1 MiB | A 1.5 MB OPML file | Import, 413 | "That file is too large. Imports can be up to 1 MB." | Yes | ok |

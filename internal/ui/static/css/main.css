@@ -1453,27 +1453,74 @@
     color: var(--text-3);
   }
 
-  /* A row that's one sentence, like Help's support address. */
-  .settings-text {
-    flex: 1;
-    min-inline-size: 0;
-    overflow-wrap: anywhere;
-  }
-
   /* Rows without a chevron keep their values in line with those that have
      one. */
   div.settings-row .settings-value {
     margin-inline-end: 1.875rem;
   }
 
-  /* A tag after a value, like "Not confirmed", takes the chevron's place. */
-  .settings-row .chip {
-    flex: none;
-    margin-inline-end: 1.875rem;
+  /* A value under its label, for values too long to share the label's
+     line, like an email address and its "Not confirmed" tag. */
+  .settings-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-block-start: 0.125rem;
+    color: var(--text-2);
   }
 
-  div.settings-row .settings-value:has(+ .chip) {
-    margin-inline-end: 0;
+  .settings-email {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The Settings home's first row: the account, shown as its owner. */
+  .settings-account {
+    gap: 1rem;
+    padding-block: 1.25rem;
+  }
+
+  .settings-account .avatar {
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
+    font-size: 1.375rem;
+  }
+
+  .settings-account-name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+  }
+
+  .settings-account .hint {
+    margin-block-start: 0.25rem;
+  }
+
+  /* A second list of rows, set apart from the one above. */
+  .settings-group {
+    margin-block-start: 1.5rem;
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* A row that acts in place: a label and hint, and a button. The button
+     drops under the text when they don't fit side by side. */
+  .settings-action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem 0.75rem;
+    padding: 0.875rem 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .settings-action .settings-stack {
+    flex: 1 1 12rem;
+  }
+
+  .settings-action form {
+    flex: none;
   }
 
   .settings-logout {
@@ -1489,27 +1536,37 @@
     padding: 1.25rem 1rem;
   }
 
-  /* Settings > Theme: the choices run edge to edge, like the settings list. */
-  .theme-form fieldset {
+  /* Settings > Reading: each preference is a fieldset whose choices run edge
+     to edge, like the settings list. */
+  .reading-form fieldset {
     min-inline-size: 0;
     margin: 0;
     padding: 0;
     border: 0;
   }
 
-  .theme-form .hint {
+  .reading-form legend {
+    padding: 1.25rem 1rem 0;
+    font-weight: 650;
+  }
+
+  .reading-form .hint {
     margin: 0;
     padding: 1.25rem 1rem 0.75rem;
     border-block-end: 1px solid var(--border);
     font-size: 0.875rem;
   }
 
-  .theme-form fieldset > p.error {
+  .reading-form legend + .hint {
+    padding-block-start: 0.25rem;
+  }
+
+  .reading-form fieldset > p.error {
     margin: 0;
     padding: 0.75rem 1rem 0;
   }
 
-  .theme-form .form-actions {
+  .reading-form .form-actions {
     margin: 0;
     padding: 1.25rem 1rem;
   }
@@ -1559,15 +1616,6 @@
     display: grid;
     gap: 0.5rem;
     margin-block-end: 0.375rem;
-  }
-
-  .settings-devices {
-    padding: 0.875rem 1rem 0;
-  }
-
-  .settings-devices p {
-    margin-block-end: 0.75rem;
-    color: var(--text-2);
   }
 
   .form-note {
@@ -1836,6 +1884,17 @@
   .danger-zone {
     padding: 0.75rem 1rem 1.5rem;
     border-block-start: 1px solid var(--border);
+  }
+
+  /* After a list of rows, a gap sets the delete action apart, as between
+     the Settings home's lists. */
+  .settings-list + .danger-zone {
+    margin-block-start: 1.5rem;
+    padding-block-start: 1rem;
+  }
+
+  .danger-zone > .hint {
+    margin-block-end: 0.75rem;
   }
 
   /* The timeline edit page's Sharing section, between the form and Delete. */
@@ -2786,10 +2845,6 @@
     text-decoration: none;
   }
 
-  .settings-debug {
-    padding: 0.875rem 1rem 0;
-  }
-
   .debug-inspect {
     display: flex;
     flex-wrap: wrap;
@@ -2900,11 +2955,6 @@
   .inspect-item summary {
     font-weight: 400;
     overflow-wrap: anywhere;
-  }
-
-  .settings-debug p {
-    margin-block-end: 0.75rem;
-    color: var(--text-2);
   }
 
   @media (max-width: 69.99rem) {

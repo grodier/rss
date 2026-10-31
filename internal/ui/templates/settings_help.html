@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - help</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Help</h1>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      <ul class="settings-list" role="list">
+        {{with .SupportEmail}}
+        <li>
+          <a class="settings-row" href="mailto:{{.}}">
+            <span class="settings-stack">
+              <span class="settings-label">Contact support</span>
+              <span class="hint settings-email">{{.}}</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        {{end}}
+        <li>
+          <a class="settings-row" href="/privacy">
+            <span class="settings-label">Privacy policy</span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/terms">
+            <span class="settings-label">Terms of use</span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        {{if .DebugAllowed}}
+        <li class="settings-action" id="debug">
+          <span class="settings-stack">
+            <span class="settings-label">Debug mode</span>
+            <span class="hint">Shows the data behind sites, feeds and articles, on this device only.</span>
+          </span>
+          <form action="/settings/debug" method="post">
+            <input type="hidden" name="on" value="{{if .DebugOn}}0{{else}}1{{end}}">
+            <button type="submit">{{if .DebugOn}}Turn off{{else}}Turn on{{end}}<span class="visually-hidden"> debug mode</span></button>
+          </form>
+        </li>
+        {{end}}
+      </ul>
+    </main>
+  </div>
+</body>
+
+</html>

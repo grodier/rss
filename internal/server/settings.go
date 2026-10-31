@@ -14,6 +14,9 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
+// settingsHandler shows the Settings home: the account, the other
+// categories with a summary of each, and Log out. Each category is its own
+// page.
 func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 	nav := s.nav(r, "settings")
 	data := struct {
@@ -21,20 +24,75 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		User          rss.User
 		Flash         string
 		ConfirmNotice *confirmNotice
-		SupportEmail  string
 		DebugAllowed  bool
-		DebugOn       bool
 	}{
 		Nav:           nav,
 		User:          nav.User,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
 		ConfirmNotice: s.confirmNotice(r),
-		SupportEmail:  s.config.SupportEmail,
 		DebugAllowed:  s.debugAllowed(r),
-		DebugOn:       nav.Debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "settings.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// settingsAccountHandler shows Settings > Account: name, email, password,
+// other devices, and Delete account at its foot.
+func (s *Server) settingsAccountHandler(w http.ResponseWriter, r *http.Request) {
+	nav := s.nav(r, "settings")
+	data := struct {
+		Nav           navData
+		User          rss.User
+		Flash         string
+		ConfirmNotice *confirmNotice
+	}{
+		Nav:           nav,
+		User:          nav.User,
+		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
+		ConfirmNotice: s.confirmNotice(r),
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "settings_account.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// settingsDataHandler shows Settings > Your data: import and export.
+func (s *Server) settingsDataHandler(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Nav   navData
+		Flash string
+	}{
+		Nav:   s.nav(r, "settings"),
+		Flash: s.sessionManager.PopString(r.Context(), "flash"),
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "settings_data.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// settingsHelpHandler shows Settings > Help: the support address, the
+// policies and, for debugAllowed users, debug mode.
+func (s *Server) settingsHelpHandler(w http.ResponseWriter, r *http.Request) {
+	nav := s.nav(r, "settings")
+	data := struct {
+		Nav          navData
+		Flash        string
+		SupportEmail string
+		DebugAllowed bool
+		DebugOn      bool
+	}{
+		Nav:          nav,
+		Flash:        s.sessionManager.PopString(r.Context(), "flash"),
+		SupportEmail: s.config.SupportEmail,
+		DebugAllowed: s.debugAllowed(r),
+		DebugOn:      nav.Debug,
+	}
+
+	if err := s.renderHTML(w, http.StatusOK, "settings_help.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
@@ -83,7 +141,7 @@ func (s *Server) settingsNameFormHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", "Your name was updated.")
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 }
 
 type themeForm struct {
@@ -91,25 +149,33 @@ type themeForm struct {
 	validator.Validator `form:"-"`
 }
 
-type settingsThemePage struct {
-	Nav  navData
-	Form themeForm
+// settingsReadingPage is Settings > Reading: the reading preferences as one
+// form, on the category page itself, since they're choices rather than
+// fields that need their own page.
+type settingsReadingPage struct {
+	Nav   navData
+	Flash string
+	Form  themeForm
 }
 
-// renderSettingsTheme renders settings_theme.html with status.
-func (s *Server) renderSettingsTheme(w http.ResponseWriter, r *http.Request, status int, form themeForm) {
-	data := settingsThemePage{Nav: s.nav(r, "settings"), Form: form}
-	if err := s.renderHTML(w, status, "settings_theme.html", data); err != nil {
+// renderSettingsReading renders settings_reading.html with status.
+func (s *Server) renderSettingsReading(w http.ResponseWriter, r *http.Request, status int, form themeForm) {
+	data := settingsReadingPage{
+		Nav:   s.nav(r, "settings"),
+		Flash: s.sessionManager.PopString(r.Context(), "flash"),
+		Form:  form,
+	}
+	if err := s.renderHTML(w, status, "settings_reading.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
 
-func (s *Server) settingsThemeHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) settingsReadingHandler(w http.ResponseWriter, r *http.Request) {
 	sess, _ := s.authenticatedSession(r)
-	s.renderSettingsTheme(w, r, http.StatusOK, themeForm{Theme: sess.User.Theme})
+	s.renderSettingsReading(w, r, http.StatusOK, themeForm{Theme: sess.User.Theme})
 }
 
-func (s *Server) settingsThemeFormHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) settingsReadingFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form themeForm
 	if err := s.decodePostForm(w, r, &form); err != nil {
 		s.formErrorResponse(w, r, err)
@@ -118,7 +184,7 @@ func (s *Server) settingsThemeFormHandler(w http.ResponseWriter, r *http.Request
 
 	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light or Dark.")
 	if !form.Valid() {
-		s.renderSettingsTheme(w, r, http.StatusUnprocessableEntity, form)
+		s.renderSettingsReading(w, r, http.StatusUnprocessableEntity, form)
 		return
 	}
 
@@ -129,7 +195,7 @@ func (s *Server) settingsThemeFormHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", "Your theme was updated.")
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/reading", http.StatusSeeOther)
 }
 
 type passwordForm struct {
@@ -201,7 +267,7 @@ func (s *Server) settingsPasswordFormHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", "Your password was changed. Other devices were logged out.")
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 }
 
 func (s *Server) logOutOthersHandler(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +283,7 @@ func (s *Server) logOutOthersHandler(w http.ResponseWriter, r *http.Request) {
 		flash = "There were no other devices to log out."
 	}
 	s.sessionManager.Put(r.Context(), "flash", flash)
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 }
 
 type deleteAccountForm struct {

@@ -337,6 +337,9 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
 - [ ] **Phone review pass.**
   Every page on a phone, in the browser and installed (#394): tap targets, the bottom tab bar over long pages and forms, the keyboard covering inputs, wide tables and code, and anything under the status bar or the home indicator.
   By hand, like the first error-state pass (#392), listing fixes as issues; best done right after #394 ships.
+- [ ] **Tap targets on small buttons.**
+  `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in `main.css` enlarges it for `(pointer: coarse)` (found in #431).
+  Making it 44 px there changes the height of every small button, so decide it with the phone review pass.
 - [ ] **Install hint.**
   If testers don't find the browser's install, a short "Add Paper Round to your home screen" note in Settings with the steps for iOS and Android.
   Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).

@@ -24,140 +24,59 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      <section class="profile">
-        <div class="profile-top">
-          <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span>
-        </div>
-        <h2 class="profile-name">{{.User.Name}}</h2>
-        <p class="profile-sub">{{.User.Email}}</p>
-      </section>
-
-      <section>
-        <div class="list-head">
-          <h2>Account</h2>
-        </div>
-        <ul class="settings-list" role="list">
-          <li>
-            <a class="settings-row" href="/settings/name">
-              <span class="settings-label">Name</span>
-              <span class="settings-value">{{.User.Name}}</span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-          <li>
-            <a class="settings-row" href="/settings/email">
-              <span class="settings-label">Email</span>
-              <span class="settings-value">{{.User.Email}}</span>
-              {{if .User.EmailConfirmedAt.IsZero}}<span class="chip">Not confirmed</span>{{end}}
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-          <li>
-            <a class="settings-row" href="/settings/password">
-              <span class="settings-label">Password</span>
-              <span class="settings-value"></span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-        </ul>
-      </section>
-
-      <section>
-        <div class="list-head">
-          <h2>Appearance</h2>
-        </div>
-        <ul class="settings-list" role="list">
-          <li>
-            <a class="settings-row" href="/settings/theme">
-              <span class="settings-label">Theme</span>
-              <span class="settings-value">{{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-        </ul>
-      </section>
-
-      <section>
-        <div class="list-head">
-          <h2>Devices</h2>
-        </div>
-        <form class="settings-devices" action="/settings/log-out-others" method="post">
-          <p>Logged in somewhere you shouldn't be?</p>
-          <button type="submit">Log out of all other devices</button>
-        </form>
-      </section>
-
-      <section>
-        <div class="list-head">
-          <h2>Your data</h2>
-        </div>
-        <ul class="settings-list" role="list">
-          <li>
-            <a class="settings-row" href="/settings/import" aria-describedby="import-hint">
-              <span class="settings-stack">
-                <span class="settings-label">Import subscriptions</span>
-                <span class="hint" id="import-hint">Bring your feeds from another reader with an OPML file.</span>
+      {{/* The account first, as the person it belongs to; then the other
+           categories, each with a summary of what's inside. */}}
+      <ul class="settings-list" role="list">
+        <li>
+          <a class="settings-row settings-account" href="/settings/account">
+            <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span>
+            <span class="settings-stack">
+              <span class="visually-hidden">Account:</span>
+              <span class="settings-account-name">{{.User.Name}}</span>
+              <span class="settings-sub">
+                <span class="settings-email">{{.User.Email}}</span>
+                {{if .User.EmailConfirmedAt.IsZero}}<span class="chip">Not confirmed</span>{{end}}
               </span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-          <li>
-            <a class="settings-row" href="/settings/export" aria-describedby="export-hint">
-              <span class="settings-stack">
-                <span class="settings-label">Export subscriptions</span>
-                <span class="hint" id="export-hint">An OPML file you can import into another reader.</span>
-              </span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-        </ul>
-      </section>
+              <span class="hint">Name, email, password and devices</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+      </ul>
 
-      {{if .DebugAllowed}}
-      <section id="debug">
-        <div class="list-head">
-          <h2>Debug</h2>
-        </div>
-        <form class="settings-debug" action="/settings/debug" method="post">
-          <p>Debug mode shows the data behind sites, feeds and articles, on this device only.</p>
-          <input type="hidden" name="on" value="{{if .DebugOn}}0{{else}}1{{end}}">
-          <button type="submit">{{if .DebugOn}}Turn off debug mode{{else}}Turn on debug mode{{end}}</button>
-        </form>
-      </section>
-      {{end}}
-
-      <section>
-        <div class="list-head">
-          <h2>Help</h2>
-        </div>
-        <ul class="settings-list" role="list">
-          {{with .SupportEmail}}
-          <li>
-            <a class="settings-row" href="mailto:{{.}}">
-              <span class="settings-text">Questions or problems? Email {{.}}</span>
-            </a>
-          </li>
-          {{end}}
-          <li>
-            <a class="settings-row" href="/privacy">
-              <span class="settings-label">Privacy policy</span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-          <li>
-            <a class="settings-row" href="/terms">
-              <span class="settings-label">Terms of use</span>
-              {{template "icon-chevron"}}
-            </a>
-          </li>
-        </ul>
-      </section>
+      <ul class="settings-list settings-group" role="list">
+        <li>
+          <a class="settings-row" href="/settings/reading">
+            <span class="settings-stack">
+              <span class="settings-label">Reading</span>
+              <span class="hint">Theme: {{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/settings/data">
+            <span class="settings-stack">
+              <span class="settings-label">Your data</span>
+              <span class="hint">Import and export subscriptions</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/settings/help">
+            <span class="settings-stack">
+              <span class="settings-label">Help</span>
+              <span class="hint">Support, privacy and terms{{if .DebugAllowed}}, debug mode{{end}}</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+      </ul>
 
       <form class="settings-logout" action="/logout" method="post">
         <button type="submit">{{template "icon-logout"}}Log out</button>
       </form>
-
-      <div class="danger-zone"><a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a></div>
     </main>
   </div>
 </body>

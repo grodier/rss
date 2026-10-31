@@ -9,7 +9,7 @@
 {{define "app-nav"}}
 <header class="rail">
   {{template "brand"}}
-  {{if .Debug}}<a class="debug-badge" href="/settings#debug">Debug</a>{{end}}
+  {{if .Debug}}<a class="debug-badge" href="/settings/help#debug">Debug</a>{{end}}
   <nav aria-label="Main">
     <ul class="rail-links" role="list">
       <li><a href="/"{{if eq .Section "home"}} aria-current="page"{{end}}>{{template "icon-home"}}<span>Home</span></a></li>

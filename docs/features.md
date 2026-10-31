@@ -27,15 +27,17 @@ A login lasts at most a year (scs's `Lifetime`).
 Both forms follow the field pattern in CLAUDE.md, and signup shows the name and password hints all the time.
 The other way to make an account is `www create-user` (`runCreateUser`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
-**Settings.** The nav's account entry opens `/settings`: the account's name and email, then rows that each open a small page with one form.
+**Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
+Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
+Account (`settingsAccountHandler`) has rows that each open a small page with one form (Name, Email, Password), "Log them out" for other devices, and Delete account at its foot.
 Name trims and checks the name (`CheckName`, also used by signup).
-Theme ("Appearance") offers System, Light or Dark as radio buttons; `UserRepository.UpdateTheme` stores it in `users.theme`, which `authenticate` loads with the session, so every logged-in page then renders it as `data-theme` on `<html>` (see "Frontend" in [architecture.md](architecture.md)).
-The Email row shows "Not confirmed" until the address is confirmed (see "Changing email").
+Reading (`settingsReadingHandler`) is itself the form: Theme offers System, Light or Dark as radio buttons; `UserRepository.UpdateTheme` stores it in `users.theme`, which `authenticate` loads with the session, so every logged-in page then renders it as `data-theme` on `<html>` (see "Frontend" in [architecture.md](architecture.md)).
+The Settings home's account row and Account's Email row show "Not confirmed" until the address is confirmed (see "Changing email").
 Password asks for the current and the new password; `UserRepository.ChangePassword` verifies the current one before starting a transaction (Argon2 is slow), then in one transaction stores the new hash and deletes the user's other sessions, keeping this device's.
 The handler queues the `password_changed` email, logging rather than failing if it can't.
 `/.well-known/change-password` redirects there, for password managers.
-"Log out of all other devices" needs no password, since it can only protect.
-"Your data" has the subscriptions export and import (see "Subscriptions"); "Help" has the support address (`Config.SupportEmail`, left out when unset) and the policy pages.
+Logging out other devices needs no password, since it can only protect.
+Your data has the subscriptions import and export (see "Subscriptions"); Help has the support address (`Config.SupportEmail`, left out when unset), the policy pages and, for allowed accounts, debug mode.
 
 **Deleting an account.** `/settings/delete` says what goes (the account, subscriptions, reading history) and what stays (feeds and articles, which are shared), offers the OPML export first, and asks for the password.
 `settingsDeleteFormHandler` checks the per-user limit, then `UserRepository.Delete` verifies the password outside any transaction and deletes the `users` row, which cascades to the user's subscriptions, reads, sessions and tokens.
@@ -442,7 +444,7 @@ Pages read them only through the card-value accessors (see "Card values" under "
 **Flow.** Debug mode shows the stored data behind site, feed and article pages and article rows, and inspects feeds, article pages and site discovery live, for the accounts listed in `-debug-emails` only.
 
 1. **Gating.** `-debug-emails` is lowercased and validated in `parseConfig`.
-   For an allowed account (`debugAllowed`), Settings shows a Debug toggle that puts or removes `"debug"` in the scs session, so it's per device and logging out ends it; for anyone else `POST /settings/debug` is a 404.
+   For an allowed account (`debugAllowed`), Settings → Help shows a Debug mode row that puts or removes `"debug"` in the scs session, so it's per device and logging out ends it; for anyone else `POST /settings/debug` is a 404.
    `debugEnabled` (allowed and toggled on) is checked on every request, so removing an account from the flag turns debug mode off at once; the nav shows a Debug badge.
 2. **Panels.** When `debugEnabled`, the site and feed pages load `DebugStore.SiteDebug` and `FeedDebug` (icon bookkeeping, refresh state, article and enrich job counts) and render them in a collapsed panel after the header.
    The article page loads `ArticleDebug` (its enrich job, up to 20 copies by `canonical_url`, and this user's read and save rows) and shows every column, where each shown value came from, its timeline placement, and the raw `summary` and `content` (cut at 20 000 bytes); `?debug=1` opens the panel.

@@ -130,7 +130,7 @@ func TestSettingsEmailForm(t *testing.T) {
 		s, tokens, queue := newChangeEmailTestServer(t)
 		rr, flash := postSettingsEmail(t, s, "new@example.com", changeEmailPassword)
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/account")
 		if want := "We sent a link to new@example.com. Open it to finish changing your email."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)
 		}
@@ -269,7 +269,7 @@ func TestEmailChangeFormHandler(t *testing.T) {
 		wantPath  string
 		wantFlash string
 	}{
-		{"logged in", &confirmedSession, "/settings", "Your email address is now new@example.com."},
+		{"logged in", &confirmedSession, "/settings/account", "Your email address is now new@example.com."},
 		{"anonymous", nil, "/login", "Your email address is now new@example.com. Log in with it to continue."},
 	}
 	for _, tt := range tests {

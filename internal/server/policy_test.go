@@ -40,7 +40,7 @@ func TestPolicyPages(t *testing.T) {
 }
 
 // TestPolicyLinks checks that signup, login, the logged-out home page and
-// Settings link to the privacy policy and terms.
+// Settings > Help link to the privacy policy and terms.
 func TestPolicyLinks(t *testing.T) {
 	s := newPolicyTestServer(t)
 	get := func(target string) *httptest.ResponseRecorder {
@@ -49,13 +49,13 @@ func TestPolicyLinks(t *testing.T) {
 		return rr
 	}
 	settings := httptest.NewRecorder()
-	s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(settings, requestWithSession(settingsSession))
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHelpHandler)).ServeHTTP(settings, requestWithSession(settingsSession))
 
 	pages := map[string]*httptest.ResponseRecorder{
-		"GET /signup":   get("/signup"),
-		"GET /login":    get("/login"),
-		"GET /":         get("/"),
-		"GET /settings": settings,
+		"GET /signup":        get("/signup"),
+		"GET /login":         get("/login"),
+		"GET /":              get("/"),
+		"GET /settings/help": settings,
 	}
 	for name, rr := range pages {
 		t.Run(name, func(t *testing.T) {

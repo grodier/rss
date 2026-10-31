@@ -670,14 +670,22 @@ In these flows, trade-offs favor the user's experience.
 - **Avatar: the first letter of your name on a tint chosen by user ID**, like site avatars.
   No uploads: only you see it, and storing and resizing untrusted images costs more than it gives.
   No Gravatar: it sends a hash of your email to a third party.
-- **One Settings page** (#261): rows like a phone's settings, each opening its own small page with one form.
+- **Settings is a home page of categories, each its own page, like a phone's settings** (#261, changed in #446).
+  The home's first row is the account itself (avatar, name and email), then Reading, Your data and Help, each with a one-line summary of what's inside, then Log out.
+  #261 had one page of sections; a tester found it cramped and hard to find their way around, and the backlog plans more categories (plans and billing, passkeys, email, a device list) than fit on one page.
+  Tabs (Account, Reading, Data, Help) were the alternative: one tap between categories, but a one-word label says less than a summary, no more than four or five fit at 320 px, and a tab row already means switching timelines on Home.
+  A tidied single page was the other, and would keep growing.
+  The cost is one more tap to reach a setting, which matters little on a page people visit rarely; the nav's account entry leads back to the home from anywhere in Settings.
+  On a category page, a setting that needs its own form (name, email, password) is a row opening a small page with one form, and settings that are choices (the theme, later text size and typeface) are one form on the category page itself, so the commonest changes cost no extra tap.
+  A setting that acts at once (logging out other devices, debug mode) is a row with its button at the end, so every list ends the same way.
+  Delete account sits at the foot of Account, where people look for it first; debug mode is under Help, for allowed accounts only.
   The nav's Logout button becomes an account entry (the avatar, labelled Settings), and Log out moves to Settings: with sessions this long, a prominent Logout mostly invites accidental logouts.
   Preferences are typed columns on `users`, not a key-value table: the first is `theme` (#413).
 - **A `user_sessions` row per logged-in device** (#258), its ID kept in the scs session.
   You stay logged in while you visit at least every 90 days, for at most a year (scs's lifetime; browsers cap cookies at 400 days).
   `last_seen_at` is written at most once a day, not on every page view.
   No "Remember me" checkbox: it asks a question most people ignore, and logs out everyone who didn't tick it.
-  Logout deletes this device's row and only that one; changing or resetting your password deletes the others, and so does "Log out of all other devices" in Settings (#263).
+  Logout deletes this device's row and only that one; changing or resetting your password deletes the others, and so does logging out other devices in Settings (#263).
   A list of devices comes later.
 - **No password confirmation field** (#257).
   A show/hide toggle (JavaScript) catches typos instead, and reset covers the rest.

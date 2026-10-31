@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Paper Round - theme</title>
+  <title>Paper Round - reading</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
 </head>
@@ -15,16 +15,20 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Theme</h1>
+        <h1>Reading</h1>
       </header>
 
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
       {{$focus := .Form.FirstError "theme"}}
-      <form class="theme-form" action="/settings/theme" method="post">
+      <form class="reading-form" action="/settings/reading" method="post">
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
         <fieldset aria-describedby="theme-hint{{if .Form.FieldErrors.theme}} theme-error{{end}}">
-          <legend class="visually-hidden">Theme</legend>
+          <legend>Theme</legend>
           <p class="hint" id="theme-hint">System matches your device's light or dark setting.</p>
           <label class="choice">
             <input type="radio" name="theme" value="system"{{if eq .Form.Theme "system"}} checked{{end}}
@@ -46,7 +50,6 @@
         </fieldset>
         <div class="form-actions">
           <button class="btn-primary" type="submit">Save</button>
-          <a class="btn" href="/settings">Cancel</a>
         </div>
       </form>
     </main>

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - your data</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Your data</h1>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      <ul class="settings-list" role="list">
+        <li>
+          <a class="settings-row" href="/settings/import" aria-describedby="import-hint">
+            <span class="settings-stack">
+              <span class="settings-label">Import subscriptions</span>
+              <span class="hint" id="import-hint">Bring your feeds from another reader with an OPML file.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/settings/export" aria-describedby="export-hint">
+            <span class="settings-stack">
+              <span class="settings-label">Export subscriptions</span>
+              <span class="hint" id="export-hint">An OPML file you can import into another reader.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+      </ul>
+    </main>
+  </div>
+</body>
+
+</html>

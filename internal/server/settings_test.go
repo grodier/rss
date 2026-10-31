@@ -27,53 +27,52 @@ var settingsSession = rss.Session{
 	User: rss.User{ID: "123e4567-e89b-12d3-a456-426614174001", Name: "Ada Lovelace", Email: "ada@example.com"},
 }
 
-func TestSettingsHandler(t *testing.T) {
-	t.Run("shows the account", func(t *testing.T) {
-		s := newTestServer(t)
-		rr := httptest.NewRecorder()
-		s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
+// serveSettingsPage serves handler as sess and returns the response.
+func serveSettingsPage(t *testing.T, s *Server, handler http.HandlerFunc, sess rss.Session) *httptest.ResponseRecorder {
+	t.Helper()
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(handler).ServeHTTP(rr, requestWithSession(sess))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	return rr
+}
 
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
-		}
-		assertBodyContains(t, rr.Body.String(),
-			"Ada Lovelace",
-			"ada@example.com",
-			`href="/settings/name"`,
-			`href="/settings/password"`,
-			`<a class="settings-row" href="/settings/email">`,
-			`<form class="settings-devices" action="/settings/log-out-others" method="post">`,
-			`<a class="settings-row" href="/settings/import" aria-describedby="import-hint">`,
-			"Bring your feeds from another reader with an OPML file.",
-			`<a class="settings-row" href="/settings/export"`,
-			"An OPML file you can import into another reader.",
+func TestSettingsHandler(t *testing.T) {
+	t.Run("shows the account and the categories", func(t *testing.T) {
+		s := newTestServer(t)
+		body := serveSettingsPage(t, s, s.settingsHandler, settingsSession).Body.String()
+
+		assertBodyContains(t, body,
+			`<a class="settings-row settings-account" href="/settings/account">`,
+			`<span class="visually-hidden">Account:</span>`,
+			`<span class="settings-account-name">Ada Lovelace</span>`,
+			`<span class="settings-email">ada@example.com</span>`,
+			"Name, email, password and devices",
+			`<a class="settings-row" href="/settings/reading">`,
+			`<a class="settings-row" href="/settings/data">`,
+			"Import and export subscriptions",
+			`<a class="settings-row" href="/settings/help">`,
+			"Support, privacy and terms</span>",
 			`<form class="settings-logout" action="/logout" method="post">`,
-			`<a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>`,
 			`<a class="rail-account" href="/settings" aria-current="page">`,
 		)
-	})
-
-	t.Run("help shows the support address", func(t *testing.T) {
-		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SupportEmail: "help@example.com"}, Services{})
-		rr := httptest.NewRecorder()
-		s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
-
-		assertBodyContains(t, rr.Body.String(),
-			`<a class="settings-row" href="mailto:help@example.com">`,
-			"Questions or problems? Email help@example.com",
-		)
-	})
-
-	t.Run("help without a support address", func(t *testing.T) {
-		s := newTestServer(t)
-		rr := httptest.NewRecorder()
-		s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(settingsSession))
-
-		body := rr.Body.String()
-		if strings.Contains(body, "mailto:") || strings.Contains(body, "Questions or problems?") {
-			t.Errorf("body has a support row without a support address: %s", body)
+		// Each setting is on its category's page, not here.
+		for _, s := range []string{`href="/settings/name"`, `href="/settings/delete"`, "/settings/log-out-others"} {
+			if strings.Contains(body, s) {
+				t.Errorf("the Settings home has %s, which belongs on a category page", s)
+			}
 		}
-		assertBodyContains(t, body, `href="/privacy"`, `href="/terms"`)
+	})
+
+	t.Run("Reading shows the current theme", func(t *testing.T) {
+		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemeDark: "Dark"} {
+			s := newTestServer(t)
+			sess := settingsSession
+			sess.User.Theme = theme
+			assertBodyContains(t, serveSettingsPage(t, s, s.settingsHandler, sess).Body.String(),
+				`<span class="hint">Theme: `+want+`</span>`)
+		}
 	})
 
 	t.Run("flash is shown once", func(t *testing.T) {
@@ -81,15 +80,90 @@ func TestSettingsHandler(t *testing.T) {
 		rr := httptest.NewRecorder()
 		var flashLeft bool
 		s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s.sessionManager.Put(r.Context(), "flash", "Your name was updated.")
+			s.sessionManager.Put(r.Context(), "flash", "Your account was updated.")
 			s.settingsHandler(w, r)
 			flashLeft = s.sessionManager.Exists(r.Context(), "flash")
 		})).ServeHTTP(rr, requestWithSession(settingsSession))
 
-		assertBodyContains(t, rr.Body.String(), `<div class="flash">Your name was updated.</div>`)
+		assertBodyContains(t, rr.Body.String(), `<div class="flash">Your account was updated.</div>`)
 		if flashLeft {
 			t.Error("flash is still in the session after the page showed it")
 		}
+	})
+}
+
+// TestSettingsCategoryFlash checks that every Settings category page shows
+// the flash its forms leave when they redirect to it.
+func TestSettingsCategoryFlash(t *testing.T) {
+	s := newTestServer(t)
+	pages := map[string]http.HandlerFunc{
+		"account": s.settingsAccountHandler,
+		"reading": s.settingsReadingHandler,
+		"data":    s.settingsDataHandler,
+		"help":    s.settingsHelpHandler,
+	}
+	for name, handler := range pages {
+		t.Run(name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				s.sessionManager.Put(r.Context(), "flash", "Done.")
+				handler(w, r)
+			})).ServeHTTP(rr, requestWithSession(settingsSession))
+
+			assertBodyContains(t, rr.Body.String(),
+				`<div class="flash">Done.</div>`,
+				`<a class="rail-account" href="/settings" aria-current="page">`,
+			)
+		})
+	}
+}
+
+func TestSettingsAccountHandler(t *testing.T) {
+	s := newTestServer(t)
+	assertBodyContains(t, serveSettingsPage(t, s, s.settingsAccountHandler, settingsSession).Body.String(),
+		"<h1>Account</h1>",
+		`<a class="settings-row" href="/settings/name">`,
+		`<span class="settings-value">Ada Lovelace</span>`,
+		`<a class="settings-row" href="/settings/email">`,
+		`<span class="settings-email">ada@example.com</span>`,
+		`<a class="settings-row" href="/settings/password">`,
+		`<form action="/settings/log-out-others" method="post">`,
+		`<button type="submit" aria-describedby="devices-label devices-hint">Log them out</button>`,
+		`<a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>`,
+	)
+}
+
+func TestSettingsDataHandler(t *testing.T) {
+	s := newTestServer(t)
+	assertBodyContains(t, serveSettingsPage(t, s, s.settingsDataHandler, settingsSession).Body.String(),
+		"<h1>Your data</h1>",
+		`<a class="settings-row" href="/settings/import" aria-describedby="import-hint">`,
+		"Bring your feeds from another reader with an OPML file.",
+		`<a class="settings-row" href="/settings/export" aria-describedby="export-hint">`,
+		"An OPML file you can import into another reader.",
+	)
+}
+
+func TestSettingsHelpHandler(t *testing.T) {
+	t.Run("shows the support address", func(t *testing.T) {
+		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SupportEmail: "help@example.com"}, Services{})
+		assertBodyContains(t, serveSettingsPage(t, s, s.settingsHelpHandler, settingsSession).Body.String(),
+			"<h1>Help</h1>",
+			`<a class="settings-row" href="mailto:help@example.com">`,
+			"Contact support",
+			`<span class="hint settings-email">help@example.com</span>`,
+			`href="/privacy"`,
+			`href="/terms"`,
+		)
+	})
+
+	t.Run("without a support address", func(t *testing.T) {
+		s := newTestServer(t)
+		body := serveSettingsPage(t, s, s.settingsHelpHandler, settingsSession).Body.String()
+		if strings.Contains(body, "mailto:") || strings.Contains(body, "Contact support") {
+			t.Errorf("body has a support row without a support address: %s", body)
+		}
+		assertBodyContains(t, body, `href="/privacy"`, `href="/terms"`)
 	})
 }
 
@@ -102,7 +176,7 @@ func TestSettingsNameHandler(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	body := rr.Body.String()
-	assertBodyContains(t, body, `value="Ada Lovelace"`, `<a class="btn" href="/settings">Cancel</a>`)
+	assertBodyContains(t, body, `value="Ada Lovelace"`, `<a class="btn" href="/settings/account">Cancel</a>`)
 	if strings.Contains(body, "autofocus") {
 		t.Error("the form has autofocus without an error")
 	}
@@ -172,7 +246,7 @@ func TestSettingsNameForm(t *testing.T) {
 
 		rr, flash := postSettingsName(t, s, "  Ann  ")
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/account")
 		if gotID != settingsSession.User.ID || gotName != "Ann" {
 			t.Errorf("UpdateName(%q, %q), want (%q, %q)", gotID, gotName, settingsSession.User.ID, "Ann")
 		}
@@ -199,31 +273,31 @@ func TestSettingsNameForm(t *testing.T) {
 	})
 }
 
-// postSettingsTheme posts theme to POST /settings/theme as sess. It returns
+// postSettingsReading posts theme to POST /settings/reading as sess. It returns
 // the response and the flash message left in the session.
-func postSettingsTheme(t *testing.T, s *Server, sess rss.Session, theme string) (*httptest.ResponseRecorder, string) {
+func postSettingsReading(t *testing.T, s *Server, sess rss.Session, theme string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
 	form := url.Values{"theme": {theme}}
-	req := httptest.NewRequest(http.MethodPost, "/settings/theme", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/settings/reading", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = req.WithContext(requestWithSession(sess).Context())
 	rr := httptest.NewRecorder()
 	var flash string
 	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.settingsThemeFormHandler(w, r)
+		s.settingsReadingFormHandler(w, r)
 		flash = s.sessionManager.GetString(r.Context(), "flash")
 	})).ServeHTTP(rr, req)
 	return rr, flash
 }
 
-func TestSettingsTheme(t *testing.T) {
+func TestSettingsReading(t *testing.T) {
 	for _, theme := range []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark} {
 		t.Run("GET checks "+theme, func(t *testing.T) {
 			s := newTestServer(t)
 			sess := settingsSession
 			sess.User.Theme = theme
 			rr := httptest.NewRecorder()
-			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsThemeHandler)).ServeHTTP(rr, requestWithSession(sess))
+			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsReadingHandler)).ServeHTTP(rr, requestWithSession(sess))
 
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
@@ -232,7 +306,12 @@ func TestSettingsTheme(t *testing.T) {
 			if got := strings.Count(body, " checked"); got != 1 {
 				t.Errorf("%d checked choices, want 1", got)
 			}
-			assertBodyContains(t, body, `value="`+theme+`" checked`, `<a class="btn" href="/settings">Cancel</a>`)
+			assertBodyContains(t, body,
+				"<h1>Reading</h1>",
+				`<form class="reading-form" action="/settings/reading" method="post">`,
+				"<legend>Theme</legend>",
+				`value="`+theme+`" checked`,
+			)
 			if strings.Contains(body, "autofocus") {
 				t.Error("the form has autofocus without an error")
 			}
@@ -249,9 +328,9 @@ func TestSettingsTheme(t *testing.T) {
 				},
 			}})
 
-			rr, flash := postSettingsTheme(t, s, settingsSession, theme)
+			rr, flash := postSettingsReading(t, s, settingsSession, theme)
 
-			assertRedirect(t, rr, "/settings")
+			assertRedirect(t, rr, "/settings/reading")
 			if gotID != settingsSession.User.ID || gotTheme != theme {
 				t.Errorf("UpdateTheme(%q, %q), want (%q, %q)", gotID, gotTheme, settingsSession.User.ID, theme)
 			}
@@ -271,7 +350,7 @@ func TestSettingsTheme(t *testing.T) {
 				},
 			}})
 
-			rr, flash := postSettingsTheme(t, s, settingsSession, theme)
+			rr, flash := postSettingsReading(t, s, settingsSession, theme)
 
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
@@ -301,7 +380,7 @@ func TestSettingsTheme(t *testing.T) {
 			},
 		}})
 
-		postSettingsTheme(t, s, other, rss.ThemeDark)
+		postSettingsReading(t, s, other, rss.ThemeDark)
 
 		if want := []string{other.User.ID}; !reflect.DeepEqual(gotIDs, want) {
 			t.Errorf("UpdateTheme ids = %q, want %q", gotIDs, want)
@@ -315,25 +394,13 @@ func TestSettingsTheme(t *testing.T) {
 			},
 		}})
 
-		rr, flash := postSettingsTheme(t, s, settingsSession, rss.ThemeDark)
+		rr, flash := postSettingsReading(t, s, settingsSession, rss.ThemeDark)
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 		if flash != "" {
 			t.Errorf("flash = %q, want none", flash)
-		}
-	})
-
-	t.Run("Settings shows the current choice", func(t *testing.T) {
-		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemeDark: "Dark"} {
-			s := newTestServer(t)
-			sess := settingsSession
-			sess.User.Theme = theme
-			rr := httptest.NewRecorder()
-			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(sess))
-
-			assertBodyContains(t, rr.Body.String(), `<span class="settings-value">`+want+`</span>`)
 		}
 	})
 }
@@ -518,7 +585,7 @@ func TestSettingsPasswordForm(t *testing.T) {
 
 		rr, flash := postSettingsPassword(t, s, current, next)
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/account")
 		if gotUserID != settingsSession.User.ID || gotSessionID != settingsSession.ID || gotCurrent != current || gotNext != next {
 			t.Errorf("ChangePassword(%q, %q, %q, %q), want (%q, %q, %q, %q)",
 				gotUserID, gotSessionID, gotCurrent, gotNext,
@@ -554,7 +621,7 @@ func TestSettingsPasswordForm(t *testing.T) {
 
 		rr, flash := postSettingsPassword(t, s, current, next)
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/account")
 		if want := "Your password was changed. Other devices were logged out."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)
 		}
@@ -637,7 +704,7 @@ func TestLogOutOthers(t *testing.T) {
 				flash = s.sessionManager.GetString(r.Context(), "flash")
 			})).ServeHTTP(rr, req)
 
-			assertRedirect(t, rr, "/settings")
+			assertRedirect(t, rr, "/settings/account")
 			if gotUserID != settingsSession.User.ID || gotKeepID != settingsSession.ID {
 				t.Errorf("DeleteOthers(%q, %q), want (%q, %q)", gotUserID, gotKeepID, settingsSession.User.ID, settingsSession.ID)
 			}

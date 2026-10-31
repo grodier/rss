@@ -114,7 +114,7 @@ func (s *Server) settingsEmailFormHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", "We sent a link to "+form.Email+". Open it to finish changing your email.")
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 }
 
 // changeEmailLinkExpired renders the expired-link page for a link to change
@@ -202,7 +202,7 @@ func (s *Server) emailChangeFormHandler(w http.ResponseWriter, r *http.Request) 
 
 	if s.isAuthenticated(r) {
 		s.sessionManager.Put(r.Context(), "flash", "Your email address is now "+newEmail+".")
-		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 		return
 	}
 	s.sessionManager.Put(r.Context(), "flash", "Your email address is now "+newEmail+". Log in with it to continue.")

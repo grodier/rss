@@ -71,7 +71,7 @@ func (s *Server) settingsDebugFormHandler(w http.ResponseWriter, r *http.Request
 		s.sessionManager.Remove(r.Context(), "debug")
 		s.sessionManager.Put(r.Context(), "flash", "Debug mode is off for this device.")
 	}
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/help", http.StatusSeeOther)
 }
 
 // debugField is one row of a debug panel.

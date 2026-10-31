@@ -35,7 +35,7 @@ The decisions are under "Accounts" in decisions.md.
 - [ ] **Devices list.**
   Settings lists each logged-in device ("Firefox on macOS · active 3 days ago") with its own Log out, from `user_sessions` plus a device label taken from the User-Agent at login.
   No IP addresses or locations, which aren't kept outside the logs.
-  Settings only has "Log out of all other devices" so far.
+  Settings → Account only has "Log them out" for other devices so far.
 - [ ] **Email typo suggestions.**
   "Did you mean gmail.com?" under the signup email field, for near-misses of common domains.
   Until then, the confirmation notice shows the address you typed.
@@ -315,14 +315,13 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - Dates differ: rows and feed pages say "Oct 29, 2026, 2:22 AM", My feeds "29 Oct 2026"; a feed page's facts end "Last fetched … ." with a stray spaced full stop, and "About 5 posts a week." has a full stop My feeds doesn't.
   - Article rows repeat themselves: the feed name above the card and the domain inside it, a full date and time where a relative one may do, and the actions detached under the card.
   - The timeline form's spacing: hints at different indents, checkbox hints in divided rows of their own (they read as options), a bare box for "at most [N] times a week", and Save above the Sharing section it doesn't save.
-  - Settings: the "Log out of all other devices" button nearly touches the "Your data" header below it.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
   - Timelines: Move up / Move down pills next to an Edit text link.
   - Sub-nav pages: Tags, a tag and Timelines aren't in the nav (they're reached from a pill on My feeds and the Manage tab), so their heads carry hand-made links up ("My feeds", "All tags", "All timelines"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
 - [ ] **Reading preferences (needs planning).**
-  Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as choices on the Settings page (#261) next to the theme (#413).
+  Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as fieldsets in Settings → Reading's form (#446), next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).
 - [ ] **Asset build step (needs planning).**
   Bundle and minify the CSS and JavaScript for production, writing content-hashed file names.
@@ -340,6 +339,7 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
 - [ ] **Tap targets on small buttons.**
   `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in `main.css` enlarges it for `(pointer: coarse)` (found in #431).
   Making it 44 px there changes the height of every small button, so decide it with the phone review pass.
+  Plain buttons (Save, Log out, the Settings rows' "Log them out" and "Turn on") are 41 px, a little under too (#446).
 - [ ] **Install hint.**
   If testers don't find the browser's install, a short "Add Paper Round to your home screen" note in Settings with the steps for iOS and Android.
   Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).

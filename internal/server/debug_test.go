@@ -118,7 +118,7 @@ func TestSettingsDebugFormHandler(t *testing.T) {
 		s := newTestServerConfig(t, debugConfig, Services{})
 		rr, debug, flash := serveDebug(t, s, s.settingsDebugFormHandler, postDebug("1"), &debugSession, false)
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/help")
 		if !debug {
 			t.Error("debug is not set in the session")
 		}
@@ -131,7 +131,7 @@ func TestSettingsDebugFormHandler(t *testing.T) {
 		s := newTestServerConfig(t, debugConfig, Services{})
 		rr, debug, flash := serveDebug(t, s, s.settingsDebugFormHandler, postDebug("0"), &debugSession, true)
 
-		assertRedirect(t, rr, "/settings")
+		assertRedirect(t, rr, "/settings/help")
 		if debug {
 			t.Error("debug is still set in the session")
 		}
@@ -355,7 +355,7 @@ func TestSiteHandlerDebugPanel(t *testing.T) {
 			"<dt>icon</dt><dd>none (letter avatar)</dd>",
 			"<dt>First</dt><dd>failing (2 in a row) · never attempted · 4 articles</dd>",
 			"&lt;script&gt;alert(1)&lt;/script&gt;",
-			`<a class="debug-badge" href="/settings#debug">Debug</a>`,
+			`<a class="debug-badge" href="/settings/help#debug">Debug</a>`,
 			`<form class="debug-inspect" action="/debug/sites/`+testSiteID+`/discover" method="post">`,
 			"Run discovery</button>",
 			"Runs a lookup of this site now without saving anything.",
@@ -452,24 +452,26 @@ func TestFeedHandlerDebugPanel(t *testing.T) {
 	})
 }
 
-func TestSettingsHandlerDebug(t *testing.T) {
-	serve := func(t *testing.T, cfg Config, debugOn bool) string {
+func TestSettingsHelpHandlerDebug(t *testing.T) {
+	serve := func(t *testing.T, cfg Config, handler func(*Server) http.HandlerFunc, target string, debugOn bool) string {
 		t.Helper()
 		s := newTestServerConfig(t, cfg, Services{})
-		rr, _, _ := serveDebug(t, s, s.settingsHandler, httptest.NewRequest(http.MethodGet, "/settings", nil), &debugSession, debugOn)
+		rr, _, _ := serveDebug(t, s, handler(s), httptest.NewRequest(http.MethodGet, target, nil), &debugSession, debugOn)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
 		return rr.Body.String()
 	}
+	help := func(s *Server) http.HandlerFunc { return s.settingsHelpHandler }
+	home := func(s *Server) http.HandlerFunc { return s.settingsHandler }
 
 	t.Run("allowed, off", func(t *testing.T) {
-		body := serve(t, debugConfig, false)
+		body := serve(t, debugConfig, help, "/settings/help", false)
 		assertBodyContains(t, body,
-			`<section id="debug">`,
-			`<form class="settings-debug" action="/settings/debug" method="post">`,
+			`<li class="settings-action" id="debug">`,
+			`<form action="/settings/debug" method="post">`,
 			`<input type="hidden" name="on" value="1">`,
-			"Turn on debug mode",
+			`Turn on<span class="visually-hidden"> debug mode</span>`,
 		)
 		if strings.Contains(body, "debug-badge") {
 			t.Error("nav shows the debug badge with debug mode off")
@@ -477,18 +479,25 @@ func TestSettingsHandlerDebug(t *testing.T) {
 	})
 
 	t.Run("allowed, on", func(t *testing.T) {
-		body := serve(t, debugConfig, true)
+		body := serve(t, debugConfig, help, "/settings/help", true)
 		assertBodyContains(t, body,
 			`<input type="hidden" name="on" value="0">`,
-			"Turn off debug mode",
-			`<a class="debug-badge" href="/settings#debug">Debug</a>`,
+			`Turn off<span class="visually-hidden"> debug mode</span>`,
+			`<a class="debug-badge" href="/settings/help#debug">Debug</a>`,
 		)
 	})
 
+	t.Run("allowed, the Settings home says Help has it", func(t *testing.T) {
+		assertBodyContains(t, serve(t, debugConfig, home, "/settings", false), "Support, privacy and terms, debug mode")
+	})
+
 	t.Run("not allowed", func(t *testing.T) {
-		body := serve(t, Config{Port: 4000, Env: "development", DebugEmails: []string{"someone@example.com"}}, true)
-		if strings.Contains(body, `id="debug"`) || strings.Contains(body, "/settings/debug") || strings.Contains(body, "debug-badge") {
-			t.Errorf("settings shows debug mode to a user who isn't allowed: %s", body)
+		cfg := Config{Port: 4000, Env: "development", DebugEmails: []string{"someone@example.com"}}
+		for target, handler := range map[string]func(*Server) http.HandlerFunc{"/settings/help": help, "/settings": home} {
+			body := serve(t, cfg, handler, target, true)
+			if strings.Contains(body, `id="debug"`) || strings.Contains(body, "/settings/debug") || strings.Contains(body, "debug-badge") || strings.Contains(body, "debug mode") {
+				t.Errorf("%s shows debug mode to a user who isn't allowed: %s", target, body)
+			}
 		}
 	})
 }

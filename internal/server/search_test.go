@@ -25,7 +25,7 @@ func searchRequest(t *testing.T, s *Server, q string) *httptest.ResponseRecorder
 }
 
 func failingSearchStore(t *testing.T) *fakeSearchStore {
-	return &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	return &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		t.Error("store must not be called")
 		return nil, nil
 	}}
@@ -54,10 +54,10 @@ func TestSearchTooLong(t *testing.T) {
 }
 
 func TestSearchResults(t *testing.T) {
-	var gotQ string
+	var gotQ, gotKey string
 	var gotLimit int
-	store := &fakeSearchStore{searchFn: func(_ context.Context, q string, limit int) ([]rss.SiteWithFeeds, error) {
-		gotQ, gotLimit = q, limit
+	store := &fakeSearchStore{searchFn: func(_ context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
+		gotQ, gotKey, gotLimit = q, siteKey, limit
 		return []rss.SiteWithFeeds{
 			{Site: rss.Site{ID: "site-1", Host: "one.example", Title: "One"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}, {ID: "feed-2", Title: "F2"}}},
 			{Site: rss.Site{ID: "site-2", Host: "two.example"}},
@@ -68,8 +68,8 @@ func TestSearchResults(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if gotQ != "ex" || gotLimit != 20 {
-		t.Errorf("Search called with %q, %d", gotQ, gotLimit)
+	if gotQ != "ex" || gotKey != "" || gotLimit != 20 {
+		t.Errorf("Search called with %q, %q, %d", gotQ, gotKey, gotLimit)
 	}
 	body := rr.Body.String()
 	for _, want := range []string{`href="/sites/site-1"`, `href="/sites/site-2"`, `href="/feeds/feed-1"`, `href="/feeds/feed-2"`, ">two.example</a>"} {
@@ -77,10 +77,26 @@ func TestSearchResults(t *testing.T) {
 			t.Errorf("body missing %q", want)
 		}
 	}
+
+	// An address is also matched by its site key; the query stays as typed.
+	searchRequest(t, s, "https://www.NPR.org/news")
+	if gotQ != "https://www.NPR.org/news" || gotKey != "npr.org" {
+		t.Errorf("Search called with %q, %q; want the query as typed and site key npr.org", gotQ, gotKey)
+	}
+}
+
+func TestSearchInputAttributes(t *testing.T) {
+	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
+	body := searchRequest(t, s, "").Body.String()
+	for _, want := range []string{`type="search" id="q"`, `autocapitalize="none"`, `autocorrect="off"`, `spellcheck="false"`, `enterkeyhint="search"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("search input missing %s", want)
+		}
+	}
 }
 
 func TestSearchNoResults(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
@@ -91,7 +107,7 @@ func TestSearchNoResults(t *testing.T) {
 }
 
 func TestSearchEmptyFeedTitleShowsURL(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return []rss.SiteWithFeeds{{
 			Site: rss.Site{ID: "site-1", Host: "one.example"},
 			Feeds: []rss.Feed{
@@ -114,7 +130,7 @@ func TestSearchEmptyFeedTitleShowsURL(t *testing.T) {
 }
 
 func TestSearchStoreError(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, errors.New("boom")
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
@@ -125,7 +141,7 @@ func TestSearchStoreError(t *testing.T) {
 }
 
 func TestSearchEscapesQuery(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
@@ -141,7 +157,7 @@ func TestSearchHandlerSubscribedMarker(t *testing.T) {
 		{Site: rss.Site{ID: "site-2", Host: "two.example"}, Feeds: []rss.Feed{{ID: "feed-3", Title: "F3"}}},
 	}
 	search := func(sites []rss.SiteWithFeeds) *fakeSearchStore {
-		return &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+		return &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 			return sites, nil
 		}}
 	}
@@ -217,7 +233,7 @@ func TestSearchHandlerSubscribedMarker(t *testing.T) {
 }
 
 func TestSearchSiteIcons(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return []rss.SiteWithFeeds{{Site: rss.Site{ID: testSiteID, Host: "one.example", Title: "One"}}}, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}, SiteService: &fakeSiteStore{}})

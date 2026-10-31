@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/grodier/rss/internal/discovery"
@@ -25,8 +26,8 @@ type searchData struct {
 	Sites    []rss.SiteWithFeeds
 	Searched bool
 	Flash    string
-	// LookupQ is the query to offer as a site lookup, or "" if q doesn't
-	// look like a website address.
+	// LookupQ is the address to offer as a site lookup (see lookupAddress),
+	// or "" if q doesn't look like a website address.
 	LookupQ string
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
@@ -52,10 +53,12 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	case !data.Form.Valid():
 		status = http.StatusUnprocessableEntity
 	case data.Form.Q != "":
-		if discovery.LooksLikeURL(data.Form.Q) {
-			data.LookupQ = data.Form.Q
+		var siteKey string
+		if u, err := discovery.ParseInput(data.Form.Q); err == nil {
+			data.LookupQ = lookupAddress(u)
+			siteKey = discovery.SiteKey(u)
 		}
-		sites, err := s.services.SearchService.Search(r.Context(), data.Form.Q, searchLimit)
+		sites, err := s.services.SearchService.Search(r.Context(), data.Form.Q, siteKey, searchLimit)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
@@ -86,4 +89,15 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, status, "search.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// lookupAddress is u (from discovery.ParseInput) as the lookup offer shows and
+// posts it: without "https://" and without a lone trailing "/", so
+// "https://npr.org/" reads "npr.org". ParseInput turns it back into u.
+func lookupAddress(u *url.URL) string {
+	a := strings.TrimPrefix(u.String(), "https://")
+	if u.Path == "/" && u.RawQuery == "" {
+		a = strings.TrimSuffix(a, "/")
+	}
+	return a
 }

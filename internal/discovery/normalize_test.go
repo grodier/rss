@@ -24,10 +24,18 @@ func TestParseInput(t *testing.T) {
 		{"xn--bcher-kva.example", "https://xn--bcher-kva.example/"},
 		{"blog.example.org/Posts/A", "https://blog.example.org/Posts/A"},
 		{long, "https://" + long},
+		{"npr. org", "https://npr.org/"},
+		{"npr .org", "https://npr.org/"},
+		{"NPR. Org", "https://npr.org/"},
+		{"https: //npr.org", "https://npr.org/"},
+		{"npr.org/ news", "https://npr.org/news"},
 
 		{"hacker news", ""},
 		{"example.com/a b", ""},
 		{"example.com/a\tb", ""},
+		{"news on npr.org", ""},
+		{"the verge", ""},
+		{"npr org", ""},
 		{"localhost", ""},
 		{"news", ""},
 		{"", ""},
@@ -67,11 +75,14 @@ func TestParseInput(t *testing.T) {
 }
 
 func TestLooksLikeURL(t *testing.T) {
-	for _, in := range []string{"example.com", "HTTPS://Example.com", "hacker news", "localhost", "ftp://example.com", ""} {
+	for _, in := range []string{"example.com", "HTTPS://Example.com", "npr. org", "hacker news", "localhost", "ftp://example.com", ""} {
 		_, err := ParseInput(in)
 		if got, want := LooksLikeURL(in), err == nil; got != want {
 			t.Errorf("LooksLikeURL(%q) = %v; want %v", in, got, want)
 		}
+	}
+	if !LooksLikeURL("npr. org") {
+		t.Error(`LooksLikeURL("npr. org") = false; want true`)
 	}
 }
 

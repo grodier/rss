@@ -26,7 +26,7 @@
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
           <button class="btn-primary" type="submit">Search</button>
         </div>

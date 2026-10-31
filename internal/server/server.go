@@ -94,7 +94,7 @@ type SessionStore interface {
 
 // SearchStore searches sites and feeds already in the database.
 type SearchStore interface {
-	Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error)
+	Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error)
 }
 
 // LookupStore queues and reads site lookups.

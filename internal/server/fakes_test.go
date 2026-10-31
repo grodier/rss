@@ -164,11 +164,11 @@ func (f *fakeSessionStore) DeleteOthers(ctx context.Context, userID, keepID stri
 }
 
 type fakeSearchStore struct {
-	searchFn func(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error)
+	searchFn func(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error)
 }
 
-func (f *fakeSearchStore) Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error) {
-	return f.searchFn(ctx, q, limit)
+func (f *fakeSearchStore) Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
+	return f.searchFn(ctx, q, siteKey, limit)
 }
 
 type fakeLookupStore struct {

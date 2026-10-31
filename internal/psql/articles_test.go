@@ -342,6 +342,41 @@ func TestSaveFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("undated articles on a first save aren't on top", func(t *testing.T) {
+		tf := newTestFeed(t, db)
+		user := newTestUser(t, db)
+		if err := NewSubscriptionRepository(db).Subscribe(ctx, user, tf.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		recent := dbNow(t, db).Add(-time.Hour).Truncate(time.Second)
+		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
+			{ExternalID: "recent", Title: "Recent", PublishedAt: recent},
+			{ExternalID: "u1", Title: "U1"},
+			{ExternalID: "u2", Title: "U2"},
+			{ExternalID: "week", Title: "Week", PublishedAt: recent.Add(-7 * 24 * time.Hour)},
+		}); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+
+		var order []string
+		for _, item := range items {
+			order = append(order, item.Article.ExternalID)
+		}
+		if want := []string{"recent", "u1", "u2", "week"}; !slices.Equal(order, want) {
+			t.Fatalf("timeline order %v, want %v", order, want)
+		}
+		// A day apart below the dated article before them.
+		for i, want := range []time.Time{recent.Add(-24 * time.Hour), recent.Add(-48 * time.Hour)} {
+			if got := items[i+1].Article.TimelineAt; !got.Equal(want) {
+				t.Errorf("%s: got TimelineAt %v, want %v", order[i+1], got, want)
+			}
+		}
+	})
+
 	t.Run("excerpt updated", func(t *testing.T) {
 		ef := newTestFeed(t, db)
 		save := func(excerpt string) rss.FetchResult {
@@ -629,7 +664,9 @@ func TestTimelineAt(t *testing.T) {
 	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	prev := now.Add(-6 * time.Hour)
 	us := time.Microsecond
+	h := time.Hour
 	art := func(published time.Time) rss.Article { return rss.Article{PublishedAt: published} }
+	undated := rss.Article{}
 
 	tests := []struct {
 		name     string
@@ -638,9 +675,42 @@ func TestTimelineAt(t *testing.T) {
 		want     []time.Time
 	}{
 		{
-			name:     "first save: dated get their dates, future clamped, undated in document order",
-			articles: []rss.Article{art(now.Add(-72 * time.Hour)), art(now.Add(time.Hour)), art(time.Time{}), art(time.Time{})},
-			want:     []time.Time{now.Add(-72 * time.Hour), now, now, now.Add(-us)},
+			name:     "first save: dated get their dates, future clamped, undated a day apart from a day back",
+			articles: []rss.Article{art(now.Add(-72 * h)), art(now.Add(h)), undated, undated},
+			want:     []time.Time{now.Add(-72 * h), now, now.Add(-24 * h), now.Add(-48 * h)},
+		},
+		{
+			name:     "first save, nothing dated",
+			articles: []rss.Article{undated, undated, undated},
+			want:     []time.Time{now.Add(-24 * h), now.Add(-48 * h), now.Add(-72 * h)},
+		},
+		{
+			name:     "first save, future-dated only",
+			articles: []rss.Article{art(now.Add(h)), undated},
+			want:     []time.Time{now, now.Add(-24 * h)},
+		},
+		{
+			// The dated items are 6 h apart, so that's the step.
+			name:     "first save: undated follow the feed's pace below the item before them",
+			articles: []rss.Article{art(now.Add(-30 * h)), undated, art(now.Add(-36 * h)), art(now.Add(-42 * h)), undated},
+			want:     []time.Time{now.Add(-30 * h), now.Add(-33 * h), now.Add(-36 * h), now.Add(-42 * h), now.Add(-48 * h)},
+		},
+		{
+			name:     "first save: a run that would reach the next dated item is spread evenly down to it",
+			articles: []rss.Article{art(now.Add(-48 * h)), undated, undated, undated, art(now.Add(-50 * h))},
+			want: []time.Time{
+				now.Add(-48 * h), now.Add(-48*h - 30*time.Minute), now.Add(-49 * h), now.Add(-49*h - 30*time.Minute), now.Add(-50 * h),
+			},
+		},
+		{
+			name:     "first save: a spread run still starts no later than a day back",
+			articles: []rss.Article{undated, undated, undated, art(now.Add(-25 * h))},
+			want:     []time.Time{now.Add(-24 * h), now.Add(-24*h - 20*time.Minute), now.Add(-24*h - 40*time.Minute), now.Add(-25 * h)},
+		},
+		{
+			name:     "first save: undated never later than a day back, and below earlier undated",
+			articles: []rss.Article{undated, art(now.Add(-h)), undated, art(now.Add(-2 * h))},
+			want:     []time.Time{now.Add(-24 * h), now.Add(-h), now.Add(-25 * h), now.Add(-2 * h)},
 		},
 		{
 			name:     "later save: news, backlog and undated",

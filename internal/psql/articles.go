@@ -411,15 +411,21 @@ func cursorArgs(before rss.ArticleCursor) (sql.NullTime, sql.NullString) {
 // article's published date must be for it to count as backlog.
 const backlogSlack = 24 * time.Hour
 
+// undatedBacklogStep spaces out the undated articles of a feed's first save:
+// the newest goes this long before the save, and none are further apart (see
+// placeUndated).
+const undatedBacklogStep = 24 * time.Hour
+
 // timelineAt returns each article's timeline position, in the order of
 // articles, for a save at now of a feed whose previous successful fetch
 // was prevFetched (zero for the feed's first save).
 //
-// News (undated, or published since prevFetched - backlogSlack) is placed
-// at now, newest-published first with undated items ahead of dated ones,
-// each 1 µs below the one before. Backlog is placed at its published date,
-// clamped to now. Undated backlog (a first fetch of an undated feed) is
-// treated like news.
+// News (on a later save: undated, or published since prevFetched -
+// backlogSlack) is placed at now, newest-published first with undated items
+// ahead of dated ones, each 1 µs below the one before. Backlog (every dated
+// item of a first save, and older items of later saves) is placed at its
+// published date, clamped to now. A first save's undated items are backlog
+// too, spaced out below the items before them (see placeUndated).
 func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
 	cutoff := prevFetched.Add(-backlogSlack)
 	positions := make([]time.Time, len(articles))
@@ -434,7 +440,13 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 			}
 			continue
 		}
+		if prevFetched.IsZero() {
+			continue // undated on a first save: placeUndated, below
+		}
 		news = append(news, i)
+	}
+	if prevFetched.IsZero() {
+		placeUndated(articles, positions, now)
 	}
 
 	// Undated items count as published now, so they sort ahead of dated ones.
@@ -452,6 +464,76 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 	}
 
 	return positions
+}
+
+// placeUndated sets the positions of a first save's undated articles, given
+// those of its dated ones. Each run of undated articles in document order
+// goes below the article before it and below earlier undated ones, one step
+// apart; a run that would reach the dated article after it is spread evenly
+// between the two instead. Either way, none goes later than
+// undatedBacklogStep before now. The step is the median gap between
+// consecutive dated articles, at most undatedBacklogStep (undatedBacklogStep
+// without one). So an undated feed's items go a day apart from a day back,
+// and a mixed feed's follow its pace, never on top and never in a block.
+func placeUndated(articles []rss.Article, positions []time.Time, now time.Time) {
+	dated := func(i int) bool { return !articles[i].PublishedAt.IsZero() }
+
+	var gaps []time.Duration
+	prev := -1
+	for i := range articles {
+		if !dated(i) {
+			continue
+		}
+		if prev >= 0 {
+			if gap := positions[prev].Sub(positions[i]); gap > 0 {
+				gaps = append(gaps, gap)
+			}
+		}
+		prev = i
+	}
+	step := undatedBacklogStep
+	if len(gaps) > 0 {
+		slices.Sort(gaps)
+		step = min(gaps[(len(gaps)-1)/2], undatedBacklogStep)
+	}
+
+	newest := now.Add(-undatedBacklogStep)
+	above := now // what the next undated article goes below
+	for i := 0; i < len(articles); {
+		if dated(i) {
+			i++
+			continue
+		}
+		j := i
+		for j < len(articles) && !dated(j) {
+			j++
+		}
+		if i > 0 && positions[i-1].Before(above) {
+			above = positions[i-1]
+		}
+		n := time.Duration(j - i)
+		first, gap := above.Add(-step), step
+		if first.After(newest) {
+			first = newest
+		}
+		if j < len(articles) {
+			if lo := positions[j]; !lo.After(first) && !first.Add(-(n-1)*step).After(lo) {
+				// Stepping would reach the dated article after the run.
+				gap = above.Sub(lo) / (n + 1)
+				first = above.Add(-gap)
+				if first.After(newest) {
+					gap = newest.Sub(lo) / n
+					first = newest
+				}
+				gap = max(gap, time.Microsecond)
+			}
+		}
+		for k := i; k < j; k++ {
+			positions[k] = first.Add(-time.Duration(k-i) * gap)
+		}
+		above = positions[j-1]
+		i = j
+	}
 }
 
 // enrichFirstSave is how many articles of a feed's first save, by latest

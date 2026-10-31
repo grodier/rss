@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -22,12 +23,18 @@ func LooksLikeURL(q string) bool {
 	return err == nil
 }
 
+// spaceAroundSeparators matches a ".", "/" or ":" with the whitespace around
+// it, which phone keyboards insert ("npr. org").
+var spaceAroundSeparators = regexp.MustCompile(`\s*([./:])\s*`)
+
 // ParseInput turns user input into an absolute http(s) URL to fetch. Input
-// without a scheme is treated as https. It returns ErrNotURL if q is not a
-// website address: anything other than http(s), userinfo, IP literals and
+// without a scheme is treated as https. Whitespace next to ".", "/" or ":" is
+// removed ("npr. org" -> npr.org); any other whitespace means q isn't an
+// address, so free text isn't glued into one. It returns ErrNotURL if q is not
+// a website address: anything other than http(s), userinfo, IP literals and
 // hosts that aren't a dotted domain name are rejected.
 func ParseInput(q string) (*url.URL, error) {
-	q = strings.TrimSpace(q)
+	q = spaceAroundSeparators.ReplaceAllString(strings.TrimSpace(q), "$1")
 	if q == "" || len(q) > maxInputLen || strings.IndexFunc(q, unicode.IsSpace) >= 0 {
 		return nil, ErrNotURL
 	}

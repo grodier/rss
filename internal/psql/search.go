@@ -26,9 +26,10 @@ func likePattern(q string) string {
 }
 
 // Search matches q (case-insensitive substring) against site title and host
-// and feed title and URL. It returns at most limit sites, each with all of its
-// feeds.
-func (r *SearchRepository) Search(ctx context.Context, q string, limit int) ([]rss.SiteWithFeeds, error) {
+// and feed title and URL, and siteKey (discovery.SiteKey of q when q is a web
+// address, else "") against site host exactly; that site comes first. It
+// returns at most limit sites, each with all of its feeds.
+func (r *SearchRepository) Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return nil, nil
@@ -36,13 +37,13 @@ func (r *SearchRepository) Search(ctx context.Context, q string, limit int) ([]r
 
 	stmt := `SELECT s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at
 		FROM sites s
-		WHERE s.title ILIKE $1 ESCAPE '\' OR s.host ILIKE $1 ESCAPE '\'
+		WHERE s.host = $2 OR s.title ILIKE $1 ESCAPE '\' OR s.host ILIKE $1 ESCAPE '\'
 		   OR EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id
 		              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'))
-		ORDER BY (s.host = lower($2)) DESC, lower(s.title), s.host
+		ORDER BY (s.host = $2) DESC, lower(s.title), s.host
 		LIMIT $3`
 
-	rows, err := r.DB.QueryContext(ctx, stmt, likePattern(q), q, limit)
+	rows, err := r.DB.QueryContext(ctx, stmt, likePattern(q), siteKey, limit)
 	if err != nil {
 		return nil, err
 	}

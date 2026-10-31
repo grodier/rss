@@ -55,7 +55,7 @@ func TestSearchRepository(t *testing.T) {
 	}
 	search := func(q string, limit int) []rss.SiteWithFeeds {
 		t.Helper()
-		res, err := repo.Search(ctx, q, limit)
+		res, err := repo.Search(ctx, q, "", limit)
 		if err != nil {
 			t.Fatalf("Search(%q): %v", q, err)
 		}
@@ -121,14 +121,30 @@ func TestSearchRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("site whose host equals the query is first", func(t *testing.T) {
+	t.Run("site whose host is the site key is first", func(t *testing.T) {
 		// A third site whose title sorts before the others and contains the host.
 		hostC := "c-" + tok + ".example.io"
 		addSite(hostC, "AAA "+hostA)
-		res := search(hostA, 10)
+		res, err := repo.Search(ctx, hostA, hostA, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
 		got := siteHosts(res)
 		if len(got) != 2 || got[0] != hostA || got[1] != hostC {
 			t.Errorf("got sites %v; want [%s %s]", got, hostA, hostC)
+		}
+	})
+
+	t.Run("full address found by its site key", func(t *testing.T) {
+		hostE := "e-" + tok + ".example"
+		addSite(hostE, "AAA "+tok)
+		q := "https://www." + hostE + "/some/path"
+		res, err := repo.Search(ctx, q, hostE, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := siteHosts(res); len(got) != 1 || got[0] != hostE {
+			t.Errorf("got sites %v; want [%s]", got, hostE)
 		}
 	})
 

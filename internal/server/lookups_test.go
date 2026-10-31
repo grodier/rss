@@ -289,7 +289,7 @@ func TestLookupHandlerFailed(t *testing.T) {
 }
 
 func TestSearchOffersLookup(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
@@ -299,6 +299,19 @@ func TestSearchOffersLookup(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
+	}
+
+	// Stray spaces are removed from the offer, but the query shows as typed.
+	body = searchRequest(t, s, "npr.%20org").Body.String()
+	for _, want := range []string{`name="q" value="npr.org"`, "Look up npr.org", `id="q" name="q" value="npr. org"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+
+	body = searchRequest(t, s, "http://www.example.com/blog").Body.String()
+	if want := "Look up http://www.example.com/blog"; !strings.Contains(body, want) {
+		t.Errorf("body missing %q", want)
 	}
 
 	if body := searchRequest(t, s, "hacker+news").Body.String(); strings.Contains(body, `action="/lookups"`) {

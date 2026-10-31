@@ -92,7 +92,7 @@ var _ Fetcher = (*fetch.Client)(nil)
 
 // Store records fetch outcomes; satisfied by *psql.FeedRepository.
 type Store interface {
-	SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error)
+	SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article, catchUp time.Time) (rss.FetchResult, error)
 	RecordFailure(ctx context.Context, id, msg string, next time.Time) error
 	RecordNotModified(ctx context.Context, id string, next time.Time) error
 	MarkGone(ctx context.Context, id string) error
@@ -119,9 +119,11 @@ type Refresher struct {
 }
 
 // Refresh fetches feed.Url, parses it and saves its metadata, validators
-// (ETag, Last-Modified) and articles, scheduling the feed's next fetch (see
-// NextFetch, delayed until the response is no longer fresh per Cache-Control
-// max-age or Expires, up to MaxRetryDelay). It sends the feed's stored
+// (ETag, Last-Modified) and articles, scheduling the feed's next fetch from
+// its posting rate (see NextFetch), or sooner when the save finds the feed
+// may have outrun its file (see CatchUpFetch and rss.FetchResult.Behind),
+// either delayed until the response is no longer fresh per Cache-Control
+// max-age or Expires, up to MaxRetryDelay. It sends the feed's stored
 // validators, and when the server answers 304 it records that with
 // Store.RecordNotModified, without parsing, and returns a result with
 // NotModified set. The caller sets the deadline on ctx. Fetch failures wrap
@@ -150,7 +152,15 @@ func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult
 			return r.Store.RecordFailure(ctx, feed.ID, err.Error(), next)
 		})
 	}
-	next := notBefore(NextFetch(now), now, freshness(resp.Header, now))
+	fresh := freshness(resp.Header, now)
+	next := NextFetch(now, feed.PostsPerWeek)
+	catchUp := CatchUpFetch(now, feed.LastFetched)
+	if catchUp.After(next) {
+		// Catching up never waits longer than an ordinary fetch, say a busy
+		// feed's first success after failures.
+		catchUp = next
+	}
+	next = notBefore(next, now, fresh)
 	if update == nil {
 		if err := r.Store.RecordNotModified(ctx, feed.ID, next); err != nil {
 			return rss.FetchResult{}, err
@@ -158,7 +168,7 @@ func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult
 		return rss.FetchResult{NotModified: true}, nil
 	}
 	update.NextFetch = next
-	return r.Store.SaveFetch(ctx, *update, articles)
+	return r.Store.SaveFetch(ctx, *update, articles, notBefore(catchUp, now, fresh))
 }
 
 // notBefore returns the later of next and now + d, with d capped at

@@ -263,7 +263,7 @@ func ToSave(res discovery.Result, now time.Time) (rss.Site, []rss.FeedWithArticl
 				SiteUrl:     f.SiteURL,
 				Title:       f.Title,
 				Description: f.Description,
-				NextFetch:   ingest.NextFetch(now),
+				NextFetch:   ingest.NextFetch(now, 0), // no rate yet: an hour
 			},
 			Articles: ingest.Articles(f.Items),
 		}

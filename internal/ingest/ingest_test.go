@@ -179,6 +179,7 @@ type fakeStore struct {
 	calls    int
 	feed     rss.Feed
 	articles []rss.Article
+	catchUp  time.Time
 	result   rss.FetchResult
 	err      error
 
@@ -208,10 +209,11 @@ type failure struct {
 	ctxErr  error // the context's error when RecordFailure was called
 }
 
-func (s *fakeStore) SaveFetch(_ context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error) {
+func (s *fakeStore) SaveFetch(_ context.Context, f rss.Feed, articles []rss.Article, catchUp time.Time) (rss.FetchResult, error) {
 	s.calls++
 	s.feed = f
 	s.articles = articles
+	s.catchUp = catchUp
 	return s.result, s.err
 }
 
@@ -279,6 +281,55 @@ func TestRefresh(t *testing.T) {
 		}
 		if len(store.failures) != 0 {
 			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
+		}
+	})
+
+	t.Run("schedules by posting rate and catches up", func(t *testing.T) {
+		tests := []struct {
+			name         string
+			postsPerWeek float64
+			lastFetched  time.Duration // before the fetch; 0: never
+			header       string        // name: value, or ""
+			wantNext     time.Duration
+			wantCatchUp  time.Duration
+		}{
+			{"quiet feed", 7, time.Hour, "", RefreshInterval, 30 * time.Minute},
+			{"busy feed", 84, 30 * time.Minute, "", 30 * time.Minute, MinRefreshInterval},
+			{"busiest feed", 1000, 15 * time.Minute, "", MinRefreshInterval, MinRefreshInterval},
+			{"never fetched", 0, 0, "", RefreshInterval, MinRefreshInterval},
+			{"catch-up no later than the rate", 168, 3 * time.Hour, "", MinRefreshInterval, MinRefreshInterval},
+			{"max-age delays both", 168, 30 * time.Minute, "Cache-Control: max-age=7200", 2 * time.Hour, 2 * time.Hour},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if name, value, ok := strings.Cut(tt.header, ": "); ok {
+						w.Header().Set(name, value)
+					}
+					w.Header().Set("Content-Type", "application/rss+xml")
+					fmt.Fprint(w, testRSS)
+				}))
+				t.Cleanup(srv.Close)
+				store := &fakeStore{}
+				r := &Refresher{Fetcher: fetcher, Store: store}
+
+				feed := rss.Feed{ID: "feed-1", Url: srv.URL, PostsPerWeek: tt.postsPerWeek}
+				before := time.Now()
+				if tt.lastFetched != 0 {
+					feed.LastFetched = before.Add(-tt.lastFetched)
+				}
+				if _, err := r.Refresh(context.Background(), feed); err != nil {
+					t.Fatalf("Refresh: %v", err)
+				}
+				after := time.Now()
+				if store.calls != 1 {
+					t.Fatalf("SaveFetch called %d times, want 1", store.calls)
+				}
+				checkWithin(t, "NextFetch", store.feed.NextFetch, before, after, tt.wantNext)
+				// The catch-up time is measured from before (via
+				// LastFetched), so allow the time the fetch took twice.
+				checkWithin(t, "catchUp", store.catchUp, before, after.Add(after.Sub(before)), tt.wantCatchUp)
+			})
 		}
 	})
 

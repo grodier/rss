@@ -15,7 +15,7 @@ import (
 func newEnrichJob(t *testing.T, db *sql.DB, feed rss.Feed, externalID string, priority int, next time.Time) rss.Article {
 	t.Helper()
 	a := rss.Article{ExternalID: externalID, URL: "https://example.com/" + externalID, Title: "T", Excerpt: "E"}
-	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, []rss.Article{a}); err != nil {
+	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, []rss.Article{a}, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_id = $1 AND external_id = $2`, feed.ID, externalID).Scan(&a.ID); err != nil {

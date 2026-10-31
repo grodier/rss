@@ -8,16 +8,43 @@ import (
 )
 
 const (
-	// RefreshInterval is how long after a successful fetch a feed is due again.
+	// RefreshInterval is the longest a subscribed feed waits between
+	// successful fetches.
 	RefreshInterval = time.Hour
+	// MinRefreshInterval is the shortest, for the busiest feeds and catching up.
+	MinRefreshInterval = 15 * time.Minute
 	// MaxRetryDelay caps the backoff after failed fetches.
 	MaxRetryDelay = 24 * time.Hour
 )
 
-// NextFetch returns when a feed fetched successfully at now is due again:
-// now + RefreshInterval, ±10% jitter.
-func NextFetch(now time.Time) time.Time {
-	return now.Add(jitter(RefreshInterval))
+// fetchesPerArticle is how many fetches NextFetch aims for per expected
+// article.
+const fetchesPerArticle = 4
+
+// NextFetch returns when a feed fetched successfully at now, which posts
+// postsPerWeek articles a week, is due again: about four fetches per
+// expected article, between MinRefreshInterval and RefreshInterval, ±10%
+// jitter.
+func NextFetch(now time.Time, postsPerWeek float64) time.Time {
+	interval := RefreshInterval
+	if postsPerWeek > 0 {
+		// Clamped as a float, so a tiny rate can't overflow a Duration.
+		perArticle := float64(7*24*time.Hour) / postsPerWeek
+		interval = time.Duration(min(max(perArticle/fetchesPerArticle, float64(MinRefreshInterval)), float64(RefreshInterval)))
+	}
+	return now.Add(jitter(interval))
+}
+
+// CatchUpFetch returns when a feed whose fetch at now found every item new
+// is due again: half the time since its previous successful fetch, at
+// least MinRefreshInterval, ±10% jitter. A zero lastFetched gets
+// MinRefreshInterval.
+func CatchUpFetch(now, lastFetched time.Time) time.Time {
+	interval := MinRefreshInterval
+	if !lastFetched.IsZero() {
+		interval = max(now.Sub(lastFetched)/2, MinRefreshInterval)
+	}
+	return now.Add(jitter(interval))
 }
 
 // RetryAt returns when a feed whose last failures attempts failed in a row is

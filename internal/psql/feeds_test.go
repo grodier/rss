@@ -311,7 +311,7 @@ func TestFeedRepositoryOutcomesClearRefreshRequest(t *testing.T) {
 		name   string
 		record func(f rss.Feed) error
 	}{
-		{"SaveFetch", func(f rss.Feed) error { _, err := repo.SaveFetch(ctx, f, nil); return err }},
+		{"SaveFetch", func(f rss.Feed) error { _, err := repo.SaveFetch(ctx, f, nil, f.NextFetch); return err }},
 		{"RecordFailure", func(f rss.Feed) error { return repo.RecordFailure(ctx, f.ID, "boom", next) }},
 		{"RecordNotModified", func(f rss.Feed) error { return repo.RecordNotModified(ctx, f.ID, next) }},
 		{"MarkGone", func(f rss.Feed) error { return repo.MarkGone(ctx, f.ID) }},
@@ -343,7 +343,7 @@ func TestFeedRepositoryRecordFailure(t *testing.T) {
 
 	t.Run("records each failure", func(t *testing.T) {
 		feed := newTestFeed(t, db)
-		if _, err := repo.SaveFetch(ctx, feed, nil); err != nil {
+		if _, err := repo.SaveFetch(ctx, feed, nil, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		fetched, err := repo.GetByID(ctx, feed.ID)
@@ -408,7 +408,7 @@ func TestFeedRepositoryRecordNotModified(t *testing.T) {
 		feed := newTestFeed(t, db)
 		feed.ETag = `"v1"`
 		feed.Title = "Saved title"
-		if _, err := repo.SaveFetch(ctx, feed, nil); err != nil {
+		if _, err := repo.SaveFetch(ctx, feed, nil, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		if err := repo.RecordFailure(ctx, feed.ID, "boom", time.Now()); err != nil {
@@ -461,7 +461,7 @@ func TestSaveFetchMarksCopies(t *testing.T) {
 
 	save := func(t *testing.T, feed rss.Feed, articles ...rss.Article) {
 		t.Helper()
-		if _, err := repo.SaveFetch(ctx, feed, articles); err != nil {
+		if _, err := repo.SaveFetch(ctx, feed, articles, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 	}
@@ -527,6 +527,65 @@ func TestSaveFetchMarksCopies(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchCatchUp(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+
+	articles := func(ids ...string) []rss.Article {
+		var as []rss.Article
+		for _, id := range ids {
+			as = append(as, rss.Article{ExternalID: id, Title: id})
+		}
+		return as
+	}
+	tests := []struct {
+		name       string
+		first      []rss.Article // saved first, unless nil
+		save       []rss.Article
+		wantBehind bool
+	}{
+		{"later save, every article new", articles("a"), articles("b", "c", "d"), true},
+		{"later save, one already known", articles("a"), articles("a", "b", "c"), false},
+		{"first save", nil, articles("a", "b", "c"), false},
+		{"a single new article", articles("a"), articles("b"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feed := newTestFeed(t, db)
+			if tt.first != nil {
+				if _, err := repo.SaveFetch(ctx, feed, tt.first, feed.NextFetch); err != nil {
+					t.Fatalf("first SaveFetch: %v", err)
+				}
+			}
+
+			now := time.Now().Truncate(time.Second)
+			feed.NextFetch = now.Add(time.Hour)
+			catchUp := now.Add(15 * time.Minute)
+			res, err := repo.SaveFetch(ctx, feed, tt.save, catchUp)
+			if err != nil {
+				t.Fatalf("SaveFetch: %v", err)
+			}
+			if res.Behind != tt.wantBehind {
+				t.Errorf("Behind = %v, want %v (result %+v)", res.Behind, tt.wantBehind, res)
+			}
+
+			want := feed.NextFetch
+			if tt.wantBehind {
+				want = catchUp
+			}
+			got, err := repo.GetByID(ctx, feed.ID)
+			if err != nil {
+				t.Fatalf("GetByID: %v", err)
+			}
+			if !got.NextFetch.Equal(want) {
+				t.Errorf("NextFetch = %v, want %v", got.NextFetch, want)
+			}
+		})
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetchPostsPerWeek(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)
@@ -545,7 +604,7 @@ func TestSaveFetchPostsPerWeek(t *testing.T) {
 		rss.Article{ExternalID: "old-1", Title: "Old", PublishedAt: now.Add(-40 * 24 * time.Hour)},
 		rss.Article{ExternalID: "old-2", Title: "Old", PublishedAt: now.Add(-90 * 24 * time.Hour)},
 	)
-	if _, err := repo.SaveFetch(ctx, feed, articles); err != nil {
+	if _, err := repo.SaveFetch(ctx, feed, articles, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 
@@ -612,7 +671,7 @@ func TestSaveFetchPostsPerWeekShortHistory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			feed := newTestFeed(t, db)
-			if _, err := repo.SaveFetch(ctx, feed, tt.articles); err != nil {
+			if _, err := repo.SaveFetch(ctx, feed, tt.articles, feed.NextFetch); err != nil {
 				t.Fatalf("SaveFetch: %v", err)
 			}
 			checkRate(t, feed.ID, tt.want)

@@ -127,11 +127,14 @@ The last two share one path, `ingest.Refresher.Refresh`:
 
 1. A conditional GET with the stored `ETag` / `Last-Modified`.
 2. The outcome is recorded and the next fetch scheduled.
-   After a success (2xx or 304) the feed is due again in an hour ±10% (`NextFetch`), or later if `Cache-Control` / `Expires` says it stays fresh longer (capped at 24 h).
+   After a success (2xx or 304) the feed is due again after an interval set by its posting rate as of its last save (`NextFetch`, from `feed.PostsPerWeek`): about four fetches per expected article, between 15 minutes and an hour (an hour for a rate of 0), ±10%.
+   A save that finds the feed may have outrun its file (`FetchResult.Behind`: a later save of two or more articles, all new) schedules a catch-up fetch instead: half the time since the previous successful fetch, at least 15 minutes, and never later than the rate's interval (`CatchUpFetch`); `SaveFetch` picks between the two after saving the articles, and the next ordinary save goes back to the rate.
+   Either is delayed if `Cache-Control` / `Expires` says the response stays fresh longer (capped at 24 h).
+   The workers log `behind` with each refreshed feed.
    - **304:** `RecordNotModified`.
    - **410:** `MarkGone`; not fetched again until a lookup finds the feed again.
    - **Network error, other non-2xx, or not a feed:** `RecordFailure`, with backoff (`RetryAt`: 1 h, 2 h, 4 h, … up to 24 h), delayed further by a 429's or 503's `Retry-After`.
-   - **2xx feed:** parse it, turn the items into articles, and `SaveFetch` in one transaction: the feed's metadata, validators and `next_fetch_at`, then the articles and the success.
+   - **2xx feed:** parse it, turn the items into articles, and `SaveFetch` in one transaction: the feed's metadata and validators, the articles and the success, then `next_fetch_at`.
 
 Turning items into articles (`ingest.Articles`): each item's identity within its feed is its ID, else its URL, else a hash of its text; duplicates are dropped and at most 200 are kept.
 Each article gets a plain-text excerpt, a `canonical_url` (tracking parameters removed) for matching copies across feeds, and the MIME type of its first audio or video enclosure (`media_type`).

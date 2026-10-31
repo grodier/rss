@@ -127,7 +127,7 @@ Planned in #126, with issues #128–#133.
 - **Busy feeds are fetched more often; quiet ones stay hourly** (#456, planned on #438).
   The interval is about four fetches per expected article, from `posts_per_week`, between 15 minutes and an hour, so feeds posting more than 6 a day are fetched sooner and 24 a day or more every 15 minutes.
   At an hour, an article waited 30 minutes on average to be fetched, and a feed whose file holds fewer items than an hour of posts loses articles outright; in #438's simulation, faster busy feeds cost 22% more fetches and cut the wait to 11 minutes.
-  A later save where every item of two or more is new means the feed may have outrun its file, so the next fetch comes in half the time since the previous one, at least 15 minutes.
+  A later save where every item of two or more is new means the feed may have outrun its file, so the next fetch comes in half the time since the previous one, at least 15 minutes, but never later than the rate's own interval (#456), so a busy feed's first success after failures doesn't wait half the outage.
   Fetching quiet feeds less often (up to a day) would save requests but delay the rare posts readers value most; it's a backlog item for when fetch volume matters.
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)

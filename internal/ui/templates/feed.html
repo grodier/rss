@@ -27,7 +27,7 @@
             <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
             <span class="chip">Subscribed ✓</span>
             <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds/{{.Feed.ID}}">Edit</a>
-            <button class="btn-sm" type="submit" aria-label="Unsubscribe from {{or .Name .Feed.Title .Feed.Url}}">Unsubscribe</button>
+            <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Name .Feed.Title .Feed.Url}}">Unsubscribe</button>
           </form>
           {{else if .Feed.GoneAt.IsZero}}
           <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">

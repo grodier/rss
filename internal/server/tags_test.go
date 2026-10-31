@@ -216,8 +216,8 @@ func TestTagHandler(t *testing.T) {
 			`<form class="settings-form" action="/tags/`+testTagID+`/rename" method="post">`,
 			`value="AI"`,
 			`<p class="hint" id="name-hint">Only you see your tags.</p>`,
-			`<form class="tag-delete" action="/tags/`+testTagID+`/delete" method="post">`,
-			`<button class="btn-sm" type="submit">Delete tag</button>`,
+			`<form class="danger-zone" action="/tags/`+testTagID+`/delete" method="post">`,
+			`<button class="btn-sm btn-danger-quiet" type="submit">Delete tag</button>`,
 		)
 		if n := strings.Count(body, `<button class="btn-primary" type="submit">Save</button>`); n != 1 {
 			t.Errorf("Save buttons = %d, want 1", n)

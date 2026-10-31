@@ -671,6 +671,20 @@
     opacity: 0.86;
   }
 
+  /* An action that loses something you can't get back, where it isn't the
+     final step of a confirmation: a normal pill with red text, tinted red
+     on hover. Hover uses --on-danger-bg, since dark's --danger is too light
+     on --danger-bg. */
+  .btn-danger-quiet {
+    color: var(--danger);
+  }
+
+  .btn-danger-quiet:hover {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+    color: var(--on-danger-bg);
+  }
+
   .btn-sm {
     padding: 0.375rem 0.875rem;
     font-size: 0.875rem;
@@ -1459,15 +1473,6 @@
     padding: 1.5rem 1rem;
   }
 
-  .settings-delete {
-    padding: 0 1rem 1.5rem;
-    font-size: 0.875rem;
-  }
-
-  .settings-delete a {
-    color: var(--danger);
-  }
-
   .settings-form .form-intro {
     margin-block-end: 1.25rem;
     color: var(--text-2);
@@ -1756,8 +1761,11 @@
     font-size: 0.8125rem;
   }
 
-  .tag-delete {
-    padding: 0 1rem 1.5rem;
+  /* The foot of a page that holds its delete action, set apart from the
+     form above it. */
+  .danger-zone {
+    padding: 0.75rem 1rem 1.5rem;
+    border-block-start: 1px solid var(--border);
   }
 
   /* The timeline edit page's Sharing section, between the form and Delete. */

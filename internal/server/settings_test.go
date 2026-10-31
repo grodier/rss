@@ -48,7 +48,7 @@ func TestSettingsHandler(t *testing.T) {
 			`<a class="settings-row" href="/settings/export"`,
 			"An OPML file you can import into another reader.",
 			`<form class="settings-logout" action="/logout" method="post">`,
-			`<a href="/settings/delete">Delete account</a>`,
+			`<a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>`,
 			`<a class="rail-account" href="/settings" aria-current="page">`,
 		)
 	})

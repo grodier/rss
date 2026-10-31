@@ -503,6 +503,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Text colors pass WCAG AA** (4.5:1) on white and on the read-card tint (#414); the lightest grey was 3.2:1 before.
 - **Input and outline-button borders are 3:1 in both themes** (`--border-strong`, #413), WCAG's minimum for a form field's edge; light's was 1.6:1 before.
   Filled fields (the search boxes) have no border and keep it that way.
+- **Actions that lose something you can't get back are outlined pills with red text** (`.btn-danger-quiet`, #422): Unsubscribe (it drops the subscription's name and tags), Delete tag, Delete timeline and Delete account, on every page that has them.
+  Red (`--danger`) marks only these, so it keeps its meaning; Stop sharing and New link stay neutral, since no data is lost and Share gives links again.
+  They keep the pill so they read as buttons at once (borderless red text was tried and didn't), and stay as calm as Edit beside them where repeated, like My feeds; with one-click actions and no undo, the red is the only warning before the click.
+  Only the final step of a confirmation, "Delete my account", is a filled red button (`.btn-danger`).
+  A page's delete action sits at its foot, below a divider (`.danger-zone`).
 - **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
   The timeline's tab head keeps a plain divider, since the active tab's underline sits on it.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.

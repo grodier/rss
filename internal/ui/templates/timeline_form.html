@@ -188,8 +188,8 @@
       {{end}}
 
       {{if .Timeline.ID}}
-      <form class="tag-delete" action="/timelines/{{.Timeline.ID}}/delete" method="post">
-        <button class="btn-sm" type="submit">Delete timeline</button>
+      <form class="danger-zone" action="/timelines/{{.Timeline.ID}}/delete" method="post">
+        <button class="btn-sm btn-danger-quiet" type="submit">Delete timeline</button>
       </form>
       {{end}}
     </main>

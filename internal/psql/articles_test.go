@@ -703,6 +703,11 @@ func TestTimelineAt(t *testing.T) {
 			},
 		},
 		{
+			name:     "first save: a spread run still starts no later than a day back",
+			articles: []rss.Article{undated, undated, undated, art(now.Add(-25 * h))},
+			want:     []time.Time{now.Add(-24 * h), now.Add(-24*h - 20*time.Minute), now.Add(-24*h - 40*time.Minute), now.Add(-25 * h)},
+		},
+		{
 			name:     "first save: undated never later than a day back, and below earlier undated",
 			articles: []rss.Article{undated, art(now.Add(-h)), undated, art(now.Add(-2 * h))},
 			want:     []time.Time{now.Add(-24 * h), now.Add(-h), now.Add(-25 * h), now.Add(-2 * h)},

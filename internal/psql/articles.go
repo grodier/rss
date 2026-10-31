@@ -469,12 +469,12 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 // placeUndated sets the positions of a first save's undated articles, given
 // those of its dated ones. Each run of undated articles in document order
 // goes below the article before it and below earlier undated ones, one step
-// apart, the newest no later than undatedBacklogStep before now; a run that
-// would reach the dated article after it is spread evenly down to it
-// instead. The step is the median gap between consecutive dated articles,
-// at most undatedBacklogStep (undatedBacklogStep without one). So an undated
-// feed's items go a day apart from a day back, and a mixed feed's follow its
-// pace, never on top and never in a block.
+// apart; a run that would reach the dated article after it is spread evenly
+// between the two instead. Either way, none goes later than
+// undatedBacklogStep before now. The step is the median gap between
+// consecutive dated articles, at most undatedBacklogStep (undatedBacklogStep
+// without one). So an undated feed's items go a day apart from a day back,
+// and a mixed feed's follow its pace, never on top and never in a block.
 func placeUndated(articles []rss.Article, positions []time.Time, now time.Time) {
 	dated := func(i int) bool { return !articles[i].PublishedAt.IsZero() }
 
@@ -497,9 +497,8 @@ func placeUndated(articles []rss.Article, positions []time.Time, now time.Time) 
 		step = min(gaps[(len(gaps)-1)/2], undatedBacklogStep)
 	}
 
-	// above is what the next undated article goes below; it starts so that the
-	// first one lands undatedBacklogStep before now.
-	above := now.Add(step - undatedBacklogStep)
+	newest := now.Add(-undatedBacklogStep)
+	above := now // what the next undated article goes below
 	for i := 0; i < len(articles); {
 		if dated(i) {
 			i++
@@ -513,12 +512,24 @@ func placeUndated(articles []rss.Article, positions []time.Time, now time.Time) 
 			above = positions[i-1]
 		}
 		n := time.Duration(j - i)
-		gap := step
-		if j < len(articles) && positions[j].Before(above) && !above.Add(-n*step).After(positions[j]) {
-			gap = max(above.Sub(positions[j])/(n+1), time.Microsecond)
+		first, gap := above.Add(-step), step
+		if first.After(newest) {
+			first = newest
+		}
+		if j < len(articles) {
+			if lo := positions[j]; !lo.After(first) && !first.Add(-(n-1)*step).After(lo) {
+				// Stepping would reach the dated article after the run.
+				gap = above.Sub(lo) / (n + 1)
+				first = above.Add(-gap)
+				if first.After(newest) {
+					gap = newest.Sub(lo) / n
+					first = newest
+				}
+				gap = max(gap, time.Microsecond)
+			}
 		}
 		for k := i; k < j; k++ {
-			positions[k] = above.Add(-time.Duration(k-i+1) * gap)
+			positions[k] = first.Add(-time.Duration(k-i) * gap)
 		}
 		above = positions[j-1]
 		i = j

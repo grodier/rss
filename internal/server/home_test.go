@@ -230,6 +230,102 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
+	// olderHref returns the href of body's "Older articles" link, parsed.
+	olderHref := func(t *testing.T, body string) *url.URL {
+		t.Helper()
+		start := strings.Index(body, `rel="next" href="`)
+		if start < 0 {
+			t.Fatalf("no older link: %s", body)
+		}
+		href := body[start+len(`rel="next" href="`):]
+		href = strings.ReplaceAll(href[:strings.Index(href, `"`)], "&amp;", "&")
+		u, err := url.ParseRequestURI(href)
+		if err != nil {
+			t.Fatalf("older link %q: %v", href, err)
+		}
+		return u
+	}
+
+	t.Run("later pages keep the first page's anchors", func(t *testing.T) {
+		result, storeErr = timelineItems(31), nil
+		markCalls := 0
+		mark := rss.TimelineMark{SeenUpTo: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), SeenAsOf: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC), SeenAt: time.Now().Add(-10 * time.Minute)}
+		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
+			markCalls++
+			return mark, nil
+		}}
+		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+
+		first := mark.Anchors(time.Now())
+		next := olderHref(t, getHome(t, s, "/", true).Body.String())
+		if got := next.Query().Get("anchors"); got != encodeAnchors(first) {
+			t.Fatalf("older link anchors = %q, want %q", got, encodeAnchors(first))
+		}
+
+		// The mark moves before the next page: the visit gap has passed.
+		mark.SeenAt = time.Now().Add(-time.Hour)
+		markCalls = 0
+		rr := getHome(t, s, next.RequestURI(), true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if gotAnchors != first || markCalls != 0 {
+			t.Errorf("later page: anchors %+v (TimelineMark called %d times), want the first page's %+v without reading the mark", gotAnchors, markCalls, first)
+		}
+		if got := olderHref(t, rr.Body.String()).Query().Get("anchors"); got != encodeAnchors(first) {
+			t.Errorf("later page's older link anchors = %q, want %q", got, encodeAnchors(first))
+		}
+	})
+
+	t.Run("zero anchors are carried too", func(t *testing.T) {
+		result, storeErr = timelineItems(31), nil
+		next := olderHref(t, getHome(t, s, "/", true).Body.String())
+		if !next.Query().Has("anchors") {
+			t.Fatalf("older link %q has no anchors", next)
+		}
+		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
+			return rss.TimelineMark{SeenUpTo: time.Now(), SeenAsOf: time.Now(), SeenAt: time.Now()}, nil
+		}}
+		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+		getHome(t, s, next.RequestURI(), true)
+		if gotAnchors != (rss.TimelineAnchors{}) {
+			t.Errorf("anchors = %+v, want zero, as on the first page", gotAnchors)
+		}
+	})
+
+	t.Run("a later page without anchors reads the mark", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		mark := rss.TimelineMark{SeenUpTo: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), SeenAsOf: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC), SeenAt: time.Now().Add(-time.Hour)}
+		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) { return mark, nil }}
+		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		getHome(t, s, "/?before="+url.QueryEscape(cur), true)
+		if want := mark.Anchors(time.Now()); gotAnchors != want {
+			t.Errorf("anchors = %+v, want the mark's %+v", gotAnchors, want)
+		}
+	})
+
+	t.Run("anchors on a first page are ignored", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		pinned := encodeAnchors(rss.TimelineAnchors{Look: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		getHome(t, s, "/?anchors="+url.QueryEscape(pinned), true)
+		if gotAnchors != (rss.TimelineAnchors{}) {
+			t.Errorf("anchors = %+v, want the (zero) mark's", gotAnchors)
+		}
+	})
+
+	t.Run("malformed anchors is 400", func(t *testing.T) {
+		before := calls
+		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
+		rr := getHome(t, s, "/?before="+url.QueryEscape(cur)+"&anchors=junk", true)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rr.Code)
+		}
+		if calls != before {
+			t.Errorf("store was called")
+		}
+	})
+
 	t.Run("a mark store error gives zero anchors", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
 		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {

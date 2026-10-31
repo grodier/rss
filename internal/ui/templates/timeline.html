@@ -62,7 +62,7 @@
       {{end}}
 
       {{if .Next}}
-      <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}">Older articles</a></nav>
+      <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}{{with .Anchors}}&anchors={{.}}{{end}}">Older articles</a></nav>
       {{end}}
     </main>
   </div>

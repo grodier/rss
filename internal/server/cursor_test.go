@@ -59,3 +59,46 @@ func TestEncodeDecodeCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestEncodeDecodeAnchors(t *testing.T) {
+	look := time.Date(2026, 3, 4, 5, 6, 7, 123456789, time.UTC)
+	for name, in := range map[string]rss.TimelineAnchors{
+		"all set":      {Look: look, Visit: look.Add(-time.Hour), Line: look.Add(-2 * time.Hour)},
+		"no look":      {Visit: look.Add(-time.Hour), Line: look.Add(-2 * time.Hour)},
+		"only a look":  {Look: look},
+		"zero anchors": {},
+	} {
+		t.Run("round trip: "+name, func(t *testing.T) {
+			got, err := decodeAnchors(encodeAnchors(in))
+			if err != nil {
+				t.Fatalf("decodeAnchors: %v", err)
+			}
+			if !got.Look.Equal(in.Look) || !got.Visit.Equal(in.Visit) || !got.Line.Equal(in.Line) ||
+				got.Look.IsZero() != in.Look.IsZero() || got.Visit.IsZero() != in.Visit.IsZero() || got.Line.IsZero() != in.Line.IsZero() {
+				t.Errorf("got %+v, want %+v", got, in)
+			}
+		})
+	}
+
+	t.Run("zero anchors aren't empty", func(t *testing.T) {
+		// The pager always carries them, so a later page never falls back to
+		// the mark.
+		if got := encodeAnchors(rss.TimelineAnchors{}); got == "" {
+			t.Errorf("encodeAnchors(zero) = %q", got)
+		}
+	})
+
+	for name, in := range map[string]string{
+		"empty":       "",
+		"too few":     "_",
+		"too many":    "___",
+		"bad time":    "yesterday__",
+		"a time only": "2026-03-04T05:06:07Z",
+	} {
+		t.Run("invalid: "+name, func(t *testing.T) {
+			if _, err := decodeAnchors(in); err == nil {
+				t.Errorf("decodeAnchors(%q) = nil error", in)
+			}
+		})
+	}
+}

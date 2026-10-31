@@ -39,6 +39,18 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
 		return
 	}
+	// A later page's link carries the first page's anchors, so its groups
+	// match the rows above it even if the mark has moved since (a beacon, or
+	// the visit gap passing mid-scroll).
+	var pinned *rss.TimelineAnchors
+	if q := r.URL.Query(); !before.IsZero() && q.Has("anchors") {
+		a, err := decodeAnchors(q.Get("anchors"))
+		if err != nil {
+			s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
+			return
+		}
+		pinned = &a
+	}
 
 	timelines, err := s.services.TimelineService.List(r.Context(), userID)
 	if err != nil {
@@ -51,7 +63,11 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	// neither.
 	now := time.Now()
 	var anchors rss.TimelineAnchors
-	if !current.Filter.StarredOnly {
+	switch {
+	case current.Filter.StarredOnly:
+	case pinned != nil:
+		anchors = *pinned
+	default:
 		anchors = s.timelineAnchors(r, userID, now)
 	}
 
@@ -86,6 +102,11 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		}
 	}
 
+	pagerAnchors := ""
+	if !current.Filter.StarredOnly {
+		pagerAnchors = encodeAnchors(anchors)
+	}
+
 	home := current.ID == ""
 	path := "/"
 	if !home {
@@ -105,6 +126,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		Rows          []articleRow
 		Before        bool
 		Next          string
+		Anchors       string    // the anchors the next page's link carries (see encodeAnchors); "" for none
 		SeenUpTo      time.Time // the position app.js reports when the page is hidden; zero for none
 		SeenAsOf      time.Time // when the page was rendered, which app.js reports with SeenUpTo
 	}{
@@ -119,6 +141,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		Rows:          rows,
 		Before:        !before.IsZero(),
 		Next:          next,
+		Anchors:       pagerAnchors,
 		SeenUpTo:      seenUpTo,
 		SeenAsOf:      now,
 	}

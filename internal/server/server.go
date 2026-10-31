@@ -144,8 +144,9 @@ type SubscriptionStore interface {
 type ReadStore interface {
 	MarkRead(ctx context.Context, userID, articleID string) error
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
-	// TimelineMark returns where the user's "You were here" divider is
-	// decided from; a zero mark if the timeline has never reported one.
+	// TimelineMark returns what the user's timeline groups and "You were
+	// here" divider are decided from; a zero mark if the timeline has never
+	// reported one.
 	TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error)
 	// MarkSeen records that the user has had the timeline position upTo on
 	// screen, on a page rendered at asOf.

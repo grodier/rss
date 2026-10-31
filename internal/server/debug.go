@@ -656,14 +656,13 @@ type provenance struct {
 	Title      string // "feed", "page" (enrichment's page_title), "excerpt" (start of the shown excerpt) or "none"
 	Excerpt    string // "feed", "page" (page_description) or "none"
 	Image      string // "feed", "page" (page_image_url) or "none"
-	Timeline   string // "backlog" (timeline_at is its published date) or "news" (placed when it arrived)
+	Timeline   string // "news" (counts as arriving at its created_at; see rss.Article.IsNews) or "backlog"
 	ExternalID string // "hash", "link" (equal to the article's URL; may be a guid equal to it) or "guid"
 }
 
 // articleProvenance says where a's shown values come from. Its rules mirror
-// rss.Article's DisplayTitle, DisplayExcerpt and CardImageURL. A backlog
-// article clamped to its arrival time (published in the future) reads as
-// news, since timeline_at then isn't its published date.
+// rss.Article's DisplayTitle, DisplayExcerpt and CardImageURL, and its
+// timeline placement follows rss.Article.IsNews, the rule timelines group by.
 func articleProvenance(a rss.Article) provenance {
 	var p provenance
 	switch {
@@ -692,9 +691,9 @@ func articleProvenance(a rss.Article) provenance {
 	default:
 		p.Image = "none"
 	}
-	p.Timeline = "news"
-	if !a.PublishedAt.IsZero() && a.TimelineAt.Equal(a.PublishedAt) {
-		p.Timeline = "backlog"
+	p.Timeline = "backlog"
+	if a.IsNews() {
+		p.Timeline = "news"
 	}
 	switch {
 	case strings.HasPrefix(a.ExternalID, "sha256:"):

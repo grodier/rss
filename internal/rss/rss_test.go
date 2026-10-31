@@ -191,3 +191,25 @@ func TestTimelineMarkAnchors(t *testing.T) {
 		})
 	}
 }
+
+func TestArticleIsNews(t *testing.T) {
+	created := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		timeline time.Time
+		want     bool
+	}{
+		{"at its arrival", created, true},
+		{"above its arrival (clamped future date)", created.Add(time.Hour), true},
+		{"exactly NewsWindow below", created.Add(-NewsWindow), true},
+		{"just past NewsWindow below", created.Add(-NewsWindow - time.Microsecond), false},
+		{"backlog a year back", created.AddDate(-1, 0, 0), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := (Article{TimelineAt: tt.timeline, CreatedAt: created}).IsNews(); got != tt.want {
+				t.Errorf("IsNews = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

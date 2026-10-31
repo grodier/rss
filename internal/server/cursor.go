@@ -45,3 +45,36 @@ func decodeCursor(s string) (rss.ArticleCursor, error) {
 	}
 	return rss.ArticleCursor{Group: group, At: t.UTC(), ID: strings.ToLower(id)}, nil
 }
+
+// encodeAnchors formats a for a URL, so a timeline's later pages group like
+// its first: Look, Visit and Line as UTC times in RFC 3339 with nanoseconds,
+// "" for a zero one, joined by "_". Zero anchors give "__".
+func encodeAnchors(a rss.TimelineAnchors) string {
+	format := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.UTC().Format(time.RFC3339Nano)
+	}
+	return format(a.Look) + "_" + format(a.Visit) + "_" + format(a.Line)
+}
+
+// decodeAnchors parses encodeAnchors' output. Anything else is an error.
+func decodeAnchors(s string) (rss.TimelineAnchors, error) {
+	parts := strings.Split(s, "_")
+	if len(parts) != 3 {
+		return rss.TimelineAnchors{}, fmt.Errorf("anchors %q: want look_visit_line", s)
+	}
+	var times [3]time.Time
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339Nano, p)
+		if err != nil {
+			return rss.TimelineAnchors{}, fmt.Errorf("anchors time: %w", err)
+		}
+		times[i] = t.UTC()
+	}
+	return rss.TimelineAnchors{Look: times[0], Visit: times[1], Line: times[2]}, nil
+}

@@ -1025,7 +1025,7 @@ func TestListTimelineGroups(t *testing.T) {
 		{"old2", feedA, at(11 * h), at(11 * h), ""},
 		{"old1", feedB, at(12 * h), at(12 * h), ""},
 		{"orig", feedA, at(13 * h), at(13 * h), copyURL},
-		{"backlog", feedA, at(30 * h), at(3 * h), ""}, // arrived since the visit, but more than newsWindow below that
+		{"backlog", feedA, at(30 * h), at(3 * h), ""}, // arrived since the visit, but more than rss.NewsWindow below that
 	} {
 		if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, title, canonical_url, has_copies, timeline_at, created_at)
 			VALUES ($1, $2, $2, $3, $3 <> '', $4, $5)`, a.feed.ID, a.title, a.canonical, a.timeline, a.created); err != nil {

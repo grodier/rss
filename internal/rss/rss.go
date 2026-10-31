@@ -62,6 +62,19 @@ type Article struct {
 	UpdatedAt         time.Time
 }
 
+// NewsWindow is how far below its arrival (CreatedAt) a news article can be
+// placed in timelines, and so what counts as arriving when timelines group
+// what's new to a reader (see psql.timelineAt and psql's ListTimeline).
+const NewsWindow = 6 * time.Hour
+
+// IsNews reports whether the article counts as news that arrived at its
+// CreatedAt: its TimelineAt is no more than NewsWindow below that. Backlog
+// (an old item, a first save's history) is placed further down, so it never
+// counts as arriving.
+func (a Article) IsNews() bool {
+	return !a.TimelineAt.Before(a.CreatedAt.Add(-NewsWindow))
+}
+
 // FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.
 func (a Article) FeedSortAt() time.Time {
 	if !a.PublishedAt.IsZero() {

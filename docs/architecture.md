@@ -19,8 +19,8 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
   Its row is also the cached result for that site key.
 - **Article:** one item of a feed.
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
-- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`newsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back), its published date.
-- **Arrived:** an article arrives at its `created_at` when it's news by position (`timeline_at` no more than `newsWindow` below `created_at`); timelines put what arrived since the reader last looked first (see "Timeline" in features.md).
+- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`rss.NewsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back), its published date.
+- **Arrived:** an article arrives at its `created_at` when it's news by position (`timeline_at` no more than `rss.NewsWindow` below `created_at`, `Article.IsNews`); timelines put what arrived since the reader last looked first (see "Timeline" in features.md).
 - **Subscription:** a user following a feed.
   Subscriptions decide what's in the user's timeline and which feeds are refreshed in the background.
 - **Read:** the user opened the article, or clicked through to the original, or did either for a copy of it.

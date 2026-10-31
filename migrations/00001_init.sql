@@ -102,9 +102,9 @@ CREATE TABLE articles (
 
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     published_date_only BOOLEAN NOT NULL DEFAULT false, -- the feed's date had no time of day
-    timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines: arrival time for news, published date for backlog; set on insert, never updated
+    timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines (psql.timelineAt): news by its published date above a floor, backlog at its published date; set on insert, never updated
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when it arrived; timelines group news by it (rss.Article.IsNews)
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE (feed_id, external_id)

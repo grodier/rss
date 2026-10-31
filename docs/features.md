@@ -282,6 +282,7 @@ It does this once per group, in order, until the page is full: on a reload durin
 `renderTimeline` reads the mark first and passes its `rss.TimelineAnchors` (`TimelineMark.Anchors`); zero anchors turn a group off, so without a mark (or for `ListShared`) there's one group in position order.
 The arrival groups bound `timeline_at` from below (`timelineGroups`), so after an absence each feed's scan is a short range and the query for the history below the line often doesn't run.
 The cursor carries its row's group and applies only in that group; the next groups start from their top.
+The "Older articles" link also carries the first page's anchors (`&anchors=`, `encodeAnchors`), and later pages use them instead of the mark, so infinite scroll never repeats or skips a row when the mark moves mid-scroll (a beacon, or the visit gap passing).
 Copies of one article (same `canonical_url`) collapse into the earliest to arrive: an entry is skipped when an earlier copy is in one of the user's feeds, whatever that copy's group, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
@@ -293,7 +294,7 @@ Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-
 The page's values come from enrichment and only fill gaps.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
-*News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `newsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
+*News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `rss.NewsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
 So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.

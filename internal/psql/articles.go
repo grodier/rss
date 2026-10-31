@@ -132,8 +132,8 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 //   - 0: everything else, below the "You were here" line.
 //
 // News arrives at its created_at; an article is news when it's positioned no
-// more than newsWindow below that (see newsCond), so backlog never counts as
-// arriving. The groups run as separate queries, from before's group down,
+// more than rss.NewsWindow below that (see newsCond), so backlog never
+// counts as arriving. The groups run as separate queries, from before's group down,
 // until the page is full; the cursor applies only in its own group. With zero
 // anchors there's one group, 0, in timeline order.
 //
@@ -198,8 +198,8 @@ type timelineGroup struct {
 //
 // The first two bound timeline_at from below, so each feed's scan is a
 // short range on articles_feed_timeline_idx: news is never placed more than
-// newsWindow below its created_at, so news created after t is positioned
-// after t - newsWindow.
+// rss.NewsWindow below its created_at, so news created after t is
+// positioned after t - rss.NewsWindow.
 func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
 	param := func(args *[]any, t time.Time) string {
 		*args = append(*args, t)
@@ -209,7 +209,7 @@ func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
 	arrived := func(t string) string {
 		return `(a.created_at > ` + t + ` AND ` + newsCond("a") + `)`
 	}
-	window := fmt.Sprintf("make_interval(secs => %d)", int(newsWindow.Seconds()))
+	window := fmt.Sprintf("make_interval(secs => %d)", int(rss.NewsWindow.Seconds()))
 
 	var groups []timelineGroup
 	if !anchors.Look.IsZero() {
@@ -247,9 +247,9 @@ func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
 }
 
 // newsCond returns the condition that the article a is news: positioned no
-// more than newsWindow below its created_at (see timelineAt).
+// more than rss.NewsWindow below its created_at (rss.Article.IsNews in SQL).
 func newsCond(a string) string {
-	return fmt.Sprintf("%[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(newsWindow.Seconds()))
+	return fmt.Sprintf("%[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
 }
 
 // ListShared returns the newest limit articles with a URL of ownerID's
@@ -507,10 +507,6 @@ func cursorArgs(before rss.ArticleCursor) (sql.NullTime, sql.NullString) {
 // article's published date must be for it to count as backlog.
 const backlogSlack = 24 * time.Hour
 
-// newsWindow is how far below its save a news article can be placed, and
-// so what counts as arriving when timelines group what's new to a reader.
-const newsWindow = 6 * time.Hour
-
 // undatedBacklogStep spaces out the undated articles of a feed's first save:
 // the newest goes this long before the save, and none are further apart (see
 // placeUndated).
@@ -526,7 +522,7 @@ const undatedBacklogStep = 24 * time.Hour
 // out below the items before them (see placeUndated).
 //
 // The rest of a later save is news, placed no lower than a floor: the later
-// of prevFetched and now - newsWindow (see placeNews).
+// of prevFetched and now - rss.NewsWindow (see placeNews).
 func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
 	cutoff := prevFetched.Add(-backlogSlack)
 	positions := make([]time.Time, len(articles))
@@ -557,7 +553,7 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 // placeNews sets the positions of a later save's news, the articles at the
 // indexes news (in document order). Undated news goes at now, then 1 µs
 // apart in document order. News dated after the floor (the later of
-// prevFetched and now - newsWindow) goes at its published date, but no
+// prevFetched and now - rss.NewsWindow) goes at its published date, but no
 // higher than just below the undated news. News dated at or below the floor
 // (an aggregator's submission dates, a day-only date, a feed that was down)
 // is spread evenly, newest-published first, between the floor and the
@@ -565,7 +561,7 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 // at least 1 µs apart, so it's neither buried below what the reader saw
 // nor stacked in a block.
 func placeNews(articles []rss.Article, news []int, positions []time.Time, prevFetched, now time.Time) {
-	floor := now.Add(-newsWindow)
+	floor := now.Add(-rss.NewsWindow)
 	if prevFetched.After(floor) {
 		floor = prevFetched
 	}

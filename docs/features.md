@@ -391,7 +391,7 @@ There is no service worker, install button or banner, and no pull-to-refresh: ta
 
 1. `internal/server/manifest.go` (`manifestHandler`) and `internal/ui/manifest.webmanifest`.
 2. `internal/ui/templates/partials/head.html` (`app-head`).
-3. `internal/ui/static/img/app-icon.svg` (the source of the install icons).
+3. `internal/ui/static/img/app-icon.svg` (the source of every install icon, Apple's included).
 
 **Tests:** `internal/server/manifest_test.go`.
 

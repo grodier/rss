@@ -16,8 +16,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>{{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</h1>
-        <a href="/timelines">All timelines</a>
+        <div class="page-title">
+          {{template "back-link" (backLink "/timelines" "Timelines" false)}}
+          <h1>{{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</h1>
+        </div>
       </header>
 
       {{with .Flash}}

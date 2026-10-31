@@ -15,6 +15,10 @@
     {{template "app-nav" .Nav}}
 
     <main class="column">
+      <header class="page-head">
+        {{template "back-link" (backLink "/" "Home" true)}}
+      </header>
+
       <article class="reader">
         <p class="reader-meta">
           {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index .Icons .Feed.SiteID))}}

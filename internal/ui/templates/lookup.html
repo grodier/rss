@@ -18,7 +18,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Looking up {{.SiteKey}}</h1>
+        <div class="page-title">
+          {{template "back-link" (backLink "/search" "Search" false)}}
+          <h1>Looking up {{.SiteKey}}</h1>
+        </div>
       </header>
 
       {{with .Flash}}

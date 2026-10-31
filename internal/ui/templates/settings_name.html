@@ -15,7 +15,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Name</h1>
+        <div class="page-title">
+          {{template "back-link" (backLink "/settings" "Settings" false)}}
+          <h1>Name</h1>
+        </div>
       </header>
 
       {{$focus := .Form.FirstError "name"}}

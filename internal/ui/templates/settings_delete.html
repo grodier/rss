@@ -16,7 +16,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Delete your account</h1>
+        <div class="page-title">
+          {{template "back-link" (backLink "/settings" "Settings" false)}}
+          <h1>Delete your account</h1>
+        </div>
       </header>
 
       {{$focus := .Form.FirstError "password"}}

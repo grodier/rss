@@ -15,7 +15,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Edit subscription</h1>
+        <div class="page-title">
+          {{template "back-link" (backLink .BackURL .BackLabel false)}}
+          <h1>Edit subscription</h1>
+        </div>
       </header>
 
       <div class="feed-row">
@@ -63,7 +66,7 @@
         </fieldset>
         <div class="form-actions">
           <button class="btn-primary" type="submit">Save</button>
-          <a class="btn" href="{{.ReturnTo}}">Cancel</a>
+          <a class="btn" href="{{.BackURL}}">Cancel</a>
         </div>
       </form>
     </main>

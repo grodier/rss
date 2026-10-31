@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,9 +24,34 @@ var templateFuncs = template.FuncMap{
 	"asset":       asset,
 	"avatar":      avatar,
 	"avatarTone":  avatarTone,
+	"backLink":    newBackLink,
 	"debugPanel":  newDebugPanel,
+	"headOption":  headOption,
 	"monogram":    monogram,
 	"postingRate": postingRate,
+}
+
+// backLink is a detail page's way back to its parent page (the back-link
+// partial): URL is the parent and Label its name. With History, app.js goes
+// back in history instead when the previous page is on this site, so the
+// page comes back where the reader left it.
+type backLink struct {
+	URL     string
+	Label   string
+	History bool
+}
+
+func newBackLink(url, label string, history bool) backLink {
+	return backLink{URL: url, Label: label, History: history}
+}
+
+// headOption is the page-head option shown, for the design checkpoint
+// (#423): RSS_HEAD_OPTION, "a" by default. Removed once one is picked.
+func headOption() string {
+	if o := os.Getenv("RSS_HEAD_OPTION"); o != "" {
+		return o
+	}
+	return "a"
 }
 
 // avatarView is what the avatar partial shows: the site's icon, else its

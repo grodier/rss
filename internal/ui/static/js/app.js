@@ -30,6 +30,21 @@
   };
   enhancePings(document);
 
+  // Back links: a[data-back] (the back-link partial) goes to a fixed
+  // parent page. When the previous page in this tab is on this site, go
+  // back in history instead, so it comes back where the reader left it.
+  document.addEventListener("click", (e) => {
+    const a = e.target instanceof Element && e.target.closest("a[data-back]");
+    if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    let fromHere = false;
+    try {
+      fromHere = new URL(document.referrer).origin === location.origin;
+    } catch {}
+    if (!fromHere || history.length < 2) return;
+    e.preventDefault();
+    history.back();
+  });
+
   // Save and Star buttons: form[data-toggle] posts to /articles/{id}/save,
   // /unsave, /star or /unstar. Post it with fetch instead, then flip
   // aria-pressed (main.css swaps the icon) and the action, so the page

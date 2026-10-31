@@ -15,7 +15,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Export subscriptions</h1>
+        <div class="page-title">
+          {{template "back-link" (backLink "/settings" "Settings" false)}}
+          <h1>Export subscriptions</h1>
+        </div>
       </header>
 
       <form class="settings-form" action="/settings/subscriptions.opml" method="get">

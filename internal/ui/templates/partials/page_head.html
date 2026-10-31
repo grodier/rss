@@ -1,0 +1,4 @@
+{{/* back-link is a detail page's way back, in its page head (dot is a
+     backLink): a plain link to the parent page, named "Back to <parent>".
+     data-back lets app.js go back in history instead. */}}
+{{define "back-link"}}<a class="back-link" href="{{.URL}}"{{if .History}} data-back{{end}}>{{template "icon-back"}}<span class="visually-hidden">Back to </span><span class="back-label">{{.Label}}</span></a>{{end}}

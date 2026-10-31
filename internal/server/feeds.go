@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -464,20 +465,28 @@ func (s *Server) renderSubscriptionEdit(w http.ResponseWriter, r *http.Request, 
 	for i, tag := range tags {
 		options[i] = tagOption{Tag: tag, Checked: slices.Contains(form.Tags, tag.ID)}
 	}
+	// The back link and Cancel go to My feeds or the feed's page, whichever
+	// the form came from, so the link can name it.
+	backURL, backLabel := "/feeds/"+sub.Feed.ID, cmp.Or(sub.Title, feedLabel(sub.Feed))
+	if form.ReturnTo == "/feeds" {
+		backURL, backLabel = "/feeds", "My feeds"
+	}
 	data := struct {
-		Nav      navData
-		Sub      rss.Subscription
-		Icons    map[string]string
-		Tags     []tagOption
-		Form     subscriptionForm
-		ReturnTo string
+		Nav       navData
+		Sub       rss.Subscription
+		Icons     map[string]string
+		Tags      []tagOption
+		Form      subscriptionForm
+		BackURL   string
+		BackLabel string
 	}{
-		Nav:      s.nav(r, "feeds"),
-		Sub:      sub,
-		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
-		Tags:     options,
-		Form:     form,
-		ReturnTo: safeReturnPath(form.ReturnTo, "/feeds"),
+		Nav:       s.nav(r, "feeds"),
+		Sub:       sub,
+		Icons:     s.pageIcons(r, []string{sub.Site.ID}),
+		Tags:      options,
+		Form:      form,
+		BackURL:   backURL,
+		BackLabel: backLabel,
 	}
 	if err := s.renderHTML(w, status, "subscription_edit.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

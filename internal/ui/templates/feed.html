@@ -15,6 +15,10 @@
     {{template "app-nav" .Nav}}
 
     <main class="column">
+      <header class="page-head">
+        {{template "back-link" (backLink "/feeds" "My feeds" false)}}
+      </header>
+
       {{with .Flash}}
       <div class="flash">{{.}}</div>
       {{end}}

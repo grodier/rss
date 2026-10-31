@@ -17,4 +17,4 @@
 
 {{/* html-theme is the data-theme attribute of a logged-in page's <html>,
      from its navData: the user's theme, or nothing to follow the system. */}}
-{{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}}{{end}}
+{{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}} data-head="{{headOption}}"{{end}}

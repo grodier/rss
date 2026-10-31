@@ -524,6 +524,9 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   A page's delete action sits at its foot, below a divider (`.danger-zone`).
 - **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
   The timeline's tab head keeps a plain divider, since the active tab's underline sits on it.
+- **No back links in page heads** (#423, closed): the browser's back button and the nav already cover it, and this is a web app, not a native one.
+  Back links on every detail page were built and shown at the design checkpoint, and dropped; the article, feed and site pages keep starting with their own heading, without a head.
+  Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
   It's subset to Latin and weights 600–800 (77 KB, cached for a year).
 - **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.

@@ -318,6 +318,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - Settings: the "Log out of all other devices" button nearly touches the "Your data" header below it.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
   - Timelines: Move up / Move down pills next to an Edit text link.
+  - Sub-nav pages: Tags, a tag and Timelines aren't in the nav (they're reached from a pill on My feeds and the Manage tab), so their heads carry hand-made links up ("My feeds", "All tags", "All timelines"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
 - [ ] **Reading preferences (needs planning).**

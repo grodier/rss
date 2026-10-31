@@ -51,8 +51,8 @@ func lookupServer(t *testing.T, store *fakeLookupStore, wait time.Duration) *Ser
 	return s
 }
 
-func requestReturns(l rss.Lookup, err error) func(context.Context, string, string, time.Duration, time.Duration) (rss.Lookup, error) {
-	return func(context.Context, string, string, time.Duration, time.Duration) (rss.Lookup, error) {
+func requestReturns(l rss.Lookup, err error) func(context.Context, string, string, bool, time.Duration, time.Duration) (rss.Lookup, error) {
+	return func(context.Context, string, string, bool, time.Duration, time.Duration) (rss.Lookup, error) {
 		return l, err
 	}
 }
@@ -73,7 +73,7 @@ func assertRedirect(t *testing.T, rr *httptest.ResponseRecorder, want string) {
 
 func TestLookupCreateInvalidInput(t *testing.T) {
 	store := &fakeLookupStore{
-		requestFn: func(context.Context, string, string, time.Duration, time.Duration) (rss.Lookup, error) {
+		requestFn: func(context.Context, string, string, bool, time.Duration, time.Duration) (rss.Lookup, error) {
 			t.Error("Request must not be called")
 			return rss.Lookup{}, nil
 		},
@@ -90,10 +90,11 @@ func TestLookupCreateInvalidInput(t *testing.T) {
 
 func TestLookupCreateRequestArgs(t *testing.T) {
 	var gotKey, gotURL string
+	var gotHomePage bool
 	var gotDone, gotFailed time.Duration
 	store := &fakeLookupStore{
-		requestFn: func(_ context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
-			gotKey, gotURL, gotDone, gotFailed = siteKey, url, doneTTL, failedTTL
+		requestFn: func(_ context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
+			gotKey, gotURL, gotHomePage, gotDone, gotFailed = siteKey, url, homePage, doneTTL, failedTTL
 			return rss.Lookup{ID: testLookupID, Status: rss.LookupPending}, nil
 		},
 		getByIDFn: noGetByID(t),
@@ -104,6 +105,22 @@ func TestLookupCreateRequestArgs(t *testing.T) {
 	}
 	if gotDone != 24*time.Hour || gotFailed != time.Hour {
 		t.Errorf("TTLs = %v, %v, want 24h, 1h", gotDone, gotFailed)
+	}
+
+	tests := []struct {
+		q    string
+		want bool
+	}{
+		{"example.com", true},
+		{"https://www.example.com/", true},
+		{"https://example.com/?a=1", false},
+		{"example.com/feed.xml", false},
+	}
+	for _, tt := range tests {
+		postLookup(t, lookupServer(t, store, 0), tt.q)
+		if gotHomePage != tt.want {
+			t.Errorf("%q: homePage = %v, want %v", tt.q, gotHomePage, tt.want)
+		}
 	}
 }
 
@@ -334,7 +351,7 @@ func TestLookupCrossOriginPost(t *testing.T) {
 func TestLookupCreateRateLimited(t *testing.T) {
 	calls := 0
 	store := &fakeLookupStore{
-		requestFn: func(context.Context, string, string, time.Duration, time.Duration) (rss.Lookup, error) {
+		requestFn: func(context.Context, string, string, bool, time.Duration, time.Duration) (rss.Lookup, error) {
 			calls++
 			return rss.Lookup{ID: testLookupID, Status: rss.LookupDone, SiteID: "site-1"}, nil
 		},

@@ -26,22 +26,28 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 }
 
 // Request returns the lookup for siteKey, creating it as pending if it
-// doesn't exist, or resetting it to pending if it is done and older than
-// doneTTL or failed and older than failedTTL. A pending/running or still-fresh
-// lookup is returned unchanged. A reset keeps site_id, so the site page keeps
-// working while the re-check runs.
-func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
+// doesn't exist, or re-queuing it as pending if it is finished and either its
+// result has expired (doneTTL for a lookup that found a site, failedTTL for one
+// that failed or found no feeds) or url differs from the one it ran on. A
+// lookup that found a site isn't re-queued for a different url that is the
+// site's home page (homePage), so the site page stays cached. A pending or
+// running lookup is returned unchanged. A re-queue keeps site_id, so the site
+// page keeps working while the re-check runs.
+func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
+	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
 	stmt := `INSERT INTO lookups (site_key, url) VALUES ($1, $2)
 		ON CONFLICT (site_key) DO UPDATE SET
 			status = 'pending', url = EXCLUDED.url, error = '',
 			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
-		WHERE (lookups.status = 'done' AND lookups.finished_at < now() - make_interval(secs => $3))
-			OR (lookups.status = 'failed' AND lookups.finished_at < now() - make_interval(secs => $4))
+		WHERE lookups.status IN ('done', 'failed') AND (
+			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND $5))
+			OR (` + found + ` AND lookups.finished_at < now() - make_interval(secs => $3))
+			OR (NOT ` + found + ` AND lookups.finished_at < now() - make_interval(secs => $4)))
 		RETURNING ` + lookupColumns
 
-	l, err := scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey, url, doneTTL.Seconds(), failedTTL.Seconds()))
+	l, err := scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey, url, doneTTL.Seconds(), failedTTL.Seconds(), homePage))
 	if errors.Is(err, rss.ErrNoRecord) {
-		// The row exists and is still in progress or fresh.
+		// The row exists and is still in progress or its result still applies.
 		return r.GetBySiteKey(ctx, siteKey)
 	}
 	return l, err

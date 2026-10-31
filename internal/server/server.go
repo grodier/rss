@@ -99,7 +99,7 @@ type SearchStore interface {
 
 // LookupStore queues and reads site lookups.
 type LookupStore interface {
-	Request(ctx context.Context, siteKey, url string, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
+	Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
 	GetByID(ctx context.Context, id string) (rss.Lookup, error)
 	GetBySiteKey(ctx context.Context, siteKey string) (rss.Lookup, error)
 }

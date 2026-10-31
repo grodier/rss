@@ -156,10 +156,15 @@ func TestSiteHandlerStoreErrors(t *testing.T) {
 func TestCanRecheck(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	lookup := func(status rss.LookupStatus, age time.Duration) rss.Lookup {
-		l := rss.Lookup{Status: status}
+		l := rss.Lookup{Status: status, SiteID: testSiteID}
 		if age > 0 {
 			l.FinishedAt = now.Add(-age)
 		}
+		return l
+	}
+	noFeeds := func(age time.Duration) rss.Lookup {
+		l := lookup(rss.LookupDone, age)
+		l.SiteID = ""
 		return l
 	}
 
@@ -177,6 +182,8 @@ func TestCanRecheck(t *testing.T) {
 		{"failed 30m ago", lookup(rss.LookupFailed, 30*time.Minute), false},
 		{"failed exactly 1h ago", lookup(rss.LookupFailed, lookupFailedTTL), false},
 		{"failed just over 1h ago", lookup(rss.LookupFailed, lookupFailedTTL+time.Second), true},
+		{"no feeds found 30m ago", noFeeds(30 * time.Minute), false},
+		{"no feeds found just over 1h ago", noFeeds(lookupFailedTTL + time.Second), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,8 +209,8 @@ func TestSiteHandlerRecheck(t *testing.T) {
 		wantPending bool
 	}{
 		{name: "no lookup", lookupErr: rss.ErrNoRecord, wantButton: true},
-		{name: "done 2h ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupDone, FinishedAt: now.Add(-2 * time.Hour)}, wantChecked: true},
-		{name: "done 25h ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupDone, FinishedAt: now.Add(-25 * time.Hour)}, wantButton: true, wantChecked: true},
+		{name: "done 2h ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupDone, SiteID: testSiteID, FinishedAt: now.Add(-2 * time.Hour)}, wantChecked: true},
+		{name: "done 25h ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupDone, SiteID: testSiteID, FinishedAt: now.Add(-25 * time.Hour)}, wantButton: true, wantChecked: true},
 		{name: "failed 30m ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupFailed, FinishedAt: now.Add(-30 * time.Minute)}, wantChecked: true},
 		{name: "failed 2h ago", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupFailed, FinishedAt: now.Add(-2 * time.Hour)}, wantButton: true, wantChecked: true},
 		{name: "pending", lookup: rss.Lookup{ID: testLookupID, Status: rss.LookupPending}, wantPending: true},

@@ -57,7 +57,7 @@ func TestLookupRepositoryRequest(t *testing.T) {
 		key := newLookupKey(t, repo)
 		url := "https://" + key + "/"
 
-		l, err := repo.Request(t.Context(), key, url, testDoneTTL, testFailedTTL)
+		l, err := repo.Request(t.Context(), key, url, true, testDoneTTL, testFailedTTL)
 		if err != nil {
 			t.Fatalf("Request: %v", err)
 		}
@@ -68,7 +68,7 @@ func TestLookupRepositoryRequest(t *testing.T) {
 			t.Errorf("got %+v; want a fresh lookup", l)
 		}
 
-		again, err := repo.Request(t.Context(), key, url, testDoneTTL, testFailedTTL)
+		again, err := repo.Request(t.Context(), key, url, true, testDoneTTL, testFailedTTL)
 		if err != nil {
 			t.Fatalf("Request again: %v", err)
 		}
@@ -85,41 +85,60 @@ func TestLookupRepositoryRequest(t *testing.T) {
 		}
 	})
 
+	// Each case starts from a lookup of https://<key>/ in status, finished at
+	// finishedAt, with a site when withSite, and requests path on the same key.
 	tests := []struct {
 		name       string
 		status     rss.LookupStatus
+		withSite   bool
 		finishedAt string
+		path       string
+		homePage   bool
 		wantStatus rss.LookupStatus
 	}{
-		{"done past doneTTL is reset", rss.LookupDone, "now() - interval '2 days'", rss.LookupPending},
-		{"done within doneTTL is kept", rss.LookupDone, "now() - interval '1 minute'", rss.LookupDone},
-		{"failed past failedTTL is reset", rss.LookupFailed, "now() - interval '2 hours'", rss.LookupPending},
-		{"failed within failedTTL is kept", rss.LookupFailed, "now() - interval '1 minute'", rss.LookupFailed},
+		{"found a site, past doneTTL is reset", rss.LookupDone, true, "now() - interval '2 days'", "/", true, rss.LookupPending},
+		{"found a site, within doneTTL is kept", rss.LookupDone, true, "now() - interval '1 minute'", "/", true, rss.LookupDone},
+		{"found a site, home page stays cached", rss.LookupDone, true, "now() - interval '1 minute'", "www", true, rss.LookupDone},
+		{"found a site, other path re-queues", rss.LookupDone, true, "now() - interval '1 minute'", "/feeds/x.xml", false, rss.LookupPending},
+		{"no feeds found uses the failed TTL", rss.LookupDone, false, "now() - interval '2 hours'", "/", true, rss.LookupPending},
+		{"no feeds found, within failedTTL is kept", rss.LookupDone, false, "now() - interval '1 minute'", "/", true, rss.LookupDone},
+		{"no feeds found, different URL re-queues at once", rss.LookupDone, false, "now() - interval '1 minute'", "www", true, rss.LookupPending},
+		{"failed past failedTTL is reset", rss.LookupFailed, true, "now() - interval '2 hours'", "/", true, rss.LookupPending},
+		{"failed, same URL waits for its TTL", rss.LookupFailed, false, "now() - interval '1 minute'", "/", true, rss.LookupFailed},
+		{"failed, different URL re-queues at once", rss.LookupFailed, false, "now() - interval '1 minute'", "/feeds/x.xml", false, rss.LookupPending},
+		{"failed re-check of a site, home page re-queues at once", rss.LookupFailed, true, "now() - interval '1 minute'", "www", true, rss.LookupPending},
+		{"in progress, different URL isn't re-queued", rss.LookupRunning, false, "NULL", "/feeds/x.xml", false, rss.LookupRunning},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			key := newLookupKey(t, repo)
-			siteID := newTestSite(t, repo.DB)
-			l, err := repo.Request(t.Context(), key, "https://"+key+"/", testDoneTTL, testFailedTTL)
+			var siteID any
+			if tt.withSite {
+				siteID = newTestSite(t, repo.DB)
+			}
+			l, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
 			if err != nil {
 				t.Fatalf("Request: %v", err)
 			}
 			execSQL(t, repo, `UPDATE lookups SET status = $2, site_id = $3, error = 'boom', attempts = 2,
-				started_at = `+tt.finishedAt+`, finished_at = `+tt.finishedAt+`,
+				started_at = now() - interval '3 days', finished_at = `+tt.finishedAt+`,
 				requested_at = now() - interval '3 days' WHERE id = $1`,
 				l.ID, tt.status, siteID)
 			before := getLookup(t, repo, l.ID)
 
-			newURL := "https://www." + key + "/"
-			got, err := repo.Request(t.Context(), key, newURL, testDoneTTL, testFailedTTL)
+			newURL := "https://" + key + tt.path
+			if tt.path == "www" {
+				newURL = "https://www." + key + "/"
+			}
+			got, err := repo.Request(t.Context(), key, newURL, tt.homePage, testDoneTTL, testFailedTTL)
 			if err != nil {
 				t.Fatalf("Request: %v", err)
 			}
 			if got.ID != l.ID || got.Status != tt.wantStatus {
 				t.Fatalf("got id %q status %q; want id %q status %q", got.ID, got.Status, l.ID, tt.wantStatus)
 			}
-			if got.SiteID != siteID {
-				t.Errorf("site_id = %q; want %q kept", got.SiteID, siteID)
+			if got.SiteID != before.SiteID {
+				t.Errorf("site_id = %q; want %q kept", got.SiteID, before.SiteID)
 			}
 
 			if tt.wantStatus != rss.LookupPending {
@@ -154,7 +173,7 @@ func TestLookupRepositoryClaimNext(t *testing.T) {
 
 	t.Run("claims the oldest pending lookup", func(t *testing.T) {
 		key := newLookupKey(t, repo)
-		l, err := repo.Request(t.Context(), key, "https://"+key+"/", testDoneTTL, testFailedTTL)
+		l, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
 		if err != nil {
 			t.Fatalf("Request: %v", err)
 		}
@@ -177,7 +196,7 @@ func TestLookupRepositoryClaimNext(t *testing.T) {
 		var ids []string
 		for range 2 {
 			key := newLookupKey(t, repo)
-			l, err := repo.Request(t.Context(), key, "https://"+key+"/", testDoneTTL, testFailedTTL)
+			l, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
 			if err != nil {
 				t.Fatalf("Request: %v", err)
 			}
@@ -221,7 +240,7 @@ func TestLookupRepositoryFinishAndFail(t *testing.T) {
 	newRunning := func(t *testing.T) rss.Lookup {
 		t.Helper()
 		key := newLookupKey(t, repo)
-		l, err := repo.Request(t.Context(), key, "https://"+key+"/", testDoneTTL, testFailedTTL)
+		l, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
 		if err != nil {
 			t.Fatalf("Request: %v", err)
 		}
@@ -303,7 +322,7 @@ func TestLookupRepositoryResetStale(t *testing.T) {
 	newRunning := func(t *testing.T, startedAt string, attempts int) string {
 		t.Helper()
 		key := newLookupKey(t, repo)
-		l, err := repo.Request(t.Context(), key, "https://"+key+"/", testDoneTTL, testFailedTTL)
+		l, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
 		if err != nil {
 			t.Fatalf("Request: %v", err)
 		}

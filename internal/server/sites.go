@@ -122,13 +122,16 @@ func (s *Server) siteDebug(ctx context.Context, site rss.Site, feeds []rss.Feed,
 
 // canRecheck reports whether a new lookup of the site may be requested: there
 // is none yet, or at now the last one finished longer ago than the TTL that
-// LookupStore.Request enforces for its status.
+// LookupStore.Request enforces for its result.
 func canRecheck(l rss.Lookup, now time.Time) bool {
 	age := now.Sub(l.FinishedAt)
 	switch l.Status {
 	case "":
 		return true
 	case rss.LookupDone:
+		if l.SiteID == "" {
+			return age > lookupFailedTTL
+		}
 		return age > lookupDoneTTL
 	case rss.LookupFailed:
 		return age > lookupFailedTTL

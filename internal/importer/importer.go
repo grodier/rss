@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/lookup"
@@ -27,6 +29,10 @@ const (
 	// recordTimeout bounds writing a feed's outcome, which uses a fresh
 	// context so an expired job context doesn't prevent it.
 	recordTimeout = 5 * time.Second
+
+	// nameMaxChars is the longest name a subscription can have, as for a
+	// name typed on Edit subscription (subscriptionTitleMaxChars).
+	nameMaxChars = 100
 )
 
 // Store is the import queue; satisfied by *psql.ImportRepository.
@@ -45,6 +51,7 @@ type Feeds interface {
 // *psql.SubscriptionRepository.
 type Subscriptions interface {
 	Subscribe(ctx context.Context, userID, feedID string) error
+	Rename(ctx context.Context, userID, feedID, title string) error
 	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 }
 
@@ -215,8 +222,8 @@ func (r *Runner) process(ctx context.Context, f rss.ImportFeed) {
 	)
 }
 
-// run finds or discovers f's feed, subscribes f's user to it and adds f's
-// tags, and returns f with its outcome set. A panic is a failure.
+// run finds or discovers f's feed, subscribes f's user to it, names a new
+// subscription after f's title and adds f's tags, and returns f with its outcome set. A panic is a failure.
 func (r *Runner) run(ctx context.Context, f rss.ImportFeed) (out rss.ImportFeed) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -260,6 +267,7 @@ func (r *Runner) run(ctx context.Context, f rss.ImportFeed) (out rss.ImportFeed)
 			return failed(f, rss.ImportUnreachable, fmt.Errorf("subscribe: %w", err))
 		}
 		f.Status = rss.ImportSubscribed
+		r.setName(jobCtx, f, feed)
 	}
 	r.addTags(jobCtx, f)
 	return f
@@ -274,6 +282,40 @@ func (r *Runner) addTags(ctx context.Context, f rss.ImportFeed) {
 	if err := r.Tags.AddToSubscription(ctx, f.UserID, f.FeedID, f.Tags); err != nil {
 		r.Logger.Error("importer: add tags", "import_id", f.ImportID, "position", f.Position, "error", err)
 	}
+}
+
+// setName gives the subscription to feed the name f's outline gives it, if
+// any (see importedName). The feed is subscribed either way, so a failure is
+// only logged.
+func (r *Runner) setName(ctx context.Context, f rss.ImportFeed, feed rss.Feed) {
+	name := importedName(f.Title, f.URL, feed)
+	if name == "" {
+		return
+	}
+	if err := r.Subscriptions.Rename(ctx, f.UserID, feed.ID, name); err != nil {
+		r.Logger.Error("importer: set name", "import_id", f.ImportID, "position", f.Position, "error", err)
+	}
+}
+
+// importedName returns the subscription name an outline's title gives
+// feed: "" when it's empty, the outline's URL, too long, or the feed's
+// own title ignoring case and whitespace.
+func importedName(title, outlineURL string, feed rss.Feed) string {
+	title = collapseSpace(title)
+	switch {
+	case title == "",
+		title == strings.TrimSpace(outlineURL),
+		utf8.RuneCountInString(title) > nameMaxChars,
+		strings.EqualFold(title, collapseSpace(feed.Title)):
+		return ""
+	}
+	return title
+}
+
+// collapseSpace trims s and replaces each run of whitespace with one space,
+// as opml.Parse does.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // discover fetches u, saves what it finds exactly like a lookup, and

@@ -3,26 +3,48 @@
       <header class="page-head"><h1>Settings</h1></header>
       {{template "ps-notices" .}}
       <ul class="settings-list ps-index" role="list">
-        <li><a class="settings-row" href="/settings?proto=b&amp;tab=account">
-          <span class="ps-icon">{{template "icon-edit"}}</span>
-          <span class="settings-stack"><span class="settings-label">Account</span><span class="hint">{{.User.Email}}{{if .User.EmailConfirmedAt.IsZero}} · not confirmed{{end}}</span></span>
+        <li><a class="settings-row ps-me" href="/settings?proto=b&amp;tab=account">
+          <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span>
+          <span class="settings-stack"><span class="ps-me-name">{{.User.Name}}</span><span class="ps-sub"><span class="ps-email">{{.User.Email}}</span>{{if .User.EmailConfirmedAt.IsZero}} <span class="chip">Not confirmed</span>{{end}}</span><span class="hint">Name, email, password and devices</span></span>
           {{template "icon-chevron"}}</a></li>
+      </ul>
+      <ul class="settings-list ps-index ps-gap" role="list">
         <li><a class="settings-row" href="/settings?proto=b&amp;tab=reading">
-          <span class="ps-icon">{{template "icon-bookmark"}}</span>
           <span class="settings-stack"><span class="settings-label">Reading</span><span class="hint">Theme: {{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span></span>
           {{template "icon-chevron"}}</a></li>
         <li><a class="settings-row" href="/settings?proto=b&amp;tab=data">
-          <span class="ps-icon">{{template "icon-download"}}</span>
-          <span class="settings-stack"><span class="settings-label">Your data</span><span class="hint">Import, export, delete account</span></span>
+          <span class="settings-stack"><span class="settings-label">Your data</span><span class="hint">Import and export subscriptions</span></span>
           {{template "icon-chevron"}}</a></li>
         <li><a class="settings-row" href="/settings?proto=b&amp;tab=help">
-          <span class="ps-icon">{{template "icon-link"}}</span>
-          <span class="settings-stack"><span class="settings-label">Help</span><span class="hint">Support, privacy and terms</span></span>
+          <span class="settings-stack"><span class="settings-label">Help</span><span class="hint">Support, privacy and terms{{if .DebugAllowed}}, debug mode{{end}}</span></span>
           {{template "icon-chevron"}}</a></li>
       </ul>
       {{template "ps-logout" .}}
       {{else if eq .Tab "account"}}
       <header class="page-head"><h1>Account</h1></header>
+      {{template "ps-notices" .}}
       <ul class="settings-list" role="list">{{template "ps-name" .}}{{template "ps-email" .}}{{template "ps-password" .}}{{template "ps-devices" .}}</ul>
+      <div class="danger-zone ps-danger">
+        <p class="hint">Deletes your account, subscriptions, tags and timelines.</p>
+        <a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>
+      </div>
+      {{else if eq .Tab "reading"}}
+      <header class="page-head"><h1>Reading</h1></header>
+      <form class="theme-form" action="/settings/theme" method="post">
+        <fieldset>
+          <legend class="ps-legend">Theme</legend>
+          <p class="hint">System matches your device's light or dark setting.</p>
+          <label class="choice"><input type="radio" name="theme" value="system"{{if eq .User.Theme "system"}} checked{{end}}> System</label>
+          <label class="choice"><input type="radio" name="theme" value="light"{{if eq .User.Theme "light"}} checked{{end}}> Light</label>
+          <label class="choice"><input type="radio" name="theme" value="dark"{{if eq .User.Theme "dark"}} checked{{end}}> Dark</label>
+        </fieldset>
+        <div class="form-actions"><button class="btn-primary" type="submit">Save</button></div>
+      </form>
+      {{else if eq .Tab "data"}}
+      <header class="page-head"><h1>Your data</h1></header>
+      <ul class="settings-list" role="list">{{template "ps-import-export" .}}</ul>
+      {{else if eq .Tab "help"}}
+      <header class="page-head"><h1>Help</h1></header>
+      <ul class="settings-list" role="list">{{template "ps-help" .}}{{if .DebugAllowed}}{{template "ps-debug" .}}{{end}}</ul>
       {{end}}
 {{template "ps-bottom" .}}

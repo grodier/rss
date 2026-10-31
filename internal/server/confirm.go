@@ -129,7 +129,8 @@ func (s *Server) confirmEmailFormHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, err := s.services.UserService.ConfirmEmail(r.Context(), token.Hash(form.Token)); err != nil {
+	userID, err := s.services.UserService.ConfirmEmail(r.Context(), token.Hash(form.Token))
+	if err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
 			s.confirmLinkExpired(w, r)
 			return
@@ -138,12 +139,25 @@ func (s *Server) confirmEmailFormHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.sessionManager.Put(r.Context(), "flash", "Thanks, your email address is confirmed.")
-	next := "/login"
-	if s.isAuthenticated(r) {
-		next = "/"
+	// Logged in as the confirmed account: Home, with a flash about it.
+	// Anyone else (logged out, or another account) gets a page that says
+	// it's done; it never logs anyone in.
+	if sess, ok := s.authenticatedSession(r); ok && sess.User.ID == userID {
+		s.sessionManager.Put(r.Context(), "flash", "Thanks, your email address is confirmed.")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
-	http.Redirect(w, r, next, http.StatusSeeOther)
+	http.Redirect(w, r, "/confirm-email/done", http.StatusSeeOther)
+}
+
+// confirmEmailDoneHandler says an address is confirmed. It's static, with no
+// token or account in it, so it shows the same text to anyone who opens it,
+// and a reload doesn't re-post a used token.
+func (s *Server) confirmEmailDoneHandler(w http.ResponseWriter, r *http.Request) {
+	data := struct{ LoggedIn bool }{LoggedIn: s.isAuthenticated(r)}
+	if err := s.renderHTML(w, http.StatusOK, "confirm_email_done.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 type confirmResendForm struct {

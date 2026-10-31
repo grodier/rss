@@ -223,13 +223,16 @@ func TestConfirmEmailFormHandler(t *testing.T) {
 		},
 	}})
 
+	otherSession := rss.Session{ID: testSessionID, User: rss.User{ID: "user-2", Name: "Grace", Email: "grace@example.com"}}
 	tests := []struct {
-		name string
-		sess *rss.Session
-		want string
+		name      string
+		sess      *rss.Session
+		want      string
+		wantFlash string
 	}{
-		{"logged in", &unconfirmedSession, "/"},
-		{"anonymous", nil, "/login"},
+		{"logged in", &unconfirmedSession, "/", "Thanks, your email address is confirmed."},
+		{"anonymous", nil, "/confirm-email/done", ""},
+		{"logged in as another account", &otherSession, "/confirm-email/done", ""},
 	}
 	for _, tt := range tests {
 		t.Run("valid, "+tt.name, func(t *testing.T) {
@@ -237,8 +240,8 @@ func TestConfirmEmailFormHandler(t *testing.T) {
 			rr, flash := serveConfirm(t, s, s.confirmEmailFormHandler, req, tt.sess)
 
 			assertRedirect(t, rr, tt.want)
-			if want := "Thanks, your email address is confirmed."; flash != want {
-				t.Errorf("flash = %q, want %q", flash, want)
+			if flash != tt.wantFlash {
+				t.Errorf("flash = %q, want %q", flash, tt.wantFlash)
 			}
 			if !bytes.Equal(gotHash, token.Hash(plain)) {
 				t.Error("ConfirmEmail wasn't given the token's hash")
@@ -269,6 +272,31 @@ func TestConfirmEmailFormHandler(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
+}
+
+func TestConfirmEmailDoneHandler(t *testing.T) {
+	s := newTestServer(t)
+	tests := []struct {
+		name     string
+		sess     *rss.Session
+		wantLink string
+	}{
+		{"logged out", nil, `href="/login">Log in on this device</a>`},
+		{"logged in", &confirmedSession, `href="/">Go to Home</a>`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/confirm-email/done", nil)
+			rr, _ := serveConfirm(t, s, s.confirmEmailDoneHandler, req, tt.sess)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			body := rr.Body.String()
+			assertBodyContains(t, body, "<h1>Email address confirmed</h1>")
+			assertBodyContains(t, body, tt.wantLink)
+		})
+	}
 }
 
 func TestConfirmResendHandler(t *testing.T) {

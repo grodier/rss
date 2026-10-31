@@ -644,6 +644,8 @@ In these flows, trade-offs favor the user's experience.
   Confirmation and reset links only work while the account still has the address they were sent to.
   Pages with a token in the URL send `Referrer-Policy: no-referrer`.
 - **Confirming on a device where you aren't logged in says it's done** (#444): a page saying the address is confirmed, with a way on, rather than the login page with a flash, which read as if logging in were part of confirming.
+  It never logs anyone in, and being logged in as another account gets the same page rather than Home with a flash about an address that isn't theirs.
+  The page is its own route (`/confirm-email/done`, static) so a reload doesn't re-post a used token.
   It never logs anyone in: a confirmation link isn't a login link.
 - **The email is how you log in and how we reach you, and it's never shown to other people.** You're shown by your name and a letter avatar.
   No usernames until something public or social needs one: they bring "taken" errors at signup, squatting, and broken links on renames.

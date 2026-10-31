@@ -61,6 +61,8 @@ The link works in any browser, logged in or not.
 `GET /confirm-email` sets `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and `TokenRepository.Get` only returns an unexpired token whose address is still the account's.
 A valid token gets a page with a Confirm button that posts it back: the GET never writes, so a mail scanner that opens the link can't confirm.
 `UserRepository.ConfirmEmail` then, in one transaction, deletes the token (checking the same conditions), sets `email_confirmed_at` (keeping an earlier time) and deletes the user's other confirmation tokens.
+Confirming while logged in as that account redirects Home with a flash.
+Anyone else (logged out, or logged in as another account) is redirected to `GET /confirm-email/done` (`confirmEmailDoneHandler`), a static page saying the address is confirmed, with a link to log in or, if logged in, to Home; confirming never logs anyone in.
 An unknown, expired, used or outdated token gets the expired-link page (410), built by `linkExpiredPage`, which the other email links reuse.
 
 **Password reset.** `/password/forgot` asks for the account's email (prefilled from `?email=`), checks the per-IP and per-email limits, finds the account (an unknown email gets a field error), and `sendPasswordReset` queues a link with a 1-hour token.

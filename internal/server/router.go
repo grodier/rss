@@ -150,6 +150,7 @@ func (s *Server) router() http.Handler {
 			// Email links work in any browser, logged in or not.
 			r.Get("/confirm-email", s.confirmEmailHandler)
 			r.Post("/confirm-email", s.confirmEmailFormHandler)
+			r.Get("/confirm-email/done", s.confirmEmailDoneHandler)
 			r.Get("/email-change", s.emailChangeHandler)
 			r.Post("/email-change", s.emailChangeFormHandler)
 

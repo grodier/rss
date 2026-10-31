@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - email address confirmed</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head"}}
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel hero">
+      {{template "brand"}}
+      <h1>Email address confirmed</h1>
+      <p>Thanks! You can keep reading wherever you're logged in to Paper Round.</p>
+      <div class="hero-actions">
+        {{if .LoggedIn}}<a class="btn" href="/">Go to Home</a>{{else}}<a class="btn" href="/login">Log in on this device</a>{{end}}
+      </div>
+    </div>
+  </main>
+</body>
+
+</html>

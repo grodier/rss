@@ -115,10 +115,14 @@ Planned in #126, with issues #128–#133.
 - **Only feeds someone subscribes to, or whose page view requested a refresh, are refreshed in the background.** Nobody waits on the rest.
   (#137)
 - **The Refresh button stays synchronous** and goes through the same `ingest.Refresher` as the workers, so there is one fetch-and-save path.
-- **The schedule is ours:** a fixed interval with jitter, backoff after failures, and the server's `Retry-After` / `Cache-Control` hints, which can only delay a fetch.
+- **The schedule is ours:** an interval with jitter, backoff after failures, and the server's `Retry-After` / `Cache-Control` hints, which can only delay a fetch.
   RSS `<ttl>` and `sy:updatePeriod` are ignored.
-  A posting-frequency interval is a backlog item.
   (#126, #133)
+- **Busy feeds are fetched more often; quiet ones stay hourly** (#456, planned on #438).
+  The interval is about four fetches per expected article, from `posts_per_week`, between 15 minutes and an hour, so feeds posting more than 6 a day are fetched sooner and 24 a day or more every 15 minutes.
+  At an hour, an article waited 30 minutes on average to be fetched, and a feed whose file holds fewer items than an hour of posts loses articles outright; in #438's simulation, faster busy feeds cost 22% more fetches and cut the wait to 11 minutes.
+  A later save where every item of two or more is new means the feed may have outrun its file, so the next fetch comes in half the time since the previous one, at least 15 minutes.
+  Fetching quiet feeds less often (up to a day) would save requests but delay the rare posts readers value most; it's a backlog item for when fetch volume matters.
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
 - **Articles keep their authors' names, never their email addresses** (`articles.authors`).
@@ -185,15 +189,23 @@ Planned in #163 (issues #147–#162).
   Scrolling past doesn't; "seen" isn't recorded.
   Reads are per user and article, independent of subscriptions; an article counts as read if any copy with the same `canonical_url` was read.
   (#156, #158, #161)
-- **Timeline order is arrival order.** Each article gets `timeline_at` once, on insert: the save time for news, its published date for backlog (how the two are told apart is under Reading in features.md).
-  New items can't land below ones already seen, and republished archives don't flood the top.
+- **Timeline order is publish order, with what arrived since you looked first** (#147; changed by #455, planned on #438).
+  Each article gets `timeline_at` once, on insert, shared by every reader: for news, its published date, but never below the later of the feed's previous fetch and 6 hours before the save, with news dated earlier spread evenly above that floor instead of stacked (aggregators date items by submission, some feeds only by day, some were down); the save time for undated news; its published date for backlog (how news and backlog are told apart is under Reading in features.md).
+  Each reader's timeline is then grouped at read time, each group in position order: on a reload, what arrived since their latest look; then what arrived since their previous visit; then the "You were here" line and everything else.
+  So new items can't land below ones you've seen, a busy feed's fetch no longer arrives as one block, and republished archives don't flood the top.
+  Until #455, news goes at the save time, which kept the first guarantee but made a busy site or aggregator a run of rows on every fetch.
+  In a simulation of ~120 mixed feeds over three weeks, rows in a run of three or more from one feed went from 74% to 5%, with new articles missed staying at 0.1% (posts dated over a day before they appeared, which are backlog).
+  Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again), and delaying articles so they interleave (31 minutes later on average, and aggregators still clumped).
+  A per-reader timeline table would give each reader their own positions instead of read-time groups; it stays in backlog.md for when the per-feed cost shows.
   No bump on subscribe.
-  Undated items on a feed's first save are backlog too (#438), placed below the save's dated items in document order, since we can't know when they were published and an undated feed would otherwise fill the top of Home on import; on later saves an undated item is news.
   Displayed dates may look out of order; accepted.
   Feed pages keep publication order.
-  (#147)
+- **On a feed's first save, undated items are backlog too** (#438): each run goes below the item before it in the feed's document, a step apart (the median gap between the feed's dated items, at most a day; a day without one), the newest no later than a day before the save, and spread evenly down to the next dated item where stepping would pass it.
+  We can't know when they were published, and an undated feed would otherwise fill the top of Home on import; spacing them keeps them from forming a block lower down too.
+  Rejected: below the save's dated items 1 µs apart, as #438 first proposed (still a block), and the newest near the top as a taste of the new feed (an import with many undated feeds would put one per feed on top).
+  On later saves an undated item is news.
 - **The timeline is `/`** for logged-in users (the nav label stays "Home").
-  Duplicates are collapsed at query time on `canonical_url`, keeping the earliest arrival, with "Also in" on the row.
+  Duplicates are collapsed at query time on `canonical_url`, keeping the earliest copy by position, with "Also in" on the row.
   Feed pages show every copy.
   (#154, #162)
 - **Timelines read each followed feed's newest entries, then merge them** (#388, #404).
@@ -249,6 +261,8 @@ Planned in #163 (issues #147–#162).
   The page reports the first row's position with a beacon when it's hidden, never from the GET that renders it ("Overall").
   One position per user serves Home and every custom timeline, since they share `timeline_at`; starred-only timelines, ordered by star time, show no line.
   The line moves only after 30 minutes away (`rss.VisitGap`), so a reload or a quick tab switch keeps it in place.
+  With #455 the line is also where grouping splits the timeline, so the mark keeps when each look was rendered, not only when it was reported: articles fetched while a page is open weren't on it.
+  Readers without a mark (before their first report, or without JavaScript) get publish order without grouping; accepted.
   There's no line before the second visit, at the top of the page, or without JavaScript (no beacon, so it would never move).
   Accepted: reading only a filtered timeline moves the line for Home too, so articles only Home shows can sit below it unseen; per-timeline markers would cost a row per timeline for a rare case.
 

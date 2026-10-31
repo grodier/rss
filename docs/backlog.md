@@ -122,10 +122,9 @@ The decisions are under "Accounts" in decisions.md.
 
 Each with when it pays off:
 
-- [ ] **Adaptive refresh interval.**
-  Fetch busy feeds often and dormant ones rarely, from posting frequency: count articles published in the last 14 days (`n`), interval = clamp(14 days ÷ 4n, 15 min, 24 h), 24 h when `n = 0`, then apply the `Retry-After` / `Cache-Control` floors (#133).
-  Worth it at a few thousand feeds, or when most fetches are 304s or find no new articles.
-  `feeds.posts_per_week` (#350) is a 30-day version of `n` the schedule could use.
+- [ ] **Fetch quiet feeds less often.**
+  #456 fetches busy feeds sooner from their posting rate but keeps every other feed hourly; the same rate could stretch quiet ones up to a day (about four fetches per expected article, as for busy feeds).
+  Worth it at a few thousand feeds, or when most fetches are 304s or find no new articles; the cost is that a quiet blog's rare post arrives hours later.
 - [ ] **Permanent redirects (301/308).**
   Update `feeds.url`.
   Needs `fetch` to report the redirect chain, and a decision for the unique-URL collision when two feeds end up at the same URL (merge, or keep the old one).
@@ -204,7 +203,11 @@ Each with when it pays off:
   It doesn't speed up word filters (860 ms measured).
   A cheaper version keeps only each reader's recent entries (Mastodon keeps a few hundred) and serves older pages with #404's query.
   Decide "Article retention" (under Feed ingestion) first: it bounds this table's size.
+  It would also replace #455's read-time grouping: each reader's row could take a position above what they'd already seen when the article arrives.
   Only when timelines get slow again after #404 (its watchlist entry for the cost per followed feed).
+- [ ] **Dates for undated articles from their pages.**
+  Enrichment could read a page's `article:published_time` and fill an undated article's `published_at`, so rows and feed pages show a date; its timeline position wouldn't move (it's set once), and many pages have no date.
+  Deferred from #438, which places undated articles without one.
 - [ ] **AI-assisted titles and summaries.**
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
   Deferred from #306.
@@ -405,7 +408,7 @@ Worth doing before production, or once there are a few thousand feeds.
   - Several instances: `SKIP LOCKED` claims never fetch a feed twice, and throughput scales with instances.
   - Data growth: `EXPLAIN ANALYZE` for `ClaimDue`, `ListByFeed`, search (`ILIKE`) and site pages at ~100k feeds and millions of articles.
 - [ ] **Act on the results.**
-  Possible outcomes: a different default `-refresh-workers`, a DB connection cap, per-host politeness, a separate worker process, or the adaptive refresh interval (all listed under Feed ingestion).
+  Possible outcomes: a different default `-refresh-workers`, a DB connection cap, per-host politeness, a separate worker process, or fetching quiet feeds less often (all listed under Feed ingestion).
   Record the numbers that led to each decision.
 
 ## Performance watchlist
@@ -423,6 +426,11 @@ Background refresh:
   The site catalog (#447) adds every catalog site's feeds as unsubscribed feeds from the start.
   *Signal:* `EXPLAIN ANALYZE` of `ClaimDue` reads far more rows than it returns, or idle claims get slow, once most feeds are unsubscribed.
   *Fix:* keep a `subscriber_count` on `feeds` (updated by `Subscribe`/`Unsubscribe` in the same transaction) and index `next_fetch_at WHERE gone_at IS NULL AND (subscriber_count > 0 OR refresh_requested_at IS NOT NULL)`.
+- [ ] **Busy feeds fetched up to four times an hour** (#456).
+  Fetches grow with how many busy feeds readers follow, not just how many feeds: one posting 24 a day or more is fetched every 15 minutes, and one that outruns its file is fetched again in half the time.
+  In #438's simulation, 22% more fetches for a mix of ~120 feeds, all on the busiest tenth.
+  *Signal:* due feeds piling up (`count(*)` and `max(now() - next_fetch_at)` of overdue feeds), refresh workers busy over ~70% of the time, or 429s from busy hosts.
+  *Fix:* more `-refresh-workers`, per-host politeness (under Feed ingestion), or WebSub for the hubs busy feeds advertise.
 - [ ] **Polling latency and idle queries.**
   Each idle refresh, lookup and mail worker queries every poll interval (15 s for refresh, 10 s for mail (#260)), on every instance.
   A requested refresh can wait a full interval before a worker sees it; the mail worker is woken by its own instance when an email is queued, so only emails queued by another instance wait.
@@ -438,6 +446,7 @@ Background refresh:
   *Fix:* a single multi-row upsert (`unnest` of arrays) per fetch.
 - [ ] **Posting rate recomputed on every save** (#350).
   `saveArticles` and `RecordNotModified` count each feed's articles of the last 30 days on every fetch, 304s included, served by `articles_feed_sort_idx`.
+  Busy feeds fetched every 15 minutes (#456) recompute it four times as often.
   *Signal:* the count shows up in `pg_stat_statements`, or `SaveFetch` time grows for busy feeds.
   *Fix:* recompute only when articles were inserted, plus at most once a day.
 - [ ] **Writes from feed page views** (#137).
@@ -445,7 +454,7 @@ Background refresh:
   The `refresh_requested_at IS NULL` guard limits it to once per stale period per feed, so this is unlikely to matter.
   *Signal:* `RequestRefresh` shows up in `pg_stat_statements` or in row-lock waits on `feeds`.
   *Fix:* skip the call unless the feed has been stale for a while, or move requests to their own table.
-- Also listed under Feed ingestion: adaptive refresh interval, per-host politeness, separate worker process, giving up on long-dead feeds.
+- Also listed under Feed ingestion: fetching quiet feeds less often, per-host politeness, separate worker process, giving up on long-dead feeds.
 
 Other background work (#302, #304, #306):
 
@@ -500,6 +509,8 @@ Pages and queries:
   *Signal:* `/` p95 rising with subscription count, or Home page 1 over 100 ms for heavy readers.
   *Measured 2026-10-27* (#404, #388's seed, on a dev container): Home page 1 for 300 subscriptions 54–76 ms (19,590 buffers, 13,618 rows read), page 20 the same; for 30 subscriptions 6–9 ms.
   Before, they took 1,187 ms and 243 ms.
+  #455 groups what arrived since the reader's last look ahead of the rest, one statement per group, stopping when the page is full; the arrival groups only read each feed's recent entries.
+  *Measured 2026-10-31* on a prototype (#438, same seed, Postgres 16, warm cache), Home page 1 for 300 subscriptions: 34–41 ms today; grouped, 3.0 ms back after a night, 5.3 ms after 4 days, 4.7 ms on a reload, but 27 ms back after 35 minutes, when the page also needs older articles, and 39 ms for pages below the line (36 ms today).
   *Fix:* "A timeline table per reader" under Reading.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).
   Keyword matches (`~*` over title, page title and excerpt) can't use an index, and Postgres can't estimate how many articles they match, so a page that matches few articles reads many to fill 30 rows.

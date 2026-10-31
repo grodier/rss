@@ -100,6 +100,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E4 Confirmation link used again, already confirmed | Open the link again after confirming | As E1 | As E1, plus "Your email address is already confirmed." and "Go to Settings" | n/a | ok |
 | E5 Unconfirmed address notice | A new account's Home and Settings | Notice with a Resend button | (the notice) | Yes | ok |
 | E6 Resend confirmation | Resend from the notice | Flash on the same page | "We sent a new link to {email}." | n/a | ok |
+| E6a Confirmation link opened on another device, logged out (or as another account) | Open a confirmation link in a private window and confirm | "Email address confirmed" page, 200 | "Thanks! You can keep reading wherever you're logged in to Paper Round." with "Log in on this device" (logged in: "Go to Home") | Yes | ok |
 | E7 Resend rate limited | A 4th resend in an hour | Flash | "We've already sent you several links. Check your spam folder, or try again in an hour." | Yes | ok |
 | E8 Reset: unknown email | Forgot password with `nobody@example.com` | Forgot password, 422, under Email | "There's no account with this email." | Yes | ok (says so on purpose) |
 | E9 Reset: invalid email | Email `nope` | Forgot password, 422 | "Email must be a valid email address" | Yes | ok |

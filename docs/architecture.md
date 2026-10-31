@@ -135,6 +135,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET, POST /signup` | no | Only registered with `-invite-code` |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
+| `GET /confirm-email/done` | no | Static "email address confirmed" page for anyone but the confirmed account |
 | `GET, POST /email-change` | no | A change-email link's page, and changing |
 | `GET, POST /password/forgot`, `GET /password/forgot/sent` | no | Ask for a reset link |
 | `GET, POST /password/reset` | no | A reset link's page, and setting the password |

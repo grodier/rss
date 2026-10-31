@@ -308,6 +308,7 @@ func TestRoutesRequireAuthentication(t *testing.T) {
 		"/login":                       true,
 		"/logout":                      true,
 		"/confirm-email":               true,
+		"/confirm-email/done":          true,
 		"/email-change":                true,
 		"/password/forgot":             true,
 		"/password/forgot/sent":        true,

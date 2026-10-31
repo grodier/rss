@@ -330,7 +330,7 @@ Beyond those:
 - **Static files** are embedded and served at `/static/…?v=<hash>`.
   The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
   Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted fonts (`fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
-  The install icons (`img/icon-192.png`, `img/icon-512.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
+  The install icons (`img/icon-192.png`, `img/icon-512.png`, `img/apple-touch-icon.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
 - **The web app manifest** (`ui/manifest.webmanifest`) is embedded and served by its own handler, not from `/static`: Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would sniff it as `text/plain`.
   Pages are standalone, so each includes `app-head` (`partials/head.html`: icons, manifest link, `theme-color`); a test fails for a page without it.
   The manifest and the `theme-color` metas repeat `--bg`, as they can't read CSS custom properties: the manifest the light one, and `app-head` the user's theme's on logged-in pages (they pass it their navData), else a light and dark pair with `prefers-color-scheme` media queries.

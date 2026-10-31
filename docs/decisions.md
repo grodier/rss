@@ -566,6 +566,10 @@ Planned in #395, from a discussion of what would stop people switching to the ap
 - **No pull-to-refresh of our own** (#394).
   Tapping the current tab loads its page again, which is how new articles show up, since the timeline doesn't update live ("Reading").
 - **The app is installed on its final domain only**: an installed app belongs to the origin it was installed from, so #394 waits for the domain move (#389).
+- **One install icon on every platform: the logo on tomato, lit softly from the top-left corner** (#445).
+  iOS ignores the manifest's icons, so `apple-touch-icon.png` is rendered from `app-icon.svg` like the others; it used to be the favicon's page on white, which a tester found dull next to other apps.
+  The highlight is a radial gradient about 8% lighter than tomato, fading to flat by the middle, and touches only the background so the logo stays flat with its ink outlines; a 4% version and flat tomato were the alternatives.
+  The favicon keeps the page on white, which reads better at 16 px.
 - **The manifest repeats the light theme's background color** (`theme_color`, `background_color`), since it can't read CSS custom properties; the pages add a dark `theme-color` (#394, #413).
 - **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
   People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.

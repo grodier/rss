@@ -127,3 +127,24 @@ func TestInstallIconSizes(t *testing.T) {
 		}
 	}
 }
+
+// iOS fills an apple-touch-icon's transparent pixels with black.
+func TestAppleTouchIconOpaque(t *testing.T) {
+	f, err := ui.Static.Open("static/img/apple-touch-icon.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a != 0xffff {
+				t.Fatalf("apple-touch-icon.png: pixel (%d, %d) has alpha %d, want opaque", x, y, a>>8)
+			}
+		}
+	}
+}

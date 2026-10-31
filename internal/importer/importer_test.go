@@ -77,9 +77,22 @@ func (f *fakeFeeds) put(feed rss.Feed) {
 	f.byURL[feed.Url] = feed
 }
 
-// fakeSubscriptions holds subscriptions as "userID feedID".
+// renameCall is one call to fakeSubscriptions.Rename.
+type renameCall struct {
+	userID, feedID, title string
+}
+
+// fakeSubscriptions holds subscriptions as "userID feedID", and records
+// Rename calls, returning renameErr.
 type fakeSubscriptions struct {
-	subs map[string]bool
+	subs      map[string]bool
+	renames   []renameCall
+	renameErr error
+}
+
+func (s *fakeSubscriptions) Rename(ctx context.Context, userID, feedID, title string) error {
+	s.renames = append(s.renames, renameCall{userID, feedID, title})
+	return s.renameErr
 }
 
 func (s *fakeSubscriptions) Subscribe(ctx context.Context, userID, feedID string) error {
@@ -205,7 +218,20 @@ func (tr *testRunner) importOne(t *testing.T, ctx context.Context, url string) r
 // importTagged is importOne for a feed with tags.
 func (tr *testRunner) importTagged(t *testing.T, ctx context.Context, url string, tags []string) rss.ImportFeed {
 	t.Helper()
-	tr.process(ctx, rss.ImportFeed{ImportID: "imp-1", UserID: "user-1", Position: 3, URL: url, Tags: tags, Status: rss.ImportRunning})
+	return tr.importFeed(t, ctx, rss.ImportFeed{URL: url, Tags: tags})
+}
+
+// importTitled is importOne for a feed with an outline title.
+func (tr *testRunner) importTitled(t *testing.T, ctx context.Context, url, title string) rss.ImportFeed {
+	t.Helper()
+	return tr.importFeed(t, ctx, rss.ImportFeed{URL: url, Title: title})
+}
+
+// importFeed processes f as the third feed of import imp-1 by user-1.
+func (tr *testRunner) importFeed(t *testing.T, ctx context.Context, f rss.ImportFeed) rss.ImportFeed {
+	t.Helper()
+	f.ImportID, f.UserID, f.Position, f.Status = "imp-1", "user-1", 3, rss.ImportRunning
+	tr.process(ctx, f)
 	if len(tr.store.finished) != 1 {
 		t.Fatalf("Finish called %d times; want 1", len(tr.store.finished))
 	}
@@ -336,6 +362,81 @@ func TestProcessAddsTags(t *testing.T) {
 	})
 }
 
+func TestImportedName(t *testing.T) {
+	const outlineURL = "https://example.com/feed"
+	feed := rss.Feed{Title: "Example  Feed"}
+	tests := []struct {
+		name, title, want string
+	}{
+		{"different name", "My Feed", "My Feed"},
+		{"whitespace collapsed", "  My \n Feed ", "My Feed"},
+		{"same as the feed title", "Example Feed", ""},
+		{"same ignoring case and spaces", " example   FEED ", ""},
+		{"empty", "", ""},
+		{"only spaces", "   ", ""},
+		{"the outline URL", outlineURL, ""},
+		{"101 characters", strings.Repeat("é", 101), ""},
+		{"100 characters", strings.Repeat("é", 100), strings.Repeat("é", 100)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := importedName(tt.title, outlineURL, feed); got != tt.want {
+				t.Errorf("importedName(%q) = %q; want %q", tt.title, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProcessSetsName(t *testing.T) {
+	tr := newTestRunner()
+	tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed", Title: "Feed"})
+
+	got := tr.importTitled(t, t.Context(), "https://example.com/feed", "My Feed")
+	checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+	want := []renameCall{{"user-1", "feed-1", "My Feed"}}
+	if !reflect.DeepEqual(tr.subs.renames, want) {
+		t.Errorf("Rename calls = %v; want %v", tr.subs.renames, want)
+	}
+}
+
+func TestProcessNameMatchingFeedTitleIsNotSet(t *testing.T) {
+	tr := newTestRunner()
+	tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed", Title: "Feed"})
+
+	got := tr.importTitled(t, t.Context(), "https://example.com/feed", "feed")
+	checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+	if len(tr.subs.renames) != 0 {
+		t.Errorf("Rename calls = %v; want none", tr.subs.renames)
+	}
+}
+
+func TestProcessAlreadySubscribedKeepsName(t *testing.T) {
+	tr := newTestRunner()
+	tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed", Title: "Feed"})
+	tr.subs.Subscribe(t.Context(), "user-1", "feed-1")
+
+	got := tr.importTitled(t, t.Context(), "https://example.com/feed", "My Feed")
+	checkOutcome(t, got, rss.ImportAlreadySubscribed, "", "feed-1")
+	if len(tr.subs.renames) != 0 {
+		t.Errorf("Rename calls = %v; want none", tr.subs.renames)
+	}
+}
+
+func TestProcessRenameErrorStillSubscribes(t *testing.T) {
+	tr := newTestRunner()
+	tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed", Title: "Feed"})
+	tr.subs.renameErr = errors.New("db down")
+
+	got := tr.importTitled(t, t.Context(), "https://example.com/feed", "My Feed")
+	checkOutcome(t, got, rss.ImportSubscribed, "", "feed-1")
+	if got.Error != "" {
+		t.Errorf("Error = %q; want none", got.Error)
+	}
+	if logs := tr.logs.String(); !strings.Contains(logs, "importer: set name") || !strings.Contains(logs, "db down") {
+		t.Errorf("no set name error in logs %q", logs)
+	}
+}
+
 func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {
 	tr := newTestRunner()
 	tr.disc.DiscoverFn = func(ctx context.Context, u *url.URL) (discovery.Result, error) {
@@ -346,13 +447,17 @@ func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {
 		return result("https://example.com/feed.xml"), nil
 	}
 
-	got := tr.importOne(t, t.Context(), "example.com/feed")
+	got := tr.importTitled(t, t.Context(), "example.com/feed", "My Feed")
 	checkOutcome(t, got, rss.ImportSubscribed, "", "id:https://example.com/feed.xml")
 	if tr.saver.calls != 1 {
 		t.Errorf("Save called %d times; want 1", tr.saver.calls)
 	}
 	if !tr.subs.subs["user-1 id:https://example.com/feed.xml"] {
 		t.Error("user not subscribed to the saved feed")
+	}
+	want := []renameCall{{"user-1", "id:https://example.com/feed.xml", "My Feed"}}
+	if !reflect.DeepEqual(tr.subs.renames, want) {
+		t.Errorf("Rename calls = %v; want %v", tr.subs.renames, want)
 	}
 }
 

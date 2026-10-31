@@ -174,6 +174,11 @@ Planned in #309 (issues #302, #303).
   Failures aren't retried automatically and there's no "Try again"; uploading the file again retries them.
   While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.
 - **An outline's name becomes the subscription's name when it differs from the feed's title** (#442), so a reader's renames survive export and import; a name matching the feed's title stays `""`, so the feed's own title changes still reach them.
+  "Differs" ignores case and whitespace, so a reader that exports the feed's title with different capitalization doesn't freeze it.
+  Only a feed the import subscribes to is named: an already subscribed one keeps the name the reader has, as an import only ever adds tags.
+  An outline title that's empty, equals its `xmlUrl` (our export writes the URL as `text` for a feed with no title) or is over 100 characters isn't a name, and the feed is subscribed without one rather than failing.
+  A failed rename is logged and doesn't fail the feed, like adding tags.
+  (#442)
 - **Offered in Settings, next to Export, and on the empty timeline.**
 - **Files up to 1 MiB and 1,000 feeds, 5 imports per user an hour.** The upload is a multipart form with its own size cap, not `decodePostForm`'s 64 KiB.
 - **The file input has no `accept` filter.** iOS turns `accept` into system file types, has none for `.opml`, and so greys out OPML files in the picker, including our own export.

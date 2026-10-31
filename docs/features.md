@@ -287,9 +287,10 @@ Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-
 The page's values come from enrichment and only fill gaps.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
-*News* (undated, or published since a day before the feed's previous successful fetch) goes at the save time, 1 µs apart, newest-published first.
-*Backlog* (every dated item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
-So new items always land on top, and an imported archive doesn't.
+*News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes at the save time, 1 µs apart, newest-published first.
+*Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
+A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
+So new items always land on top, and an imported archive, dated or not, doesn't.
 
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.

@@ -19,7 +19,7 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
   Its row is also the cached result for that site key.
 - **Article:** one item of a feed.
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
-- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: the save time for *news*, its published date for *backlog* (older items, including every dated item on a feed's first save).
+- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: the save time for *news*, its published date for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back).
 - **Subscription:** a user following a feed.
   Subscriptions decide what's in the user's timeline and which feeds are refreshed in the background.
 - **Read:** the user opened the article, or clicked through to the original, or did either for a copy of it.

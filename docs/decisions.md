@@ -99,8 +99,10 @@ Planned in #50 (issues #51–#67).
 - **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
   How it's chosen, stored, seeded and shown is settled in #447.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
-- **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it finished, or 1 hour after it failed.
-  A failed or empty lookup re-runs at once for a different address on the same site (#439), so one bad result doesn't hide the site's other addresses, such as its feed URLs; a lookup that found a site stays cached by site.
+- **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds (#439), since "No feeds found" is also worth retrying soon.
+  A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.
+  Only the home page (path `/`, no query) of a site already found keeps the cached result, so `npr.org` and `www.npr.org/` still go straight to the site page.
+  A lookup in progress is never re-queued, so two people typing different addresses don't keep restarting each other's lookup, and re-runs need no limit of their own: each is a lookup the per-user limit already counts.
 - **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that refreshes itself with `<meta http-equiv="refresh">` (no JavaScript).
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.

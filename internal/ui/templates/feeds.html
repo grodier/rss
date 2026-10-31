@@ -16,7 +16,7 @@
     <main class="column">
       <header class="page-head">
         <h1>My feeds</h1>
-        <a class="{{if eq .Nav.Design.Heads "pills"}}btn btn-sm{{end}}" href="/tags">Tags</a>
+        <a class="btn btn-sm" href="/tags">Tags</a>
       </header>
 
       {{with .Flash}}
@@ -26,7 +26,7 @@
       {{range .Sites}}
       {{$site := or .Site.Title .Site.Host}}
       {{$siteID := .Site.ID}}
-      {{$grouped := and (eq $.Nav.Design.Headers "a") (gt (len .Subs) 1)}}
+      {{$grouped := gt (len .Subs) 1}}
       <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}">
         {{if $grouped}}
         <div class="list-head">
@@ -36,7 +36,7 @@
         <ul role="list">
           {{range .Subs}}
           {{$name := or .Title .Feed.Title .Feed.Url}}
-          <li class="feed-row my-feed my-feed-{{$.Nav.Design.Rows}}">
+          <li class="feed-row my-feed">
             {{template "avatar" (avatar .Feed.SiteID $name (index $.Icons .Feed.SiteID))}}
             <div>
               <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{$name}}</a>
@@ -56,30 +56,8 @@
               {{else if ge .Feed.ConsecutiveFailures $.FailingThreshold}}
               <p class="fetch-error">This feed is failing to update.</p>
               {{end}}
-              {{if eq $.Nav.Design.Rows "c"}}
-              <div class="feed-row-actions">
-                <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{$name}}">Edit</a>
-                <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-                  <input type="hidden" name="return_to" value="/feeds">
-                  <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{$name}}">Unsubscribe</button>
-                </form>
-              </div>
-              {{end}}
             </div>
-            {{if eq $.Nav.Design.Rows "a"}}
             <a class="row-icon-btn" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
-            {{else if eq $.Nav.Design.Rows "b"}}
-            <details class="row-menu">
-              <summary class="row-icon-btn" aria-label="Actions for {{$name}}" title="Actions">{{template "icon-more"}}</summary>
-              <div class="row-menu-items">
-                <a href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{$name}}">Edit</a>
-                <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-                  <input type="hidden" name="return_to" value="/feeds">
-                  <button class="row-menu-danger" type="submit" aria-label="Unsubscribe from {{$name}}">Unsubscribe</button>
-                </form>
-              </div>
-            </details>
-            {{end}}
           </li>
           {{end}}
         </ul>

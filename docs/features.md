@@ -162,14 +162,16 @@ The Refresh button instead fetches right away, within 8 s, and reports the resul
 
 ## Subscriptions
 
-**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path, and redirect back with a flash.
+**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on Edit subscription, which always returns to My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path, and redirect back with a flash.
 Gone feeds can't be subscribed to but can be unsubscribed from.
 My feeds (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest article date, posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
+Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
+Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `main.css`), and has one control, an Edit pencil.
 Site, feed and search pages mark subscribed feeds with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
 **Names.** A subscription can have the user's own name for the feed (`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed that changes its title still updates).
-Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"); a blank name, or one equal to the feed's current title, is stored as `""`.
+Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"), and Unsubscribe at its foot; a blank name, or one equal to the feed's current title, is stored as `""`.
 The name shows wherever the user's own reading shows the feed: per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`) select `subscriptionTitle` as the feed's title, so rows and "Also in" show it without template changes, and the feed page, the article page and the OPML export use it too.
 Catalog pages (site, search) and debug panels keep the feed's own title.
 Unsubscribing drops the name and the subscription's tags.

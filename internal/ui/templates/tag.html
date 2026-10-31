@@ -16,9 +16,9 @@
     <main class="column">
       <header class="page-head">
         <h1>{{.Tag.Name}}</h1>
-        <div class="head-actions{{if eq .Nav.Design.Heads "links"}} head-actions-links{{end}}">
-          <a class="{{if eq .Nav.Design.Heads "pills"}}btn btn-sm{{end}}" href="/timelines/new?tag={{.Tag.ID}}">Make a timeline</a>
-          <a class="{{if eq .Nav.Design.Heads "pills"}}btn btn-sm{{end}}" href="/tags">All tags</a>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/timelines/new?tag={{.Tag.ID}}">Make a timeline</a>
+          <a class="btn btn-sm" href="/tags">All tags</a>
         </div>
       </header>
 

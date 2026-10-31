@@ -277,8 +277,12 @@ It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 30
 ## Reading: timeline, article pages and read state
 
 **Timeline.** `renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page, and shows 30.
-`ListTimeline` reads, for each of the user's subscriptions (those the timeline's filter shows), that feed's newest entries before the cursor from `articles_feed_timeline_idx`, merges them by `(timeline_at, id)` descending and keeps the page, which it pages with a keyset cursor, `?before=<time>_<id>` (`cursor.go`).
-Copies of one article (same `canonical_url`) collapse into the earliest to arrive: an entry is skipped when an earlier copy is in one of the user's feeds, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
+`ListTimeline` reads, for each of the user's subscriptions (those the timeline's filter shows), that feed's newest entries before the cursor from `articles_feed_timeline_idx`, merges them by `(timeline_at, id)` descending and keeps the page, which it pages with a keyset cursor, `?before=<group>_<time>_<id>` (`cursor.go`).
+It does this once per group, in order, until the page is full: on a reload during a visit, what *arrived* since the reader's latest look (group 2); then what arrived since their previous visit, and anything above the "You were here" line (group 1); then everything else (group 0).
+`renderTimeline` reads the mark first and passes its `rss.TimelineAnchors` (`TimelineMark.Anchors`); zero anchors turn a group off, so without a mark (or for `ListShared`) there's one group in position order.
+The arrival groups bound `timeline_at` from below (`timelineGroups`), so after an absence each feed's scan is a short range and the query for the history below the line often doesn't run.
+The cursor carries its row's group and applies only in that group; the next groups start from their top.
+Copies of one article (same `canonical_url`) collapse into the earliest to arrive: an entry is skipped when an earlier copy is in one of the user's feeds, whatever that copy's group, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
@@ -289,10 +293,10 @@ Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-
 The page's values come from enrichment and only fill gaps.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
-*News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes at the save time, 1 µs apart, newest-published first.
+*News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `newsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
-So new items always land on top, and an imported archive, dated or not, doesn't.
+So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.
 
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.
@@ -303,10 +307,11 @@ The card image shows above the text unless `sanitize.ShowsImage` finds the conte
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**"You were here."** A timeline's first page (not starred-only) carries its first row's `timeline_at` in `.article-list[data-seen-up-to]`, and `app.js` sends it to `POST /timeline/seen` with a beacon each time the page is hidden.
-`MarkSeen` keeps the newest position reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`).
-At render, `TimelineMark.Divider` picks the visit's divider, and `fillDivider` puts the line above the first row at or before it, only when something newer is above: an earlier row, or the previous page (the cursor).
-A store error renders the page without the line.
+**"You were here."** A timeline's first page (not starred-only) carries the newest `timeline_at` among its rows in `.article-list[data-seen-up-to]` and its render time in `data-seen-as-of`, and `app.js` sends both to `POST /timeline/seen` with a beacon each time the page is hidden.
+`MarkSeen` keeps the newest position and render time reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider and its render time become where the previous visit ended (`divider_at`, `divider_as_of`).
+At render, `TimelineMark.Anchors` turns the mark into the timeline's groups, and `fillDivider` puts the line above the first group-0 row, only when something is above it: an earlier row in group 1 or 2, or a cursor in one.
+So above the line is everything that arrived since the previous visit, including articles published before it but fetched after, just above the line.
+A store error renders the page in position order, without the line.
 
 **Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.

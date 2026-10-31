@@ -156,8 +156,10 @@ CREATE TABLE timeline_marks (
         REFERENCES users(id)
         ON DELETE CASCADE,
     seen_up_to TIMESTAMPTZ NOT NULL, -- the newest timeline_at the user has had on screen
+    seen_as_of TIMESTAMPTZ NOT NULL, -- when the page that reported seen_up_to was rendered: the latest look
     seen_at TIMESTAMPTZ NOT NULL,    -- when seen_up_to was last reported: the end of the latest visit so far
-    divider_at TIMESTAMPTZ           -- the divider of the visit seen_at belongs to; NULL during the first visit
+    divider_at TIMESTAMPTZ,          -- the divider of the visit seen_at belongs to; NULL during the first visit
+    divider_as_of TIMESTAMPTZ        -- the previous visit's latest look (its seen_as_of); NULL during the first visit
 );
 
 -- Articles a user saved to keep. Saving covers every copy of an article

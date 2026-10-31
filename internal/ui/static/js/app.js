@@ -171,16 +171,20 @@
     }
   }
 
-  // "You were here": a timeline's first page carries the position of its
-  // first row in .article-list[data-seen-up-to]. Each time the page is
-  // hidden (another tab, the app backgrounded, the page closed, where unload
-  // doesn't fire on phones), report it; the server moves the divider at the
-  // reader's next visit.
+  // "You were here": a timeline's first page carries the newest position on
+  // it in .article-list[data-seen-up-to], and when it was rendered in
+  // data-seen-as-of. Each time the page is hidden (another tab, the app
+  // backgrounded, the page closed, where unload doesn't fire on phones),
+  // report both; the server moves the divider at the reader's next visit,
+  // and a reload puts what arrived since the render first.
   const seen = document.querySelector(".article-list[data-seen-up-to]");
   if (seen) {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "hidden") return;
-      navigator.sendBeacon("/timeline/seen", new URLSearchParams({ up_to: seen.dataset.seenUpTo }));
+      navigator.sendBeacon("/timeline/seen", new URLSearchParams({
+        up_to: seen.dataset.seenUpTo,
+        as_of: seen.dataset.seenAsOf,
+      }));
     });
   }
 

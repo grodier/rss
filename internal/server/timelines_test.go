@@ -515,7 +515,7 @@ func TestTimelineHandler(t *testing.T) {
 	var gotFilter rss.TimelineFilter
 	var gotBefore rss.ArticleCursor
 	var result []rss.ArticleWithFeed
-	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 		gotFilter, gotBefore = filter, before
 		return result, nil
 	}}
@@ -633,7 +633,7 @@ func TestStarredTimeline(t *testing.T) {
 			return result, nil
 		},
 	}
-	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 		return nil, errors.New("ListTimeline called for a starred-only timeline")
 	}}
 	filter := rss.TimelineFilter{StarredOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{testTagID}}

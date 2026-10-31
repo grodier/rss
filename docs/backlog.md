@@ -511,6 +511,7 @@ Pages and queries:
   Before, they took 1,187 ms and 243 ms.
   #455 groups what arrived since the reader's last look ahead of the rest, one statement per group, stopping when the page is full; the arrival groups only read each feed's recent entries.
   *Measured 2026-10-31* on a prototype (#438, same seed, Postgres 16, warm cache), Home page 1 for 300 subscriptions: 34–41 ms today; grouped, 3.0 ms back after a night, 5.3 ms after 4 days, 4.7 ms on a reload, but 27 ms back after 35 minutes, when the page also needs older articles, and 39 ms for pages below the line (36 ms today).
+  *Measured 2026-10-31* with #455 (`make db/loadseed`, now with `created_at` up to an hour after `timeline_at`; Postgres 16 on a dev container, warm cache), Home page 1 for 300 subscriptions: 43–46 ms ungrouped; grouped, 5.1 ms back after a night (1,584 buffers), 7.4 ms after 4 days, 6.7 ms on a reload, but 37 ms back after 35 minutes (group 0's scan reads 304k rows to skip what arrived) and 49 ms just below the line; for 30 subscriptions 3–10 ms in every case.
   *Fix:* "A timeline table per reader" under Reading.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).
   Keyword matches (`~*` over title, page title and excerpt) can't use an index, and Postgres can't estimate how many articles they match, so a page that matches few articles reads many to fill 30 rows.

@@ -162,25 +162,31 @@ func TestTagName(t *testing.T) {
 	}
 }
 
-func TestTimelineMarkDivider(t *testing.T) {
+func TestTimelineMarkAnchors(t *testing.T) {
 	now := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
 	divider := now.Add(-3 * time.Hour)
+	dividerAsOf := now.Add(-2 * time.Hour)
 	upTo := now.Add(-time.Hour)
+	asOf := now.Add(-50 * time.Minute)
 	tests := []struct {
 		name string
 		mark TimelineMark
-		want time.Time
+		want TimelineAnchors
 	}{
-		{"zero mark", TimelineMark{}, time.Time{}},
-		{"first visit", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-10 * time.Minute)}, time.Time{}},
-		{"same visit", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-10 * time.Minute), DividerAt: divider}, divider},
-		{"new visit at exactly the gap", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-VisitGap), DividerAt: divider}, upTo},
-		{"new visit days later", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-48 * time.Hour), DividerAt: divider}, upTo},
+		{"no mark", TimelineMark{}, TimelineAnchors{}},
+		{"first visit going on", TimelineMark{SeenUpTo: upTo, SeenAsOf: asOf, SeenAt: now.Add(-10 * time.Minute)},
+			TimelineAnchors{Look: asOf}},
+		{"a visit going on", TimelineMark{SeenUpTo: upTo, SeenAsOf: asOf, SeenAt: now.Add(-10 * time.Minute), DividerAt: divider, DividerAsOf: dividerAsOf},
+			TimelineAnchors{Look: asOf, Visit: dividerAsOf, Line: divider}},
+		{"a new visit at exactly the gap", TimelineMark{SeenUpTo: upTo, SeenAsOf: asOf, SeenAt: now.Add(-VisitGap), DividerAt: divider, DividerAsOf: dividerAsOf},
+			TimelineAnchors{Visit: asOf, Line: upTo}},
+		{"a new visit days later", TimelineMark{SeenUpTo: upTo, SeenAsOf: asOf, SeenAt: now.Add(-48 * time.Hour), DividerAt: divider, DividerAsOf: dividerAsOf},
+			TimelineAnchors{Visit: asOf, Line: upTo}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.mark.Divider(now); !got.Equal(tt.want) {
-				t.Errorf("Divider = %v, want %v", got, tt.want)
+			if got := tt.mark.Anchors(now); got != tt.want {
+				t.Errorf("Anchors = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

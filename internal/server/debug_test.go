@@ -1154,7 +1154,7 @@ func TestArticleRowsDebugLine(t *testing.T) {
 		}},
 		{"timeline", func(s *Server) http.HandlerFunc { return s.homeHandler }, "/", func(t *testing.T) *Server {
 			return newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 					return timeline, nil
 				},
 			}})

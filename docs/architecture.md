@@ -19,7 +19,8 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
   Its row is also the cached result for that site key.
 - **Article:** one item of a feed.
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
-- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: the save time for *news*, its published date for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back).
+- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`newsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back), its published date.
+- **Arrived:** an article arrives at its `created_at` when it's news by position (`timeline_at` no more than `newsWindow` below `created_at`); timelines put what arrived since the reader last looked first (see "Timeline" in features.md).
 - **Subscription:** a user following a feed.
   Subscriptions decide what's in the user's timeline and which feeds are refreshed in the background.
 - **Read:** the user opened the article, or clicked through to the original, or did either for a copy of it.
@@ -151,7 +152,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /timelines/{id}`, `GET, POST /timelines/{id}/edit` | yes | A custom timeline, and editing it |
 | `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
-| `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen; 204 |
+| `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen and when its page was rendered; 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
@@ -207,7 +208,7 @@ emails   (the outbox: no foreign keys)
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
   Ingest flags copies (`articles.has_copies`, set by `saveArticles` and never cleared), and timelines check for an earlier copy only on flagged rows.
-- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to place the "You were here" divider; its positions compare with `articles.timeline_at`, with no foreign key to an article.
+- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to group the timeline and place the "You were here" divider; its positions compare with `articles.timeline_at` and its render times (`seen_as_of`, `divider_as_of`) with `articles.created_at`, with no foreign key to an article.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.

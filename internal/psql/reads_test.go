@@ -233,8 +233,9 @@ func TestReadRepository(t *testing.T) {
 // none.
 func timelineMarkRow(t *testing.T, db *sql.DB, userID string) (m rss.TimelineMark, dividerNull, ok bool) {
 	t.Helper()
-	var dividerAt sql.NullTime
-	err := db.QueryRow(`SELECT seen_up_to, seen_at, divider_at FROM timeline_marks WHERE user_id = $1`, userID).Scan(&m.SeenUpTo, &m.SeenAt, &dividerAt)
+	var dividerAt, dividerAsOf sql.NullTime
+	err := db.QueryRow(`SELECT seen_up_to, seen_as_of, seen_at, divider_at, divider_as_of FROM timeline_marks WHERE user_id = $1`, userID).
+		Scan(&m.SeenUpTo, &m.SeenAsOf, &m.SeenAt, &dividerAt, &dividerAsOf)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.TimelineMark{}, false, false
 	}
@@ -242,7 +243,8 @@ func timelineMarkRow(t *testing.T, db *sql.DB, userID string) (m rss.TimelineMar
 		t.Fatalf("select timeline_marks: %v", err)
 	}
 	m.DividerAt = dividerAt.Time
-	return m, !dividerAt.Valid, true
+	m.DividerAsOf = dividerAsOf.Time
+	return m, !dividerAt.Valid && !dividerAsOf.Valid, true
 }
 
 // Requires a migrated database; see psqltest.NewDB.
@@ -266,20 +268,22 @@ func TestMarkSeen(t *testing.T) {
 	ctx := t.Context()
 	user := newTestUser(t, db)
 	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
+	asOf := base.Add(time.Minute)
 
-	// The first report stores the position and when, with no divider yet.
-	if err := repo.MarkSeen(ctx, user, base); err != nil {
+	// The first report stores the position, the page's render time and when,
+	// with no divider yet.
+	if err := repo.MarkSeen(ctx, user, base, asOf); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
 	m, dividerNull, ok := timelineMarkRow(t, db, user)
-	if !ok || !m.SeenUpTo.Equal(base) || m.SeenAt.IsZero() || !dividerNull {
-		t.Fatalf("after the first report: %+v (divider NULL: %v, row: %v), want seen_up_to %v, seen_at set, divider_at NULL", m, dividerNull, ok, base)
+	if !ok || !m.SeenUpTo.Equal(base) || !m.SeenAsOf.Equal(asOf) || m.SeenAt.IsZero() || !dividerNull {
+		t.Fatalf("after the first report: %+v (divider NULL: %v, row: %v), want seen_up_to %v, seen_as_of %v, seen_at set, divider_at and divider_as_of NULL", m, dividerNull, ok, base, asOf)
 	}
 	got, err := repo.TimelineMark(ctx, user)
 	if err != nil {
 		t.Fatalf("TimelineMark: %v", err)
 	}
-	if !got.SeenUpTo.Equal(m.SeenUpTo) || !got.SeenAt.Equal(m.SeenAt) || !got.DividerAt.IsZero() {
+	if got != m {
 		t.Errorf("TimelineMark = %+v, want %+v", got, m)
 	}
 
@@ -288,28 +292,29 @@ func TestMarkSeen(t *testing.T) {
 		t.Fatalf("set divider_at: %v", err)
 	}
 	later := base.Add(10 * time.Minute)
-	if err := repo.MarkSeen(ctx, user, later); err != nil {
+	laterAsOf := asOf.Add(10 * time.Minute)
+	if err := repo.MarkSeen(ctx, user, later, laterAsOf); err != nil {
 		t.Fatalf("MarkSeen later: %v", err)
 	}
 	m, _, _ = timelineMarkRow(t, db, user)
-	if !m.SeenUpTo.Equal(later) || !m.DividerAt.Equal(base.Add(-time.Hour)) {
-		t.Errorf("after a later report: %+v, want seen_up_to %v and divider_at %v", m, later, base.Add(-time.Hour))
+	if !m.SeenUpTo.Equal(later) || !m.SeenAsOf.Equal(laterAsOf) || !m.DividerAt.Equal(base.Add(-time.Hour)) {
+		t.Errorf("after a later report: %+v, want seen_up_to %v, seen_as_of %v and divider_at %v", m, later, laterAsOf, base.Add(-time.Hour))
 	}
 
-	// An earlier position doesn't lower seen_up_to.
-	if err := repo.MarkSeen(ctx, user, base); err != nil {
+	// An earlier position or render time doesn't lower them: the latest is kept.
+	if err := repo.MarkSeen(ctx, user, base, asOf); err != nil {
 		t.Fatalf("MarkSeen earlier: %v", err)
 	}
-	if m, _, _ = timelineMarkRow(t, db, user); !m.SeenUpTo.Equal(later) {
-		t.Errorf("after an earlier report: seen_up_to = %v, want %v", m.SeenUpTo, later)
+	if m, _, _ = timelineMarkRow(t, db, user); !m.SeenUpTo.Equal(later) || !m.SeenAsOf.Equal(laterAsOf) {
+		t.Errorf("after an earlier report: seen_up_to = %v, seen_as_of = %v, want %v, %v", m.SeenUpTo, m.SeenAsOf, later, laterAsOf)
 	}
 
-	// A position in the future is stored as at most now.
-	if err := repo.MarkSeen(ctx, user, time.Now().Add(24*time.Hour)); err != nil {
+	// A position or render time in the future is stored as at most now.
+	if err := repo.MarkSeen(ctx, user, time.Now().Add(24*time.Hour), time.Now().Add(24*time.Hour)); err != nil {
 		t.Fatalf("MarkSeen future: %v", err)
 	}
-	if m, _, _ = timelineMarkRow(t, db, user); m.SeenUpTo.After(m.SeenAt) {
-		t.Errorf("after a future report: seen_up_to = %v, after seen_at %v", m.SeenUpTo, m.SeenAt)
+	if m, _, _ = timelineMarkRow(t, db, user); m.SeenUpTo.After(m.SeenAt) || m.SeenAsOf.After(m.SeenAt) {
+		t.Errorf("after a future report: seen_up_to = %v, seen_as_of = %v, after seen_at %v", m.SeenUpTo, m.SeenAsOf, m.SeenAt)
 	}
 }
 
@@ -321,22 +326,23 @@ func TestMarkSeenNewVisit(t *testing.T) {
 	user := newTestUser(t, db)
 	old := time.Now().Add(-2 * time.Hour).Truncate(time.Microsecond)
 
-	if err := repo.MarkSeen(ctx, user, old); err != nil {
+	oldAsOf := old.Add(time.Minute)
+	if err := repo.MarkSeen(ctx, user, old, oldAsOf); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
 	if _, err := db.Exec(`UPDATE timeline_marks SET seen_at = now() - interval '1 hour' WHERE user_id = $1`, user); err != nil {
 		t.Fatalf("set seen_at: %v", err)
 	}
-	if err := repo.MarkSeen(ctx, user, old.Add(time.Hour)); err != nil {
+	if err := repo.MarkSeen(ctx, user, old.Add(time.Hour), oldAsOf.Add(time.Hour)); err != nil {
 		t.Fatalf("MarkSeen again: %v", err)
 	}
 
 	m, dividerNull, _ := timelineMarkRow(t, db, user)
-	if dividerNull || !m.DividerAt.Equal(old) {
-		t.Errorf("divider_at = %v (NULL: %v), want the old seen_up_to %v", m.DividerAt, dividerNull, old)
+	if dividerNull || !m.DividerAt.Equal(old) || !m.DividerAsOf.Equal(oldAsOf) {
+		t.Errorf("divider_at = %v, divider_as_of = %v (NULL: %v), want the old seen_up_to %v and seen_as_of %v", m.DividerAt, m.DividerAsOf, dividerNull, old, oldAsOf)
 	}
-	if !m.SeenUpTo.Equal(old.Add(time.Hour)) {
-		t.Errorf("seen_up_to = %v, want %v", m.SeenUpTo, old.Add(time.Hour))
+	if !m.SeenUpTo.Equal(old.Add(time.Hour)) || !m.SeenAsOf.Equal(oldAsOf.Add(time.Hour)) {
+		t.Errorf("seen_up_to = %v, seen_as_of = %v, want %v, %v", m.SeenUpTo, m.SeenAsOf, old.Add(time.Hour), oldAsOf.Add(time.Hour))
 	}
 }
 
@@ -344,7 +350,7 @@ func TestMarkSeenNewVisit(t *testing.T) {
 func TestTimelineMarkDeletedWithUser(t *testing.T) {
 	db := psqltest.NewDB(t)
 	user := newTestUser(t, db)
-	if err := NewReadRepository(db).MarkSeen(t.Context(), user, time.Now()); err != nil {
+	if err := NewReadRepository(db).MarkSeen(t.Context(), user, time.Now(), time.Now()); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
 

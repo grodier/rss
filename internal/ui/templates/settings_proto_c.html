@@ -1,0 +1,100 @@
+{{template "ps-top" .}}
+      <header class="page-head ps-tabs-head">
+        <h1>Settings</h1>
+        <nav class="timeline-tabs ps-tabs" aria-label="Settings">
+          <ul role="list">
+            <li><a href="/settings?proto=c"{{if eq .Tab ""}} aria-current="page"{{end}}>Account</a></li>
+            <li><a href="/settings?proto=c&amp;tab=reading"{{if eq .Tab "reading"}} aria-current="page"{{end}}>Reading</a></li>
+            <li><a href="/settings?proto=c&amp;tab=data"{{if eq .Tab "data"}} aria-current="page"{{end}}>Data</a></li>
+            <li><a href="/settings?proto=c&amp;tab=help"{{if eq .Tab "help"}} aria-current="page"{{end}}>Help</a></li>
+          </ul>
+        </nav>
+      </header>
+      {{template "ps-notices" .}}
+      {{if eq .Tab ""}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Profile</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-name" .}}{{template "ps-email" .}}</ul>
+      </section>
+      <section class="ps-group">
+        <div class="list-head"><h2>Security</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-password" .}}{{template "ps-devices" .}}</ul>
+      </section>
+      {{template "ps-logout" .}}
+      {{else if eq .Tab "reading"}}
+      {{if .Future}}
+      <p class="ps-illustration">Illustration of later reading preferences, not part of #446.</p>
+      <form class="ps-reading" action="#" method="post">
+        <fieldset class="ps-field">
+          <legend>Theme</legend>
+          <div class="ps-segments">
+            <label><input type="radio" name="theme" checked> System</label>
+            <label><input type="radio" name="theme"> Light</label>
+            <label><input type="radio" name="theme"> Dark</label>
+          </div>
+        </fieldset>
+        <fieldset class="ps-field">
+          <legend>Typeface</legend>
+          <div class="ps-segments">
+            <label><input type="radio" name="face" value="serif" checked> <span class="ps-serif">Serif</span></label>
+            <label><input type="radio" name="face" value="sans"> Sans</label>
+          </div>
+        </fieldset>
+        <fieldset class="ps-field">
+          <legend>Text size</legend>
+          <div class="ps-segments">
+            <label><input type="radio" name="size" value="s"> <span class="ps-a ps-a-s">A</span><span class="visually-hidden">Small</span></label>
+            <label><input type="radio" name="size" value="m" checked> <span class="ps-a ps-a-m">A</span><span class="visually-hidden">Medium</span></label>
+            <label><input type="radio" name="size" value="l"> <span class="ps-a ps-a-l">A</span><span class="visually-hidden">Large</span></label>
+            <label><input type="radio" name="size" value="xl"> <span class="ps-a ps-a-xl">A</span><span class="visually-hidden">Extra large</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="ps-field">
+          <legend>Line width</legend>
+          <div class="ps-segments">
+            <label><input type="radio" name="width" value="n"> Narrow</label>
+            <label><input type="radio" name="width" value="m" checked> Medium</label>
+            <label><input type="radio" name="width" value="w"> Wide</label>
+          </div>
+        </fieldset>
+        <div class="ps-preview" aria-hidden="true">
+          <p class="ps-preview-title">A preview of your articles</p>
+          <p>The paper arrives before anyone is up: a quiet stack of what the people you follow wrote yesterday, in the order they wrote it. Read what you like, skip the rest.</p>
+        </div>
+        <div class="form-actions"><button class="btn-primary" type="submit">Save</button></div>
+      </form>
+      <section class="ps-group">
+        <div class="list-head"><h2>Timeline</h2></div>
+        <ul class="settings-list" role="list">
+          <li><a class="settings-row" href="#"><span class="settings-label">Start on</span><span class="settings-value">Home</span>{{template "icon-chevron"}}</a></li>
+          <li><a class="settings-row" href="#"><span class="settings-label">Keyboard shortcuts</span><span class="settings-value">On</span>{{template "icon-chevron"}}</a></li>
+        </ul>
+      </section>
+      {{else}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Appearance</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-theme" .}}</ul>
+      </section>
+      {{end}}
+      {{else if eq .Tab "data"}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Subscriptions</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-import-export" .}}</ul>
+      </section>
+      <div class="danger-zone ps-danger">
+        <p class="hint">Deletes your account, subscriptions, tags and timelines. Export your subscriptions first if you might want them.</p>
+        <a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a>
+      </div>
+      {{else if eq .Tab "help"}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Help</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-help" .}}</ul>
+      </section>
+      {{if .DebugAllowed}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Debug</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-debug" .}}</ul>
+      </section>
+      {{end}}
+      {{end}}
+{{template "ps-bottom" .}}

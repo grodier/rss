@@ -1,0 +1,24 @@
+{{template "ps-top" .}}
+      <header class="page-head"><h1>Settings</h1></header>
+      {{template "ps-notices" .}}
+      <section class="ps-group">
+        <div class="list-head"><h2>Account</h2></div>
+        <ul class="settings-list" role="list">
+          {{template "ps-name" .}}{{template "ps-email" .}}{{template "ps-password" .}}{{template "ps-devices" .}}
+        </ul>
+      </section>
+      <section class="ps-group">
+        <div class="list-head"><h2>Reading</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-theme" .}}</ul>
+      </section>
+      <section class="ps-group">
+        <div class="list-head"><h2>Your data</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-import-export" .}}</ul>
+      </section>
+      <section class="ps-group">
+        <div class="list-head"><h2>Help</h2></div>
+        <ul class="settings-list" role="list">{{template "ps-help" .}}{{if .DebugAllowed}}{{template "ps-debug" .}}{{end}}</ul>
+      </section>
+      {{template "ps-logout" .}}
+      {{template "ps-delete" .}}
+{{template "ps-bottom" .}}

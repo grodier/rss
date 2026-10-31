@@ -24,7 +24,12 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail  string
 		DebugAllowed  bool
 		DebugOn       bool
+		Proto, Tab    string
+		Future        bool
 	}{
+		Proto:         r.URL.Query().Get("proto"),
+		Tab:           r.URL.Query().Get("tab"),
+		Future:        r.URL.Query().Get("future") != "",
 		Nav:           nav,
 		User:          nav.User,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
@@ -34,7 +39,11 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		DebugOn:       nav.Debug,
 	}
 
-	if err := s.renderHTML(w, http.StatusOK, "settings.html", data); err != nil {
+	page := "settings.html"
+	if data.Proto != "" {
+		page = "settings_proto_" + data.Proto + ".html"
+	}
+	if err := s.renderHTML(w, http.StatusOK, page, data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }

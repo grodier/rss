@@ -1,0 +1,28 @@
+{{template "ps-top" .}}
+      {{if eq .Tab ""}}
+      <header class="page-head"><h1>Settings</h1></header>
+      {{template "ps-notices" .}}
+      <ul class="settings-list ps-index" role="list">
+        <li><a class="settings-row" href="/settings?proto=b&amp;tab=account">
+          <span class="ps-icon">{{template "icon-edit"}}</span>
+          <span class="settings-stack"><span class="settings-label">Account</span><span class="hint">{{.User.Email}}{{if .User.EmailConfirmedAt.IsZero}} · not confirmed{{end}}</span></span>
+          {{template "icon-chevron"}}</a></li>
+        <li><a class="settings-row" href="/settings?proto=b&amp;tab=reading">
+          <span class="ps-icon">{{template "icon-bookmark"}}</span>
+          <span class="settings-stack"><span class="settings-label">Reading</span><span class="hint">Theme: {{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span></span>
+          {{template "icon-chevron"}}</a></li>
+        <li><a class="settings-row" href="/settings?proto=b&amp;tab=data">
+          <span class="ps-icon">{{template "icon-download"}}</span>
+          <span class="settings-stack"><span class="settings-label">Your data</span><span class="hint">Import, export, delete account</span></span>
+          {{template "icon-chevron"}}</a></li>
+        <li><a class="settings-row" href="/settings?proto=b&amp;tab=help">
+          <span class="ps-icon">{{template "icon-link"}}</span>
+          <span class="settings-stack"><span class="settings-label">Help</span><span class="hint">Support, privacy and terms</span></span>
+          {{template "icon-chevron"}}</a></li>
+      </ul>
+      {{template "ps-logout" .}}
+      {{else if eq .Tab "account"}}
+      <header class="page-head"><h1>Account</h1></header>
+      <ul class="settings-list" role="list">{{template "ps-name" .}}{{template "ps-email" .}}{{template "ps-password" .}}{{template "ps-devices" .}}</ul>
+      {{end}}
+{{template "ps-bottom" .}}

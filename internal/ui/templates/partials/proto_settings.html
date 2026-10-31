@@ -1,0 +1,128 @@
+{{define "ps-top"}}<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - settings</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+    <main class="column">{{end}}
+
+{{define "ps-bottom"}}
+    </main>
+  </div>
+</body>
+</html>{{end}}
+
+{{define "ps-notices"}}
+      {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
+      {{with .Flash}}<div class="flash">{{.}}</div>{{end}}
+{{end}}
+
+{{define "ps-name"}}
+          <li>
+            <a class="settings-row" href="/settings/name">
+              <span class="settings-label">Name</span>
+              <span class="settings-value">{{.User.Name}}</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>{{end}}
+
+{{define "ps-email"}}
+          <li>
+            <a class="settings-row" href="/settings/email">
+              <span class="settings-stack">
+                <span class="settings-label">Email</span>
+                <span class="ps-sub"><span class="ps-email">{{.User.Email}}</span>{{if .User.EmailConfirmedAt.IsZero}} <span class="chip">Not confirmed</span>{{end}}</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>{{end}}
+
+{{define "ps-password"}}
+          <li>
+            <a class="settings-row" href="/settings/password">
+              <span class="settings-label">Password</span>
+              <span class="settings-value"></span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>{{end}}
+
+{{define "ps-devices"}}
+          <li class="ps-action">
+            <span class="settings-stack">
+              <span class="settings-label">Other devices</span>
+              <span class="hint">Logged in somewhere you shouldn't be?</span>
+            </span>
+            <form action="/settings/log-out-others" method="post">
+              <button class="btn btn-sm" type="submit">Log them out</button>
+            </form>
+          </li>{{end}}
+
+{{define "ps-theme"}}
+          <li>
+            <a class="settings-row" href="/settings/theme">
+              <span class="settings-label">Theme</span>
+              <span class="settings-value">{{if eq .User.Theme "light"}}Light{{else if eq .User.Theme "dark"}}Dark{{else}}System{{end}}</span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>{{end}}
+
+{{define "ps-import-export"}}
+          <li>
+            <a class="settings-row" href="/settings/import">
+              <span class="settings-stack">
+                <span class="settings-label">Import subscriptions</span>
+                <span class="hint">Bring your feeds from another reader with an OPML file.</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          <li>
+            <a class="settings-row" href="/settings/export">
+              <span class="settings-stack">
+                <span class="settings-label">Export subscriptions</span>
+                <span class="hint">An OPML file you can import into another reader.</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>{{end}}
+
+{{define "ps-help"}}
+          {{with .SupportEmail}}
+          <li>
+            <a class="settings-row" href="mailto:{{.}}">
+              <span class="settings-stack">
+                <span class="settings-label">Contact support</span>
+                <span class="hint">{{.}}</span>
+              </span>
+              {{template "icon-chevron"}}
+            </a>
+          </li>
+          {{end}}
+          <li><a class="settings-row" href="/privacy"><span class="settings-label">Privacy policy</span>{{template "icon-chevron"}}</a></li>
+          <li><a class="settings-row" href="/terms"><span class="settings-label">Terms of use</span>{{template "icon-chevron"}}</a></li>{{end}}
+
+{{define "ps-debug"}}
+          <li class="ps-action" id="debug">
+            <span class="settings-stack">
+              <span class="settings-label">Debug mode</span>
+              <span class="hint">Shows the data behind sites, feeds and articles, on this device only.</span>
+            </span>
+            <form action="/settings/debug" method="post">
+              <input type="hidden" name="on" value="{{if .DebugOn}}0{{else}}1{{end}}">
+              <button class="btn btn-sm" type="submit">{{if .DebugOn}}Turn off{{else}}Turn on{{end}}</button>
+            </form>
+          </li>{{end}}
+
+{{define "ps-logout"}}
+      <form class="settings-logout" action="/logout" method="post">
+        <button type="submit">{{template "icon-logout"}}Log out</button>
+      </form>{{end}}
+
+{{define "ps-delete"}}
+      <div class="danger-zone"><a class="btn btn-sm btn-danger-quiet" href="/settings/delete">Delete account</a></div>{{end}}

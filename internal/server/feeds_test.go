@@ -621,7 +621,7 @@ func TestFeedsHandler(t *testing.T) {
 		}
 	}
 
-	t.Run("groups feeds under their site", func(t *testing.T) {
+	t.Run("a site with two subscriptions gets a header above both", func(t *testing.T) {
 		rr, body := getFeeds(t, listing(
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Url: "https://a.example.com/two.xml"}},
@@ -630,19 +630,46 @@ func TestFeedsHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
-		assertContains(t, body,
-			"<h1>My feeds</h1>",
-			`<a href="/sites/`+siteA+`">Site A</a>`,
-			`<a href="/sites/`+siteB+`">b.example.com</a>`,
-			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">One</a>`,
-			`<a class="feed-row-title" href="/feeds/`+otherID+`">https://a.example.com/two.xml</a>`,
-		)
-		if n := strings.Count(body, "<h2>"); n != 2 {
-			t.Errorf("got %d sites, want 2: %s", n, body)
+		header := `<h2><a href="/sites/` + siteA + `">Site A</a></h2>`
+		one := `<a class="feed-row-title" href="/feeds/` + testFeedID + `">One</a>`
+		two := `<a class="feed-row-title" href="/feeds/` + otherID + `">https://a.example.com/two.xml</a>`
+		assertContains(t, body, "<h1>My feeds</h1>", header, one, two)
+		if n := strings.Count(body, "<h2>"); n != 1 {
+			t.Errorf("got %d site headers, want 1 (site B has one subscription): %s", n, body)
 		}
+		if h, o, w := strings.Index(body, header), strings.Index(body, one), strings.Index(body, two); h > o || h > w {
+			t.Errorf("the site header should come before both its feeds: %s", body)
+		}
+		// Grouped rows don't repeat their site.
+		assertNotContains(t, body, `From <a href="/sites/`+siteA+`">`)
 		if strings.Index(body, "One") > strings.Index(body, "Three") {
 			t.Errorf("site A's feeds should come before site B's: %s", body)
 		}
+	})
+
+	t.Run("a site with one subscription gets no header", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
+		assertNotContains(t, body, "<h2>", `class="list-head"`)
+	})
+
+	t.Run("a single subscription names its site when the names differ", func(t *testing.T) {
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}},
+			rss.Subscription{Site: b, Title: "My B", Feed: rss.Feed{ID: otherID, Title: "b.example.com"}},
+		))
+		assertContains(t, body,
+			`<p class="feed-site">From <a href="/sites/`+siteA+`">Site A</a></p>`,
+			// A site without a title goes by its host.
+			`<p class="feed-site">From <a href="/sites/`+siteB+`">b.example.com</a></p>`,
+		)
+	})
+
+	t.Run("a single subscription named like its site doesn't repeat it", func(t *testing.T) {
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "Site A"}},
+			rss.Subscription{Site: b, Feed: rss.Feed{ID: otherID, Title: "b.example.com"}},
+		))
+		assertNotContains(t, body, `class="feed-site"`)
 	})
 
 	t.Run("latest article", func(t *testing.T) {
@@ -684,20 +711,26 @@ func TestFeedsHandler(t *testing.T) {
 		})
 	}
 
-	t.Run("unsubscribe form", func(t *testing.T) {
-		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
-		assertContains(t, body,
-			`action="/feeds/`+testFeedID+`/unsubscribe"`,
-			`name="return_to" value="/feeds"`,
-		)
+	t.Run("each row links to its feed and edit page, and has no Unsubscribe", func(t *testing.T) {
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}},
+			rss.Subscription{Site: b, Feed: rss.Feed{ID: otherID, Title: "Two"}},
+		))
+		for _, id := range []string{testFeedID, otherID} {
+			assertContains(t, body,
+				`<a class="feed-row-title" href="/feeds/`+id+`">`,
+				`href="/feeds/`+id+`/edit?return_to=/feeds"`,
+			)
+		}
+		// Unsubscribe is on Edit subscription and the feed page.
+		assertNotContains(t, body, "/unsubscribe", "Unsubscribe")
 	})
 
 	t.Run("renamed subscription shows its name and an Edit link", func(t *testing.T) {
 		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Title: "My Name", Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
 		assertContains(t, body,
 			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">My Name</a>`,
-			`<a class="btn btn-sm" href="/feeds/`+testFeedID+`/edit?return_to=/feeds" aria-label="Edit My Name">Edit</a>`,
-			`aria-label="Unsubscribe from My Name"`,
+			`<a class="row-icon-btn" href="/feeds/`+testFeedID+`/edit?return_to=/feeds" aria-label="Edit My Name" title="Edit">`,
 		)
 		assertNotContains(t, body, ">One<")
 	})
@@ -1743,6 +1776,18 @@ func TestSubscriptionEdit(t *testing.T) {
 				t.Errorf("body does not contain %q: %s", want, body)
 			}
 		}
+	})
+
+	t.Run("Unsubscribe returns to My feeds", func(t *testing.T) {
+		s := editSubscriptionServer(t, sub, &renames)
+		// Even when the page itself returns to the feed page, which would
+		// only offer to subscribe again.
+		rr, _ := serveSubscriptionEdit(t, s, s.subscriptionEditHandler, testFeedID, "?return_to=/feeds/"+testFeedID, nil)
+		assertBodyContains(t, rr.Body.String(),
+			`<form class="danger-zone" action="/feeds/`+testFeedID+`/unsubscribe" method="post">
+        <input type="hidden" name="return_to" value="/feeds">`,
+			`aria-label="Unsubscribe from Pro Football Talk">Unsubscribe</button>`,
+		)
 	})
 
 	t.Run("checkboxes for the user's tags, the subscription's ticked", func(t *testing.T) {

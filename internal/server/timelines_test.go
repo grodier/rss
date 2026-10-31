@@ -109,7 +109,7 @@ func TestTimelinesHandler(t *testing.T) {
 		body := rr.Body.String()
 		assertBodyContains(t, body,
 			"<h1>Timelines</h1>",
-			`<a class="btn btn-sm btn-primary" href="/timelines/new">New timeline</a>`,
+			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
 			`<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>`,
 			"<p>Models &amp; more</p>",
 			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
@@ -998,7 +998,7 @@ func TestTimelineMoveHandler(t *testing.T) {
 func TestTagPageMakeTimelineLink(t *testing.T) {
 	s := newTestServerWith(t, Services{TagService: userTag(), SubscriptionService: &fakeSubscriptionStore{}})
 	rr, _ := serveTag(t, s, s.tagHandler, testTagID, nil)
-	assertBodyContains(t, rr.Body.String(), `<a href="/timelines/new?tag=`+testTagID+`">Make a timeline</a>`)
+	assertBodyContains(t, rr.Body.String(), `<a class="btn btn-sm" href="/timelines/new?tag=`+testTagID+`">Make a timeline</a>`)
 }
 
 const testShareToken = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456"

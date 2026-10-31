@@ -145,6 +145,13 @@ Planned in #126, with issues #128–#133.
 Planned in #139 (issues #135–#138).
 
 - **Subscribing and unsubscribing are one click with no confirmation**, and redirect back to the page they were posted from.
+- **My feeds' rows are links with one control** (#424, the owner's pick of three options at the design checkpoint): the whole row opens the feed page, Edit is a pencil, and Unsubscribe is on Edit subscription and the feed page rather than on the row.
+  A list of 50 subscriptions had 100 pills, and on phones they squeezed each row's text to a third of the width; unsubscribing from the list now takes two taps, but it's one click on the page where its consequence (losing the name and tags) is set.
+  An overflow menu per row (hides both actions, and `<details>` menus don't close without JavaScript) and the pills under each row's text (still two per row) were the other options.
+  Unsubscribe on Edit subscription always returns to My feeds, since the feed page would only offer to subscribe again.
+- **My feeds has a site header only where it groups something** (#424): sites with two or more subscriptions; a single subscription says "From <site>" under its name when the names differ, rather than in its meta line, which would wrap to three lines on phones.
+  Most headers had repeated the row under them; no headers at all would leave a site's feeds unmarked as a group.
+  A group ends in a double rule, so the rows after it don't read as part of it.
 - **The global "latest feeds" list was removed, not moved:** `/feeds` is "My feeds".
 - **Subscribed state comes from a separate `SubscribedFeedIDs` query** rather than a user parameter on every feed query.
 - **Refresh requests from page views are a `feeds` column** (`refresh_requested_at`) worked by the existing refresh workers, never a goroutine or an in-memory queue, so they survive restarts and work across instances.
@@ -534,7 +541,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Filled fields (the search boxes) have no border and keep it that way.
 - **Actions that lose something you can't get back are outlined pills with red text** (`.btn-danger-quiet`, #422): Unsubscribe (it drops the subscription's name and tags), Delete tag, Delete timeline and Delete account, on every page that has them.
   Red (`--danger`) marks only these, so it keeps its meaning; Stop sharing and New link stay neutral, since no data is lost and Share gives links again.
-  They keep the pill so they read as buttons at once (borderless red text was tried and didn't), and stay as calm as Edit beside them where repeated, like My feeds; with one-click actions and no undo, the red is the only warning before the click.
+  They keep the pill so they read as buttons at once (borderless red text was tried and didn't), and stay as calm as Edit beside them, as on the feed page; with one-click actions and no undo, the red is the only warning before the click.
   Only the final step of a confirmation, "Delete my account", is a filled red button (`.btn-danger`).
   A page's delete action sits at its foot, below a divider (`.danger-zone`).
 - **Page heads end in the logo's nameplate rule** (#414), a thick ink line over a thin one.
@@ -542,6 +549,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **No back links in page heads** (#423, closed): the browser's back button and the nav already cover it, and this is a web app, not a native one.
   Back links on every detail page were built and shown at the design checkpoint, and dropped; the article, feed and site pages keep starting with their own heading, without a head.
   Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
+- **Page-head actions are small outlined pills** (`btn btn-sm`, #424), on every page that has them: they read as controls opposite a big heading, where text links were easy to miss.
+  None is filled, since a filled pill is a form's primary action; two actions are grouped (`.head-actions`) so they stay on one line on phones.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
   It's subset to Latin and weights 600–800 (77 KB, cached for a year).
 - **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.

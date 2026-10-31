@@ -145,7 +145,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /feeds` | yes | My feeds |
 | `GET /feeds/{id}` | yes | Feed page; queues a refresh if the feed is stale |
 | `POST /feeds/{id}/refresh`, `/subscribe`, `/unsubscribe` | yes | Refresh now; subscribe; unsubscribe |
-| `GET, POST /feeds/{id}/edit` | yes | Edit subscription: name and tags |
+| `GET, POST /feeds/{id}/edit` | yes | Edit subscription: name and tags (and Unsubscribe) |
 | `GET, POST /tags` | yes | Tags, and making one |
 | `GET /tags/{id}`; `POST /tags/{id}/feeds`, `/rename`, `/delete` | yes | A tag's page, and changing it |
 | `GET, POST /timelines`, `GET /timelines/new` | yes | Timelines, and making one (`?preset=`, `?tag=`) |

@@ -24,16 +24,25 @@
       {{end}}
 
       {{range .Sites}}
-      <section>
+      {{$site := or .Site.Title .Site.Host}}
+      {{$siteID := .Site.ID}}
+      {{$grouped := gt (len .Subs) 1}}
+      <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}">
+        {{if $grouped}}
         <div class="list-head">
-          <h2><a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a></h2>
+          <h2><a href="/sites/{{.Site.ID}}">{{$site}}</a></h2>
         </div>
+        {{end}}
         <ul role="list">
           {{range .Subs}}
-          <li class="feed-row">
-            {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
+          {{$name := or .Title .Feed.Title .Feed.Url}}
+          <li class="feed-row my-feed">
+            {{template "avatar" (avatar .Feed.SiteID $name (index $.Icons .Feed.SiteID))}}
             <div>
-              <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Title .Feed.Title .Feed.Url}}</a>
+              <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{$name}}</a>
+              {{if and (not $grouped) (ne $site $name)}}
+              <p class="feed-site">From <a href="/sites/{{$siteID}}">{{$site}}</a></p>
+              {{end}}
               {{with .Tags}}
               <p class="feed-tags">{{range .}}<a href="/tags/{{.ID}}">{{.Name}}</a>{{end}}</p>
               {{end}}
@@ -48,13 +57,7 @@
               <p class="fetch-error">This feed is failing to update.</p>
               {{end}}
             </div>
-            <div class="feed-row-actions">
-              <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{or .Title .Feed.Title .Feed.Url}}">Edit</a>
-              <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-                <input type="hidden" name="return_to" value="/feeds">
-                <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Title .Feed.Title .Feed.Url}}">Unsubscribe</button>
-              </form>
-            </div>
+            <a class="row-icon-btn" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
           </li>
           {{end}}
         </ul>

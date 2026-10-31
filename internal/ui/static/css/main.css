@@ -495,6 +495,13 @@
     font-size: 0.875rem;
   }
 
+  /* A head with two actions keeps them on one line. */
+  .head-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+  }
   @media (max-width: 69.99rem) {
     .shell {
       grid-template-columns: 1fr auto minmax(0, var(--column)) 1fr;
@@ -1681,11 +1688,74 @@
     color: var(--danger);
   }
 
-  .feed-row form,
-  .feed-row-actions {
+  .feed-row form {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  /* My feeds' rows: the whole row opens the feed, through its title link's
+     ::after; the row's other links sit above it. */
+  .my-feed {
+    position: relative;
+  }
+
+  .my-feed:hover {
+    background: var(--surface);
+  }
+
+  .my-feed .feed-row-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .my-feed .feed-row-title:hover {
+    text-decoration: none;
+  }
+
+  .my-feed :is(.feed-tags a, .feed-site a, .row-icon-btn) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .feed-row .feed-site a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .feed-row .feed-site a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  /* Only sites with two or more subscriptions get a header, so a group
+     ends in the nameplate's thin rule doubled: the single-feed rows after
+     it don't read as part of it. */
+  .my-feeds-group + .my-feeds-site:not(.my-feeds-group) {
+    border-block-start: 3px double var(--border-strong);
+  }
+
+  /* An icon-only control at the end of a row, like My feeds' Edit. */
+  .row-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    border-radius: 999px;
+    color: var(--text-3);
+  }
+
+  .row-icon-btn:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .row-icon-btn .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    stroke-width: 2;
   }
 
   /* A tag's page: a checklist of the user's subscriptions. */

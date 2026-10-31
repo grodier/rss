@@ -138,7 +138,7 @@ What `Parse` reads is also listed by hand in `usedChannelFields` and `usedItemFi
 Saving (`saveArticles`) locks the feed row, sets each new article's `timeline_at` (see "Reading"), and upserts by `(feed_id, external_id)`: unchanged articles aren't written, and an existing `published_at` is kept because some feeds bump it on every edit.
 A newly inserted article missing an image, title or excerpt gets an enrichment job in the same transaction (see "Article enrichment").
 
-`feeds.posts_per_week` is the feed's articles published in the last 30 days (undated ones count from when they were saved) × 7 ÷ 30 (`postsPerWeek`), recomputed at the end of every `saveArticles` and by `RecordNotModified`, so the window keeps sliding for feeds that stopped changing.
+`feeds.posts_per_week` is the feed's articles published in the last 30 days (undated ones count from when they were saved) × 7 ÷ the days its articles cover, from its oldest article to now but at least 7 and at most 30 (`postsPerWeek`), recomputed at the end of every `saveArticles` and by `RecordNotModified`, so the window keeps sliding for feeds that stopped changing.
 
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a pending refresh request, requested ones first.
 A request is made when someone views a stale feed's page (`feedHandler` calls `RequestRefresh`).

@@ -445,7 +445,7 @@ Background refresh:
   *Signal:* `SaveFetch` time dominates the `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario above).
   *Fix:* a single multi-row upsert (`unnest` of arrays) per fetch.
 - [ ] **Posting rate recomputed on every save** (#350).
-  `saveArticles` and `RecordNotModified` count each feed's articles of the last 30 days on every fetch, 304s included, served by `articles_feed_sort_idx`.
+  `saveArticles` and `RecordNotModified` count each feed's articles of the last 30 days and look up its oldest article on every fetch, 304s included, both served by `articles_feed_sort_idx`.
   Busy feeds fetched every 15 minutes (#456) recompute it four times as often.
   *Signal:* the count shows up in `pg_stat_statements`, or `SaveFetch` time grows for busy feeds.
   *Fix:* recompute only when articles were inserted, plus at most once a day.

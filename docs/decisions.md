@@ -396,8 +396,10 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   Each is an ordinary timeline you can rename, filter, share or delete.
   (#356, #358, #359)
 - **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
-  The average is over the time the feed's articles cover, up to 30 days and never less than a minimum span (#443, which settles the minimum): a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
-  (#350, #359)
+  The average is over the time the feed's articles cover, up to 30 days and never less than 7: a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
+  The 7-day minimum keeps a weekly feed whose file holds only its latest post from counting as 7 a week (as a 1-day minimum would); the cost is that a busy feed whose file holds few items is understated in its first week.
+  Accepted: an undated feed's articles all date from their first save, so it gets the 7-day minimum until it has history.
+  (#350, #359, #443)
 - **Keyword filters match whole words and phrases, ignoring case, in the title, page title and excerpt**, never the full content (lists don't load it, and it's unbounded).
   A term matches where the characters just before and after it aren't letters or digits, so terms like `C++`, `C#`, `.NET` and `#hashtag` work (symbols are matched literally), and `AI` still matches "#AI" but not "said".
   Accepted: `C` alone also matches "C++"; counting symbols as letters would stop `AI` matching "#AI".

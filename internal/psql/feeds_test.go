@@ -572,6 +572,62 @@ func TestSaveFetchPostsPerWeek(t *testing.T) {
 	})
 }
 
+// A feed with less than 30 days of articles is measured over the time they
+// cover, at least 7 days.
+// Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchPostsPerWeekShortHistory(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+
+	checkRate := func(t *testing.T, feedID string, want float64) {
+		t.Helper()
+		got, err := repo.GetByID(ctx, feedID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if math.Abs(got.PostsPerWeek-want) > 1e-4 {
+			t.Errorf("got PostsPerWeek %v; want %v", got.PostsPerWeek, want)
+		}
+	}
+	// articlesAgo returns an article published ago before now for each of ago.
+	articlesAgo := func(ago ...time.Duration) []rss.Article {
+		now := time.Now()
+		var articles []rss.Article
+		for i, d := range ago {
+			articles = append(articles, rss.Article{ExternalID: fmt.Sprintf("a-%d", i), Title: "Article", PublishedAt: now.Add(-d)})
+		}
+		return articles
+	}
+
+	tests := []struct {
+		name     string
+		articles []rss.Article
+		want     float64
+	}{
+		{"five today", articlesAgo(time.Hour, 3*time.Hour, 6*time.Hour, 9*time.Hour, 12*time.Hour), 5},
+		{"two weeks of history", articlesAgo(24*time.Hour, 5*24*time.Hour, 10*24*time.Hour, 14*24*time.Hour), 4 * 7.0 / 14},
+		{"one recent post", articlesAgo(time.Hour), 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feed := newTestFeed(t, db)
+			if _, err := repo.SaveFetch(ctx, feed, tt.articles); err != nil {
+				t.Fatalf("SaveFetch: %v", err)
+			}
+			checkRate(t, feed.ID, tt.want)
+		})
+	}
+
+	t.Run("no articles", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		if err := repo.RecordNotModified(ctx, feed.ID, time.Now().Add(time.Hour)); err != nil {
+			t.Fatalf("RecordNotModified: %v", err)
+		}
+		checkRate(t, feed.ID, 0)
+	})
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestFeedRepositoryMarkGone(t *testing.T) {
 	db := psqltest.NewDB(t)

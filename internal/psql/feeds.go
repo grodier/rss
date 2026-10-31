@@ -45,8 +45,13 @@ func qualifiedFeedColumnsTitled(title string) string {
 }
 
 // postsPerWeek is feed $1's articles published in the last 30 days, per
-// week; served by articles_feed_sort_idx.
-const postsPerWeek = `(SELECT count(*) * 7.0 / 30 FROM articles
+// week, over the time its articles cover: from its oldest article to now,
+// at least 7 and at most 30 days, so a feed we've just found isn't counted
+// as quiet. A feed with no articles gets 0 (LEAST ignores the NULL oldest
+// date). Both parts are served by articles_feed_sort_idx.
+const postsPerWeek = `(SELECT count(*) * 7.0 / GREATEST(7, LEAST(30,
+		EXTRACT(EPOCH FROM now() - (SELECT min(COALESCE(published_at, created_at)) FROM articles WHERE feed_id = $1)) / 86400))
+	FROM articles
 	WHERE feed_id = $1 AND COALESCE(published_at, created_at) > now() - interval '30 days')`
 
 // scanFeed scans a row selected with feedColumns.

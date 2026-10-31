@@ -194,7 +194,7 @@ func TestListSaved(t *testing.T) {
 	for i := range items {
 		items[i] = rss.Article{ExternalID: string(rune('a' + i)), Title: "Article", Summary: "<p>summary</p>", Content: "<p>content</p>"}
 	}
-	if _, err := NewFeedRepository(db).SaveFetch(ctx, feed, items); err != nil {
+	if _, err := NewFeedRepository(db).SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	articles, err := NewArticleRepository(db).ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, len(items))

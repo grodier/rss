@@ -72,7 +72,7 @@ func TestSaveFetch(t *testing.T) {
 	}
 
 	t.Run("first save inserts", func(t *testing.T) {
-		res, err := feeds.SaveFetch(ctx, feed, first)
+		res, err := feeds.SaveFetch(ctx, feed, first, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -120,7 +120,7 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("unchanged save updates nothing", func(t *testing.T) {
 		before := articleUpdatedAt(t, db, feed.ID, "a")
 
-		res, err := feeds.SaveFetch(ctx, feed, first)
+		res, err := feeds.SaveFetch(ctx, feed, first, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -135,7 +135,7 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("changed and new", func(t *testing.T) {
 		changed := first[1]
 		changed.Title = "B edited"
-		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{first[0], changed, {ExternalID: "d", Title: "D"}})
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{first[0], changed, {ExternalID: "d", Title: "D"}}, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -153,7 +153,7 @@ func TestSaveFetch(t *testing.T) {
 	})
 
 	t.Run("changed image", func(t *testing.T) {
-		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg"}})
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg"}}, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -171,7 +171,7 @@ func TestSaveFetch(t *testing.T) {
 	})
 
 	t.Run("changed media type", func(t *testing.T) {
-		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg", MediaType: "video/mp4"}})
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg", MediaType: "video/mp4"}}, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -192,7 +192,7 @@ func TestSaveFetch(t *testing.T) {
 		d := rss.Article{ExternalID: "d", Title: "D", ImageURL: "https://example.com/d.jpg", MediaType: "video/mp4"}
 		for _, authors := range [][]string{{"Ada"}, nil} {
 			d.Authors = authors
-			res, err := feeds.SaveFetch(ctx, feed, []rss.Article{d})
+			res, err := feeds.SaveFetch(ctx, feed, []rss.Article{d}, feed.NextFetch)
 			if err != nil {
 				t.Fatalf("SaveFetch: %v", err)
 			}
@@ -213,7 +213,7 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("missing date is filled in", func(t *testing.T) {
 		dated := first[2]
 		dated.PublishedAt = date
-		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{dated})
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{dated}, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -233,7 +233,7 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("existing date is kept", func(t *testing.T) {
 		redated := first[0]
 		redated.PublishedAt = date.Add(24 * time.Hour)
-		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{redated})
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{redated}, feed.NextFetch)
 		if err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
@@ -255,7 +255,7 @@ func TestSaveFetch(t *testing.T) {
 		day := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 		dateOnly := rss.Article{ExternalID: "date-only", Title: "Date only", PublishedAt: day, PublishedDateOnly: true}
 		undated := rss.Article{ExternalID: "undated", Title: "Undated"}
-		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{dateOnly, undated}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{dateOnly, undated}, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -266,7 +266,7 @@ func TestSaveFetch(t *testing.T) {
 		// The undated article gets a date-only date, which is filled in.
 		dated := undated
 		dated.PublishedAt, dated.PublishedDateOnly = day, true
-		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{timed, dated}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{timed, dated}, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -296,7 +296,7 @@ func TestSaveFetch(t *testing.T) {
 		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
 			{ExternalID: "x", Title: "X", PublishedAt: old},
 			{ExternalID: "y", Title: "Y", PublishedAt: old.Add(time.Hour)},
-		}); err != nil {
+		}, tf.NextFetch); err != nil {
 			t.Fatalf("SaveFetch first: %v", err)
 		}
 		got, err := articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
@@ -319,7 +319,7 @@ func TestSaveFetch(t *testing.T) {
 		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
 			{ExternalID: "recent", Title: "Recent", PublishedAt: before.Add(-time.Hour)},
 			{ExternalID: "ancient", Title: "Ancient", PublishedAt: old.Add(-48 * time.Hour)},
-		}); err != nil {
+		}, tf.NextFetch); err != nil {
 			t.Fatalf("SaveFetch second: %v", err)
 		}
 		got, err = articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
@@ -336,7 +336,7 @@ func TestSaveFetch(t *testing.T) {
 		x := articleByExternalID(t, got, "x")
 		if _, err := feeds.SaveFetch(ctx, tf, []rss.Article{
 			{ExternalID: "x", Title: "X edited", Content: "<p>new</p>", PublishedAt: old},
-		}); err != nil {
+		}, tf.NextFetch); err != nil {
 			t.Fatalf("SaveFetch edit: %v", err)
 		}
 		got, err = articles.ListByFeed(ctx, tf.ID, rss.ArticleCursor{}, 10)
@@ -360,7 +360,7 @@ func TestSaveFetch(t *testing.T) {
 			{ExternalID: "u1", Title: "U1"},
 			{ExternalID: "u2", Title: "U2"},
 			{ExternalID: "week", Title: "Week", PublishedAt: recent.Add(-7 * 24 * time.Hour)},
-		}); err != nil {
+		}, tf.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, rss.TimelineAnchors{}, rss.ArticleCursor{}, 10)
@@ -386,7 +386,7 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("excerpt updated", func(t *testing.T) {
 		ef := newTestFeed(t, db)
 		save := func(excerpt string) rss.FetchResult {
-			res, err := feeds.SaveFetch(ctx, ef, []rss.Article{{ExternalID: "e", Title: "E", Excerpt: excerpt}})
+			res, err := feeds.SaveFetch(ctx, ef, []rss.Article{{ExternalID: "e", Title: "E", Excerpt: excerpt}}, ef.NextFetch)
 			if err != nil {
 				t.Fatalf("SaveFetch: %v", err)
 			}
@@ -410,7 +410,7 @@ func TestSaveFetch(t *testing.T) {
 		update.Title = "New title"
 		update.Description = ""
 		update.SiteUrl = ""
-		if _, err := feeds.SaveFetch(ctx, update, nil); err != nil {
+		if _, err := feeds.SaveFetch(ctx, update, nil, update.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -431,7 +431,7 @@ func TestSaveFetch(t *testing.T) {
 		update := feed
 		update.ETag = `W/"v1"`
 		update.LastModified = "Mon, 02 Jan 2006 15:04:05 GMT"
-		if _, err := feeds.SaveFetch(ctx, update, nil); err != nil {
+		if _, err := feeds.SaveFetch(ctx, update, nil, update.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		f, err := feeds.GetByID(ctx, feed.ID)
@@ -442,7 +442,7 @@ func TestSaveFetch(t *testing.T) {
 			t.Errorf("got ETag %q, LastModified %q; want %q, %q", f.ETag, f.LastModified, update.ETag, update.LastModified)
 		}
 
-		if _, err := feeds.SaveFetch(ctx, feed, nil); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, nil, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		f, err = feeds.GetByID(ctx, feed.ID)
@@ -461,7 +461,7 @@ func TestSaveFetch(t *testing.T) {
 		update := feed
 		update.NextFetch = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 		before := dbNow(t, db)
-		if _, err := feeds.SaveFetch(ctx, update, nil); err != nil {
+		if _, err := feeds.SaveFetch(ctx, update, nil, update.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -483,14 +483,20 @@ func TestSaveFetch(t *testing.T) {
 	t.Run("zero NextFetch is an error", func(t *testing.T) {
 		update := feed
 		update.NextFetch = time.Time{}
-		if _, err := feeds.SaveFetch(ctx, update, nil); err == nil {
+		if _, err := feeds.SaveFetch(ctx, update, nil, feed.NextFetch); err == nil {
 			t.Fatal("SaveFetch with zero NextFetch succeeded; want an error")
+		}
+	})
+
+	t.Run("zero catchUp is an error", func(t *testing.T) {
+		if _, err := feeds.SaveFetch(ctx, feed, nil, time.Time{}); err == nil {
+			t.Fatal("SaveFetch with zero catchUp succeeded; want an error")
 		}
 	})
 
 	t.Run("unknown feed", func(t *testing.T) {
 		unknown := rss.Feed{ID: "00000000-0000-4000-8000-000000000000", Title: "T", NextFetch: time.Now()}
-		_, err := feeds.SaveFetch(ctx, unknown, []rss.Article{{ExternalID: "x", Title: "X"}})
+		_, err := feeds.SaveFetch(ctx, unknown, []rss.Article{{ExternalID: "x", Title: "X"}}, unknown.NextFetch)
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Fatalf("got %v, want rss.ErrNoRecord", err)
 		}
@@ -528,13 +534,13 @@ func TestListByFeed(t *testing.T) {
 		{ExternalID: "middle", PublishedAt: date.Add(time.Minute)},
 		{ExternalID: "tie-1", PublishedAt: date.Add(time.Minute)},
 		{ExternalID: "tie-2", PublishedAt: date.Add(time.Minute)},
-	}); err != nil {
+	}, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	if _, err := db.Exec(`UPDATE articles SET created_at = $1 WHERE feed_id = $2 AND external_id = 'undated-old'`, date.Add(30*time.Minute), feed.ID); err != nil {
 		t.Fatalf("set created_at: %v", err)
 	}
-	if _, err := feeds.SaveFetch(ctx, other, []rss.Article{{ExternalID: "other", PublishedAt: date.Add(2 * time.Hour)}}); err != nil {
+	if _, err := feeds.SaveFetch(ctx, other, []rss.Article{{ExternalID: "other", PublishedAt: date.Add(2 * time.Hour)}}, other.NextFetch); err != nil {
 		t.Fatalf("SaveFetch other: %v", err)
 	}
 
@@ -830,7 +836,7 @@ func TestArticleRepositoryGetByID(t *testing.T) {
 	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{
 		{ExternalID: "a", URL: "https://example.com/a#x", CanonicalURL: "https://example.com/a", ImageURL: "https://example.com/a.jpg", Title: "A", Summary: "<p>a</p>", Content: "<p>A</p>", Excerpt: "a", PublishedAt: date},
 		{ExternalID: "b", Title: "B"},
-	}); err != nil {
+	}, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	listed, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
@@ -895,7 +901,7 @@ func TestListTimeline(t *testing.T) {
 		for _, id := range ids {
 			batch = append(batch, rss.Article{ExternalID: id})
 		}
-		if _, err := feeds.SaveFetch(ctx, *feed, batch); err != nil {
+		if _, err := feeds.SaveFetch(ctx, *feed, batch, (*feed).NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 	}
@@ -1162,7 +1168,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		{feedC, "e2", "", "Same", 4 * time.Hour},
 	} {
 		a := rss.Article{ExternalID: c.ext, CanonicalURL: c.url, Title: c.title, Summary: "<p>summary</p>", Content: "<p>content</p>", Excerpt: "excerpt"}
-		if _, err := feeds.SaveFetch(ctx, c.feed, []rss.Article{a}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, c.feed, []rss.Article{a}, c.feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(c.offset), c.feed.ID, c.ext); err != nil {
@@ -1312,7 +1318,7 @@ func TestListTimelineFillsPagePastCopies(t *testing.T) {
 	}
 	for _, it := range items {
 		a := rss.Article{ExternalID: it.ext, URL: it.url, CanonicalURL: it.url, Title: it.ext}
-		if _, err := feeds.SaveFetch(ctx, it.feed, []rss.Article{a}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, it.feed, []rss.Article{a}, it.feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(it.offset), it.feed.ID, it.ext); err != nil {
@@ -1392,7 +1398,7 @@ func TestListTimelineSubscriptionNames(t *testing.T) {
 	post := fmt.Sprintf("https://example.com/post-%d", time.Now().UnixNano())
 	for _, f := range []rss.Feed{feedA, feedB} {
 		batch := []rss.Article{{ExternalID: "shared", CanonicalURL: post}, {ExternalID: "own"}}
-		if _, err := feeds.SaveFetch(ctx, f, batch); err != nil {
+		if _, err := feeds.SaveFetch(ctx, f, batch, f.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 	}
@@ -1473,7 +1479,7 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 				PublishedAt: date.Add(time.Duration(i) * time.Hour),
 			}
 		}
-		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -1496,7 +1502,7 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 	t.Run("later saves", func(t *testing.T) {
 		feed := newTestFeed(t, db)
 		first := rss.Article{ExternalID: "old", URL: "https://example.com/old", Title: "Old"}
-		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{first}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{first}, feed.NextFetch); err != nil {
 			t.Fatalf("first SaveFetch: %v", err)
 		}
 		if jobs := enrichJobs(t, db, feed.ID); len(jobs) != 1 {
@@ -1517,7 +1523,7 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 			{ExternalID: "complete", URL: "https://example.com/4", ImageURL: "https://example.com/i.jpg", Title: "T", Excerpt: "E"},
 			{ExternalID: "no-url", Title: "T"},
 		}
-		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 
@@ -1581,7 +1587,7 @@ func TestListTimelineFilter(t *testing.T) {
 		{"A", "x", postX, 7 * time.Hour},
 	} {
 		feed := rss.Feed{ID: feedOf[c.feed], NextFetch: time.Now().Add(time.Hour)}
-		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: c.ext, CanonicalURL: c.url}}); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: c.ext, CanonicalURL: c.url}}, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		if _, err := db.Exec(`UPDATE articles SET timeline_at = $1 WHERE feed_id = $2 AND external_id = $3`, base.Add(c.offset), feed.ID, c.ext); err != nil {
@@ -1693,7 +1699,7 @@ func newConditionArticles(t *testing.T, db *sql.DB, userID string) (feedName, ar
 			{ExternalID: c.feed + "-text"},
 			{ExternalID: c.feed + "-audio", MediaType: "audio/mpeg"},
 		}
-		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		// SaveFetch computes posts_per_week from the articles' dates; set it
@@ -1859,7 +1865,8 @@ func TestListShared(t *testing.T) {
 	}
 	articleOf := map[string]string{}
 	for feedID, batch := range saves {
-		if _, err := feeds.SaveFetch(ctx, rss.Feed{ID: feedID, NextFetch: time.Now().Add(time.Hour)}, batch); err != nil {
+		next := time.Now().Add(time.Hour)
+		if _, err := feeds.SaveFetch(ctx, rss.Feed{ID: feedID, NextFetch: next}, batch, next); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		for _, a := range batch {

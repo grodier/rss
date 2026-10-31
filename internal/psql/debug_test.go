@@ -142,10 +142,10 @@ func TestDebugRepositoryArticlesByExternalID(t *testing.T) {
 	if _, err := feeds.SaveFetch(t.Context(), feed, []rss.Article{
 		{ExternalID: "a", URL: "https://example.com/a", Title: "A", Summary: "<p>sa</p>"},
 		{ExternalID: "b", Title: "B"},
-	}); err != nil {
+	}, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
-	if _, err := feeds.SaveFetch(t.Context(), other, []rss.Article{{ExternalID: "c", Title: "Other C"}, {ExternalID: "a", Title: "Other A"}}); err != nil {
+	if _, err := feeds.SaveFetch(t.Context(), other, []rss.Article{{ExternalID: "c", Title: "Other C"}, {ExternalID: "a", Title: "Other A"}}, other.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 

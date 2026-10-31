@@ -725,7 +725,9 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // enrichCandidates gets an enrich_jobs row. Every article sharing a
 // non-empty canonical_url with an inserted or updated one, that one
 // included, gets has_copies (never cleared). It locks the feed row so
-// concurrent saves of a feed are ordered. Callers dedupe external IDs.
+// concurrent saves of a feed are ordered. The result is Behind on a later
+// save (the feed was fetched before) of two or more articles, all inserted.
+// Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
 	var prevFetched sql.NullTime
 	var now time.Time
@@ -810,5 +812,6 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		return rss.FetchResult{}, err
 	}
 
+	res.Behind = prevFetched.Valid && len(articles) >= 2 && res.New == len(articles)
 	return res, nil
 }

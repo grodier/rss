@@ -204,6 +204,7 @@ type FetchResult struct {
 	New         int  // articles inserted
 	Updated     int  // existing articles whose url, image, title, summary, content or missing date changed
 	NotModified bool // the server answered 304
+	Behind      bool // a later save of two or more articles, all new: the feed may have published more than its file holds
 }
 
 // Site is a website that feeds are discovered from. Host is its site key:

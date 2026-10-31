@@ -257,7 +257,7 @@ func TestListStarred(t *testing.T) {
 		feed := rss.Feed{ID: feedOf[c.feed], NextFetch: time.Now().Add(time.Hour)}
 		ext := c.feed + "1"
 		items := []rss.Article{{ExternalID: ext, Title: "Article", Summary: "<p>summary</p>", Content: "<p>content</p>"}}
-		if _, err := feeds.SaveFetch(ctx, feed, items); err != nil {
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
 		var id string

@@ -113,14 +113,14 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 // SaveFetch records a successful fetch of feed f.ID in one transaction:
 // updates the feed's title, description and site URL (keeping the current
 // value when the new one is empty), overwrites etag and last_modified with
-// f.ETag and f.LastModified, sets next_fetch_at to f.NextFetch, saves
-// articles and records the successful attempt (see saveArticles). It returns
-// rss.ErrNoRecord if the feed doesn't exist, and an error if f.NextFetch is
-// zero.
-func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article) (rss.FetchResult, error) {
+// f.ETag and f.LastModified, saves articles and records the successful
+// attempt (see saveArticles), then sets next_fetch_at to catchUp if the
+// result is Behind, else to f.NextFetch. It returns rss.ErrNoRecord if the
+// feed doesn't exist, and an error if f.NextFetch or catchUp is zero.
+func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article, catchUp time.Time) (rss.FetchResult, error) {
 	// A zero time would make the feed due immediately, silently.
-	if f.NextFetch.IsZero() {
-		return rss.FetchResult{}, errors.New("psql: SaveFetch: NextFetch not set")
+	if f.NextFetch.IsZero() || catchUp.IsZero() {
+		return rss.FetchResult{}, errors.New("psql: SaveFetch: NextFetch or catchUp not set")
 	}
 
 	tx, err := r.DB.BeginTx(ctx, nil)
@@ -134,13 +134,12 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 			title = COALESCE(NULLIF($2, ''), title),
 			description = COALESCE(NULLIF($3, ''), description),
 			site_url = COALESCE(NULLIF($4, ''), site_url),
-			next_fetch_at = $5,
-			etag = $6,
-			last_modified = $7,
+			etag = $5,
+			last_modified = $6,
 			refresh_requested_at = NULL
 		WHERE id = $1`
 
-	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.NextFetch, f.ETag, f.LastModified)
+	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.ETag, f.LastModified)
 	if err != nil {
 		return rss.FetchResult{}, err
 	}
@@ -154,6 +153,14 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 
 	res, err := saveArticles(ctx, tx, f.ID, articles)
 	if err != nil {
+		return rss.FetchResult{}, err
+	}
+
+	next := f.NextFetch
+	if res.Behind {
+		next = catchUp
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE feeds SET next_fetch_at = $2 WHERE id = $1`, f.ID, next); err != nil {
 		return rss.FetchResult{}, err
 	}
 

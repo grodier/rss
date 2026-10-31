@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -19,11 +20,45 @@ func checkWithin(t *testing.T, name string, got, before, after time.Time, d time
 
 func TestNextFetch(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	for range 500 {
-		got := NextFetch(now)
-		if d := got.Sub(now); d < 54*time.Minute || d > 66*time.Minute {
-			t.Fatalf("NextFetch(now) = now + %v, want within [54m, 66m]", d)
-		}
+	tests := []struct {
+		postsPerWeek float64
+		want         time.Duration
+	}{
+		{0, time.Hour},
+		{-1, time.Hour},
+		{0.01, time.Hour},
+		{7, time.Hour},
+		{42, time.Hour},
+		{84, 30 * time.Minute},
+		{168, 15 * time.Minute},
+		{1000, 15 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprint(tt.postsPerWeek), func(t *testing.T) {
+			for range 100 {
+				checkWithin(t, "NextFetch", NextFetch(now, tt.postsPerWeek), now, now, tt.want)
+			}
+		})
+	}
+}
+
+func TestCatchUpFetch(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	tests := []struct {
+		name        string
+		lastFetched time.Time
+		want        time.Duration
+	}{
+		{"an hour ago", now.Add(-time.Hour), 30 * time.Minute},
+		{"20 minutes ago", now.Add(-20 * time.Minute), 15 * time.Minute},
+		{"never", time.Time{}, 15 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for range 100 {
+				checkWithin(t, "CatchUpFetch", CatchUpFetch(now, tt.lastFetched), now, now, tt.want)
+			}
+		})
 	}
 }
 

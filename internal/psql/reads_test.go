@@ -20,7 +20,7 @@ func newTestArticles(t *testing.T, db *sql.DB, n int) []string {
 	for i := range items {
 		items[i] = rss.Article{ExternalID: string(rune('a' + i)), Title: "Article"}
 	}
-	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, items); err != nil {
+	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, items, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	saved, err := NewArticleRepository(db).ListByFeed(t.Context(), feed.ID, rss.ArticleCursor{}, n)
@@ -43,7 +43,7 @@ func newTestArticleWithCanonical(t *testing.T, db *sql.DB, canonicalURL string) 
 	t.Helper()
 	feed := newTestFeed(t, db)
 	item := rss.Article{ExternalID: "a", Title: "Article", CanonicalURL: canonicalURL}
-	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, []rss.Article{item}); err != nil {
+	if _, err := NewFeedRepository(db).SaveFetch(t.Context(), feed, []rss.Article{item}, feed.NextFetch); err != nil {
 		t.Fatalf("SaveFetch: %v", err)
 	}
 	saved, err := NewArticleRepository(db).ListByFeed(t.Context(), feed.ID, rss.ArticleCursor{}, 1)

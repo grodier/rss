@@ -136,6 +136,7 @@ func (r *Runner) refresh(ctx context.Context, feed rss.Feed) {
 			"new", res.New,
 			"updated", res.Updated,
 			"not_modified", res.NotModified,
+			"behind", res.Behind,
 			"duration", time.Since(start),
 		)
 	case errors.Is(err, ingest.ErrGone):

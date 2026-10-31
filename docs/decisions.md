@@ -485,6 +485,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 
 - **One centered column, nav on the left.** A rail with icons and labels on wide screens, icons only on medium ones, and a top bar (logo, logout) with a bottom tab bar on phones.
   CSS only; no JavaScript.
+- **320 px is the narrowest width we support:** no page scrolls sideways at 320 px or wider (#431).
+  A subscribed feed page shows Edit and Unsubscribe without a "Subscribed ✓" chip, since the red Unsubscribe already says you're subscribed and the chip pushed the row off narrow phones; wrapping the buttons beside the avatar looked ragged, and moving them under the heading pushed the feed's facts down.
 - **Lists are sections separated by dividers, not boxes.** A card is only for a preview of something elsewhere: an article now, Open Graph data later.
 - **Avatars are letters on a tint chosen by site** (`avatarTone`), so a site's feeds share a color, for sites without a usable icon (below).
 - **Site icons replace the letter where a site has a usable one** (planned in #309, issues #304, #305):

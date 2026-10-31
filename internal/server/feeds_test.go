@@ -1444,7 +1444,7 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 			name:       "subscribed",
 			feed:       rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
 			subscribed: true,
-			want:       []string{unsubscribeForm, "Subscribed ✓", `aria-label="Unsubscribe from Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
+			want:       []string{unsubscribeForm, `aria-label="Unsubscribe from Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
 			notWant:    []string{subscribeForm},
 		},
 		{

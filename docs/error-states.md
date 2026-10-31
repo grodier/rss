@@ -183,7 +183,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | D7 Refresh a gone feed, or subscribe to one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't subscribe to it." | n/a | ok |
 | D8 Refresh rate limited | 11 refreshes in 10 minutes | Feed page, flash | "You've refreshed a lot of feeds recently. Please wait a few minutes and try again." | After the wait | ok |
 | D9 Refresh while one is running | Code read: click Refresh twice | The second waits, then gets D5 if the first succeeded | As D5 | Yes | ok |
-| D10 Feed page at 375 px, subscribed | Any feed A follows, at 375 px | Feed page | n/a | The Unsubscribe button is cut off and the page scrolls sideways | needs work: the profile's buttons overflow below about 405 px (#431) |
+| D10 Feed page at 375 px, subscribed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Unsubscribe fit beside the avatar; no sideways scroll | ok (2026-10-31, #431: checked at 320, 360, 375 and 390 px, and the site page at 320 px) |
 
 ## Search
 

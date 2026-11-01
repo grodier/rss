@@ -31,9 +31,9 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // that failed or found no feeds) or url differs from the one it ran on. A
 // lookup that found a site isn't re-queued for a different url that is the
 // site's home page (homePage), so the site page stays cached. A pending or
-// running lookup is returned unchanged, except that a pending one the site
-// catalog queued moves ahead of the catalog's, since a reader is now waiting
-// for it. A re-queue keeps site_id, so the site page keeps working while the
+// running lookup is returned unchanged, except that a pending one the seed
+// list queued (www seed) moves ahead of the seed's, since a reader is now
+// waiting for it. A re-queue keeps site_id, so the site page keeps working while the
 // re-check runs. Either way the lookup has a reader's priority (0).
 func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
 	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
@@ -70,8 +70,8 @@ func (r *LookupRepository) GetBySiteKey(ctx context.Context, siteKey string) (rs
 }
 
 // ClaimNext marks the pending lookup with the lowest priority, oldest first,
-// running and returns it, so readers' lookups (0) go before the site
-// catalog's (1).
+// running and returns it, so readers' lookups (0) go before the seed
+// list's (1).
 // rss.ErrNoRecord when the queue is empty.
 func (r *LookupRepository) ClaimNext(ctx context.Context) (rss.Lookup, error) {
 	stmt := `UPDATE lookups SET status = 'running', started_at = now(), attempts = attempts + 1

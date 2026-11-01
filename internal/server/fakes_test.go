@@ -171,18 +171,6 @@ func (f *fakeSearchStore) Search(ctx context.Context, q, siteKey string, limit i
 	return f.searchFn(ctx, q, siteKey, limit)
 }
 
-type fakeCatalogStore struct {
-	browseFn func(ctx context.Context) ([]rss.CatalogTopic, error)
-}
-
-// Browse returns no topics unless browseFn is set.
-func (f *fakeCatalogStore) Browse(ctx context.Context) ([]rss.CatalogTopic, error) {
-	if f.browseFn == nil {
-		return nil, nil
-	}
-	return f.browseFn(ctx)
-}
-
 type fakeLookupStore struct {
 	requestFn      func(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
 	getByIDFn      func(ctx context.Context, id string) (rss.Lookup, error)

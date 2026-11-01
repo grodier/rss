@@ -2213,63 +2213,6 @@
     font-size: 0.875rem;
   }
 
-  /* Browse: the site catalog by topic, on Search with no query. Its index
-     of topics is in-page links, wrapping, like a front page's "Inside"
-     box; sections leave room for the sticky page head or top bar when
-     jumped to. */
-  .browse-index {
-    padding: 1rem 1rem 0.25rem;
-  }
-
-  .browse-index p {
-    color: var(--text-2);
-    font-size: 0.875rem;
-  }
-
-  .browse-index ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 1rem;
-    margin-block-start: 0.375rem;
-  }
-
-  .browse-index a {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .browse-index a:hover {
-    text-decoration: underline;
-  }
-
-  .browse-topic {
-    scroll-margin-block-start: 4.5rem;
-  }
-
-  /* Sites listed before any topic: a divider stands in for the heading. */
-  .browse-untitled {
-    margin-block-start: 0.75rem;
-    border-block-start: 1px solid var(--border);
-  }
-
-  /* A site's description in the reading face, under its name and lined up
-     with it, like an article card's excerpt. */
-  .browse-desc {
-    display: -webkit-box;
-    margin-block-start: 0.375rem;
-    margin-inline-start: 3.25rem;
-    overflow: hidden;
-    color: var(--text-2);
-    font-family: var(--font-reading);
-    font-weight: var(--font-reading-weight);
-    font-size: 1rem;
-    line-height: 1.4;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
   .result {
     padding: 1rem;
     border-block-end: 1px solid var(--border);
@@ -2281,17 +2224,17 @@
     gap: 0.75rem;
   }
 
-  .result-head :is(h2, h3) {
+  .result-head h2 {
     font-family: var(--font-display);
     font-size: 1rem;
   }
 
-  .result-head :is(h2, h3) a {
+  .result-head h2 a {
     color: var(--text);
     text-decoration: none;
   }
 
-  .result-head :is(h2, h3) a:hover {
+  .result-head h2 a:hover {
     text-decoration: underline;
   }
 

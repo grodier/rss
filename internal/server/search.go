@@ -31,14 +31,8 @@ type searchData struct {
 	LookupQ string
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
-	// Icons holds the icon URLs of the result or Browse sites that have one.
+	// Icons holds the icon URLs of the result sites that have one.
 	Icons map[string]string
-	// Topics is the site catalog by topic, shown when there's no query
-	// (Browse): only sites whose lookup has found them. Sites listed before
-	// any topic come first, as a topic named "".
-	Topics []rss.CatalogTopic
-	// TopicIndex is whether Browse has named topics to link to.
-	TopicIndex bool
 }
 
 // searchHandler searches the database only. GET requests are not covered by
@@ -58,27 +52,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case !data.Form.Valid():
 		status = http.StatusUnprocessableEntity
-	case data.Form.Q == "":
-		topics, err := s.services.CatalogService.Browse(r.Context())
-		if err != nil {
-			s.serverErrorHTML(w, r, err)
-			return
-		}
-		data.Topics = topics
-
-		var siteIDs []string
-		for _, t := range topics {
-			if t.Name != "" {
-				data.TopicIndex = true
-			}
-			for _, site := range t.Sites {
-				siteIDs = append(siteIDs, site.ID)
-			}
-		}
-		if len(siteIDs) > 0 {
-			data.Icons = s.pageIcons(r, siteIDs)
-		}
-	default:
+	case data.Form.Q != "":
 		var siteKey string
 		if u, err := discovery.ParseInput(data.Form.Q); err == nil {
 			data.LookupQ = lookupAddress(u)

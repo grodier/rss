@@ -96,31 +96,24 @@ Planned in #50 (issues #51–#67).
   Only whitespace next to `.`, `/` or `:` is removed (`npr. org`, `https: //npr.org`); any other whitespace still means the query isn't an address, so free text such as `news on npr.org` isn't glued into one.
   The query shown back stays as typed; only the lookup offer and the site-key match use the cleaned-up address.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
-- **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
-  "Popular" is the owner's pick, since there's no popularity or cross-user data in the app.
-- **The catalog is hand-picked and kept in the repository** (#447), as text files embedded in the binary that the owner edits in PRs: one website address per line, optionally grouped under `[Topic]` headings, each site listed once.
-  Any part can be empty (a list with no sites, sites with no topics, a topic with no sites yet), so the lists can start empty and grow; sites before the first heading have no topic, and Browse shows them first, under no heading, with the topic index only when there are named topics.
-  A test loads the embedded files, so a bad edit can't ship.
-- **The catalog is two lists: what Browse recommends, and what's only seeded** (#447): `browse.txt` holds the few dozen sites Browse shows, and `seed.txt` the many more (1,000 and up) that search should find without anyone looking them up.
-  Both are seeded, and search matches both lists' topics; a site is in one list or the other, never both, so it has at most one topic and one address.
-  Separate files were picked over one file with a "featured" marker, since the seed list is expected to grow to thousands of sites and be edited (or generated) apart from the short list of recommendations.
-- **Seeding goes through the lookup queue** (#447), so catalog feeds are created by discovery like any other: the seed stores the list and queues lookups, and the app's lookup workers find the sites.
-- **`www migrate` seeds the catalog, after the migrations** (#447): the catalog is reference data that ships with the binary, like the schema, so it's stored in the release step (Render's pre-deploy command), once per deploy, before the new version serves.
-  A failure fails the deploy and the old version keeps serving, as for a migration; the web process's start stays free of writes and runs nothing per instance or restart.
-  Every path that builds a database already runs `migrate` (deploys, the production reset, CI, `make db/reset`), so after a pre-alpha reset the catalog comes back by itself, and editing the file takes effect on the next deploy.
-  It was picked over seeding when the web process starts (it ran on every restart and instance, and its failures were only logged), a separate `www` command (more wiring in Terraform, the Makefile and the README for the same step, and easy to miss after a reset), a CI job (CI doesn't write to production, and it wouldn't cover local databases), a hand-run script (forgotten after a reset) and rows in a migration (every edit to the list would be a schema reset now, and a new migration in production).
-- **A catalog site's lookup is retried on the next deploy if it failed or found no feeds over an hour ago** (#447), the same wait as a reader's lookup, so a transient failure (a timeout, a rate limit) doesn't drop a hand-picked site from Browse for good.
+- **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
+  #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.
+  How new readers discover sites, and whether topics or keywords come back, is for first run (#450) and keyword search (#451) to plan.
+- **The seed list is a plain text file kept in the repository** (`internal/seed/sites.txt`, #447): one website address per line, with comments, so the owner edits it in PRs and it can start empty and grow to thousands of sites.
+  A test parses the embedded file, so a bad edit can't ship.
+  Each site is listed once, since a site has one lookup; a home page's lookup finds the feeds the page advertises, and a feed's address adds only that feed.
+  Plain text was picked over OPML, which lists feeds, often several per site, so all but one of a site's feeds would be dropped.
+- **Seeding queues lookups**, so seeded feeds are created by discovery like any other, and needs no table of its own: the seed list is in the binary, and a seeded site is an ordinary site once found.
+- **Seeding is its own command, `www seed`, run in production on every deploy and locally only by hand** (#447): production's pre-deploy command is `www migrate -seed`, so every deploy and production reset seeds without anyone remembering, while `make db/reset`, which runs often, never looks up the whole list.
+  `-seed` exists because Render's pre-deploy takes one command and the image has no shell to chain two.
+  CI doesn't seed: it can't reach the production database (Render's private network only), and its test database has no lookup workers.
+  A Render job started by the deploy workflow after each deploy was the alternative, but it needed the jobs API, polling and error reporting in two workflows for a list that rarely changes.
+  Like a migration, a failed seed fails the deploy and the old version keeps serving.
+- **A seeded site's lookup is retried on the next seed if it failed or found no feeds over an hour ago** (#447), the same wait as a reader's lookup, so a transient failure (a timeout, a rate limit) doesn't keep a site out of search for good.
   A lookup that found a site, or is in progress, is never re-queued, so sites already found aren't fetched again.
-  `migrate` logs the keys it retried and those that failed too recently, so a site that keeps failing (one blocking datacenter addresses, say) shows up in every deploy's log, as a reason to fix or drop it; a periodic retry worker was more machinery than the catalog needs, since each deploy already retries.
-- **Readers' lookups go before the catalog's** (#447): lookups have a priority, and the catalog's are claimed only when no reader's is pending, so seeding thousands of sites after a reset never makes a reader's lookup wait.
-  A reader who looks up a site the catalog has queued moves that lookup ahead, since someone is now waiting for it.
-- **A catalog entry's site is the one its lookup found** (#447), joined through `lookups.site_id` rather than `sites.host`, so an address that redirects to another host (`bbc.co.uk/news`) still shows its site.
-- **Topics belong to the catalog, not to readers** (#447): they aren't tags and never appear on subscriptions.
-  Search matches a catalog site's topic as well as its name, so "science" finds the Science sites.
-- **The Search page lists the catalog by topic when there's no query** (Browse, #447), linking to the site pages, where people subscribe as usual.
-  Only sites whose lookup found feeds are shown.
-- **Catalog feeds follow the usual refresh rules** (#447): a feed nobody follows can be days old on its site page until someone subscribes or opens its feed page.
-  Right after a reset, readers' own lookups queue behind the catalog's for a few minutes; it's on the Performance watchlist in `backlog.md`.
+  The seed logs the sites it retried and those that failed too recently, so a site that keeps failing (one blocking datacenter addresses, say) shows up in every deploy's log, as a reason to fix or drop it; a periodic retry worker was more machinery than the seed needs, since each deploy already retries.
+- **Readers' lookups go before the seed's** (#447): lookups have a priority, and the seed's are claimed only when no reader's is pending, so seeding thousands of sites after a reset never makes a reader's lookup wait.
+  A reader who looks up a site the seed has queued moves that lookup ahead, since someone is now waiting for it.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds (#439), since "No feeds found" is also worth retrying soon.
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.
@@ -572,12 +565,6 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **No back links in page heads** (#423, closed): the browser's back button and the nav already cover it, and this is a web app, not a native one.
   Back links on every detail page were built and shown at the design checkpoint, and dropped; the article, feed and site pages keep starting with their own heading, without a head.
   Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
-- **Browse is one page: an index of the catalog's topics, then a section per topic of site rows with descriptions** (#447).
-  The index is plain in-page links that wrap under the search box, like a front page's "Inside" box, so it works without JavaScript and lands each topic just under the sticky head.
-  A row is the search result's head (avatar, title, host) with the site's description under it in the reading face, clamped to two lines like an article card's excerpt, since readers can't judge a site they don't know by its name alone.
-  It was picked over sections without descriptions (shorter, but the names said too little) and topic tabs showing one topic at a time (shorter, but they hid eight of nine topics, five of them off-screen on a phone, and tabs are rarely explored).
-  The page is long on a phone (about 5,500 px for 41 sites); the index is what keeps it navigable.
-  Descriptions are the sites' own, so some read as marketing and some are missing; a curated blurb in `browse.txt` is a backlog item.
 - **Page-head actions are small outlined pills** (`btn btn-sm`, #424), on every page that has them: they read as controls opposite a big heading, where text links were easy to miss.
   None is filled, since a filled pill is a form's primary action; two actions are grouped (`.head-actions`) so they stay on one line on phones.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.

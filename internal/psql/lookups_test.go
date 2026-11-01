@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,6 +30,16 @@ func newLookupKey(t *testing.T, repo *LookupRepository) string {
 		}
 	})
 	return key
+}
+
+// lookupPriority returns key's lookup's priority.
+func lookupPriority(t *testing.T, db *sql.DB, key string) int {
+	t.Helper()
+	var p int
+	if err := db.QueryRow(`SELECT priority FROM lookups WHERE site_key = $1`, key).Scan(&p); err != nil {
+		t.Fatalf("priority of %s: %v", key, err)
+	}
+	return p
 }
 
 // execSQL runs a statement that sets up test state.
@@ -171,7 +182,7 @@ func TestLookupRepositoryRequestPriority(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewLookupRepository(db)
 
-	t.Run("a reader's request moves a pending catalog lookup ahead", func(t *testing.T) {
+	t.Run("a reader's request moves a pending seed lookup ahead", func(t *testing.T) {
 		key := newLookupKey(t, repo)
 		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority) VALUES ($1, $2, 1)`, key, "https://"+key+"/")
 		before, err := repo.GetBySiteKey(t.Context(), key)
@@ -191,7 +202,7 @@ func TestLookupRepositoryRequestPriority(t *testing.T) {
 		}
 	})
 
-	t.Run("a re-queued catalog lookup gets a reader's priority", func(t *testing.T) {
+	t.Run("a re-queued seed lookup gets a reader's priority", func(t *testing.T) {
 		key := newLookupKey(t, repo)
 		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, status, finished_at) VALUES ($1, $2, 1, 'failed', now() - interval '2 hours')`, key, "https://"+key+"/")
 
@@ -207,7 +218,7 @@ func TestLookupRepositoryRequestPriority(t *testing.T) {
 		}
 	})
 
-	t.Run("a running catalog lookup is left as it is", func(t *testing.T) {
+	t.Run("a running seed lookup is left as it is", func(t *testing.T) {
 		key := newLookupKey(t, repo)
 		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, status, started_at) VALUES ($1, $2, 1, 'running', now())`, key, "https://"+key+"/")
 
@@ -246,9 +257,9 @@ func TestLookupRepositoryClaimNext(t *testing.T) {
 		}
 	})
 
-	t.Run("readers' lookups before the catalog's, even older ones", func(t *testing.T) {
-		catalogKey, readerKey := newLookupKey(t, repo), newLookupKey(t, repo)
-		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, requested_at) VALUES ($1, $2, 1, '1999-01-01')`, catalogKey, "https://"+catalogKey+"/")
+	t.Run("readers' lookups before the seed list's, even older ones", func(t *testing.T) {
+		seedKey, readerKey := newLookupKey(t, repo), newLookupKey(t, repo)
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, requested_at) VALUES ($1, $2, 1, '1999-01-01')`, seedKey, "https://"+seedKey+"/")
 		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, requested_at) VALUES ($1, $2, 0, '1999-06-01')`, readerKey, "https://"+readerKey+"/")
 
 		got, err := repo.ClaimNext(t.Context())

@@ -96,7 +96,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 
 ## Search, site lookups and discovery
 
-**Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or one of whose feeds' title or URL, or the topic of whose catalog entry, contains `q`.
+**Flow.** `GET /search?q=…` only searches the database: sites whose title or host, or one of whose feeds' title or URL, contains `q`.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which reloads itself every 2 s while the lookup runs, then redirects to the site or says what went wrong.
@@ -109,22 +109,22 @@ The worker turns each feed's items into articles (`ingest.Articles`) and saves t
 The site page lists the feeds with subscribe buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 
-**The site catalog.** Two lists of sites under `[Topic]` headings are embedded in the binary: `internal/catalog/browse.txt`, the few Browse shows, and `seed.txt`, the many more that are only searchable (`catalog.Load`).
-`www migrate` runs `catalog.Sync` after the migrations: in one transaction, `CatalogRepository.Replace` replaces `catalog_sites` with the file's entries, inserts a pending lookup for each site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues the entries' lookups that failed or found no feeds over an hour ago (`catalog.RetryAfter`); the app's lookup workers then discover them like any other; a reader who requests a site still queued by the catalog moves its lookup to priority 0 (`LookupRepository.Request`).
-It logs the keys it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
-A catalog entry's site is whatever its lookup found (`lookups.site_id`), so `Search` matches topics through that join, and `GET /search` with no query shows Browse: `CatalogRepository.Browse` returns `browse.txt`'s topics in file order with their found sites, rendered as an index of in-page links to the topics, then a section per topic of site rows with each site's description; sites listed before any topic come first, under no heading.
+**The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
+`www seed`, and `www migrate -seed` (production's pre-deploy command), run `seed.Run`: `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
+A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
+The command logs the sites it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
 
 **Start at:**
 
 1. `internal/server/search.go` and `internal/psql/search.go`.
-   The catalog: `internal/catalog/catalog.go` (`Parse`, `Sync`), `internal/psql/catalog.go`, and `syncCatalog` in `cmd/www/migrate.go`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
+   The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
 4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`) and `normalize.go` (`ParseInput`, `SiteKey`, `CanonicalFeedURL`).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`).
 
-**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/catalog`; `cmd/www/migrate_test.go`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `catalog_test.go`, `lookups_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 

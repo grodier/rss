@@ -97,13 +97,6 @@ type SearchStore interface {
 	Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error)
 }
 
-// CatalogStore reads the site catalog for Browse.
-type CatalogStore interface {
-	// Browse returns the catalog's topics in order, each with its sites
-	// that have been found.
-	Browse(ctx context.Context) ([]rss.CatalogTopic, error)
-}
-
 // LookupStore queues and reads site lookups.
 type LookupStore interface {
 	Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
@@ -292,7 +285,6 @@ var (
 	_ SessionStore      = (*psql.UserSessionRepository)(nil)
 	_ TokenStore        = (*psql.TokenRepository)(nil)
 	_ SearchStore       = (*psql.SearchRepository)(nil)
-	_ CatalogStore      = (*psql.CatalogRepository)(nil)
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
 	_ SubscriptionStore = (*psql.SubscriptionRepository)(nil)
@@ -319,7 +311,6 @@ type Services struct {
 	SessionService      SessionStore
 	TokenService        TokenStore
 	SearchService       SearchStore
-	CatalogService      CatalogStore
 	SiteService         SiteStore
 	LookupService       LookupStore
 	Refresher           FeedRefresher

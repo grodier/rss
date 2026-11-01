@@ -113,9 +113,6 @@ The decisions are under "Accounts" in decisions.md.
 - [ ] **Name → website suggestions.**
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
-- [ ] **Curated blurbs in the site catalog.**
-  Browse (#447) shows each site's own description, which some sites leave empty (Hacker News) or fill with marketing copy.
-  An optional short blurb after the address in `internal/catalog/browse.txt` could replace it on Browse; worth it once testers find sites they can't place.
 - [ ] **Platform-specific discovery rules.**
   YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
 - [ ] **`<a href>` heuristics.**
@@ -429,7 +426,7 @@ Background refresh:
   The `EXISTS` subscription check and `refresh_requested_at` can't be in the partial `feeds_next_fetch_at_idx`.
   Unsubscribed feeds keep an old `next_fetch_at`, so they pile up at the front of the order and every claim skips them.
   Ordering requested feeds first (`refresh_requested_at IS NULL, next_fetch_at`) also stops the index from serving the sort.
-  The site catalog (#447) adds every catalog site's feeds as unsubscribed feeds from the start.
+  The seed list (#447) adds every seeded site's feeds as unsubscribed feeds from the start.
   *Signal:* `EXPLAIN ANALYZE` of `ClaimDue` reads far more rows than it returns, or idle claims get slow, once most feeds are unsubscribed.
   *Fix:* keep a `subscriber_count` on `feeds` (updated by `Subscribe`/`Unsubscribe` in the same transaction) and index `next_fetch_at WHERE gone_at IS NULL AND (subscriber_count > 0 OR refresh_requested_at IS NOT NULL)`.
 - [ ] **Busy feeds fetched up to four times an hour** (#456).
@@ -471,7 +468,7 @@ Other background work (#302, #304, #306):
   *Fix:* per-host pacing (skip jobs whose host was fetched in the last few seconds), more `-enrich-workers`, or a lower first-save count.
 - [ ] **Enrichment and icon claims skip unsubscribed work** (#304, #306).
   Like `ClaimDue`, `ClaimNext` and `ClaimIconCheck` filter on an `EXISTS` subscription check the index can't serve, so jobs for feeds nobody subscribes to (looked up, never followed) stay at the front and every claim walks past them.
-  The site catalog (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
+  The seed list (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
   *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
   *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
 - [ ] **One import at a time** (#302).
@@ -479,11 +476,11 @@ Other background work (#302, #304, #306):
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 measures imports and builds this if production shows overlapping imports.
-- [ ] **Seeding thousands of catalog sites fills the database with work nobody asked for** (#447).
-  Each site the catalog's seed list (`seed.txt`, 1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a reset, the lookup workers spend an hour or more on the seed.
+- [ ] **Seeding thousands of sites fills the database with work nobody asked for** (#447).
+  Each site the seed list (1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a production reset, the lookup workers spend an hour or more on the seed.
   Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.
   *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
-  *Fix:* save no articles and queue no jobs for a catalog lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed catalog feeds' articles after a while.
+  *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
 
 Pages and queries:
 
@@ -507,7 +504,7 @@ Pages and queries:
   *Signal:* it shows up in `pg_stat_statements` totals.
   *Fix:* fold it into the page's main query.
 - [ ] **Search scans with `ILIKE`.**
-  Sites and feeds are matched with `%q%`, which can't use a b-tree index; so is topic matching for the catalog (#447).
+  Sites and feeds are matched with `%q%`, which can't use a b-tree index, and the seed list (#447) can add thousands of sites to scan.
   Search as you type (#449) runs it once per pause in typing, not once per search.
   *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.

@@ -48,11 +48,6 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}
 	}
-	// Search with no query browses the catalog; a test that doesn't care
-	// gets an empty one.
-	if svc.CatalogService == nil {
-		svc.CatalogService = &fakeCatalogStore{}
-	}
 	// /healthcheck pings the database; a test that doesn't care gets one
 	// that answers.
 	if svc.Database == nil {

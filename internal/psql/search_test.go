@@ -2,12 +2,10 @@ package psql
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/grodier/rss/internal/catalog"
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -147,28 +145,6 @@ func TestSearchRepository(t *testing.T) {
 		}
 		if got := siteHosts(res); len(got) != 1 || got[0] != hostE {
 			t.Errorf("got sites %v; want [%s]", got, hostE)
-		}
-	})
-
-	t.Run("catalog sites of both lists by their topic", func(t *testing.T) {
-		catalogRepo := NewCatalogRepository(db)
-		listed, seeded, notFound := "f-"+tok+".example", "h-"+tok+".example", "g-"+tok+".example"
-		keepCatalog(t, db, listed, seeded, notFound)
-		topic := "Topic " + tok
-		if _, err := catalogRepo.Replace(ctx, []catalog.Entry{
-			catalogEntry(topic, listed, 0),
-			catalogEntry(topic, notFound, 1), // its lookup hasn't found a site
-			seedEntry(topic, seeded, 2),
-		}, time.Hour); err != nil {
-			t.Fatal(err)
-		}
-		// The site its lookup found is on another host, as after a redirect.
-		lookupFound(t, db, listed, addSite("moved-"+listed, "Unrelated title"))
-		lookupFound(t, db, seeded, addSite(seeded, "Zzz"))
-
-		got := siteHosts(search(strings.ToLower(topic), 10))
-		if want := []string{"moved-" + listed, seeded}; !reflect.DeepEqual(got, want) {
-			t.Errorf("got sites %v; want %v", got, want)
 		}
 	})
 

@@ -68,24 +68,13 @@ CREATE TABLE lookups (
     error TEXT NOT NULL DEFAULT '',  -- internal detail for logs/debugging; never shown to users
     attempts INT NOT NULL DEFAULT 0,
     requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    priority SMALLINT NOT NULL DEFAULT 0, -- claimed lowest first: 0 for readers' lookups, 1 for the site catalog's (www migrate)
+    priority SMALLINT NOT NULL DEFAULT 0, -- claimed lowest first: 0 for readers' lookups, 1 for the seed list's (www seed)
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX lookups_pending_idx ON lookups (priority, requested_at) WHERE status = 'pending';
-
--- The site catalog (internal/catalog/browse.txt and seed.txt), replaced by
--- every `www migrate`. Joined to sites through its lookup (lookups.site_key =
--- site_key), once the lookup found the site.
-CREATE TABLE catalog_sites (
-    site_key TEXT PRIMARY KEY,   -- discovery.SiteKey of url
-    url TEXT NOT NULL,           -- the address its lookup fetches
-    topic TEXT NOT NULL,         -- the [Topic] heading it's under
-    position INT NOT NULL,       -- order in the catalog (browse.txt, then seed.txt), from 0
-    browse BOOLEAN NOT NULL      -- listed in browse.txt, so shown on Browse; else only searchable
-);
 
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -444,7 +433,6 @@ DROP TABLE timeline_marks;
 DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;
-DROP TABLE catalog_sites;
 DROP TABLE lookups;
 DROP TABLE feeds;
 DROP TABLE sites;

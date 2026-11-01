@@ -53,7 +53,7 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
-- `internal/catalog`: the site catalog (`sites.txt`, embedded): parses it, and `www migrate` stores it in the database and queues lookups of its sites
+- `internal/catalog`: the site catalog, embedded: `browse.txt` (the sites Browse shows) and `seed.txt` (the many more that are only searchable); `www migrate` stores both and queues lookups of their sites
 - `internal/opml`: reads the feeds listed in OPML files
 - `internal/importer`: subscribes users to the feeds of their OPML imports, queued in the `import_feeds` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)

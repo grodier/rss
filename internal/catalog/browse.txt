@@ -1,8 +1,9 @@
-# The site catalog (#447): well-known sites, stored in the database by every
-# `www migrate` (so on each deploy) so Search finds them and lists them by
-# topic when there's no query. Each site appears once its lookup finds it.
-# A [Topic] heading, then one website address per line; each site is listed
-# once, under one topic. Blank lines and lines starting with # are ignored.
+# The sites Browse shows (#447): the Search page with no query lists them
+# by topic, in this order, once each one's lookup has found it. They're also
+# seeded, like seed.txt, so search finds them.
+# A [Topic] heading, then one website address per line. A site is listed
+# once, under one topic, across this file and seed.txt. Blank lines and lines
+# starting with # are ignored.
 
 [News]
 npr.org

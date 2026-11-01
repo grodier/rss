@@ -115,7 +115,7 @@ The decisions are under "Accounts" in decisions.md.
   Don't fetch them automatically.
 - [ ] **Curated blurbs in the site catalog.**
   Browse (#447) shows each site's own description, which some sites leave empty (Hacker News) or fill with marketing copy.
-  An optional short blurb after the address in `internal/catalog/sites.txt` could replace it on Browse; worth it once testers find sites they can't place.
+  An optional short blurb after the address in `internal/catalog/browse.txt` could replace it on Browse; worth it once testers find sites they can't place.
 - [ ] **Platform-specific discovery rules.**
   YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
 - [ ] **`<a href>` heuristics.**
@@ -479,10 +479,11 @@ Other background work (#302, #304, #306):
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 measures imports and builds this if production shows overlapping imports.
-- [ ] **Catalog lookups queue ahead of readers' after a reset** (#447).
-  `www migrate` seeds the catalog through the lookup queue on each deploy, and `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
-  *Signal:* lookups in the first minutes after a deploy ending on the status page instead of the site page, or the catalog growing past a few hundred sites.
-  *Fix:* a priority on `lookups` (readers' first), or queue the catalog's lookups with a later `requested_at`.
+- [ ] **Seeding thousands of catalog sites fills the database with work nobody asked for** (#447).
+  Each site the catalog's seed list (`seed.txt`, 1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a reset, the lookup workers spend an hour or more on the seed.
+  Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.
+  *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
+  *Fix:* save no articles and queue no jobs for a catalog lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed catalog feeds' articles after a while.
 
 Pages and queries:
 

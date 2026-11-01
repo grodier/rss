@@ -56,11 +56,58 @@ func TestParse(t *testing.T) {
 	})
 }
 
-// TestEmbeddedCatalog stops a bad edit to sites.txt from shipping.
+func TestLoad(t *testing.T) {
+	t.Run("browse entries, then seed entries, numbered across both", func(t *testing.T) {
+		got, err := Load(strings.NewReader("[News]\nnpr.org\n"), strings.NewReader("[News]\nbbc.co.uk\n[Food]\neater.com\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []Entry{
+			{Topic: "News", URL: "https://npr.org/", SiteKey: "npr.org", Position: 0, Browse: true},
+			{Topic: "News", URL: "https://bbc.co.uk/", SiteKey: "bbc.co.uk", Position: 1},
+			{Topic: "Food", URL: "https://eater.com/", SiteKey: "eater.com", Position: 2},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %+v\nwant %+v", got, want)
+		}
+	})
+
+	t.Run("empty seed list", func(t *testing.T) {
+		got, err := Load(strings.NewReader("[News]\nnpr.org\n"), strings.NewReader("# nothing yet\n"))
+		if err != nil || len(got) != 1 {
+			t.Errorf("got %v, %v; want npr.org alone", got, err)
+		}
+	})
+
+	errCases := []struct {
+		name, browse, seed, want string
+	}{
+		{"site in both lists", "[News]\nnpr.org\n", "[Radio]\nwww.npr.org/sections/news\n", "seed.txt: npr.org is also in browse.txt"},
+		{"bad browse list", "npr.org\n", "", "browse.txt: line 1"},
+		{"bad seed list", "[News]\nnpr.org\n", "[Empty]\n", "seed.txt: line 1"},
+	}
+	for _, tc := range errCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(strings.NewReader(tc.browse), strings.NewReader(tc.seed))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v; want one containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestEmbeddedCatalog stops a bad edit to browse.txt or seed.txt from
+// shipping.
 func TestEmbeddedCatalog(t *testing.T) {
 	entries := Entries()
-	if len(entries) == 0 {
-		t.Fatal("the embedded catalog has no entries")
+	browse := 0
+	for _, e := range entries {
+		if e.Browse {
+			browse++
+		}
+	}
+	if browse == 0 {
+		t.Fatal("browse.txt has no entries")
 	}
 }
 

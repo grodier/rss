@@ -49,7 +49,7 @@ On SIGINT or SIGTERM, or when any component fails, the context is canceled: the 
 Only `cmd/www` handles signals.
 
 `www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate`, then stores the site catalog embedded in the binary (`syncCatalog`, `catalog.Sync`) and exits.
-The catalog sync only writes rows: it replaces `catalog_sites` and queues lookups, and the app's lookup runner fetches the sites.
+The catalog sync only writes rows: it replaces `catalog_sites` with both lists (`browse.txt` and `seed.txt`, so it can hold thousands of sites) and queues their lookups at a lower priority than readers', and the app's lookup runner fetches the sites when no reader's lookup is waiting.
 It runs before new code goes live, never at startup.
 While pre-alpha, `Migrate` compares `psql.Fingerprint` (a SHA-256 of the names and contents of `migrations/*.sql`) with the one stored in `schema_fingerprint` when it last ran: if migrations were applied from different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in which case it drops and recreates the current schema first.
 So any edit to a migration, comments included, needs a reset.
@@ -237,7 +237,7 @@ With `-mail-workers 0` the process queues emails without sending them (and logs 
 
 | | Lookups (`internal/lookup`) | Imports (`internal/importer`) | Feed refresh (`internal/refresh`) | Site icons (`internal/siteicon`) | Enrichment (`internal/enrich`) | Email (`mail.Runner`) |
 | --- | --- | --- | --- | --- | --- | --- |
-| Queue | `lookups` rows with `status = 'pending'` | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `sites` with `icon_next_check_at <= now()` that are new (`icon_checked_at IS NULL`) or have a subscribed feed | `enrich_jobs` with `next_attempt_at <= now()` whose article's feed has a subscriber, by `priority` then `next_attempt_at` | `emails` that are pending and due (`next_attempt_at <= now()`) |
+| Queue | `lookups` rows with `status = 'pending'`, readers' first (`priority` 0), then the site catalog's (1) | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `sites` with `icon_next_check_at <= now()` that are new (`icon_checked_at IS NULL`) or have a subscribed feed | `enrich_jobs` with `next_attempt_at <= now()` whose article's feed has a subscriber, by `priority` then `next_attempt_at` | `emails` that are pending and due (`next_attempt_at <= now()`) |
 | Claim | `ClaimNext`: set `running` | `ClaimNext`: set `running` and count the attempt | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimIconCheck`: move `icon_next_check_at` 5 min ahead (the lease) | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
 | Poll when idle | 500 ms | 1 s | 15 s | 5 s | 5 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
 | Job timeout | 30 s | 30 s | 30 s | 30 s | 20 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |

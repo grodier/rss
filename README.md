@@ -82,7 +82,7 @@ Locally, `make db/seed` makes your account without signing up (see [`www create-
 
 ### `www migrate`
 
-`www migrate [flags]` applies the migrations embedded in the binary, stores the site catalog (`internal/catalog/sites.txt`) and queues lookups of its sites not found yet, and exits; hosts run it before new code goes live.
+`www migrate [flags]` applies the migrations embedded in the binary, stores the site catalog (`internal/catalog/browse.txt` and `seed.txt`) and queues lookups of its sites not found yet, behind readers' own, and exits; hosts run it before new code goes live.
 The app's lookup workers then find those sites, so run the app with them on (the default) to fill Browse on the Search page.
 While pre-alpha, it refuses to run if `migrations/*.sql` have changed since the database was migrated, instead of wiping it: locally, rebuild the database with `make db/reset`.
 It takes its own flags, also settable by environment variables:

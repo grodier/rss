@@ -167,6 +167,60 @@ func TestLookupRepositoryRequest(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestLookupRepositoryRequestPriority(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewLookupRepository(db)
+
+	t.Run("a reader's request moves a pending catalog lookup ahead", func(t *testing.T) {
+		key := newLookupKey(t, repo)
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority) VALUES ($1, $2, 1)`, key, "https://"+key+"/")
+		before, err := repo.GetBySiteKey(t.Context(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ID != before.ID || got.Status != rss.LookupPending || !got.RequestedAt.Equal(before.RequestedAt) {
+			t.Errorf("got %+v; want the same pending row: %+v", got, before)
+		}
+		if p := lookupPriority(t, db, key); p != 0 {
+			t.Errorf("priority = %d; want 0", p)
+		}
+	})
+
+	t.Run("a re-queued catalog lookup gets a reader's priority", func(t *testing.T) {
+		key := newLookupKey(t, repo)
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, status, finished_at) VALUES ($1, $2, 1, 'failed', now() - interval '2 hours')`, key, "https://"+key+"/")
+
+		got, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != rss.LookupPending {
+			t.Errorf("status = %q; want pending", got.Status)
+		}
+		if p := lookupPriority(t, db, key); p != 0 {
+			t.Errorf("priority = %d; want 0", p)
+		}
+	})
+
+	t.Run("a running catalog lookup is left as it is", func(t *testing.T) {
+		key := newLookupKey(t, repo)
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, status, started_at) VALUES ($1, $2, 1, 'running', now())`, key, "https://"+key+"/")
+
+		if _, err := repo.Request(t.Context(), key, "https://"+key+"/", true, testDoneTTL, testFailedTTL); err != nil {
+			t.Fatal(err)
+		}
+		if p := lookupPriority(t, db, key); p != 1 {
+			t.Errorf("priority = %d; want 1", p)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestLookupRepositoryClaimNext(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewLookupRepository(db)
@@ -189,6 +243,20 @@ func TestLookupRepositoryClaimNext(t *testing.T) {
 		}
 		if got.Status != rss.LookupRunning || got.Attempts != 1 || got.StartedAt.IsZero() {
 			t.Errorf("got %+v; want running with attempts 1 and started_at set", got)
+		}
+	})
+
+	t.Run("readers' lookups before the catalog's, even older ones", func(t *testing.T) {
+		catalogKey, readerKey := newLookupKey(t, repo), newLookupKey(t, repo)
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, requested_at) VALUES ($1, $2, 1, '1999-01-01')`, catalogKey, "https://"+catalogKey+"/")
+		execSQL(t, repo, `INSERT INTO lookups (site_key, url, priority, requested_at) VALUES ($1, $2, 0, '1999-06-01')`, readerKey, "https://"+readerKey+"/")
+
+		got, err := repo.ClaimNext(t.Context())
+		if err != nil {
+			t.Fatalf("ClaimNext: %v", err)
+		}
+		if got.SiteKey != readerKey {
+			t.Errorf("claimed %q; want the reader's %q", got.SiteKey, readerKey)
 		}
 	})
 

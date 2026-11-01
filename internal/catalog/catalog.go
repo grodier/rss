@@ -1,7 +1,7 @@
-// Package catalog reads the site catalog, a hand-picked list of well-known
-// sites by topic kept in sites.txt, and seeds it into the database so Search
-// finds those sites and lists them by topic (see "Feed discovery" in
-// docs/decisions.md).
+// Package catalog reads the site catalog, hand-picked lists of sites by topic
+// embedded in the binary, and seeds it into the database: browse.txt, the
+// sites Browse lists on the Search page, and seed.txt, the many more that are
+// only searchable. See "Feed discovery" in docs/decisions.md.
 package catalog
 
 import (
@@ -22,11 +22,16 @@ type Entry struct {
 	Topic    string // the [Topic] heading it's under
 	URL      string // discovery.ParseInput of the line, as a string
 	SiteKey  string // discovery.SiteKey of URL
-	Position int    // order in the file, from 0
+	Position int    // order in the catalog, from 0
+	Browse   bool   // listed in browse.txt, so shown on Browse
 }
 
-//go:embed sites.txt
-var sitesFile []byte
+var (
+	//go:embed browse.txt
+	browseFile []byte
+	//go:embed seed.txt
+	seedFile []byte
+)
 
 // Parse reads a catalog file: [Topic] headings, each followed by one website
 // address per line. Blank lines and lines starting with "#" are ignored. It's
@@ -98,12 +103,40 @@ func Parse(r io.Reader) ([]Entry, error) {
 	return entries, nil
 }
 
-// Entries returns the embedded catalog's entries; it panics if the file
-// doesn't parse, which TestEmbeddedCatalog prevents.
-func Entries() []Entry {
-	entries, err := Parse(bytes.NewReader(sitesFile))
+// Load reads the catalog's two lists: browse, the sites Browse shows, and
+// seed, the sites that are only searchable. It returns browse's entries,
+// marked Browse, then seed's, with positions numbered across both. Each list
+// must Parse, and it's an error for a site key to be in both.
+func Load(browse, seed io.Reader) ([]Entry, error) {
+	b, err := Parse(browse)
 	if err != nil {
-		panic("catalog: sites.txt: " + err.Error())
+		return nil, fmt.Errorf("browse.txt: %w", err)
+	}
+	s, err := Parse(seed)
+	if err != nil {
+		return nil, fmt.Errorf("seed.txt: %w", err)
+	}
+	inBrowse := make(map[string]bool, len(b))
+	for i := range b {
+		b[i].Browse = true
+		inBrowse[b[i].SiteKey] = true
+	}
+	for i := range s {
+		if inBrowse[s[i].SiteKey] {
+			return nil, fmt.Errorf("seed.txt: %s is also in browse.txt; list a site once", s[i].SiteKey)
+		}
+		s[i].Position = len(b) + i
+	}
+	return append(b, s...), nil
+}
+
+// Entries returns the embedded catalog's entries (Load of browse.txt and
+// seed.txt); it panics if they don't load, which TestEmbeddedCatalog
+// prevents.
+func Entries() []Entry {
+	entries, err := Load(bytes.NewReader(browseFile), bytes.NewReader(seedFile))
+	if err != nil {
+		panic("catalog: " + err.Error())
 	}
 	return entries
 }

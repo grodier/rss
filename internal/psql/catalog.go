@@ -22,8 +22,8 @@ func NewCatalogRepository(db *sql.DB) *CatalogRepository {
 }
 
 // Replace replaces the stored catalog with entries, then, in the same
-// transaction, queues a lookup for each entry whose site key has no lookups
-// row, and re-queues, with the catalog's address, each entry's lookup that
+// transaction, queues a lookup, behind readers' (priority 1), for each entry
+// whose site key has no lookups row, and re-queues, with the catalog's address, each entry's lookup that
 // failed or found no feeds and finished over retryAfter ago. A lookup that
 // found a site (even if a later run failed), or is pending or running, is
 // left as it is, so a deploy doesn't fetch sites already found.
@@ -48,20 +48,23 @@ func (r *CatalogRepository) Replace(ctx context.Context, entries []catalog.Entry
 	urls := make([]string, len(entries))
 	topics := make([]string, len(entries))
 	positions := make([]int64, len(entries))
+	browse := make([]bool, len(entries))
 	for i, e := range entries {
-		keys[i], urls[i], topics[i], positions[i] = e.SiteKey, e.URL, e.Topic, int64(e.Position)
+		keys[i], urls[i], topics[i], positions[i], browse[i] = e.SiteKey, e.URL, e.Topic, int64(e.Position), e.Browse
 	}
-	stmt := `INSERT INTO catalog_sites (site_key, url, topic, position)
-		SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::int[])`
-	if _, err := tx.ExecContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(topics), pq.Array(positions)); err != nil {
+	stmt := `INSERT INTO catalog_sites (site_key, url, topic, position, browse)
+		SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::int[], $5::bool[])`
+	if _, err := tx.ExecContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(topics), pq.Array(positions), pq.Array(browse)); err != nil {
 		return res, err
 	}
 
-	// xmax is 0 on a row this statement inserted, and set on one it updated.
-	stmt = `INSERT INTO lookups (site_key, url)
-		SELECT site_key, url FROM catalog_sites ORDER BY position
+	// The catalog's lookups have priority 1, so the lookup workers take
+	// readers' first. xmax is 0 on a row this statement inserted, and set on
+	// one it updated.
+	stmt = `INSERT INTO lookups (site_key, url, priority)
+		SELECT site_key, url, 1 FROM catalog_sites ORDER BY position
 		ON CONFLICT (site_key) DO UPDATE SET
-			status = 'pending', url = EXCLUDED.url, error = '',
+			status = 'pending', url = EXCLUDED.url, error = '', priority = 1,
 			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
 		WHERE lookups.site_id IS NULL AND lookups.status IN ('done', 'failed')
 		  AND lookups.finished_at < now() - make_interval(secs => $1)
@@ -120,8 +123,8 @@ func queryStrings(ctx context.Context, q querier, stmt string, args ...any) ([]s
 	return out, rows.Err()
 }
 
-// Browse returns the catalog's topics in file order, each with its sites in
-// file order. A site is the one its catalog entry's lookup found, so it's
+// Browse returns the topics of the catalog's Browse list (browse.txt) in file
+// order, each with its sites in file order. A site is the one its catalog entry's lookup found, so it's
 // right even when the address redirected to another host; entries whose
 // lookup hasn't found a site (yet) are left out, and so are topics with
 // none.
@@ -130,6 +133,7 @@ func (r *CatalogRepository) Browse(ctx context.Context) ([]rss.CatalogTopic, err
 		FROM catalog_sites c
 		JOIN lookups l ON l.site_key = c.site_key
 		JOIN sites s ON s.id = l.site_id
+		WHERE c.browse
 		ORDER BY c.position`
 
 	rows, err := r.DB.QueryContext(ctx, stmt)

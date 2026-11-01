@@ -21,14 +21,14 @@ import (
 func keepCatalog(t *testing.T, db *sql.DB, keys ...string) {
 	t.Helper()
 	var saved []catalog.Entry
-	rows, err := db.Query(`SELECT site_key, url, topic, position FROM catalog_sites`)
+	rows, err := db.Query(`SELECT site_key, url, topic, position, browse FROM catalog_sites`)
 	if err != nil {
 		t.Fatalf("snapshot catalog: %v", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var e catalog.Entry
-		if err := rows.Scan(&e.SiteKey, &e.URL, &e.Topic, &e.Position); err != nil {
+		if err := rows.Scan(&e.SiteKey, &e.URL, &e.Topic, &e.Position, &e.Browse); err != nil {
 			t.Fatalf("snapshot catalog: %v", err)
 		}
 		saved = append(saved, e)
@@ -45,8 +45,8 @@ func keepCatalog(t *testing.T, db *sql.DB, keys ...string) {
 			t.Errorf("cleanup catalog: %v", err)
 		}
 		for _, e := range saved {
-			if _, err := db.Exec(`INSERT INTO catalog_sites (site_key, url, topic, position) VALUES ($1, $2, $3, $4)`,
-				e.SiteKey, e.URL, e.Topic, e.Position); err != nil {
+			if _, err := db.Exec(`INSERT INTO catalog_sites (site_key, url, topic, position, browse) VALUES ($1, $2, $3, $4, $5)`,
+				e.SiteKey, e.URL, e.Topic, e.Position, e.Browse); err != nil {
 				t.Errorf("restore catalog: %v", err)
 			}
 		}
@@ -62,8 +62,27 @@ func catalogKeys(n int) []string {
 	return keys
 }
 
+// catalogEntry is an entry of the Browse list (browse.txt).
 func catalogEntry(topic, key string, position int) catalog.Entry {
-	return catalog.Entry{Topic: topic, URL: "https://" + key + "/", SiteKey: key, Position: position}
+	return catalog.Entry{Topic: topic, URL: "https://" + key + "/", SiteKey: key, Position: position, Browse: true}
+}
+
+// seedEntry is an entry of the seed list (seed.txt): searchable, not on
+// Browse.
+func seedEntry(topic, key string, position int) catalog.Entry {
+	e := catalogEntry(topic, key, position)
+	e.Browse = false
+	return e
+}
+
+// lookupPriority returns key's lookup's priority.
+func lookupPriority(t *testing.T, db *sql.DB, key string) int {
+	t.Helper()
+	var p int
+	if err := db.QueryRow(`SELECT priority FROM lookups WHERE site_key = $1`, key).Scan(&p); err != nil {
+		t.Fatalf("priority of %s: %v", key, err)
+	}
+	return p
 }
 
 // lookupFound marks key's lookup done with siteID, as the lookup runner does
@@ -109,7 +128,7 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 		catalogEntry("B", second, 0),
 		catalogEntry("B", looked, 1),
 		catalogEntry("C", first, 2),
-		catalogEntry("C", fresh, 3),
+		seedEntry("C", fresh, 3),
 	}, time.Hour)
 	if err != nil {
 		t.Fatalf("second Replace: %v", err)
@@ -120,7 +139,7 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 	}
 
 	t.Run("only the second set is stored", func(t *testing.T) {
-		rows, err := db.Query(`SELECT site_key, topic, position FROM catalog_sites ORDER BY position`)
+		rows, err := db.Query(`SELECT site_key, topic, position, browse FROM catalog_sites ORDER BY position`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,12 +148,13 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 		for rows.Next() {
 			var key, topic string
 			var pos int
-			if err := rows.Scan(&key, &topic, &pos); err != nil {
+			var browse bool
+			if err := rows.Scan(&key, &topic, &pos, &browse); err != nil {
 				t.Fatal(err)
 			}
-			got = append(got, fmt.Sprintf("%d %s %s", pos, topic, key))
+			got = append(got, fmt.Sprintf("%d %s %s %t", pos, topic, key, browse))
 		}
-		want := []string{"0 B " + second, "1 B " + looked, "2 C " + first, "3 C " + fresh}
+		want := []string{"0 B " + second + " true", "1 B " + looked + " true", "2 C " + first + " true", "3 C " + fresh + " false"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("catalog_sites = %v; want %v", got, want)
 		}
@@ -150,7 +170,7 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 		}
 	})
 
-	t.Run("new entries get a pending lookup of their address", func(t *testing.T) {
+	t.Run("new entries of both lists get a pending lookup of their address, behind readers'", func(t *testing.T) {
 		for _, key := range []string{first, second, fresh} {
 			got, err := lookups.GetBySiteKey(ctx, key)
 			if err != nil {
@@ -159,6 +179,13 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 			if got.Status != rss.LookupPending || got.URL != "https://"+key+"/" {
 				t.Errorf("%s: status %q, url %q; want pending, https://%s/", key, got.Status, got.URL, key)
 			}
+			if p := lookupPriority(t, db, key); p != 1 {
+				t.Errorf("%s: priority %d; want 1", key, p)
+			}
+		}
+		// The reader's lookup that failed keeps its priority.
+		if p := lookupPriority(t, db, looked); p != 0 {
+			t.Errorf("%s: priority %d; want 0", looked, p)
 		}
 	})
 }
@@ -233,6 +260,9 @@ func TestCatalogRepositoryReplaceRetries(t *testing.T) {
 		if got.ID != before[key].ID || got.Status != rss.LookupPending || got.URL != "https://"+key+"/" || got.Attempts != 0 || got.Error != "" {
 			t.Errorf("%s: %+v; want the same row pending with the catalog's address, no attempts and no error", key, got)
 		}
+		if p := lookupPriority(t, db, key); p != 1 {
+			t.Errorf("%s: priority %d; want 1", key, p)
+		}
 	}
 	for _, key := range []string{recentEmpty, found, foundThenFailed, running} {
 		got, err := lookups.GetBySiteKey(ctx, key)
@@ -251,7 +281,7 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 	repo := NewCatalogRepository(db)
 	ctx := t.Context()
 
-	keys := catalogKeys(5)
+	keys := catalogKeys(6)
 	keepCatalog(t, db, keys...)
 
 	if _, err := repo.Replace(ctx, []catalog.Entry{
@@ -260,6 +290,7 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 		catalogEntry("Science", keys[2], 2),
 		catalogEntry("Empty", keys[3], 3), // not found yet
 		catalogEntry("News", keys[4], 4),
+		seedEntry("Science", keys[5], 5), // found, but only searchable
 	}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -272,6 +303,7 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 	lookupFound(t, db, keys[0], site0)
 	lookupFound(t, db, keys[2], site2)
 	lookupFound(t, db, keys[4], site4)
+	lookupFound(t, db, keys[5], newCatalogSite(t, db, keys[5], "Seed only"))
 
 	topics, err := repo.Browse(ctx)
 	if err != nil {

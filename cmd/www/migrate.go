@@ -89,7 +89,7 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 // reference data next to the schema, and queues the lookups of its sites not
 // found yet (catalog.Sync); the app's lookup workers then discover them. It
 // logs what it queued, and each site that has failed to be found, so a site
-// that keeps failing can be fixed or dropped in sites.txt.
+// that keeps failing can be fixed or dropped in browse.txt or seed.txt.
 func syncCatalog(ctx context.Context, store catalog.Store, entries []catalog.Entry, logger *slog.Logger) error {
 	res, err := catalog.Sync(ctx, store, entries)
 	if err != nil {

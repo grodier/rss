@@ -1,0 +1,7 @@
+# Sites seeded so search finds them, without being shown on Browse (#447).
+# `www migrate` stores this list and browse.txt, and the app's lookup
+# workers find each site after readers' own lookups. Searching a topic name
+# finds its sites.
+# The same format as browse.txt: a [Topic] heading, then one website address
+# per line (a feed's URL works too, but each site is listed once, and its
+# lookup finds its other feeds). A site is listed once across both files.

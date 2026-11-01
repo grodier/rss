@@ -475,6 +475,9 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Public routes are a deliberate exception** to "Search, site pages and lookups are login-only" (Feed discovery): their owner opted in.
 - **Shared timelines aren't listed in Search** for now: their names and descriptions would be the first user-written text shown to strangers, which brings spam, impersonation and reporting.
   A backlog item.
+- **A link to the app itself never becomes a feed in the catalog** (#471): a shared link looked up or imported in Paper Round would be saved under the app's own site, whose feeds search and the site page list to every account, so one follower would publish an unlisted timeline to everyone.
+  How it's refused is decided in #471.
+  Until following picks inside Paper Round is planned ("Your friends' picks" in backlog.md), a shared link is followed in another feed reader.
 - **The privacy policy says what's kept and what sharing publishes**, in the same PR (#381).
 
 ### Cross-user use (later)

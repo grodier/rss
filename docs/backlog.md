@@ -284,6 +284,25 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **Shared timelines in Search (needs planning).**
   An opt-in "List in search" per shared timeline (#381), and a Timelines section in search results.
   Plan moderation first: names and descriptions are the first user-written text strangers would see (spam, impersonation, reporting), and whether to show an owner name or profile.
+- [ ] **Your friends' picks (needs planning).**
+  Share the articles you star with people you choose, and follow friends' picks inside Paper Round, labelled with their name in your timeline.
+  It's the in-reader stream of friends' shared items that people still miss from Google Reader, and a way for the app to spread: every shared link shows someone who isn't a user what Paper Round is.
+  The pieces exist (stars, starred-only timelines, sharing as an Atom feed, #381), but sharing your picks takes six steps through the timeline form, and following them only works in another reader.
+  Needs #471 first: a shared link looked up or imported in Paper Round becomes a feed every account can find.
+  Thoughts so far, all to test in planning, none decided:
+  - *Sharing:* a "Your picks" page with one Share action (a name, an optional description, the link through the share sheet, and the email confirmation inline), perhaps as a second tab on Saved rather than a new nav item.
+    Any timeline stays shareable as now; picks is the obvious way in, not a second system.
+  - *The landing page* lists the newest picks, with "Follow in Paper Round" first and the feed link for other readers second.
+    It needs the session to know who's looking (the shared routes are outside the session group today), and it reverses #381's page without articles, whose reason (the feed is the better copy) doesn't hold for people without a feed reader.
+  - *Following natively, not as a feed:* a follows table, read as one more source in `ListTimeline`'s merge and positioned by `starred_at`, so a pick appears when it's picked.
+    It uses the real article rows, so read state, Save, Star and the article page just work, and an article already in one of your feeds gains "Picked by {name}" instead of a second row.
+    Following the Atom feed as an ordinary feed looks wrong: the app fetches itself over the internet, articles are duplicated with excerpts only, and rows can't say who picked them.
+  - *Reading:* a round avatar for people (sites stay squares, see "Design" in decisions.md), a People group in My feeds, and a "Picks from people I follow" condition on the timeline form.
+  - *No counts either way:* the sharer never sees who follows.
+    New link and Stop sharing delete the follows, so they still cut people off, and the follower is told the sharer stopped sharing rather than the row just disappearing.
+  - *Later:* a one-line note on a pick ("why I liked this"), which is what made Google Reader's sharing personal.
+  Open questions for planning: whether a shared link lets someone sign up while signup needs an invite (the growth case depends on it); where picks live (Saved or the nav); whether the sharer ever sees who follows; the privacy policy's new wording; and the cost each followed timeline adds to every Home page (a watchlist entry).
+  Its counterpart is "Shared timelines in Search" (above): this keeps links unlisted.
 - [ ] **More posting-frequency conditions.**
   Beyond "at most N posts a week" (#359): posts a day, "posted in the last N days", "hasn't posted for N months".
   When someone asks.

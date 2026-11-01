@@ -3,12 +3,13 @@ name: Infrastructure
 # Plans infra/ changes on pull requests and applies them on main once the owner
 # approves in the infrastructure environment. Never pull_request_target: fork
 # code must never run with these secrets. See "Deploys" in infra/README.md.
+# Markdown-only changes (the runbook) change no resources, so they don't run.
 on:
   pull_request:
-    paths: ["infra/**"]
+    paths: ["infra/**", "!infra/**.md"]
   push:
     branches: [main]
-    paths: ["infra/**"]
+    paths: ["infra/**", "!infra/**.md"]
 
 permissions:
   contents: read

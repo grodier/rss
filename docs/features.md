@@ -241,7 +241,8 @@ Unsubscribing cascades to the subscription's tags; the tags themselves stay.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): Home, the user's timelines in tab order, then New timeline (or Timelines when there are some); `app.js` scrolls the row so the current tab shows.
+**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): Home and the user's timelines in tab order, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); `app.js` scrolls the row so the current tab shows.
+Under the tabs, a row shows only for the timeline's description or an older page's "Back to newest".
 A timeline is a name, an optional description and an `rss.TimelineFilter` over the user's subscriptions:
 
 - **Show:** all feeds, or (`OnlyIncluded`) only those with one of `IncludeTagIDs` or in `IncludeFeedIDs`.
@@ -255,7 +256,9 @@ Words and phrases match whole words, ignoring case, in `concat_ws(' ', title, pa
 So `AI` matches "AI's" and "#AI" but not "said", and `C` matches "C++" too (the accepted trade-off).
 `[[:alnum:]]` follows the database's `LC_CTYPE`, so in a UTF-8 database `café` doesn't match "cafés".
 
-`/timelines` lists them in tab order with Edit links and Move up and Move down buttons; `TimelineRepository.Move` locks the user's timelines and renumbers them 0…n−1 with the timeline swapped with its neighbour, which also repairs ties and gaps from deletes.
+`/timelines` lists Home and then the timelines in tab order, with rows like My feeds': the row opens the timeline, and move up, move down (disabled at the ends) and the Edit pencil are icon buttons at its end.
+Each row says what the timeline is made of (`timelineSummary`, from `TimelineRepository.ListWithFilters`, which reads every filter in three queries, and the user's tag names).
+`TimelineRepository.Move` locks the user's timelines and renumbers them 0…n−1 with the timeline swapped with its neighbour, which also repairs ties and gaps from deletes.
 Home is always first and can't move or be edited.
 New timeline and Edit render one form, `timeline_form.html`, with Show, Leave out and Only show fieldsets.
 New timeline offers presets (`?preset=starred`, `?preset=quiet` for at most 2 posts a week), and a tag's page links to it with `?tag={id}`.

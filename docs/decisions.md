@@ -425,8 +425,12 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   At 320 px a row has no room for a fourth control, and row menus were ruled out for My feeds (#424).
 - **The tab row is underlined tabs in place of the page head's heading**, the owner's pick of three options (pills under the heading; wrapping pills with More on phones) for its app-like look.
   The tabs scroll sideways when they don't fit; `app.js` scrolls the current one into view, and without JavaScript the row starts at Home.
-  The description and Edit link go in a row under the tabs.
-  (#356)
+  The row ends in an "Edit" pill to `/timelines`, outside the part that scrolls, so it shows on phones however many tabs there are; the tabs fade out before it when they overflow (#479, replacing the "New timeline" / "Timelines" item that changed its name and scrolled out of view).
+  A text pill rather than an icon, like every page-head action; a gear would read as Settings.
+  The description goes in a row under the tabs, only when there is one, so switching tabs doesn't move the articles; the Edit link that row used to hold is gone (#479).
+  (#356, #479)
+- **`/timelines` mirrors the tab row, with rows like My feeds'** (#479): Home first, then each timeline; the row opens the timeline, and move up, move down and the Edit pencil are icon buttons at its end, the arrows disabled at the ends so rows line up.
+  Each row says what the timeline is made of ("Tagged Tech · Mentions “AI” · Leaves out 1 feed") instead of its description, so a timeline can be told apart, or found broken, without opening it.
 - **The tab row is navigation, not ARIA tabs.** Each tab is its own page, so it's a `<nav aria-label="Timelines">` list of links with `aria-current="page"`; `role="tablist"` is for switching panels within a page and would promise arrow-key behavior links don't have.
   The `<h1>` (the timeline's name, or Home) stays, visually hidden and first in the header, so headings still outline the page.
   (#356)

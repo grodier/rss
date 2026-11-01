@@ -310,6 +310,67 @@ func TestTimelineList(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestTimelineListWithFilters(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTimelineRepository(db)
+	tags := NewTagRepository(db)
+	ctx := t.Context()
+
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	feeds := newTestSubscriptions(t, db, user, 3)
+	ai, news := mustCreateTag(t, tags, user, "AI"), mustCreateTag(t, tags, user, "News")
+	first := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "First", Filter: rss.TimelineFilter{
+		OnlyIncluded:   true,
+		IncludeTagIDs:  []string{ai.ID},
+		IncludeFeedIDs: []string{feeds[0], feeds[1]},
+		ExcludeTagIDs:  []string{news.ID},
+		ExcludeFeedIDs: []string{feeds[2]},
+		IncludeWords:   []string{"GPT", "machine learning"},
+		ExcludeWords:   []string{"crypto"},
+		StarredOnly:    true,
+	}})
+	second := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Second", Filter: rss.TimelineFilter{
+		MaxPostsPerWeek: 2,
+		MediaOnly:       true,
+		ExcludeTagIDs:   []string{ai.ID},
+	}})
+	plain := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Plain"})
+	theirFeeds := newTestSubscriptions(t, db, other, 1)
+	mustCreateTimeline(t, repo, other, rss.Timeline{Name: "Theirs", Filter: rss.TimelineFilter{OnlyIncluded: true, IncludeFeedIDs: theirFeeds}})
+
+	got, err := repo.ListWithFilters(ctx, user)
+	if err != nil {
+		t.Fatalf("ListWithFilters: %v", err)
+	}
+	listed, err := repo.List(ctx, user)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var ids, listedIDs []string
+	for i := range got {
+		ids = append(ids, got[i].ID)
+		listedIDs = append(listedIDs, listed[i].ID)
+	}
+	if want := []string{first, second, plain}; !slices.Equal(ids, want) || !slices.Equal(ids, listedIDs) {
+		t.Fatalf("ListWithFilters IDs = %v, want %v, in List's order %v (no other user's)", ids, want, listedIDs)
+	}
+	for _, tl := range got {
+		want := mustGetTimeline(t, repo, user, tl.ID)
+		if tl.Name != want.Name || tl.Position != want.Position || tl.ShareToken != want.ShareToken {
+			t.Errorf("ListWithFilters %s = %+v, Get = %+v", tl.ID, tl, want)
+		}
+		assertFilter(t, tl.Filter, want.Filter)
+	}
+
+	t.Run("none is empty", func(t *testing.T) {
+		got, err := repo.ListWithFilters(ctx, newTestUser(t, db))
+		if err != nil || len(got) != 0 {
+			t.Errorf("ListWithFilters = %v, %v; want none", got, err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestTimelineDelete(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)

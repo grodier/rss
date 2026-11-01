@@ -151,6 +151,100 @@ func keepKnown(ids []string, known map[string]bool) []string {
 	return kept
 }
 
+// timelineSummary says what t is made of, for its row on /timelines:
+// fragments joined by " · ", such as "Tagged Tech · Mentions “AI” ·
+// Leaves out 1 feed". tags are the user's, ordered by name; tag names come
+// out in that order, and IDs that aren't among them (deleted since) are
+// skipped. A timeline with no conditions at all is "All your feeds".
+func timelineSummary(t rss.Timeline, tags []rss.Tag) string {
+	f := t.Filter
+	var parts []string
+	if f.StarredOnly && !f.OnlyIncluded {
+		parts = append(parts, "Your stars, newest star first")
+	}
+	if f.OnlyIncluded {
+		names := tagNames(tags, f.IncludeTagIDs)
+		if len(names) > 0 {
+			parts = append(parts, "Tagged "+joinOr(names))
+		}
+		if n := len(f.IncludeFeedIDs); n > 0 {
+			parts = append(parts, countPhrase(n, "chosen feed", "chosen feeds"))
+		}
+		if len(names) == 0 && len(f.IncludeFeedIDs) == 0 {
+			parts = append(parts, "No feeds chosen")
+		}
+		if f.StarredOnly {
+			parts = append(parts, "Starred only")
+		}
+	}
+	if n := f.MaxPostsPerWeek; n > 0 {
+		parts = append(parts, "At most "+countPhrase(n, "post", "posts")+" a week")
+	}
+	if f.MediaOnly {
+		parts = append(parts, "Audio or video")
+	}
+	if words := wordsPhrase(f.IncludeWords); words != "" {
+		parts = append(parts, "Mentions "+words)
+	}
+	if words := wordsPhrase(f.ExcludeWords); words != "" {
+		parts = append(parts, "Leaves out "+words)
+	}
+	if names := tagNames(tags, f.ExcludeTagIDs); len(names) > 0 {
+		parts = append(parts, "Leaves out feeds tagged "+joinOr(names))
+	}
+	if n := len(f.ExcludeFeedIDs); n > 0 {
+		parts = append(parts, "Leaves out "+countPhrase(n, "feed", "feeds"))
+	}
+	if len(parts) == 0 {
+		return "All your feeds"
+	}
+	return strings.Join(parts, " · ")
+}
+
+// tagNames returns the names of the tags among tags whose IDs are in ids,
+// in tags' order.
+func tagNames(tags []rss.Tag, ids []string) []string {
+	var names []string
+	for _, tag := range tags {
+		if slices.Contains(ids, tag.ID) {
+			names = append(names, tag.Name)
+		}
+	}
+	return names
+}
+
+// wordsPhrase quotes up to three words or phrases, joined as joinOr does;
+// more are counted instead ("5 words or phrases"). "" for none.
+func wordsPhrase(words []string) string {
+	switch {
+	case len(words) == 0:
+		return ""
+	case len(words) > 3:
+		return fmt.Sprintf("%d words or phrases", len(words))
+	}
+	quoted := make([]string, len(words))
+	for i, w := range words {
+		quoted[i] = "“" + w + "”"
+	}
+	return joinOr(quoted)
+}
+
+// joinOr joins items as "A", "A or B", "A, B or C".
+func joinOr(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
+}
+
+// countPhrase returns "1 {one}" or "{n} {many}".
+func countPhrase(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
+}
+
 // timeline returns the timeline the form describes; the form must be valid.
 // With Show "all" the ticked Show tags and feeds are dropped: they'd have no
 // effect.
@@ -204,23 +298,44 @@ func (f *timelineForm) checks(tags []rss.Tag, subs []rss.Subscription, icons map
 	}
 }
 
-// timelinesHandler lists the user's custom timelines.
+// timelineRow is one of the user's custom timelines on /timelines.
+type timelineRow struct {
+	rss.Timeline
+	Summary     string // what it's made of: timelineSummary
+	First, Last bool   // its place in tab order, which disables a move button
+}
+
+// timelinesHandler lists Home and the user's custom timelines in tab
+// order, each custom one with a summary of what it shows.
 func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
-	timelines, err := s.services.TimelineService.List(r.Context(), userID)
+	timelines, err := s.services.TimelineService.ListWithFilters(r.Context(), userID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	var tags []rss.Tag
+	if len(timelines) > 0 {
+		tags, err = s.services.TagService.List(r.Context(), userID)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
+
+	rows := make([]timelineRow, len(timelines))
+	for i, t := range timelines {
+		rows[i] = timelineRow{Timeline: t, Summary: timelineSummary(t, tags), First: i == 0, Last: i == len(timelines)-1}
+	}
 
 	data := struct {
-		Nav       navData
-		Timelines []rss.Timeline
-		Flash     string
+		Nav   navData
+		Rows  []timelineRow
+		Flash string
 	}{
-		Nav:       s.nav(r, "home"),
-		Timelines: timelines,
-		Flash:     s.sessionManager.PopString(r.Context(), "flash"),
+		Nav:   s.nav(r, "home"),
+		Rows:  rows,
+		Flash: s.sessionManager.PopString(r.Context(), "flash"),
 	}
 	if err := s.renderHTML(w, http.StatusOK, "timelines.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

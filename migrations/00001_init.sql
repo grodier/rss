@@ -342,7 +342,7 @@ CREATE TABLE import_feeds (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'running', 'subscribed', 'already_subscribed', 'failed')),
     failure TEXT NOT NULL DEFAULT ''
-        CHECK (failure IN ('', 'invalid_url', 'unreachable', 'not_feed')),
+        CHECK (failure IN ('', 'invalid_url', 'unreachable', 'not_feed', 'app_link')),
     feed_id UUID REFERENCES feeds(id) ON DELETE SET NULL, -- the feed subscribed to, once known
     error TEXT NOT NULL DEFAULT '',  -- internal detail for logs; never shown to users
     attempts INT NOT NULL DEFAULT 0,

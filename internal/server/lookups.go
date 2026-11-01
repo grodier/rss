@@ -33,8 +33,14 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u, err := discovery.ParseInput(form.Q)
-	if err != nil {
+	switch {
+	case err != nil:
 		form.AddFieldError("q", "Enter a website address like example.com")
+	case s.isAppLink(u):
+		// Refused before the limiter, so it isn't counted.
+		form.AddFieldError("q", appLinkMessage)
+	}
+	if !form.Valid() {
 		data := searchData{
 			Nav:   s.nav(r, "search"),
 			Form:  searchForm(form),

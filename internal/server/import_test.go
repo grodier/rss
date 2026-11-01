@@ -421,6 +421,7 @@ func TestImportHandler(t *testing.T) {
 			{URL: "not a url", Title: "Broken", Status: rss.ImportFailed, Failure: rss.ImportInvalidURL, Error: "secret detail"},
 			{URL: "https://example.com/feed", Status: rss.ImportFailed, Failure: rss.ImportUnreachable},
 			{URL: "https://d.example/page", Title: "D", Status: rss.ImportFailed, Failure: rss.ImportNotFeed},
+			{URL: "https://paperround.app/shared/abc/feed.atom", Title: "Picks", Status: rss.ImportFailed, Failure: rss.ImportAppLink},
 		}
 		rr := serveImport(t, importServer(t, getReturns(imp, feeds, nil)), testImportID)
 
@@ -436,7 +437,7 @@ func TestImportHandler(t *testing.T) {
 		}
 		assertBodyContains(t, body,
 			"<h1>Import finished</h1>",
-			"2 subscribed, 1 already subscribed, 3 couldn&#39;t be added.",
+			"2 subscribed, 1 already subscribed, 4 couldn&#39;t be added.",
 			`<a href="/">Go to your timeline</a>`,
 			`<a class="feed-row-title" href="/feeds/feed-a">Outline A</a>`,
 			`<a class="feed-row-title" href="/feeds/feed-b">Feed B</a>`,
@@ -448,6 +449,8 @@ func TestImportHandler(t *testing.T) {
 			`<a href="/search?q=example.com">Search for example.com</a>`,
 			"There&#39;s no feed at this address.",
 			`<a href="/search?q=d.example">Search for d.example</a>`,
+			`<p class="import-title">Picks</p>`,
+			"A Paper Round link. Follow it in another feed reader.",
 		)
 		// Groups in order.
 		subscribed := strings.Index(body, "<h2>Subscribed</h2>")

@@ -101,10 +101,12 @@ With JavaScript, results update as you type: `app.js`'s live search fetches the 
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which reloads itself every 2 s while the lookup runs, then redirects to the site or says what went wrong.
+An address on the app's own site (`-base-url`'s site key, such as a shared timeline's link) is never looked up: the Search page says so in place of Look up, and `/lookups` refuses it with a field error before the per-user limit.
 
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
 Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`.
 Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
+`Discover` refuses with `ErrAppLink` an address on the app's own site (`Discoverer.AppSiteKey`) before fetching it, and a result that ended up there (a redirect, or a feed naming it as its site), so lookups, imports and the debug inspector never save one.
 `Result.Checked` records every candidate and its outcome, for the debug inspector; if the deadline ends the checking, `Discover` returns what it has alongside the error, and the runners ignore the result on any error.
 The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
 The site page lists the feeds with subscribe buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
@@ -196,7 +198,7 @@ Otherwise it turns each feed's folders into tags (`importTags`: normalized like 
 `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any depth, in file order and without repeats; each feed's folders are those it's nested in, at any depth.
 It parses non-strictly and decodes legacy charsets, since older readers' exports are sloppy.
 `ImportRepository.Create` stores one pending `import_feeds` row per feed, with its tags.
-The import runner (`importer.Runner`, six workers by default) claims one row per worker at a time, oldest import first: it parses the URL, looks up its `CanonicalFeedURL`, runs discovery for an unknown or gone feed (saved exactly like a lookup), then subscribes or records `already_subscribed`, names a subscription it made after the outline's title when that differs from the feed's title (`importedName`), and adds the row's tags (`TagRepository.AddToSubscription`: reuses the user's tags by name, creates the rest up to the cap, never removes one).
+The import runner (`importer.Runner`, six workers by default) claims one row per worker at a time, oldest import first: it parses the URL, looks up its `CanonicalFeedURL`, runs discovery for an unknown or gone feed (saved exactly like a lookup; a link to the app itself fails as `app_link`), then subscribes or records `already_subscribed`, names a subscription it made after the outline's title when that differs from the feed's title (`importedName`), and adds the row's tags (`TagRepository.AddToSubscription`: reuses the user's tags by name, creates the rest up to the cap, never removes one).
 A tag error is only logged: the feed stays subscribed.
 Failures aren't retried; a crashed row is re-queued by `ResetStale`.
 Subscribing bumps nothing onto the timeline: the backlog keeps its published dates.

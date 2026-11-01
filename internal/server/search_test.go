@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -164,6 +165,40 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 			if got := len(findAll(c, func(*html.Node) bool { return true })) == 0; got != tt.noChildren {
 				t.Errorf("container empty = %v, want %v", got, tt.noChildren)
+			}
+		})
+	}
+}
+
+func TestSearchAppLink(t *testing.T) {
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}}}, nil
+	}}
+	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", BaseURL: "https://paperround.app"}, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
+
+	tests := []struct {
+		q       string
+		appLink bool
+	}{
+		{"https://paperround.app/shared/abc", true},
+		{"www.paperround.app/shared/abc", true},
+		{"example.com", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.q, func(t *testing.T) {
+			rr := searchRequest(t, s, url.QueryEscape(tt.q))
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rr.Code)
+			}
+			body := rr.Body.String()
+			if got := strings.Contains(body, "paste its link into another feed reader"); got != tt.appLink {
+				t.Errorf("app link message shown = %v, want %v", got, tt.appLink)
+			}
+			if got := strings.Contains(body, `action="/lookups"`); got == tt.appLink {
+				t.Errorf("lookup offered = %v, want %v", got, !tt.appLink)
+			}
+			if !strings.Contains(body, `href="/sites/site-1"`) {
+				t.Error("search results missing")
 			}
 		})
 	}

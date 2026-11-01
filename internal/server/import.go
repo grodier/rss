@@ -196,6 +196,7 @@ var importReasons = map[rss.ImportFailure]string{
 	rss.ImportInvalidURL:  "Not a valid web address.",
 	rss.ImportUnreachable: "Couldn't reach the site.",
 	rss.ImportNotFeed:     "There's no feed at this address.",
+	rss.ImportAppLink:     "A Paper Round link. Follow it in another feed reader.",
 }
 
 // importHandler shows an import's progress and then its results. While any

@@ -146,7 +146,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | --- | --- | --- | --- | --- | --- |
 | L1 Query that isn't a website address | Search `zzzz` | Search, 200 | "No sites or feeds match “zzzz”." and no lookup offered | The search box's placeholder mentions URLs; the result doesn't | ok |
 | L2 Address that can't be looked up | Search `127.0.0.1`, `localhost:8080` or `ftp://example.com` | Search, 200, no lookup offered | As L1 | As L1 | ok (`LooksLikeURL` refuses them; a hostname that resolves to a private address fails as L4) |
+| L2a Link to the app itself | Run with `-base-url http://paperround.test:8080` (`localhost` is L2) and search `paperround.test:8080/shared/x` | Search, 200, in place of Look up | "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader." | Yes: it says where to follow it | new (#471) |
 | L3 Invalid address posted | Code read: only a crafted post to `/lookups` | Search, 422, above the search box | "Enter a website address like example.com" | Yes | needs work: the error isn't tied to the input (see R4) |
+| L3a Link to the app itself posted | As L2a, then a crafted post of that address to `/lookups` | Search, 422, above the search box | As L2a; not counted by the lookup limit | Yes | new (#471); not tied to the input, as L3 |
 | L4 Lookup fails | Look up `nonexistent.invalid` (also: a timeout, too many redirects, a blocked or huge or non-HTML response) | Lookup page, 200 | "We couldn't reach {site}. Try again later." + "Back to search" | Not for an hour: a failed lookup is reused for an hour, and nothing says so | needs work: one message for every cause, and "later" means an hour |
 | L5 Lookup in progress | Look up a slow site (or `INSERT INTO lookups (site_key, url) VALUES ('pending.example', 'https://pending.example/')`, open `/lookups/{id}`) | Lookup page, refreshes itself every 2 s | "Looking for feeds on {site}…" + "Refresh" | Waits | ok |
 | L6 Lookup done, no feeds | Look up a site without feeds, or whose only feed doesn't parse (or the row above with `status = 'done'`) | Lookup page, 200 | "No feeds found on {site}." + "Back to search" | Yes | ok |
@@ -167,6 +169,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | O6 Rate limited | A 6th import in an hour | Import, 429, under the file | "You've started several imports in the last hour. Try again later." | After the wait, but it doesn't say how long | needs work: say how long, like the other limits |
 | O7 Import running | Any valid import, at once | Import results, refreshes itself | "Importing {file}…" / "Checked N of M feeds." | Waits | ok |
 | O8 Import with failures | Outlines with `xmlUrl="not a url"`, an unreachable host, and an address without a feed | Import results, 200 | Per feed: "Not a valid web address."; "Couldn't reach the site." + "Search for {host}"; "There's no feed at this address." | Yes | ok |
+| O8a Link to the app itself | As L2a, an outline with `xmlUrl="http://paperround.test:8080/shared/x/feed.atom"` | Import results, 200 | "A Paper Round link. Follow it in another feed reader." + "Search for {host}" | Yes | new (#471) |
 | O9 Another user's import | As B, open A's import URL | 404 (H3) | As H2 | Home only | ok |
 | O10 Malformed upload | `curl` a post that isn't multipart | 400 error page | "Bad request" / "That form submission couldn't be read." | Home only | needs work: see H1 |
 

@@ -323,6 +323,9 @@ func collapseSpace(s string) string {
 // failure it returns why, and the internal error if there is one.
 func (r *Runner) discover(ctx context.Context, u *url.URL) (rss.Feed, rss.ImportFailure, error) {
 	res, err := r.Discoverer.Discover(ctx, u)
+	if errors.Is(err, discovery.ErrAppLink) {
+		return rss.Feed{}, rss.ImportAppLink, err
+	}
 	if err != nil {
 		return rss.Feed{}, rss.ImportUnreachable, err
 	}

@@ -341,6 +341,10 @@ type Server struct {
 	// redirectToCanonicalHost sends requests for other hosts there.
 	canonicalHost string
 
+	// appSiteKey is BaseURL's discovery.SiteKey. Search and lookups refuse
+	// addresses on it: links to the app never become feeds in the catalog.
+	appSiteKey string
+
 	sessionManager *scs.SessionManager
 	services       Services
 
@@ -416,6 +420,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		logger:                logger,
 		config:                cfg,
 		canonicalHost:         strings.ToLower(baseURL.Hostname()),
+		appSiteKey:            discovery.SiteKey(baseURL),
 		templates:             templates,
 		emails:                emails,
 		formDecoder:           form.NewDecoder(),

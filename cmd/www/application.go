@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -52,7 +53,13 @@ func (app *Application) Run() error {
 	fetcher := fetch.New(fetch.Options{})
 	// One refresher serves the Refresh button and the background workers.
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
-	discoverer := &discovery.Discoverer{Fetcher: fetcher}
+	// Links to the app itself, like shared timelines', never become feeds in
+	// the catalog. config.validate has checked that the base URL parses.
+	baseURL, err := url.Parse(app.config.mail.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base URL: %w", err)
+	}
+	discoverer := &discovery.Discoverer{Fetcher: fetcher, AppSiteKey: discovery.SiteKey(baseURL)}
 
 	// Background components run alongside the server until ctx is canceled.
 	var background []func(context.Context) error

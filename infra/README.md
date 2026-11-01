@@ -142,8 +142,9 @@ Nothing seeds an account after a reset.
 - **Pushes to `main`** run `terraform apply -auto-approve` in the `infrastructure` environment, which waits for your approval: **Actions → the run → Review deployments → Approve**.
   Approve once the PR's plan was what you meant; reject to skip the apply.
 
-While an apply waits for approval, other `infra.yml` runs wait behind it, and GitHub keeps only the newest waiting run: an older one shows as cancelled.
+While an apply waits for approval, later applies wait behind it, and GitHub keeps only the newest waiting one: an older one shows as cancelled.
 Re-run it if it was an apply you still want.
+Plans don't wait behind applies; each pull request gets one plan at a time, and Terraform's state lock makes a plan wait (up to 5 minutes) while an apply is running.
 
 ### Changing the web service or the backup job
 

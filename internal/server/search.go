@@ -15,6 +15,10 @@ const (
 	searchLimit    = 20
 )
 
+// appLinkMessage is shown in place of a lookup for an address on the app
+// itself.
+const appLinkMessage = "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader."
+
 type searchForm struct {
 	Q                   string
 	validator.Validator `form:"-"`
@@ -29,6 +33,9 @@ type searchData struct {
 	// LookupQ is the address to offer as a site lookup (see lookupAddress),
 	// or "" if q doesn't look like a website address.
 	LookupQ string
+	// AppLink is set instead of LookupQ when q is an address on the app
+	// itself, such as a shared timeline's link, which is never looked up.
+	AppLink bool
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
 	// Icons holds the icon URLs of the result sites that have one.
@@ -55,8 +62,12 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	case data.Form.Q != "":
 		var siteKey string
 		if u, err := discovery.ParseInput(data.Form.Q); err == nil {
-			data.LookupQ = lookupAddress(u)
 			siteKey = discovery.SiteKey(u)
+			if s.isAppLink(u) {
+				data.AppLink = true
+			} else {
+				data.LookupQ = lookupAddress(u)
+			}
 		}
 		sites, err := s.services.SearchService.Search(r.Context(), data.Form.Q, siteKey, searchLimit)
 		if err != nil {
@@ -89,6 +100,12 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, status, "search.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// isAppLink reports whether u (from discovery.ParseInput) is on the app's own
+// site, which is never looked up.
+func (s *Server) isAppLink(u *url.URL) bool {
+	return s.appSiteKey != "" && discovery.SiteKey(u) == s.appSiteKey
 }
 
 // lookupAddress is u (from discovery.ParseInput) as the lookup offer shows and

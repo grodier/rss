@@ -259,7 +259,7 @@ func TestImportRepositoryFinish(t *testing.T) {
 	repo := NewImportRepository(db)
 	userID := newTestUser(t, db)
 	feed := newTestFeed(t, db)
-	id := newTestImport(t, repo, userID, "https://a.example.com/feed", "https://b.example.com/feed")
+	id := newTestImport(t, repo, userID, "https://a.example.com/feed", "https://b.example.com/feed", "https://paperround.app/shared/abc/feed.atom")
 
 	subscribed := rss.ImportFeed{ImportID: id, Position: 0, Status: rss.ImportSubscribed, FeedID: feed.ID}
 	if err := repo.Finish(t.Context(), subscribed); err != nil {
@@ -275,6 +275,13 @@ func TestImportRepositoryFinish(t *testing.T) {
 	}
 	if got := getImportFeed(t, repo, id, 1); got.Status != rss.ImportFailed || got.Failure != rss.ImportUnreachable || got.FeedID != "" || got.FeedTitle != "" || got.Error != "dial tcp: timeout" {
 		t.Errorf("failed: got %+v; want failed, unreachable, with the error", got)
+	}
+	appLink := rss.ImportFeed{ImportID: id, Position: 2, Status: rss.ImportFailed, Failure: rss.ImportAppLink, Error: "discovery: link to the app itself"}
+	if err := repo.Finish(t.Context(), appLink); err != nil {
+		t.Fatalf("Finish app link: %v", err)
+	}
+	if got := getImportFeed(t, repo, id, 2); got.Status != rss.ImportFailed || got.Failure != rss.ImportAppLink {
+		t.Errorf("app link: got %+v; want failed, app_link", got)
 	}
 	var unfinished int
 	if err := db.QueryRow(`SELECT count(*) FROM import_feeds WHERE import_id = $1 AND finished_at IS NULL`, id).Scan(&unfinished); err != nil {

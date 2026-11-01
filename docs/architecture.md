@@ -301,6 +301,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   The page and feed send `X-Robots-Tag: noindex` (the page also has a robots meta tag) and name no owner; feed entries carry only titles, links, dates, excerpts and each feed's own title.
   Their absolute URLs are built from `-base-url`, never the `Host` header.
   Sharing and New link need a confirmed email.
+  Discovery refuses addresses on `-base-url`'s site (`Discoverer.AppSiteKey`), and search and lookups don't offer them, so a shared link looked up or imported never becomes a feed every account can find.
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form.
   A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.

@@ -419,6 +419,7 @@ const (
 	ImportInvalidURL  ImportFailure = "invalid_url"
 	ImportUnreachable ImportFailure = "unreachable"
 	ImportNotFeed     ImportFailure = "not_feed"
+	ImportAppLink     ImportFailure = "app_link" // a link to the app itself, such as a shared timeline's
 )
 
 // ImportFeed is one feed of an import: a job in the import queue and its result.

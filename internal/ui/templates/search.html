@@ -40,6 +40,11 @@
       {{/* app.js's live search replaces this container's contents with the
            same container from /search?q=… as the reader types. */}}
       <div id="search-results" data-search-results>
+      {{if .AppLink}}
+      <section class="lookup-cta">
+        <p>That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader.</p>
+      </section>
+      {{end}}
       {{with .LookupQ}}
       <section class="lookup-cta">
         <p>Not what you're looking for? Find the feeds a website publishes.</p>

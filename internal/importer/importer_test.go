@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"reflect"
@@ -488,6 +489,19 @@ func TestProcessDiscoveryError(t *testing.T) {
 	checkOutcome(t, got, rss.ImportFailed, rss.ImportUnreachable, "")
 	if !strings.Contains(got.Error, "no such host") {
 		t.Errorf("Error = %q; want the discovery error", got.Error)
+	}
+}
+
+func TestProcessAppLink(t *testing.T) {
+	tr := newTestRunner()
+	tr.disc.DiscoverFn = func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+		return discovery.Result{}, fmt.Errorf("%w: %s", discovery.ErrAppLink, u)
+	}
+
+	got := tr.importOne(t, t.Context(), "https://paperround.app/shared/abc/feed.atom")
+	checkOutcome(t, got, rss.ImportFailed, rss.ImportAppLink, "")
+	if tr.saver.calls != 0 {
+		t.Errorf("Save called %d times; want 0", tr.saver.calls)
 	}
 }
 

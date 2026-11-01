@@ -88,6 +88,42 @@ func TestLookupCreateInvalidInput(t *testing.T) {
 	}
 }
 
+func TestLookupCreateAppLink(t *testing.T) {
+	calls := 0
+	store := &fakeLookupStore{
+		requestFn: func(context.Context, string, string, bool, time.Duration, time.Duration) (rss.Lookup, error) {
+			calls++
+			return rss.Lookup{ID: testLookupID, Status: rss.LookupDone, SiteID: testSiteID}, nil
+		},
+		getByIDFn: noGetByID(t),
+	}
+	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", BaseURL: "https://paperround.app"}, Services{LookupService: store})
+
+	for _, q := range []string{"https://paperround.app/shared/abc", "www.PaperRound.app/shared/abc"} {
+		rr := postLookup(t, s, q)
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status = %d, want 422", q, rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "To follow a shared timeline, paste its link into another feed reader.") {
+			t.Errorf("%s: error message missing", q)
+		}
+	}
+	if calls != 0 {
+		t.Errorf("Request called %d times, want 0", calls)
+	}
+
+	// Refusals aren't counted by the lookup limiter.
+	for i := range 10 {
+		if rr := postLookup(t, s, "paperround.app"); rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("refusal %d: status = %d, want 422", i+1, rr.Code)
+		}
+	}
+	assertRedirect(t, postLookup(t, s, "example.com"), "/sites/"+testSiteID)
+	if calls != 1 {
+		t.Errorf("Request called %d times for an ordinary address, want 1", calls)
+	}
+}
+
 func TestLookupCreateRequestArgs(t *testing.T) {
 	var gotKey, gotURL string
 	var gotHomePage bool

@@ -14,12 +14,6 @@ on:
 permissions:
   contents: read
 
-# One Terraform run at a time, never cancelled midway. An apply waiting for
-# approval holds the group.
-concurrency:
-  group: terraform
-  cancel-in-progress: false
-
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.TF_STATE_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_STATE_SECRET_ACCESS_KEY }}
@@ -45,6 +39,12 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # One plan per pull request at a time, never cancelled midway (a cancelled
+    # run can leave the state lock behind). Plans don't wait behind an apply
+    # waiting for approval; the state lock keeps them from running during one.
+    concurrency:
+      group: terraform-plan-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,7 +60,7 @@ jobs:
       - name: terraform plan
         run: |
           status=0
-          terraform -chdir=infra plan -no-color > "$RUNNER_TEMP/plan.txt" 2>&1 || status=$?
+          terraform -chdir=infra plan -lock-timeout=5m -no-color > "$RUNNER_TEMP/plan.txt" 2>&1 || status=$?
           cat "$RUNNER_TEMP/plan.txt"
           {
             echo '## terraform plan'
@@ -76,6 +76,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: infrastructure # waits for the owner's approval
+    # One apply at a time, never cancelled midway. An apply waiting for
+    # approval holds the group.
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -89,4 +94,4 @@ jobs:
         run: terraform -chdir=infra init
 
       - name: terraform apply
-        run: terraform -chdir=infra apply -auto-approve -no-color
+        run: terraform -chdir=infra apply -auto-approve -lock-timeout=10m -no-color

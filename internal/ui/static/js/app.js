@@ -113,9 +113,11 @@
   // Nothing is fetched under 2 characters; an empty box shows the no-query
   // state (an empty container) without a request. The URL follows the query,
   // so a reload or Back shows the same results, and the number of sites is
-  // announced in the polite live region; focus never moves. On any failure
-  // (a non-200, a redirect to the login page, a network error) the page is
-  // left as it is: submitting the form still works.
+  // announced in the polite live region; focus never moves. A swap also
+  // removes the form's error, left from a page rendered as a 422, since the
+  // new query is valid. On any failure (a non-200, a redirect to the login
+  // page, a network error) the page is left as it is: submitting the form
+  // still works.
   {
     const form = document.querySelector("form[data-live-search]");
     const input = form && form.elements.namedItem("q");
@@ -129,6 +131,7 @@
         return u.href;
       };
       const show = (q, container) => {
+        form.querySelector(".error")?.remove();
         results.replaceChildren(...container.childNodes);
         localizeTimes(results);
         enhancePings(results);

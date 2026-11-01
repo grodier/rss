@@ -441,6 +441,10 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   The cost is two tabs for people who'd use neither.
   New timeline still offers both, among its starting points, so a deleted default can come back.
   Accounts made before #482 don't get them (pre-alpha).
+- **New timeline starts from a list of starting points** (#482): Feeds with a tag, Quiet posters, Starred, Keywords, Audio and video, Start from scratch, each a row like Settings' home list (an icon on an avatar tone, a one-line hint, a chevron) that opens the form filled in.
+  It replaced a small "Start from" line above the form, so the form with every option was where everyone started; the list also says what timelines can be made of.
+  Without tags, Feeds with a tag leads to Tags, to make one first.
+- **An empty quiet-feeds timeline says what will show up** (#482): "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them.", since a new account's Quiet posters is empty until it follows quiet feeds, and "Nothing in this timeline yet." read as broken.
 - **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
   The average is over the time the feed's articles cover, up to 30 days and never less than 7: a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
   The 7-day minimum keeps a weekly feed whose file holds only its latest post from counting as 7 a week (as a 1-day minimum would); the cost is that a busy feed whose file holds few items is understated in its first week.

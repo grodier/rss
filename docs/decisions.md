@@ -254,7 +254,7 @@ Planned in #163 (issues #147–#162).
   We can't know when they were published, and an undated feed would otherwise fill the top of Home on import; spacing them keeps them from forming a block lower down too.
   Rejected: below the save's dated items 1 µs apart, as #438 first proposed (still a block), and the newest near the top as a taste of the new feed (an import with many undated feeds would put one per feed on top).
   On later saves an undated item is news.
-- **The timeline is `/`** for logged-in users (the nav label stays "Home").
+- **The timeline is `/`** for logged-in users (the nav label stays "Home"); `/` opens your first tab, or the one you were on during this visit (#480, "Timelines" under "Filtering and timelines").
   Duplicates are collapsed at query time on `canonical_url`, keeping the earliest copy by position, with "Also in" on the row.
   Feed pages show every copy.
   (#154, #162)
@@ -415,9 +415,14 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 
 - **Timelines are explicit, not one per tag.** Tags organize; a timeline is made on purpose (a tag's page offers "Make a timeline"), which keeps the tab row short.
   (#356)
-- **Tabs at the top of Home**, at `/timelines/{id}`, managed at `/timelines` and reordered with Move up / Move down (no drag and drop, which needs JavaScript).
+- **Tabs at the top of the timeline pages**, at `/timelines/{id}`, managed at `/timelines`.
   The nav rail is unchanged, and tabs carry no counts.
   (#356, #357)
+- **Reordering works with buttons, and dragging is an extra** (#479, #481; this reverses #356's "no drag and drop, which needs JavaScript"): every row on `/timelines` has move up and move down buttons, which work without JavaScript, and `app.js` adds drag handles and moves rows in place.
+  The buttons stay where dragging works: WCAG 2.2's 2.5.7 (Dragging Movements, AA) needs a single-pointer way to do whatever dragging does (W3C's technique G219), and they're the keyboard path.
+  Dragging uses Pointer Events, not HTML drag and drop, which doesn't work with touch on many phones.
+- **Deleting a timeline stays at the foot of its edit page, not on `/timelines`' rows** (#479): the move buttons beside it are pressed often, deleting has no confirmation or undo, and deleting a shared timeline breaks its link for everyone following it.
+  At 320 px a row has no room for a fourth control, and row menus were ruled out for My feeds (#424).
 - **The tab row is underlined tabs in place of the page head's heading**, the owner's pick of three options (pills under the heading; wrapping pills with More on phones) for its app-like look.
   The tabs scroll sideways when they don't fit; `app.js` scrolls the current one into view, and without JavaScript the row starts at Home.
   The description and Edit link go in a row under the tabs.
@@ -431,9 +436,11 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **The same reading rules as Home:** arrival order, copies collapsed among the timeline's own feeds, "Also in", read markers.
   A starred-only timeline orders by star time instead, so new picks land on top.
   (#356, #358)
-- **Presets on New timeline, not built-in tabs:** Starred (all feeds, starred only), Quiet posters (at most 2 a week), and From a tag.
-  Each is an ordinary timeline you can rename, filter, share or delete.
-  (#356, #358, #359)
+- **New accounts start with Quiet posters and Starred** (#482; this replaces #356's "presets on New timeline, not built-in tabs"): two ordinary timelines, created with the account, that can be renamed, changed, shared, moved or deleted like any other, and count toward the limit.
+  Quiet posters best shows what the app is for, and nobody makes it on day one; without a starred-only timeline a star has nowhere to appear (NetNewsWire ships Starred as a built-in view for the same reason).
+  The cost is two tabs for people who'd use neither.
+  New timeline still offers both, among its starting points, so a deleted default can come back.
+  Accounts made before #482 don't get them (pre-alpha).
 - **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
   The average is over the time the feed's articles cover, up to 30 days and never less than 7: a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
   The 7-day minimum keeps a weekly feed whose file holds only its latest post from counting as 7 a week (as a 1-day minimum would); the cost is that a busy feed whose file holds few items is understated in its first week.
@@ -451,7 +458,13 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Home shows every feed you subscribe to and can't be edited; there's no muting.** To keep a noisy feed out of view, make a timeline that leaves it out.
   Muting on Home (#362, not built) was dropped: a feed missing from the main view, with the reason only on its Edit page, raises "why don't I see X?" with no answer on the page, and it would have been a second way to filter beside the timeline form.
   Home has no `timelines` row.
-  The cost: `/` always opens on Home, so someone who reads a filtered timeline first taps its tab each visit (a backlog item, "Start on a chosen timeline").
+- **Home can move, and `/` opens the tab you were on during this visit, else your first tab** (#480), for someone who reads a filtered timeline more than Home (the backlog's "Start on a chosen timeline").
+  Home is one of the tabs you order on `/timelines`, but it still can't be edited, shared or deleted; most people will keep it first.
+  A visit is the 30-minute gap that also moves "You were here" (`rss.VisitGap`), so the nav's Home and the logo bring you back to the tab you were reading, and a later visit starts on your first tab.
+  Per browser session was the other choice, but session cookies on phones last for days, so the first tab would rarely apply.
+  The visit's tab is a cookie, checked against the user's tabs on every use, rather than a session value: sessions are stored in Postgres, so it would be a write on every page view.
+  Home gets its own address, `/timelines/all`, since `/` may show another tab; its position is a column on `users` in the same numbering as `timelines.position`, since Home has no `timelines` row.
+  Whether the tab keeps the name "Home" once it can move is settled at #480's design checkpoint.
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280.
   (#356)
 - **The form stores only what has an effect.** With Show set to all feeds, the tags and feeds ticked under Show are dropped on save; a tag or feed both shown and left out is stored as left out; IDs that aren't the user's are ignored.

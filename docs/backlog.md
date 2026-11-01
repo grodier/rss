@@ -306,9 +306,6 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **More posting-frequency conditions.**
   Beyond "at most N posts a week" (#359): posts a day, "posted in the last N days", "hasn't posted for N months".
   When someone asks.
-- [ ] **Start on a chosen timeline.**
-  A setting for which tab `/` opens, for someone who reads a filtered timeline (say, everything but a news wire) more than Home, which can't be edited (see "Timelines" in decisions.md).
-  When someone asks.
 - [ ] **Word filters from a full-text index.**
   Word filters (#360) check the text of every article in the reader's feeds: ~0.9 s at #388's scale, and a shared word timeline pays it on every poll of its feed.
   Store each article's words as a `tsvector` (`simple` dictionary, so no stemming: "run" doesn't match "running") with a GIN index, find candidates with it, and keep today's exact match (`wordsPattern`) as the final check, so results don't change.
@@ -333,10 +330,8 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Found in the design review that filed #419–#424 (#425), and not filed yet; each needs a design checkpoint ("Design" in decisions.md) unless it's copy only.
   - Dates differ: rows and feed pages say "Oct 29, 2026, 2:22 AM", My feeds "29 Oct 2026"; a feed page's facts end "Last fetched … ." with a stray spaced full stop, and "About 5 posts a week." has a full stop My feeds doesn't.
   - Article rows repeat themselves: the feed name above the card and the domain inside it, a full date and time where a relative one may do, and the actions detached under the card.
-  - The timeline form's spacing: hints at different indents, checkbox hints in divided rows of their own (they read as options), a bare box for "at most [N] times a week", and Save above the Sharing section it doesn't save.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
-  - Timelines: Move up / Move down pills next to an Edit text link.
-  - Sub-nav pages: Tags, a tag and Timelines aren't in the nav (they're reached from a pill on My feeds and the Manage tab), so their heads carry hand-made links up ("My feeds", "All tags", "All timelines"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md).
+  - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
 - [ ] **Reading preferences (needs planning).**
@@ -549,6 +544,7 @@ Pages and queries:
   *Measured 2026-10-26* (#388, same seed): page 1 of every filtered timeline read all 748k articles to return 31: Tag only 258 ms, Quiet posters 267 ms, Media 160 ms, Words (3 words in 1% of titles) 898 ms.
   *Measured 2026-10-27* (#404's per-feed query, same seed): Tag only 8–14 ms, Quiet posters 39–52 ms, Media 31–66 ms (the planner hash-joins `feeds` inside each subscription's loop), Words 1,286–1,527 ms (it reads all 324k subscribed articles, now with the earlier-copy check on flagged ones).
   Only words are left.
+  #482 gives every new account a Quiet posters timeline, so the rate filter's query runs for everyone who opens that tab, not only those who made one.
   *Fix:* "Word filters from a full-text index" under Filtering and timelines.
 - [ ] **Timeline tabs on every Home view** (#356).
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.

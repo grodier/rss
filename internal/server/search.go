@@ -36,6 +36,12 @@ type searchData struct {
 	// Topics is the site catalog by topic, shown when there's no query
 	// (Browse): only sites whose lookup has found them.
 	Topics []rss.CatalogTopic
+	// BrowseDesign picks Browse's design for the design checkpoint ("a",
+	// "b" or "c", from ?browse=); removed once one is picked.
+	BrowseDesign string
+	// Topic is the topic design (c) shows, from ?topic=; the first if
+	// unknown or empty.
+	Topic string
 }
 
 // searchHandler searches the database only. GET requests are not covered by
@@ -62,6 +68,20 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Topics = topics
+
+		// Design checkpoint switch (#447): removed once a design is picked.
+		data.BrowseDesign = r.URL.Query().Get("browse")
+		if data.BrowseDesign != "b" && data.BrowseDesign != "c" {
+			data.BrowseDesign = "a"
+		}
+		if data.BrowseDesign == "c" && len(topics) > 0 {
+			data.Topic = topics[0].Name
+			for _, t := range topics {
+				if t.Name == r.URL.Query().Get("topic") {
+					data.Topic = t.Name
+				}
+			}
+		}
 
 		var siteIDs []string
 		for _, t := range topics {

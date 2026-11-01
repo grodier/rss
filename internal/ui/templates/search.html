@@ -48,20 +48,29 @@
 
       {{with .Topics}}
       {{/* Browse: the site catalog, with an index of in-page links to its
-           topics, which work without JavaScript. */}}
-      <nav class="browse-index" aria-label="Topics">
-        <p>Browse popular sites by topic</p>
-        <ul role="list">
-          {{range $i, $t := .}}
-          <li><a href="#topic-{{$i}}">{{$t.Name}}</a></li>
-          {{end}}
-        </ul>
-      </nav>
+           topics, which work without JavaScript. Sites listed before any
+           topic come first, under no heading. */}}
+      <div class="browse-index">
+        <p>Browse popular sites{{if $.TopicIndex}} by topic{{end}}</p>
+        {{if $.TopicIndex}}
+        <nav aria-label="Topics">
+          <ul role="list">
+            {{range $i, $t := .}}{{if $t.Name}}
+            <li><a href="#topic-{{$i}}">{{$t.Name}}</a></li>
+            {{end}}{{end}}
+          </ul>
+        </nav>
+        {{end}}
+      </div>
       {{range $i, $t := .}}
+      {{if $t.Name}}
       <section class="browse-topic" id="topic-{{$i}}">
         <div class="list-head">
           <h2>{{$t.Name}}</h2>
         </div>
+      {{else}}
+      <section class="browse-topic browse-untitled" aria-label="Popular sites">
+      {{end}}
         <ul role="list">
           {{range $t.Sites}}
           <li class="result">

@@ -26,15 +26,51 @@ func TestParse(t *testing.T) {
 		}
 	})
 
+	shapes := []struct {
+		name, in string
+		want     []Entry
+	}{
+		{"empty file", "", nil},
+		{"only comments", "\n# nothing yet\n", nil},
+		{"one site, no topic", "npr.org\n", []Entry{
+			{URL: "https://npr.org/", SiteKey: "npr.org", Position: 0},
+		}},
+		{"sites, no topics", "npr.org\neater.com\n", []Entry{
+			{URL: "https://npr.org/", SiteKey: "npr.org", Position: 0},
+			{URL: "https://eater.com/", SiteKey: "eater.com", Position: 1},
+		}},
+		{"a topic with no sites yet", "[News]\n", nil},
+		{"sites before the first topic have none", "npr.org\n[Food]\neater.com\n", []Entry{
+			{URL: "https://npr.org/", SiteKey: "npr.org", Position: 0},
+			{Topic: "Food", URL: "https://eater.com/", SiteKey: "eater.com", Position: 1},
+		}},
+		{"empty topics between others", "[News]\nnpr.org\n[Sports]\n\n[Food]\neater.com\n[Music]\n", []Entry{
+			{Topic: "News", URL: "https://npr.org/", SiteKey: "npr.org", Position: 0},
+			{Topic: "Food", URL: "https://eater.com/", SiteKey: "eater.com", Position: 1},
+		}},
+		{"a feed's address", "[News]\nhttps://feeds.npr.org/1001/rss.xml\n", []Entry{
+			{Topic: "News", URL: "https://feeds.npr.org/1001/rss.xml", SiteKey: "feeds.npr.org", Position: 0},
+		}},
+	}
+	for _, tc := range shapes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Parse(strings.NewReader(tc.in))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %+v\nwant %+v", got, tc.want)
+			}
+		})
+	}
+
 	errCases := []struct {
 		name, in, want string
 	}{
-		{"address before any heading", "npr.org\n[News]\nbbc.co.uk\n", "before any [Topic] heading"},
-		{"not an address", "[News]\nnot an address\n", "isn't a website address"},
+		{"not an address", "[News]\nnot an address\n", "line 2: \"not an address\" isn't a website address"},
 		{"address ParseInput rejects", "[News]\nftp://example.com\n", "isn't a website address"},
 		{"same site key", "[News]\nexample.com\n[Other]\nwww.example.com/news\n", "same site (example.com) as line 2"},
-		{"empty topic", "[News]\n[Science]\nnasa.gov\n", `topic "News" has no sites`},
-		{"empty last topic", "[News]\nnpr.org\n[Science]\n\n", `topic "Science" has no sites`},
+		{"same site twice without topics", "npr.org\nnpr.org/sections/news\n", "same site (npr.org) as line 1"},
 		{"topic twice", "[News]\nnpr.org\n[News]\nbbc.co.uk\n", `topic "News" appears twice`},
 		{"unclosed heading", "[News\nnpr.org\n", "isn't a [Topic] heading"},
 		{"empty heading", "[ ]\nnpr.org\n", "isn't a [Topic] heading"},
@@ -47,13 +83,6 @@ func TestParse(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("empty file", func(t *testing.T) {
-		got, err := Parse(strings.NewReader("\n# nothing yet\n"))
-		if err != nil || len(got) != 0 {
-			t.Errorf("got %v, %v; want no entries and no error", got, err)
-		}
-	})
 }
 
 func TestLoad(t *testing.T) {
@@ -79,12 +108,19 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
+	t.Run("both lists empty", func(t *testing.T) {
+		got, err := Load(strings.NewReader(""), strings.NewReader("[News]\n"))
+		if err != nil || len(got) != 0 {
+			t.Errorf("got %v, %v; want no entries", got, err)
+		}
+	})
+
 	errCases := []struct {
 		name, browse, seed, want string
 	}{
 		{"site in both lists", "[News]\nnpr.org\n", "[Radio]\nwww.npr.org/sections/news\n", "seed.txt: npr.org is also in browse.txt"},
-		{"bad browse list", "npr.org\n", "", "browse.txt: line 1"},
-		{"bad seed list", "[News]\nnpr.org\n", "[Empty]\n", "seed.txt: line 1"},
+		{"bad browse list", "[News\n", "", "browse.txt: line 1"},
+		{"bad seed list", "[News]\nnpr.org\n", "[Empty\n", "seed.txt: line 1"},
 	}
 	for _, tc := range errCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,18 +133,9 @@ func TestLoad(t *testing.T) {
 }
 
 // TestEmbeddedCatalog stops a bad edit to browse.txt or seed.txt from
-// shipping.
+// shipping: Entries panics if they don't load. Either may be empty.
 func TestEmbeddedCatalog(t *testing.T) {
-	entries := Entries()
-	browse := 0
-	for _, e := range entries {
-		if e.Browse {
-			browse++
-		}
-	}
-	if browse == 0 {
-		t.Fatal("browse.txt has no entries")
-	}
+	Entries()
 }
 
 type fakeStore struct {

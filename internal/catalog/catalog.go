@@ -19,7 +19,7 @@ import (
 
 // Entry is one site in the catalog.
 type Entry struct {
-	Topic    string // the [Topic] heading it's under
+	Topic    string // the [Topic] heading it's under; "" before the first one
 	URL      string // discovery.ParseInput of the line, as a string
 	SiteKey  string // discovery.SiteKey of URL
 	Position int    // order in the catalog, from 0
@@ -33,25 +33,18 @@ var (
 	seedFile []byte
 )
 
-// Parse reads a catalog file: [Topic] headings, each followed by one website
-// address per line. Blank lines and lines starting with "#" are ignored. It's
-// an error for an address to come before any heading, not to parse with
-// discovery.ParseInput, or to share its site key with an earlier entry, and
-// for a topic to have no entries or to appear twice.
+// Parse reads a catalog file: website addresses, one per line, optionally
+// grouped under [Topic] headings. Any part can be empty: a file with no
+// addresses, addresses with no heading (before the first one, they have no
+// topic), or a heading with no addresses under it yet. Blank lines and lines
+// starting with "#" are ignored. It's an error for an address not to parse
+// with discovery.ParseInput or to share its site key with an earlier entry,
+// and for a heading to be malformed or to appear twice.
 func Parse(r io.Reader) ([]Entry, error) {
 	var entries []Entry
 	topic := ""
-	topicLine := 0
-	topicEntries := 0
 	seenTopics := map[string]bool{}
 	seenKeys := map[string]int{}
-
-	endTopic := func() error {
-		if topic != "" && topicEntries == 0 {
-			return fmt.Errorf("line %d: topic %q has no sites", topicLine, topic)
-		}
-		return nil
-	}
 
 	sc := bufio.NewScanner(r)
 	n := 0
@@ -63,9 +56,6 @@ func Parse(r io.Reader) ([]Entry, error) {
 		}
 
 		if strings.HasPrefix(line, "[") {
-			if err := endTopic(); err != nil {
-				return nil, err
-			}
 			name, ok := strings.CutSuffix(line[1:], "]")
 			name = strings.TrimSpace(name)
 			if !ok || name == "" {
@@ -75,29 +65,22 @@ func Parse(r io.Reader) ([]Entry, error) {
 				return nil, fmt.Errorf("line %d: topic %q appears twice", n, name)
 			}
 			seenTopics[name] = true
-			topic, topicLine, topicEntries = name, n, 0
+			topic = name
 			continue
 		}
 
-		if topic == "" {
-			return nil, fmt.Errorf("line %d: %q comes before any [Topic] heading", n, line)
-		}
 		u, err := discovery.ParseInput(line)
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %q isn't a website address", n, line)
 		}
 		key := discovery.SiteKey(u)
 		if prev, ok := seenKeys[key]; ok {
-			return nil, fmt.Errorf("line %d: %q is the same site (%s) as line %d", n, line, key, prev)
+			return nil, fmt.Errorf("line %d: %q is the same site (%s) as line %d; list each site once", n, line, key, prev)
 		}
 		seenKeys[key] = n
 		entries = append(entries, Entry{Topic: topic, URL: u.String(), SiteKey: key, Position: len(entries)})
-		topicEntries++
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	if err := endTopic(); err != nil {
 		return nil, err
 	}
 	return entries, nil

@@ -1,9 +1,20 @@
-# The sites Browse shows (#447): the Search page with no query lists them
-# by topic, in this order, once each one's lookup has found it. They're also
+# The sites Browse recommends (#447): the Search page with no query lists
+# them, in this order, once each one's lookup has found it. They're also
 # seeded, like seed.txt, so search finds them.
-# A [Topic] heading, then one website address per line. A site is listed
-# once, under one topic, across this file and seed.txt. Blank lines and lines
-# starting with # are ignored.
+#
+# One website address per line (a feed's address works too), optionally
+# grouped under [Topic] headings. Sites before the first heading have no
+# topic and come first, under no heading. Any part can be empty: no sites
+# (Browse isn't shown), no topics, or a heading with no sites under it yet.
+#
+#   npr.org              <- no topic
+#   [Science]
+#   quantamagazine.org   <- under Science
+#   [Sports]             <- no sites yet: fine
+#
+# List each site once, across this file and seed.txt. Blank lines and lines
+# starting with # are ignored. www migrate stores the lists on every deploy,
+# and logs the sites whose lookups failed.
 
 [News]
 npr.org

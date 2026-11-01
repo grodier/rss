@@ -98,10 +98,11 @@ Planned in #50 (issues #51–#67).
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
   "Popular" is the owner's pick, since there's no popularity or cross-user data in the app.
-- **The catalog is hand-picked and kept in the repository** (#447), as text files embedded in the binary that the owner edits in PRs: `[Topic]` headings with one website address per line, each site listed once, under one topic.
+- **The catalog is hand-picked and kept in the repository** (#447), as text files embedded in the binary that the owner edits in PRs: one website address per line, optionally grouped under `[Topic]` headings, each site listed once.
+  Any part can be empty (a list with no sites, sites with no topics, a topic with no sites yet), so the lists can start empty and grow; sites before the first heading have no topic, and Browse shows them first, under no heading, with the topic index only when there are named topics.
   A test loads the embedded files, so a bad edit can't ship.
 - **The catalog is two lists: what Browse recommends, and what's only seeded** (#447): `browse.txt` holds the few dozen sites Browse shows, and `seed.txt` the many more (1,000 and up) that search should find without anyone looking them up.
-  Both are seeded, and search matches both lists' topics; a site is in one list or the other, never both, so it has one topic and one address.
+  Both are seeded, and search matches both lists' topics; a site is in one list or the other, never both, so it has at most one topic and one address.
   Separate files were picked over one file with a "featured" marker, since the seed list is expected to grow to thousands of sites and be edited (or generated) apart from the short list of recommendations.
 - **Seeding goes through the lookup queue** (#447), so catalog feeds are created by discovery like any other: the seed stores the list and queues lookups, and the app's lookup workers find the sites.
 - **`www migrate` seeds the catalog, after the migrations** (#447): the catalog is reference data that ships with the binary, like the schema, so it's stored in the release step (Render's pre-deploy command), once per deploy, before the new version serves.

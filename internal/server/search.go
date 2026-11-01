@@ -34,8 +34,11 @@ type searchData struct {
 	// Icons holds the icon URLs of the result or Browse sites that have one.
 	Icons map[string]string
 	// Topics is the site catalog by topic, shown when there's no query
-	// (Browse): only sites whose lookup has found them.
+	// (Browse): only sites whose lookup has found them. Sites listed before
+	// any topic come first, as a topic named "".
 	Topics []rss.CatalogTopic
+	// TopicIndex is whether Browse has named topics to link to.
+	TopicIndex bool
 }
 
 // searchHandler searches the database only. GET requests are not covered by
@@ -65,6 +68,9 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 
 		var siteIDs []string
 		for _, t := range topics {
+			if t.Name != "" {
+				data.TopicIndex = true
+			}
 			for _, site := range t.Sites {
 				siteIDs = append(siteIDs, site.ID)
 			}

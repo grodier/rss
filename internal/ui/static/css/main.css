@@ -2247,6 +2247,12 @@
     scroll-margin-block-start: 4.5rem;
   }
 
+  /* Sites listed before any topic: a divider stands in for the heading. */
+  .browse-untitled {
+    margin-block-start: 0.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+
   /* A site's description in the reading face, under its name and lined up
      with it, like an article card's excerpt. */
   .browse-desc {

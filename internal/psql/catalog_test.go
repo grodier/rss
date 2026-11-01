@@ -281,10 +281,11 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 	repo := NewCatalogRepository(db)
 	ctx := t.Context()
 
-	keys := catalogKeys(6)
+	keys := catalogKeys(7)
 	keepCatalog(t, db, keys...)
 
 	if _, err := repo.Replace(ctx, []catalog.Entry{
+		catalogEntry("", keys[6], -1), // listed before any topic
 		catalogEntry("Science", keys[0], 0),
 		catalogEntry("Science", keys[1], 1), // not found yet
 		catalogEntry("Science", keys[2], 2),
@@ -304,6 +305,8 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 	lookupFound(t, db, keys[2], site2)
 	lookupFound(t, db, keys[4], site4)
 	lookupFound(t, db, keys[5], newCatalogSite(t, db, keys[5], "Seed only"))
+	site6 := newCatalogSite(t, db, keys[6], "No topic")
+	lookupFound(t, db, keys[6], site6)
 
 	topics, err := repo.Browse(ctx)
 	if err != nil {
@@ -315,12 +318,12 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 			got = append(got, topic.Name+" "+s.ID)
 		}
 	}
-	want := []string{"Science " + site0, "Science " + site2, "News " + site4}
-	if !reflect.DeepEqual(got, want) || len(topics) != 2 {
-		t.Errorf("Browse = %v in %d topics; want %v in 2", got, len(topics), want)
+	want := []string{" " + site6, "Science " + site0, "Science " + site2, "News " + site4}
+	if !reflect.DeepEqual(got, want) || len(topics) != 3 {
+		t.Errorf("Browse = %v in %d topics; want %v in 3", got, len(topics), want)
 	}
-	if topics[0].Sites[0].Host != keys[0] || topics[0].Sites[0].Title != "Zebra" {
-		t.Errorf("first site = %+v; want host %s, title Zebra", topics[0].Sites[0], keys[0])
+	if topics[1].Sites[0].Host != keys[0] || topics[1].Sites[0].Title != "Zebra" {
+		t.Errorf("first Science site = %+v; want host %s, title Zebra", topics[1].Sites[0], keys[0])
 	}
 }
 

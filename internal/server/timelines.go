@@ -227,39 +227,88 @@ func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// timelineNewHandler shows the New timeline form, showing all feeds. With
-// ?preset=starred it's named Starred and shows only starred articles; with
-// ?preset=quiet it's named Quiet posters and shows only feeds posting at
-// most 2 times a week. With
-// ?tag={id} (one of the user's tags) it's named after the tag (even with a
-// preset) and shows only its feeds. Any other tag or preset is ignored.
-func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
-	form := timelineForm{Show: "all"}
+// timelinePresets are New timeline's starting points: what each ?preset=
+// fills in on the form, which shows all feeds unless the preset says.
+var timelinePresets = map[string]func(f *timelineForm){
+	"tags": func(f *timelineForm) { f.Show = "some" },
+	"quiet": func(f *timelineForm) {
+		f.Name = "Quiet posters"
+		f.MaxPostsPerWeek = "2"
+	},
+	"starred": func(f *timelineForm) {
+		f.Name = "Starred"
+		f.StarredOnly = true
+	},
+	"keywords": func(f *timelineForm) {},
+	"media": func(f *timelineForm) {
+		f.Name = "Audio and video"
+		f.MediaOnly = true
+	},
+	"blank": func(f *timelineForm) {},
+}
 
-	switch r.URL.Query().Get("preset") {
-	case "starred":
-		form.Name = "Starred"
-		form.StarredOnly = true
-	case "quiet":
-		form.Name = "Quiet posters"
-		form.MaxPostsPerWeek = "2"
+// timelineNewHandler shows New timeline. Without ?preset= or ?tag= it's a
+// list of starting points (timeline_new.html), each a link back here with
+// a preset. With a preset in timelinePresets it's the form, filled in as
+// the preset says. With ?tag={id} (one of the user's tags, as a tag's page
+// links) it's the form named after the tag, showing only its feeds, even
+// with a preset. An unknown preset, or a tag that isn't the user's, shows
+// the list.
+func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
+	userID, _ := s.authenticatedUserID(r)
+	q := r.URL.Query()
+	preset, known := timelinePresets[q.Get("preset")]
+	if (q.Has("preset") && !known) || (!q.Has("preset") && !q.Has("tag")) {
+		s.renderTimelineStart(w, r, userID)
+		return
 	}
 
-	if id := r.URL.Query().Get("tag"); validator.Matches(id, validator.UUIDRX) {
-		userID, _ := s.authenticatedUserID(r)
+	form := timelineForm{Show: "all"}
+	if preset != nil {
+		preset(&form)
+	}
+	if q.Has("tag") {
+		id := q.Get("tag")
+		if !validator.Matches(id, validator.UUIDRX) {
+			s.renderTimelineStart(w, r, userID)
+			return
+		}
 		tag, err := s.services.TagService.Get(r.Context(), userID, id)
 		switch {
-		case err == nil:
-			form.Name = tag.Name
-			form.Show = "some"
-			form.IncludeTags = []string{tag.ID}
-		case !errors.Is(err, rss.ErrNoRecord):
+		case errors.Is(err, rss.ErrNoRecord):
+			s.renderTimelineStart(w, r, userID)
+			return
+		case err != nil:
 			s.serverErrorHTML(w, r, err)
 			return
 		}
+		form.Name = tag.Name
+		form.Show = "some"
+		form.IncludeTags = []string{tag.ID}
 	}
 
 	s.renderTimelineForm(w, r, http.StatusOK, rss.Timeline{}, form)
+}
+
+// renderTimelineStart renders New timeline's list of starting points. The
+// user's tags decide only where "Feeds with a tag" goes: to the form, or to
+// /tags to make one first.
+func (s *Server) renderTimelineStart(w http.ResponseWriter, r *http.Request, userID string) {
+	tags, err := s.services.TagService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	data := struct {
+		Nav     navData
+		HasTags bool
+	}{
+		Nav:     s.nav(r, "home"),
+		HasTags: len(tags) > 0,
+	}
+	if err := s.renderHTML(w, http.StatusOK, "timeline_new.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 // timelineCreateHandler makes a timeline and goes to it.

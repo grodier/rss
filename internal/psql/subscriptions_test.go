@@ -13,12 +13,16 @@ import (
 )
 
 // newTestUser inserts a user and deletes it (and its subscriptions) on cleanup.
+// newTestUser inserts a user and deletes it when t ends. It's a bare row,
+// without UserRepository.Create's default timelines, so tests start from no
+// timelines; it can't log in.
 func newTestUser(t *testing.T, db *sql.DB) string {
 	t.Helper()
 	email := fmt.Sprintf("subs-test-%d@example.com", time.Now().UnixNano())
-	id, _, err := NewUserRepository(db).Create(t.Context(), "Test User", email, "correct-horse-battery")
+	var id string
+	err := db.QueryRowContext(t.Context(), `INSERT INTO users (name, email, hashed_password) VALUES ('Test User', $1, '') RETURNING id`, email).Scan(&id)
 	if err != nil {
-		t.Fatalf("Create user: %v", err)
+		t.Fatalf("insert user: %v", err)
 	}
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM users WHERE id = $1`, id); err != nil {

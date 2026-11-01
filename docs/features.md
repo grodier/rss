@@ -258,7 +258,8 @@ So `AI` matches "AI's" and "#AI" but not "said", and `C` matches "C++" too (the 
 `/timelines` lists them in tab order with Edit links and Move up and Move down buttons; `TimelineRepository.Move` locks the user's timelines and renumbers them 0…n−1 with the timeline swapped with its neighbour, which also repairs ties and gaps from deletes.
 Home is always first and can't move or be edited.
 New timeline and Edit render one form, `timeline_form.html`, with Show, Leave out and Only show fieldsets.
-New timeline offers presets (`?preset=starred`, `?preset=quiet` for at most 2 posts a week), and a tag's page links to it with `?tag={id}`.
+Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `www create-user` both get them.
+New timeline (`timelineNewHandler`) opens on a list of starting points (`timeline_new.html`), each a link back with a `?preset=` from `timelinePresets` that fills in the form; a tag's page links to it with `?tag={id}`, and an unknown preset or a tag that isn't the user's shows the list.
 `timelineForm.check` keeps only the user's own tags and feeds and validates the fields (limits are in the code and its tests); words are split on commas by `splitTerms`.
 `ErrTooManyTimelines` (20) is a form error; another user's timeline is a 404 (`timelineFromURL`).
 

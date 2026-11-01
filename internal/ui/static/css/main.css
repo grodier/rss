@@ -2062,24 +2062,13 @@
     gap: 0.5rem;
   }
 
-  /* New timeline's presets: a row of links above the form. */
-  .timeline-presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 1rem;
-    padding: 0.75rem 1rem;
-    border-block-end: 1px solid var(--border);
-    color: var(--text-2);
-    font-size: 0.875rem;
-  }
-
-  .timeline-presets ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 1rem;
+  /* New timeline's starting points: Settings rows led by an icon on a
+     tint, from the avatar tones. */
+  .timeline-start .avatar .icon {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
     margin: 0;
-    padding: 0;
-    list-style: none;
+    color: inherit;
   }
 
   /* The timeline form: name and description, then Show, Leave out and Only show. */

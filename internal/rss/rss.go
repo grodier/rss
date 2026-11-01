@@ -320,6 +320,16 @@ type TimelineFilter struct {
 	ExcludeWords    []string // an article mentioning one is left out
 }
 
+// DefaultTimelines are the timelines every new account starts with, in tab
+// order after Home: Quiet posters (feeds posting at most twice a week) and
+// Starred. They're ordinary timelines, which the user can change or delete.
+func DefaultTimelines() []Timeline {
+	return []Timeline{
+		{Name: "Quiet posters", Filter: TimelineFilter{MaxPostsPerWeek: 2}},
+		{Name: "Starred", Filter: TimelineFilter{StarredOnly: true}},
+	}
+}
+
 // VisitGap is how long a reader must be away before their next visit
 // starts and the "You were here" divider moves.
 const VisitGap = 30 * time.Minute

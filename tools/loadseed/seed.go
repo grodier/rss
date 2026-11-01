@@ -465,8 +465,13 @@ func seedStars(ctx context.Context, tx *sql.Tx, userID string, seed int64) error
 	return nil
 }
 
-// seedTimelines creates userID's custom timelines and shares the Words one.
+// seedTimelines replaces userID's default timelines with the custom
+// timelines the measurements use, and shares the Words one. The defaults go
+// first, since two Quiet posters and two Starred would be measured twice.
 func seedTimelines(ctx context.Context, db *sql.DB, userID, tagOnly string) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM timelines WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete default timelines: %w", err)
+	}
 	repo := psql.NewTimelineRepository(db)
 	timelines := []rss.Timeline{
 		{Name: timelineTagOnly, Filter: rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{tagOnly}}},

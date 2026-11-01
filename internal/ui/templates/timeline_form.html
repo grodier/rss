@@ -24,16 +24,6 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{if not .Timeline.ID}}
-      <div class="timeline-presets">
-        <span id="presets-label">Start from:</span>
-        <ul aria-labelledby="presets-label" role="list">
-          <li><a href="/timelines/new?preset=starred">Starred</a></li>
-          <li><a href="/timelines/new?preset=quiet">Quiet posters</a></li>
-        </ul>
-      </div>
-      {{end}}
-
       {{$focus := .Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words"}}
       <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
         <div class="timeline-form-fields">

@@ -25,8 +25,8 @@ func likePattern(q string) string {
 	return "%" + likeEscaper.Replace(q) + "%"
 }
 
-// Search matches q (case-insensitive substring) against site title and host
-// and feed title and URL, and siteKey (discovery.SiteKey of q when q is a web
+// Search matches q (case-insensitive substring) against site title, host and
+// description and feed title, URL and description, and siteKey (discovery.SiteKey of q when q is a web
 // address, else "") against site host exactly; that site comes first. It
 // returns at most limit sites, each with all of its feeds.
 func (r *SearchRepository) Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
@@ -38,8 +38,10 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey string, limit 
 	stmt := `SELECT s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at
 		FROM sites s
 		WHERE s.host = $2 OR s.title ILIKE $1 ESCAPE '\' OR s.host ILIKE $1 ESCAPE '\'
+		   OR s.description ILIKE $1 ESCAPE '\'
 		   OR EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id
-		              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'))
+		              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'
+		                   OR f.description ILIKE $1 ESCAPE '\'))
 		ORDER BY (s.host = $2) DESC, lower(s.title), s.host
 		LIMIT $3`
 

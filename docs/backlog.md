@@ -530,7 +530,8 @@ Pages and queries:
   *Fix:* fold it into the page's main query.
 - [ ] **Search scans with `ILIKE`.**
   Sites and feeds are matched with `%q%`, which can't use a b-tree index, and the seed list (#447) can add thousands of sites to scan.
-  Search as you type (#449) runs it once per pause in typing, not once per search.
+  Search as you type (#449) runs it once per pause in typing, not once per search, and also matches site and feed descriptions, which are longer to scan than titles.
+  *Measured 2026-11-01* (#449, on a dev container with about 1,300 sites and feeds): 5–11 ms per `/search` request while typing, 3–8 ms of it the query.
   *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
 - [ ] **Timeline cost per followed feed** (#404).

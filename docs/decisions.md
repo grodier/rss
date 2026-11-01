@@ -89,12 +89,23 @@ Planned in #50 (issues #51–#67).
 - **No "add feed" form.** Users search; a website that isn't known yet is *looked up*, which finds its feeds in the background and creates a site page listing them.
   Every feed belongs to a site, and feeds are only created by discovery.
   (#61)
-- **Search only reads the database** (site title and host, feed title and URL).
+- **Search only reads the database** (site title, host and description, feed title, URL and description).
   Results are sites, each with its feeds.
+  Descriptions were added with search as you type (#449), so a site can be found by what it's about, not only by its name or address.
 - **The search box is for names and addresses, not prose** (#441): it turns off autocorrect, auto-capitalization and spellcheck, which on phones broke addresses ("npr. org"), and an address typed with stray spaces is still offered as a lookup.
   The input has `autocapitalize="none" autocorrect="off" spellcheck="false"` and `enterkeyhint="search"`, and keeps `type="search"`; the Saved page's search box keeps spellcheck, since it searches article text.
   Only whitespace next to `.`, `/` or `:` is removed (`npr. org`, `https: //npr.org`); any other whitespace still means the query isn't an address, so free text such as `news on npr.org` isn't glued into one.
   The query shown back stays as typed; only the lookup offer and the site-key match use the cleaned-up address.
+- **Search updates as you type by fetching the Search page itself** (#449): no new route; `app.js` fetches `/search?q=…` and swaps in the page's results, as infinite scroll does with the next page, so the results markup lives in one template.
+  The cost is a heavier response than a list of names (3–14 KB with about 1,300 sites and feeds locally; timings are in the watchlist's "Search scans with `ILIKE`").
+  A request goes out about 250 ms after the last keystroke, from 2 characters, aborting any still in flight; an empty box shows the empty Search page without a request.
+  The URL follows the query (`history.replaceState`), so reload and Back show the same results.
+  There's no rate limit: debouncing bounds each reader's requests, and the `ILIKE` scan's cost is on the watchlist.
+  GET handlers still never fetch user-supplied URLs, so looking up an address still takes a click on Look up, which appears as you type.
+  The number of sites is announced in a polite live region rather than making the results a live region, which would read every result out.
+- **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the Search page already is the results, so updating it adds no new widget, keeps each result's feeds, "Subscribed" marker and the Look up button in view, and leaves keyboard and screen-reader behavior as it was.
+  A dropdown of up to 5 site names was the alternative; it's a new ARIA combobox (arrow keys, Enter, Escape) to get right, and hides the results it duplicates.
+  Results can shift under the box as you type, but only after a pause.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
   #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/net/html"
+
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -82,6 +84,88 @@ func TestSearchResults(t *testing.T) {
 	searchRequest(t, s, "https://www.NPR.org/news")
 	if gotQ != "https://www.NPR.org/news" || gotKey != "npr.org" {
 		t.Errorf("Search called with %q, %q; want the query as typed and site key npr.org", gotQ, gotKey)
+	}
+}
+
+// TestLiveSearchMarkup checks the markup app.js's live search relies on, in
+// every state of the page, since a page in any state can be typed into: the
+// app.js script, a GET
+// form[data-live-search] to /search with a q input, and one
+// [data-search-results] container holding the lookup offer, the results
+// (.result) and the no-results message, and empty with no query.
+func TestLiveSearchMarkup(t *testing.T) {
+	store := &fakeSearchStore{searchFn: func(_ context.Context, q, _ string, _ int) ([]rss.SiteWithFeeds, error) {
+		if q == "zzz" {
+			return nil, nil
+		}
+		return []rss.SiteWithFeeds{
+			{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}},
+			{Site: rss.Site{ID: "site-2", Host: "two.example"}},
+		}, nil
+	}}
+	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
+
+	tests := []struct {
+		name, q    string
+		status     int
+		results    int  // .result sections in the container
+		lookup     bool // the lookup offer is in the container
+		empty      bool // the no-results message is in the container
+		noChildren bool // the container has no elements
+	}{
+		{name: "no query", q: "", status: http.StatusOK, noChildren: true},
+		{name: "results", q: "ex", status: http.StatusOK, results: 2},
+		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true},
+		{name: "no results", q: "zzz", status: http.StatusOK, empty: true},
+		{name: "invalid query", q: strings.Repeat("a", 201), status: http.StatusUnprocessableEntity, noChildren: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := searchRequest(t, s, tt.q)
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.status)
+			}
+			doc, err := html.Parse(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			scripts := findAll(doc, func(n *html.Node) bool {
+				return n.Data == "script" && strings.Contains(attr(n, "src"), "js/app.") && hasAttr(n, "defer")
+			})
+			if len(scripts) != 1 {
+				t.Errorf("found %d deferred app.js scripts, want 1", len(scripts))
+			}
+
+			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-live-search") })
+			if len(forms) != 1 {
+				t.Fatalf("found %d form[data-live-search], want 1", len(forms))
+			}
+			if a, m := attr(forms[0], "action"), attr(forms[0], "method"); a != "/search" || m != "get" {
+				t.Errorf("live search form action=%q method=%q, want GET /search", a, m)
+			}
+			if qs := findAll(forms[0], func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "q" }); len(qs) != 1 {
+				t.Errorf("live search form has %d q inputs, want 1", len(qs))
+			}
+
+			containers := findAll(doc, func(n *html.Node) bool { return hasAttr(n, "data-search-results") })
+			if len(containers) != 1 {
+				t.Fatalf("found %d [data-search-results], want 1", len(containers))
+			}
+			c := containers[0]
+			if n := len(findAll(c, func(n *html.Node) bool { return n.Data == "section" && hasClass(n, "result") })); n != tt.results {
+				t.Errorf("container has %d .result sections, want %d", n, tt.results)
+			}
+			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "lookup-cta") })) == 1; got != tt.lookup {
+				t.Errorf("lookup offer in container = %v, want %v", got, tt.lookup)
+			}
+			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "empty") })) == 1; got != tt.empty {
+				t.Errorf("no-results message in container = %v, want %v", got, tt.empty)
+			}
+			if got := len(findAll(c, func(*html.Node) bool { return true })) == 0; got != tt.noChildren {
+				t.Errorf("container empty = %v, want %v", got, tt.noChildren)
+			}
+		})
 	}
 }
 

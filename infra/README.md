@@ -4,10 +4,11 @@ Terraform for production on Render: one Postgres 17 database (`rss-db`), one web
 State lives in the R2 bucket `rss-tfstate`.
 Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own four things that change outside it, and ignores them:
+Terraform doesn't own five things that change outside it, and ignores them:
 
 - **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
 - **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
+- **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
 - **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
 

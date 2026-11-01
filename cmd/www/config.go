@@ -108,7 +108,9 @@ func defaultConfig() config {
 			workers: 2,
 		},
 		importer: importerConfig{
-			workers: 2,
+			// Imported feeds mostly wait on other sites, so more workers
+			// overlap the waits (#448).
+			workers: 6,
 		},
 		icons: iconsConfig{
 			workers: 1,

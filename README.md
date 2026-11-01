@@ -62,7 +62,7 @@ A flag on the command line wins over its variable, which wins over the default; 
 | `-db-max-idle-time` | `RSS_DB_MAX_IDLE_TIME` | `15m` | PostgreSQL max idle time |
 | `-lookup-workers` | `RSS_LOOKUP_WORKERS` | `2` | Background lookup workers (0–16; 0 disables them) |
 | `-refresh-workers` | `RSS_REFRESH_WORKERS` | `2` | Background feed refresh workers (0–16; 0 disables them) |
-| `-import-workers` | `RSS_IMPORT_WORKERS` | `2` | Background OPML import workers (0–16; 0 disables them) |
+| `-import-workers` | `RSS_IMPORT_WORKERS` | `6` | Background OPML import workers (0–16; 0 disables them) |
 | `-icon-workers` | `RSS_ICON_WORKERS` | `1` | Background workers that find and store site icons (0–4; 0 disables them) |
 | `-enrich-workers` | `RSS_ENRICH_WORKERS` | `1` | Background workers that fetch articles' web pages for a missing image, title or excerpt (0–4; 0 disables them) |
 | `-mail-workers` | `RSS_MAIL_WORKERS` | `1` | Background workers that send queued emails (0–4; with 0 this instance queues emails but doesn't send them) |

@@ -195,7 +195,7 @@ Otherwise it turns each feed's folders into tags (`importTags`: normalized like 
 `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any depth, in file order and without repeats; each feed's folders are those it's nested in, at any depth.
 It parses non-strictly and decodes legacy charsets, since older readers' exports are sloppy.
 `ImportRepository.Create` stores one pending `import_feeds` row per feed, with its tags.
-The import runner (`importer.Runner`) claims one row at a time, oldest import first: it parses the URL, looks up its `CanonicalFeedURL`, runs discovery for an unknown or gone feed (saved exactly like a lookup), then subscribes or records `already_subscribed`, names a subscription it made after the outline's title when that differs from the feed's title (`importedName`), and adds the row's tags (`TagRepository.AddToSubscription`: reuses the user's tags by name, creates the rest up to the cap, never removes one).
+The import runner (`importer.Runner`, six workers by default) claims one row per worker at a time, oldest import first: it parses the URL, looks up its `CanonicalFeedURL`, runs discovery for an unknown or gone feed (saved exactly like a lookup), then subscribes or records `already_subscribed`, names a subscription it made after the outline's title when that differs from the feed's title (`importedName`), and adds the row's tags (`TagRepository.AddToSubscription`: reuses the user's tags by name, creates the rest up to the cap, never removes one).
 A tag error is only logged: the feed stays subscribed.
 Failures aren't retried; a crashed row is re-queued by `ResetStale`.
 Subscribing bumps nothing onto the timeline: the backlog keeps its published dates.

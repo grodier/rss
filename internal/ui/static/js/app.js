@@ -63,23 +63,24 @@
   // rendered hidden, since it needs JavaScript; show it. On click, open the
   // share sheet with data-share-title and the URL where there is one, else
   // copy the URL, set data-copied for 2 seconds (main.css swaps the icon for
-  // a check) and announce it. Takes a root so rows added to the page later
+  // a check) and announce it, in the page's polite live region (announce,
+  // also used by live search). Takes a root so rows added to the page later
   // can be enhanced too; the click is delegated.
   const enhanceShare = (root) => {
     for (const b of root.querySelectorAll("button[data-share-url]")) b.hidden = false;
   };
   enhanceShare(document);
-  let shareStatus;
+  let liveStatus;
   const announce = (msg) => {
-    if (!shareStatus) {
-      shareStatus = document.createElement("p");
-      shareStatus.className = "visually-hidden";
-      shareStatus.setAttribute("aria-live", "polite");
-      document.body.append(shareStatus);
+    if (!liveStatus) {
+      liveStatus = document.createElement("p");
+      liveStatus.className = "visually-hidden";
+      liveStatus.setAttribute("aria-live", "polite");
+      document.body.append(liveStatus);
     }
     // Clear it first so the same message is announced again.
-    shareStatus.textContent = "";
-    setTimeout(() => { shareStatus.textContent = msg; }, 50);
+    liveStatus.textContent = "";
+    setTimeout(() => { liveStatus.textContent = msg; }, 50);
   };
   document.addEventListener("click", async (e) => {
     const button = e.target instanceof Element && e.target.closest("button[data-share-url]");
@@ -104,6 +105,68 @@
     button.copiedTimer = setTimeout(() => { delete button.dataset.copied; }, 2000);
     announce("Link copied");
   });
+
+  // Live search: as the reader types in form[data-live-search]'s q, fetch
+  // the form's page for the query about 250 ms after the last keystroke
+  // (aborting any request still in flight) and swap its
+  // [data-search-results] into this page's, so results update in place.
+  // Nothing is fetched under 2 characters; an empty box shows the no-query
+  // state (an empty container) without a request. The URL follows the query,
+  // so a reload or Back shows the same results, and the number of sites is
+  // announced in the polite live region; focus never moves. On any failure
+  // (a non-200, a redirect to the login page, a network error) the page is
+  // left as it is: submitting the form still works.
+  {
+    const form = document.querySelector("form[data-live-search]");
+    const input = form && form.elements.namedItem("q");
+    const results = document.querySelector("[data-search-results]");
+    if (form && input instanceof HTMLInputElement && results) {
+      let timer = 0;
+      let inFlight = null;
+      const pageURL = (q) => {
+        const u = new URL(form.action);
+        if (q) u.searchParams.set("q", q);
+        return u.href;
+      };
+      const show = (q, container) => {
+        results.replaceChildren(...container.childNodes);
+        localizeTimes(results);
+        enhancePings(results);
+        enhanceShare(results);
+        history.replaceState(null, "", pageURL(q));
+      };
+      const search = async (q) => {
+        const controller = new AbortController();
+        inFlight = controller;
+        try {
+          const res = await fetch(pageURL(q), { credentials: "same-origin", signal: controller.signal });
+          if (res.status !== 200 || res.redirected) throw new Error(`status ${res.status}`);
+          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+          const container = doc.querySelector("[data-search-results]");
+          if (!container || controller.signal.aborted) return;
+          show(q, container);
+          const n = results.querySelectorAll(".result").length;
+          announce(n === 0 ? "No sites" : n === 1 ? "1 site" : `${n} sites`);
+        } catch {
+          // Aborted, failed or not the page: leave the page as it is.
+        } finally {
+          if (inFlight === controller) inFlight = null;
+        }
+      };
+      input.addEventListener("input", () => {
+        clearTimeout(timer);
+        if (inFlight) inFlight.abort();
+        inFlight = null;
+        const q = input.value.trim();
+        if (q === "") {
+          show("", document.createElement("div"));
+          return;
+        }
+        if ([...q].length < 2) return;
+        timer = setTimeout(() => search(q), 250);
+      });
+    }
+  }
 
   // Video embeds: figure.embed[data-embed] (sanitize's videoEmbed) holds a
   // link to the video. On a plain click, swap the link for the player, built

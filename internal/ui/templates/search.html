@@ -7,6 +7,7 @@
   <title>Paper Round - search</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
+  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -18,7 +19,7 @@
         <h1>Search</h1>
       </header>
 
-      <form class="page-search" role="search" action="/search" method="get">
+      <form class="page-search" role="search" action="/search" method="get" data-live-search>
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -36,6 +37,9 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
+      {{/* app.js's live search replaces this container's contents with the
+           same container from /search?q=… as the reader types. */}}
+      <div id="search-results" data-search-results>
       {{with .LookupQ}}
       <section class="lookup-cta">
         <p>Not what you're looking for? Find the feeds a website publishes.</p>
@@ -68,6 +72,7 @@
       <p class="empty">No sites or feeds match “{{.Form.Q}}”.</p>
       {{end}}
       {{end}}
+      </div>
     </main>
   </div>
 </body>

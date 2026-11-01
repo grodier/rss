@@ -114,6 +114,32 @@ func TestSearchRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("by site description", func(t *testing.T) {
+		hostF := "f-" + tok + ".example"
+		if _, err := sites.Upsert(ctx, rss.Site{Host: hostF, URL: "https://" + hostF + "/", Title: "Untitled", Description: "Weekly notes on " + tok + "gardening"}); err != nil {
+			t.Fatal(err)
+		}
+		if got := siteHosts(search(tok+"GARDENING", 10)); len(got) != 1 || got[0] != hostF {
+			t.Errorf("got sites %v; want [%s]", got, hostF)
+		}
+	})
+
+	t.Run("by feed description", func(t *testing.T) {
+		hostG := "g-" + tok + ".example"
+		siteG := addSite(hostG, "Untitled")
+		addFeed(siteG, "https://"+hostG+"/other.xml", "Other")
+		if _, err := feeds.Upsert(ctx, rss.Feed{SiteID: siteG, Url: "https://" + hostG + "/feed.xml", Title: "Main", Description: "Episodes about " + tok + "beekeeping"}); err != nil {
+			t.Fatal(err)
+		}
+		res := search(tok+"beekeeping", 10)
+		if got := siteHosts(res); len(got) != 1 || got[0] != hostG {
+			t.Fatalf("got sites %v; want [%s]", got, hostG)
+		}
+		if n := len(res[0].Feeds); n != 2 {
+			t.Errorf("got %d feeds; want the site's 2", n)
+		}
+	})
+
 	t.Run("case-insensitive", func(t *testing.T) {
 		res := search(strings.ToUpper("blog "+tok), 10)
 		if got := siteHosts(res); len(got) != 1 || got[0] != hostA {

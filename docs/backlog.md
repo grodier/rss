@@ -463,7 +463,8 @@ Background refresh:
   *Signal:* `ResetStale` in `pg_stat_statements` totals, or a large `lookups` table.
   *Fix:* a partial index on `started_at WHERE status = 'running'`.
 - [ ] **One statement per article in `saveArticles`.**
-  Each fetched item is a separate upsert inside the `SaveFetch` transaction.
+  Each fetched item is a separate upsert inside the `SaveFetch` transaction, and inside `DiscoveryRepository.Save` for lookups and imports.
+  #448 measured about 1 ms per article locally: about 190 ms of a 200-item feed's first save, most of an imported feed's own time.
   *Signal:* `SaveFetch` time dominates the `feed refreshed` log's `duration` for large feeds (see the "Large feeds" scenario above).
   *Fix:* a single multi-row upsert (`unnest` of arrays) per fetch.
 - [ ] **Posting rate recomputed on every save** (#350).
@@ -491,10 +492,15 @@ Other background work (#302, #304, #306):
   *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
   *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
 - [ ] **One import at a time** (#302).
-  The import queue takes the oldest import's feeds first, so a 1,000-feed import delays a small one started after it, up to an hour with two workers.
+  The import queue takes the oldest import's feeds first, so a 1,000-feed import delays a small one started after it, up to 20 minutes with six workers (#448).
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
-  #448 measures imports and builds this if production shows overlapping imports.
+  #448 left it for when production shows overlapping imports.
+- [ ] **Six import workers** (#448).
+  A large import of unknown feeds runs six fetches, parses and saves at once, alongside page requests, on a Starter instance (512 MB, a fraction of a CPU) and production's 10 database connections; each worker can hold a body of up to 5 MiB and its parsed items.
+  Locally, a 100-feed import with six workers and 10 connections never waited for a connection, and used about 12 MB more heap than with two.
+  *Signal:* pages slow or connections waiting in `sql.DBStats` while an import runs, memory near the instance's limit, or `import feed finished` durations growing with the worker count instead of the fetch.
+  *Fix:* fewer workers (`RSS_IMPORT_WORKERS`), a cap on concurrent saves, or the separate worker process under Feed ingestion.
 - [ ] **Seeding thousands of sites fills the database with work nobody asked for** (#447).
   Each site the seed list (1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a production reset, the lookup workers spend an hour or more on the seed.
   Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.

@@ -193,6 +193,11 @@ Planned in #309 (issues #302, #303).
   The `lookups` table can't be reused: it's keyed by site key, and feeds on a shared host would collide.
   A known feed is subscribed to directly; an unknown or gone one goes through discovery and is saved like a lookup's.
   A URL that turns out to be a web page subscribes to the first feed it advertises.
+- **Six import workers by default, and known feeds stay in the queue** (#448).
+  Measured locally, a known feed's row takes about 7 ms, and an unknown feed's about 100–200 ms of our own work (mostly saving its articles) plus its fetch, so an import's time goes to unknown feeds waiting on other sites, which more workers overlap.
+  Subscribing known feeds during the upload was rejected for now: it would save milliseconds a feed and move work into the request.
+  Waking the runner on upload (saves up to a second) and round-robin between imports (the watchlist's "One import at a time") wait for production numbers that call for them.
+  Six fits production's 10 database connections: a worker holds one only while it queries or saves, and a 100-feed import with six workers and 10 connections never waited for one.
 - **The results page reports every feed**: subscribed, already subscribed, or couldn't add, with a plain reason ("Not a valid web address.", "Couldn't reach the site.", "There's no feed at this address.") and a link to search for the site.
   Failures aren't retried automatically and there's no "Try again"; uploading the file again retries them.
   While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.

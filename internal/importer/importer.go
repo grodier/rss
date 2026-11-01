@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultWorkers       = 2
+	defaultWorkers       = 6
 	defaultPollInterval  = time.Second
 	defaultJobTimeout    = 30 * time.Second
 	defaultStaleAfter    = 2 * time.Minute
@@ -81,7 +81,7 @@ type Runner struct {
 	Saver         Saver
 	Discoverer    Discoverer
 	Logger        *slog.Logger
-	Workers       int           // default 2
+	Workers       int           // default 6
 	PollInterval  time.Duration // default 1s
 	JobTimeout    time.Duration // default 30s
 	StaleAfter    time.Duration // default 2m (must exceed JobTimeout)

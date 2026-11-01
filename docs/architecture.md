@@ -230,7 +230,7 @@ Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and `schema_f
 
 ## Background work
 
-The runners follow the same pattern: N worker goroutines (`-lookup-workers`, `-import-workers`, `-refresh-workers`, default 2; `-icon-workers`, `-enrich-workers`, `-mail-workers`, default 1; 0 turns a runner off) loop claiming one job at a time from a Postgres table with `FOR UPDATE SKIP LOCKED`, so several instances can run side by side.
+The runners follow the same pattern: N worker goroutines (`-import-workers`, default 6; `-lookup-workers`, `-refresh-workers`, default 2; `-icon-workers`, `-enrich-workers`, `-mail-workers`, default 1; 0 turns a runner off) loop claiming one job at a time from a Postgres table with `FOR UPDATE SKIP LOCKED`, so several instances can run side by side.
 When nothing is claimable a worker sleeps for a poll interval.
 Each job gets a timeout; its outcome is recorded with a fresh short context, so a job that timed out still records its failure.
 On shutdown, lookups, imports, refreshes, icon checks and enrichment jobs record nothing and are retried later; the mail runner instead finishes the email it's sending (within its timeout) and records the result, since an aborted send can still be delivered.

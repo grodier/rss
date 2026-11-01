@@ -118,6 +118,15 @@ func TestParseConfigEnv(t *testing.T) {
 			},
 		},
 		{
+			name: "import workers default",
+			env:  map[string]string{"RSS_DB_DSN": dsnEnv},
+			check: func(t *testing.T, cfg config) {
+				if cfg.importer.workers != 6 {
+					t.Errorf("importer.workers = %d, want 6", cfg.importer.workers)
+				}
+			},
+		},
+		{
 			name:     "port from env",
 			env:      map[string]string{"RSS_DB_DSN": dsnEnv, "RSS_PORT": "9000"},
 			wantPort: 9000,

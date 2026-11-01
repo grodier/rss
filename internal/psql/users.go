@@ -20,11 +20,21 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
 
+// Create makes an account with rss.DefaultTimelines, in one transaction, so
+// both signup and www create-user give every account its default
+// timelines. rss.ErrDuplicateEmail if the email is taken.
 func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (string, time.Time, error) {
 	hashedPassword, err := password.Hash(pw)
 	if err != nil {
 		return "", time.Time{}, err
 	}
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
 
 	stmt := `INSERT INTO users (name, email, hashed_password)
 		VALUES ($1, $2, $3)
@@ -32,7 +42,7 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 
 	var id string
 	var createdAt time.Time
-	err = r.DB.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
+	err = tx.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -41,6 +51,14 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 		return "", time.Time{}, err
 	}
 
+	for _, t := range rss.DefaultTimelines() {
+		if _, err := createTimeline(ctx, tx, id, t); err != nil {
+			return "", time.Time{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return "", time.Time{}, err
+	}
 	return id, createdAt, nil
 }
 

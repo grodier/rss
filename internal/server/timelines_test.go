@@ -187,16 +187,67 @@ func TestTimelinesHandler(t *testing.T) {
 func TestTimelineNewHandler(t *testing.T) {
 	tags, subs := timelineSourcesStores()
 	s := newTestServerWith(t, Services{TagService: tags, SubscriptionService: subs})
-
-	t.Run("shows all feeds by default", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
+	get := func(t *testing.T, s *Server, target string) string {
+		t.Helper()
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, target, "", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}
-		body := rr.Body.String()
+		return rr.Body.String()
+	}
+	// startRow is the start of a starting point's row on the list.
+	startRow := func(href string) string { return `<a class="settings-row" href="` + href + `">` }
+	assertList := func(t *testing.T, body string) {
+		t.Helper()
+		assertBodyContains(t, body, "<h1>New timeline</h1>", `<h2 id="start-heading">Start from</h2>`)
+		if strings.Contains(body, `<form class="timeline-form"`) {
+			t.Errorf("shows the form, not the list: %s", body)
+		}
+	}
+
+	t.Run("lists the starting points", func(t *testing.T) {
+		body := get(t, s, "/timelines/new")
+		assertList(t, body)
+		assertBodyContains(t, body,
+			startRow("/timelines/new?preset=tags"), "Feeds with a tag", "Everything with the tags you choose, like News or Tech.",
+			startRow("/timelines/new?preset=quiet"), "Quiet posters", "Feeds that post a couple of times a week or less, so busy ones can’t bury them.",
+			startRow("/timelines/new?preset=starred"), "Starred", "Articles you’ve starred, newest star first.",
+			startRow("/timelines/new?preset=keywords"), "Keywords", "Articles that mention words or phrases you choose.",
+			startRow("/timelines/new?preset=media"), "Audio and video", "Podcast episodes and videos attached to posts.",
+			startRow("/timelines/new?preset=blank"), "Start from scratch", "All your feeds, with filters you choose.",
+		)
+	})
+
+	t.Run("without tags, Feeds with a tag goes to Tags", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TagService: &fakeTagStore{}, SubscriptionService: subs})
+		body := get(t, s, "/timelines/new")
+		assertBodyContains(t, body, startRow("/tags"), "Make a tag first: tags group your feeds, like News or Tech.")
+		if strings.Contains(body, "preset=tags") {
+			t.Errorf("offers the tags preset without tags: %s", body)
+		}
+	})
+
+	t.Run("the list's tag store error is 500", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TagService: &fakeTagStore{listFn: func(context.Context, string) ([]rss.Tag, error) {
+			return nil, errors.New("boom")
+		}}})
+		if rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	for _, target := range []string{"/timelines/new?preset=junk", "/timelines/new?preset=", "/timelines/new?tag=" + otherTagID, "/timelines/new?tag=not-a-uuid", "/timelines/new?preset=quiet&tag=" + otherTagID} {
+		t.Run(target+" shows the list", func(t *testing.T) {
+			assertList(t, get(t, s, target))
+		})
+	}
+
+	t.Run("?preset=blank is the empty form, showing all feeds", func(t *testing.T) {
+		body := get(t, s, "/timelines/new?preset=blank")
 		assertBodyContains(t, body,
 			"<h1>New timeline</h1>",
 			`<form class="timeline-form" action="/timelines" method="post">`,
+			`name="name" value=""`,
 			`<input type="radio" name="show" value="all" checked`,
 			`<p class="hint" id="description-hint">Shown under the tabs. Optional.</p>`,
 			"<legend>Show</legend>",
@@ -209,22 +260,6 @@ func TestTimelineNewHandler(t *testing.T) {
 			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`">`,
 			`<details class="feed-picker">`,
 			"<summary>Choose feeds</summary>",
-			`<a class="btn" href="/timelines">Cancel</a>`,
-		)
-		for _, bad := range []string{"Delete timeline", " checked>", "autofocus"} {
-			if strings.Contains(body, bad) {
-				t.Errorf("body has %q: %s", bad, body)
-			}
-		}
-	})
-
-	t.Run("offers the presets", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
-		body := rr.Body.String()
-		assertBodyContains(t, body,
-			`<span id="presets-label">Start from:</span>`,
-			`<li><a href="/timelines/new?preset=starred">Starred</a></li>`,
-			`<li><a href="/timelines/new?preset=quiet">Quiet posters</a></li>`,
 			"<legend>Only show</legend>",
 			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
 			`<p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>`,
@@ -237,68 +272,51 @@ func TestTimelineNewHandler(t *testing.T) {
 			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" />`,
 			"Articles with audio or video",
 			`<p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>`,
+			`<a class="btn" href="/timelines">Cancel</a>`,
 		)
-	})
-
-	t.Run("?preset=quiet prefills Quiet posters", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=quiet", "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="Quiet posters"`,
-			`<input type="radio" name="show" value="all" checked`,
-			`value="2"`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
-		)
-	})
-
-	t.Run("?preset=starred prefills Starred", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred", "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="Starred"`,
-			`<input type="radio" name="show" value="all" checked`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
-		)
-	})
-
-	t.Run("?preset=starred with ?tag= is named after the tag", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred&tag="+testTagID, "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="AI"`,
-			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
-		)
-	})
-
-	t.Run("an unknown preset is ignored", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=junk", "", nil)
-		body := rr.Body.String()
-		assertBodyContains(t, body, `name="name" value=""`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`)
-	})
-
-	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?tag="+testTagID, "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="AI"`,
-			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-		)
-	})
-
-	for _, tag := range []string{otherTagID, "not-a-uuid"} {
-		t.Run("?tag= ignores "+tag, func(t *testing.T) {
-			rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?tag="+tag, "", nil)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d", rr.Code)
+		for _, bad := range []string{"Delete timeline", " checked>", "autofocus", "Start from"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("body has %q: %s", bad, body)
 			}
-			body := rr.Body.String()
-			assertBodyContains(t, body, `<input type="radio" name="show" value="all" checked`, `name="name" value=""`)
+		}
+	})
+
+	presets := []struct {
+		preset string
+		want   []string
+	}{
+		{"tags", []string{`name="name" value=""`, `<input type="radio" name="show" value="some" checked`, `<input type="checkbox" name="include_tags" value="` + testTagID + `">`}},
+		{"quiet", []string{`<input type="text" id="name" name="name" value="Quiet posters"`, `<input type="radio" name="show" value="all" checked`, `value="2"`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`}},
+		{"starred", []string{`<input type="text" id="name" name="name" value="Starred"`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`}},
+		{"keywords", []string{`name="name" value=""`, `<input type="radio" name="show" value="all" checked`, `<input type="text" id="include_words" name="include_words" value=""`}},
+		{"media", []string{`<input type="text" id="name" name="name" value="Audio and video"`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`}},
+	}
+	for _, tt := range presets {
+		t.Run("?preset="+tt.preset+" fills in the form", func(t *testing.T) {
+			assertBodyContains(t, get(t, s, "/timelines/new?preset="+tt.preset), tt.want...)
 		})
 	}
 
+	t.Run("?preset=starred with ?tag= is named after the tag", func(t *testing.T) {
+		assertBodyContains(t, get(t, s, "/timelines/new?preset=starred&tag="+testTagID),
+			`<input type="text" id="name" name="name" value="AI"`,
+			`<input type="radio" name="show" value="some" checked`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
+		)
+	})
+
+	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
+		assertBodyContains(t, get(t, s, "/timelines/new?tag="+testTagID),
+			`<input type="text" id="name" name="name" value="AI"`,
+			`<input type="radio" name="show" value="some" checked`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
+		)
+	})
+
 	t.Run("no tags or feeds", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TagService: &fakeTagStore{}, SubscriptionService: &fakeSubscriptionStore{}})
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
-		body := rr.Body.String()
+		body := get(t, s, "/timelines/new?preset=blank")
 		assertBodyContains(t, body, `You don't have any tags yet. <a href="/tags">Make a tag</a> to group feeds.`)
 		if strings.Contains(body, "Choose feeds") {
 			t.Errorf("feed picker shown without subscriptions: %s", body)
@@ -578,6 +596,32 @@ func TestTimelineHandler(t *testing.T) {
 			t.Errorf("wrong empty state: %s", body)
 		}
 	})
+
+	// A timeline of quiet feeds says what will show up, rather than that
+	// nothing has; one with words and no rate keeps the plain text.
+	for _, tt := range []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   string
+	}{
+		{"empty, at most 2 posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2, IncludeWords: []string{"AI"}},
+			"When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
+		{"empty, at most 1 post a week", rss.TimelineFilter{MaxPostsPerWeek: 1},
+			"When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
+		{"empty, words only", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Nothing in this timeline yet."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result = nil
+			s := newTestServerWith(t, Services{ArticleService: articles, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
+				TimelineService: userTimeline(rss.Timeline{Name: "Quiet", Filter: tt.filter})})
+			rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want)
+			if tt.filter.MaxPostsPerWeek > 0 && strings.Contains(body, "Nothing in this timeline yet.") {
+				t.Errorf("also says nothing's here: %s", body)
+			}
+		})
+	}
 
 	t.Run("no sources", func(t *testing.T) {
 		result = nil
@@ -1087,7 +1131,7 @@ func TestTimelineEditSharing(t *testing.T) {
 
 	t.Run("New timeline has no Sharing section", func(t *testing.T) {
 		s := newSharingTestServer(t, &fakeTimelineStore{})
-		rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineNewHandler, "/timelines/new", "", nil)
+		rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineNewHandler, "/timelines/new?preset=blank", "", nil)
 		if body := rr.Body.String(); strings.Contains(body, `id="sharing"`) {
 			t.Errorf("New timeline has a Sharing section: %s", body)
 		}

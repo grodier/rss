@@ -31,13 +31,15 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // that failed or found no feeds) or url differs from the one it ran on. A
 // lookup that found a site isn't re-queued for a different url that is the
 // site's home page (homePage), so the site page stays cached. A pending or
-// running lookup is returned unchanged. A re-queue keeps site_id, so the site
-// page keeps working while the re-check runs.
+// running lookup is returned unchanged, except that a pending one the seed
+// list queued (www seed) moves ahead of the seed's, since a reader is now
+// waiting for it. A re-queue keeps site_id, so the site page keeps working while the
+// re-check runs. Either way the lookup has a reader's priority (0).
 func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
 	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
 	stmt := `INSERT INTO lookups (site_key, url) VALUES ($1, $2)
 		ON CONFLICT (site_key) DO UPDATE SET
-			status = 'pending', url = EXCLUDED.url, error = '',
+			status = 'pending', url = EXCLUDED.url, error = '', priority = 0,
 			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
 		WHERE lookups.status IN ('done', 'failed') AND (
 			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND $5))
@@ -48,6 +50,10 @@ func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, hom
 	l, err := scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey, url, doneTTL.Seconds(), failedTTL.Seconds(), homePage))
 	if errors.Is(err, rss.ErrNoRecord) {
 		// The row exists and is still in progress or its result still applies.
+		if _, err := r.DB.ExecContext(ctx, `UPDATE lookups SET priority = 0
+			WHERE site_key = $1 AND status = 'pending' AND priority > 0`, siteKey); err != nil {
+			return rss.Lookup{}, err
+		}
 		return r.GetBySiteKey(ctx, siteKey)
 	}
 	return l, err
@@ -63,13 +69,15 @@ func (r *LookupRepository) GetBySiteKey(ctx context.Context, siteKey string) (rs
 	return scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey))
 }
 
-// ClaimNext marks the oldest pending lookup running and returns it.
+// ClaimNext marks the pending lookup with the lowest priority, oldest first,
+// running and returns it, so readers' lookups (0) go before the seed
+// list's (1).
 // rss.ErrNoRecord when the queue is empty.
 func (r *LookupRepository) ClaimNext(ctx context.Context) (rss.Lookup, error) {
 	stmt := `UPDATE lookups SET status = 'running', started_at = now(), attempts = attempts + 1
 		WHERE id = (
 			SELECT id FROM lookups WHERE status = 'pending'
-			ORDER BY requested_at
+			ORDER BY priority, requested_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)

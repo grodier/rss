@@ -42,7 +42,7 @@ Inside the process run seven long-lived components, all stopped by one context:
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
 
-`cmd/www/main.go` (`run`) hands `www migrate`, `www create-user` and `www send-test-email` to their own functions (below).
+`cmd/www/main.go` (`run`) hands `www migrate`, `www seed`, `www create-user` and `www send-test-email` to their own functions (below).
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, or else its default) and builds the slog logger on stdout (JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
@@ -53,6 +53,9 @@ It runs before new code goes live, never at startup.
 While pre-alpha, `Migrate` compares `psql.Fingerprint` (a SHA-256 of the names and contents of `migrations/*.sql`) with the one stored in `schema_fingerprint` when it last ran: if migrations were applied from different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in which case it drops and recreates the current schema first.
 So any edit to a migration, comments included, needs a reset.
 
+`www seed` (`cmd/www/seed.go`) queues lookups of the seed list's sites (`internal/seed/sites.txt`, embedded) that haven't been found, behind readers', and exits; the app's lookup runner fetches them.
+It only writes `lookups` rows, so it's cheap to run on every deploy: production runs it as `www migrate -seed`, its pre-deploy command, and locally it runs only by hand (`make db/seed-sites`), never on `make db/reset`.
+
 `www create-user` (`cmd/www/create_user.go`) creates an account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
 `www send-test-email` (`cmd/www/send_test_email.go`) renders the `test` email and sends it with the configured sender, without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
@@ -60,10 +63,11 @@ So any edit to a migration, comments included, needs a reset.
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `create-user` and `send-test-email` commands | everything below |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` (types), `password` |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
+| `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
@@ -234,7 +238,7 @@ With `-mail-workers 0` the process queues emails without sending them (and logs 
 
 | | Lookups (`internal/lookup`) | Imports (`internal/importer`) | Feed refresh (`internal/refresh`) | Site icons (`internal/siteicon`) | Enrichment (`internal/enrich`) | Email (`mail.Runner`) |
 | --- | --- | --- | --- | --- | --- | --- |
-| Queue | `lookups` rows with `status = 'pending'` | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `sites` with `icon_next_check_at <= now()` that are new (`icon_checked_at IS NULL`) or have a subscribed feed | `enrich_jobs` with `next_attempt_at <= now()` whose article's feed has a subscriber, by `priority` then `next_attempt_at` | `emails` that are pending and due (`next_attempt_at <= now()`) |
+| Queue | `lookups` rows with `status = 'pending'`, readers' first (`priority` 0), then the seed list's (1) | `import_feeds` rows with `status = 'pending'`, oldest import first, then by position | `feeds` with `next_fetch_at <= now()`, not gone, and subscribed or requested | `sites` with `icon_next_check_at <= now()` that are new (`icon_checked_at IS NULL`) or have a subscribed feed | `enrich_jobs` with `next_attempt_at <= now()` whose article's feed has a subscriber, by `priority` then `next_attempt_at` | `emails` that are pending and due (`next_attempt_at <= now()`) |
 | Claim | `ClaimNext`: set `running` | `ClaimNext`: set `running` and count the attempt | `ClaimDue`: move `next_fetch_at` 5 min ahead (the lease); requested feeds first | `ClaimIconCheck`: move `icon_next_check_at` 5 min ahead (the lease) | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt | `ClaimNext`: move `next_attempt_at` 2 min ahead (the lease) and count the attempt |
 | Poll when idle | 500 ms | 1 s | 15 s | 5 s | 5 s | 10 s, and woken (`Runner.Wake`) when this process queues an email |
 | Job timeout | 30 s | 30 s | 30 s | 30 s | 20 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
@@ -368,7 +372,7 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
 - **Images.** The `Dockerfile` builds `www` as a static binary into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`).
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
-- **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
+- **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
   Values that change outside Terraform (the images, the invite code, the SMTP password, `RSS_ALLOW_RESET_TO`) are in `ignore_changes`.
 - **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `reset-db.yml` allows a pre-alpha schema reset, then deploys; `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.

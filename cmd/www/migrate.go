@@ -8,17 +8,20 @@ import (
 	"io"
 
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/migrations"
 )
 
 // runMigrate runs "www migrate [flags]": it applies the embedded migrations to
-// the database, or prints their fingerprint, and returns the exit code. Hosts
-// run it before new code goes live (Render's pre-deploy command). Like
+// the database, then with -seed queues the seed list's lookups (seedSites),
+// or prints the migrations' fingerprint, and returns the exit code. Hosts run
+// it before new code goes live (Render's pre-deploy command, which takes one
+// command: hence -seed rather than running "www seed" after it). Like
 // parseConfig, it writes flag errors and the -help output to stderr.
 func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	env := "development"
 	var dsn, allowResetTo string
-	var printFingerprint bool
+	var printFingerprint, seedList bool
 
 	fs := flag.NewFlagSet("rss-www migrate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -26,6 +29,7 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 	fs.StringVar(&dsn, "db-dsn", dsn, "PostgreSQL DSN")
 	fs.StringVar(&allowResetTo, "allow-reset-to", allowResetTo, "Wipe the database if the migrations have changed since it was migrated, but only if this is their new fingerprint")
 	fs.BoolVar(&printFingerprint, "print-fingerprint", printFingerprint, "Print the migrations' fingerprint and exit, without opening the database")
+	fs.BoolVar(&seedList, "seed", seedList, "After migrating, queue lookups of the seed list's sites not found yet, as www seed does")
 
 	if err := setFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -70,9 +74,16 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 	}
 	defer db.Close()
 
-	if err := psql.Migrate(context.Background(), db, migrations.FS, allowResetTo, logger); err != nil {
+	ctx := context.Background()
+	if err := psql.Migrate(ctx, db, migrations.FS, allowResetTo, logger); err != nil {
 		logger.Error(err.Error())
 		return 1
+	}
+	if seedList {
+		if err := seedSites(ctx, psql.NewSeedRepository(db), seed.Entries(), logger); err != nil {
+			logger.Error(err.Error())
+			return 1
+		}
 	}
 	return 0
 }

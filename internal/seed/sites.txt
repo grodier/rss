@@ -1,0 +1,12 @@
+# Sites seeded into the database so search finds them before anyone has
+# looked them up (#447). `www seed` (and `www migrate -seed`, which production
+# runs on every deploy) queues a lookup of each one not found yet, behind
+# readers' own lookups; the app's lookup workers then find its feeds.
+#
+# One website address per line. Blank lines and lines starting with # are
+# ignored, and an empty list is fine. List each site once:
+#
+#   npr.org                              <- a home page: its lookup finds the
+#                                           feeds the page advertises
+#   https://feeds.npr.org/1001/rss.xml   <- a feed: its lookup adds this feed
+#                                           only

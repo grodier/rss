@@ -68,12 +68,13 @@ CREATE TABLE lookups (
     error TEXT NOT NULL DEFAULT '',  -- internal detail for logs/debugging; never shown to users
     attempts INT NOT NULL DEFAULT 0,
     requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    priority SMALLINT NOT NULL DEFAULT 0, -- claimed lowest first: 0 for readers' lookups, 1 for the seed list's (www seed)
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX lookups_pending_idx ON lookups (requested_at) WHERE status = 'pending';
+CREATE INDEX lookups_pending_idx ON lookups (priority, requested_at) WHERE status = 'pending';
 
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

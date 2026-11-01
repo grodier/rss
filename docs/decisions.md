@@ -96,8 +96,24 @@ Planned in #50 (issues #51–#67).
   Only whitespace next to `.`, `/` or `:` is removed (`npr. org`, `https: //npr.org`); any other whitespace still means the query isn't an address, so free text such as `news on npr.org` isn't glued into one.
   The query shown back stays as typed; only the lookup offer and the site-key match use the cleaned-up address.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
-- **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
-  How it's chosen, stored, seeded and shown is settled in #447.
+- **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
+  #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.
+  How new readers discover sites, and whether topics or keywords come back, is for first run (#450) and keyword search (#451) to plan.
+- **The seed list is a plain text file kept in the repository** (`internal/seed/sites.txt`, #447): one website address per line, with comments, so the owner edits it in PRs and it can start empty and grow to thousands of sites.
+  A test parses the embedded file, so a bad edit can't ship.
+  Each site is listed once, since a site has one lookup; a home page's lookup finds the feeds the page advertises, and a feed's address adds only that feed.
+  Plain text was picked over OPML, which lists feeds, often several per site, so all but one of a site's feeds would be dropped.
+- **Seeding queues lookups**, so seeded feeds are created by discovery like any other, and needs no table of its own: the seed list is in the binary, and a seeded site is an ordinary site once found.
+- **Seeding is its own command, `www seed`, run in production on every deploy and locally only by hand** (#447): production's pre-deploy command is `www migrate -seed`, so every deploy and production reset seeds without anyone remembering, while `make db/reset`, which runs often, never looks up the whole list.
+  `-seed` exists because Render's pre-deploy takes one command and the image has no shell to chain two.
+  CI doesn't seed: it can't reach the production database (Render's private network only), and its test database has no lookup workers.
+  A Render job started by the deploy workflow after each deploy was the alternative, but it needed the jobs API, polling and error reporting in two workflows for a list that rarely changes.
+  Like a migration, a failed seed fails the deploy and the old version keeps serving.
+- **A seeded site's lookup is retried on the next seed if it failed or found no feeds over an hour ago** (#447), the same wait as a reader's lookup, so a transient failure (a timeout, a rate limit) doesn't keep a site out of search for good.
+  A lookup that found a site, or is in progress, is never re-queued, so sites already found aren't fetched again.
+  The seed logs the sites it retried and those that failed too recently, so a site that keeps failing (one blocking datacenter addresses, say) shows up in every deploy's log, as a reason to fix or drop it; a periodic retry worker was more machinery than the seed needs, since each deploy already retries.
+- **Readers' lookups go before the seed's** (#447): lookups have a priority, and the seed's are claimed only when no reader's is pending, so seeding thousands of sites after a reset never makes a reader's lookup wait.
+  A reader who looks up a site the seed has queued moves that lookup ahead, since someone is now waiting for it.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds (#439), since "No feeds found" is also worth retrying soon.
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.

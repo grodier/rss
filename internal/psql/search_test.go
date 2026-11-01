@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/catalog"
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -145,6 +146,26 @@ func TestSearchRepository(t *testing.T) {
 		}
 		if got := siteHosts(res); len(got) != 1 || got[0] != hostE {
 			t.Errorf("got sites %v; want [%s]", got, hostE)
+		}
+	})
+
+	t.Run("catalog site by its topic", func(t *testing.T) {
+		catalogRepo := NewCatalogRepository(db)
+		listed, notFound := "f-"+tok+".example", "g-"+tok+".example"
+		keepCatalog(t, db, listed, notFound)
+		topic := "Topic " + tok
+		if _, err := catalogRepo.Replace(ctx, []catalog.Entry{
+			catalogEntry(topic, listed, 0),
+			catalogEntry(topic, notFound, 1), // its lookup hasn't found a site
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// The site its lookup found is on another host, as after a redirect.
+		siteF := addSite("moved-"+listed, "Unrelated title")
+		lookupFound(t, db, listed, siteF)
+
+		if got := siteHosts(search(strings.ToLower(topic), 10)); len(got) != 1 || got[0] != "moved-"+listed {
+			t.Errorf("got sites %v; want [moved-%s]", got, listed)
 		}
 	})
 

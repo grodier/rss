@@ -75,6 +75,16 @@ CREATE TABLE lookups (
 
 CREATE INDEX lookups_pending_idx ON lookups (requested_at) WHERE status = 'pending';
 
+-- The site catalog (internal/catalog/sites.txt), replaced by www on every
+-- start. Joined to sites through its lookup (lookups.site_key = site_key),
+-- once the lookup found the site.
+CREATE TABLE catalog_sites (
+    site_key TEXT PRIMARY KEY,   -- discovery.SiteKey of url
+    url TEXT NOT NULL,           -- the address its lookup fetches
+    topic TEXT NOT NULL,         -- the [Topic] heading it's under
+    position INT NOT NULL        -- order in the file, from 0
+);
+
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -432,6 +442,7 @@ DROP TABLE timeline_marks;
 DROP TABLE reads;
 DROP TABLE subscriptions;
 DROP TABLE articles;
+DROP TABLE catalog_sites;
 DROP TABLE lookups;
 DROP TABLE feeds;
 DROP TABLE sites;

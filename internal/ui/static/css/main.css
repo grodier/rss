@@ -2213,6 +2213,13 @@
     font-size: 0.875rem;
   }
 
+  /* Browse: the site catalog by topic, on Search with no query. */
+  .browse-intro {
+    padding: 1rem 1rem 0;
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
   .result {
     padding: 1rem;
     border-block-end: 1px solid var(--border);
@@ -2224,17 +2231,17 @@
     gap: 0.75rem;
   }
 
-  .result-head h2 {
+  .result-head :is(h2, h3) {
     font-family: var(--font-display);
     font-size: 1rem;
   }
 
-  .result-head h2 a {
+  .result-head :is(h2, h3) a {
     color: var(--text);
     text-decoration: none;
   }
 
-  .result-head h2 a:hover {
+  .result-head :is(h2, h3) a:hover {
     text-decoration: underline;
   }
 

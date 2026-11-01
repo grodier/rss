@@ -97,7 +97,21 @@ Planned in #50 (issues #51–#67).
   The query shown back stays as typed; only the lookup offer and the site-key match use the cleaned-up address.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a catalog of popular sites** (#447), so search finds well-known sites before anyone has looked them up, and new readers can discover sites without knowing their addresses.
-  How it's chosen, stored, seeded and shown is settled in #447.
+  "Popular" is the owner's pick, since there's no popularity or cross-user data in the app.
+- **The catalog is hand-picked and kept in the repository** (#447), as a text file embedded in the binary (`internal/catalog/sites.txt`) that the owner edits in PRs: `[Topic]` headings with one website address per line, each site listed once, under one topic.
+  A test parses the embedded file, so a bad edit can't ship.
+- **Seeding goes through the lookup queue** (#447), so catalog feeds are created by discovery like any other.
+  On every start with lookup workers, `www` replaces the `catalog_sites` table with the file's entries and queues a lookup for each entry whose site key has no `lookups` row yet; sites already looked up, whatever the outcome, aren't fetched again on each deploy.
+  Editing the file takes effect on the next deploy, and after a pre-alpha reset the catalog comes back by itself.
+  Running it at startup was picked over a pre-deploy `www` command, which would have needed the lookup code outside the web process for no gain at this size.
+  A failed sync is logged and doesn't stop the server.
+- **A catalog entry's site is the one its lookup found** (#447), joined through `lookups.site_id` rather than `sites.host`, so an address that redirects to another host (`bbc.co.uk/news`) still shows its site.
+- **Topics belong to the catalog, not to readers** (#447): they aren't tags and never appear on subscriptions.
+  Search matches a catalog site's topic as well as its name, so "science" finds the Science sites.
+- **The Search page lists the catalog by topic when there's no query** (Browse, #447), linking to the site pages, where people subscribe as usual.
+  Only sites whose lookup found feeds are shown.
+- **Catalog feeds follow the usual refresh rules** (#447): a feed nobody follows can be days old on its site page until someone subscribes or opens its feed page.
+  Right after a reset, readers' own lookups queue behind the catalog's for a few minutes; it's on the Performance watchlist in `backlog.md`.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds (#439), since "No feeds found" is also worth retrying soon.
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.

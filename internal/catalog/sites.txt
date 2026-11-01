@@ -1,0 +1,63 @@
+# The site catalog (#447): well-known sites, seeded into the database on every
+# start so Search finds them and lists them by topic when there's no query.
+# A [Topic] heading, then one website address per line; each site is listed
+# once, under one topic. Blank lines and lines starting with # are ignored.
+
+[News]
+npr.org
+bbc.co.uk/news
+theguardian.com
+aljazeera.com
+propublica.org
+theatlantic.com
+
+[Technology]
+theverge.com
+arstechnica.com
+techcrunch.com
+wired.com
+404media.co
+daringfireball.net
+
+[Programming]
+news.ycombinator.com
+lobste.rs
+simonwillison.net
+jvns.ca
+martinfowler.com
+go.dev/blog
+
+[Science]
+quantamagazine.org
+nasa.gov
+sciencedaily.com
+nautil.us
+newscientist.com
+
+[Business and economics]
+economist.com
+marginalrevolution.com
+hbr.org
+calculatedriskblog.com
+
+[Design]
+smashingmagazine.com
+alistapart.com
+dezeen.com
+sidebar.io
+
+[Culture]
+kottke.org
+longreads.com
+openculture.com
+theparisreview.org
+pitchfork.com
+
+[Sports]
+espn.com
+theringer.com
+
+[Food]
+seriouseats.com
+smittenkitchen.com
+eater.com

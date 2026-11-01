@@ -189,7 +189,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| R1 Empty query | `/search` or `/search?q=` | Search, 200 | Just the search box | n/a | ok |
+| R1 Empty query | `/search` or `/search?q=` | Search, 200 | The search box, then Browse: "Or browse popular sites by topic." and the catalog sites found so far, by topic; just the search box if none has been found yet (a fresh database before its catalog lookups finish, or lookup workers off) | n/a | ok |
 | R2 No results | `/search?q=zzzz` | Search, 200 | "No sites or feeds match “zzzz”." | Yes (L1) | ok |
 | R3 Special characters | `/search?q=%25`, `_`, `"<script>\` | Search, 200 | As R2; matched literally and escaped | Yes | ok |
 | R4 Query over 200 characters | `/search?q=` + 201 letters | Search, 422, above the search box | "Search must be 200 characters or fewer" | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |

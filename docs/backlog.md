@@ -477,7 +477,7 @@ Other background work (#302, #304, #306):
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 measures imports and builds this if production shows overlapping imports.
 - [ ] **Catalog lookups queue ahead of readers' after a reset** (#447).
-  If the catalog is seeded through the lookup queue at start, as #447 proposes, `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
+  The catalog is seeded through the lookup queue at start, and `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
   *Signal:* lookups in the first minutes after a deploy ending on the status page instead of the site page, or the catalog growing past a few hundred sites.
   *Fix:* a priority on `lookups` (readers' first), or queue the catalog's lookups with a later `requested_at`.
 
@@ -503,7 +503,7 @@ Pages and queries:
   *Signal:* it shows up in `pg_stat_statements` totals.
   *Fix:* fold it into the page's main query.
 - [ ] **Search scans with `ILIKE`.**
-  Sites and feeds are matched with `%q%`, which can't use a b-tree index; topic matching for the catalog (#447) would be the same.
+  Sites and feeds are matched with `%q%`, which can't use a b-tree index; so is topic matching for the catalog (#447).
   Search as you type (#449) runs it once per pause in typing, not once per search.
   *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.

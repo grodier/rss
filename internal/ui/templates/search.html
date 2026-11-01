@@ -46,6 +46,30 @@
       </section>
       {{end}}
 
+      {{with .Topics}}
+      <p class="browse-intro">Or browse popular sites by topic.</p>
+      {{range .}}
+      <section class="browse-topic">
+        <div class="list-head">
+          <h2>{{.Name}}</h2>
+        </div>
+        <ul role="list">
+          {{range .Sites}}
+          <li class="result">
+            <div class="result-head">
+              {{template "avatar" (avatar .ID (or .Title .Host) (index $.Icons .ID))}}
+              <div>
+                <h3><a href="/sites/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</a></h3>
+                <p>{{.Host}}</p>
+              </div>
+            </div>
+          </li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+      {{end}}
+
       {{if .Searched}}
       {{range .Sites}}
       <section class="result">

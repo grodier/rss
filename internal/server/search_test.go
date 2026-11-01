@@ -32,14 +32,75 @@ func failingSearchStore(t *testing.T) *fakeSearchStore {
 }
 
 func TestSearchNoQuery(t *testing.T) {
-	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	rr := searchRequest(t, s, "")
-	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rr.Code)
-	}
-	if !strings.Contains(rr.Body.String(), `name="q"`) {
-		t.Error("form missing")
-	}
+	t.Run("browse the catalog", func(t *testing.T) {
+		catalog := &fakeCatalogStore{browseFn: func(context.Context) ([]rss.CatalogTopic, error) {
+			return []rss.CatalogTopic{
+				{Name: "Science", Sites: []rss.Site{
+					{ID: "site-1", Host: "quantamagazine.org", Title: "Quanta Magazine"},
+					{ID: "site-2", Host: "nasa.gov"},
+				}},
+				{Name: "Food", Sites: []rss.Site{{ID: "site-3", Host: "eater.com", Title: "Eater"}}},
+			}, nil
+		}}
+		s := newTestServerWith(t, Services{SearchService: failingSearchStore(t), CatalogService: catalog})
+		rr := searchRequest(t, s, "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		body := rr.Body.String()
+		for _, want := range []string{
+			`name="q"`,
+			"<h2>Science</h2>", "<h2>Food</h2>",
+			`<a href="/sites/site-1">Quanta Magazine</a>`,
+			`<a href="/sites/site-2">nasa.gov</a>`,
+			`<a href="/sites/site-3">Eater</a>`,
+			"Or browse popular sites by topic.",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body missing %q", want)
+			}
+		}
+		if strings.Index(body, "<h2>Science</h2>") > strings.Index(body, "<h2>Food</h2>") {
+			t.Error("topics out of order")
+		}
+	})
+
+	t.Run("empty catalog", func(t *testing.T) {
+		s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
+		rr := searchRequest(t, s, "")
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rr.Code)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, `name="q"`) {
+			t.Error("form missing")
+		}
+		if strings.Contains(body, "browse popular sites") {
+			t.Error("Browse shown with an empty catalog")
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		catalog := &fakeCatalogStore{browseFn: func(context.Context) ([]rss.CatalogTopic, error) {
+			return nil, errors.New("boom")
+		}}
+		s := newTestServerWith(t, Services{SearchService: failingSearchStore(t), CatalogService: catalog})
+		if rr := searchRequest(t, s, ""); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	t.Run("not browsed with a query", func(t *testing.T) {
+		catalog := &fakeCatalogStore{browseFn: func(context.Context) ([]rss.CatalogTopic, error) {
+			t.Error("Browse called with a query")
+			return nil, nil
+		}}
+		store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+			return nil, nil
+		}}
+		s := newTestServerWith(t, Services{SearchService: store, CatalogService: catalog})
+		searchRequest(t, s, "science")
+	})
 }
 
 func TestSearchTooLong(t *testing.T) {
@@ -239,6 +300,20 @@ func TestSearchSiteIcons(t *testing.T) {
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}, SiteService: &fakeSiteStore{}})
 	testSiteIcons(t, s, testSiteID, "O", func(t *testing.T) string {
 		rr := searchRequest(t, s, "one")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}
+
+func TestSearchBrowseSiteIcons(t *testing.T) {
+	catalog := &fakeCatalogStore{browseFn: func(context.Context) ([]rss.CatalogTopic, error) {
+		return []rss.CatalogTopic{{Name: "Science", Sites: []rss.Site{{ID: testSiteID, Host: "one.example", Title: "One"}}}}, nil
+	}}
+	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t), CatalogService: catalog, SiteService: &fakeSiteStore{}})
+	testSiteIcons(t, s, testSiteID, "O", func(t *testing.T) string {
+		rr := searchRequest(t, s, "")
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}

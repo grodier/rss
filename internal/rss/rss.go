@@ -368,6 +368,13 @@ type SiteWithFeeds struct {
 	Feeds []Feed
 }
 
+// CatalogTopic is a topic of the site catalog with its sites that have been
+// found, in catalog order.
+type CatalogTopic struct {
+	Name  string
+	Sites []Site
+}
+
 // LookupStatus is the state of a site lookup.
 type LookupStatus string
 

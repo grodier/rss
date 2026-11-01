@@ -1,0 +1,128 @@
+// Package catalog reads the site catalog, a hand-picked list of well-known
+// sites by topic kept in sites.txt, and seeds it into the database so Search
+// finds those sites and lists them by topic (see "Feed discovery" in
+// docs/decisions.md).
+package catalog
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	_ "embed"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/grodier/rss/internal/discovery"
+)
+
+// Entry is one site in the catalog.
+type Entry struct {
+	Topic    string // the [Topic] heading it's under
+	URL      string // discovery.ParseInput of the line, as a string
+	SiteKey  string // discovery.SiteKey of URL
+	Position int    // order in the file, from 0
+}
+
+//go:embed sites.txt
+var sitesFile []byte
+
+// Parse reads a catalog file: [Topic] headings, each followed by one website
+// address per line. Blank lines and lines starting with "#" are ignored. It's
+// an error for an address to come before any heading, not to parse with
+// discovery.ParseInput, or to share its site key with an earlier entry, and
+// for a topic to have no entries or to appear twice.
+func Parse(r io.Reader) ([]Entry, error) {
+	var entries []Entry
+	topic := ""
+	topicLine := 0
+	topicEntries := 0
+	seenTopics := map[string]bool{}
+	seenKeys := map[string]int{}
+
+	endTopic := func() error {
+		if topic != "" && topicEntries == 0 {
+			return fmt.Errorf("line %d: topic %q has no sites", topicLine, topic)
+		}
+		return nil
+	}
+
+	sc := bufio.NewScanner(r)
+	n := 0
+	for sc.Scan() {
+		n++
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") {
+			if err := endTopic(); err != nil {
+				return nil, err
+			}
+			name, ok := strings.CutSuffix(line[1:], "]")
+			name = strings.TrimSpace(name)
+			if !ok || name == "" {
+				return nil, fmt.Errorf("line %d: %q isn't a [Topic] heading", n, line)
+			}
+			if seenTopics[name] {
+				return nil, fmt.Errorf("line %d: topic %q appears twice", n, name)
+			}
+			seenTopics[name] = true
+			topic, topicLine, topicEntries = name, n, 0
+			continue
+		}
+
+		if topic == "" {
+			return nil, fmt.Errorf("line %d: %q comes before any [Topic] heading", n, line)
+		}
+		u, err := discovery.ParseInput(line)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %q isn't a website address", n, line)
+		}
+		key := discovery.SiteKey(u)
+		if prev, ok := seenKeys[key]; ok {
+			return nil, fmt.Errorf("line %d: %q is the same site (%s) as line %d", n, line, key, prev)
+		}
+		seenKeys[key] = n
+		entries = append(entries, Entry{Topic: topic, URL: u.String(), SiteKey: key, Position: len(entries)})
+		topicEntries++
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if err := endTopic(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// Entries returns the embedded catalog's entries; it panics if the file
+// doesn't parse, which TestEmbeddedCatalog prevents.
+func Entries() []Entry {
+	entries, err := Parse(bytes.NewReader(sitesFile))
+	if err != nil {
+		panic("catalog: sites.txt: " + err.Error())
+	}
+	return entries
+}
+
+// Store stores the catalog; *psql.CatalogRepository satisfies it.
+type Store interface {
+	// Replace replaces the stored catalog with entries and queues a lookup
+	// for each entry whose site key has no lookup yet, in one transaction.
+	// It returns how many lookups it queued.
+	Replace(ctx context.Context, entries []Entry) (queued int, err error)
+}
+
+// Sync replaces the stored catalog with entries and queues a lookup for
+// each entry whose site has never been looked up. Sites already looked up
+// aren't fetched again, so a restart costs no outbound requests. It returns
+// how many lookups it queued.
+func Sync(ctx context.Context, store Store, entries []Entry) (queued int, err error) {
+	queued, err = store.Replace(ctx, entries)
+	if err != nil {
+		return 0, fmt.Errorf("store catalog: %w", err)
+	}
+	return queued, nil
+}

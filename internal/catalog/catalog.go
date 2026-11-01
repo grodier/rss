@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grodier/rss/internal/discovery"
 )
@@ -107,22 +108,42 @@ func Entries() []Entry {
 	return entries
 }
 
-// Store stores the catalog; *psql.CatalogRepository satisfies it.
-type Store interface {
-	// Replace replaces the stored catalog with entries and queues a lookup
-	// for each entry whose site key has no lookup yet, in one transaction.
-	// It returns how many lookups it queued.
-	Replace(ctx context.Context, entries []Entry) (queued int, err error)
+// RetryAfter is how long after a catalog site's lookup failed or found no
+// feeds Sync queues it again: the time a reader's lookup result is kept for
+// (lookupFailedTTL in internal/server), so a site isn't fetched more often
+// than a reader could make it.
+const RetryAfter = time.Hour
+
+// Result is what Sync did.
+type Result struct {
+	// Queued is how many lookups it queued for sites never looked up.
+	Queued int
+	// Retried lists the site keys whose lookup had failed or found no feeds
+	// and was queued again.
+	Retried []string
+	// Missing lists the site keys whose lookup failed or found no feeds
+	// less than RetryAfter ago, so weren't retried: they're left out of
+	// Browse until a later Sync retries them.
+	Missing []string
 }
 
-// Sync replaces the stored catalog with entries and queues a lookup for
-// each entry whose site has never been looked up. Sites already looked up
-// aren't fetched again, so a restart costs no outbound requests. It returns
-// how many lookups it queued.
-func Sync(ctx context.Context, store Store, entries []Entry) (queued int, err error) {
-	queued, err = store.Replace(ctx, entries)
+// Store stores the catalog; *psql.CatalogRepository satisfies it.
+type Store interface {
+	// Replace replaces the stored catalog with entries, in one transaction,
+	// and queues a lookup for each entry whose site key has none, or whose
+	// lookup failed or found no feeds over retryAfter ago. A lookup that
+	// found a site, or is pending or running, is left as it is.
+	Replace(ctx context.Context, entries []Entry, retryAfter time.Duration) (Result, error)
+}
+
+// Sync replaces the stored catalog with entries and queues lookups of the
+// sites that have never been looked up, or whose lookup failed or found no
+// feeds over RetryAfter ago. Sites already found aren't fetched again, so
+// running it on every deploy costs no outbound requests for them.
+func Sync(ctx context.Context, store Store, entries []Entry) (Result, error) {
+	res, err := store.Replace(ctx, entries, RetryAfter)
 	if err != nil {
-		return 0, fmt.Errorf("store catalog: %w", err)
+		return Result{}, fmt.Errorf("store catalog: %w", err)
 	}
-	return queued, nil
+	return res, nil
 }

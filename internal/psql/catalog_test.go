@@ -86,7 +86,7 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 	keepCatalog(t, db, keys...)
 	looked, first, second, fresh := keys[0], keys[1], keys[2], keys[3]
 
-	// looked was looked up (and failed) before the catalog listed it.
+	// looked was looked up (and failed) just before the catalog listed it.
 	old, err := lookups.Request(ctx, looked, "https://"+looked+"/old", true, testDoneTTL, testFailedTTL)
 	if err != nil {
 		t.Fatal(err)
@@ -96,25 +96,27 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 	}
 	old = getLookup(t, lookups, old.ID)
 
-	queued, err := repo.Replace(ctx, []catalog.Entry{catalogEntry("A", first, 0), catalogEntry("A", looked, 1)})
+	res, err := repo.Replace(ctx, []catalog.Entry{catalogEntry("A", first, 0), catalogEntry("A", looked, 1)}, time.Hour)
 	if err != nil {
 		t.Fatalf("first Replace: %v", err)
 	}
-	if queued != 1 {
-		t.Errorf("first Replace queued %d; want 1 (looked has a lookup)", queued)
+	want := catalog.Result{Queued: 1, Missing: []string{looked}}
+	if !reflect.DeepEqual(res, want) {
+		t.Errorf("first Replace = %+v; want %+v (looked failed too recently to retry)", res, want)
 	}
 
-	queued, err = repo.Replace(ctx, []catalog.Entry{
+	res, err = repo.Replace(ctx, []catalog.Entry{
 		catalogEntry("B", second, 0),
 		catalogEntry("B", looked, 1),
 		catalogEntry("C", first, 2),
 		catalogEntry("C", fresh, 3),
-	})
+	}, time.Hour)
 	if err != nil {
 		t.Fatalf("second Replace: %v", err)
 	}
-	if queued != 2 {
-		t.Errorf("second Replace queued %d; want 2 (second and fresh)", queued)
+	want = catalog.Result{Queued: 2, Missing: []string{looked}}
+	if !reflect.DeepEqual(res, want) {
+		t.Errorf("second Replace = %+v; want %+v (second and fresh queued)", res, want)
 	}
 
 	t.Run("only the second set is stored", func(t *testing.T) {
@@ -138,7 +140,7 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 		}
 	})
 
-	t.Run("an existing lookup is left unchanged", func(t *testing.T) {
+	t.Run("a lookup that failed recently is left unchanged", func(t *testing.T) {
 		got, err := lookups.GetBySiteKey(ctx, looked)
 		if err != nil {
 			t.Fatal(err)
@@ -162,6 +164,88 @@ func TestCatalogRepositoryReplace(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestCatalogRepositoryReplaceRetries(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewCatalogRepository(db)
+	lookups := NewLookupRepository(db)
+	ctx := t.Context()
+
+	keys := catalogKeys(6)
+	keepCatalog(t, db, keys...)
+	oldFailed, oldEmpty, recentEmpty, found, foundThenFailed, running := keys[0], keys[1], keys[2], keys[3], keys[4], keys[5]
+
+	var entries []catalog.Entry
+	for i, key := range keys {
+		entries = append(entries, catalogEntry("A", key, i))
+	}
+	if _, err := repo.Replace(ctx, entries, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	site := newCatalogSite(t, db, found, "Found")
+
+	// Each lookup's outcome, as the runner records it, and when it finished.
+	set := func(key, status, siteID, finishedAgo string) {
+		t.Helper()
+		if _, err := db.Exec(`UPDATE lookups SET status = $2, site_id = NULLIF($3, '')::uuid, url = 'https://' || site_key || '/old',
+				attempts = 1, started_at = now() - $4::interval, finished_at = CASE WHEN $2 = 'running' THEN NULL ELSE now() - $4::interval END
+			WHERE site_key = $1`, key, status, siteID, finishedAgo); err != nil {
+			t.Fatalf("set lookup %s: %v", key, err)
+		}
+	}
+	set(oldFailed, "failed", "", "2 hours")
+	set(oldEmpty, "done", "", "2 hours")
+	set(recentEmpty, "done", "", "10 minutes")
+	set(found, "done", site, "2 hours")
+	set(foundThenFailed, "failed", site, "2 hours")
+	set(running, "running", "", "2 hours")
+	before := map[string]rss.Lookup{}
+	for _, key := range keys {
+		l, err := lookups.GetBySiteKey(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[key] = l
+	}
+
+	res, err := repo.Replace(ctx, entries, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 0 {
+		t.Errorf("Queued = %d; want 0", res.Queued)
+	}
+	retried := map[string]bool{}
+	for _, key := range res.Retried {
+		retried[key] = true
+	}
+	if len(res.Retried) != 2 || !retried[oldFailed] || !retried[oldEmpty] {
+		t.Errorf("Retried = %v; want %s and %s", res.Retried, oldFailed, oldEmpty)
+	}
+	if want := []string{recentEmpty}; !reflect.DeepEqual(res.Missing, want) {
+		t.Errorf("Missing = %v; want %v", res.Missing, want)
+	}
+
+	for _, key := range []string{oldFailed, oldEmpty} {
+		got, err := lookups.GetBySiteKey(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ID != before[key].ID || got.Status != rss.LookupPending || got.URL != "https://"+key+"/" || got.Attempts != 0 || got.Error != "" {
+			t.Errorf("%s: %+v; want the same row pending with the catalog's address, no attempts and no error", key, got)
+		}
+	}
+	for _, key := range []string{recentEmpty, found, foundThenFailed, running} {
+		got, err := lookups.GetBySiteKey(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != before[key].Status || got.URL != before[key].URL || !got.RequestedAt.Equal(before[key].RequestedAt) {
+			t.Errorf("%s: %+v; want it unchanged: %+v", key, got, before[key])
+		}
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestCatalogRepositoryBrowse(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewCatalogRepository(db)
@@ -176,7 +260,7 @@ func TestCatalogRepositoryBrowse(t *testing.T) {
 		catalogEntry("Science", keys[2], 2),
 		catalogEntry("Empty", keys[3], 3), // not found yet
 		catalogEntry("News", keys[4], 4),
-	}); err != nil {
+	}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 

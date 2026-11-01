@@ -6,14 +6,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 
+	"github.com/grodier/rss/internal/catalog"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/migrations"
 )
 
 // runMigrate runs "www migrate [flags]": it applies the embedded migrations to
-// the database, or prints their fingerprint, and returns the exit code. Hosts
-// run it before new code goes live (Render's pre-deploy command). Like
+// the database and stores the site catalog (syncCatalog), or prints the
+// migrations' fingerprint, and returns the exit code. Hosts run it before new
+// code goes live (Render's pre-deploy command). Like
 // parseConfig, it writes flag errors and the -help output to stderr.
 func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	env := "development"
@@ -70,9 +73,34 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 	}
 	defer db.Close()
 
-	if err := psql.Migrate(context.Background(), db, migrations.FS, allowResetTo, logger); err != nil {
+	ctx := context.Background()
+	if err := psql.Migrate(ctx, db, migrations.FS, allowResetTo, logger); err != nil {
+		logger.Error(err.Error())
+		return 1
+	}
+	if err := syncCatalog(ctx, psql.NewCatalogRepository(db), catalog.Entries(), logger); err != nil {
 		logger.Error(err.Error())
 		return 1
 	}
 	return 0
+}
+
+// syncCatalog stores the site catalog that ships with this binary, as
+// reference data next to the schema, and queues the lookups of its sites not
+// found yet (catalog.Sync); the app's lookup workers then discover them. It
+// logs what it queued, and each site that has failed to be found, so a site
+// that keeps failing can be fixed or dropped in sites.txt.
+func syncCatalog(ctx context.Context, store catalog.Store, entries []catalog.Entry, logger *slog.Logger) error {
+	res, err := catalog.Sync(ctx, store, entries)
+	if err != nil {
+		return err
+	}
+	logger.Info("site catalog synced", "entries", len(entries), "lookups_queued", res.Queued, "lookups_retried", len(res.Retried))
+	if len(res.Retried) > 0 {
+		logger.Warn("site catalog: retrying lookups that failed or found no feeds", "site_keys", res.Retried)
+	}
+	if len(res.Missing) > 0 {
+		logger.Warn("site catalog: lookups that failed or found no feeds too recently to retry; a later run retries them", "site_keys", res.Missing)
+	}
+	return nil
 }

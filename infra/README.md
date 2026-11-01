@@ -100,7 +100,7 @@ CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss
 2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`.
    Render never builds; it runs the image CI tested;
 3. follows the deploy until it's live.
-   Render runs `/www migrate` first; if it fails, the deploy fails within seconds and the old version keeps serving;
+   Render runs `/www migrate` first, which also stores the site catalog and queues lookups of its sites not found yet (their keys are in its log); if it fails, the deploy fails within seconds and the old version keeps serving;
 4. checks that `/healthcheck` reports the commit's SHA as its `version`;
 5. deploys `ghcr.io/grodier/rss-backup@<digest>` to the `rss-backup` cron job, resolved the same way, and follows that deploy until it's live.
 

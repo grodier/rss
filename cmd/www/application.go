@@ -15,7 +15,6 @@ import (
 
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
-	"github.com/grodier/rss/internal/catalog"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/enrich"
 	"github.com/grodier/rss/internal/fetch"
@@ -66,7 +65,6 @@ func (app *Application) Run() error {
 			Workers:    app.config.lookup.workers,
 		}
 		background = append(background, named("lookup runner", runner.Run))
-		background = append(background, app.syncCatalog(psql.NewCatalogRepository(db)))
 	}
 	if app.config.importer.workers > 0 {
 		runner := &importer.Runner{
@@ -200,23 +198,6 @@ func (app *Application) Run() error {
 	wg.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
-}
-
-// syncCatalog returns a background component that stores the embedded site
-// catalog and queues lookups of its sites not yet looked up, once, for this
-// process's lookup runner. A failure is logged and doesn't stop the server:
-// the catalog is only a starting point for discovery.
-func (app *Application) syncCatalog(store catalog.Store) func(context.Context) error {
-	return func(ctx context.Context) error {
-		entries := catalog.Entries()
-		queued, err := catalog.Sync(ctx, store, entries)
-		if err != nil {
-			app.logger.Error("site catalog sync failed", "error", err)
-			return nil
-		}
-		app.logger.Info("site catalog synced", "entries", len(entries), "lookups_queued", queued)
-		return nil
-	}
 }
 
 // named wraps the error a background component returns with its name.

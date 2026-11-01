@@ -3,6 +3,7 @@ package psql
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -20,25 +21,27 @@ func NewCatalogRepository(db *sql.DB) *CatalogRepository {
 	return &CatalogRepository{DB: db}
 }
 
-// Replace replaces the stored catalog with entries, then queues a lookup for
-// each entry whose site key has no lookups row yet, in one transaction. A
-// site key's existing lookup, whatever its status, is left as it is, so a
-// restart doesn't fetch sites already looked up. It returns how many lookups
-// it queued.
-func (r *CatalogRepository) Replace(ctx context.Context, entries []catalog.Entry) (int, error) {
+// Replace replaces the stored catalog with entries, then, in the same
+// transaction, queues a lookup for each entry whose site key has no lookups
+// row, and re-queues, with the catalog's address, each entry's lookup that
+// failed or found no feeds and finished over retryAfter ago. A lookup that
+// found a site (even if a later run failed), or is pending or running, is
+// left as it is, so a deploy doesn't fetch sites already found.
+func (r *CatalogRepository) Replace(ctx context.Context, entries []catalog.Entry, retryAfter time.Duration) (catalog.Result, error) {
+	var res catalog.Result
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
 	defer tx.Rollback()
 
-	// Two instances starting at once replace the catalog one after the
-	// other; reads (Browse, Search) aren't blocked.
+	// Two runs at once replace the catalog one after the other; reads
+	// (Browse, Search) aren't blocked.
 	if _, err := tx.ExecContext(ctx, `LOCK TABLE catalog_sites IN SHARE ROW EXCLUSIVE MODE`); err != nil {
-		return 0, err
+		return res, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_sites`); err != nil {
-		return 0, err
+		return res, err
 	}
 
 	keys := make([]string, len(entries))
@@ -51,24 +54,70 @@ func (r *CatalogRepository) Replace(ctx context.Context, entries []catalog.Entry
 	stmt := `INSERT INTO catalog_sites (site_key, url, topic, position)
 		SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::int[])`
 	if _, err := tx.ExecContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(topics), pq.Array(positions)); err != nil {
-		return 0, err
+		return res, err
 	}
 
-	res, err := tx.ExecContext(ctx, `INSERT INTO lookups (site_key, url)
+	// xmax is 0 on a row this statement inserted, and set on one it updated.
+	stmt = `INSERT INTO lookups (site_key, url)
 		SELECT site_key, url FROM catalog_sites ORDER BY position
-		ON CONFLICT (site_key) DO NOTHING`)
+		ON CONFLICT (site_key) DO UPDATE SET
+			status = 'pending', url = EXCLUDED.url, error = '',
+			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
+		WHERE lookups.site_id IS NULL AND lookups.status IN ('done', 'failed')
+		  AND lookups.finished_at < now() - make_interval(secs => $1)
+		RETURNING site_key, xmax = 0`
+	rows, err := tx.QueryContext(ctx, stmt, retryAfter.Seconds())
 	if err != nil {
-		return 0, err
+		return res, err
 	}
-	queued, err := res.RowsAffected()
+	for rows.Next() {
+		var key string
+		var inserted bool
+		if err := rows.Scan(&key, &inserted); err != nil {
+			rows.Close()
+			return res, err
+		}
+		if inserted {
+			res.Queued++
+		} else {
+			res.Retried = append(res.Retried, key)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return res, err
+	}
+
+	res.Missing, err = queryStrings(ctx, tx, `SELECT c.site_key FROM catalog_sites c
+		JOIN lookups l ON l.site_key = c.site_key
+		WHERE l.site_id IS NULL AND l.status IN ('done', 'failed')
+		ORDER BY c.position`)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return catalog.Result{}, err
 	}
-	return int(queued), nil
+	return res, nil
+}
+
+// queryStrings returns the single text column of stmt's rows.
+func queryStrings(ctx context.Context, q querier, stmt string, args ...any) ([]string, error) {
+	rows, err := q.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // Browse returns the catalog's topics in file order, each with its sites in

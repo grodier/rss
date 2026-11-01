@@ -29,7 +29,7 @@ go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
-go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
+go run ./cmd/www migrate         # apply migrations and store the site catalog (or: make db/migrations/up); refuses if migrations changed since
 go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB after editing 00001_init.sql
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
@@ -53,7 +53,7 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
-- `internal/catalog`: the site catalog (`sites.txt`, embedded): parses it and seeds it into the database at startup, queuing lookups of its sites
+- `internal/catalog`: the site catalog (`sites.txt`, embedded): parses it, and `www migrate` stores it in the database and queues lookups of its sites
 - `internal/opml`: reads the feeds listed in OPML files
 - `internal/importer`: subscribes users to the feeds of their OPML imports, queued in the `import_feeds` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)

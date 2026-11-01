@@ -2213,16 +2213,10 @@
     font-size: 0.875rem;
   }
 
-  /* Browse: the site catalog by topic, on Search with no query. */
-  .browse-intro {
-    padding: 1rem 1rem 0;
-    color: var(--text-2);
-    font-size: 0.875rem;
-  }
-
-  /* (b) The topic index: in-page links, wrapping, like a front page's
-     "Inside" box. Sections leave room for the sticky head or top bar
-     when jumped to. */
+  /* Browse: the site catalog by topic, on Search with no query. Its index
+     of topics is in-page links, wrapping, like a front page's "Inside"
+     box; sections leave room for the sticky page head or top bar when
+     jumped to. */
   .browse-index {
     padding: 1rem 1rem 0.25rem;
   }
@@ -2253,7 +2247,8 @@
     scroll-margin-block-start: 4.5rem;
   }
 
-  /* (b), (c) A site's description, in the reading face, under its name. */
+  /* A site's description in the reading face, under its name and lined up
+     with it, like an article card's excerpt. */
   .browse-desc {
     display: -webkit-box;
     margin-block-start: 0.375rem;
@@ -2267,13 +2262,6 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
-  }
-
-  /* (c) Topic tabs under the search box, as the timeline's tabs. */
-  .topic-tabs {
-    margin-block-start: 0.25rem;
-    padding-inline: 1rem;
-    border-block-end: 1px solid var(--border);
   }
 
   .result {

@@ -100,11 +100,14 @@ Planned in #50 (issues #51–#67).
   "Popular" is the owner's pick, since there's no popularity or cross-user data in the app.
 - **The catalog is hand-picked and kept in the repository** (#447), as a text file embedded in the binary (`internal/catalog/sites.txt`) that the owner edits in PRs: `[Topic]` headings with one website address per line, each site listed once, under one topic.
   A test parses the embedded file, so a bad edit can't ship.
-- **Seeding goes through the lookup queue** (#447), so catalog feeds are created by discovery like any other.
-  On every start with lookup workers, `www` replaces the `catalog_sites` table with the file's entries and queues a lookup for each entry whose site key has no `lookups` row yet; sites already looked up, whatever the outcome, aren't fetched again on each deploy.
-  Editing the file takes effect on the next deploy, and after a pre-alpha reset the catalog comes back by itself.
-  Running it at startup was picked over a pre-deploy `www` command, which would have needed the lookup code outside the web process for no gain at this size.
-  A failed sync is logged and doesn't stop the server.
+- **Seeding goes through the lookup queue** (#447), so catalog feeds are created by discovery like any other: the seed stores the list and queues lookups, and the app's lookup workers find the sites.
+- **`www migrate` seeds the catalog, after the migrations** (#447): the catalog is reference data that ships with the binary, like the schema, so it's stored in the release step (Render's pre-deploy command), once per deploy, before the new version serves.
+  A failure fails the deploy and the old version keeps serving, as for a migration; the web process's start stays free of writes and runs nothing per instance or restart.
+  Every path that builds a database already runs `migrate` (deploys, the production reset, CI, `make db/reset`), so after a pre-alpha reset the catalog comes back by itself, and editing the file takes effect on the next deploy.
+  It was picked over seeding when the web process starts (it ran on every restart and instance, and its failures were only logged), a separate `www` command (more wiring in Terraform, the Makefile and the README for the same step, and easy to miss after a reset), a CI job (CI doesn't write to production, and it wouldn't cover local databases), a hand-run script (forgotten after a reset) and rows in a migration (every edit to the list would be a schema reset now, and a new migration in production).
+- **A catalog site's lookup is retried on the next deploy if it failed or found no feeds over an hour ago** (#447), the same wait as a reader's lookup, so a transient failure (a timeout, a rate limit) doesn't drop a hand-picked site from Browse for good.
+  A lookup that found a site, or is in progress, is never re-queued, so sites already found aren't fetched again.
+  `migrate` logs the keys it retried and those that failed too recently, so a site that keeps failing (one blocking datacenter addresses, say) shows up in every deploy's log, as a reason to fix or drop it in `sites.txt`; a periodic retry worker was more machinery than about 50 sites need.
 - **A catalog entry's site is the one its lookup found** (#447), joined through `lookups.site_id` rather than `sites.host`, so an address that redirects to another host (`bbc.co.uk/news`) still shows its site.
 - **Topics belong to the catalog, not to readers** (#447): they aren't tags and never appear on subscriptions.
   Search matches a catalog site's topic as well as its name, so "science" finds the Science sites.
@@ -563,6 +566,12 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **No back links in page heads** (#423, closed): the browser's back button and the nav already cover it, and this is a web app, not a native one.
   Back links on every detail page were built and shown at the design checkpoint, and dropped; the article, feed and site pages keep starting with their own heading, without a head.
   Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
+- **Browse is one page: an index of the catalog's topics, then a section per topic of site rows with descriptions** (#447).
+  The index is plain in-page links that wrap under the search box, like a front page's "Inside" box, so it works without JavaScript and lands each topic just under the sticky head.
+  A row is the search result's head (avatar, title, host) with the site's description under it in the reading face, clamped to two lines like an article card's excerpt, since readers can't judge a site they don't know by its name alone.
+  It was picked over sections without descriptions (shorter, but the names said too little) and topic tabs showing one topic at a time (shorter, but they hid eight of nine topics, five of them off-screen on a phone, and tabs are rarely explored).
+  The page is long on a phone (about 5,500 px for 41 sites); the index is what keeps it navigable.
+  Descriptions are the sites' own, so some read as marketing and some are missing; a curated blurb in `sites.txt` is a backlog item.
 - **Page-head actions are small outlined pills** (`btn btn-sm`, #424), on every page that has them: they read as controls opposite a big heading, where text links were easy to miss.
   None is filled, since a filled pill is a form's primary action; two actions are grouped (`.head-actions`) so they stay on one line on phones.
 - **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.

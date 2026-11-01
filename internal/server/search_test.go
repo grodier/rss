@@ -36,7 +36,7 @@ func TestSearchNoQuery(t *testing.T) {
 		catalog := &fakeCatalogStore{browseFn: func(context.Context) ([]rss.CatalogTopic, error) {
 			return []rss.CatalogTopic{
 				{Name: "Science", Sites: []rss.Site{
-					{ID: "site-1", Host: "quantamagazine.org", Title: "Quanta Magazine"},
+					{ID: "site-1", Host: "quantamagazine.org", Title: "Quanta Magazine", Description: "Illuminating science."},
 					{ID: "site-2", Host: "nasa.gov"},
 				}},
 				{Name: "Food", Sites: []rss.Site{{ID: "site-3", Host: "eater.com", Title: "Eater"}}},
@@ -50,11 +50,14 @@ func TestSearchNoQuery(t *testing.T) {
 		body := rr.Body.String()
 		for _, want := range []string{
 			`name="q"`,
+			"Browse popular sites by topic",
+			`<a href="#topic-0">Science</a>`, `<a href="#topic-1">Food</a>`,
+			`id="topic-0"`, `id="topic-1"`,
 			"<h2>Science</h2>", "<h2>Food</h2>",
 			`<a href="/sites/site-1">Quanta Magazine</a>`,
+			`<p class="browse-desc">Illuminating science.</p>`,
 			`<a href="/sites/site-2">nasa.gov</a>`,
 			`<a href="/sites/site-3">Eater</a>`,
-			"Or browse popular sites by topic.",
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("body missing %q", want)
@@ -62,6 +65,10 @@ func TestSearchNoQuery(t *testing.T) {
 		}
 		if strings.Index(body, "<h2>Science</h2>") > strings.Index(body, "<h2>Food</h2>") {
 			t.Error("topics out of order")
+		}
+		// nasa.gov has no description, so only one is rendered.
+		if n := strings.Count(body, `class="browse-desc"`); n != 1 {
+			t.Errorf("%d descriptions; want 1", n)
 		}
 	})
 
@@ -75,7 +82,7 @@ func TestSearchNoQuery(t *testing.T) {
 		if !strings.Contains(body, `name="q"`) {
 			t.Error("form missing")
 		}
-		if strings.Contains(body, "browse popular sites") {
+		if strings.Contains(body, "Browse popular sites") {
 			t.Error("Browse shown with an empty catalog")
 		}
 	})

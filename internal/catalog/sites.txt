@@ -1,5 +1,6 @@
-# The site catalog (#447): well-known sites, seeded into the database on every
-# start so Search finds them and lists them by topic when there's no query.
+# The site catalog (#447): well-known sites, stored in the database by every
+# `www migrate` (so on each deploy) so Search finds them and lists them by
+# topic when there's no query. Each site appears once its lookup finds it.
 # A [Topic] heading, then one website address per line; each site is listed
 # once, under one topic. Blank lines and lines starting with # are ignored.
 

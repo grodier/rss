@@ -157,7 +157,7 @@ func TestSearchRepository(t *testing.T) {
 		if _, err := catalogRepo.Replace(ctx, []catalog.Entry{
 			catalogEntry(topic, listed, 0),
 			catalogEntry(topic, notFound, 1), // its lookup hasn't found a site
-		}); err != nil {
+		}, time.Hour); err != nil {
 			t.Fatal(err)
 		}
 		// The site its lookup found is on another host, as after a redirect.

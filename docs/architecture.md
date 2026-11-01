@@ -35,7 +35,6 @@ Inside the process run seven long-lived components, all stopped by one context:
   Its Refresh button calls `ingest.Refresher` directly.
 - The **refresh runner** (`internal/refresh`) claims due feeds and hands each to `ingest.Refresher`, which fetches the feed and saves the outcome.
 - The **lookup runner** (`internal/lookup`) claims pending lookups, runs `discovery.Discoverer` to find the site's feeds, and saves them with `psql.DiscoveryRepository`.
-  Started with it, the **catalog sync** (`catalog.Sync`, `syncCatalog` in `application.go`) runs once and ends: it stores the embedded site catalog in `catalog_sites` and queues lookups of its sites that have none; a failure is logged and stops nothing.
 - The **import runner** (`internal/importer`) claims the feeds of uploaded OPML files one at a time, finds or discovers each like the lookup runner, subscribes the import's user and adds the row's tags.
 - The **site icon runner** (`internal/siteicon`) checks sites' home pages for a usable icon and stores it in `site_icons`.
 - The **enrich runner** (`internal/enrich`) fetches the web pages of new articles missing an image, title or excerpt, and stores their Open Graph values in the article's `page_*` columns.
@@ -49,7 +48,8 @@ Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, 
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
 Only `cmd/www` handles signals.
 
-`www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits.
+`www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate`, then stores the site catalog embedded in the binary (`syncCatalog`, `catalog.Sync`) and exits.
+The catalog sync only writes rows: it replaces `catalog_sites` and queues lookups, and the app's lookup runner fetches the sites.
 It runs before new code goes live, never at startup.
 While pre-alpha, `Migrate` compares `psql.Fingerprint` (a SHA-256 of the names and contents of `migrations/*.sql`) with the one stored in `schema_fingerprint` when it last ran: if migrations were applied from different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in which case it drops and recreates the current schema first.
 So any edit to a migration, comments included, needs a reset.
@@ -65,7 +65,7 @@ So any edit to a migration, comments included, needs a reset.
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `catalog` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
-| `internal/catalog` | The embedded site catalog: parse it, seed it at startup | `discovery` |
+| `internal/catalog` | The embedded site catalog: parse it, store it and queue its lookups (`Sync`, run by `www migrate`) | `discovery` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
@@ -214,7 +214,7 @@ emails   (the outbox: no foreign keys)
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
   Ingest flags copies (`articles.has_copies`, set by `saveArticles` and never cleared), and timelines check for an earlier copy only on flagged rows.
 - **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to group the timeline and place the "You were here" divider; its positions compare with `articles.timeline_at` and its render times (`seen_as_of`, `divider_as_of`) with `articles.created_at`, with no foreign key to an article.
-- **`catalog_sites`** is replaced on every start (see "The process") and has no foreign keys: an entry reaches its site through the lookup with the same `site_key` (`lookups.site_id`), never through `sites.host`, since the address may redirect to another host.
+- **`catalog_sites`** is replaced by every `www migrate` (see "The process") and has no foreign keys: an entry reaches its site through the lookup with the same `site_key` (`lookups.site_id`), never through `sites.host`, since the address may redirect to another host.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.

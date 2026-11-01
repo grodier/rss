@@ -75,9 +75,9 @@ CREATE TABLE lookups (
 
 CREATE INDEX lookups_pending_idx ON lookups (requested_at) WHERE status = 'pending';
 
--- The site catalog (internal/catalog/sites.txt), replaced by www on every
--- start. Joined to sites through its lookup (lookups.site_key = site_key),
--- once the lookup found the site.
+-- The site catalog (internal/catalog/sites.txt), replaced by every
+-- `www migrate`. Joined to sites through its lookup (lookups.site_key =
+-- site_key), once the lookup found the site.
 CREATE TABLE catalog_sites (
     site_key TEXT PRIMARY KEY,   -- discovery.SiteKey of url
     url TEXT NOT NULL,           -- the address its lookup fetches

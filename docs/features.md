@@ -110,20 +110,21 @@ The site page lists the feeds with subscribe buttons and offers "Check for new f
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 
 **The site catalog.** `internal/catalog/sites.txt` lists well-known sites under `[Topic]` headings, embedded in the binary and parsed by `catalog.Parse`.
-When `www` starts with lookup workers, a background component runs `catalog.Sync` once: `CatalogRepository.Replace` replaces `catalog_sites` with the file's entries and inserts a pending lookup for each site key with no `lookups` row, in one transaction, and the lookup workers then discover them like any other.
-A catalog entry's site is whatever its lookup found (`lookups.site_id`), so `Search` matches topics through that join, and `GET /search` with no query shows Browse: `CatalogRepository.Browse` returns the topics in file order with their found sites, rendered as rows like a search result's head.
+`www migrate` runs `catalog.Sync` after the migrations: in one transaction, `CatalogRepository.Replace` replaces `catalog_sites` with the file's entries, inserts a pending lookup for each site key with no `lookups` row, and re-queues the entries' lookups that failed or found no feeds over an hour ago (`catalog.RetryAfter`); the app's lookup workers then discover them like any other.
+It logs the keys it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
+A catalog entry's site is whatever its lookup found (`lookups.site_id`), so `Search` matches topics through that join, and `GET /search` with no query shows Browse: `CatalogRepository.Browse` returns the topics in file order with their found sites, rendered as an index of in-page links to the topics, then a section per topic of site rows with each site's description.
 
 **Start at:**
 
 1. `internal/server/search.go` and `internal/psql/search.go`.
-   The catalog: `internal/catalog/catalog.go` (`Parse`, `Sync`), `internal/psql/catalog.go`, and `syncCatalog` in `cmd/www/application.go`.
+   The catalog: `internal/catalog/catalog.go` (`Parse`, `Sync`), `internal/psql/catalog.go`, and `syncCatalog` in `cmd/www/migrate.go`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
 4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`) and `normalize.go` (`ParseInput`, `SiteKey`, `CanonicalFeedURL`).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`).
 
-**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/catalog`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `catalog_test.go`, `lookups_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/catalog`; `cmd/www/migrate_test.go`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `catalog_test.go`, `lookups_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 

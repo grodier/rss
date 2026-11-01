@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -64,25 +65,30 @@ func TestEmbeddedCatalog(t *testing.T) {
 }
 
 type fakeStore struct {
-	got    []Entry
-	queued int
-	err    error
+	got        []Entry
+	retryAfter time.Duration
+	res        Result
+	err        error
 }
 
-func (f *fakeStore) Replace(_ context.Context, entries []Entry) (int, error) {
-	f.got = entries
-	return f.queued, f.err
+func (f *fakeStore) Replace(_ context.Context, entries []Entry, retryAfter time.Duration) (Result, error) {
+	f.got, f.retryAfter = entries, retryAfter
+	return f.res, f.err
 }
 
 func TestSync(t *testing.T) {
 	entries := Entries()
-	store := &fakeStore{queued: 3}
-	queued, err := Sync(t.Context(), store, entries)
+	want := Result{Queued: 3, Retried: []string{"npr.org"}, Missing: []string{"bbc.co.uk"}}
+	store := &fakeStore{res: want}
+	got, err := Sync(t.Context(), store, entries)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queued != 3 {
-		t.Errorf("queued = %d; want 3", queued)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Sync = %+v; want %+v", got, want)
+	}
+	if store.retryAfter != RetryAfter {
+		t.Errorf("Replace got retryAfter %v; want %v", store.retryAfter, RetryAfter)
 	}
 	if !reflect.DeepEqual(store.got, entries) {
 		t.Errorf("Replace got %d entries; want all %d", len(store.got), len(entries))

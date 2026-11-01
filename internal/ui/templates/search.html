@@ -47,8 +47,8 @@
       {{end}}
 
       {{with .Topics}}
-      {{if eq $.BrowseDesign "b"}}
-      {{/* (b) A topic index, then sections of site rows with descriptions. */}}
+      {{/* Browse: the site catalog, with an index of in-page links to its
+           topics, which work without JavaScript. */}}
       <nav class="browse-index" aria-label="Topics">
         <p>Browse popular sites by topic</p>
         <ul role="list">
@@ -77,60 +77,6 @@
           {{end}}
         </ul>
       </section>
-      {{end}}
-      {{else if eq $.BrowseDesign "c"}}
-      {{/* (c) Topic tabs: one topic at a time. */}}
-      <p class="browse-intro">Or browse popular sites by topic.</p>
-      <nav class="timeline-tabs topic-tabs" aria-label="Topics">
-        <ul role="list">
-          {{range .}}
-          <li><a href="/search?browse=c&amp;topic={{.Name}}"{{if eq .Name $.Topic}} aria-current="page"{{end}}>{{.Name}}</a></li>
-          {{end}}
-        </ul>
-      </nav>
-      {{range .}}
-      {{if eq .Name $.Topic}}
-      <section class="browse-topic" aria-label="{{.Name}}">
-        <ul role="list">
-          {{range .Sites}}
-          <li class="result">
-            <div class="result-head">
-              {{template "avatar" (avatar .ID (or .Title .Host) (index $.Icons .ID))}}
-              <div>
-                <h3><a href="/sites/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</a></h3>
-                <p>{{.Host}}</p>
-              </div>
-            </div>
-            {{with .Description}}<p class="browse-desc">{{.}}</p>{{end}}
-          </li>
-          {{end}}
-        </ul>
-      </section>
-      {{end}}
-      {{end}}
-      {{else}}
-      {{/* (a) Sections of site rows, as a search result's head. */}}
-      <p class="browse-intro">Or browse popular sites by topic.</p>
-      {{range .}}
-      <section class="browse-topic">
-        <div class="list-head">
-          <h2>{{.Name}}</h2>
-        </div>
-        <ul role="list">
-          {{range .Sites}}
-          <li class="result">
-            <div class="result-head">
-              {{template "avatar" (avatar .ID (or .Title .Host) (index $.Icons .ID))}}
-              <div>
-                <h3><a href="/sites/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Host}}{{end}}</a></h3>
-                <p>{{.Host}}</p>
-              </div>
-            </div>
-          </li>
-          {{end}}
-        </ul>
-      </section>
-      {{end}}
       {{end}}
       {{end}}
 

@@ -113,6 +113,9 @@ The decisions are under "Accounts" in decisions.md.
 - [ ] **Name → website suggestions.**
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
+- [ ] **Curated blurbs in the site catalog.**
+  Browse (#447) shows each site's own description, which some sites leave empty (Hacker News) or fill with marketing copy.
+  An optional short blurb after the address in `internal/catalog/sites.txt` could replace it on Browse; worth it once testers find sites they can't place.
 - [ ] **Platform-specific discovery rules.**
   YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
 - [ ] **`<a href>` heuristics.**
@@ -477,7 +480,7 @@ Other background work (#302, #304, #306):
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 measures imports and builds this if production shows overlapping imports.
 - [ ] **Catalog lookups queue ahead of readers' after a reset** (#447).
-  The catalog is seeded through the lookup queue at start, and `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
+  `www migrate` seeds the catalog through the lookup queue on each deploy, and `ClaimNext` takes lookups oldest first, so on a fresh database a reader's own lookup waits behind them: a few minutes with 2 lookup workers and about 50 sites.
   *Signal:* lookups in the first minutes after a deploy ending on the status page instead of the site page, or the catalog growing past a few hundred sites.
   *Fix:* a priority on `lookups` (readers' first), or queue the catalog's lookups with a later `requested_at`.
 

@@ -134,7 +134,7 @@ Nothing seeds an account after a reset.
 
 ### Approving infrastructure applies
 
-`infra.yml` runs when a pull request or a push to `main` touches `infra/**`, one run at a time:
+`infra.yml` runs when a pull request or a push to `main` touches `infra/**` other than Markdown, one run at a time:
 
 - **Pull requests** from branches in this repository run `terraform plan` and write it to the job summary.
   Review it there like the code.

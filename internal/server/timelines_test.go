@@ -93,15 +93,32 @@ func timelineSourcesStores() (*fakeTagStore, *fakeSubscriptionStore) {
 }
 
 func TestTimelinesHandler(t *testing.T) {
-	t.Run("lists timelines with descriptions and edit links", func(t *testing.T) {
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	const thirdID = "99999999-9999-4999-8999-999999999999"
+	moveButton := func(name, dir string, disabled bool) string {
+		b := `<button class="row-icon-btn" type="submit" name="direction" value="` + dir + `" aria-label="Move ` + name + ` ` + dir + `" title="Move ` + dir + `"`
+		if disabled {
+			b += " disabled"
+		}
+		return b + ">"
+	}
+
+	t.Run("Home first, then each timeline with its summary and controls", func(t *testing.T) {
+		s := newTestServerWith(t, Services{
+			TimelineService: &fakeTimelineStore{listWithFiltersFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
 				if userID != "user-1" {
 					return nil, errors.New("wrong user")
 				}
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken}, {ID: newsTimelineID, Name: "News"}}, nil
-			},
-		}})
+				return []rss.Timeline{
+					{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken,
+						Filter: rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeWords: []string{"GPT"}}},
+					{ID: newsTimelineID, Name: "News", Filter: rss.TimelineFilter{MaxPostsPerWeek: 2}},
+					{ID: thirdID, Name: "Sports"},
+				}, nil
+			}},
+			TagService: &fakeTagStore{listFn: func(ctx context.Context, userID string) ([]rss.Tag, error) {
+				return []rss.Tag{{ID: testTagID, Name: "AI"}}, nil
+			}},
+		})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
@@ -110,11 +127,31 @@ func TestTimelinesHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			"<h1>Timelines</h1>",
 			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
-			`<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>`,
-			"<p>Models &amp; more</p>",
-			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
-			`<a class="timeline-list-name" href="/timelines/`+newsTimelineID+`">News</a>`,
+			`<a class="timeline-row-name" href="/">`, `Home</a>`, "<p>Every feed you follow</p>",
+			`<li class="timeline-row" id="timeline-`+testTimelineID+`">`,
+			`<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>`,
+			"<p>Tagged AI · Mentions “GPT”</p>",
+			`<form class="timeline-row-move" action="/timelines/`+testTimelineID+`/move" method="post">`,
+			`<a class="row-icon-btn" href="/timelines/`+testTimelineID+`/edit" aria-label="Edit AI" title="Edit">`,
+			`<a class="timeline-row-name" href="/timelines/`+newsTimelineID+`">News</a>`,
+			"<p>At most 2 posts a week</p>",
+			`<a class="timeline-row-name" href="/timelines/`+thirdID+`">Sports</a>`,
+			"<p>All your feeds</p>",
+			// Move buttons are disabled at the ends, not left out.
+			moveButton("AI", "up", true), moveButton("AI", "down", false),
+			moveButton("News", "up", false), moveButton("News", "down", false),
+			moveButton("Sports", "up", false), moveButton("Sports", "down", true),
 		)
+		if home, first := strings.Index(body, `href="/">`), strings.Index(body, `id="timeline-`+testTimelineID+`"`); home < 0 || home > first {
+			t.Errorf("Home's row isn't first: %s", body)
+		}
+		if strings.Index(body, ">AI</a>") > strings.Index(body, ">News</a>") || strings.Index(body, ">News</a>") > strings.Index(body, ">Sports</a>") {
+			t.Errorf("rows out of order: %s", body)
+		}
+		// The description is shown under the tabs and in the editor, not here.
+		if strings.Contains(body, "Models &amp; more") {
+			t.Errorf("shows the description: %s", body)
+		}
 		if strings.Contains(body, "You don't have any timelines yet.") {
 			t.Errorf("shows the empty state: %s", body)
 		}
@@ -122,66 +159,102 @@ func TestTimelinesHandler(t *testing.T) {
 		if n := strings.Count(body, `<span class="chip">Shared</span>`); n != 1 {
 			t.Errorf("%d timelines marked Shared, want 1: %s", n, body)
 		}
-		assertBodyContains(t, body, `<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>
+		assertBodyContains(t, body, `<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>
             <span class="chip">Shared</span>`)
 	})
 
-	t.Run("move buttons", func(t *testing.T) {
-		const thirdID = "99999999-9999-4999-8999-999999999999"
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}, {ID: newsTimelineID, Name: "News"}, {ID: thirdID, Name: "Sports"}}, nil
-			},
-		}})
-		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		body := rr.Body.String()
-		up := func(name string) string {
-			return `<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move ` + name + ` up">Move up</button>`
-		}
-		down := func(name string) string {
-			return `<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move ` + name + ` down">Move down</button>`
-		}
-		assertBodyContains(t, body,
-			`<li id="timeline-`+testTimelineID+`">`,
-			`<form class="timeline-move" action="/timelines/`+testTimelineID+`/move" method="post">`,
-			down("AI"),
-			up("News"), down("News"),
-			up("Sports"),
-		)
-		for _, unwanted := range []string{up("AI"), down("Sports")} {
-			if strings.Contains(body, unwanted) {
-				t.Errorf("body has %s", unwanted)
-			}
-		}
-	})
-
-	t.Run("no move buttons for one timeline", func(t *testing.T) {
+	t.Run("one timeline has both move buttons disabled", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
 			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
 				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
 			},
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		if body := rr.Body.String(); strings.Contains(body, "timeline-move") {
-			t.Errorf("body has move buttons: %s", body)
-		}
+		assertBodyContains(t, rr.Body.String(), moveButton("AI", "up", true), moveButton("AI", "down", true))
 	})
 
-	t.Run("empty state", func(t *testing.T) {
+	t.Run("empty state follows Home's row", func(t *testing.T) {
 		s := newTestServer(t)
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		assertBodyContains(t, rr.Body.String(),
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			`<a class="timeline-row-name" href="/">`,
 			"You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.")
-	})
-
-	t.Run("store error is 500", func(t *testing.T) {
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(context.Context, string) ([]rss.Timeline, error) { return nil, errors.New("boom") },
-		}})
-		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want 500", rr.Code)
+		if strings.Index(body, `href="/">`) > strings.Index(body, "You don't have any timelines yet.") {
+			t.Errorf("the empty state comes before Home's row: %s", body)
 		}
 	})
+
+	t.Run("store errors are 500", func(t *testing.T) {
+		boom := func(context.Context, string) ([]rss.Timeline, error) { return nil, errors.New("boom") }
+		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{listWithFiltersFn: boom}})
+		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("timelines: status = %d, want 500", rr.Code)
+		}
+		s = newTestServerWith(t, Services{
+			TimelineService: &fakeTimelineStore{listFn: func(context.Context, string) ([]rss.Timeline, error) {
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+			}},
+			TagService: &fakeTagStore{listFn: func(context.Context, string) ([]rss.Tag, error) { return nil, errors.New("boom") }},
+		})
+		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("tags: status = %d, want 500", rr.Code)
+		}
+	})
+}
+
+func TestTimelineSummary(t *testing.T) {
+	const newsTagID, sportsTagID, goneTagID = "a1", "a2", "a3"
+	// Ordered by name, as TagRepository.List returns them.
+	tags := []rss.Tag{{ID: testTagID, Name: "AI"}, {ID: newsTagID, Name: "News"}, {ID: sportsTagID, Name: "Sports"}}
+
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   string
+	}{
+		{"no conditions", rss.TimelineFilter{}, "All your feeds"},
+		{"starred, all feeds", rss.TimelineFilter{StarredOnly: true}, "Your stars, newest star first"},
+		{"starred, some feeds", rss.TimelineFilter{StarredOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{newsTagID}}, "Tagged News · Starred only"},
+		{"one tag", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{newsTagID}}, "Tagged News"},
+		{"two tags, in name order", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{newsTagID, testTagID}}, "Tagged AI or News"},
+		{"three tags", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{sportsTagID, newsTagID, testTagID}}, "Tagged AI, News or Sports"},
+		{"one feed", rss.TimelineFilter{OnlyIncluded: true, IncludeFeedIDs: []string{timelineFeedID}}, "1 chosen feed"},
+		{"two feeds", rss.TimelineFilter{OnlyIncluded: true, IncludeFeedIDs: []string{timelineFeedID, timelineFeed2ID}}, "2 chosen feeds"},
+		{"tags and feeds", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeFeedIDs: []string{timelineFeedID}}, "Tagged AI · 1 chosen feed"},
+		{"no sources left", rss.TimelineFilter{OnlyIncluded: true}, "No feeds chosen"},
+		{"an unknown tag is skipped", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{goneTagID, newsTagID}}, "Tagged News"},
+		{"only unknown tags", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{goneTagID}}, "No feeds chosen"},
+		{"one post a week", rss.TimelineFilter{MaxPostsPerWeek: 1}, "At most 1 post a week"},
+		{"two posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2}, "At most 2 posts a week"},
+		{"audio or video", rss.TimelineFilter{MediaOnly: true}, "Audio or video"},
+		{"one word", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Mentions “AI”"},
+		{"two words", rss.TimelineFilter{IncludeWords: []string{"AI", "machine learning"}}, "Mentions “AI” or “machine learning”"},
+		{"three words", rss.TimelineFilter{IncludeWords: []string{"AI", "LLM", "GPT"}}, "Mentions “AI”, “LLM” or “GPT”"},
+		{"four words are counted", rss.TimelineFilter{IncludeWords: []string{"a", "b", "c", "d"}}, "Mentions 4 words or phrases"},
+		{"left-out words", rss.TimelineFilter{ExcludeWords: []string{"crypto"}}, "Leaves out “crypto”"},
+		{"three left-out words", rss.TimelineFilter{ExcludeWords: []string{"a", "b", "c"}}, "Leaves out “a”, “b” or “c”"},
+		{"four left-out words are counted", rss.TimelineFilter{ExcludeWords: []string{"a", "b", "c", "d"}}, "Leaves out 4 words or phrases"},
+		{"left-out tags", rss.TimelineFilter{ExcludeTagIDs: []string{sportsTagID, newsTagID}}, "Leaves out feeds tagged News or Sports"},
+		{"one left-out feed", rss.TimelineFilter{ExcludeFeedIDs: []string{timelineFeedID}}, "Leaves out 1 feed"},
+		{"two left-out feeds", rss.TimelineFilter{ExcludeFeedIDs: []string{timelineFeedID, timelineFeed2ID}}, "Leaves out 2 feeds"},
+		{
+			"everything, in order",
+			rss.TimelineFilter{
+				OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeFeedIDs: []string{timelineFeedID}, StarredOnly: true,
+				MaxPostsPerWeek: 3, MediaOnly: true, IncludeWords: []string{"GPT"}, ExcludeWords: []string{"crypto"},
+				ExcludeTagIDs: []string{sportsTagID}, ExcludeFeedIDs: []string{timelineFeed2ID},
+			},
+			"Tagged AI · 1 chosen feed · Starred only · At most 3 posts a week · Audio or video · Mentions “GPT” · Leaves out “crypto” · Leaves out feeds tagged Sports · Leaves out 1 feed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := timelineSummary(rss.Timeline{Filter: tt.filter}, tags); got != tt.want {
+				t.Errorf("timelineSummary = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestTimelineNewHandler(t *testing.T) {
@@ -543,14 +616,29 @@ func TestTimelineHandler(t *testing.T) {
 		body := rr.Body.String()
 		assertBodyContains(t, body,
 			`<h1 class="visually-hidden">AI</h1>`,
-			"<p>Models &amp; more</p>",
-			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
+			`<div class="timeline-about">
+        <p>Models &amp; more</p>`,
 			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
 			`<li><a href="/">Home</a></li>`,
+			// The tab row's Edit goes to this timeline's row on /timelines.
+			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",
 		)
 		if strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected Back to newest")
+		}
+		if strings.Contains(body, `/timelines/`+testTimelineID+`/edit`) {
+			t.Errorf("links to the edit page; the tab row's Edit goes to /timelines: %s", body)
+		}
+	})
+
+	t.Run("no row under the tabs without a description", func(t *testing.T) {
+		result = timelineItems(1)
+		plain := userTimeline(rss.Timeline{Name: "AI", Filter: filter})
+		s := newTestServerWith(t, Services{ArticleService: articles, TimelineService: plain, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if body := rr.Body.String(); strings.Contains(body, "timeline-about") {
+			t.Errorf("has the row under the tabs: %s", body)
 		}
 	})
 

@@ -239,17 +239,29 @@ Planned in #163 (issues #147–#162).
   Scrolling past doesn't; "seen" isn't recorded.
   Reads are per user and article, independent of subscriptions; an article counts as read if any copy with the same `canonical_url` was read.
   (#156, #158, #161)
-- **Timeline order is publish order, with what arrived since you looked first** (#147; changed by #455, planned on #438).
+- **Timeline order is publish order, never below what you've seen, and an entry never moves** (#147; changed by #455, planned on #438; per-reader positions planned in #491, issues #493–#495, replacing #455's read-time grouping).
   Each article gets `timeline_at` once, on insert, shared by every reader: for news, its published date, but never below the later of the feed's previous fetch and 6 hours before the save, with news dated earlier spread evenly above that floor instead of stacked (aggregators date items by submission, some feeds only by day, some were down); the save time for undated news; its published date for backlog (how news and backlog are told apart is under Reading in features.md).
-  Each reader's timeline is then grouped at read time, each group in position order: on a reload, what arrived since their latest look; then what arrived since their previous visit; then the "You were here" line and everything else.
-  So new items can't land below ones you've seen, a busy feed's fetch no longer arrives as one block, and republished archives don't flood the top.
-  Until #455, news goes at the save time, which kept the first guarantee but made a busy site or aggregator a run of rows on every fetch.
+  A reader who has looked in the last 6 hours also gets their own position for news that arrives in a feed they follow, set once when it arrives, with the same rule but the floor raised to the newest position they've had on screen: news dated above what they saw keeps its date, and news dated below it is spread just above it (#491).
+  So new items can't land below ones you've seen, a busy feed's fetch doesn't arrive as one block, republished archives don't flood the top, and nothing moves between two looks.
+  With one shared position only two of those were possible: #455 grouped each reader's timeline at read time (on a reload, what arrived since their latest look; then since their previous visit; then the line), so a post published 4 hours ago and fetched while you read went first on the reload, then dropped to its 4-hours-ago spot on the next.
+  Until #455, news went at the save time, which kept the first guarantee but made a busy site or aggregator a run of rows on every fetch.
   In a simulation of ~120 mixed feeds over three weeks, rows in a run of three or more from one feed went from 74% to 5%, with new articles missed staying at 0.1% (posts dated over a day before they appeared, which are backlog).
-  Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again), and delaying articles so they interleave (31 minutes later on average, and aggregators still clumped).
-  A per-reader timeline table would give each reader their own positions instead of read-time groups; it stays in backlog.md for when the per-feed cost shows.
-  No bump on subscribe, in grouping too: a feed's first save is stored as backlog even where its latest post is recent, so it never counts as arriving (judged by position alone, it went first on a reload, then dropped to its date on the next look).
+  Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the shared floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again; a floor per reader has neither problem), delaying articles so they interleave (31 minutes later on average, and aggregators still clumped), and giving an article its own position only when the "seen" beacon fires, for arrivals shown out of date order (an arrival shown at its shared position before the beacon would then move).
+  No bump on subscribe: a feed's first save is stored as backlog even where its latest post is recent, and backlog never gets a per-reader position, so it stays at its date (#490).
   Displayed dates may look out of order; accepted.
   Feed pages keep publication order.
+- **Per-reader positions are kept only for each reader's recent entries** (#491, issues #493–#495; the table and the kept window were the owner's choice in triage).
+  A row per reader per news article (`timeline_entries`) is written in `saveArticles`' transaction, for each follower who has looked in the last 6 hours (`rss.NewsWindow`): a reader away longer than that has a floor below every news position, so their own position would be the shared one, and readers without a mark (no JavaScript) read shared positions.
+  At the start of each visit, a reader keeps every row above the previous visit's "You were here" line (what arrived since that visit started), but at least the newest 100 and at most the newest 500 by position (`rss.MinEntries`, `rss.MaxEntries`); older entries are at their shared positions.
+  500 covers what 300 feeds bring since the previous visit started (in #491's measurements, 168 articles overnight and 435 a day) with room to spare, and 100 keeps about 5 hours of a heavy reader's history stable; a row takes about 224 B, so 500 take about 110 KB.
+  A row's position is never below the article's `timeline_at`, so deleting one only returns the article to its shared position: trimming moves only rows that were raised, and only below the previous visit's line, where the reader isn't reading.
+  It's also why there's no rebuild tool for drift: a raised position can't be recomputed (it depended on what the reader had seen when the article arrived), and deleting a reader's rows is always safe.
+  A timeline is one list in position order, each entry at the reader's row if they have one, else at `timeline_at`: a page merges the reader's rows with #404's per-feed query for articles without a row, bounded below by the last row when the rows fill the page, so there's no seam to cross and no group in the cursor.
+  On #491's prototype at `make db/loadseed`'s scale, Home's first page for 300 feeds took 4.6 ms (79 ms with #404's query alone, 5–52 ms grouped), and the first page past the rows 75 ms, as #404's pages do.
+  Copies collapse at query time by the reader's positions, so nothing is collapsed on write and unsubscribing only deletes that feed's rows.
+  Every timeline uses the same positions (the mark is already shared across tabs), except starred-only timelines (star order) and shared timelines, which have no reader and use `timeline_at`.
+  Backlog stays shared: it never gets a row on arrival, so subscribing and importing need no backfill, and old posts never jump.
+  Rejected: rows for every article ever arrived (a backfill on every subscribe and import, 4.8 s for 300 feeds of two years, and storage growing with articles × followers); a fixed count alone (300 feeds bring well over 100 articles overnight, so the oldest arrivals since the last visit would lose their rows); a time window alone (unbounded for heavy readers, and still short after a long absence); rows complete above a stored seam, with backlog rows and a backfill above it on subscribe (page 1 from rows alone took 1.2 ms, but every write path would have to keep the seam whole); and trimming at ingest or in a background job (what's kept moves with visits).
 - **On a feed's first save, undated items are backlog too** (#438): each run goes below the item before it in the feed's document, a step apart (the median gap between the feed's dated items, at most a day; a day without one), the newest no later than a day before the save, and spread evenly down to the next dated item where stepping would pass it.
   We can't know when they were published, and an undated feed would otherwise fill the top of Home on import; spacing them keeps them from forming a block lower down too.
   Rejected: below the save's dated items 1 µs apart, as #438 first proposed (still a block), and the newest near the top as a taste of the new feed (an import with many undated feeds would put one per feed on top).
@@ -261,8 +273,9 @@ Planned in #163 (issues #147–#162).
 - **Timelines read each followed feed's newest entries, then merge them** (#388, #404).
   A page reads at most a page of entries from each subscribed feed and keeps the newest, so its cost follows the number of feeds followed (about 0.1 ms each at #388's scale), not how much history is kept.
   Copies are still collapsed at query time, but ingest flags articles that have a copy (`has_copies`, set and never cleared), so only those get the earlier-copy check; a stale flag costs a lookup, never a wrong result.
-  Chosen over a per-reader timeline table, which measured faster (under 1 ms) but stores a row per reader per article, needs a backfill job on every subscribe and import, and must repair copies when someone unsubscribes; it's in backlog.md for when the per-feed cost shows.
-  It doesn't wait for the article-retention decision, since its cost doesn't depend on history; retention is decided before a per-reader table, whose size it bounds.
+  Chosen over a per-reader timeline table, which measured faster (under 1 ms) but stores a row per reader per article, needs a backfill job on every subscribe and import, and must repair copies when someone unsubscribes.
+  #491 adds per-reader rows for each reader's recent entries only (above), and older pages still come from this query.
+  It doesn't wait for the article-retention decision, since its cost doesn't depend on history; neither do the capped per-reader rows.
 - **JIT is off for the app's database connections** (#404).
   Postgres compiles queries whose estimated cost is high, which added 20–70 ms to each timeline query in #388 and saves nothing on queries this size.
   It's set per connection in `psql.NewConnector` (used by `psql.OpenDB` and by `tools/loadseed`'s measurements), so production, dev, CI and the measurements match without an owner step.
@@ -308,11 +321,12 @@ Planned in #163 (issues #147–#162).
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 - **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
   It's stored per user on the server (`timeline_marks`), so it follows the reader across devices; a marker in the browser would need no schema but differ on every device.
-  The page reports the newest position on it (with #455, which needn't be the first row's) with a beacon when it's hidden, never from the GET that renders it ("Overall").
-  One position per user serves Home and every custom timeline, since they share `timeline_at`; starred-only timelines, ordered by star time, show no line.
+  The page reports the newest position on it with a beacon, never from the GET that renders it ("Overall"): when it's hidden, and with #491 also when it's shown, since each arriving article's position for the reader is set against the latest report, so an article arriving while a page is open must already count what's on it.
+  The moment between a render and its report (well under a second) isn't covered; accepted.
+  One position per user serves Home and every custom timeline, since they share the reader's positions; starred-only timelines, ordered by star time, show no line.
   The line moves only after 30 minutes away (`rss.VisitGap`), so a reload or a quick tab switch keeps it in place.
-  With #455 the line is also where grouping splits the timeline, so the mark keeps when each look was rendered, not only when it was reported: articles fetched while a page is open weren't on it.
-  Readers without a mark (before their first report, or without JavaScript) get publish order without grouping; accepted.
+  With per-reader positions the line is just a position again (#491): everything that arrived since the previous visit is above it by position, so the mark no longer keeps when each look was rendered, as #455's grouping needed.
+  Readers without a mark (before their first report, or without JavaScript) get the shared positions; accepted.
   There's no line before the second visit, at the top of the page, or without JavaScript (no beacon, so it would never move).
   Accepted: reading only a filtered timeline moves the line for Home too, so articles only Home shows can sit below it unseen; per-timeline markers would cost a row per timeline for a rare case.
 

@@ -95,6 +95,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/timelines/{id}/edit", s.timelineEditPostHandler)
 			r.Post("/timelines/{id}/delete", s.timelineDeleteHandler)
 			r.Post("/timelines/{id}/move", s.timelineMoveHandler)
+			r.Get("/timelines/{id}/share", s.timelineSharePageHandler)
 			r.Post("/timelines/{id}/share", s.timelineShareHandler)
 			r.Post("/timelines/{id}/unshare", s.timelineUnshareHandler)
 			r.Post("/timelines/{id}/share/new-link", s.timelineNewLinkHandler)

@@ -155,6 +155,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET, POST /timelines`, `GET /timelines/new` | yes | Timelines, and making one (`?preset=`, `?tag=`) |
 | `GET /timelines/{id}`, `GET, POST /timelines/{id}/edit` | yes | A custom timeline, and editing it |
 | `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order |
+| `GET /timelines/{id}/share` | yes | A timeline's share page |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
 | `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen and when its page was rendered; 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
@@ -354,7 +355,7 @@ Beyond those:
   People's avatars (the nav, Settings) stay circles.
 - **The tab row** (`partials/timeline_tabs.html`) heads Home and each custom timeline in place of the page's visible heading (the `<h1>` is visually hidden).
   It's a `nav` of links with `aria-current`, not ARIA tabs, and shows no counts.
-- **`app.js`** has ten enhancements, each hooked onto server-rendered markup: local times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), Save and Star buttons (`form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally), Share buttons (`button[data-share-url]`, rendered hidden and shown by `app.js`; the share sheet, else the clipboard), video embeds (`figure.embed[data-embed]`), the "You were here" beacon (`.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is hidden), infinite scroll (`.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), scrolling the tab row to its current tab, and a show/hide toggle on every password input.
+- **`app.js`** has eleven enhancements, each hooked onto server-rendered markup: local times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), Save and Star buttons (`form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally), Share buttons (`button[data-share-url]`, rendered hidden and shown by `app.js`; the share sheet, else the clipboard), video embeds (`figure.embed[data-embed]`), the "You were here" beacon (`.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is hidden), infinite scroll (`.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), scrolling the tab row to its current tab, the timeline form's live summary and feed filter boxes (`form[data-timeline-form]`), and a show/hide toggle on every password input.
   `internal/server/scroll_test.go` pins the markup the script relies on, and `search_test.go` (`TestLiveSearchMarkup`) live search's.
 
 ## Testing

@@ -17,16 +17,34 @@
     <main class="column">
       <header class="page-head">
         <h1>{{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</h1>
-        <a class="btn btn-sm" href="/timelines">All timelines</a>
+        {{if .Timeline.ID}}<a class="btn btn-sm" href="/timelines/{{.Timeline.ID}}/share">Share</a>{{end}}
       </header>
 
       {{with .Flash}}
       <div class="flash">{{.}}</div>
       {{end}}
 
+      {{/* What the timeline shows, read back in a sentence, and the feeds it
+           draws from (timelineFormSummary). app.js rebuilds it as the form
+           changes. */}}
+      <div class="timeline-summary">
+        <p class="timeline-summary-label">This timeline shows</p>
+        <p class="timeline-summary-sentence" data-summary-sentence>{{.Summary.Sentence}}</p>
+        <details class="timeline-summary-feeds">
+          <summary data-summary-count>{{.Summary.Count}}</summary>
+          <ul role="list" data-summary-feeds>
+            {{range .Summary.Feeds}}<li>{{.}}</li>{{end}}
+          </ul>
+        </details>
+      </div>
+
+      {{/* Each condition's setting is revealed by its checkbox, and the tags
+           and feeds by "Only some", in CSS (:has()), so it works without
+           JavaScript; a browser without :has() shows everything. Hidden
+           fields still post, so the server decides by the checkboxes. */}}
       {{$focus := .Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words"}}
-      <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post">
-        <div class="timeline-form-fields">
+      <form class="timeline-form" action="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}/edit{{else}}/timelines{{end}}" method="post" data-timeline-form>
+        <div class="timeline-form-section">
           {{range .Form.NonFieldErrors}}
           <div class="error" role="alert">{{.}}</div>
           {{end}}
@@ -38,144 +56,130 @@
             {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
           </div>
           <div class="field">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="3"
+            <label for="description">Description <span class="label-optional">(optional)</span></label>
+            <textarea id="description" name="description" rows="2"
               aria-describedby="description-hint{{if .Form.FieldErrors.description}} description-error{{end}}"
               {{with .Form.FieldErrors.description}}aria-invalid="true"{{end}}
               {{if eq $focus "description"}}autofocus{{end}}>{{.Form.Description}}</textarea>
-            <p class="hint" id="description-hint">Shown under the tabs. Optional.</p>
+            <p class="hint" id="description-hint">Shown under the tabs.</p>
             {{with .Form.FieldErrors.description}}<p class="error" id="description-error">{{.}}</p>{{end}}
           </div>
         </div>
 
-        {{block "timeline-form-show" .}}
-        <fieldset{{with .Form.FieldErrors.show}} aria-describedby="show-error"{{end}}>
-          <legend>Show</legend>
-          <label class="choice">
-            <input type="radio" name="show" value="all"{{if eq .Form.Show "all"}} checked{{end}}
-              {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "show"}}autofocus{{end}} />
-            All my feeds
-          </label>
-          <label class="choice">
-            <input type="radio" name="show" value="some"{{if eq .Form.Show "some"}} checked{{end}}
-              {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}} />
-            Only feeds with these tags, or these feeds:
-          </label>
+        <fieldset class="timeline-form-section timeline-feeds"{{with .Form.FieldErrors.show}} aria-describedby="show-error"{{end}}>
+          <legend>Feeds</legend>
+          <div class="segmented">
+            <label>
+              <input type="radio" name="show" value="all"{{if eq .Form.Show "all"}} checked{{end}}
+                {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}}
+                {{if eq $focus "show"}}autofocus{{end}} />
+              All my feeds
+            </label>
+            <label>
+              <input type="radio" name="show" value="some"{{if eq .Form.Show "some"}} checked{{end}}
+                {{with .Form.FieldErrors.show}}aria-invalid="true"{{end}} />
+              Only some
+            </label>
+          </div>
           {{with .Form.FieldErrors.show}}<p class="error" id="show-error">{{.}}</p>{{end}}
-          {{if .Tags}}
-          {{template "timeline-tag-checks" .Checks.include_tags}}
-          {{else}}
-          <p class="form-note">You don't have any tags yet. <a href="/tags">Make a tag</a> to group feeds.</p>
+          <div class="timeline-show-some">
+            {{if .Tags}}
+            <p class="timeline-form-label" id="include-tags-label">Feeds with any of these tags</p>
+            {{template "timeline-tag-pills" .Checks.include_tags}}
+            {{else}}
+            <p class="form-note">You don't have any tags yet. <a href="/tags">Make a tag</a> to group feeds.</p>
+            {{end}}
+            {{if .Subs}}
+            <details class="timeline-disclosure"{{if .Form.IncludeFeeds}} open{{end}}>
+              <summary>Or choose feeds <span class="timeline-disclosure-count" data-feeds-count>{{with len .Form.IncludeFeeds}}({{.}}){{end}}</span></summary>
+              {{template "timeline-feed-list" .Checks.include_feeds}}
+            </details>
+            {{end}}
+          </div>
+          {{if or .Tags .Subs}}
+          {{$out := .LeaveOut}}
+          <details class="timeline-disclosure"{{if $out}} open{{end}}>
+            <summary>Leave out <span class="timeline-disclosure-count" data-leave-out-count>{{with $out}}({{.}}){{end}}</span></summary>
+            <p class="hint">Always left out, even if they match above.</p>
+            {{if .Tags}}{{template "timeline-tag-pills" .Checks.exclude_tags}}{{end}}
+            {{template "timeline-feed-list" .Checks.exclude_feeds}}
+          </details>
           {{end}}
-          {{template "timeline-feed-checks" .Checks.include_feeds}}
         </fieldset>
-        {{end}}
 
-        {{block "timeline-form-leave-out" .}}
-        <fieldset aria-describedby="exclude-hint">
-          <legend>Leave out</legend>
-          <p class="hint" id="exclude-hint">Feeds left out never show here, even if they have a tag you chose above.</p>
-          {{if .Tags}}
-          {{template "timeline-tag-checks" .Checks.exclude_tags}}
-          {{end}}
-          {{template "timeline-feed-checks" .Checks.exclude_feeds}}
+        <fieldset class="timeline-form-section">
+          <legend>Articles</legend>
+          <p class="hint timeline-form-lede">Only show articles that match everything you tick.</p>
+          <ul class="timeline-conditions" role="list">
+            <li class="timeline-condition">
+              <label class="choice">
+                <input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint"{{if .Form.StarredOnly}} checked{{end}} />
+                <span>Starred by me <span class="hint" id="starred-only-hint">Ordered by when you starred them.</span></span>
+              </label>
+            </li>
+            <li class="timeline-condition">
+              <label class="choice">
+                <input type="checkbox" name="quiet" value="1" aria-describedby="quiet-hint"{{if .Form.Quiet}} checked{{end}} />
+                <span>From quiet feeds <span class="hint" id="quiet-hint">Feeds that post rarely, so busy ones can’t bury them.</span></span>
+              </label>
+              <div class="timeline-condition-detail">
+                <div class="rate-line">
+                  <label for="max_posts_per_week">At most</label>
+                  <input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"
+                    value="{{.Form.MaxPostsPerWeek}}"
+                    aria-describedby="max_posts_per_week-hint{{if .Form.FieldErrors.max_posts_per_week}} max_posts_per_week-error{{end}}"
+                    {{with .Form.FieldErrors.max_posts_per_week}}aria-invalid="true"{{end}}
+                    {{if eq $focus "max_posts_per_week"}}autofocus{{end}} />
+                  <span>posts a week</span>
+                </div>
+                <p class="hint" id="max_posts_per_week-hint" data-rate-hint>{{.Summary.RateHint}}</p>
+                {{with .Form.FieldErrors.max_posts_per_week}}<p class="error" id="max_posts_per_week-error">{{.}}</p>{{end}}
+              </div>
+            </li>
+            <li class="timeline-condition">
+              <label class="choice">
+                <input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint"{{if .Form.MediaOnly}} checked{{end}} />
+                <span>With audio or video <span class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</span></span>
+              </label>
+            </li>
+            <li class="timeline-condition">
+              <label class="choice">
+                <input type="checkbox" name="mentions" value="1"{{if .Form.Mentions}} checked{{end}} />
+                <span>Mentioning</span>
+              </label>
+              <div class="timeline-condition-detail">
+                <label class="visually-hidden" for="include_words">Words or phrases to look for</label>
+                <input type="text" id="include_words" name="include_words" value="{{.Form.IncludeWords}}"
+                  aria-describedby="include_words-hint{{if .Form.FieldErrors.include_words}} include_words-error{{end}}"
+                  {{with .Form.FieldErrors.include_words}}aria-invalid="true"{{end}}
+                  {{if eq $focus "include_words"}}autofocus{{end}} />
+                <p class="hint" id="include_words-hint">Any of these. Separate them with commas. Whole words in titles and excerpts, ignoring case.</p>
+                {{with .Form.FieldErrors.include_words}}<p class="error" id="include_words-error">{{.}}</p>{{end}}
+              </div>
+            </li>
+            <li class="timeline-condition">
+              <label class="choice">
+                <input type="checkbox" name="not_mentions" value="1"{{if .Form.NotMentions}} checked{{end}} />
+                <span>Not mentioning</span>
+              </label>
+              <div class="timeline-condition-detail">
+                <label class="visually-hidden" for="exclude_words">Words or phrases to leave out</label>
+                <input type="text" id="exclude_words" name="exclude_words" value="{{.Form.ExcludeWords}}"
+                  aria-describedby="exclude_words-hint{{if .Form.FieldErrors.exclude_words}} exclude_words-error{{end}}"
+                  {{with .Form.FieldErrors.exclude_words}}aria-invalid="true"{{end}}
+                  {{if eq $focus "exclude_words"}}autofocus{{end}} />
+                <p class="hint" id="exclude_words-hint">Left out even if they also mention a word above.</p>
+                {{with .Form.FieldErrors.exclude_words}}<p class="error" id="exclude_words-error">{{.}}</p>{{end}}
+              </div>
+            </li>
+          </ul>
         </fieldset>
-        {{end}}
-
-        {{block "timeline-form-only-show" .}}
-        <fieldset>
-          <legend>Only show</legend>
-          <label class="choice">
-            <input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint"{{if .Form.StarredOnly}} checked{{end}} />
-            Articles I've starred
-          </label>
-          <p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>
-          <div class="rate-field">
-            <label for="max_posts_per_week">Feeds that post at most</label>
-            <input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"
-              value="{{.Form.MaxPostsPerWeek}}"
-              aria-describedby="max_posts_per_week-hint{{if .Form.FieldErrors.max_posts_per_week}} max_posts_per_week-error{{end}}"
-              {{with .Form.FieldErrors.max_posts_per_week}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "max_posts_per_week"}}autofocus{{end}} />
-            <span>times a week</span>
-          </div>
-          <p class="hint" id="max_posts_per_week-hint">Based on the last 30 days. My feeds shows each feed's rate.</p>
-          {{with .Form.FieldErrors.max_posts_per_week}}<p class="error" id="max_posts_per_week-error">{{.}}</p>{{end}}
-          <label class="choice">
-            <input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint"{{if .Form.MediaOnly}} checked{{end}} />
-            Articles with audio or video
-          </label>
-          <p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>
-          <div class="field words-field">
-            <label for="include_words">Articles that mention</label>
-            <input type="text" id="include_words" name="include_words" value="{{.Form.IncludeWords}}"
-              aria-describedby="words-hint{{if .Form.FieldErrors.include_words}} include_words-error{{end}}"
-              {{with .Form.FieldErrors.include_words}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "include_words"}}autofocus{{end}} />
-            {{with .Form.FieldErrors.include_words}}<p class="error" id="include_words-error">{{.}}</p>{{end}}
-          </div>
-          <div class="field words-field">
-            <label for="exclude_words">Leave out articles that mention</label>
-            <input type="text" id="exclude_words" name="exclude_words" value="{{.Form.ExcludeWords}}"
-              aria-describedby="words-hint{{if .Form.FieldErrors.exclude_words}} exclude_words-error{{end}}"
-              {{with .Form.FieldErrors.exclude_words}}aria-invalid="true"{{end}}
-              {{if eq (.Form.FirstError "name" "description" "show" "max_posts_per_week" "include_words" "exclude_words") "exclude_words"}}autofocus{{end}} />
-            {{with .Form.FieldErrors.exclude_words}}<p class="error" id="exclude_words-error">{{.}}</p>{{end}}
-          </div>
-          <p class="hint" id="words-hint">Separate words or phrases with commas, for example: AI, C++, machine learning. Matches whole words in titles and excerpts, ignoring case.</p>
-        </fieldset>
-        {{end}}
 
         <div class="form-actions">
-          <button class="btn-primary" type="submit">Save</button>
+          <button class="btn-primary" type="submit">{{if .Timeline.ID}}Save timeline{{else}}Create timeline{{end}}</button>
           <a class="btn" href="{{if .Timeline.ID}}/timelines/{{.Timeline.ID}}{{else}}/timelines{{end}}">Cancel</a>
         </div>
       </form>
-
-      {{with .Sharing}}
-      <section class="timeline-sharing" id="sharing" aria-labelledby="sharing-heading">
-        <h2 id="sharing-heading">Sharing</h2>
-        {{if not .Confirmed}}
-        <div class="timeline-sharing-body">
-          <p>Confirm your email address to share timelines.</p>
-          <form action="/confirm-email/resend" method="post">
-            <input type="hidden" name="return_to" value="{{.ReturnTo}}" />
-            <button class="btn-sm" type="submit">Resend confirmation email</button>
-          </form>
-        </div>
-        {{else if .FeedURL}}
-        <div class="timeline-sharing-body">
-          <p>Anyone with the link can follow this timeline's newest articles in a feed reader: their titles, excerpts and links, and the names of the feeds they come from. Your name and email aren't shown, and the link isn't listed anywhere.</p>
-          <div class="field">
-            <label for="share-feed-url">Feed link</label>
-            <input type="text" id="share-feed-url" value="{{.FeedURL}}" readonly />
-          </div>
-          <div class="field">
-            <label for="share-page-url">Page link</label>
-            <input type="text" id="share-page-url" value="{{.PageURL}}" readonly aria-describedby="share-page-url-hint" />
-            <p class="hint" id="share-page-url-hint">A page to send to people: it says how to subscribe.</p>
-          </div>
-          <div class="timeline-sharing-actions">
-            <form action="/timelines/{{$.Timeline.ID}}/unshare" method="post">
-              <button class="btn-sm" type="submit">Stop sharing</button>
-            </form>
-            <form action="/timelines/{{$.Timeline.ID}}/share/new-link" method="post">
-              <button class="btn-sm" type="submit" aria-describedby="share-new-link-hint">New link</button>
-            </form>
-          </div>
-          <p class="hint" id="share-new-link-hint">The current links will stop working.</p>
-        </div>
-        {{else}}
-        <div class="timeline-sharing-body">
-          <p>Anyone with the link will be able to follow this timeline's newest articles in a feed reader: their titles, excerpts and links, and the names of the feeds they come from. Your name and email aren't shown, and the link isn't listed anywhere.</p>
-          <form action="/timelines/{{$.Timeline.ID}}/share" method="post">
-            <button class="btn-sm" type="submit">Share this timeline</button>
-          </form>
-        </div>
-        {{end}}
-      </section>
-      {{end}}
 
       {{if .Timeline.ID}}
       <form class="danger-zone" action="/timelines/{{.Timeline.ID}}/delete" method="post">
@@ -188,39 +192,39 @@
 
 </html>
 
-{{/* timeline-tag-checks and timeline-feed-checks are a field's checkboxes
-     for the user's tags and feeds; their data is a timelineChecks. */}}
-{{define "timeline-tag-checks"}}
-<ul class="check-list" role="list">
+{{/* timeline-tag-pills and timeline-feed-list are a field's checkboxes for
+     the user's tags and feeds; their data is a timelineChecks. Each carries
+     what app.js needs to rebuild the summary: a tag's name; a feed's name,
+     tag IDs and posting rate. */}}
+{{define "timeline-tag-pills"}}
+<ul class="tag-pills" role="list"{{if eq .Field "include_tags"}} aria-labelledby="include-tags-label"{{else}} aria-label="Leave out feeds with these tags"{{end}}>
   {{range .Tags}}
   <li>
-    <label class="check-row check-row-plain">
-      <input type="checkbox" name="{{$.Field}}" value="{{.ID}}"{{if index $.Ticked .ID}} checked{{end}}>
-      <span class="check-row-title">{{.Name}}</span>
+    <label class="tag-pill">
+      <input type="checkbox" name="{{$.Field}}" value="{{.ID}}" data-name="{{.Name}}"{{if index $.Ticked .ID}} checked{{end}}>
+      {{template "icon-check"}}{{.Name}}
     </label>
   </li>
   {{end}}
 </ul>
 {{end}}
 
-{{define "timeline-feed-checks"}}
+{{define "timeline-feed-list"}}
 {{if .Subs}}
-<details class="feed-picker"{{if .Ticked}} open{{end}}>
-  <summary>Choose feeds</summary>
-  <ul class="check-list" role="list">
-    {{range .Subs}}
-    <li>
-      <label class="check-row">
-        <input type="checkbox" name="{{$.Field}}" value="{{.Feed.ID}}"{{if index $.Ticked .Feed.ID}} checked{{end}}>
-        {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
-        <span class="check-row-text">
-          <span class="check-row-title">{{or .Title .Feed.Title .Feed.Url}}</span>
-          <span class="check-row-sub">{{or .Site.Title .Site.Host}}</span>
-        </span>
-      </label>
-    </li>
-    {{end}}
-  </ul>
-</details>
+<ul class="check-list timeline-feed-list" role="list" data-feed-list>
+  {{range .Subs}}
+  {{$name := or .Title .Feed.Title .Feed.Url}}
+  <li data-name="{{$name}}">
+    <label class="check-row">
+      <input type="checkbox" name="{{$.Field}}" value="{{.Feed.ID}}" data-name="{{$name}}" data-rate="{{.Feed.PostsPerWeek}}" data-tags="{{range $i, $t := .Tags}}{{if $i}} {{end}}{{$t.ID}}{{end}}"{{if index $.Ticked .Feed.ID}} checked{{end}}>
+      {{template "avatar" (avatar .Feed.SiteID $name (index $.Icons .Feed.SiteID))}}
+      <span class="check-row-text">
+        <span class="check-row-title">{{$name}}</span>
+        <span class="check-row-sub">{{or .Site.Title .Site.Host}} · {{postingRate .Feed.PostsPerWeek}}</span>
+      </span>
+    </label>
+  </li>
+  {{end}}
+</ul>
 {{end}}
 {{end}}

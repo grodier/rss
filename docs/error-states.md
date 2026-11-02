@@ -238,8 +238,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | --- | --- | --- | --- | --- | --- |
 | T1 Name blank or too long; description too long | New timeline | 422, under the field | "Enter a name."; "Must be 50 characters or fewer."; "Must be 280 characters or fewer." | Yes | ok |
 | T2 No tags or feeds chosen | "Only feeds with these tags…" with none ticked | 422, under Show | "Choose at least one tag or feed, or show all your feeds." | Yes | ok |
-| T3 Bad "at most N posts a week" | `0` or `101` | 422 | "Enter a whole number from 1 to 100, or leave it blank." | Yes | ok |
-| T4 Bad words or phrases | Include words `!!!`, a 51-character word, or 21 words | 422 | "Each word or phrase needs at least one letter or number."; "Each word or phrase must be 50 characters or fewer."; "At most 20 words or phrases." | Yes | ok |
+| T3 Bad "at most N posts a week" | "From quiet feeds" ticked with `0`, `101` or nothing | 422, under the number | "Enter a whole number from 1 to 100." (unticked, the number isn't checked or stored) | Yes | ok |
+| T4 Bad words or phrases | "Mentioning" ticked with `!!!`, a 51-character word, or 21 words | 422 | "Each word or phrase needs at least one letter or number."; "Each word or phrase must be 50 characters or fewer."; "At most 20 words or phrases." | Yes | ok |
+| T4a No words or phrases | "Mentioning" or "Not mentioning" ticked with its field empty | 422, under the field | "Enter at least one word or phrase." (unticked, the field isn't checked or stored) | Yes | ok |
 | T5 Over 20 timelines | `INSERT INTO timelines (user_id, name) SELECT '{A}', 't' \|\| g FROM generate_series(1, 20) g`, then New timeline | 422, alert above the form | "You can have up to 20 timelines." | Only by deleting one; found out after filling the form | ok |
 | T6 A tag or feed deleted in another tab before saving | Code read | 404 (H2) | As H2 | Home only | ok (rare) |
 | T7 Empty custom timeline | A timeline whose words match nothing | 200 | "Nothing in this timeline yet." | The tab row's Edit leads to its row on `/timelines`, and its pencil | ok |
@@ -263,7 +264,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| X1 Share with an unconfirmed address | B's timeline → Edit: the Sharing section offers Resend instead; or `curl` a post to `/timelines/{id}/share` | Edit page, flash | "Confirm your email address to share timelines." | Yes | ok |
+| X1 Share with an unconfirmed address | B's timeline → Edit → Share: the share page offers Resend instead; or `curl` a post to `/timelines/{id}/share` | Share page, flash | "Confirm your email address to share timelines." | Yes | ok |
 | X2 Unknown or malformed link | `/shared/AAAA…` (43 characters), `/shared/x` | 404 (H2) | As H2 | Home only (the logged-out landing page) | ok |
 | X3 Link after Stop sharing or New link | Open the old link and its `feed.atom` | 404 (H2); the feed's 404 is HTML | As H2 | n/a | ok (decided: "Sharing" in decisions.md) — discuss: the page is cached for 5 minutes and the feed for 15, so "The links no longer work" isn't true at once for whoever loaded them |
 | X4 Sharing turned on, off, new link | Edit → Sharing | Edit page, flash | "Sharing turned on."; "Sharing turned off. The links no longer work."; "New link made. The old one no longer works." | n/a | ok |

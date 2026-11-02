@@ -1835,8 +1835,7 @@
     border: 0;
   }
 
-  :is(.tag-feeds, .timeline-form) legend,
-  .timeline-sharing h2 {
+  :is(.tag-feeds, .timeline-form) legend {
     inline-size: 100%;
     padding: 1rem 1rem 0.625rem;
     border-block-end: 1px solid var(--border);
@@ -1918,11 +1917,7 @@
     margin-block-end: 0.75rem;
   }
 
-  /* The timeline edit page's Sharing section, between the form and Delete. */
-  .timeline-sharing h2 {
-    margin: 0;
-  }
-
+  /* A timeline's share page. */
   .timeline-sharing-body {
     padding: 0.875rem 1rem 1.5rem;
   }
@@ -2131,52 +2126,285 @@
     color: inherit;
   }
 
-  /* The timeline form: name and description, then Show, Leave out and Only show. */
-  .timeline-form-fields {
-    padding: 1.25rem 1rem;
+  /* The timeline form: a summary of what it shows, then Name, Feeds and
+     Articles. A condition's setting, and the tags and feeds of "Only some",
+     are revealed with :has(); a browser without it shows everything. */
+  .timeline-summary {
+    display: grid;
+    gap: 0.25rem;
+    margin: 1rem 1rem 0;
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
   }
 
-  .timeline-form .hint,
-  .timeline-form fieldset > p.error,
-  .timeline-form .form-note {
+  .timeline-summary-label {
+    color: var(--text-3);
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .timeline-summary-sentence {
+    font-family: var(--font-reading);
+    font-size: 1.0625rem;
+    font-weight: var(--font-reading-weight);
+    line-height: 1.4;
+  }
+
+  .timeline-summary-feeds summary {
+    inline-size: fit-content;
+    color: var(--accent);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .timeline-summary-feeds ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-block-start: 0.5rem;
+  }
+
+  .timeline-summary-feeds li {
+    padding: 0.125rem 0.625rem;
+    border-radius: 999px;
+    background: var(--bg);
+    font-size: 0.8125rem;
+  }
+
+  .timeline-form-section {
+    display: grid;
+    gap: 0.75rem;
+    padding-block-end: 1.25rem;
+  }
+
+  div.timeline-form-section {
+    padding-block-start: 1.25rem;
+  }
+
+  .timeline-form-section > :not(legend) {
+    margin-inline: 1rem;
+  }
+
+  .timeline-form-section > :is(.field, .hint, p.error, .form-note) {
+    margin-block: 0;
+  }
+
+  .label-optional {
+    color: var(--text-3);
+    font-weight: 400;
+  }
+
+  .timeline-form-label {
+    font-size: 0.875rem;
+    font-weight: 550;
+  }
+
+  /* "All my feeds" or "Only some": Show's radios as one control. */
+  .segmented {
+    display: inline-flex;
+    justify-self: start;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+  }
+
+  .segmented label {
+    position: relative;
     margin: 0;
-    padding: 0.75rem 1rem 0;
+    padding: 0.4375rem 1rem;
+    border-radius: 999px;
+    color: var(--text-2);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
   }
 
-  .timeline-form fieldset {
-    margin-block-end: 1rem;
+  .segmented input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
-  /* "Feeds that post at most [N] times a week", on one line. */
-  .rate-field {
+  .segmented label:has(input:checked) {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  .segmented label:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .timeline-show-some {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .timeline-feeds:has(input[name="show"][value="all"]:checked) .timeline-show-some {
+    display: none;
+  }
+
+  /* Tags as wrapping pills, ticked with a check. */
+  .tag-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .tag-pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    padding: 0.375rem 0.875rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .tag-pill input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .tag-pill .icon {
+    display: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    stroke-width: 2.25;
+  }
+
+  .tag-pill:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--info-bg);
+  }
+
+  .tag-pill:has(input:checked) .icon {
+    display: block;
+  }
+
+  .tag-pill:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* "Or choose feeds" and "Leave out": folded until they hold something. */
+  .timeline-disclosure {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .timeline-disclosure > summary {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .timeline-disclosure[open] > summary {
+    border-block-end: 1px solid var(--border);
+  }
+
+  .timeline-disclosure-count {
+    color: var(--text-3);
+    font-weight: 500;
+  }
+
+  .timeline-disclosure > :not(summary) {
+    margin: 0.75rem 0.875rem;
+  }
+
+  .timeline-feed-list {
+    max-block-size: 20rem;
+    overflow-y: auto;
+  }
+
+  /* app.js's filter box above a feed list, inside the disclosure's margins. */
+  .timeline-disclosure > .feed-filter {
+    inline-size: calc(100% - 1.75rem);
+  }
+
+  /* Articles: each condition a checkbox that reveals its setting. */
+  .timeline-conditions {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .timeline-condition {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .timeline-condition:last-child {
+    border-block-end: 0;
+  }
+
+  .timeline-condition .choice {
+    align-items: flex-start;
+    padding: 0;
+    border: 0;
+  }
+
+  .timeline-condition .choice:hover {
+    background: none;
+  }
+
+  .timeline-condition .choice input {
+    margin-block-start: 0.0625rem;
+  }
+
+  .timeline-condition .choice .hint {
+    display: block;
+    margin-block-start: 0.125rem;
+    font-weight: 400;
+  }
+
+  .timeline-condition-detail {
+    display: grid;
+    gap: 0.375rem;
+    padding-inline-start: 1.875rem;
+  }
+
+  .timeline-condition-detail .hint {
+    margin: 0;
+  }
+
+  .timeline-condition:not(:has(> .choice input:checked)) .timeline-condition-detail {
+    display: none;
+  }
+
+  /* "At most [N] posts a week", on one line. */
+  .rate-line {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem 0;
     font-weight: 600;
   }
 
-  .rate-field label {
+  .rate-line label {
     margin: 0;
     font-size: inherit;
     font-weight: inherit;
   }
 
-  .rate-field input:not([type="hidden"]) {
+  .rate-line input:not([type="hidden"]) {
     inline-size: 5rem;
-  }
-
-  /* "Articles that mention" and "Leave out articles that mention", which
-     share the hint after them. */
-  .words-field {
-    padding: 0.75rem 1rem 0;
-  }
-
-  /* Only show's conditions, each with its hint, are separated by dividers. */
-  .timeline-form fieldset > :is(.hint, p.error) + :is(.choice, .rate-field, .words-field) {
-    margin-block-start: 0.75rem;
-    border-block-start: 1px solid var(--border);
   }
 
   .timeline-form .form-actions {
@@ -2224,24 +2452,6 @@
     margin: 0;
     padding: 0;
     accent-color: var(--accent);
-  }
-
-  /* Tags have no avatar. */
-  .check-row-plain {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .timeline-form .check-list .check-row {
-    padding-inline-start: 2.875rem;
-  }
-
-  .feed-picker summary {
-    padding: 0.75rem 1rem;
-    border-block-end: 1px solid var(--border);
-    color: var(--accent);
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
   }
 
   /* Search results: a site, with its feeds grouped in a box. */

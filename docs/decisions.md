@@ -437,6 +437,13 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **A filter is a form, not a query builder.** Show is all my feeds, or feeds with any of these tags or these feeds; Leave out is tags and feeds, and always wins; then conditions that must all hold: starred only, at most N posts a week, must mention / leave out words, audio or video only.
   Timelines pick only from your subscriptions, except a starred-only one showing all feeds.
   (#356, #358–#360)
+- **The form reads itself back** (#483, the owner's approval at the design checkpoint): a summary box first says what the timeline shows in a sentence ("Articles mentioning “AI” from feeds tagged Tech, except The Verge.") and how many of the user's feeds it draws from, then Name, Feeds and Articles, then Save.
+  The sentence spells out the rules the form can't show (Leave out wins; every ticked condition must hold), which is where a filter form goes wrong (Apple Mail's any/all menu is the cautionary case); the count answers "what number?" for the posting rate better than pointing at My feeds.
+  It replaced one long page that asked everything at once in four styles: the tag list twice, hints in rows of their own, and Save above a Sharing section it didn't save.
+- **One pattern per kind of setting** (#483): "All my feeds" or "Only some" as one segmented control, with tags as wrapping pills and feeds folded away with a filter box; Leave out folded away, open when it holds something; and every condition a checkbox that reveals its setting.
+  Reveals are CSS `:has()`, so no JavaScript is needed; since hidden fields still post, the server decides by the checkboxes, and an unticked condition stores nothing.
+  The summary is built in Go and rebuilt by `app.js` with the same words; the Go tests are the spec.
+- **Sharing has its own page** (#483), from Share in the editor's head, since sharing isn't part of what Save saves; the editor's "All timelines" pill went with it (Cancel and the tab row's Edit cover it).
 - **The same reading rules as Home:** arrival order, copies collapsed among the timeline's own feeds, "Also in", read markers.
   A starred-only timeline orders by star time instead, so new picks land on top.
   (#356, #358)

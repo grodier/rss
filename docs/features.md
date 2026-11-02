@@ -261,7 +261,9 @@ Each row says what the timeline is made of (`timelineSummary`, from `TimelineRep
 Home, labelled "All feeds" (`homeName`), is one of the tabs: `TimelineRepository.List` returns it as the zero `rss.Timeline` at `users.home_position`, in the same numbering as `timelines.position` (Home first on a tie), and it moves like the others but can't be edited, shared or deleted.
 It has its own address, `/timelines/all` (`homeTabID` stands for it in URLs, fragments and the tab cookie), since `/` may show another tab.
 `TimelineRepository.Move` locks the user's row and timelines and renumbers every tab 0…n, Home included, with the tab swapped with its neighbour, which also repairs ties and gaps from deletes.
-New timeline and Edit render one form, `timeline_form.html`, with Show, Leave out and Only show fieldsets.
+New timeline and Edit render one form, `timeline_form.html`: a summary box, then Name, Feeds (All my feeds or Only some, then Leave out) and Articles (a checkbox per condition), then Save.
+The summary is a sentence saying what the timeline shows and how many of the user's feeds it draws from (`timelineSentence`, `timelineFeedCount`); the server renders it from the form's values, and `app.js` rebuilds it as fields change from the feeds' and tags' `data-*` attributes, with the same rules and words.
+A condition's setting, and Only some's tags and feeds, are revealed with CSS `:has()`; hidden fields still post, so `timelineForm` decides by the `quiet`, `mentions` and `not_mentions` checkboxes and stores nothing for an unticked condition.
 Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `www create-user` both get them.
 New timeline (`timelineNewHandler`) opens on a list of starting points (`timeline_new.html`), each a link back with a `?preset=` from `timelinePresets` that fills in the form; a tag's page links to it with `?tag={id}`, and an unknown preset or a tag that isn't the user's shows the list.
 `timelineForm.check` keeps only the user's own tags and feeds and validates the fields (limits are in the code and its tests); words are split on commas by `splitTerms`.
@@ -275,7 +277,7 @@ A starred-only timeline lists stars instead (`StarRepository.ListStarred`), newe
 It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has since left still shows; `timelineWhere` handles the missing subscription (Show conditions fail, Leave out conditions pass).
 
 **Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at the same link; sharing needs a confirmed email.
-Its edit page's Sharing section shares it (`TimelineRepository.Share`, a `token.Random` token), shows the feed and page links (`sharedURLs`, built from the base URL), and offers New link (`NewShareLink`) and Stop sharing (`Unshare`).
+Its share page (`/timelines/{id}/share`, `timelineSharePageHandler`, from Share in the edit page's head) shares it (`TimelineRepository.Share`, a `token.Random` token), shows the feed and page links (`sharedURLs`, built from the base URL), and offers New link (`NewShareLink`) and Stop sharing (`Unshare`); each of those posts comes back to it (`redirectToSharing`).
 
 The public routes are outside the session group.
 `sharedTimelineFromURL` 404s a malformed token or one `GetShared` doesn't know.

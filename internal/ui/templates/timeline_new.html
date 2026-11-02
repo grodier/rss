@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - New timeline</title>
+  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>New timeline</h1>
+      </header>
+
+      {{/* New timeline's starting points: each row opens the form with a
+           preset filled in (timelinePresets), and says what timelines can
+           be made of. Built like Settings' home list. */}}
+      <div class="list-head">
+        <h2 id="start-heading">Start from</h2>
+      </div>
+      <ul class="settings-list timeline-start" role="list" aria-labelledby="start-heading">
+        <li>
+          {{if .HasTags}}
+          <a class="settings-row" href="/timelines/new?preset=tags">
+            <span class="avatar tone-3" aria-hidden="true">{{template "icon-tag"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Feeds with a tag</span>
+              <span class="hint">Everything with the tags you choose, like News or Tech.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+          {{else}}
+          <a class="settings-row" href="/tags">
+            <span class="avatar tone-3" aria-hidden="true">{{template "icon-tag"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Feeds with a tag</span>
+              <span class="hint">Make a tag first: tags group your feeds, like News or Tech.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+          {{end}}
+        </li>
+        <li>
+          <a class="settings-row" href="/timelines/new?preset=quiet">
+            <span class="avatar tone-2" aria-hidden="true">{{template "icon-clock"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Quiet posters</span>
+              <span class="hint">Feeds that post a couple of times a week or less, so busy ones can’t bury them.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/timelines/new?preset=starred">
+            <span class="avatar tone-1" aria-hidden="true">{{template "icon-star"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Starred</span>
+              <span class="hint">Articles you’ve starred, newest star first.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/timelines/new?preset=keywords">
+            <span class="avatar tone-4" aria-hidden="true">{{template "icon-type"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Keywords</span>
+              <span class="hint">Articles that mention words or phrases you choose.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/timelines/new?preset=media">
+            <span class="avatar tone-6" aria-hidden="true">{{template "icon-play"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Audio and video</span>
+              <span class="hint">Podcast episodes and videos attached to posts.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        <li>
+          <a class="settings-row" href="/timelines/new?preset=blank">
+            <span class="avatar tone-5" aria-hidden="true">{{template "icon-plus"}}</span>
+            <span class="settings-stack">
+              <span class="settings-label">Start from scratch</span>
+              <span class="hint">All your feeds, with filters you choose.</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+      </ul>
+    </main>
+  </div>
+</body>
+
+</html>

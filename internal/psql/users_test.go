@@ -38,10 +38,50 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
+	// assertDefaultTimelines checks the user has exactly rss.DefaultTimelines,
+	// in order, as ordinary timelines.
+	assertDefaultTimelines := func(t *testing.T) {
+		t.Helper()
+		timelines := NewTimelineRepository(db)
+		got, err := timelines.List(t.Context(), id)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		want := rss.DefaultTimelines()
+		if len(got) != len(want) {
+			t.Fatalf("got %d timelines, want %d: %+v", len(got), len(want), got)
+		}
+		for i := range want {
+			tl := mustGetTimeline(t, timelines, id, got[i].ID)
+			if tl.Name != want[i].Name || tl.Description != "" || tl.ShareToken != "" {
+				t.Errorf("timeline %d = %+v, want %q", i, tl, want[i].Name)
+			}
+			assertFilter(t, tl.Filter, want[i].Filter)
+		}
+	}
+
+	t.Run("Create makes the default timelines", func(t *testing.T) {
+		assertDefaultTimelines(t)
+		want := rss.DefaultTimelines()
+		if want[0].Name != "Quiet posters" || want[0].Filter.MaxPostsPerWeek != 2 || want[0].Filter.OnlyIncluded ||
+			want[1].Name != "Starred" || !want[1].Filter.StarredOnly || want[1].Filter.OnlyIncluded {
+			t.Errorf("DefaultTimelines = %+v, want Quiet posters (at most 2 a week) then Starred, both of all feeds", want)
+		}
+	})
+
 	t.Run("Create with duplicate email in different case", func(t *testing.T) {
 		_, _, err := repo.Create(t.Context(), "Other User", strings.ToUpper(email), password)
 		if !errors.Is(err, rss.ErrDuplicateEmail) {
 			t.Errorf("err = %v; want %v", err, rss.ErrDuplicateEmail)
+		}
+		// The failed create made no timelines, for anyone.
+		assertDefaultTimelines(t)
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM timelines t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, strings.ToUpper(email)).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != len(rss.DefaultTimelines()) {
+			t.Errorf("%d timelines for the address, want the first account's %d", n, len(rss.DefaultTimelines()))
 		}
 	})
 

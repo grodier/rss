@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
@@ -174,6 +175,25 @@ func TestTimelineCreate(t *testing.T) {
 	t.Run("the 21st is ErrTooManyTimelines", func(t *testing.T) {
 		user := newTestUser(t, db)
 		for i := range MaxTimelines {
+			mustCreateTimeline(t, repo, user, rss.Timeline{Name: fmt.Sprintf("T%d", i)})
+		}
+		if _, err := repo.Create(ctx, user, rss.Timeline{Name: "One more"}); !errors.Is(err, rss.ErrTooManyTimelines) {
+			t.Errorf("err = %v, want ErrTooManyTimelines", err)
+		}
+	})
+
+	t.Run("the limit counts a new account's default timelines", func(t *testing.T) {
+		email := fmt.Sprintf("defaults-%d@example.com", time.Now().UnixNano())
+		user, _, err := NewUserRepository(db).Create(ctx, "Defaults", email, "correct-horse-battery")
+		if err != nil {
+			t.Fatalf("Create user: %v", err)
+		}
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM users WHERE id = $1`, user); err != nil {
+				t.Errorf("cleanup user: %v", err)
+			}
+		})
+		for i := range MaxTimelines - len(rss.DefaultTimelines()) {
 			mustCreateTimeline(t, repo, user, rss.Timeline{Name: fmt.Sprintf("T%d", i)})
 		}
 		if _, err := repo.Create(ctx, user, rss.Timeline{Name: "One more"}); !errors.Is(err, rss.ErrTooManyTimelines) {

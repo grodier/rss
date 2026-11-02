@@ -36,6 +36,21 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
+	id, err := createTimeline(ctx, tx, userID, t)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// createTimeline stores t after userID's other timelines, with its sources,
+// in tx, and returns its ID: Create's work, shared with
+// UserRepository.Create, which adds rss.DefaultTimelines to a new account.
+// Errors as Create.
+func createTimeline(ctx context.Context, tx *sql.Tx, userID string, t rss.Timeline) (string, error) {
 	// Concurrent requests can overshoot MaxTimelines slightly; that's accepted.
 	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
 			include_words, exclude_words)
@@ -46,7 +61,7 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRowContext(ctx, stmt, userID, t.Name, t.Description, !t.Filter.OnlyIncluded, MaxTimelines,
+	err := tx.QueryRowContext(ctx, stmt, userID, t.Name, t.Description, !t.Filter.OnlyIncluded, MaxTimelines,
 		t.Filter.StarredOnly, t.Filter.MaxPostsPerWeek, t.Filter.MediaOnly,
 		words(t.Filter.IncludeWords), words(t.Filter.ExcludeWords)).Scan(&id)
 	if err != nil {
@@ -57,9 +72,6 @@ func (r *TimelineRepository) Create(ctx context.Context, userID string, t rss.Ti
 	}
 
 	if err := insertTimelineSources(ctx, tx, userID, id, t.Filter); err != nil {
-		return "", err
-	}
-	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return id, nil

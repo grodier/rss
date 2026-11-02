@@ -128,14 +128,17 @@ func TestTimelinesHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			"<h1>Timelines</h1>",
 			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
-			`<li class="timeline-row" id="timeline-all">`,
+			`<li class="timeline-row" id="timeline-all" data-id="all" data-name="All feeds">`,
 			`<a class="timeline-row-name" href="/timelines/all">`, `All feeds</a>`, "<p>Every feed you follow</p>",
-			`<form class="timeline-row-move" action="/timelines/all/move" method="post">`,
+			`<form class="timeline-row-move" action="/timelines/all/move" method="post" data-move>`,
 			`<span class="row-icon-slot" aria-hidden="true"></span>`,
-			`<li class="timeline-row" id="timeline-`+testTimelineID+`">`,
+			`<ul class="timeline-list" role="list" data-reorder>`,
+			// Rendered hidden: app.js shows it, since dragging needs JavaScript.
+			`<span class="reorder-handle" aria-hidden="true" hidden>`,
+			`<li class="timeline-row" id="timeline-`+testTimelineID+`" data-id="`+testTimelineID+`" data-name="AI">`,
 			`<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>`,
 			"<p>Tagged AI · Mentions “GPT”</p>",
-			`<form class="timeline-row-move" action="/timelines/`+testTimelineID+`/move" method="post">`,
+			`<form class="timeline-row-move" action="/timelines/`+testTimelineID+`/move" method="post" data-move>`,
 			`<a class="row-icon-btn" href="/timelines/`+testTimelineID+`/edit" aria-label="Edit AI" title="Edit">`,
 			`<a class="timeline-row-name" href="/timelines/`+newsTimelineID+`">News</a>`,
 			"<p>At most 2 posts a week</p>",
@@ -1526,6 +1529,66 @@ func TestTimelineFeedCount(t *testing.T) {
 		}
 		if got := (&timelineForm{Show: "all", MaxPostsPerWeek: "zero"}).summary(nil, subs).RateHint; got != "" {
 			t.Errorf("RateHint for an invalid number = %q, want none", got)
+		}
+	})
+}
+
+func TestTimelineOrderHandler(t *testing.T) {
+	type call struct {
+		userID string
+		ids    []string
+	}
+	var calls []call
+	var storeErr error
+	s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+		reorderFn: func(ctx context.Context, userID string, ids []string) error {
+			calls = append(calls, call{userID, ids})
+			return storeErr
+		},
+	}})
+	post := func(order ...string) (*httptest.ResponseRecorder, string) {
+		form := url.Values{}
+		for _, id := range order {
+			form.Add("order", id)
+		}
+		return serveTimeline(t, s, s.timelineOrderHandler, "/timelines/order", "", form)
+	}
+
+	t.Run("a valid order is saved, Home as \"\"", func(t *testing.T) {
+		calls, storeErr = nil, nil
+		rr, flash := post(newsTimelineID, "all", testTimelineID)
+		if rr.Code != http.StatusNoContent || flash != "" {
+			t.Fatalf("code %d, flash %q; want 204 and none", rr.Code, flash)
+		}
+		if len(calls) != 1 || calls[0].userID != "user-1" || !slices.Equal(calls[0].ids, []string{newsTimelineID, "", testTimelineID}) {
+			t.Errorf("calls = %+v", calls)
+		}
+	})
+
+	for _, bad := range []string{"junk", "", "ALL"} {
+		t.Run(fmt.Sprintf("%q is 400", bad), func(t *testing.T) {
+			calls, storeErr = nil, nil
+			if rr, _ := post("all", bad); rr.Code != http.StatusBadRequest || calls != nil {
+				t.Errorf("code %d, calls %v; want 400 and none", rr.Code, calls)
+			}
+		})
+	}
+
+	t.Run("a changed set of tabs goes back to /timelines with the flash", func(t *testing.T) {
+		calls, storeErr = nil, rss.ErrOrderChanged
+		rr, flash := post("all", testTimelineID)
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/timelines" {
+			t.Fatalf("code %d location %q", rr.Code, rr.Header().Get("Location"))
+		}
+		if flash != "Your timelines changed in another window, so the new order wasn't saved." {
+			t.Errorf("flash = %q", flash)
+		}
+	})
+
+	t.Run("another store error is 500", func(t *testing.T) {
+		calls, storeErr = nil, errors.New("boom")
+		if rr, _ := post("all"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("code %d, want 500", rr.Code)
 		}
 	})
 }

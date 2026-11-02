@@ -11,4 +11,5 @@ var (
 	ErrDuplicateTag     = errors.New("duplicate tag")
 	ErrTooManyTags      = errors.New("too many tags")
 	ErrTooManyTimelines = errors.New("too many timelines")
+	ErrOrderChanged     = errors.New("rss: the timelines changed since the page was loaded")
 )

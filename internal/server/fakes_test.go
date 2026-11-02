@@ -569,6 +569,7 @@ type fakeTimelineStore struct {
 	updateFn          func(ctx context.Context, userID string, t rss.Timeline) error
 	deleteFn          func(ctx context.Context, userID, id string) error
 	moveFn            func(ctx context.Context, userID, id string, up bool) error
+	reorderFn         func(ctx context.Context, userID string, ids []string) error
 
 	shareFn        func(ctx context.Context, userID, id, newToken string) (string, error)
 	newShareLinkFn func(ctx context.Context, userID, id, newToken string) error
@@ -625,6 +626,13 @@ func (f *fakeTimelineStore) Move(ctx context.Context, userID, id string, up bool
 		return nil
 	}
 	return f.moveFn(ctx, userID, id, up)
+}
+
+func (f *fakeTimelineStore) Reorder(ctx context.Context, userID string, ids []string) error {
+	if f.reorderFn == nil {
+		return nil
+	}
+	return f.reorderFn(ctx, userID, ids)
 }
 
 func (f *fakeTimelineStore) Share(ctx context.Context, userID, id, newToken string) (string, error) {

@@ -228,6 +228,10 @@ type TimelineStore interface {
 	// the one before it in tab order if up, else the one after it; at either
 	// end it does nothing. rss.ErrNoRecord as Get, unless id is "".
 	Move(ctx context.Context, userID, id string, up bool) error
+	// Reorder sets the user's tab order to ids (custom timeline IDs, "" for
+	// Home, each exactly once), or returns rss.ErrOrderChanged if they
+	// aren't exactly the user's tabs.
+	Reorder(ctx context.Context, userID string, ids []string) error
 	// Share gives the user's custom timeline id the share token newToken if
 	// it has none, and returns its token. rss.ErrNoRecord as Get.
 	Share(ctx context.Context, userID, id, newToken string) (string, error)

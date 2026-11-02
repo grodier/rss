@@ -740,6 +740,48 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/timelines", http.StatusSeeOther)
 }
 
+// timelineOrderForm is the whole tab order, which app.js posts after a
+// drag or a move button press on /timelines.
+type timelineOrderForm struct {
+	Order []string `form:"order"` // tab IDs in order, "all" for Home
+}
+
+// timelineOrderHandler sets the user's tab order. Only app.js posts here, so
+// success is a 204. An order that isn't exactly the user's tabs (one made
+// or deleted in another window) flashes why and goes back to /timelines,
+// where app.js sends the reader.
+func (s *Server) timelineOrderHandler(w http.ResponseWriter, r *http.Request) {
+	var form timelineOrderForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	ids := make([]string, len(form.Order))
+	for i, id := range form.Order {
+		switch {
+		case id == homeTabID:
+			ids[i] = ""
+		case validator.Matches(id, validator.UUIDRX):
+			ids[i] = id
+		default:
+			s.formErrorResponse(w, r, fmt.Errorf("order = %q", id))
+			return
+		}
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	err := s.services.TimelineService.Reorder(r.Context(), userID, ids)
+	switch {
+	case errors.Is(err, rss.ErrOrderChanged):
+		s.sessionManager.Put(r.Context(), "flash", "Your timelines changed in another window, so the new order wasn't saved.")
+		http.Redirect(w, r, "/timelines", http.StatusSeeOther)
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // timelineShareHandler shares a timeline: it gets a share token, unless it
 // has one. It needs a confirmed email address.
 // timelineMoveForm is the Move up or Move down button on /timelines.

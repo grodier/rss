@@ -279,37 +279,8 @@ func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up boo
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	// Lock the user's row (for home_position) and timelines, so concurrent
-	// moves renumber one after the other.
-	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM timelines WHERE user_id = $1 FOR UPDATE`, userID); err != nil {
-		return err
-	}
-	// The same order as List, Home as "".
-	stmt := `SELECT id, home FROM (
-			SELECT id::text, position, created_at, false AS home FROM timelines WHERE user_id = $1
-			UNION ALL
-			SELECT '', home_position, created_at, true FROM users WHERE id = $1
-		) tabs
-		ORDER BY position, home DESC, created_at`
-	rows, err := tx.QueryContext(ctx, stmt, userID)
+	ids, err := lockTabs(ctx, tx, userID)
 	if err != nil {
-		return err
-	}
-	var ids []string
-	for rows.Next() {
-		var tid string
-		var home bool
-		if err := rows.Scan(&tid, &home); err != nil {
-			rows.Close()
-			return err
-		}
-		ids = append(ids, tid)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return err
 	}
 
@@ -325,6 +296,62 @@ func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up boo
 		ids[i], ids[j] = ids[j], ids[i]
 	}
 	return renumberTabs(ctx, tx, userID, ids)
+}
+
+// Reorder sets userID's tab order to ids: every one of their timelines'
+// IDs and "" for Home, each exactly once. It locks the user's row and
+// timelines, and returns rss.ErrOrderChanged, changing nothing, if ids isn't
+// exactly that set (a timeline was made or deleted in another tab).
+func (r *TimelineRepository) Reorder(ctx context.Context, userID string, ids []string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	current, err := lockTabs(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	sorted := slices.Sorted(slices.Values(ids))
+	slices.Sort(current)
+	if !slices.Equal(sorted, current) {
+		return rss.ErrOrderChanged
+	}
+	return renumberTabs(ctx, tx, userID, ids)
+}
+
+// lockTabs locks userID's row (for home_position) and their timelines, so
+// concurrent reorders renumber one after the other, and returns their tab
+// order in List's order: custom timeline IDs, and "" for Home.
+func lockTabs(ctx context.Context, tx *sql.Tx, userID string) ([]string, error) {
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM timelines WHERE user_id = $1 FOR UPDATE`, userID); err != nil {
+		return nil, err
+	}
+	stmt := `SELECT id FROM (
+			SELECT id::text, position, created_at, false AS home FROM timelines WHERE user_id = $1
+			UNION ALL
+			SELECT '', home_position, created_at, true FROM users WHERE id = $1
+		) tabs
+		ORDER BY position, home DESC, created_at`
+	rows, err := tx.QueryContext(ctx, stmt, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // renumberTabs sets userID's tab order to ids (custom timeline IDs, "" for

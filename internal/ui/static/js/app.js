@@ -362,6 +362,114 @@
     }
   }
 
+  // Reordering on /timelines (ul[data-reorder]): show each row's drag
+  // handle (.reorder-handle, rendered hidden), and let the move buttons
+  // (form[data-move]) move rows in place instead of posting. After a drop
+  // or a press, update the buttons' end states, announce the new position,
+  // and post the whole order (each row's data-id, "all" for Home) to
+  // /timelines/order. Anything but a 204, including the redirect for an
+  // order that changed in another window, goes to /timelines, where the
+  // flash says why; redirect: "manual" keeps that flash for it. The move
+  // buttons stay: they're the single-pointer and keyboard way to reorder.
+  {
+    const list = document.querySelector("ul[data-reorder]");
+    if (list) {
+      const rows = () => [...list.children];
+      for (const handle of list.querySelectorAll(".reorder-handle")) handle.hidden = false;
+
+      const refresh = () => {
+        const all = rows();
+        all.forEach((li, i) => {
+          const up = li.querySelector('button[value="up"]');
+          const down = li.querySelector('button[value="down"]');
+          if (up) up.disabled = i === 0;
+          if (down) down.disabled = i === all.length - 1;
+        });
+      };
+      const save = async () => {
+        try {
+          const res = await fetch("/timelines/order", {
+            method: "POST",
+            body: new URLSearchParams(rows().map((li) => ["order", li.dataset.id])),
+            redirect: "manual",
+          });
+          if (res.status !== 204) throw new Error(`status ${res.status}`);
+        } catch {
+          location.assign("/timelines");
+        }
+      };
+      const moved = (li) => {
+        refresh();
+        const all = rows();
+        announce(`${li.dataset.name} moved to position ${all.indexOf(li) + 1} of ${all.length}.`);
+        li.classList.remove("just-moved");
+        void li.offsetWidth; // restart the tint
+        li.classList.add("just-moved");
+        save();
+      };
+
+      // Move buttons: one place up or down, keeping focus on the pressed
+      // button, or its sibling once the pressed one is disabled at an end.
+      list.addEventListener("submit", (e) => {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement) || !form.matches("form[data-move]")) return;
+        e.preventDefault();
+        const button = e.submitter;
+        const li = form.closest("li");
+        const up = button?.value === "up";
+        const neighbour = up ? li.previousElementSibling : li.nextElementSibling;
+        if (!button || !neighbour) return;
+        if (up) list.insertBefore(li, neighbour);
+        else list.insertBefore(neighbour, li);
+        moved(li);
+        (button.disabled ? li.querySelector(`button[value="${up ? "down" : "up"}"]`) : button).focus();
+      });
+
+      // Dragging a handle: the row swaps with a neighbour whose midpoint
+      // the pointer crosses. Escape or a cancelled pointer puts every row
+      // back.
+      let drag = null; // { li, before }
+      const middle = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.top + r.height / 2;
+      };
+      list.addEventListener("pointerdown", (e) => {
+        const handle = e.target instanceof Element && e.target.closest(".reorder-handle");
+        if (!handle || e.button !== 0) return;
+        e.preventDefault();
+        drag = { li: handle.closest("li"), before: rows() };
+        drag.li.classList.add("dragging");
+        handle.setPointerCapture(e.pointerId);
+      });
+      list.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        for (;;) {
+          const prev = drag.li.previousElementSibling;
+          const next = drag.li.nextElementSibling;
+          if (prev && e.clientY < middle(prev)) list.insertBefore(drag.li, prev);
+          else if (next && e.clientY > middle(next)) list.insertBefore(next, drag.li);
+          else break;
+        }
+      });
+      const end = (cancel) => {
+        if (!drag) return;
+        const { li, before } = drag;
+        drag = null;
+        li.classList.remove("dragging");
+        if (cancel) {
+          list.append(...before);
+          return;
+        }
+        if (rows().some((row, i) => row !== before[i])) moved(li);
+      };
+      list.addEventListener("pointerup", () => end(false));
+      list.addEventListener("pointercancel", () => end(true));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") end(true);
+      });
+    }
+  }
+
   // "You were here": a timeline's first page carries the newest position on
   // it in .article-list[data-seen-up-to], and when it was rendered in
   // data-seen-as-of. Each time the page is hidden (another tab, the app

@@ -577,6 +577,86 @@ func TestTimelineMove(t *testing.T) {
 	})
 }
 
+// Requires a migrated database; see psqltest.NewDB.
+func TestTimelineReorder(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewTimelineRepository(db)
+	ctx := t.Context()
+
+	// tabs returns userID's tab IDs in order ("" for Home) and their
+	// positions, Home's included.
+	tabs := func(t *testing.T, userID string) ([]string, []int) {
+		t.Helper()
+		rows, err := db.Query(`SELECT id, position FROM (
+				SELECT id::text, position, created_at, false AS home FROM timelines WHERE user_id = $1
+				UNION ALL
+				SELECT '', home_position, created_at, true FROM users WHERE id = $1
+			) tabs
+			ORDER BY position, home DESC, created_at`, userID)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		defer rows.Close()
+		var ids []string
+		var positions []int
+		for rows.Next() {
+			var id string
+			var pos int
+			if err := rows.Scan(&id, &pos); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			ids, positions = append(ids, id), append(positions, pos)
+		}
+		return ids, positions
+	}
+
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	a := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "A"})
+	b := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "B"})
+	c := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "C"})
+	theirs := mustCreateTimeline(t, repo, other, rss.Timeline{Name: "Theirs"})
+
+	t.Run("applies a full order, Home included", func(t *testing.T) {
+		want := []string{c, "", a, b}
+		if err := repo.Reorder(ctx, user, want); err != nil {
+			t.Fatalf("Reorder: %v", err)
+		}
+		ids, positions := tabs(t, user)
+		if !slices.Equal(ids, want) || !slices.Equal(positions, []int{0, 1, 2, 3}) {
+			t.Errorf("tabs = %v at %v, want %v at 0…3", ids, positions, want)
+		}
+	})
+
+	for _, tt := range []struct {
+		name string
+		ids  []string
+	}{
+		{"a missing timeline", []string{c, "", a}},
+		{"an extra unknown UUID", []string{c, "", a, b, "00000000-0000-4000-8000-000000000000"}},
+		{"a duplicate", []string{c, "", a, b, b}},
+		{"another user's timeline", []string{c, "", a, theirs}},
+		{"Home missing", []string{c, a, b}},
+		{"Home twice", []string{c, "", a, b, ""}},
+		{"nothing", nil},
+	} {
+		t.Run(tt.name+" is ErrOrderChanged and changes nothing", func(t *testing.T) {
+			if err := repo.Reorder(ctx, user, tt.ids); !errors.Is(err, rss.ErrOrderChanged) {
+				t.Errorf("Reorder = %v, want ErrOrderChanged", err)
+			}
+			ids, positions := tabs(t, user)
+			if want := []string{c, "", a, b}; !slices.Equal(ids, want) || !slices.Equal(positions, []int{0, 1, 2, 3}) {
+				t.Errorf("tabs = %v at %v, changed", ids, positions)
+			}
+		})
+	}
+
+	t.Run("leaves other users alone", func(t *testing.T) {
+		if ids, _ := tabs(t, other); !slices.Equal(ids, []string{"", theirs}) {
+			t.Errorf("their tabs = %v", ids)
+		}
+	})
+}
+
 // shareToken returns a unique 43-character token for a test.
 func shareToken(t *testing.T) string {
 	t.Helper()

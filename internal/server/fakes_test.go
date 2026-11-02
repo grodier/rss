@@ -564,9 +564,11 @@ type fakeTimelineStore struct {
 	createFn func(ctx context.Context, userID string, t rss.Timeline) (string, error)
 	getFn    func(ctx context.Context, userID, id string) (rss.Timeline, error)
 	listFn   func(ctx context.Context, userID string) ([]rss.Timeline, error)
-	updateFn func(ctx context.Context, userID string, t rss.Timeline) error
-	deleteFn func(ctx context.Context, userID, id string) error
-	moveFn   func(ctx context.Context, userID, id string, up bool) error
+	// listWithFiltersFn falls back to listFn when nil.
+	listWithFiltersFn func(ctx context.Context, userID string) ([]rss.Timeline, error)
+	updateFn          func(ctx context.Context, userID string, t rss.Timeline) error
+	deleteFn          func(ctx context.Context, userID, id string) error
+	moveFn            func(ctx context.Context, userID, id string, up bool) error
 
 	shareFn        func(ctx context.Context, userID, id, newToken string) (string, error)
 	newShareLinkFn func(ctx context.Context, userID, id, newToken string) error
@@ -593,6 +595,13 @@ func (f *fakeTimelineStore) List(ctx context.Context, userID string) ([]rss.Time
 		return nil, nil
 	}
 	return f.listFn(ctx, userID)
+}
+
+func (f *fakeTimelineStore) ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	if f.listWithFiltersFn == nil {
+		return f.List(ctx, userID)
+	}
+	return f.listWithFiltersFn(ctx, userID)
 }
 
 func (f *fakeTimelineStore) Update(ctx context.Context, userID string, t rss.Timeline) error {

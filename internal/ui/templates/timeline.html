@@ -21,13 +21,12 @@
         <h1 class="visually-hidden">{{if .Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
         {{template "timeline-tabs" .Tabs}}
       </header>
-      {{if or .Timeline.Description (not .Home) .Before}}
+      {{/* The description, and Back to newest on older pages: no row
+           without them, so switching tabs doesn't move the articles. */}}
+      {{if or .Timeline.Description .Before}}
       <div class="timeline-about">
         {{with .Timeline.Description}}<p>{{.}}</p>{{end}}
-        <div class="timeline-links">
-          {{if .Before}}<a href="{{.Path}}">Back to newest</a>{{end}}
-          {{if not .Home}}<a href="/timelines/{{.Timeline.ID}}/edit">Edit<span class="visually-hidden"> {{.Timeline.Name}}</span></a>{{end}}
-        </div>
+        {{if .Before}}<div class="timeline-links"><a href="{{.Path}}">Back to newest</a></div>{{end}}
       </div>
       {{end}}
 

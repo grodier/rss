@@ -215,6 +215,8 @@ type TimelineStore interface {
 	// List returns the user's custom timelines in tab order, without their
 	// filters.
 	List(ctx context.Context, userID string) ([]rss.Timeline, error)
+	// ListWithFilters is List with each timeline's filter.
+	ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error)
 	// Update replaces the name, description and filter of the user's custom
 	// timeline t.ID. rss.ErrNoRecord as Create, or if there's no such
 	// timeline.

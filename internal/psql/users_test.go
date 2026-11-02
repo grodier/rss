@@ -43,10 +43,15 @@ func TestUserRepository(t *testing.T) {
 	assertDefaultTimelines := func(t *testing.T) {
 		t.Helper()
 		timelines := NewTimelineRepository(db)
-		got, err := timelines.List(t.Context(), id)
+		tabs, err := timelines.List(t.Context(), id)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
+		// Home comes first; the rest are the defaults.
+		if len(tabs) == 0 || tabs[0].ID != "" {
+			t.Fatalf("List = %+v, want Home first", tabs)
+		}
+		got := tabs[1:]
 		want := rss.DefaultTimelines()
 		if len(got) != len(want) {
 			t.Fatalf("got %d timelines, want %d: %+v", len(got), len(want), got)

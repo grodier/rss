@@ -271,6 +271,9 @@ func measurements(ctx context.Context, db *sql.DB, prefix string) ([]measurement
 	var shared []rss.Timeline
 	filters := map[string]rss.TimelineFilter{}
 	for _, t := range list {
+		if t.ID == "" {
+			continue // Home, measured above as "ListTimeline: Home"
+		}
 		t, err := timelineRepo.Get(ctx, mainUser.ID, t.ID)
 		if err != nil {
 			return nil, err

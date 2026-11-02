@@ -9,6 +9,7 @@ CREATE TABLE users (
     email_confirmed_at TIMESTAMPTZ, -- NULL until the user confirms their address; a password reset also confirms it
     hashed_password bytea NOT NULL,
     theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('system', 'light', 'dark')), -- 'system' follows the device's light or dark setting
+    home_position INT NOT NULL DEFAULT 0, -- Home's place among the user's tabs, in the same numbering as timelines.position
     created_at timestamp(0) with time zone NOT NULL DEFAULT now()
 );
 

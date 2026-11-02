@@ -90,6 +90,7 @@ func (s *Server) router() http.Handler {
 			r.Get("/timelines", s.timelinesHandler)
 			r.Post("/timelines", s.timelineCreateHandler)
 			r.Get("/timelines/new", s.timelineNewHandler)
+			r.Get("/timelines/all", s.allTimelineHandler) // Home, as / may show another tab
 			r.Get("/timelines/{id}", s.timelineHandler)
 			r.Get("/timelines/{id}/edit", s.timelineEditHandler)
 			r.Post("/timelines/{id}/edit", s.timelineEditPostHandler)

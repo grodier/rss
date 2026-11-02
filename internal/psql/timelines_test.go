@@ -208,8 +208,28 @@ func TestTimelineCreate(t *testing.T) {
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("err = %v, want ErrNoRecord", err)
 		}
-		if list, _ := repo.List(ctx, user); len(list) != 0 {
-			t.Errorf("timeline stored anyway: %+v", list)
+		if list, _ := repo.List(ctx, user); len(list) != 1 || list[0].ID != "" {
+			t.Errorf("timeline stored anyway (want Home alone): %+v", list)
+		}
+	})
+
+	t.Run("after Home, when Home is last", func(t *testing.T) {
+		user := newTestUser(t, db)
+		first := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "First"})
+		if _, err := db.Exec(`UPDATE users SET home_position = 7 WHERE id = $1`, user); err != nil {
+			t.Fatal(err)
+		}
+		next := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Next"})
+		list, err := repo.List(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, tl := range list {
+			ids = append(ids, tl.ID)
+		}
+		if want := []string{first, "", next}; !slices.Equal(ids, want) {
+			t.Errorf("List IDs = %v, want %v", ids, want)
 		}
 	})
 
@@ -314,17 +334,39 @@ func TestTimelineList(t *testing.T) {
 	for _, tl := range got {
 		ids = append(ids, tl.ID)
 	}
-	if want := []string{c, b, a}; !slices.Equal(ids, want) {
-		t.Errorf("List IDs = %v, want %v (by position, no other user's)", ids, want)
+	// Home ("") is at home_position 0 and goes first on its tie with C.
+	if want := []string{"", c, b, a}; !slices.Equal(ids, want) {
+		t.Errorf("List IDs = %v, want %v (by position, Home first on a tie, no other user's)", ids, want)
 	}
-	if got[1].Name != "B" || got[1].Description != "Bee" {
-		t.Errorf("List[1] = %+v", got[1])
+	if got[2].Name != "B" || got[2].Description != "Bee" {
+		t.Errorf("List[2] = %+v", got[2])
+	}
+	if got[0].Name != "" || got[0].ShareToken != "" {
+		t.Errorf("Home = %+v, want the zero timeline", got[0])
 	}
 
-	t.Run("none is empty", func(t *testing.T) {
+	t.Run("Home at its position", func(t *testing.T) {
+		if _, err := db.Exec(`UPDATE users SET home_position = 2 WHERE id = $1`, user); err != nil {
+			t.Fatal(err)
+		}
+		got, err := repo.List(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, tl := range got {
+			ids = append(ids, tl.ID)
+		}
+		// B is at 1, A at 2 (Home first on that tie).
+		if want := []string{c, b, "", a}; !slices.Equal(ids, want) {
+			t.Errorf("List IDs = %v, want %v", ids, want)
+		}
+	})
+
+	t.Run("none is Home alone", func(t *testing.T) {
 		got, err := repo.List(ctx, newTestUser(t, db))
-		if err != nil || len(got) != 0 {
-			t.Errorf("List = %v, %v; want none", got, err)
+		if err != nil || len(got) != 1 || got[0].ID != "" {
+			t.Errorf("List = %v, %v; want Home alone", got, err)
 		}
 	})
 }
@@ -371,10 +413,11 @@ func TestTimelineListWithFilters(t *testing.T) {
 		ids = append(ids, got[i].ID)
 		listedIDs = append(listedIDs, listed[i].ID)
 	}
-	if want := []string{first, second, plain}; !slices.Equal(ids, want) || !slices.Equal(ids, listedIDs) {
+	if want := []string{"", first, second, plain}; !slices.Equal(ids, want) || !slices.Equal(ids, listedIDs) {
 		t.Fatalf("ListWithFilters IDs = %v, want %v, in List's order %v (no other user's)", ids, want, listedIDs)
 	}
-	for _, tl := range got {
+	assertFilter(t, got[0].Filter, rss.TimelineFilter{})
+	for _, tl := range got[1:] {
 		want := mustGetTimeline(t, repo, user, tl.ID)
 		if tl.Name != want.Name || tl.Position != want.Position || tl.ShareToken != want.ShareToken {
 			t.Errorf("ListWithFilters %s = %+v, Get = %+v", tl.ID, tl, want)
@@ -382,10 +425,10 @@ func TestTimelineListWithFilters(t *testing.T) {
 		assertFilter(t, tl.Filter, want.Filter)
 	}
 
-	t.Run("none is empty", func(t *testing.T) {
+	t.Run("none is Home alone", func(t *testing.T) {
 		got, err := repo.ListWithFilters(ctx, newTestUser(t, db))
-		if err != nil || len(got) != 0 {
-			t.Errorf("ListWithFilters = %v, %v; want none", got, err)
+		if err != nil || len(got) != 1 || got[0].ID != "" {
+			t.Errorf("ListWithFilters = %v, %v; want Home alone", got, err)
 		}
 	})
 }
@@ -428,11 +471,16 @@ func TestTimelineMove(t *testing.T) {
 	repo := NewTimelineRepository(db)
 	ctx := t.Context()
 
-	// order returns userID's timeline IDs in tab order, and fails unless
-	// their positions are 0…n−1.
+	// order returns userID's tab IDs in order ("" for Home), and fails
+	// unless their positions, Home's included, are 0…n−1.
 	order := func(t *testing.T, userID string) []string {
 		t.Helper()
-		rows, err := db.Query(`SELECT id, position FROM timelines WHERE user_id = $1 ORDER BY position, created_at`, userID)
+		rows, err := db.Query(`SELECT id, position FROM (
+				SELECT id::text, position, created_at, false AS home FROM timelines WHERE user_id = $1
+				UNION ALL
+				SELECT '', home_position, created_at, true FROM users WHERE id = $1
+			) tabs
+			ORDER BY position, home DESC, created_at`, userID)
 		if err != nil {
 			t.Fatalf("query: %v", err)
 		}
@@ -445,7 +493,7 @@ func TestTimelineMove(t *testing.T) {
 				t.Fatalf("scan: %v", err)
 			}
 			if pos != len(ids) {
-				t.Errorf("timeline %d has position %d", len(ids), pos)
+				t.Errorf("tab %d has position %d", len(ids), pos)
 			}
 			ids = append(ids, id)
 		}
@@ -483,11 +531,15 @@ func TestTimelineMove(t *testing.T) {
 		up   bool
 		want []string
 	}{
-		{"down swaps with the next", a, false, []string{b, a, c}},
-		{"up swaps with the previous", c, true, []string{b, c, a}},
-		{"up on the first does nothing", b, true, []string{b, c, a}},
-		{"down on the last does nothing", a, false, []string{b, c, a}},
-		{"down from the middle", c, false, []string{b, a, c}},
+		// Home ("") starts first, at home_position 0.
+		{"down swaps with the next", a, false, []string{"", b, a, c}},
+		{"up swaps with the previous", c, true, []string{"", b, c, a}},
+		{"Home up on the first does nothing", "", true, []string{"", b, c, a}},
+		{"down on the last does nothing", a, false, []string{"", b, c, a}},
+		{"down from the middle", c, false, []string{"", b, a, c}},
+		{"Home down swaps with the next", "", false, []string{b, "", a, c}},
+		{"a timeline up past Home", a, true, []string{b, a, "", c}},
+		{"Home up", "", true, []string{b, "", a, c}},
 	}
 	for _, st := range steps {
 		t.Run(st.name, func(t *testing.T) {
@@ -505,7 +557,7 @@ func TestTimelineMove(t *testing.T) {
 		if err := repo.Move(ctx, other, a, true); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("Move(as other) = %v, want ErrNoRecord", err)
 		}
-		if got := order(t, user); !slices.Equal(got, []string{b, a, c}) {
+		if got := order(t, user); !slices.Equal(got, []string{b, "", a, c}) {
 			t.Errorf("user's order = %v, changed", got)
 		}
 		var got []int64

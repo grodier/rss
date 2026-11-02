@@ -590,9 +590,11 @@ func (f *fakeTimelineStore) Get(ctx context.Context, userID, id string) (rss.Tim
 	return f.getFn(ctx, userID, id)
 }
 
+// List returns only Home (the zero rss.Timeline) when listFn is nil, as
+// TimelineRepository.List does for a user without custom timelines.
 func (f *fakeTimelineStore) List(ctx context.Context, userID string) ([]rss.Timeline, error) {
 	if f.listFn == nil {
-		return nil, nil
+		return []rss.Timeline{{}}, nil
 	}
 	return f.listFn(ctx, userID)
 }

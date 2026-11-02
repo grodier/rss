@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,6 +11,24 @@ import (
 // timelinePageSize is how many articles a timeline page shows.
 const timelinePageSize = 30
 
+// homeName is what users see Home called: its tab, heading and page title,
+// and its row on /timelines (the homeName template function). The nav's
+// "Home" isn't it: that opens the start tab, whichever it is.
+const homeName = "Home"
+
+// homeTabID stands for Home where a tab needs an ID: its URL
+// (/timelines/all), its row's fragment and move route on /timelines, and
+// the tab cookie. Internally Home is the rss.Timeline with no ID.
+const homeTabID = "all"
+
+// tabCookie names the cookie that remembers the tab the user was last on,
+// for a visit (rss.VisitGap): homeTabID or a custom timeline's ID.
+const tabCookie = "tab"
+
+// homeHandler shows the landing page, or, when logged in, the start tab:
+// the one the tab cookie names, if it's still one of the user's tabs, else
+// the first. It's rendered in place, without a redirect, so opening the app
+// costs one request; its own address stays its tab's (see renderTimeline).
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
@@ -20,11 +39,56 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tabs, err := s.services.TimelineService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	var start rss.Timeline // Home, should the list be empty
+	if len(tabs) > 0 {
+		start = tabs[0]
+	}
+	if c, err := r.Cookie(tabCookie); err == nil {
+		for _, t := range tabs {
+			if tabID(t) == c.Value {
+				start = t
+				break
+			}
+		}
+	}
+	if start.ID != "" {
+		// List has no filters. A timeline deleted since falls back to Home.
+		t, err := s.services.TimelineService.Get(r.Context(), userID, start.ID)
+		switch {
+		case err == nil:
+			start = t
+		case errors.Is(err, rss.ErrNoRecord):
+			start = rss.Timeline{}
+		default:
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
+	s.renderTimelineWith(w, r, userID, start, tabs)
+}
+
+// allTimelineHandler shows Home at its own address, /timelines/all, since
+// / shows the start tab, which may be another.
+func (s *Server) allTimelineHandler(w http.ResponseWriter, r *http.Request) {
+	userID, _ := s.authenticatedUserID(r)
 	s.renderTimeline(w, r, userID, rss.Timeline{})
 }
 
-// timelineTabs is the data of the timeline-tabs partial: Home, then the
-// user's custom timelines, with the one shown (CurrentID, "" for Home)
+// tabID returns t's ID, or homeTabID for Home.
+func tabID(t rss.Timeline) string {
+	if t.ID == "" {
+		return homeTabID
+	}
+	return t.ID
+}
+
+// timelineTabs is the data of the timeline-tabs partial: the user's tabs
+// in order, Home among them, with the one shown (CurrentID, "" for Home)
 // marked.
 type timelineTabs struct {
 	Timelines []rss.Timeline
@@ -34,6 +98,19 @@ type timelineTabs struct {
 // renderTimeline renders timeline.html: a page of current's articles for
 // userID (Home when current has no ID), with the tab row.
 func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID string, current rss.Timeline) {
+	tabs, err := s.services.TimelineService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	s.renderTimelineWith(w, r, userID, current, tabs)
+}
+
+// renderTimelineWith is renderTimeline with the user's tabs already read.
+// Every timeline page sets the tab cookie to current, for the rest of the
+// visit, so / comes back to it. That's upkeep in the browser, not a write:
+// a session value would be one, since sessions are stored in Postgres.
+func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, userID string, current rss.Timeline, tabs []rss.Timeline) {
 	before, err := decodeCursor(r.URL.Query().Get("before"))
 	if err != nil {
 		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
@@ -50,12 +127,6 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 			return
 		}
 		pinned = &a
-	}
-
-	timelines, err := s.services.TimelineService.List(r.Context(), userID)
-	if err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
 	}
 
 	// The mark orders the timeline (see ListTimeline) and places the "You
@@ -108,10 +179,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 	}
 
 	home := current.ID == ""
-	path := "/"
-	if !home {
-		path = "/timelines/" + current.ID
-	}
+	path := "/timelines/" + tabID(current)
 	filter := current.Filter
 
 	data := struct {
@@ -133,7 +201,7 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		Nav:           s.nav(r, "home"),
 		Timeline:      current,
 		Home:          home,
-		Tabs:          timelineTabs{Timelines: timelines, CurrentID: current.ID},
+		Tabs:          timelineTabs{Timelines: tabs, CurrentID: current.ID},
 		Path:          path,
 		NoSources:     filter.OnlyIncluded && len(filter.IncludeTagIDs) == 0 && len(filter.IncludeFeedIDs) == 0,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
@@ -146,6 +214,15 @@ func (s *Server) renderTimeline(w http.ResponseWriter, r *http.Request, userID s
 		SeenAsOf:      now,
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     tabCookie,
+		Value:    tabID(current),
+		Path:     "/",
+		MaxAge:   int(rss.VisitGap / time.Second),
+		HttpOnly: true,
+		Secure:   s.sessionManager.Cookie.Secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 	if err := s.renderHTML(w, http.StatusOK, "timeline.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}

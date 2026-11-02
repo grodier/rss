@@ -305,8 +305,8 @@ type timelineRow struct {
 	First, Last bool   // its place in tab order, which disables a move button
 }
 
-// timelinesHandler lists Home and the user's custom timelines in tab
-// order, each custom one with a summary of what it shows.
+// timelinesHandler lists the user's tabs in order, Home among them, each
+// with a summary of what it shows.
 func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
 	timelines, err := s.services.TimelineService.ListWithFilters(r.Context(), userID)
@@ -314,8 +314,9 @@ func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	custom := slices.ContainsFunc(timelines, func(t rss.Timeline) bool { return t.ID != "" })
 	var tags []rss.Tag
-	if len(timelines) > 0 {
+	if custom {
 		tags, err = s.services.TagService.List(r.Context(), userID)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
@@ -325,17 +326,23 @@ func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([]timelineRow, len(timelines))
 	for i, t := range timelines {
-		rows[i] = timelineRow{Timeline: t, Summary: timelineSummary(t, tags), First: i == 0, Last: i == len(timelines)-1}
+		summary := "Every feed you follow"
+		if t.ID != "" {
+			summary = timelineSummary(t, tags)
+		}
+		rows[i] = timelineRow{Timeline: t, Summary: summary, First: i == 0, Last: i == len(timelines)-1}
 	}
 
 	data := struct {
-		Nav   navData
-		Rows  []timelineRow
-		Flash string
+		Nav    navData
+		Rows   []timelineRow
+		Custom bool // the user has custom timelines, not only Home
+		Flash  string
 	}{
-		Nav:   s.nav(r, "home"),
-		Rows:  rows,
-		Flash: s.sessionManager.PopString(r.Context(), "flash"),
+		Nav:    s.nav(r, "home"),
+		Rows:   rows,
+		Custom: custom,
+		Flash:  s.sessionManager.PopString(r.Context(), "flash"),
 	}
 	if err := s.renderHTML(w, http.StatusOK, "timelines.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -531,11 +538,12 @@ type timelineMoveForm struct {
 	Direction string `form:"direction"` // "up" or "down"
 }
 
-// timelineMoveHandler moves the user's custom timeline one place up or down
-// the tab order, then goes back to its row on /timelines.
+// timelineMoveHandler moves one of the user's tabs (a custom timeline, or
+// Home as "all") one place up or down the tab order, then goes back to its
+// row on /timelines.
 func (s *Server) timelineMoveHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
+	if id != homeTabID && !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
 		return
 	}
@@ -551,7 +559,11 @@ func (s *Server) timelineMoveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.services.TimelineService.Move(r.Context(), userID, id, form.Direction == "up"); err != nil {
+	storeID := id
+	if id == homeTabID {
+		storeID = ""
+	}
+	if err := s.services.TimelineService.Move(r.Context(), userID, storeID, form.Direction == "up"); err != nil {
 		s.timelineWriteError(w, r, err)
 		return
 	}

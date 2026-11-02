@@ -241,7 +241,7 @@ Unsubscribing cascades to the subscription's tags; the tags themselves stay.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): Home and the user's timelines in tab order, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); `app.js` scrolls the row so the current tab shows.
+**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): the user's tabs in order, Home wherever they put it, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); `app.js` scrolls the row so the current tab shows.
 Under the tabs, a row shows only for the timeline's description or an older page's "Back to newest".
 A timeline is a name, an optional description and an `rss.TimelineFilter` over the user's subscriptions:
 
@@ -256,10 +256,11 @@ Words and phrases match whole words, ignoring case, in `concat_ws(' ', title, pa
 So `AI` matches "AI's" and "#AI" but not "said", and `C` matches "C++" too (the accepted trade-off).
 `[[:alnum:]]` follows the database's `LC_CTYPE`, so in a UTF-8 database `café` doesn't match "cafés".
 
-`/timelines` lists Home and then the timelines in tab order, with rows like My feeds': the row opens the timeline, and move up, move down (disabled at the ends) and the Edit pencil are icon buttons at its end.
+`/timelines` lists the tabs in order, Home among them, with rows like My feeds': the row opens the timeline, and move up, move down (disabled at the ends) and the Edit pencil are icon buttons at its end.
 Each row says what the timeline is made of (`timelineSummary`, from `TimelineRepository.ListWithFilters`, which reads every filter in three queries, and the user's tag names).
-`TimelineRepository.Move` locks the user's timelines and renumbers them 0…n−1 with the timeline swapped with its neighbour, which also repairs ties and gaps from deletes.
-Home is always first and can't move or be edited.
+Home, labelled "All feeds" (`homeName`), is one of the tabs: `TimelineRepository.List` returns it as the zero `rss.Timeline` at `users.home_position`, in the same numbering as `timelines.position` (Home first on a tie), and it moves like the others but can't be edited, shared or deleted.
+It has its own address, `/timelines/all` (`homeTabID` stands for it in URLs, fragments and the tab cookie), since `/` may show another tab.
+`TimelineRepository.Move` locks the user's row and timelines and renumbers every tab 0…n, Home included, with the tab swapped with its neighbour, which also repairs ties and gaps from deletes.
 New timeline and Edit render one form, `timeline_form.html`, with Show, Leave out and Only show fieldsets.
 Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `www create-user` both get them.
 New timeline (`timelineNewHandler`) opens on a list of starting points (`timeline_new.html`), each a link back with a `?preset=` from `timelinePresets` that fills in the form; a tag's page links to it with `?tag={id}`, and an unknown preset or a tag that isn't the user's shows the list.
@@ -267,6 +268,8 @@ New timeline (`timelineNewHandler`) opens on a list of starting points (`timelin
 `ErrTooManyTimelines` (20) is a form error; another user's timeline is a 404 (`timelineFromURL`).
 
 A timeline's page and Home (the zero `rss.Timeline`) share `renderTimeline` (see "Reading").
+`/` (`homeHandler`) renders the start tab in place: the one the `tab` cookie names, if it's still one of the user's tabs, else the first.
+Every timeline page sets that cookie (`HttpOnly`, `SameSite=Lax`, `Max-Age` of `rss.VisitGap`, renewed on each view), so the nav's Home returns to the tab being read and a later visit starts on the first.
 `ListTimeline` applies `timelineWhere`'s conditions to the earlier copy it looks for as well as to the entry, so copies collapse after filtering and a left-out feed's copy never stands in for an entry; "Also in" still lists every subscribed feed with a copy.
 A starred-only timeline lists stars instead (`StarRepository.ListStarred`), newest starred first, paged by `starred_at`, without "Also in".
 It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has since left still shows; `timelineWhere` handles the missing subscription (Show conditions fail, Leave out conditions pass).

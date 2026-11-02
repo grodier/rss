@@ -136,7 +136,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
 | `GET /shared/{token}/feed.atom` | no | A shared timeline's Atom feed |
-| `GET /` | no | Landing page; when logged in, Home under the tab row |
+| `GET /` | no | Landing page; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row |
 | `GET, POST /signup` | no | Only registered with `-invite-code` |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
@@ -153,8 +153,9 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET, POST /tags` | yes | Tags, and making one |
 | `GET /tags/{id}`; `POST /tags/{id}/feeds`, `/rename`, `/delete` | yes | A tag's page, and changing it |
 | `GET, POST /timelines`, `GET /timelines/new` | yes | Timelines, and making one (`?preset=`, `?tag=`) |
+| `GET /timelines/all` | yes | Home at its own address, since `/` may show another tab |
 | `GET /timelines/{id}`, `GET, POST /timelines/{id}/edit` | yes | A custom timeline, and editing it |
-| `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order |
+| `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order (`/timelines/all/move` moves Home) |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
 | `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen and when its page was rendered; 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
@@ -284,6 +285,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO) are served, with their stored `Content-Type`, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies are `SameSite=Lax`, and `Secure` with `-env production`.
+- **The `tab` cookie** remembers the tab a reader was on for a visit (`rss.VisitGap`), so `/` can return to it; it's a cookie rather than a session value because sessions are stored in Postgres and it's set on every timeline page. It's `HttpOnly`, `SameSite=Lax`, `Secure` like the session cookie, and checked against the reader's tabs on every use.
   Each login is a `user_sessions` row: it ends after 90 days unused (`sessionIdleTimeout`) and at most a year after login (scs's `Lifetime`), and logging out deletes it.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most `GOMAXPROCS` hashes run at once and the rest wait.
   `Hash` and `Verify` normalize the password to Unicode NFKC first.

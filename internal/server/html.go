@@ -24,6 +24,7 @@ var templateFuncs = template.FuncMap{
 	"avatar":      avatar,
 	"avatarTone":  avatarTone,
 	"debugPanel":  newDebugPanel,
+	"homeName":    func() string { return homeName },
 	"monogram":    monogram,
 	"postingRate": postingRate,
 }

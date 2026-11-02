@@ -1,6 +1,7 @@
-{{/* timeline-tabs is the tab row heading Home and custom timelines: Home
-     and the user's timelines in order, then an Edit pill, outside the part
-     that scrolls, that goes to /timelines (at the current timeline's row).
+{{/* timeline-tabs is the tab row heading Home and custom timelines: the
+     user's tabs in their order (Home, with no ID, wherever they put it),
+     then an Edit pill, outside the part that scrolls, that goes to
+     /timelines at the current tab's row.
      Its data is a timelineTabs. Each tab is its own page, so this is
      navigation (links with aria-current), not ARIA tabs, which switch panels
      within a page. No counts ("Reading" in docs/decisions.md). app.js
@@ -8,11 +9,10 @@
 {{define "timeline-tabs"}}
 <nav class="timeline-tabs" aria-label="Timelines">
   <ul role="list">
-    <li><a href="/"{{if eq .CurrentID ""}} aria-current="page"{{end}}>Home</a></li>
     {{range .Timelines}}
-    <li><a href="/timelines/{{.ID}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{.Name}}</a></li>
+    <li><a href="/timelines/{{or .ID "all"}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{or .Name homeName}}</a></li>
     {{end}}
   </ul>
-  <a class="btn btn-sm" href="/timelines{{with .CurrentID}}#timeline-{{.}}{{end}}">Edit<span class="visually-hidden"> timelines</span></a>
+  <a class="btn btn-sm" href="/timelines#timeline-{{or .CurrentID "all"}}">Edit<span class="visually-hidden"> timelines</span></a>
 </nav>
 {{end}}

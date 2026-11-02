@@ -27,30 +27,33 @@
            feeds': the row opens the timeline (its name's link covers it),
            and its controls are icon buttons at the end. Move buttons are
            disabled at the ends rather than left out, so the rows line up. */}}
+      {{/* Home is the row with no ID: "all" in its fragment and move route,
+           its name is homeName, and it has no pencil, since it can't be
+           edited (an empty slot keeps the columns aligned). */}}
       <ul class="timeline-list" role="list">
-        <li class="timeline-row">
-          <div>
-            <a class="timeline-row-name" href="/">{{template "icon-home"}}Home</a>
-            <p>Every feed you follow</p>
-          </div>
-        </li>
         {{range .Rows}}
-        <li class="timeline-row" id="timeline-{{.ID}}">
+        {{$id := or .ID "all"}}
+        {{$name := .Name}}{{if not .ID}}{{$name = homeName}}{{end}}
+        <li class="timeline-row" id="timeline-{{$id}}">
           <div>
-            <a class="timeline-row-name" href="/timelines/{{.ID}}">{{.Name}}</a>
+            <a class="timeline-row-name" href="/timelines/{{$id}}">{{if not .ID}}{{template "icon-home"}}{{end}}{{$name}}</a>
             {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
             <p>{{.Summary}}</p>
           </div>
-          <form class="timeline-row-move" action="/timelines/{{.ID}}/move" method="post">
-            <button class="row-icon-btn" type="submit" name="direction" value="up" aria-label="Move {{.Name}} up" title="Move up"{{if .First}} disabled{{end}}>{{template "icon-arrow-up"}}</button>
-            <button class="row-icon-btn" type="submit" name="direction" value="down" aria-label="Move {{.Name}} down" title="Move down"{{if .Last}} disabled{{end}}>{{template "icon-arrow-down"}}</button>
+          <form class="timeline-row-move" action="/timelines/{{$id}}/move" method="post">
+            <button class="row-icon-btn" type="submit" name="direction" value="up" aria-label="Move {{$name}} up" title="Move up"{{if .First}} disabled{{end}}>{{template "icon-arrow-up"}}</button>
+            <button class="row-icon-btn" type="submit" name="direction" value="down" aria-label="Move {{$name}} down" title="Move down"{{if .Last}} disabled{{end}}>{{template "icon-arrow-down"}}</button>
           </form>
-          <a class="row-icon-btn" href="/timelines/{{.ID}}/edit" aria-label="Edit {{.Name}}" title="Edit">{{template "icon-edit"}}</a>
+          {{if .ID}}
+          <a class="row-icon-btn" href="/timelines/{{.ID}}/edit" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
+          {{else}}
+          <span class="row-icon-slot" aria-hidden="true"></span>
+          {{end}}
         </li>
         {{end}}
       </ul>
 
-      {{if not .Rows}}
+      {{if not .Custom}}
       <div class="empty">
         <p>You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.</p>
       </div>

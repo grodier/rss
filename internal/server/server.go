@@ -212,8 +212,9 @@ type TimelineStore interface {
 	// Get returns the user's custom timeline id with its filter, or
 	// rss.ErrNoRecord.
 	Get(ctx context.Context, userID, id string) (rss.Timeline, error)
-	// List returns the user's custom timelines in tab order, without their
-	// filters.
+	// List returns the user's tabs in order, without their filters: Home
+	// (the rss.Timeline with no ID) wherever the user put it, and their
+	// custom timelines.
 	List(ctx context.Context, userID string) ([]rss.Timeline, error)
 	// ListWithFilters is List with each timeline's filter.
 	ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error)
@@ -223,9 +224,9 @@ type TimelineStore interface {
 	Update(ctx context.Context, userID string, t rss.Timeline) error
 	// Delete deletes the user's custom timeline id, or rss.ErrNoRecord.
 	Delete(ctx context.Context, userID, id string) error
-	// Move swaps the user's custom timeline id with the one before it in tab
-	// order if up, else the one after it; at either end it does nothing.
-	// rss.ErrNoRecord as Get.
+	// Move swaps the user's tab id (a custom timeline, or "" for Home) with
+	// the one before it in tab order if up, else the one after it; at either
+	// end it does nothing. rss.ErrNoRecord as Get, unless id is "".
 	Move(ctx context.Context, userID, id string, up bool) error
 	// Share gives the user's custom timeline id the share token newToken if
 	// it has none, and returns its token. rss.ErrNoRecord as Get.

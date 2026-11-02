@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Paper Round - {{if .Home}}Home{{else}}{{.Timeline.Name}}{{end}}</title>
+  <title>Paper Round - {{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
   <script src="{{asset "js/app.js"}}" defer></script>
@@ -18,7 +18,7 @@
       {{/* The tabs stand in for the page's heading, so the <h1> is visually
            hidden; it comes first so heading navigation still finds it. */}}
       <header class="page-head tabs-head">
-        <h1 class="visually-hidden">{{if .Home}}Home{{else}}{{.Timeline.Name}}{{end}}</h1>
+        <h1 class="visually-hidden">{{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</h1>
         {{template "timeline-tabs" .Tabs}}
       </header>
       {{/* The description, and Back to newest on older pages: no row

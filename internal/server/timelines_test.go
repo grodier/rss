@@ -109,6 +109,7 @@ func TestTimelinesHandler(t *testing.T) {
 					return nil, errors.New("wrong user")
 				}
 				return []rss.Timeline{
+					{},
 					{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken,
 						Filter: rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeWords: []string{"GPT"}}},
 					{ID: newsTimelineID, Name: "News", Filter: rss.TimelineFilter{MaxPostsPerWeek: 2}},
@@ -127,7 +128,10 @@ func TestTimelinesHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			"<h1>Timelines</h1>",
 			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
-			`<a class="timeline-row-name" href="/">`, `Home</a>`, "<p>Every feed you follow</p>",
+			`<li class="timeline-row" id="timeline-all">`,
+			`<a class="timeline-row-name" href="/timelines/all">`, `All feeds</a>`, "<p>Every feed you follow</p>",
+			`<form class="timeline-row-move" action="/timelines/all/move" method="post">`,
+			`<span class="row-icon-slot" aria-hidden="true"></span>`,
 			`<li class="timeline-row" id="timeline-`+testTimelineID+`">`,
 			`<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>`,
 			"<p>Tagged AI · Mentions “GPT”</p>",
@@ -137,12 +141,13 @@ func TestTimelinesHandler(t *testing.T) {
 			"<p>At most 2 posts a week</p>",
 			`<a class="timeline-row-name" href="/timelines/`+thirdID+`">Sports</a>`,
 			"<p>All your feeds</p>",
-			// Move buttons are disabled at the ends, not left out.
-			moveButton("AI", "up", true), moveButton("AI", "down", false),
+			// Move buttons are disabled at the ends, not left out; Home is first.
+			moveButton("All feeds", "up", true), moveButton("All feeds", "down", false),
+			moveButton("AI", "up", false), moveButton("AI", "down", false),
 			moveButton("News", "up", false), moveButton("News", "down", false),
 			moveButton("Sports", "up", false), moveButton("Sports", "down", true),
 		)
-		if home, first := strings.Index(body, `href="/">`), strings.Index(body, `id="timeline-`+testTimelineID+`"`); home < 0 || home > first {
+		if home, first := strings.Index(body, `id="timeline-all"`), strings.Index(body, `id="timeline-`+testTimelineID+`"`); home < 0 || home > first {
 			t.Errorf("Home's row isn't first: %s", body)
 		}
 		if strings.Index(body, ">AI</a>") > strings.Index(body, ">News</a>") || strings.Index(body, ">News</a>") > strings.Index(body, ">Sports</a>") {
@@ -163,14 +168,24 @@ func TestTimelinesHandler(t *testing.T) {
             <span class="chip">Shared</span>`)
 	})
 
-	t.Run("one timeline has both move buttons disabled", func(t *testing.T) {
+	t.Run("Home alone has both move buttons disabled", func(t *testing.T) {
+		s := newTestServer(t)
+		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
+		assertBodyContains(t, rr.Body.String(), moveButton("All feeds", "up", true), moveButton("All feeds", "down", true))
+	})
+
+	t.Run("Home last can move up, not down", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
 			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}, {}}, nil
 			},
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		assertBodyContains(t, rr.Body.String(), moveButton("AI", "up", true), moveButton("AI", "down", true))
+		body := rr.Body.String()
+		assertBodyContains(t, body, moveButton("AI", "up", true), moveButton("AI", "down", false), moveButton("All feeds", "up", false), moveButton("All feeds", "down", true))
+		if strings.Index(body, `id="timeline-all"`) < strings.Index(body, `id="timeline-`+testTimelineID+`"`) {
+			t.Errorf("Home's row isn't last: %s", body)
+		}
 	})
 
 	t.Run("empty state follows Home's row", func(t *testing.T) {
@@ -178,9 +193,9 @@ func TestTimelinesHandler(t *testing.T) {
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			`<a class="timeline-row-name" href="/">`,
+			`<a class="timeline-row-name" href="/timelines/all">`,
 			"You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.")
-		if strings.Index(body, `href="/">`) > strings.Index(body, "You don't have any timelines yet.") {
+		if strings.Index(body, `href="/timelines/all">`) > strings.Index(body, "You don't have any timelines yet.") {
 			t.Errorf("the empty state comes before Home's row: %s", body)
 		}
 	})
@@ -613,7 +628,7 @@ func TestTimelineHandler(t *testing.T) {
 	filter := rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}}
 	timelines := userTimeline(rss.Timeline{Name: "AI", Description: "Models & more", Filter: filter})
 	timelines.listFn = func(context.Context, string) ([]rss.Timeline, error) {
-		return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+		return []rss.Timeline{{}, {ID: testTimelineID, Name: "AI"}}, nil
 	}
 	s := newTestServerWith(t, Services{ArticleService: articles, TimelineService: timelines, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
 	get := func(t *testing.T, target, id string) *httptest.ResponseRecorder {
@@ -637,7 +652,7 @@ func TestTimelineHandler(t *testing.T) {
 			`<div class="timeline-about">
         <p>Models &amp; more</p>`,
 			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
-			`<li><a href="/">Home</a></li>`,
+			`<li><a href="/timelines/all">All feeds</a></li>`,
 			// The tab row's Edit goes to this timeline's row on /timelines.
 			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",
@@ -1071,12 +1086,23 @@ func TestTimelineMoveHandler(t *testing.T) {
 	s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
 		moveFn: func(ctx context.Context, userID, id string, up bool) error {
 			calls = append(calls, call{userID, id, up})
-			if id != testTimelineID {
+			if id != testTimelineID && id != "" {
 				return rss.ErrNoRecord
 			}
 			return nil
 		},
 	}})
+
+	t.Run("all moves Home", func(t *testing.T) {
+		calls = nil
+		rr, _ := serveTimeline(t, s, s.timelineMoveHandler, "/", "all", url.Values{"direction": {"down"}})
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/timelines#timeline-all" {
+			t.Fatalf("code %d location %q", rr.Code, rr.Header().Get("Location"))
+		}
+		if want := []call{{"user-1", "", false}}; !slices.Equal(calls, want) {
+			t.Errorf("calls = %v, want %v (Home as \"\")", calls, want)
+		}
+	})
 
 	for _, tt := range []struct {
 		direction string

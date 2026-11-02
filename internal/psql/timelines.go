@@ -125,6 +125,79 @@ func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Tim
 	return timelines, nil
 }
 
+// ListWithFilters returns userID's custom timelines in tab order, like
+// List, each with its filter: what /timelines needs for its summaries. It
+// reads the timelines, then their tags and their feeds, three queries in
+// all rather than a Get per timeline. The sources are joined to the user's
+// timelines rather than filtered on their own user_id, which
+// timeline_tags has no index for.
+func (r *TimelineRepository) ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
+			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at
+		FROM timelines
+		WHERE user_id = $1
+		ORDER BY position, created_at`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var timelines []rss.Timeline
+	for rows.Next() {
+		var t rss.Timeline
+		var allFeeds bool
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
+			&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly,
+			pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		t.Filter.OnlyIncluded = !allFeeds
+		timelines = append(timelines, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(timelines) == 0 {
+		return nil, nil
+	}
+
+	byID := make(map[string]*rss.TimelineFilter, len(timelines))
+	for i := range timelines {
+		byID[timelines[i].ID] = &timelines[i].Filter
+	}
+	stmt = `SELECT s.timeline_id, s.tag_id, s.exclude
+		FROM timeline_tags s
+		JOIN timelines t ON t.id = s.timeline_id
+		WHERE t.user_id = $1
+		ORDER BY s.timeline_id, s.tag_id`
+	err = scanTimelinesSources(ctx, r.DB, stmt, userID, byID, func(f *rss.TimelineFilter, exclude bool) *[]string {
+		if exclude {
+			return &f.ExcludeTagIDs
+		}
+		return &f.IncludeTagIDs
+	})
+	if err != nil {
+		return nil, err
+	}
+	stmt = `SELECT s.timeline_id, s.feed_id, s.exclude
+		FROM timeline_feeds s
+		JOIN timelines t ON t.id = s.timeline_id
+		WHERE t.user_id = $1
+		ORDER BY s.timeline_id, s.feed_id`
+	err = scanTimelinesSources(ctx, r.DB, stmt, userID, byID, func(f *rss.TimelineFilter, exclude bool) *[]string {
+		if exclude {
+			return &f.ExcludeFeedIDs
+		}
+		return &f.IncludeFeedIDs
+	})
+	if err != nil {
+		return nil, err
+	}
+	return timelines, nil
+}
+
 // Update replaces the name, description and filter of userID's custom
 // timeline t.ID, in one transaction. rss.ErrNoRecord if it isn't one of the
 // user's custom timelines, or a tag or feed isn't the user's.
@@ -351,6 +424,32 @@ func scanTimelineSources(ctx context.Context, db *sql.DB, stmt, timelineID strin
 			*exclude = append(*exclude, id)
 		} else {
 			*include = append(*include, id)
+		}
+	}
+	return rows.Err()
+}
+
+// scanTimelinesSources runs stmt (selecting a timeline ID, a source ID and
+// its exclude flag for userID's timelines) and appends each source ID to
+// the list field picks from its timeline's filter in byID. Rows for a
+// timeline not in byID (made after the timelines were read) are skipped.
+func scanTimelinesSources(ctx context.Context, db *sql.DB, stmt, userID string, byID map[string]*rss.TimelineFilter,
+	field func(f *rss.TimelineFilter, exclude bool) *[]string) error {
+	rows, err := db.QueryContext(ctx, stmt, userID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var timelineID, id string
+		var exclude bool
+		if err := rows.Scan(&timelineID, &id, &exclude); err != nil {
+			return err
+		}
+		if f, ok := byID[timelineID]; ok {
+			list := field(f, exclude)
+			*list = append(*list, id)
 		}
 	}
 	return rows.Err()

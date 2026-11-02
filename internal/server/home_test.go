@@ -532,15 +532,23 @@ func TestHomeHandlerTabs(t *testing.T) {
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
 	// app.js scrolls the list in .timeline-tabs to its [aria-current=page] link.
-	t.Run("no timelines offers to make one", func(t *testing.T) {
+	// The tab row ends in an Edit pill (not a tab) to /timelines, with or
+	// without timelines.
+	const editTimelines = `<a class="btn btn-sm" href="/timelines">Edit<span class="visually-hidden"> timelines</span></a>`
+
+	t.Run("no timelines: Home and Edit", func(t *testing.T) {
 		body := getHome(t, s, "/", true).Body.String()
 		assertBodyContains(t, body,
 			`<header class="page-head tabs-head">
         <h1 class="visually-hidden">Home</h1>`,
 			`<nav class="timeline-tabs" aria-label="Timelines">`,
 			`<li><a href="/" aria-current="page">Home</a></li>`,
-			`<li class="tab-manage"><a href="/timelines/new">New timeline</a></li>`,
+			`</ul>
+  `+editTimelines,
 		)
+		if strings.Contains(body, "New timeline") {
+			t.Errorf("tab row offers New timeline: %s", body)
+		}
 		if gotFilter == nil || gotFilter.OnlyIncluded || gotFilter.IncludeTagIDs != nil || gotFilter.IncludeFeedIDs != nil ||
 			gotFilter.ExcludeTagIDs != nil || gotFilter.ExcludeFeedIDs != nil {
 			t.Errorf("ListTimeline filter = %+v, want the zero filter", gotFilter)
@@ -560,13 +568,13 @@ func TestHomeHandlerTabs(t *testing.T) {
 			`<li><a href="/" aria-current="page">Home</a></li>`,
 			`<li><a href="/timelines/t-1">AI</a></li>`,
 			`<li><a href="/timelines/t-2">News &amp; views</a></li>`,
-			`<li class="tab-manage"><a href="/timelines">Timelines</a></li>`,
+			editTimelines,
 		)
 		if strings.Index(body, ">AI<") > strings.Index(body, ">News &amp; views<") {
 			t.Errorf("tabs out of order: %s", body)
 		}
-		if strings.Contains(body, `href="/timelines/new"`) {
-			t.Errorf("New timeline link shown with timelines: %s", body)
+		if strings.Contains(body, `<li><a href="/timelines">`) {
+			t.Errorf("tab row has a Timelines tab: %s", body)
 		}
 	})
 

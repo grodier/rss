@@ -23,28 +23,34 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{if .Timelines}}
+      {{/* The tab row as a list, in its order. Rows are built like My
+           feeds': the row opens the timeline (its name's link covers it),
+           and its controls are icon buttons at the end. Move buttons are
+           disabled at the ends rather than left out, so the rows line up. */}}
       <ul class="timeline-list" role="list">
-        {{/* $last is the index of the last row. */}}
-        {{$last := len (slice .Timelines 1)}}
-        {{range $i, $t := .Timelines}}
-        <li id="timeline-{{.ID}}">
-          <div class="timeline-list-text">
-            <a class="timeline-list-name" href="/timelines/{{.ID}}">{{.Name}}</a>
-            {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
-            {{with .Description}}<p>{{.}}</p>{{end}}
+        <li class="timeline-row">
+          <div>
+            <a class="timeline-row-name" href="/">{{template "icon-home"}}Home</a>
+            <p>Every feed you follow</p>
           </div>
-          {{if $last}}
-          <form class="timeline-move" action="/timelines/{{.ID}}/move" method="post">
-            {{if gt $i 0}}<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move {{.Name}} up">Move up</button>{{end}}
-            {{if lt $i $last}}<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move {{.Name}} down">Move down</button>{{end}}
+        </li>
+        {{range .Rows}}
+        <li class="timeline-row" id="timeline-{{.ID}}">
+          <div>
+            <a class="timeline-row-name" href="/timelines/{{.ID}}">{{.Name}}</a>
+            {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
+            <p>{{.Summary}}</p>
+          </div>
+          <form class="timeline-row-move" action="/timelines/{{.ID}}/move" method="post">
+            <button class="row-icon-btn" type="submit" name="direction" value="up" aria-label="Move {{.Name}} up" title="Move up"{{if .First}} disabled{{end}}>{{template "icon-arrow-up"}}</button>
+            <button class="row-icon-btn" type="submit" name="direction" value="down" aria-label="Move {{.Name}} down" title="Move down"{{if .Last}} disabled{{end}}>{{template "icon-arrow-down"}}</button>
           </form>
-          {{end}}
-          <a href="/timelines/{{.ID}}/edit">Edit<span class="visually-hidden"> {{.Name}}</span></a>
+          <a class="row-icon-btn" href="/timelines/{{.ID}}/edit" aria-label="Edit {{.Name}}" title="Edit">{{template "icon-edit"}}</a>
         </li>
         {{end}}
       </ul>
-      {{else}}
+
+      {{if not .Rows}}
       <div class="empty">
         <p>You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.</p>
       </div>

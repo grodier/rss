@@ -48,6 +48,11 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}
 	}
+	// The Timelines page names the tags its summaries mention; a test that
+	// doesn't care gets none.
+	if svc.TagService == nil {
+		svc.TagService = &fakeTagStore{}
+	}
 	// /healthcheck pings the database; a test that doesn't care gets one
 	// that answers.
 	if svc.Database == nil {

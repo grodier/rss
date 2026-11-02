@@ -540,9 +540,9 @@ func TestHomeHandlerTabs(t *testing.T) {
 		body := getHome(t, s, "/", true).Body.String()
 		assertBodyContains(t, body,
 			`<header class="page-head tabs-head">
-        <h1 class="visually-hidden">Home</h1>`,
+        <h1 class="visually-hidden">All feeds</h1>`,
 			`<nav class="timeline-tabs" aria-label="Timelines">`,
-			`<li><a href="/timelines/all" aria-current="page">Home</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
 			`</ul>
   `+editTimelines,
 		)
@@ -566,11 +566,11 @@ func TestHomeHandlerTabs(t *testing.T) {
 		body := getHome(t, s, "/timelines/all", true).Body.String()
 		assertBodyContains(t, body,
 			`<li><a href="/timelines/t-1">AI</a></li>`,
-			`<li><a href="/timelines/all" aria-current="page">Home</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
 			`<li><a href="/timelines/t-2">News &amp; views</a></li>`,
 			editTimelines,
 		)
-		ai, home, news := strings.Index(body, ">AI<"), strings.Index(body, ">Home</a></li>"), strings.Index(body, ">News &amp; views<")
+		ai, home, news := strings.Index(body, ">AI<"), strings.Index(body, ">All feeds</a></li>"), strings.Index(body, ">News &amp; views<")
 		if !(ai < home && home < news) {
 			t.Errorf("tabs out of order: %s", body)
 		}

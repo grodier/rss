@@ -14,7 +14,7 @@ const timelinePageSize = 30
 // homeName is what users see Home called: its tab, heading and page title,
 // and its row on /timelines (the homeName template function). The nav's
 // "Home" isn't it: that opens the start tab, whichever it is.
-const homeName = "Home"
+const homeName = "All feeds"
 
 // homeTabID stands for Home where a tab needs an ID: its URL
 // (/timelines/all), its row's fragment and move route on /timelines, and

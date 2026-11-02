@@ -129,7 +129,7 @@ func TestTimelinesHandler(t *testing.T) {
 			"<h1>Timelines</h1>",
 			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
 			`<li class="timeline-row" id="timeline-all">`,
-			`<a class="timeline-row-name" href="/timelines/all">`, `Home</a>`, "<p>Every feed you follow</p>",
+			`<a class="timeline-row-name" href="/timelines/all">`, `All feeds</a>`, "<p>Every feed you follow</p>",
 			`<form class="timeline-row-move" action="/timelines/all/move" method="post">`,
 			`<span class="row-icon-slot" aria-hidden="true"></span>`,
 			`<li class="timeline-row" id="timeline-`+testTimelineID+`">`,
@@ -142,7 +142,7 @@ func TestTimelinesHandler(t *testing.T) {
 			`<a class="timeline-row-name" href="/timelines/`+thirdID+`">Sports</a>`,
 			"<p>All your feeds</p>",
 			// Move buttons are disabled at the ends, not left out; Home is first.
-			moveButton("Home", "up", true), moveButton("Home", "down", false),
+			moveButton("All feeds", "up", true), moveButton("All feeds", "down", false),
 			moveButton("AI", "up", false), moveButton("AI", "down", false),
 			moveButton("News", "up", false), moveButton("News", "down", false),
 			moveButton("Sports", "up", false), moveButton("Sports", "down", true),
@@ -171,7 +171,7 @@ func TestTimelinesHandler(t *testing.T) {
 	t.Run("Home alone has both move buttons disabled", func(t *testing.T) {
 		s := newTestServer(t)
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		assertBodyContains(t, rr.Body.String(), moveButton("Home", "up", true), moveButton("Home", "down", true))
+		assertBodyContains(t, rr.Body.String(), moveButton("All feeds", "up", true), moveButton("All feeds", "down", true))
 	})
 
 	t.Run("Home last can move up, not down", func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestTimelinesHandler(t *testing.T) {
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		body := rr.Body.String()
-		assertBodyContains(t, body, moveButton("AI", "up", true), moveButton("AI", "down", false), moveButton("Home", "up", false), moveButton("Home", "down", true))
+		assertBodyContains(t, body, moveButton("AI", "up", true), moveButton("AI", "down", false), moveButton("All feeds", "up", false), moveButton("All feeds", "down", true))
 		if strings.Index(body, `id="timeline-all"`) < strings.Index(body, `id="timeline-`+testTimelineID+`"`) {
 			t.Errorf("Home's row isn't last: %s", body)
 		}
@@ -652,7 +652,7 @@ func TestTimelineHandler(t *testing.T) {
 			`<div class="timeline-about">
         <p>Models &amp; more</p>`,
 			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
-			`<li><a href="/timelines/all">Home</a></li>`,
+			`<li><a href="/timelines/all">All feeds</a></li>`,
 			// The tab row's Edit goes to this timeline's row on /timelines.
 			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",

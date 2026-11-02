@@ -258,7 +258,7 @@ So `AI` matches "AI's" and "#AI" but not "said", and `C` matches "C++" too (the 
 
 `/timelines` lists the tabs in order, Home among them, with rows like My feeds': the row opens the timeline, and move up, move down (disabled at the ends) and the Edit pencil are icon buttons at its end.
 Each row says what the timeline is made of (`timelineSummary`, from `TimelineRepository.ListWithFilters`, which reads every filter in three queries, and the user's tag names).
-Home is one of the tabs: `TimelineRepository.List` returns it as the zero `rss.Timeline` at `users.home_position`, in the same numbering as `timelines.position` (Home first on a tie), and it moves like the others but can't be edited, shared or deleted.
+Home, labelled "All feeds" (`homeName`), is one of the tabs: `TimelineRepository.List` returns it as the zero `rss.Timeline` at `users.home_position`, in the same numbering as `timelines.position` (Home first on a tie), and it moves like the others but can't be edited, shared or deleted.
 It has its own address, `/timelines/all` (`homeTabID` stands for it in URLs, fragments and the tab cookie), since `/` may show another tab.
 `TimelineRepository.Move` locks the user's row and timelines and renumbers every tab 0…n, Home included, with the tab swapped with its neighbour, which also repairs ties and gaps from deletes.
 New timeline and Edit render one form, `timeline_form.html`, with Show, Leave out and Only show fieldsets.

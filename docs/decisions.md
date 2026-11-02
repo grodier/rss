@@ -247,7 +247,7 @@ Planned in #163 (issues #147–#162).
   In a simulation of ~120 mixed feeds over three weeks, rows in a run of three or more from one feed went from 74% to 5%, with new articles missed staying at 0.1% (posts dated over a day before they appeared, which are backlog).
   Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again), and delaying articles so they interleave (31 minutes later on average, and aggregators still clumped).
   A per-reader timeline table would give each reader their own positions instead of read-time groups; it stays in backlog.md for when the per-feed cost shows.
-  No bump on subscribe.
+  No bump on subscribe, in grouping too: a feed's first save is stored as backlog even where its latest post is recent, so it never counts as arriving (judged by position alone, it went first on a reload, then dropped to its date on the next look).
   Displayed dates may look out of order; accepted.
   Feed pages keep publication order.
 - **On a feed's first save, undated items are backlog too** (#438): each run goes below the item before it in the feed's document, a step apart (the median gap between the feed's dated items, at most a day; a day without one), the newest no later than a day before the save, and spread evenly down to the next dated item where stepping would pass it.

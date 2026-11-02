@@ -58,6 +58,7 @@ type Article struct {
 	// PublishedAt is midnight UTC and only its date is meaningful.
 	PublishedDateOnly bool
 	TimelineAt        time.Time // position in timelines; see psql.timelineAt
+	Backlog           bool      // placed as backlog (see psql.isBacklog), so it never counts as arriving
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -68,11 +69,12 @@ type Article struct {
 const NewsWindow = 6 * time.Hour
 
 // IsNews reports whether the article counts as news that arrived at its
-// CreatedAt: its TimelineAt is no more than NewsWindow below that. Backlog
-// (an old item, a first save's history) is placed further down, so it never
-// counts as arriving.
+// CreatedAt: it isn't Backlog, and its TimelineAt is no more than NewsWindow
+// below that. Backlog (an old item, a feed's first save) never counts as
+// arriving, even when its date puts it near its arrival: a new feed's latest
+// post would otherwise go first on a reload, then drop to its date.
 func (a Article) IsNews() bool {
-	return !a.TimelineAt.Before(a.CreatedAt.Add(-NewsWindow))
+	return !a.Backlog && !a.TimelineAt.Before(a.CreatedAt.Add(-NewsWindow))
 }
 
 // FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.

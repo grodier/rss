@@ -212,4 +212,10 @@ func TestArticleIsNews(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("backlog near its arrival", func(t *testing.T) {
+		if (Article{TimelineAt: created.Add(-2 * time.Hour), CreatedAt: created, Backlog: true}).IsNews() {
+			t.Error("IsNews = true, want false")
+		}
+	})
 }

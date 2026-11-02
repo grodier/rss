@@ -2112,6 +2112,61 @@
     display: flex;
   }
 
+  /* Reordering with JavaScript: a grip at the start of each row (app.js
+     shows it), above the row's link and the only part that takes a touch
+     drag, so the rest of the row still scrolls; the row being dragged
+     lifts, and a moved row flashes a tint. */
+  .reorder-handle {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.75rem;
+    block-size: 2.25rem;
+    margin-inline: -0.5rem 0.25rem;
+    color: var(--text-3);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .reorder-handle[hidden] {
+    display: none;
+  }
+
+  .reorder-handle .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+  }
+
+  .reorder-handle:hover {
+    color: var(--text);
+  }
+
+  .timeline-row.dragging {
+    z-index: 2;
+    background: var(--bg);
+    box-shadow: 0 0.25rem 1rem color-mix(in srgb, var(--text) 18%, transparent);
+    cursor: grabbing;
+  }
+
+  .timeline-row.just-moved {
+    animation: row-moved 0.8s ease-out;
+  }
+
+  @keyframes row-moved {
+    from {
+      background: var(--info-bg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .timeline-row.just-moved {
+      animation: none;
+    }
+  }
+
   .timeline-row :is(.timeline-row-move, .row-icon-btn) {
     position: relative;
     z-index: 1;

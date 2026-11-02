@@ -89,6 +89,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/tags/{id}/delete", s.tagDeleteHandler)
 			r.Get("/timelines", s.timelinesHandler)
 			r.Post("/timelines", s.timelineCreateHandler)
+			r.Post("/timelines/order", s.timelineOrderHandler) // posted by app.js after a reorder
 			r.Get("/timelines/new", s.timelineNewHandler)
 			r.Get("/timelines/all", s.allTimelineHandler) // Home, as / may show another tab
 			r.Get("/timelines/{id}", s.timelineHandler)

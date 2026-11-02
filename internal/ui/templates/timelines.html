@@ -7,6 +7,7 @@
   <title>Paper Round - Timelines</title>
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
+  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -30,17 +31,21 @@
       {{/* Home is the row with no ID: "all" in its fragment and move route,
            its name is homeName, and it has no pencil, since it can't be
            edited (an empty slot keeps the columns aligned). */}}
-      <ul class="timeline-list" role="list">
+      {{/* app.js shows each row's drag handle (rendered hidden, since it
+           needs JavaScript) and moves rows in place, posting the whole order
+           to /timelines/order. */}}
+      <ul class="timeline-list" role="list" data-reorder>
         {{range .Rows}}
         {{$id := or .ID "all"}}
         {{$name := .Name}}{{if not .ID}}{{$name = homeName}}{{end}}
-        <li class="timeline-row" id="timeline-{{$id}}">
+        <li class="timeline-row" id="timeline-{{$id}}" data-id="{{$id}}" data-name="{{$name}}">
+          <span class="reorder-handle" aria-hidden="true" hidden>{{template "icon-grip"}}</span>
           <div>
             <a class="timeline-row-name" href="/timelines/{{$id}}">{{if not .ID}}{{template "icon-home"}}{{end}}{{$name}}</a>
             {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
             <p>{{.Summary}}</p>
           </div>
-          <form class="timeline-row-move" action="/timelines/{{$id}}/move" method="post">
+          <form class="timeline-row-move" action="/timelines/{{$id}}/move" method="post" data-move>
             <button class="row-icon-btn" type="submit" name="direction" value="up" aria-label="Move {{$name}} up" title="Move up"{{if .First}} disabled{{end}}>{{template "icon-arrow-up"}}</button>
             <button class="row-icon-btn" type="submit" name="direction" value="down" aria-label="Move {{$name}} down" title="Move down"{{if .Last}} disabled{{end}}>{{template "icon-arrow-down"}}</button>
           </form>

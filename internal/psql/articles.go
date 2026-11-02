@@ -17,7 +17,7 @@ import (
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
 	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "authors", "title", "summary", "content",
-	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
+	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "backlog", "created_at", "updated_at",
 }
 
 var (
@@ -53,7 +53,7 @@ func articleListColumns(prefix string) string {
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
 	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.Backlog, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
@@ -131,9 +131,9 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 //     previous visit, and everything positioned above anchors.Line;
 //   - 0: everything else, below the "You were here" line.
 //
-// News arrives at its created_at; an article is news when it's positioned no
-// more than rss.NewsWindow below that (see newsCond), so backlog never
-// counts as arriving. The groups run as separate queries, from before's group down,
+// News arrives at its created_at; an article is news when it isn't backlog
+// and is positioned no more than rss.NewsWindow below that (see newsCond), so
+// backlog never counts as arriving. The groups run as separate queries, from before's group down,
 // until the page is full; the cursor applies only in its own group. With zero
 // anchors there's one group, 0, in timeline order.
 //
@@ -246,10 +246,11 @@ func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
 	return groups
 }
 
-// newsCond returns the condition that the article a is news: positioned no
-// more than rss.NewsWindow below its created_at (rss.Article.IsNews in SQL).
+// newsCond returns the condition that the article a is news: not backlog,
+// and positioned no more than rss.NewsWindow below its created_at
+// (rss.Article.IsNews in SQL).
 func newsCond(a string) string {
-	return fmt.Sprintf("%[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
+	return fmt.Sprintf("NOT %[1]s.backlog AND %[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
 }
 
 // ListShared returns the newest limit articles with a URL of ownerID's
@@ -524,13 +525,11 @@ const undatedBacklogStep = 24 * time.Hour
 // The rest of a later save is news, placed no lower than a floor: the later
 // of prevFetched and now - rss.NewsWindow (see placeNews).
 func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
-	cutoff := prevFetched.Add(-backlogSlack)
 	positions := make([]time.Time, len(articles))
 
 	var news []int
 	for i, a := range articles {
-		backlog := !a.PublishedAt.IsZero() && (prevFetched.IsZero() || a.PublishedAt.Before(cutoff))
-		if backlog {
+		if isBacklog(a, prevFetched) && !a.PublishedAt.IsZero() {
 			positions[i] = a.PublishedAt
 			if positions[i].After(now) {
 				positions[i] = now
@@ -548,6 +547,16 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 		placeNews(articles, news, positions, prevFetched, now)
 	}
 	return positions
+}
+
+// isBacklog reports whether timelineAt places a as backlog, for a save of a
+// feed whose previous successful fetch was prevFetched: every item of a first
+// save (prevFetched zero), dated or not, and later items published before
+// prevFetched - backlogSlack. It's stored with the article so timelines never
+// count it as arriving, even when a first save's recent item is placed near
+// its arrival (see rss.Article.IsNews).
+func isBacklog(a rss.Article, prevFetched time.Time) bool {
+	return prevFetched.IsZero() || (!a.PublishedAt.IsZero() && a.PublishedAt.Before(prevFetched.Add(-backlogSlack)))
 }
 
 // placeNews sets the positions of a later save's news, the articles at the
@@ -720,8 +729,8 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // saveArticles upserts articles for feedID by (feed_id, external_id) and
 // records a successful fetch of the feed: sets last_fetched_at and
 // last_attempt_at to now() and clears last_error and consecutive_failures.
-// A new article's timeline_at is set on insert (see timelineAt) and never
-// changes. A newly inserted article that needsEnrichment and is among
+// A new article's timeline_at and backlog are set on insert (see timelineAt
+// and isBacklog) and never change. A newly inserted article that needsEnrichment and is among
 // enrichCandidates gets an enrich_jobs row. Every article sharing a
 // non-empty canonical_url with an inserted or updated one, that one
 // included, gets has_copies (never cleared). It locks the feed row so
@@ -740,9 +749,9 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
 	// published_date_only follows the kept published_at.
-	// timeline_at is deliberately not updated.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, authors, title, summary, content, excerpt, published_at, published_date_only, timeline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12, $13, $14)
+	// timeline_at and backlog are deliberately not updated.
+	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, authors, title, summary, content, excerpt, published_at, published_date_only, timeline_at, backlog)
+		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
 			canonical_url = EXCLUDED.canonical_url,
@@ -772,7 +781,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			id       string
 			inserted bool
 		)
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, pq.Array(a.Authors), a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&id, &inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, pq.Array(a.Authors), a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i], isBacklog(a, prevFetched.Time)).Scan(&id, &inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.

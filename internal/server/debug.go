@@ -733,6 +733,7 @@ func articleDebugFields(a rss.Article, d rss.ArticleDebug, now time.Time) []debu
 		{Name: "published_at", Value: debugTime(a.PublishedAt, now)},
 		{Name: "published_date_only", Value: strconv.FormatBool(a.PublishedDateOnly)},
 		{Name: "timeline_at", Value: debugTime(a.TimelineAt, now)},
+		{Name: "backlog", Value: strconv.FormatBool(a.Backlog)},
 		{Name: "created_at", Value: debugTime(a.CreatedAt, now)},
 		{Name: "updated_at", Value: debugTime(a.UpdatedAt, now)},
 	}

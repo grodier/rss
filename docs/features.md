@@ -322,6 +322,7 @@ The page's values come from enrichment and only fill gaps.
 *News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `rss.NewsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
+Whether an article was placed as backlog is stored with it (`isBacklog`), and only news counts as arriving when timelines group (`rss.Article.IsNews`, `newsCond`): a first save's latest post sits within `rss.NewsWindow` of the save by its date alone, so it would otherwise go first on a reload, then drop to its date on the next look.
 So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.
 
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.

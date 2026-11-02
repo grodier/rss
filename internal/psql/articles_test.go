@@ -824,6 +824,33 @@ func TestTimelineAt(t *testing.T) {
 	}
 }
 
+func TestIsBacklog(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	prev := now.Add(-time.Hour)
+	art := func(published time.Time) rss.Article { return rss.Article{PublishedAt: published} }
+	tests := []struct {
+		name    string
+		article rss.Article
+		prev    time.Time
+		want    bool
+	}{
+		{"first save, published an hour ago", art(now.Add(-time.Hour)), time.Time{}, true},
+		{"first save, future-dated", art(now.Add(time.Hour)), time.Time{}, true},
+		{"first save, undated", art(time.Time{}), time.Time{}, true},
+		{"later save, recent", art(now.Add(-2 * time.Hour)), prev, false},
+		{"later save, undated", art(time.Time{}), prev, false},
+		{"later save, exactly at the boundary", art(prev.Add(-backlogSlack)), prev, false},
+		{"later save, before the boundary", art(prev.Add(-backlogSlack - time.Second)), prev, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBacklog(tt.article, tt.prev); got != tt.want {
+				t.Errorf("isBacklog = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestArticleRepositoryGetByID(t *testing.T) {
 	db := psqltest.NewDB(t)
@@ -1121,6 +1148,72 @@ func TestListTimelineGroups(t *testing.T) {
 			if item.Article.Title == "orig" && (item.Group != 0 || len(item.AlsoIn) != 1 || item.AlsoIn[0].ID != feedB.ID) {
 				t.Errorf("orig: group %d, AlsoIn %v, want group 0, also in feed B", item.Group, item.AlsoIn)
 			}
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+//
+// A feed's first save is backlog even where it's recent: a reload after
+// subscribing to a new feed mustn't put its latest post first, or it jumps
+// down to its date on the next look. The feed's later saves are news.
+func TestListTimelineFirstSaveIsntNew(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	followed, added := newTestFeed(t, db), newTestFeed(t, db)
+	user := newTestUser(t, db)
+	for _, f := range []rss.Feed{followed, added} {
+		if err := subs.Subscribe(ctx, user, f.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+
+	now := time.Now()
+	look := rss.TimelineAnchors{Look: now.Add(-time.Minute)} // the reader's latest look, before the new feed's first save
+	for _, a := range []struct {
+		title    string
+		timeline time.Duration
+	}{{"newer", time.Hour}, {"older", 3 * time.Hour}} {
+		at := now.Add(-a.timeline)
+		if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, title, timeline_at, created_at) VALUES ($1, $2, $2, $3, $3)`,
+			followed.ID, a.title, at); err != nil {
+			t.Fatalf("insert %s: %v", a.title, err)
+		}
+	}
+
+	save := func(t *testing.T, a rss.Article) {
+		t.Helper()
+		if _, err := saveArticles(ctx, db, added.ID, []rss.Article{a}); err != nil {
+			t.Fatalf("saveArticles: %v", err)
+		}
+	}
+	list := func(t *testing.T) []string {
+		t.Helper()
+		items, err := articles.ListTimeline(ctx, user, rss.TimelineFilter{}, look, rss.ArticleCursor{}, 100)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		var got []string
+		for _, item := range items {
+			got = append(got, fmt.Sprintf("%d:%s", item.Group, item.Article.Title))
+		}
+		return got
+	}
+
+	save(t, rss.Article{ExternalID: "latest", Title: "latest", PublishedAt: now.Add(-2 * time.Hour)})
+	t.Run("the first save stays at its date", func(t *testing.T) {
+		if got, want := list(t), []string{"0:newer", "0:latest", "0:older"}; !slices.Equal(got, want) {
+			t.Errorf("got  %v\nwant %v", got, want)
+		}
+	})
+
+	save(t, rss.Article{ExternalID: "next", Title: "next", PublishedAt: now.Add(-90 * time.Minute)})
+	t.Run("a later save's news goes first", func(t *testing.T) {
+		if got, want := list(t), []string{"2:next", "0:newer", "0:latest", "0:older"}; !slices.Equal(got, want) {
+			t.Errorf("got  %v\nwant %v", got, want)
 		}
 	})
 }

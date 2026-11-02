@@ -176,12 +176,12 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		if got := strings.Count(body, `class="article-row"`); got != 30 {
 			t.Errorf("rows = %d, want 30", got)
 		}
-		want := "/?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: result[29].Article.TimelineAt, ID: result[29].Article.ID}))
+		want := "/timelines/all?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: result[29].Article.TimelineAt, ID: result[29].Article.ID}))
 		if !strings.Contains(body, `rel="next"`) || !strings.Contains(body, "Older articles") {
 			t.Fatalf("no older link: %s", body)
 		}
 		// html/template's URL escaping may differ from QueryEscape; compare decoded.
-		start := strings.Index(body, `href="/?before=`)
+		start := strings.Index(body, `href="/timelines/all?before=`)
 		if start < 0 {
 			t.Fatalf("no before link: %s", body)
 		}
@@ -199,7 +199,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		result[29].Group = 1
 		body := getHome(t, s, "/", true).Body.String()
 		want := encodeCursor(rss.ArticleCursor{Group: 1, At: result[29].Article.TimelineAt, ID: result[29].Article.ID})
-		start := strings.Index(body, `href="/?before=`)
+		start := strings.Index(body, `href="/timelines/all?before=`)
 		if start < 0 {
 			t.Fatalf("no before link: %s", body)
 		}
@@ -299,7 +299,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) { return mark, nil }}
 		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
 		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		getHome(t, s, "/?before="+url.QueryEscape(cur), true)
+		getHome(t, s, "/timelines/all?before="+url.QueryEscape(cur), true)
 		if want := mark.Anchors(time.Now()); gotAnchors != want {
 			t.Errorf("anchors = %+v, want the mark's %+v", gotAnchors, want)
 		}
@@ -317,7 +317,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	t.Run("malformed anchors is 400", func(t *testing.T) {
 		before := calls
 		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		rr := getHome(t, s, "/?before="+url.QueryEscape(cur)+"&anchors=junk", true)
+		rr := getHome(t, s, "/timelines/all?before="+url.QueryEscape(cur)+"&anchors=junk", true)
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("status = %d, want 400", rr.Code)
 		}
@@ -352,7 +352,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	t.Run("before is decoded and shows back to newest", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
 		want := rss.ArticleCursor{Group: 1, At: time.Date(2026, 1, 1, 0, 0, 0, 5, time.UTC), ID: "123e4567-e89b-12d3-a456-426614174000"}
-		rr := getHome(t, s, "/?before="+url.QueryEscape(encodeCursor(want)), true)
+		rr := getHome(t, s, "/timelines/all?before="+url.QueryEscape(encodeCursor(want)), true)
 		if gotBefore.Group != want.Group || !gotBefore.At.Equal(want.At) || gotBefore.ID != want.ID {
 			t.Errorf("store before = %+v, want %+v", gotBefore, want)
 		}
@@ -385,7 +385,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 	t.Run("empty with a cursor", func(t *testing.T) {
 		result, storeErr = nil, nil
 		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		body := getHome(t, s, "/?before="+url.QueryEscape(cur), true).Body.String()
+		body := getHome(t, s, "/timelines/all?before="+url.QueryEscape(cur), true).Body.String()
 		if !strings.Contains(body, "No older articles.") || strings.Contains(body, "Your timeline is empty") {
 			t.Errorf("wrong empty message: %s", body)
 		}
@@ -436,7 +436,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		t.Cleanup(func() { s.services.SaveService = &fakeSaveStore{} })
 
 		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		target := "/?before=" + url.QueryEscape(cur)
+		target := "/timelines/all?before=" + url.QueryEscape(cur)
 		rr := getHome(t, s, target, true)
 
 		if rr.Code != http.StatusOK {
@@ -532,17 +532,17 @@ func TestHomeHandlerTabs(t *testing.T) {
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
 	// app.js scrolls the list in .timeline-tabs to its [aria-current=page] link.
-	// The tab row ends in an Edit pill (not a tab) to /timelines, with or
-	// without timelines.
-	const editTimelines = `<a class="btn btn-sm" href="/timelines">Edit<span class="visually-hidden"> timelines</span></a>`
+	// The tab row ends in an Edit pill (not a tab) to /timelines, at Home's
+	// row from Home.
+	const editTimelines = `<a class="btn btn-sm" href="/timelines#timeline-all">Edit<span class="visually-hidden"> timelines</span></a>`
 
 	t.Run("no timelines: Home and Edit", func(t *testing.T) {
 		body := getHome(t, s, "/", true).Body.String()
 		assertBodyContains(t, body,
 			`<header class="page-head tabs-head">
-        <h1 class="visually-hidden">Home</h1>`,
+        <h1 class="visually-hidden">All feeds</h1>`,
 			`<nav class="timeline-tabs" aria-label="Timelines">`,
-			`<li><a href="/" aria-current="page">Home</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
 			`</ul>
   `+editTimelines,
 		)
@@ -555,22 +555,23 @@ func TestHomeHandlerTabs(t *testing.T) {
 		}
 	})
 
-	t.Run("lists the timelines in order with Home current", func(t *testing.T) {
+	t.Run("the tabs follow List's order, Home wherever it is", func(t *testing.T) {
 		timelines.listFn = func(ctx context.Context, userID string) ([]rss.Timeline, error) {
 			if userID != "user-1" {
 				return nil, errors.New("wrong user")
 			}
-			return []rss.Timeline{{ID: "t-1", Name: "AI"}, {ID: "t-2", Name: "News & views"}}, nil
+			return []rss.Timeline{{ID: "t-1", Name: "AI"}, {}, {ID: "t-2", Name: "News & views"}}, nil
 		}
 		t.Cleanup(func() { timelines.listFn = nil })
-		body := getHome(t, s, "/", true).Body.String()
+		body := getHome(t, s, "/timelines/all", true).Body.String()
 		assertBodyContains(t, body,
-			`<li><a href="/" aria-current="page">Home</a></li>`,
 			`<li><a href="/timelines/t-1">AI</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
 			`<li><a href="/timelines/t-2">News &amp; views</a></li>`,
 			editTimelines,
 		)
-		if strings.Index(body, ">AI<") > strings.Index(body, ">News &amp; views<") {
+		ai, home, news := strings.Index(body, ">AI<"), strings.Index(body, ">All feeds</a></li>"), strings.Index(body, ">News &amp; views<")
+		if !(ai < home && home < news) {
 			t.Errorf("tabs out of order: %s", body)
 		}
 		if strings.Contains(body, `<li><a href="/timelines">`) {
@@ -585,6 +586,134 @@ func TestHomeHandlerTabs(t *testing.T) {
 			t.Errorf("status = %d, want 500", rr.Code)
 		}
 	})
+}
+
+func TestHomeHandlerStartTab(t *testing.T) {
+	const aiID, newsID, goneID = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"
+	var gotFilter rss.TimelineFilter
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		gotFilter = filter
+		return timelineItems(31), nil
+	}}
+	aiFilter := rss.TimelineFilter{IncludeWords: []string{"AI"}}
+	newsFilter := rss.TimelineFilter{IncludeWords: []string{"news"}}
+	store := func(tabs ...rss.Timeline) *fakeTimelineStore {
+		return &fakeTimelineStore{
+			listFn: func(context.Context, string) ([]rss.Timeline, error) { return tabs, nil },
+			getFn: func(ctx context.Context, userID, id string) (rss.Timeline, error) {
+				switch id {
+				case aiID:
+					return rss.Timeline{ID: aiID, Name: "AI", Filter: aiFilter}, nil
+				case newsID:
+					return rss.Timeline{ID: newsID, Name: "News", Filter: newsFilter}, nil
+				}
+				return rss.Timeline{}, rss.ErrNoRecord
+			},
+		}
+	}
+	home, ai, news, gone := rss.Timeline{}, rss.Timeline{ID: aiID, Name: "AI"}, rss.Timeline{ID: newsID, Name: "News"}, rss.Timeline{ID: goneID, Name: "Gone"}
+
+	tests := []struct {
+		name        string
+		tabs        []rss.Timeline
+		cookie      string // "" for none
+		wantCurrent string // the aria-current tab's href
+		wantFilter  rss.TimelineFilter
+		wantPager   string
+	}{
+		{"no cookie, Home first", []rss.Timeline{home, ai}, "", "/timelines/all", rss.TimelineFilter{}, "/timelines/all?before="},
+		{"no cookie, a timeline first", []rss.Timeline{ai, home}, "", "/timelines/" + aiID, aiFilter, "/timelines/" + aiID + "?before="},
+		{"cookie names a timeline", []rss.Timeline{home, ai, news}, newsID, "/timelines/" + newsID, newsFilter, "/timelines/" + newsID + "?before="},
+		{"cookie names Home", []rss.Timeline{ai, home}, "all", "/timelines/all", rss.TimelineFilter{}, "/timelines/all?before="},
+		{"cookie names a timeline that isn't a tab", []rss.Timeline{ai, home}, goneID, "/timelines/" + aiID, aiFilter, "/timelines/" + aiID + "?before="},
+		{"cookie is garbage", []rss.Timeline{news, home}, "junk", "/timelines/" + newsID, newsFilter, "/timelines/" + newsID + "?before="},
+		{"the first tab was deleted since List", []rss.Timeline{gone, home}, "", "/timelines/all", rss.TimelineFilter{}, "/timelines/all?before="},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFilter = rss.TimelineFilter{OnlyIncluded: true} // so a zero filter is seen to be passed
+			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: store(tt.tabs...)})
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
+			if tt.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: "tab", Value: tt.cookie})
+			}
+			rr := httptest.NewRecorder()
+			s.sessionManager.LoadAndSave(http.HandlerFunc(s.homeHandler)).ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d", rr.Code)
+			}
+			body := rr.Body.String()
+			assertBodyContains(t, body, `<a href="`+tt.wantCurrent+`" aria-current="page">`, `rel="next" href="`+tt.wantPager)
+			if !slices.Equal(gotFilter.IncludeWords, tt.wantFilter.IncludeWords) || gotFilter.OnlyIncluded != tt.wantFilter.OnlyIncluded {
+				t.Errorf("ListTimeline filter = %+v, want %+v", gotFilter, tt.wantFilter)
+			}
+		})
+	}
+
+	t.Run("logged out: the landing page, and no tab cookie", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TimelineService: store(home)})
+		rr := getHome(t, s, "/", false)
+		if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), "timeline-tabs") {
+			t.Errorf("status = %d, body: %s", rr.Code, rr.Body.String())
+		}
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == "tab" {
+				t.Errorf("set the tab cookie: %+v", c)
+			}
+		}
+	})
+}
+
+func TestTimelineTabCookie(t *testing.T) {
+	const aiID = "11111111-1111-4111-8111-111111111111"
+	timelines := &fakeTimelineStore{
+		listFn: func(context.Context, string) ([]rss.Timeline, error) {
+			return []rss.Timeline{{}, {ID: aiID, Name: "AI"}}, nil
+		},
+		getFn: func(ctx context.Context, userID, id string) (rss.Timeline, error) {
+			if id == aiID {
+				return rss.Timeline{ID: aiID, Name: "AI"}, nil
+			}
+			return rss.Timeline{}, rss.ErrNoRecord
+		},
+	}
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}, TimelineService: timelines})
+	cur := url.QueryEscape(encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"}))
+	serve := func(handler http.HandlerFunc, target, id string) *httptest.ResponseRecorder {
+		rr, _ := serveTimeline(t, s, handler, target, id, nil)
+		return rr
+	}
+
+	tests := []struct {
+		name string
+		rr   *httptest.ResponseRecorder
+		want string
+	}{
+		{"Home at /", getHome(t, s, "/", true), "all"},
+		{"Home at /timelines/all", serve(s.allTimelineHandler, "/timelines/all", ""), "all"},
+		{"a custom timeline", serve(s.timelineHandler, "/timelines/"+aiID, aiID), aiID},
+		{"an older page", serve(s.timelineHandler, "/timelines/"+aiID+"?before="+cur, aiID), aiID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.rr.Code != http.StatusOK {
+				t.Fatalf("status = %d", tt.rr.Code)
+			}
+			var got *http.Cookie
+			for _, c := range tt.rr.Result().Cookies() {
+				if c.Name == "tab" {
+					got = c
+				}
+			}
+			if got == nil {
+				t.Fatal("no tab cookie")
+			}
+			if got.Value != tt.want || got.MaxAge != 1800 || !got.HttpOnly || got.SameSite != http.SameSiteLaxMode || got.Path != "/" {
+				t.Errorf("cookie = %+v, want value %q, Max-Age 1800, HttpOnly, SameSite=Lax, Path=/", got, tt.want)
+			}
+		})
+	}
 }
 
 // dividerItems returns timeline items at the given positions, titled
@@ -655,7 +784,7 @@ func TestTimelineDivider(t *testing.T) {
 	}}
 	s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, ArticleService: articles})
 	cursor := func(group int) string {
-		return "/?before=" + encodeCursor(rss.ArticleCursor{Group: group, At: at(8, 0), ID: fmt.Sprintf(timelineUUID, 2)})
+		return "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{Group: group, At: at(8, 0), ID: fmt.Sprintf(timelineUUID, 2)})
 	}
 
 	tests := []struct {
@@ -764,7 +893,7 @@ func TestTimelineSeenUpTo(t *testing.T) {
 
 	t.Run("a later page", func(t *testing.T) {
 		items = dividerItems(first, first.Add(-time.Hour))
-		target := "/?before=" + encodeCursor(rss.ArticleCursor{At: first.Add(time.Hour), ID: fmt.Sprintf(timelineUUID, 9)})
+		target := "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{At: first.Add(time.Hour), ID: fmt.Sprintf(timelineUUID, 9)})
 		if got, ok := seenUpTo(t, getHome(t, s, target, true).Body.String()); ok {
 			t.Errorf("data-seen-up-to = %q, want none", got)
 		}

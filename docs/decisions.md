@@ -479,14 +479,15 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
   Per browser session was the other choice, but session cookies on phones last for days, so the first tab would rarely apply.
   The visit's tab is a cookie, checked against the user's tabs on every use, rather than a session value: sessions are stored in Postgres, so it would be a write on every page view.
   Home gets its own address, `/timelines/all`, since `/` may show another tab; its position is a column on `users` in the same numbering as `timelines.position`, since Home has no `timelines` row.
-  Whether the tab keeps the name "Home" once it can move is settled at #480's design checkpoint.
+  Its tab is called "All feeds" (the owner's pick at #480's design checkpoint, over keeping "Home" and over Bluesky's "Following"): once it can move, the nav's "Home", which opens your first tab, and a tab called "Home" sitting third would say different things, and "All feeds" says what it is in the app's own words ("My feeds").
+  The code still calls it Home (`homeName` holds the label).
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280.
   (#356)
 - **The form stores only what has an effect.** With Show set to all feeds, the tags and feeds ticked under Show are dropped on save; a tag or feed both shown and left out is stored as left out; IDs that aren't the user's are ignored.
   A timeline showing only some feeds whose sources are all gone (say its only tag was deleted) stays, with an empty state asking to edit it, rather than silently showing every feed.
   (#356)
-- **Home's heading is "Home"**, matching its tab, and each custom timeline's heading is its name, both visually hidden (above).
-  (#356)
+- **Home's heading is "All feeds"**, matching its tab, and each custom timeline's heading is its name, both visually hidden (above).
+  (#356, #480)
 - **No unread filter or counts**, as under "Reading".
 
 ### Sharing

@@ -24,7 +24,7 @@ func NewTimelineRepository(db *sql.DB) *TimelineRepository {
 	return &TimelineRepository{DB: db}
 }
 
-// Create stores a custom timeline after userID's others (position = max + 1)
+// Create stores a custom timeline after userID's other tabs, Home included
 // with its sources, in one transaction, and returns its ID.
 // rss.ErrTooManyTimelines at MaxTimelines; rss.ErrNoRecord if a tag or feed
 // isn't the user's (23503).
@@ -54,7 +54,8 @@ func createTimeline(ctx context.Context, tx *sql.Tx, userID string, t rss.Timeli
 	// Concurrent requests can overshoot MaxTimelines slightly; that's accepted.
 	stmt := `INSERT INTO timelines (user_id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
 			include_words, exclude_words)
-		SELECT $1, $2, $3, COALESCE(max(position), 0) + 1, $4, $6, $7, $8, $9, $10
+		SELECT $1, $2, $3, GREATEST(COALESCE(max(position), -1), (SELECT home_position FROM users WHERE id = $1)) + 1,
+			$4, $6, $7, $8, $9, $10
 		FROM timelines
 		WHERE user_id = $1
 		HAVING count(*) < $5
@@ -109,13 +110,18 @@ func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Ti
 	return t, nil
 }
 
-// List returns userID's custom timelines by position, then
-// created_at, without their filters: what the tab row needs.
+// List returns userID's tabs, Home included (the rss.Timeline with no ID,
+// at users.home_position), by position, then created_at, without their
+// filters: what the tab row needs. Home goes first on a tie.
 func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Timeline, error) {
-	stmt := `SELECT id, name, description, position, COALESCE(share_token, ''), created_at, updated_at
+	stmt := `SELECT id::text, name, description, position, COALESCE(share_token, ''), created_at, updated_at, false AS home
 		FROM timelines
 		WHERE user_id = $1
-		ORDER BY position, created_at`
+		UNION ALL
+		SELECT '', '', '', home_position, '', created_at, created_at, true
+		FROM users
+		WHERE id = $1
+		ORDER BY position, home DESC, created_at`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID)
 	if err != nil {
@@ -126,7 +132,8 @@ func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Tim
 	var timelines []rss.Timeline
 	for rows.Next() {
 		var t rss.Timeline
-		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Position, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		var home bool
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Position, &t.ShareToken, &t.CreatedAt, &t.UpdatedAt, &home); err != nil {
 			return nil, err
 		}
 		timelines = append(timelines, t)
@@ -137,18 +144,22 @@ func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Tim
 	return timelines, nil
 }
 
-// ListWithFilters returns userID's custom timelines in tab order, like
-// List, each with its filter: what /timelines needs for its summaries. It
+// ListWithFilters returns userID's tabs in order, Home included, like List,
+// each with its filter (Home's is zero): what /timelines needs. It
 // reads the timelines, then their tags and their feeds, three queries in
 // all rather than a Get per timeline. The sources are joined to the user's
 // timelines rather than filtered on their own user_id, which
 // timeline_tags has no index for.
 func (r *TimelineRepository) ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error) {
-	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
-			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at
+	stmt := `SELECT id::text, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
+			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at, false AS home
 		FROM timelines
 		WHERE user_id = $1
-		ORDER BY position, created_at`
+		UNION ALL
+		SELECT '', '', '', home_position, true, false, 0, false, '{}', '{}', '', created_at, created_at, true
+		FROM users
+		WHERE id = $1
+		ORDER BY position, home DESC, created_at`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID)
 	if err != nil {
@@ -159,10 +170,10 @@ func (r *TimelineRepository) ListWithFilters(ctx context.Context, userID string)
 	var timelines []rss.Timeline
 	for rows.Next() {
 		var t rss.Timeline
-		var allFeeds bool
+		var allFeeds, home bool
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
 			&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly,
-			pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt, &home); err != nil {
 			return nil, err
 		}
 		t.Filter.OnlyIncluded = !allFeeds
@@ -252,11 +263,13 @@ func (r *TimelineRepository) Delete(ctx context.Context, userID, id string) erro
 	return execOne(ctx, r.DB, stmt, userID, id)
 }
 
-// Move swaps userID's custom timeline id with its neighbour in tab order:
-// the one before it if up, else the one after it. At either end it does
-// nothing. rss.ErrNoRecord if the timeline isn't the user's custom one.
+// Move swaps userID's tab id (a custom timeline's ID, or "" for Home) with
+// its neighbour in tab order: the one before it if up, else the one after
+// it. At either end it does nothing. rss.ErrNoRecord if id isn't "" or one
+// of the user's custom timelines.
 //
-// It renumbers the user's timelines 0…n−1 each time, which also repairs ties
+// It locks the user's row and timelines and renumbers every tab 0…n,
+// timelines.position and users.home_position alike, which also repairs ties
 // and gaps left by deletes.
 func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up bool) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
@@ -266,10 +279,21 @@ func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up boo
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	stmt := `SELECT id FROM timelines
-		WHERE user_id = $1
-		ORDER BY position, created_at
-		FOR UPDATE`
+	// Lock the user's row (for home_position) and timelines, so concurrent
+	// moves renumber one after the other.
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM timelines WHERE user_id = $1 FOR UPDATE`, userID); err != nil {
+		return err
+	}
+	// The same order as List, Home as "".
+	stmt := `SELECT id, home FROM (
+			SELECT id::text, position, created_at, false AS home FROM timelines WHERE user_id = $1
+			UNION ALL
+			SELECT '', home_position, created_at, true FROM users WHERE id = $1
+		) tabs
+		ORDER BY position, home DESC, created_at`
 	rows, err := tx.QueryContext(ctx, stmt, userID)
 	if err != nil {
 		return err
@@ -277,7 +301,8 @@ func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up boo
 	var ids []string
 	for rows.Next() {
 		var tid string
-		if err := rows.Scan(&tid); err != nil {
+		var home bool
+		if err := rows.Scan(&tid, &home); err != nil {
 			rows.Close()
 			return err
 		}
@@ -299,14 +324,33 @@ func (r *TimelineRepository) Move(ctx context.Context, userID, id string, up boo
 	if j >= 0 && j < len(ids) {
 		ids[i], ids[j] = ids[j], ids[i]
 	}
+	return renumberTabs(ctx, tx, userID, ids)
+}
 
-	// Each ID's new position is its index in ids, counted from 0.
-	stmt = `UPDATE timelines t
-		SET position = s.position - 1
-		FROM unnest($2::uuid[]) WITH ORDINALITY AS s (id, position)
-		WHERE t.id = s.id AND t.user_id = $1 AND t.position <> s.position - 1`
-	if _, err := tx.ExecContext(ctx, stmt, userID, pq.Array(ids)); err != nil {
+// renumberTabs sets userID's tab order to ids (custom timeline IDs, "" for
+// Home), each tab's position being its index in ids, and commits tx. Only
+// rows whose position changes are written.
+func renumberTabs(ctx context.Context, tx *sql.Tx, userID string, ids []string) error {
+	home := slices.Index(ids, "")
+	timelineIDs := slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return id == "" })
+	positions := make([]int64, 0, len(timelineIDs))
+	for i, id := range ids {
+		if id != "" {
+			positions = append(positions, int64(i))
+		}
+	}
+	stmt := `UPDATE timelines t
+		SET position = s.position
+		FROM unnest($2::uuid[], $3::int[]) AS s (id, position)
+		WHERE t.id = s.id AND t.user_id = $1 AND t.position <> s.position`
+	if _, err := tx.ExecContext(ctx, stmt, userID, pq.Array(timelineIDs), pq.Array(positions)); err != nil {
 		return err
+	}
+	if home >= 0 {
+		stmt = `UPDATE users SET home_position = $2 WHERE id = $1 AND home_position <> $2`
+		if _, err := tx.ExecContext(ctx, stmt, userID, home); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

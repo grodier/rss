@@ -1806,6 +1806,13 @@
     stroke-width: 2;
   }
 
+  /* The room a row's icon button takes, where a row has none (Home's
+     pencil on the Timelines page), so the columns line up. */
+  .row-icon-slot {
+    flex: none;
+    inline-size: 2.25rem;
+  }
+
   /* As a button (the Timelines page's move buttons), without the pill. */
   button.row-icon-btn {
     padding: 0;

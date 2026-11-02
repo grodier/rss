@@ -41,7 +41,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 		body     string
 		nextPath string
 	}{
-		{"timeline", getHome(t, timeline, "/", true).Body.String(), "/"},
+		{"timeline", getHome(t, timeline, "/", true).Body.String(), "/timelines/all"},
 		{"saved", getSaved(t, saved, "/saved").Body.String(), "/saved"},
 		{"feed page", serveFeed(t, feed, testFeedID).Body.String(), "/feeds/" + testFeedID},
 	}

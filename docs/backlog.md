@@ -147,7 +147,6 @@ Each with when it pays off:
   Read state doesn't drive it (the timeline isn't an inbox), so a time- or count-based rule works (e.g. keep 6 months, or the newest N per feed), with `reads` rows deleted along with their articles (`ON DELETE CASCADE`).
   Before launch, weigh deleting against keeping: storage and backup cost and the "Articles grow without bound" watchlist entry on one side; the value of a long article archive (search, history, business uses of the data) and its copyright and privacy implications on the other.
   Saved articles (#299) must survive whatever rule is chosen: deleting an article cascades to its `saves` rows.
-  Decide it before "A timeline table per reader" (under Reading), whose size it bounds.
   For scale: #388's seed takes about 1 KB per article on disk with `content` empty, so real full-text articles take several times that.
 - [ ] **Operational visibility.**
   An admin page or metrics (due backlog, failure rate, 304 rate).
@@ -194,17 +193,6 @@ Each with when it pays off:
   Search across every article in your subscriptions, not just Saved: "that post I read last month".
   Postgres full-text search (`tsvector` with a GIN index) over the title, page title and excerpt, scoped to the user's feeds; whether it covers the full content too is a storage and copyright question.
   Plan after "Article retention" (under Feed ingestion), which decides how far back there is to search; it would also replace the Saved search's `ILIKE` ("Saved search scans with `ILIKE`" in the watchlist).
-- [ ] **A timeline table per reader (needs planning).**
-  One shared table with a small row per reader per article in the feeds they follow, written when the article arrives, with copies collapsed on write (as Tiny Tiny RSS, Miniflux and Mastodon do).
-  Home is then one index lookup: 0.5–0.9 ms on any page at #388's scale, against ~30 ms for #404's per-feed query, and it stops growing with the number of feeds followed.
-  Storage: about 225 bytes per entry, growing with articles × followers: 69 MB (and ~35 MB a year) for #388's heavy reader with 300 feeds, ~4 MB a year for a reader with 100 ordinary feeds.
-  Subscribing and importing must backfill the feed's existing articles (4.8 s for 300 feeds of two years), in a background job like imports, so a new feed's articles appear a few seconds late, and the job competes with other queries while it runs.
-  Ingest writes a row per follower for every new article; unsubscribing deletes rows and promotes the next copy when the feed holding the first one goes; and the rows are a derived copy that bugs can make drift, so it needs a rebuild tool.
-  It doesn't speed up word filters (860 ms measured).
-  A cheaper version keeps only each reader's recent entries (Mastodon keeps a few hundred) and serves older pages with #404's query.
-  Decide "Article retention" (under Feed ingestion) first: it bounds this table's size.
-  It would also replace #455's read-time grouping: each reader's row could take a position above what they'd already seen when the article arrives.
-  Only when timelines get slow again after #404 (its watchlist entry for the cost per followed feed).
 - [ ] **Dates for undated articles from their pages.**
   Enrichment could read a page's `article:published_time` and fill an undated article's `published_at`, so rows and feed pages show a date; its timeline position wouldn't move (it's set once), and many pages have no date.
   Deferred from #438, which places undated articles without one.
@@ -467,6 +455,12 @@ Background refresh:
   Busy feeds fetched every 15 minutes (#456) recompute it four times as often.
   *Signal:* the count shows up in `pg_stat_statements`, or `SaveFetch` time grows for busy feeds.
   *Fix:* recompute only when articles were inserted, plus at most once a day.
+- [ ] **Rows written for every active follower** (#493, planned in #491).
+  `saveArticles` writes a `timeline_entries` row for each new news article and each follower who looked in the last 6 hours, in one statement but inside the fetch's transaction, which holds the feed's row lock.
+  *Measured 2026-11-02* on a prototype (`make db/loadseed`'s seed plus 1,000 readers with 500 rows each; Postgres 16 on a dev container): 1.2 ms a save with 1 follower; 2.4 ms for one article and 21 ms for 20 with 50 followers; 20 ms for one article and 430 ms for 20 with 1,000 followers, about 20 µs a row (the article's own upsert is about 1 ms).
+  Following a feed also writes the reader's rows for its posts from the last 6 hours, a few per feed, in the subscription's transaction, so an OPML import writes a few hundred.
+  *Signal:* `SaveFetch` time, or the `feed refreshed` log's `duration`, climbing with a feed's follower count.
+  *Fix:* write the rows from a job queued in the transaction and run outside the feed's lock, or insert followers on the shared positions with one `INSERT … SELECT` over `subscriptions` and only raised ones from arrays.
 - [ ] **Writes from feed page views** (#137).
   Viewing a stale feed runs an `UPDATE` (`RequestRefresh`).
   The `refresh_requested_at IS NULL` guard limits it to once per stale period per feed, so this is unlikely to matter.
@@ -537,7 +531,18 @@ Pages and queries:
   #455 groups what arrived since the reader's last look ahead of the rest, one statement per group, stopping when the page is full; the arrival groups only read each feed's recent entries.
   *Measured 2026-10-31* on a prototype (#438, same seed, Postgres 16, warm cache), Home page 1 for 300 subscriptions: 34–41 ms today; grouped, 3.0 ms back after a night, 5.3 ms after 4 days, 4.7 ms on a reload, but 27 ms back after 35 minutes, when the page also needs older articles, and 39 ms for pages below the line (36 ms today).
   *Measured 2026-10-31* with #455 (`make db/loadseed`, now with `created_at` up to an hour after `timeline_at`; Postgres 16 on a dev container, warm cache), Home page 1 for 300 subscriptions: 43–46 ms ungrouped; grouped, 5.1 ms back after a night (1,584 buffers), 7.4 ms after 4 days, 6.7 ms on a reload, but 37 ms back after 35 minutes (group 0's scan reads 304k rows to skip what arrived) and 49 ms just below the line; for 30 subscriptions 3–10 ms in every case.
-  *Fix:* "A timeline table per reader" under Reading.
+  *Measured 2026-11-02* on a prototype of #491's per-reader rows (same seed, plus each user's 500 newest rows of the last 7 days; Postgres 16 on a dev container, warm cache), Home page 1 for 300 subscriptions: 79 ms with today's query ungrouped, 5.2 ms grouped back after a night and 52 ms back after 35 minutes; with the rows, 4.6 ms whenever the reader has a page of rows (1.2 ms for the rows, 3.4 ms for the articles without a row above the last of them), and 7–17 ms back after 1 to 8 days, when the rows stop 6 hours after the last look; for 30 subscriptions 1.7 ms.
+  *Fix:* #494 (per-reader rows, planned in #491) for the first pages; pages past the rows keep this cost (the next entry).
+- [ ] **First page past a reader's rows** (#494, planned in #491).
+  Past a reader's newest 500 or so rows, a page is #404's per-feed query again, and each feed's scan also skips the articles that have a row, with a lookup each, which can't be an index range.
+  *Measured 2026-11-02* on the prototype above: 75 ms for 300 subscriptions (today's page 20: 76 ms) and 10.7 ms for 30 (8.8 ms).
+  *Signal:* the first page past the rows slower than #404's page 2, or readers paging that deep often (`/` requests with a `before` older than a day).
+  *Fix:* keep more rows (a higher `rss.MaxEntries`), then rows for every article, the full per-reader table #491 decided against (a backfill on every subscribe and import).
+- [ ] **Trimming at every visit start** (#495, planned in #491).
+  `MarkSeen` deletes a reader's rows past what's kept at the start of each visit: a few hundred rows a visit for a heavy reader, so `timeline_entries` churns and needs vacuuming.
+  *Measured 2026-11-02* on the prototype above: 4–8 ms to trim a reader's 800 rows to 500.
+  *Signal:* dead tuples or bloat on `timeline_entries` (`pg_stat_user_tables.n_dead_tup`, its size well over 224 B a row), or autovacuum falling behind on it.
+  *Fix:* trim only once a reader is well past `rss.MaxEntries`, or in batches.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).
   Keyword matches (`~*` over title, page title and excerpt) can't use an index, and Postgres can't estimate how many articles they match, so a page that matches few articles reads many to fill 30 rows.
   *Signal:* `/timelines/{id}` p95 above `/`'s, or `EXPLAIN ANALYZE` reading far more rows than the page returns.
@@ -546,6 +551,10 @@ Pages and queries:
   Only words are left.
   #482 gives every new account a Quiet posters timeline, so the rate filter's query runs for everyone who opens that tab, not only those who made one.
   *Fix:* "Word filters from a full-text index" under Filtering and timelines.
+- [ ] **A write on every timeline view** (#493, #498, planned in #491).
+  The "seen" beacon reports when a timeline page is shown as well as when it's hidden (#493), and each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice.
+  *Signal:* `MarkSeen` in `pg_stat_statements` totals, or `timeline_marks` updates showing up in row-lock waits or WAL volume.
+  *Fix:* skip a report that changes nothing (the same position, `seen_at` under a minute old), or batch them in the browser.
 - [ ] **Timeline tabs on every Home view** (#356).
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.
   *Signal:* it shows up in `pg_stat_statements` totals.
@@ -609,6 +618,11 @@ Data growth:
   Raw `summary` and `content` HTML is stored for every article forever.
   *Signal:* `articles` table and index size, slower `ListByFeed` and timeline queries, backup size.
   *Fix:* see "Article retention" under Feed ingestion.
+- [ ] **`timeline_entries` grows with readers** (#493, planned in #491).
+  Each reader who has ever looked keeps up to about 500 rows, plus what arrives during a visit and the 6 hours after it, at about 224 B a row (the row and its three indexes): about 110 KB a reader, 210 KB for a heavy one, and 110 MB for 1,000 readers.
+  Rows of readers who never come back stay until their account or the articles are deleted.
+  *Signal:* `timeline_entries` size against the number of readers seen in the last month.
+  *Fix:* delete the rows of readers not seen for a month (their articles go back to their shared positions), or article retention.
 - [ ] **`reads` grows with every article read** (#156).
   One row per user per article opened, kept until the article is deleted.
   *Signal:* `reads` table and index size.

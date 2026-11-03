@@ -284,7 +284,7 @@ Its share page (`/timelines/{id}/share`, `timelineSharePageHandler`, from Share 
 The public routes are outside the session group.
 `sharedTimelineFromURL` 404s a malformed token or one `GetShared` doesn't know.
 The page (`sharedTimelineHandler`) shows the name and description, how to follow it, and `<link rel="alternate">` to the feed; it reads no articles.
-The feed (`sharedFeedHandler`) reads the newest 50 with `ArticleRepository.ListShared`: the same query as the timeline (or starred list), with `shared` set, so feeds keep their own titles (never the owner's names) and articles without a URL are left out.
+The feed (`sharedFeedHandler`) reads the newest 50 with `ArticleRepository.ListShared`: the query for the timeline's articles without a row (`timelineStmt`, or the starred list), with `shared` set, so feeds keep their own titles (never the owner's names), articles without a URL are left out, and every entry is at its shared position, since a shared feed has no reader.
 `sharedAtomFeed` builds the feed: the page URL as its ID, each entry's ID its canonical URL (else `urn:uuid:{id}`), an `<author>` for each of the article's authors, and a `<source>` naming its feed.
 It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 304), `X-Robots-Tag: noindex` and `Cache-Control: public`.
 
@@ -302,13 +302,11 @@ It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 30
 ## Reading: timeline, article pages and read state
 
 **Timeline.** `renderTimeline` asks `ListTimeline` for 31 entries to know whether there's a next page, and shows 30.
-`ListTimeline` reads, for each of the user's subscriptions (those the timeline's filter shows), that feed's newest entries before the cursor from `articles_feed_timeline_idx`, merges them by `(timeline_at, id)` descending and keeps the page, which it pages with a keyset cursor, `?before=<group>_<time>_<id>` (`cursor.go`).
-It does this once per group, in order, until the page is full: on a reload during a visit, what *arrived* since the reader's latest look (group 2); then what arrived since their previous visit, and anything above the "You were here" line (group 1); then everything else (group 0).
-`renderTimeline` reads the mark first and passes its `rss.TimelineAnchors` (`TimelineMark.Anchors`); zero anchors turn a group off, so without a mark (or for `ListShared`) there's one group in position order.
-The arrival groups bound `timeline_at` from below (`timelineGroups`), so after an absence each feed's scan is a short range and the query for the history below the line often doesn't run.
-The cursor carries its row's group and applies only in that group; the next groups start from their top.
-The "Older articles" link also carries the first page's anchors (`&anchors=`, `encodeAnchors`), and later pages use them instead of the mark, so infinite scroll never repeats or skips a row when the mark moves mid-scroll (a beacon, or the visit gap passing).
-Copies of one article (same `canonical_url`) collapse into the earliest to arrive: an entry is skipped when an earlier copy is in one of the user's feeds, whatever that copy's group, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
+A timeline is one list in position order, newest first: each entry at the reader's own position (their `timeline_entries` row, see "The reader's position") when they have one, else at its `timeline_at`, which `ListTimeline` returns as `rss.ArticleWithFeed.Position`; it's paged with a keyset cursor on that position and the ID, `?before=<time>_<id>` (`cursor.go`).
+A page merges two queries by `(position, id)` descending: the reader's rows, from `timeline_entries_user_timeline_idx` (`entriesStmt`, joined to `subscriptions` so rows of a feed they've left don't show), and the articles without a row, read for each of the user's subscriptions (those the timeline's filter shows) as that feed's newest entries before the cursor from `articles_feed_timeline_idx` (`timelineStmt`).
+When the rows fill the page, the second query is bounded below by the last of them, since nothing below it can be on the page, so each feed's scan is a short range and a reader's first pages are cheap; past their rows, a page costs what #404's per-feed query costs (see the Performance watchlist in backlog.md).
+Positions are set once, so a row never moves between pages, and later pages need nothing but the cursor.
+Copies of one article (same `canonical_url`) collapse into the earliest: an entry is skipped when an earlier copy (smaller position, then ID, each copy at the reader's row's position if it has one, else its `timeline_at`) is in one of the user's feeds, a check only articles flagged `has_copies` at ingest (`saveArticles`) get.
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
@@ -323,10 +321,10 @@ The page's values come from enrichment and only fill gaps.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
 A later save of a feed with no fetch attempt for two days (`staleFeedAfter`), such as a catalog feed nobody followed until now, counts as a first save: nobody was fetching it, so when its items appeared is unknown and their dates are the best order (the previous attempt decides, not the previous success, so a followed feed that was down keeps its news); it gets the first save's enrichment allowance and is never `Behind`.
-Whether an article was placed as backlog is stored with it (`isBacklog`), and only news counts as arriving when timelines group (`rss.Article.IsNews`, `newsCond`): a first save's latest post sits within `rss.NewsWindow` of the save by its date alone, so it would otherwise go first on a reload, then drop to its date on the next look.
-So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.
+Whether an article was placed as backlog is stored with it (`isBacklog`), for debug mode.
+So new items land near the top in publish order (and, for a reader who has looked recently, above what they've seen: see "The reader's position"), and an imported archive, dated or not, doesn't.
 
-**The reader's position.** A reader who has looked in the last `rss.NewsWindow` also gets their own position for what arrives in a feed they follow, a `timeline_entries` row set once and never changed (rows are written, but timelines don't read them until #494).
+**The reader's position.** A reader who has looked in the last `rss.NewsWindow` also gets their own position for what arrives in a feed they follow, a `timeline_entries` row set once and never changed, which their timelines read instead of `timeline_at` (see "Timeline").
 `saveArticles` writes one per inserted article that is news or positioned within `rss.NewsWindow` of the save (a first save's latest posts, for followers who subscribed before the feed was fetched), for each follower whose mark's `seen_at` is that recent; `Subscribe` writes one per article of the feed positioned within `rss.NewsWindow`, when the subscription is new and the reader has a mark, so imports (`importer.Runner.run`) do too.
 Both use `raisePositions`: a shared position above the reader's `seen_up_to` is kept, and those at or below it are spread evenly, newest first, just above it, so nothing they get lands among what they've seen.
 Shared news is never below its feed's floor, so a follower whose `seen_up_to` is at or below the floor gets the shared positions, and one away longer than `rss.NewsWindow` would, so gets no rows; readers without a mark read shared positions.
@@ -341,11 +339,11 @@ The card image shows above the text unless `sanitize.ShowsImage` finds the conte
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**"You were here."** A timeline's first page (not starred-only) carries the newest `timeline_at` among its rows in `.article-list[data-seen-up-to]` and its render time in `data-seen-as-of`, and `app.js` sends both to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
-`MarkSeen` keeps the newest position and render time reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider and its render time become where the previous visit ended (`divider_at`, `divider_as_of`).
-At render, `TimelineMark.Anchors` turns the mark into the timeline's groups, and `fillDivider` puts the line above the first group-0 row, only when something is above it: an earlier row in group 1 or 2, or a cursor in one.
-So above the line is everything that arrived since the previous visit, including articles published before it but fetched after, just above the line.
-A store error renders the page in position order, without the line.
+**"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and `app.js` sends it to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
+`MarkSeen` keeps the newest position reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`).
+At render, `TimelineMark.Divider` gives the line, the newest position the previous visit had on screen, and `fillDivider` puts it above the first row at or below it, only when something is above it: an earlier row, or a cursor positioned above it.
+So above the line is everything that arrived since the previous visit, by the reader's positions, including articles published before it but fetched after.
+A store error renders the page without the line.
 
 **Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
@@ -354,7 +352,7 @@ Without JavaScript the link just works.
 **Start at:**
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
-2. `internal/psql/articles.go` (`ListTimeline`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
+2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineMark`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
 5. `partials/article_row.html` and `internal/ui/static/js/app.js`.

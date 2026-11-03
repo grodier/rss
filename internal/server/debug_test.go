@@ -895,7 +895,7 @@ func TestArticleProvenance(t *testing.T) {
 		{
 			name: "all from the feed, backlog, guid",
 			a: rss.Article{Title: "T", PageTitle: "PT", Excerpt: "E", PageDescription: "PD", ImageURL: "https://example.com/a.png", PageImageURL: "https://example.com/b.png",
-				ExternalID: "tag:example.com,2026:1", URL: "https://example.com/1", PublishedAt: published, TimelineAt: published, CreatedAt: published.Add(48 * time.Hour)},
+				ExternalID: "tag:example.com,2026:1", URL: "https://example.com/1", PublishedAt: published, TimelineAt: published, Backlog: true, CreatedAt: published.Add(48 * time.Hour)},
 			want: provenance{Title: "feed", Excerpt: "feed", Image: "feed", Timeline: "backlog", ExternalID: "guid"},
 		},
 		{
@@ -904,9 +904,9 @@ func TestArticleProvenance(t *testing.T) {
 			want: provenance{Title: "feed", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
 		},
 		{
-			name: "news exactly NewsWindow below its arrival",
-			a:    rss.Article{Title: "T", ExternalID: "x", PublishedAt: published, TimelineAt: published, CreatedAt: published.Add(rss.NewsWindow)},
-			want: provenance{Title: "feed", Excerpt: "none", Image: "none", Timeline: "news", ExternalID: "guid"},
+			name: "backlog near its arrival (a first save's latest post)",
+			a:    rss.Article{Title: "T", ExternalID: "x", PublishedAt: published, TimelineAt: published, Backlog: true, CreatedAt: published.Add(30 * time.Minute)},
+			want: provenance{Title: "feed", Excerpt: "none", Image: "none", Timeline: "backlog", ExternalID: "guid"},
 		},
 		{
 			name: "all from the page, news (undated), link",
@@ -1010,22 +1010,34 @@ func TestNewArticleRowDebug(t *testing.T) {
 	timeline := time.Date(2026, 3, 2, 9, 5, 30, 0, time.UTC)
 	t.Run("dated", func(t *testing.T) {
 		got := newArticleRowDebug(rss.Article{ID: testArticleID, PageTitle: "PT", ImageURL: "https://example.com/a.png",
-			PublishedAt: time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC), TimelineAt: timeline})
+			PublishedAt: time.Date(2026, 3, 1, 8, 0, 0, 0, time.UTC), TimelineAt: timeline}, time.Time{})
 		want := articleRowDebug{ShortID: "22222222", Timeline: "news", TimelineAt: "2026-03-02 09:05Z", PublishedAt: "2026-03-01 08:00Z", Title: "page", Image: "feed"}
 		if *got != want {
 			t.Errorf("newArticleRowDebug = %+v, want %+v", *got, want)
 		}
 	})
 	t.Run("date only", func(t *testing.T) {
-		got := newArticleRowDebug(rss.Article{ID: testArticleID, PublishedAt: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), PublishedDateOnly: true, TimelineAt: timeline})
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, PublishedAt: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), PublishedDateOnly: true, TimelineAt: timeline}, time.Time{})
 		if got.PublishedAt != "2026-03-01" {
 			t.Errorf("PublishedAt = %q, want 2026-03-01", got.PublishedAt)
 		}
 	})
 	t.Run("undated", func(t *testing.T) {
-		got := newArticleRowDebug(rss.Article{ID: testArticleID, TimelineAt: timeline})
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, TimelineAt: timeline}, time.Time{})
 		if got.PublishedAt != "" {
 			t.Errorf("PublishedAt = %q, want empty", got.PublishedAt)
+		}
+	})
+	t.Run("the reader's own position", func(t *testing.T) {
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, TimelineAt: timeline}, timeline.Add(3*time.Hour))
+		if got.TimelineAt != "2026-03-02 09:05Z" || got.Position != "2026-03-02 12:05Z" {
+			t.Errorf("TimelineAt, Position = %q, %q; want 2026-03-02 09:05Z, 2026-03-02 12:05Z", got.TimelineAt, got.Position)
+		}
+	})
+	t.Run("a position equal to timeline_at isn't repeated", func(t *testing.T) {
+		got := newArticleRowDebug(rss.Article{ID: testArticleID, TimelineAt: timeline}, timeline)
+		if got.Position != "" {
+			t.Errorf("Position = %q, want empty", got.Position)
 		}
 	})
 }
@@ -1158,6 +1170,7 @@ func TestNewArticleDebugViewLeadImage(t *testing.T) {
 // row has a debug line only in debug mode, and the lines make no queries.
 func TestArticleRowsDebugLine(t *testing.T) {
 	timeline := timelineItems(2)
+	timeline[1].Position = timeline[1].Article.TimelineAt.Add(2 * time.Hour) // the reader's own position
 	saved := savedItems(2)
 	feedArticles := []rss.Article{timeline[0].Article, timeline[1].Article}
 	pages := []struct {
@@ -1173,7 +1186,7 @@ func TestArticleRowsDebugLine(t *testing.T) {
 		}},
 		{"timeline", func(s *Server) http.HandlerFunc { return s.homeHandler }, "/", func(t *testing.T) *Server {
 			return newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 					return timeline, nil
 				},
 			}})
@@ -1210,6 +1223,11 @@ func TestArticleRowsDebugLine(t *testing.T) {
 					want = 2
 					id := timeline[0].Article.ID
 					assertBodyContains(t, body, `<p class="debug-line">`+id[:8]+` · news `, `title: feed · image: none · <a href="/articles/`+id+`?debug=1#debug">debug</a></p>`)
+					if yours := " 2025-12-31 23:59Z (yours 2026-01-01 01:59Z) · published"; p.name == "timeline" {
+						assertBodyContains(t, body, yours)
+					} else if strings.Contains(body, "(yours") {
+						t.Errorf("a reader's position outside the timeline: %s", body)
+					}
 				}
 				if got != want {
 					t.Errorf("%d debug lines, want %d", got, want)

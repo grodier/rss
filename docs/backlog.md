@@ -539,7 +539,7 @@ Pages and queries:
   *Measured 2026-11-02* on the prototype above: 75 ms for 300 subscriptions (today's page 20: 76 ms) and 10.7 ms for 30 (8.8 ms).
   *Measured 2026-11-03* with #494 (same seed and container as the entry above): 65–67 ms for 300 subscriptions, against 48–52 ms for `main`'s page 20 before #494, so slower than planned: 44,000 buffers to `main`'s 19,500, of which the lookup per scanned article (9,300 of them) reads 18,700; 9–14 ms for 30 subscriptions (`main`'s page 20: 6.4–10.5 ms).
   *Signal:* the first page past the rows slower than #404's page 2, or readers paging that deep often (`/` requests with a `before` older than a day).
-  *Fix:* keep more rows (a higher `rss.MaxEntries`), then rows for every article, the full per-reader table #491 decided against (a backfill on every subscribe and import); or, untried, check the reader's few hundred row IDs in memory (passed as an array) instead of a lookup per article.
+  *Fix:* #502 checks the reader's row IDs in memory (passed as an array) instead of a lookup per article, after #495 bounds them; then keep more rows (a higher `rss.MaxEntries`), then rows for every article, the full per-reader table #491 decided against (a backfill on every subscribe and import).
 - [ ] **Trimming at every visit start** (#495, planned in #491).
   `MarkSeen` deletes a reader's rows past what's kept at the start of each visit: a few hundred rows a visit for a heavy reader, so `timeline_entries` churns and needs vacuuming.
   *Measured 2026-11-02* on the prototype above: 4–8 ms to trim a reader's 800 rows to 500.

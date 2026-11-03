@@ -122,62 +122,52 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 // to that filter shows (see timelineWhere), starting after before (from the
 // start if before is zero).
 //
-// Entries are in groups, each ordered by timeline_at then ID, newest first,
-// with Group set; anchors turn the groups on (see timelineGroups):
-//
-//   - 2, when anchors.Look is set (a reload during a visit): news that arrived
-//     since the reader's latest look;
-//   - 1, when anchors.Visit is set: news that arrived since the reader's
-//     previous visit, and everything positioned above anchors.Line;
-//   - 0: everything else, below the "You were here" line.
-//
-// News arrives at its created_at; an article is news when it isn't backlog
-// and is positioned no more than rss.NewsWindow below that (see newsCond), so
-// backlog never counts as arriving. The groups run as separate queries, from before's group down,
-// until the page is full; the cursor applies only in its own group. With zero
-// anchors there's one group, 0, in timeline order.
+// Entries are one list ordered by Position then ID, newest first: each at
+// the reader's own position (their timeline_entries row) when they have
+// one, else at the article's timeline_at. A page merges two queries: the
+// reader's rows (entriesStmt) and the articles without a row
+// (timelineStmt). When the rows fill the page, the second is bounded below
+// by the last of them, since nothing below it can be on the page: that keeps
+// each feed's scan a short range, so the reader's first pages are cheap.
+// Rows of feeds the reader no longer follows aren't shown.
 //
 // Copies of one article (same non-empty canonical_url) in several of those
-// feeds are one entry: the earliest copy to arrive (smallest timeline_at,
-// then ID), at that copy's position and in that copy's group, with AlsoIn
-// listing the other feeds that have a copy, ordered by title. Feed titles
-// are the user's names for their subscriptions where they've set one.
+// feeds are one entry: the earliest copy (smallest position, then ID, each
+// copy at the reader's row's position if it has one, else its timeline_at),
+// with AlsoIn listing the other feeds that have a copy, ordered by title.
+// Feed titles are the user's names for their subscriptions where they've
+// set one.
 //
 // Summary and Content are left empty.
-func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
-	items := []rss.ArticleWithFeed{}
-	for _, g := range timelineGroups(anchors) {
-		if len(items) >= limit {
-			break
-		}
-		if !before.IsZero() && g.group > before.Group {
-			continue // already shown
-		}
-		cursor := rss.ArticleCursor{}
-		if g.group == before.Group {
-			cursor = before
-		}
-		at, id := cursorArgs(cursor)
-		args := []any{userID, at, id, limit - len(items)}
-		cond := g.cond(&args)
+func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	at, id := cursorArgs(before)
 
-		rows, err := r.DB.QueryContext(ctx, timelineStmt(filter, false, cond, &args), args...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			item := rss.ArticleWithFeed{Group: g.group}
-			if item.Article, item.Feed, err = scanArticleWithFeed(rows); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			items = append(items, item)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
+	args := []any{userID, at, id, limit}
+	items, err := r.queryTimeline(ctx, entriesStmt(filter, &args), args, true)
+	if err != nil {
+		return nil, err
 	}
+
+	var above rss.ArticleCursor
+	if len(items) >= limit {
+		last := items[len(items)-1]
+		above = rss.ArticleCursor{At: last.Position, ID: last.Article.ID}
+	}
+	args = []any{userID, at, id, limit}
+	rest, err := r.queryTimeline(ctx, timelineStmt(filter, false, above, &args), args, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// UUIDs' lowercase strings sort as Postgres sorts uuids.
+	items = append(items, rest...)
+	slices.SortStableFunc(items, func(x, y rss.ArticleWithFeed) int {
+		if c := y.Position.Compare(x.Position); c != 0 {
+			return c
+		}
+		return strings.Compare(y.Article.ID, x.Article.ID)
+	})
+	items = items[:min(len(items), limit)]
 
 	if err := r.fillAlsoIn(ctx, userID, items); err != nil {
 		return nil, err
@@ -186,77 +176,61 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	return items, nil
 }
 
-// timelineGroup is one of ListTimeline's groups: its number and the
-// condition it adds on each feed's articles a (see timelineStmt), which
-// appends its parameters to args.
-type timelineGroup struct {
-	group int
-	cond  func(args *[]any) string
-}
+// queryTimeline runs one of ListTimeline's queries: with position, its rows
+// end with the entry's position (entriesStmt); without, the entry is at the
+// article's timeline_at (timelineStmt).
+func (r *ArticleRepository) queryTimeline(ctx context.Context, stmt string, args []any, position bool) ([]rss.ArticleWithFeed, error) {
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-// timelineGroups returns the groups anchors turn on, highest first.
-//
-// The first two bound timeline_at from below, so each feed's scan is a
-// short range on articles_feed_timeline_idx: news is never placed more than
-// rss.NewsWindow below its created_at, so news created after t is
-// positioned after t - rss.NewsWindow.
-func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
-	param := func(args *[]any, t time.Time) string {
-		*args = append(*args, t)
-		return fmt.Sprintf("$%d::timestamptz", len(*args))
-	}
-	// arrived is the condition that a is news created after t.
-	arrived := func(t string) string {
-		return `(a.created_at > ` + t + ` AND ` + newsCond("a") + `)`
-	}
-	window := fmt.Sprintf("make_interval(secs => %d)", int(rss.NewsWindow.Seconds()))
-
-	var groups []timelineGroup
-	if !anchors.Look.IsZero() {
-		groups = append(groups, timelineGroup{2, func(args *[]any) string {
-			look := param(args, anchors.Look)
-			return `
-				AND a.created_at > ` + look + ` AND a.timeline_at > ` + look + ` - ` + window + ` AND ` + newsCond("a")
-		}})
-	}
-	if !anchors.Visit.IsZero() {
-		groups = append(groups, timelineGroup{1, func(args *[]any) string {
-			line, visit := param(args, anchors.Line), param(args, anchors.Visit)
-			cond := `
-				AND a.timeline_at > LEAST(` + line + `, ` + visit + ` - ` + window + `)
-				AND (a.timeline_at > ` + line + ` OR ` + arrived(visit) + `)`
-			if !anchors.Look.IsZero() {
-				cond += `
-				AND NOT ` + arrived(param(args, anchors.Look))
-			}
-			return cond
-		}})
-	}
-	groups = append(groups, timelineGroup{0, func(args *[]any) string {
-		switch {
-		case !anchors.Visit.IsZero():
-			return `
-				AND a.timeline_at <= ` + param(args, anchors.Line) + ` AND NOT ` + arrived(param(args, anchors.Visit))
-		case !anchors.Look.IsZero():
-			return `
-				AND NOT ` + arrived(param(args, anchors.Look))
+	items := []rss.ArticleWithFeed{}
+	for rows.Next() {
+		var item rss.ArticleWithFeed
+		var extra []any
+		if position {
+			extra = append(extra, &item.Position)
 		}
-		return ""
-	}})
-	return groups
+		if item.Article, item.Feed, err = scanArticleWithFeed(rows, extra...); err != nil {
+			return nil, err
+		}
+		if !position {
+			item.Position = item.Article.TimelineAt
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-// newsCond returns the condition that the article a is news: not backlog,
-// and positioned no more than rss.NewsWindow below its created_at
-// (rss.Article.IsNews in SQL).
-func newsCond(a string) string {
-	return fmt.Sprintf("NOT %[1]s.backlog AND %[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
+// entriesStmt returns the query for the reader's own rows in ListTimeline,
+// appending filter's parameters to args, which starts with the user ID, the
+// cursor's time and ID, and the limit. It selects the row's position after
+// the feed's columns. Joining subscriptions leaves out rows of feeds the
+// reader no longer follows.
+func entriesStmt(filter rss.TimelineFilter, args *[]any) string {
+	return `SELECT ` + qualifiedListArticleColumns + `, ` + listFeedColumns(false) + `, e.timeline_at
+		FROM timeline_entries e
+		JOIN subscriptions sub ON sub.user_id = e.user_id AND sub.feed_id = e.feed_id
+		JOIN articles a ON a.id = e.article_id
+		JOIN feeds f ON f.id = e.feed_id
+		WHERE e.user_id = $1
+			AND ($2::timestamptz IS NULL OR (e.timeline_at, e.article_id) < ($2, $3::uuid))` +
+		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + `
+			AND NOT (a.has_copies AND ` + earlierCopy(filter, false, "e.timeline_at", args) + `)
+		ORDER BY e.timeline_at DESC, e.article_id DESC
+		LIMIT $4`
 }
 
 // ListShared returns the newest limit articles with a URL of ownerID's
 // timeline with filter, for its shared feed: like ListTimeline (or
-// ListStarred when filter.StarredOnly, with StarredAt set), but with each
-// feed's own title, never the owner's name for it, and without AlsoIn.
+// ListStarred when filter.StarredOnly, with StarredAt set), but at shared
+// positions (the owner's rows are ignored), with each feed's own title,
+// never the owner's name for it, and without AlsoIn.
 // Summary and Content are left empty.
 func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
 	at, id := cursorArgs(rss.ArticleCursor{})
@@ -266,7 +240,7 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 	if filter.StarredOnly {
 		stmt = starredStmt(filter, true, &args)
 	} else {
-		stmt = timelineStmt(filter, true, "", &args)
+		stmt = timelineStmt(filter, true, rss.ArticleCursor{}, &args)
 	}
 	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
@@ -292,36 +266,39 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 	return items, nil
 }
 
-// timelineStmt returns ListTimeline's query for filter, appending filter's
-// parameters to args, which starts with the user ID, the cursor's time and
-// ID, and the limit. group is a condition on each feed's articles a (a
-// group's, see timelineGroups; "" for none); it doesn't apply to the copies
-// an entry collapses with. With shared (for ListShared), feeds have their
-// own titles, and articles without a URL are left out.
-func timelineStmt(filter rss.TimelineFilter, shared bool, group string, args *[]any) string {
+// timelineStmt returns the query for the articles without a row of the
+// reader's in ListTimeline (for ListShared, with shared: every article),
+// appending filter's parameters to args, which starts with the user ID, the
+// cursor's time and ID, and the limit. Entries are at their timeline_at.
+// When above isn't zero, only articles after it are read. With shared, feeds
+// have their own titles, articles without a URL are left out, and the
+// reader's rows are ignored.
+func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCursor, args *[]any) string {
 	// For each subscription, read the feed's newest limit entries before the
 	// cursor from articles_feed_timeline_idx, then merge them and keep limit.
-	// An entry is left out when an earlier copy (same canonical URL, smaller
-	// timeline_at then ID) is in one of the user's feeds that filter shows:
-	// copies collapse after filtering, so a left-out feed's copy never takes
-	// an entry's place. Only rows flagged has_copies at ingest are checked;
+	// Only rows flagged has_copies at ingest are checked for an earlier copy;
 	// articles with no canonical URL never are.
+	var where strings.Builder
+	if !shared {
+		where.WriteString(`
+				AND NOT EXISTS (SELECT 1 FROM timeline_entries e WHERE e.user_id = sub.user_id AND e.article_id = a.id)`)
+	}
+	if !above.IsZero() {
+		// The scalar bound is what keeps the scan a short range on the
+		// index; the row comparison alone doesn't.
+		*args = append(*args, above.At, above.ID)
+		fmt.Fprintf(&where, `
+				AND a.timeline_at >= $%[1]d AND (a.timeline_at, a.id) > ($%[1]d, $%[2]d::uuid)`, len(*args)-1, len(*args))
+	}
+	where.WriteString(timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a"))
 	return `SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
 		FROM subscriptions sub
 		CROSS JOIN LATERAL (
 			SELECT ` + qualifiedListArticleColumns + `
 			FROM articles a
 			WHERE a.feed_id = sub.feed_id
-				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` + group +
-		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a") + `
-				AND NOT (a.has_copies AND EXISTS (
-					SELECT 1
-					FROM articles b
-					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id
-					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
-						AND (b.timeline_at, b.id) < (a.timeline_at, a.id)` +
-		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
-				))
+				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` + where.String() + `
+				AND NOT (a.has_copies AND ` + earlierCopy(filter, shared, "a.timeline_at", args) + `)
 			ORDER BY a.timeline_at DESC, a.id DESC
 			LIMIT $4
 		) a
@@ -329,6 +306,30 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, group string, args *[]
 		WHERE sub.user_id = $1
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
+}
+
+// earlierCopy returns the condition that the entry of the article a (under
+// the subscription sub), at position, has an earlier copy: an article with
+// the same canonical URL, at a smaller position then ID, in one of the
+// user's feeds that filter shows. Each copy is at the reader's row's
+// position if it has one, else its timeline_at; with shared, rows are
+// ignored. Copies collapse after filtering, so a left-out feed's copy never
+// takes an entry's place. It appends filter's parameters to args.
+func earlierCopy(filter rss.TimelineFilter, shared bool, position string, args *[]any) string {
+	at, rows := "b.timeline_at", ""
+	if !shared {
+		at = "COALESCE(eb.timeline_at, b.timeline_at)"
+		rows = `
+					LEFT JOIN timeline_entries eb ON eb.user_id = sub.user_id AND eb.article_id = b.id`
+	}
+	return `EXISTS (
+					SELECT 1
+					FROM articles b
+					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id` + rows + `
+					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
+						AND (` + at + `, b.id) < (` + position + `, a.id)` +
+		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
+				)`
 }
 
 // listFeedColumns returns the feed columns of a timeline query: with the
@@ -605,9 +606,8 @@ func raisePositions(positions []time.Time, seenUpTo, now time.Time) []time.Time 
 // isBacklog reports whether timelineAt places a as backlog, for a save of a
 // feed whose previous successful fetch was prevFetched: every item of a first
 // save (prevFetched zero), dated or not, and later items published before
-// prevFetched - backlogSlack. It's stored with the article so timelines never
-// count it as arriving, even when a first save's recent item is placed near
-// its arrival (see rss.Article.IsNews).
+// prevFetched - backlogSlack. A later save's backlog gets no reader positions
+// (see saveArticles); it's stored with the article for debug mode.
 func isBacklog(a rss.Article, prevFetched time.Time) bool {
 	return prevFetched.IsZero() || (!a.PublishedAt.IsZero() && a.PublishedAt.Before(prevFetched.Add(-backlogSlack)))
 }

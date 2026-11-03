@@ -656,13 +656,13 @@ type provenance struct {
 	Title      string // "feed", "page" (enrichment's page_title), "excerpt" (start of the shown excerpt) or "none"
 	Excerpt    string // "feed", "page" (page_description) or "none"
 	Image      string // "feed", "page" (page_image_url) or "none"
-	Timeline   string // "news" (counts as arriving at its created_at; see rss.Article.IsNews) or "backlog"
+	Timeline   string // "news" or "backlog" (rss.Article.Backlog)
 	ExternalID string // "hash", "link" (equal to the article's URL; may be a guid equal to it) or "guid"
 }
 
 // articleProvenance says where a's shown values come from. Its rules mirror
 // rss.Article's DisplayTitle, DisplayExcerpt and CardImageURL, and its
-// timeline placement follows rss.Article.IsNews, the rule timelines group by.
+// timeline placement is rss.Article.Backlog.
 func articleProvenance(a rss.Article) provenance {
 	var p provenance
 	switch {
@@ -691,9 +691,9 @@ func articleProvenance(a rss.Article) provenance {
 	default:
 		p.Image = "none"
 	}
-	p.Timeline = "backlog"
-	if a.IsNews() {
-		p.Timeline = "news"
+	p.Timeline = "news"
+	if a.Backlog {
+		p.Timeline = "backlog"
 	}
 	switch {
 	case strings.HasPrefix(a.ExternalID, "sha256:"):
@@ -827,6 +827,7 @@ type articleRowDebug struct {
 	ShortID     string // the first 8 characters of the article's ID
 	Timeline    string // provenance.Timeline
 	TimelineAt  string
+	Position    string // the reader's own position, when it isn't TimelineAt; "" otherwise
 	PublishedAt string // "" if unknown
 	Title       string // provenance.Title
 	Image       string // provenance.Image
@@ -837,8 +838,9 @@ func debugLineTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04Z")
 }
 
-// newArticleRowDebug builds a row's debug line from columns lists load.
-func newArticleRowDebug(a rss.Article) *articleRowDebug {
+// newArticleRowDebug builds a row's debug line from columns lists load and
+// the row's position in the reader's timeline (zero outside timelines).
+func newArticleRowDebug(a rss.Article, position time.Time) *articleRowDebug {
 	prov := articleProvenance(a)
 	d := &articleRowDebug{
 		ShortID:    a.ID[:min(8, len(a.ID))],
@@ -846,6 +848,9 @@ func newArticleRowDebug(a rss.Article) *articleRowDebug {
 		TimelineAt: debugLineTime(a.TimelineAt),
 		Title:      prov.Title,
 		Image:      prov.Image,
+	}
+	if !position.IsZero() && !position.Equal(a.TimelineAt) {
+		d.Position = debugLineTime(position)
 	}
 	switch {
 	case a.PublishedAt.IsZero():
@@ -864,7 +869,7 @@ func (s *Server) fillDebug(r *http.Request, rows []articleRow) {
 		return
 	}
 	for i := range rows {
-		rows[i].Debug = newArticleRowDebug(rows[i].Article)
+		rows[i].Debug = newArticleRowDebug(rows[i].Article, rows[i].Position)
 	}
 }
 

@@ -58,24 +58,16 @@ type Article struct {
 	// PublishedAt is midnight UTC and only its date is meaningful.
 	PublishedDateOnly bool
 	TimelineAt        time.Time // position in timelines; see psql.timelineAt
-	Backlog           bool      // placed as backlog (see psql.isBacklog), so it never counts as arriving
+	Backlog           bool      // placed as backlog (see psql.isBacklog), so readers never get their own position for it
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
 
 // NewsWindow is how far below its arrival (CreatedAt) a news article can be
-// placed in timelines, and so what counts as arriving when timelines group
-// what's new to a reader (see psql.timelineAt and psql's ListTimeline).
+// placed in timelines (see psql.timelineAt), and how recently a reader must
+// have looked to get their own positions for what arrives (see psql's
+// saveArticles and Subscribe).
 const NewsWindow = 6 * time.Hour
-
-// IsNews reports whether the article counts as news that arrived at its
-// CreatedAt: it isn't Backlog, and its TimelineAt is no more than NewsWindow
-// below that. Backlog (an old item, a feed's first save) never counts as
-// arriving, even when its date puts it near its arrival: a new feed's latest
-// post would otherwise go first on a reload, then drop to its date.
-func (a Article) IsNews() bool {
-	return !a.Backlog && !a.TimelineAt.Before(a.CreatedAt.Add(-NewsWindow))
-}
 
 // FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.
 func (a Article) FeedSortAt() time.Time {
@@ -336,36 +328,26 @@ func DefaultTimelines() []Timeline {
 // starts and the "You were here" divider moves.
 const VisitGap = 30 * time.Minute
 
-// TimelineMark is what decides where a user's "You were here" divider goes
-// and what their timeline puts first.
+// TimelineMark is what decides where a user's "You were here" line goes,
+// and what their own positions for what arrives are raised above.
 type TimelineMark struct {
-	SeenUpTo    time.Time // the newest timeline position the user has had on screen
-	SeenAsOf    time.Time // when the page that reported SeenUpTo was rendered: the latest look
-	SeenAt      time.Time // when SeenUpTo was last reported
-	DividerAt   time.Time // the divider of the visit SeenAt belongs to; zero during the first visit
-	DividerAsOf time.Time // the previous visit's latest look; zero during the first visit
+	SeenUpTo  time.Time // the newest timeline position the user has had on screen
+	SeenAt    time.Time // when SeenUpTo was last reported
+	DividerAt time.Time // the line of the visit SeenAt belongs to; zero during the first visit
 }
 
-// TimelineAnchors say what a reader's timeline puts first; zero fields
-// turn their group off.
-type TimelineAnchors struct {
-	Look  time.Time // render time of the reader's latest look in this visit; zero on a visit's first page
-	Visit time.Time // render time of the previous visit's latest look; zero during the first visit
-	Line  time.Time // the "You were here" divider: the newest position that visit had on screen
-}
-
-// Anchors returns the anchors for a page rendered at now. A new visit (at
-// least VisitGap since the last report) anchors on where the last one ended;
-// a visit going on anchors on the previous visit and on its own latest look.
-// No mark gives zero anchors.
-func (m TimelineMark) Anchors(now time.Time) TimelineAnchors {
+// Divider returns where the "You were here" line goes on a page rendered
+// at now: the newest position the previous visit had on screen. A new
+// visit (at least VisitGap since the last report) puts it where the last
+// one ended. It's zero without a mark and during the first visit.
+func (m TimelineMark) Divider(now time.Time) time.Time {
 	if m.SeenAt.IsZero() {
-		return TimelineAnchors{}
+		return time.Time{}
 	}
 	if now.Sub(m.SeenAt) >= VisitGap {
-		return TimelineAnchors{Visit: m.SeenAsOf, Line: m.SeenUpTo}
+		return m.SeenUpTo
 	}
-	return TimelineAnchors{Look: m.SeenAsOf, Visit: m.DividerAsOf, Line: m.DividerAt}
+	return m.DividerAt
 }
 
 // TagName normalizes a tag name: trimmed, with each run of whitespace
@@ -459,13 +441,11 @@ type ImportSummary struct {
 	Failed  int
 }
 
-// ArticleCursor is a position in a sorted list of articles: the group (in
-// a grouped timeline, else 0), sort time and ID of the last article already
-// shown. The zero value is the start.
+// ArticleCursor is a position in a sorted list of articles: the sort time
+// and ID of the last article already shown. The zero value is the start.
 type ArticleCursor struct {
-	Group int
-	At    time.Time
-	ID    string
+	At time.Time
+	ID string
 }
 
 func (c ArticleCursor) IsZero() bool { return c.ID == "" }
@@ -475,7 +455,10 @@ type ArticleWithFeed struct {
 	Article Article
 	Feed    Feed
 	AlsoIn  []Feed // other subscribed feeds with a copy of the article; timeline only
-	Group   int    // the timeline group the article is in (see psql's ListTimeline); 0 outside grouped timelines
+	// Position is where the entry is in the reader's timeline: their own
+	// position (timeline_entries) if they have one, else Article.TimelineAt;
+	// timelines only.
+	Position time.Time
 }
 
 // SavedArticle is an article a user saved, with its feed.

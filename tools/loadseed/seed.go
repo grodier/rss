@@ -41,6 +41,12 @@ const (
 	copyShare             = 0.025 // articles copied into another feed, so about 5% share a canonical URL
 	mediaShare            = 0.02
 	rareWordShare         = 0.01 // articles whose title has one of rareWords
+	// readerEntries is how many of the newest articles of the last
+	// readerEntriesWindow each seeded user has their own position for: the
+	// most a reader keeps (the trim's limit, #495).
+	readerEntries       = 500
+	readerEntriesWindow = 7 * 24 * time.Hour
+	markAge             = 10 * time.Minute // how long ago each seeded user's mark was reported
 )
 
 // commonWords make up the titles and excerpts.
@@ -69,7 +75,7 @@ const (
 )
 
 // seedTables are the tables a seed writes to.
-const seedTables = `sites, feeds, articles, users, subscriptions, tags, subscription_tags, stars, timelines, timeline_tags, timeline_feeds`
+const seedTables = `sites, feeds, articles, users, subscriptions, tags, subscription_tags, stars, timelines, timeline_tags, timeline_feeds, timeline_marks, timeline_entries`
 
 func mainEmail(prefix string) string  { return prefix + "@example.com" }
 func smallEmail(prefix string) string { return prefix + "-small@example.com" }
@@ -255,8 +261,7 @@ func seedFeeds(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 
 	// Each article's published date is uniform over the period, and
 	// timeline_at is the published date, as for a feed's backlog; created_at
-	// is up to an hour after that (capped at now), so the grouped timeline's
-	// news has arrivals to find. About
+	// is up to an hour after that (capped at now), as for news. About
 	// copyShare of articles also get a copy in another feed (the LATERAL
 	// adds it): the same canonical URL, a tracking parameter on its link, and
 	// a position up to 6 hours later.
@@ -319,8 +324,9 @@ func setSeed(ctx context.Context, tx *sql.Tx, seed int64) error {
 	return err
 }
 
-// seedUsers creates the main and baseline users, their subscriptions, the
-// main user's tags and stars, and its custom timelines.
+// seedUsers creates the main and baseline users, their subscriptions and
+// reader positions, the main user's tags and stars, and its custom
+// timelines.
 func seedUsers(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan, rng *rand.Rand) error {
 	usersRepo := psql.NewUserRepository(db)
 	mainID, err := createUser(ctx, db, usersRepo, "Load seed", mainEmail(cfg.prefix))
@@ -347,6 +353,11 @@ func seedUsers(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 	}
 	if err := subscribe(ctx, tx, smallID, smallFeeds); err != nil {
 		return err
+	}
+	for _, id := range []string{mainID, smallID} {
+		if err := seedReaderPositions(ctx, tx, id); err != nil {
+			return err
+		}
 	}
 	tagOnly, err := seedTags(ctx, tx, mainID, mainFeeds, rng)
 	if err != nil {
@@ -397,6 +408,33 @@ func subscribe(ctx context.Context, tx *sql.Tx, userID string, feeds []feedPlan)
 	stmt := `INSERT INTO subscriptions (user_id, feed_id) SELECT $1, unnest($2::uuid[])`
 	if _, err := tx.ExecContext(ctx, stmt, userID, pq.Array(feedIDs(feeds))); err != nil {
 		return fmt.Errorf("subscribe: %w", err)
+	}
+	return nil
+}
+
+// seedReaderPositions gives userID a reader's state as of a visit going on:
+// their own positions (timeline_entries) for the newest readerEntries of the
+// articles that arrived in their feeds in the last readerEntriesWindow, at
+// the articles' timeline_at, and a mark reported markAge ago with seen_up_to
+// their newest position.
+func seedReaderPositions(ctx context.Context, tx *sql.Tx, userID string) error {
+	stmt := `INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+		SELECT $1, a.id, a.feed_id, a.timeline_at
+		FROM subscriptions sub
+		JOIN articles a ON a.feed_id = sub.feed_id
+		WHERE sub.user_id = $1 AND a.created_at > now() - make_interval(secs => $2)
+		ORDER BY a.timeline_at DESC, a.id DESC
+		LIMIT $3`
+	if _, err := tx.ExecContext(ctx, stmt, userID, readerEntriesWindow.Seconds(), readerEntries); err != nil {
+		return fmt.Errorf("insert reader positions: %w", err)
+	}
+
+	stmt = `INSERT INTO timeline_marks (user_id, seen_up_to, seen_at)
+		SELECT $1, COALESCE(max(e.timeline_at), now() - make_interval(secs => $2)), now() - make_interval(secs => $2)
+		FROM timeline_entries e
+		WHERE e.user_id = $1`
+	if _, err := tx.ExecContext(ctx, stmt, userID, markAge.Seconds()); err != nil {
+		return fmt.Errorf("insert mark: %w", err)
 	}
 	return nil
 }
@@ -527,6 +565,7 @@ func printCounts(ctx context.Context, db *sql.DB, prefix string, out io.Writer) 
 		{"subscribed articles", `SELECT count(*) FROM subscriptions sub JOIN users u ON u.id = sub.user_id JOIN articles a ON a.feed_id = sub.feed_id WHERE u.email = $1`},
 		{"tags", `SELECT count(*) FROM tags t JOIN users u ON u.id = t.user_id WHERE u.email = $1`},
 		{"tagged subscriptions", `SELECT count(*) FROM subscription_tags st JOIN users u ON u.id = st.user_id WHERE u.email = $1`},
+		{"reader positions", `SELECT count(*) FROM timeline_entries e JOIN users u ON u.id = e.user_id WHERE u.email = $1`},
 		{"stars", `SELECT count(*) FROM stars s JOIN users u ON u.id = s.user_id WHERE u.email = $1`},
 		{"timelines", `SELECT count(*) FROM timelines t JOIN users u ON u.id = t.user_id WHERE u.email = $1`},
 		{"shared timelines", `SELECT count(*) FROM timelines t JOIN users u ON u.id = t.user_id WHERE u.email = $1 AND t.share_token IS NOT NULL`},
@@ -547,7 +586,7 @@ func printCounts(ctx context.Context, db *sql.DB, prefix string, out io.Writer) 
 			if err := db.QueryRowContext(ctx, c.stmt, email).Scan(&n); err != nil {
 				return fmt.Errorf("count %s: %w", c.label, err)
 			}
-			if n == 0 && email == smallEmail(prefix) && c.label != "subscriptions" && c.label != "subscribed articles" {
+			if n == 0 && email == smallEmail(prefix) && c.label != "subscriptions" && c.label != "subscribed articles" && c.label != "reader positions" {
 				continue
 			}
 			fmt.Fprintf(out, "| %s: %s | %s |\n", email, c.label, thousands(n))

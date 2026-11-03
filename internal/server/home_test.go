@@ -23,13 +23,15 @@ const timelineUUID = "123e4567-e89b-12d3-a456-4266141740%02d"
 func timelineItems(n int) []rss.ArticleWithFeed {
 	items := make([]rss.ArticleWithFeed, n)
 	for i := range items {
+		at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(i) * time.Minute)
 		items[i] = rss.ArticleWithFeed{
 			Article: rss.Article{
 				ID:         fmt.Sprintf(timelineUUID, i),
 				Title:      fmt.Sprintf("Article %d", i),
-				TimelineAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Duration(i) * time.Minute),
+				TimelineAt: at,
 			},
-			Feed: rss.Feed{ID: "feed-1", Title: "Feed One"},
+			Feed:     rss.Feed{ID: "feed-1", Title: "Feed One"},
+			Position: at,
 		}
 	}
 	return items
@@ -49,15 +51,14 @@ func getHome(t *testing.T, s *Server, target string, loggedIn bool) *httptest.Re
 func TestHomeHandlerTimeline(t *testing.T) {
 	var gotUser string
 	var gotBefore rss.ArticleCursor
-	var gotAnchors rss.TimelineAnchors
 	var gotLimit int
 	calls := 0
 	var result []rss.ArticleWithFeed
 	var storeErr error
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			calls++
-			gotUser, gotAnchors, gotBefore, gotLimit = userID, anchors, before, limit
+			gotUser, gotBefore, gotLimit = userID, before, limit
 			return result, storeErr
 		},
 	}})
@@ -194,150 +195,24 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
-	t.Run("the older link's cursor carries the last row's group", func(t *testing.T) {
+	t.Run("the older link's cursor is the last row's position", func(t *testing.T) {
 		result, storeErr = timelineItems(31), nil
-		result[29].Group = 1
+		// The reader's own position, above the shared one.
+		result[29].Position = result[29].Article.TimelineAt.Add(3 * time.Hour)
 		body := getHome(t, s, "/", true).Body.String()
-		want := encodeCursor(rss.ArticleCursor{Group: 1, At: result[29].Article.TimelineAt, ID: result[29].Article.ID})
-		start := strings.Index(body, `href="/timelines/all?before=`)
-		if start < 0 {
-			t.Fatalf("no before link: %s", body)
-		}
-		href := body[start+len(`href="`):]
-		href = href[:strings.Index(href, `"`)]
-		got, err := url.ParseRequestURI(href)
-		if err != nil || got.Query().Get("before") != want {
-			t.Errorf("href = %q, want cursor %q", href, want)
-		}
-	})
-
-	t.Run("the mark's anchors reach ListTimeline", func(t *testing.T) {
-		result, storeErr = timelineItems(2), nil
-		mark := rss.TimelineMark{
-			SeenUpTo: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), SeenAsOf: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC),
-			SeenAt: time.Now().Add(-10 * time.Minute), DividerAt: time.Date(2026, 1, 1, 8, 0, 0, 0, time.UTC), DividerAsOf: time.Date(2026, 1, 1, 8, 5, 0, 0, time.UTC),
-		}
-		var markUser string
-		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(ctx context.Context, userID string) (rss.TimelineMark, error) {
-			markUser = userID
-			return mark, nil
-		}}
-		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
-
-		getHome(t, s, "/", true)
-		if want := mark.Anchors(time.Now()); markUser != "user-1" || gotAnchors != want {
-			t.Errorf("anchors = %+v (mark of %q), want %+v", gotAnchors, markUser, want)
-		}
-	})
-
-	// olderHref returns the href of body's "Older articles" link, parsed.
-	olderHref := func(t *testing.T, body string) *url.URL {
-		t.Helper()
+		want := encodeCursor(rss.ArticleCursor{At: result[29].Position, ID: result[29].Article.ID})
 		start := strings.Index(body, `rel="next" href="`)
 		if start < 0 {
 			t.Fatalf("no older link: %s", body)
 		}
 		href := body[start+len(`rel="next" href="`):]
 		href = strings.ReplaceAll(href[:strings.Index(href, `"`)], "&amp;", "&")
-		u, err := url.ParseRequestURI(href)
-		if err != nil {
-			t.Fatalf("older link %q: %v", href, err)
+		got, err := url.ParseRequestURI(href)
+		if err != nil || got.Query().Get("before") != want {
+			t.Errorf("href = %q, want cursor %q", href, want)
 		}
-		return u
-	}
-
-	t.Run("later pages keep the first page's anchors", func(t *testing.T) {
-		result, storeErr = timelineItems(31), nil
-		markCalls := 0
-		mark := rss.TimelineMark{SeenUpTo: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), SeenAsOf: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC), SeenAt: time.Now().Add(-10 * time.Minute)}
-		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
-			markCalls++
-			return mark, nil
-		}}
-		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
-
-		first := mark.Anchors(time.Now())
-		next := olderHref(t, getHome(t, s, "/", true).Body.String())
-		if got := next.Query().Get("anchors"); got != encodeAnchors(first) {
-			t.Fatalf("older link anchors = %q, want %q", got, encodeAnchors(first))
-		}
-
-		// The mark moves before the next page: the visit gap has passed.
-		mark.SeenAt = time.Now().Add(-time.Hour)
-		markCalls = 0
-		rr := getHome(t, s, next.RequestURI(), true)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rr.Code)
-		}
-		if gotAnchors != first || markCalls != 0 {
-			t.Errorf("later page: anchors %+v (TimelineMark called %d times), want the first page's %+v without reading the mark", gotAnchors, markCalls, first)
-		}
-		if got := olderHref(t, rr.Body.String()).Query().Get("anchors"); got != encodeAnchors(first) {
-			t.Errorf("later page's older link anchors = %q, want %q", got, encodeAnchors(first))
-		}
-	})
-
-	t.Run("zero anchors are carried too", func(t *testing.T) {
-		result, storeErr = timelineItems(31), nil
-		next := olderHref(t, getHome(t, s, "/", true).Body.String())
-		if !next.Query().Has("anchors") {
-			t.Fatalf("older link %q has no anchors", next)
-		}
-		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
-			return rss.TimelineMark{SeenUpTo: time.Now(), SeenAsOf: time.Now(), SeenAt: time.Now()}, nil
-		}}
-		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
-		getHome(t, s, next.RequestURI(), true)
-		if gotAnchors != (rss.TimelineAnchors{}) {
-			t.Errorf("anchors = %+v, want zero, as on the first page", gotAnchors)
-		}
-	})
-
-	t.Run("a later page without anchors reads the mark", func(t *testing.T) {
-		result, storeErr = timelineItems(2), nil
-		mark := rss.TimelineMark{SeenUpTo: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC), SeenAsOf: time.Date(2026, 1, 1, 10, 5, 0, 0, time.UTC), SeenAt: time.Now().Add(-time.Hour)}
-		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) { return mark, nil }}
-		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
-		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		getHome(t, s, "/timelines/all?before="+url.QueryEscape(cur), true)
-		if want := mark.Anchors(time.Now()); gotAnchors != want {
-			t.Errorf("anchors = %+v, want the mark's %+v", gotAnchors, want)
-		}
-	})
-
-	t.Run("anchors on a first page are ignored", func(t *testing.T) {
-		result, storeErr = timelineItems(2), nil
-		pinned := encodeAnchors(rss.TimelineAnchors{Look: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
-		getHome(t, s, "/?anchors="+url.QueryEscape(pinned), true)
-		if gotAnchors != (rss.TimelineAnchors{}) {
-			t.Errorf("anchors = %+v, want the (zero) mark's", gotAnchors)
-		}
-	})
-
-	t.Run("malformed anchors is 400", func(t *testing.T) {
-		before := calls
-		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
-		rr := getHome(t, s, "/timelines/all?before="+url.QueryEscape(cur)+"&anchors=junk", true)
-		if rr.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", rr.Code)
-		}
-		if calls != before {
-			t.Errorf("store was called")
-		}
-	})
-
-	t.Run("a mark store error gives zero anchors", func(t *testing.T) {
-		result, storeErr = timelineItems(2), nil
-		s.services.ReadService = &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
-			return rss.TimelineMark{}, errors.New("db down")
-		}}
-		t.Cleanup(func() { s.services.ReadService = &fakeReadStore{} })
-
-		if rr := getHome(t, s, "/", true); rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rr.Code)
-		}
-		if gotAnchors != (rss.TimelineAnchors{}) {
-			t.Errorf("anchors = %+v, want zero", gotAnchors)
+		if err == nil && len(got.Query()) != 1 {
+			t.Errorf("href = %q, want only before", href)
 		}
 	})
 
@@ -351,9 +226,9 @@ func TestHomeHandlerTimeline(t *testing.T) {
 
 	t.Run("before is decoded and shows back to newest", func(t *testing.T) {
 		result, storeErr = timelineItems(2), nil
-		want := rss.ArticleCursor{Group: 1, At: time.Date(2026, 1, 1, 0, 0, 0, 5, time.UTC), ID: "123e4567-e89b-12d3-a456-426614174000"}
+		want := rss.ArticleCursor{At: time.Date(2026, 1, 1, 0, 0, 0, 5, time.UTC), ID: "123e4567-e89b-12d3-a456-426614174000"}
 		rr := getHome(t, s, "/timelines/all?before="+url.QueryEscape(encodeCursor(want)), true)
-		if gotBefore.Group != want.Group || !gotBefore.At.Equal(want.At) || gotBefore.ID != want.ID {
+		if !gotBefore.At.Equal(want.At) || gotBefore.ID != want.ID {
 			t.Errorf("store before = %+v, want %+v", gotBefore, want)
 		}
 		if !strings.Contains(rr.Body.String(), "Back to newest") {
@@ -509,7 +384,7 @@ func TestHomeHandlerSiteIcons(t *testing.T) {
 	}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, SiteService: &fakeSiteStore{},
 		ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return items, nil
 			},
 		}})
@@ -524,7 +399,7 @@ func TestHomeHandlerSiteIcons(t *testing.T) {
 
 func TestHomeHandlerTabs(t *testing.T) {
 	var gotFilter *rss.TimelineFilter
-	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 		gotFilter = &filter
 		return timelineItems(1), nil
 	}}
@@ -591,7 +466,7 @@ func TestHomeHandlerTabs(t *testing.T) {
 func TestHomeHandlerStartTab(t *testing.T) {
 	const aiID, newsID, goneID = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"
 	var gotFilter rss.TimelineFilter
-	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 		gotFilter = filter
 		return timelineItems(31), nil
 	}}
@@ -722,8 +597,9 @@ func dividerItems(at ...time.Time) []rss.ArticleWithFeed {
 	items := make([]rss.ArticleWithFeed, len(at))
 	for i, t := range at {
 		items[i] = rss.ArticleWithFeed{
-			Article: rss.Article{ID: fmt.Sprintf(timelineUUID, i), Title: "Article " + t.Format("15:04"), TimelineAt: t},
-			Feed:    rss.Feed{ID: "feed-1", Title: "Feed One"},
+			Article:  rss.Article{ID: fmt.Sprintf(timelineUUID, i), Title: "Article " + t.Format("15:04"), TimelineAt: t},
+			Feed:     rss.Feed{ID: "feed-1", Title: "Feed One"},
+			Position: t,
 		}
 	}
 	return items
@@ -762,49 +638,55 @@ func dividerAbove(t *testing.T, body string) []string {
 	return above
 }
 
-// inGroups sets the groups of items, in order.
-func inGroups(items []rss.ArticleWithFeed, groups ...int) []rss.ArticleWithFeed {
-	for i, g := range groups {
-		items[i].Group = g
-	}
-	return items
-}
-
 func TestTimelineDivider(t *testing.T) {
 	at := func(hour, min int) time.Time { return time.Date(2026, 1, 1, hour, min, 0, 0, time.UTC) }
 	var items []rss.ArticleWithFeed
 	var mark rss.TimelineMark
+	var markErr error
 	markCalls := 0
 	reads := &fakeReadStore{timelineMarkFn: func(ctx context.Context, userID string) (rss.TimelineMark, error) {
 		markCalls++
-		return mark, nil
+		return mark, markErr
 	}}
-	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 		return items, nil
 	}}
 	s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, ArticleService: articles})
-	cursor := func(group int) string {
-		return "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{Group: group, At: at(8, 0), ID: fmt.Sprintf(timelineUUID, 2)})
+	cursor := func(c time.Time) string {
+		return "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{At: c, ID: fmt.Sprintf(timelineUUID, 9)})
+	}
+	// lineAt is a mark from a visit that ended an hour ago, so the line is
+	// at line (see rss.TimelineMark.Divider).
+	lineAt := func(line time.Time) rss.TimelineMark {
+		return rss.TimelineMark{SeenUpTo: line, SeenAt: time.Now().Add(-time.Hour)}
+	}
+	// raised is an item whose own position is above its shared one.
+	raised := func(item rss.ArticleWithFeed, position time.Time) rss.ArticleWithFeed {
+		item.Position = position
+		return item
 	}
 
 	tests := []struct {
 		name   string
+		mark   rss.TimelineMark
 		target string
 		items  []rss.ArticleWithFeed
 		want   []string
 	}{
-		{"above the first group-0 row", "/", inGroups(dividerItems(at(10, 0), at(9, 0), at(8, 0)), 1, 1, 0), []string{"Article 08:00"}},
-		{"after a reload's groups 2 and 1", "/", inGroups(dividerItems(at(9, 0), at(10, 0), at(8, 0), at(7, 0)), 2, 1, 0, 0), []string{"Article 08:00"}},
-		{"after group 2 alone", "/", inGroups(dividerItems(at(10, 0), at(9, 0)), 2, 0), []string{"Article 09:00"}},
-		{"nothing new: the page starts in group 0", "/", inGroups(dividerItems(at(10, 0), at(9, 0)), 0, 0), nil},
-		{"all new on this page", "/", inGroups(dividerItems(at(10, 0), at(9, 0)), 1, 1), nil},
-		{"a later page whose cursor is in group 1", cursor(1), inGroups(dividerItems(at(7, 30), at(7, 0)), 0, 0), []string{"Article 07:30"}},
-		{"a later page whose cursor is in group 2", cursor(2), inGroups(dividerItems(at(7, 30), at(7, 0)), 1, 0), []string{"Article 07:00"}},
-		{"a later page in group 0 with a group-0 cursor", cursor(0), inGroups(dividerItems(at(7, 30), at(7, 0)), 0, 0), nil},
+		{"above the first row at the line", lineAt(at(8, 0)), "/", dividerItems(at(10, 0), at(9, 0), at(8, 0), at(7, 0)), []string{"Article 08:00"}},
+		{"above the first row below the line", lineAt(at(8, 30)), "/", dividerItems(at(10, 0), at(9, 0), at(8, 0)), []string{"Article 08:00"}},
+		{"by the reader's position, not timeline_at", lineAt(at(8, 0)), "/",
+			[]rss.ArticleWithFeed{raised(dividerItems(at(6, 0))[0], at(10, 0)), dividerItems(at(10, 0), at(7, 30))[1]}, []string{"Article 07:30"}},
+		{"none when the page starts at the line", lineAt(at(8, 0)), "/", dividerItems(at(8, 0), at(7, 0)), nil},
+		{"none when everything is above it", lineAt(at(8, 0)), "/", dividerItems(at(10, 0), at(9, 0)), nil},
+		{"at the top of a page whose cursor is above it", lineAt(at(8, 0)), cursor(at(9, 0)), dividerItems(at(7, 30), at(7, 0)), []string{"Article 07:30"}},
+		{"none on a page whose cursor is at it", lineAt(at(8, 0)), cursor(at(8, 0)), dividerItems(at(7, 30), at(7, 0)), nil},
+		{"none on a page whose cursor is below it", lineAt(at(8, 0)), cursor(at(7, 45)), dividerItems(at(7, 30), at(7, 0)), nil},
+		{"none without a mark", rss.TimelineMark{}, "/", dividerItems(at(10, 0), at(9, 0), at(8, 0)), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			items = tt.items
+			items, mark = tt.items, tt.mark
 			rr := getHome(t, s, tt.target, true)
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200", rr.Code)
@@ -814,6 +696,18 @@ func TestTimelineDivider(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a mark store error gives no line", func(t *testing.T) {
+		items, mark, markErr = dividerItems(at(10, 0), at(9, 0), at(8, 0)), lineAt(at(9, 30)), errors.New("db down")
+		t.Cleanup(func() { markErr = nil })
+		rr := getHome(t, s, "/", true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if got := dividerAbove(t, rr.Body.String()); got != nil {
+			t.Errorf("divider above %q, want none", got)
+		}
+	})
 
 	t.Run("starred-only timeline", func(t *testing.T) {
 		markCalls = 0
@@ -839,7 +733,7 @@ func TestTimelineDivider(t *testing.T) {
 func TestTimelineSeenUpTo(t *testing.T) {
 	first := time.Date(2026, 1, 1, 10, 0, 0, 123456789, time.FixedZone("EST", -5*3600))
 	var items []rss.ArticleWithFeed
-	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 		return items, nil
 	}}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles})
@@ -868,26 +762,13 @@ func TestTimelineSeenUpTo(t *testing.T) {
 		}
 	})
 
-	t.Run("the newest position on the page, not the first row's", func(t *testing.T) {
-		// A late arrival in group 2 goes first, below what group 1 has.
-		items = inGroups(dividerItems(first.Add(-2*time.Hour), first, first.Add(-time.Hour)), 2, 1, 0)
+	t.Run("the first row's own position", func(t *testing.T) {
+		// The reader's position, above the article's shared one.
+		items = dividerItems(first.Add(-3*time.Hour), first.Add(-time.Hour))
+		items[0].Position = first
 		got, ok := seenUpTo(t, getHome(t, s, "/", true).Body.String())
 		if want := "2026-01-01T15:00:00.123456789Z"; !ok || got != want {
 			t.Errorf("data-seen-up-to = %q (present: %v), want %q", got, ok, want)
-		}
-	})
-
-	t.Run("the render time", func(t *testing.T) {
-		items = dividerItems(first)
-		before := time.Now()
-		got, ok := seenAttr(t, getHome(t, s, "/", true).Body.String(), "data-seen-as-of")
-		after := time.Now()
-		if !ok {
-			t.Fatalf("no data-seen-as-of")
-		}
-		asOf, err := time.Parse(time.RFC3339Nano, got)
-		if err != nil || asOf.Before(before.Truncate(time.Microsecond)) || asOf.After(after) || asOf.Location() != time.UTC {
-			t.Errorf("data-seen-as-of = %q (%v), want a UTC time between %v and %v", got, err, before, after)
 		}
 	})
 
@@ -902,8 +783,8 @@ func TestTimelineSeenUpTo(t *testing.T) {
 	t.Run("an empty timeline", func(t *testing.T) {
 		items = nil
 		body := getHome(t, s, "/", true).Body.String()
-		if strings.Contains(body, "data-seen-up-to") || strings.Contains(body, "data-seen-as-of") {
-			t.Errorf("body has data-seen-up-to or data-seen-as-of: %s", body)
+		if strings.Contains(body, "data-seen-up-to") {
+			t.Errorf("body has data-seen-up-to: %s", body)
 		}
 	})
 
@@ -933,23 +814,22 @@ func postTimelineSeen(t *testing.T, s *Server, form url.Values) *httptest.Respon
 func TestTimelineSeenHandler(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		var gotUser string
-		var gotUpTo, gotAsOf time.Time
+		var gotUpTo time.Time
 		calls := 0
-		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(ctx context.Context, userID string, upTo, asOf time.Time) error {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(ctx context.Context, userID string, upTo time.Time) error {
 			calls++
-			gotUser, gotUpTo, gotAsOf = userID, upTo, asOf
+			gotUser, gotUpTo = userID, upTo
 			return nil
 		}}})
 
-		rr := postTimelineSeen(t, s, url.Values{"up_to": {"2026-01-01T15:00:00.123456789Z"}, "as_of": {"2026-01-01T15:05:00.5Z"}})
+		rr := postTimelineSeen(t, s, url.Values{"up_to": {"2026-01-01T15:00:00.123456789Z"}})
 
 		if rr.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
 		}
 		wantUpTo := time.Date(2026, 1, 1, 15, 0, 0, 123456789, time.UTC)
-		wantAsOf := time.Date(2026, 1, 1, 15, 5, 0, 500000000, time.UTC)
-		if calls != 1 || gotUser != "user-1" || !gotUpTo.Equal(wantUpTo) || !gotAsOf.Equal(wantAsOf) {
-			t.Errorf("MarkSeen called %d times with (%q, %v, %v), want once with (user-1, %v, %v)", calls, gotUser, gotUpTo, gotAsOf, wantUpTo, wantAsOf)
+		if calls != 1 || gotUser != "user-1" || !gotUpTo.Equal(wantUpTo) {
+			t.Errorf("MarkSeen called %d times with (%q, %v), want once with (user-1, %v)", calls, gotUser, gotUpTo, wantUpTo)
 		}
 	})
 
@@ -958,14 +838,12 @@ func TestTimelineSeenHandler(t *testing.T) {
 		name string
 		form url.Values
 	}{
-		{"missing up_to", url.Values{"as_of": {valid}}},
-		{"invalid up_to", url.Values{"up_to": {"yesterday"}, "as_of": {valid}}},
-		{"missing as_of", url.Values{"up_to": {valid}}},
-		{"invalid as_of", url.Values{"up_to": {valid}, "as_of": {"yesterday"}}},
+		{"missing up_to", url.Values{}},
+		{"invalid up_to", url.Values{"up_to": {"yesterday"}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time, time.Time) error {
+			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
 				calls++
 				return nil
 			}}})
@@ -980,10 +858,10 @@ func TestTimelineSeenHandler(t *testing.T) {
 	}
 
 	t.Run("store error", func(t *testing.T) {
-		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time, time.Time) error {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
 			return errors.New("db down")
 		}}})
-		rr := postTimelineSeen(t, s, url.Values{"up_to": {valid}, "as_of": {valid}})
+		rr := postTimelineSeen(t, s, url.Values{"up_to": {valid}})
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}

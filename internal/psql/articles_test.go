@@ -1487,7 +1487,7 @@ func TestListTimelineReaderPositions(t *testing.T) {
 		if i != 0 || !p1.After(top) {
 			t.Errorf("look 1: arrival at %d (position %v), want first, above top %v: %v", i, p1, top, titles(look1))
 		}
-		if err := reads.MarkSeen(ctx, reader, look1[0].Position); err != nil {
+		if err := reads.MarkSeen(ctx, reader, "", look1[0].Position); err != nil {
 			t.Fatalf("MarkSeen: %v", err)
 		}
 
@@ -1702,7 +1702,7 @@ func TestListTimelineNewlyFollowedFeed(t *testing.T) {
 		t.Errorf("days: Position %v, want its timeline_at %v", d.Position, d.Article.TimelineAt)
 	}
 
-	if err := reads.MarkSeen(ctx, reader, first["hour"].Position); err != nil {
+	if err := reads.MarkSeen(ctx, reader, "", first["hour"].Position); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
 	order, second := look(t)

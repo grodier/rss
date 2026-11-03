@@ -339,12 +339,13 @@ The card image shows above the text unless `sanitize.ShowsImage` finds the conte
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and `app.js` sends it to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
-`MarkSeen` keeps the newest position reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`).
+**"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and the timeline in `data-timeline`, and `app.js` sends both to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
+`MarkSeen` keeps the newest position reported on any timeline (never later than now) and when, in the user's mark, and the newest reported on this timeline in its own line (`timeline_lines`; a timeline that isn't the user's records the mark only); a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`), the mark's and every timeline line's, before this report's position is recorded.
+So a timeline not opened in the previous visit keeps the line from the last visit it was opened in.
 A new visit also trims the reader's positions, in the same transaction: it keeps every row above the previous visit's divider (the mark's `divider_at` before the report), but at least `rss.MinEntries` and at most `rss.MaxEntries`, the newest by position, or the newest `rss.MaxEntries` when there's no divider yet.
 Since the page reports when it's shown, this runs right after a visit's first page renders, before any older page loads; a deleted row's article goes back to its shared position, which differs only if the row was raised, and is never higher.
-At render, `TimelineMark.Divider` gives the line, the newest position the previous visit had on screen, and `fillDivider` puts it above the first row at or below it, only when something is above it: an earlier row, or a cursor positioned above it.
-So above the line is everything that arrived since the previous visit, by the reader's positions, including articles published before it but fetched after.
+At render, `TimelineLine` reads the timeline's own line with the user's `seen_at`, `TimelineMark.Divider` gives the line, the newest position the timeline had on screen in the last visit it was opened in (none for a timeline never seen), and `fillDivider` puts it above the first row at or below it, only when something is above it: an earlier row, or a cursor positioned above it.
+So above the line is everything that arrived since you last looked at that timeline, by the reader's positions, including articles published before it but fetched after.
 A store error renders the page without the line.
 
 **Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
@@ -355,7 +356,7 @@ Without JavaScript the link just works.
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineMark`), with `rss.TimelineMark`.
+3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
 5. `partials/article_row.html` and `internal/ui/static/js/app.js`.
 

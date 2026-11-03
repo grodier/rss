@@ -280,8 +280,15 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCurso
 	// articles with no canonical URL never are.
 	var where strings.Builder
 	if !shared {
+		// Leave out the articles the reader has a row for with NOT IN on
+		// $1 rather than a NOT EXISTS on sub.user_id: uncorrelated, it's a
+		// hashed SubPlan, which reads the reader's article IDs once per
+		// statement (at most about rss.MaxEntries plus a visit's arrivals,
+		// since MarkSeen trims them) and checks each scanned article in
+		// memory instead of with an index lookup. article_id is NOT NULL,
+		// so NOT IN has no NULL surprises.
 		where.WriteString(`
-				AND NOT EXISTS (SELECT 1 FROM timeline_entries e WHERE e.user_id = sub.user_id AND e.article_id = a.id)`)
+				AND a.id NOT IN (SELECT e.article_id FROM timeline_entries e WHERE e.user_id = $1)`)
 	}
 	if !above.IsZero() {
 		// The scalar bound is what keeps the scan a short range on the
@@ -316,18 +323,23 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCurso
 // ignored. Copies collapse after filtering, so a left-out feed's copy never
 // takes an entry's place. It appends filter's parameters to args.
 func earlierCopy(filter rss.TimelineFilter, shared bool, position string, args *[]any) string {
-	at, rows := "b.timeline_at", ""
+	// A row is never below its article's timeline_at, so a copy whose
+	// timeline_at isn't earlier isn't earlier at its row either. Checking
+	// that first, on the copy alone, leaves out a itself and later copies
+	// before the joins, so only copies that may be earlier are looked up.
+	rows, raised := "", ""
 	if !shared {
-		at = "COALESCE(eb.timeline_at, b.timeline_at)"
 		rows = `
 					LEFT JOIN timeline_entries eb ON eb.user_id = sub.user_id AND eb.article_id = b.id`
+		raised = `
+						AND (COALESCE(eb.timeline_at, b.timeline_at), b.id) < (` + position + `, a.id)`
 	}
 	return `EXISTS (
 					SELECT 1
 					FROM articles b
 					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id` + rows + `
 					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
-						AND (` + at + `, b.id) < (` + position + `, a.id)` +
+						AND (b.timeline_at, b.id) < (` + position + `, a.id)` + raised +
 		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
 				)`
 }

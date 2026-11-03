@@ -1552,6 +1552,65 @@ func TestListTimelineReaderPositions(t *testing.T) {
 		})
 	})
 
+	t.Run("paging past many rows has no gap or overlap", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		follow(t, reader, feed)
+		// 100 articles 10 minutes apart; 70 have a row 15 minutes above
+		// their shared position, and the other 30 are interleaved.
+		position := map[string]time.Time{}
+		var want []string
+		for i := range 100 {
+			title := fmt.Sprintf("a%02d", i)
+			shared := base.Add(-time.Duration(i) * 10 * time.Minute)
+			id := insert(t, feed.ID, title, shared, "")
+			position[title] = shared
+			if i%10 != 2 && i%10 != 5 && i%10 != 8 {
+				position[title] = shared.Add(15 * time.Minute)
+				row(t, reader, id, position[title])
+			}
+			want = append(want, title)
+		}
+		// Positions are distinct, so (Position, ID) order is position order.
+		slices.SortFunc(want, func(x, y string) int { return position[y].Compare(position[x]) })
+
+		var got []string
+		cursor := rss.ArticleCursor{}
+		for range 20 {
+			page := list(t, reader, rss.TimelineFilter{}, cursor, 10)
+			if len(page) == 0 {
+				break
+			}
+			for _, item := range page {
+				if !item.Position.Equal(position[item.Article.Title]) {
+					t.Errorf("%s: Position %v, want %v", item.Article.Title, item.Position, position[item.Article.Title])
+				}
+			}
+			got = append(got, titles(page)...)
+			cursor = lastOf(page)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("got  %v\nwant %v", got, want)
+		}
+	})
+
+	t.Run("another reader's row doesn't hide an article", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		reader, other := newTestUser(t, db), newTestUser(t, db)
+		follow(t, reader, feed)
+		follow(t, other, feed)
+		x := insert(t, feed.ID, "x", base.Add(-2*time.Hour), "")
+		y := insert(t, feed.ID, "y", base.Add(-3*time.Hour), "")
+		row(t, other, x, base.Add(-time.Minute))
+		row(t, reader, y, base.Add(-time.Minute))
+
+		items := list(t, reader, rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
+		check(t, items, "y", "x")
+		if len(items) == 2 && !items[1].Position.Equal(base.Add(-2*time.Hour)) {
+			t.Errorf("x: Position %v, want its timeline_at %v", items[1].Position, base.Add(-2*time.Hour))
+		}
+	})
+
 	t.Run("an article without a row is at its shared position", func(t *testing.T) {
 		feed := newTestFeed(t, db)
 		reader := newTestUser(t, db)

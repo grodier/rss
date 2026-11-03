@@ -558,6 +558,10 @@ Pages and queries:
   The "seen" beacon reports when a timeline page is shown as well as when it's hidden (#493), and each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice.
   *Signal:* `MarkSeen` in `pg_stat_statements` totals, or `timeline_marks` updates showing up in row-lock waits or WAL volume.
   *Fix:* skip a report that changes nothing (the same position, `seen_at` under a minute old), or batch them in the browser.
+- [ ] **Deleting a timeline scans `timeline_lines`** (#498).
+  `timeline_lines.timeline_id` has no index of its own (its unique index leads with `user_id`), so the `ON DELETE CASCADE` from `timelines` reads the whole table, up to 21 rows per user.
+  *Signal:* timeline deletes slow in the request logs, or that cascade's scan in `pg_stat_statements` totals.
+  *Fix:* a composite foreign key on `(timeline_id, user_id)`, like `timeline_tags`, whose cascade the unique index serves, or an index on `timeline_id`.
 - [ ] **Timeline tabs on every Home view** (#356).
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.
   *Signal:* it shows up in `pg_stat_statements` totals.

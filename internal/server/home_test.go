@@ -644,8 +644,10 @@ func TestTimelineDivider(t *testing.T) {
 	var mark rss.TimelineMark
 	var markErr error
 	markCalls := 0
-	reads := &fakeReadStore{timelineMarkFn: func(ctx context.Context, userID string) (rss.TimelineMark, error) {
+	var gotTimelineID string
+	reads := &fakeReadStore{timelineLineFn: func(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error) {
 		markCalls++
+		gotTimelineID = timelineID
 		return mark, markErr
 	}}
 	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
@@ -694,8 +696,51 @@ func TestTimelineDivider(t *testing.T) {
 			if got := dividerAbove(t, rr.Body.String()); !slices.Equal(got, tt.want) {
 				t.Errorf("divider above %q, want %q", got, tt.want)
 			}
+			if gotTimelineID != "" {
+				t.Errorf("TimelineLine read for timeline %q, want Home's (\"\")", gotTimelineID)
+			}
 		})
 	}
+
+	t.Run("each timeline from its own line", func(t *testing.T) {
+		// Home was last seen at 09:00, the custom timeline at 07:00.
+		lines := map[string]rss.TimelineMark{"": lineAt(at(9, 0)), testTimelineID: lineAt(at(7, 0))}
+		reads := &fakeReadStore{timelineLineFn: func(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error) {
+			return lines[timelineID], nil
+		}}
+		s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, ArticleService: articles,
+			TimelineService: userTimeline(rss.Timeline{Name: "Custom"})})
+		items = dividerItems(at(10, 0), at(9, 0), at(8, 0), at(7, 0), at(6, 0))
+
+		rr := getHome(t, s, "/timelines/all", true)
+		if got, want := dividerAbove(t, rr.Body.String()), []string{"Article 09:00"}; !slices.Equal(got, want) {
+			t.Errorf("Home: divider above %q, want %q", got, want)
+		}
+		rr, _ = serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if got, want := dividerAbove(t, rr.Body.String()), []string{"Article 07:00"}; !slices.Equal(got, want) {
+			t.Errorf("custom timeline: divider above %q, want %q", got, want)
+		}
+	})
+
+	t.Run("none on a timeline never seen", func(t *testing.T) {
+		// The user has looked (SeenAt is set), but never at this timeline.
+		reads := &fakeReadStore{timelineLineFn: func(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error) {
+			if timelineID == "" {
+				return lineAt(at(9, 0)), nil
+			}
+			return rss.TimelineMark{SeenAt: time.Now().Add(-time.Hour)}, nil
+		}}
+		s := newTestServerWith(t, Services{ReadService: reads, SaveService: &fakeSaveStore{}, ArticleService: articles,
+			TimelineService: userTimeline(rss.Timeline{Name: "Custom"})})
+		items = dividerItems(at(10, 0), at(9, 0), at(8, 0))
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if got := dividerAbove(t, rr.Body.String()); got != nil {
+			t.Errorf("divider above %q, want none", got)
+		}
+	})
 
 	t.Run("a mark store error gives no line", func(t *testing.T) {
 		items, mark, markErr = dividerItems(at(10, 0), at(9, 0), at(8, 0)), lineAt(at(9, 30)), errors.New("db down")
@@ -725,7 +770,7 @@ func TestTimelineDivider(t *testing.T) {
 			t.Errorf("divider above %q, want none", got)
 		}
 		if markCalls != 0 {
-			t.Errorf("TimelineMark called %d times, want 0", markCalls)
+			t.Errorf("TimelineLine called %d times, want 0", markCalls)
 		}
 	})
 }
@@ -756,9 +801,23 @@ func TestTimelineSeenUpTo(t *testing.T) {
 
 	t.Run("Home's first page", func(t *testing.T) {
 		items = dividerItems(first, first.Add(-time.Hour))
-		got, ok := seenUpTo(t, getHome(t, s, "/", true).Body.String())
+		body := getHome(t, s, "/", true).Body.String()
+		got, ok := seenUpTo(t, body)
 		if want := "2026-01-01T15:00:00.123456789Z"; !ok || got != want {
 			t.Errorf("data-seen-up-to = %q (present: %v), want %q", got, ok, want)
+		}
+		if got, ok := seenAttr(t, body, "data-timeline"); !ok || got != homeTabID {
+			t.Errorf("data-timeline = %q (present: %v), want %q", got, ok, homeTabID)
+		}
+	})
+
+	t.Run("a custom timeline's first page", func(t *testing.T) {
+		items = dividerItems(first, first.Add(-time.Hour))
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles,
+			TimelineService: userTimeline(rss.Timeline{Name: "Custom"})})
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if got, ok := seenAttr(t, rr.Body.String(), "data-timeline"); !ok || got != testTimelineID {
+			t.Errorf("data-timeline = %q (present: %v), want %q", got, ok, testTimelineID)
 		}
 	})
 
@@ -812,38 +871,47 @@ func postTimelineSeen(t *testing.T, s *Server, form url.Values) *httptest.Respon
 }
 
 func TestTimelineSeenHandler(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		var gotUser string
-		var gotUpTo time.Time
-		calls := 0
-		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(ctx context.Context, userID string, upTo time.Time) error {
-			calls++
-			gotUser, gotUpTo = userID, upTo
-			return nil
-		}}})
+	for _, tt := range []struct {
+		name, timeline, wantTimelineID string
+	}{
+		{"Home", homeTabID, ""},
+		{"a custom timeline", testTimelineID, testTimelineID},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotUser, gotTimelineID string
+			var gotUpTo time.Time
+			calls := 0
+			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(ctx context.Context, userID, timelineID string, upTo time.Time) error {
+				calls++
+				gotUser, gotTimelineID, gotUpTo = userID, timelineID, upTo
+				return nil
+			}}})
 
-		rr := postTimelineSeen(t, s, url.Values{"up_to": {"2026-01-01T15:00:00.123456789Z"}})
+			rr := postTimelineSeen(t, s, url.Values{"timeline": {tt.timeline}, "up_to": {"2026-01-01T15:00:00.123456789Z"}})
 
-		if rr.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
-		}
-		wantUpTo := time.Date(2026, 1, 1, 15, 0, 0, 123456789, time.UTC)
-		if calls != 1 || gotUser != "user-1" || !gotUpTo.Equal(wantUpTo) {
-			t.Errorf("MarkSeen called %d times with (%q, %v), want once with (user-1, %v)", calls, gotUser, gotUpTo, wantUpTo)
-		}
-	})
+			if rr.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+			}
+			wantUpTo := time.Date(2026, 1, 1, 15, 0, 0, 123456789, time.UTC)
+			if calls != 1 || gotUser != "user-1" || gotTimelineID != tt.wantTimelineID || !gotUpTo.Equal(wantUpTo) {
+				t.Errorf("MarkSeen called %d times with (%q, %q, %v), want once with (user-1, %q, %v)", calls, gotUser, gotTimelineID, gotUpTo, tt.wantTimelineID, wantUpTo)
+			}
+		})
+	}
 
 	const valid = "2026-01-01T15:00:00Z"
 	for _, tt := range []struct {
 		name string
 		form url.Values
 	}{
-		{"missing up_to", url.Values{}},
-		{"invalid up_to", url.Values{"up_to": {"yesterday"}}},
+		{"missing up_to", url.Values{"timeline": {homeTabID}}},
+		{"invalid up_to", url.Values{"timeline": {homeTabID}, "up_to": {"yesterday"}}},
+		{"missing timeline", url.Values{"up_to": {valid}}},
+		{"invalid timeline", url.Values{"timeline": {"home"}, "up_to": {valid}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
+			s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, string, time.Time) error {
 				calls++
 				return nil
 			}}})
@@ -858,10 +926,10 @@ func TestTimelineSeenHandler(t *testing.T) {
 	}
 
 	t.Run("store error", func(t *testing.T) {
-		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, time.Time) error {
+		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{markSeenFn: func(context.Context, string, string, time.Time) error {
 			return errors.New("db down")
 		}}})
-		rr := postTimelineSeen(t, s, url.Values{"up_to": {valid}})
+		rr := postTimelineSeen(t, s, url.Values{"timeline": {homeTabID}, "up_to": {valid}})
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}

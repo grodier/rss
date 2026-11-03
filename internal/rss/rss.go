@@ -336,18 +336,20 @@ const (
 	MaxEntries = 500
 )
 
-// TimelineMark is what decides where a user's "You were here" line goes,
-// and what their own positions for what arrives are raised above.
+// TimelineMark is what decides where a timeline's "You were here" line
+// goes: the timeline's own SeenUpTo and DividerAt (psql's TimelineLine), with
+// the user's SeenAt, which says whether a new visit has started.
 type TimelineMark struct {
-	SeenUpTo  time.Time // the newest timeline position the user has had on screen
-	SeenAt    time.Time // when SeenUpTo was last reported
-	DividerAt time.Time // the line of the visit SeenAt belongs to; zero during the first visit
+	SeenUpTo  time.Time // the newest position the timeline has had on screen; zero if it never has
+	SeenAt    time.Time // when the user last reported a position, on any timeline
+	DividerAt time.Time // the line of the visit SeenAt belongs to; zero if the timeline wasn't seen before it
 }
 
 // Divider returns where the "You were here" line goes on a page rendered
-// at now: the newest position the previous visit had on screen. A new
-// visit (at least VisitGap since the last report) puts it where the last
-// one ended. It's zero without a mark and during the first visit.
+// at now: the newest position the timeline had on screen in the last visit
+// it was opened in. A new visit (at least VisitGap since the last report)
+// puts it where the timeline was left. It's zero without a mark, during the
+// first visit, and on a timeline never seen.
 func (m TimelineMark) Divider(now time.Time) time.Time {
 	if m.SeenAt.IsZero() {
 		return time.Time{}

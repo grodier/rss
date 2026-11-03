@@ -471,7 +471,8 @@
   }
 
   // "You were here": a timeline's first page carries the newest position on
-  // it in .article-list[data-seen-up-to]. Report it when the page is first
+  // it in .article-list[data-seen-up-to], and the timeline in
+  // data-timeline, whose own line it moves. Report it when the page is first
   // shown (at load, or its first time visible if it loaded in the
   // background, and again when it's restored from the back-forward cache),
   // and each time it's hidden (another tab, the app backgrounded, the page
@@ -482,6 +483,7 @@
   const seen = document.querySelector(".article-list[data-seen-up-to]");
   if (seen) {
     const report = () => navigator.sendBeacon("/timeline/seen", new URLSearchParams({
+      timeline: seen.dataset.timeline,
       up_to: seen.dataset.seenUpTo,
     }));
     let shown = document.visibilityState === "visible";

@@ -91,14 +91,14 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 
 // TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
 // and infinite scroll rely on: a timeline's first page puts data-seen-up-to
-// on .article-list itself, app.js sends it as up_to (and nothing else) when
-// the page is shown and when it's hidden, and the divider is a
-// .timeline-divider directly inside .article-list, so appending a later
-// page's children in order keeps it in place.
+// and data-timeline on .article-list itself, app.js sends them as up_to and
+// timeline (and nothing else) when the page is shown and when it's hidden,
+// and the divider is a .timeline-divider directly inside .article-list, so
+// appending a later page's children in order keeps it in place.
 func TestYouWereHereMarkup(t *testing.T) {
 	items := timelineItems(3)
 	s := newTestServerWith(t, Services{
-		ReadService: &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
+		ReadService: &fakeReadStore{timelineLineFn: func(context.Context, string, string) (rss.TimelineMark, error) {
 			return rss.TimelineMark{SeenAt: time.Now(), DividerAt: items[1].Position}, nil
 		}},
 		SaveService: &fakeSaveStore{},
@@ -115,8 +115,10 @@ func TestYouWereHereMarkup(t *testing.T) {
 	if len(lists) != 1 {
 		t.Fatalf("found %d .article-list, want 1", len(lists))
 	}
-	if !hasAttr(lists[0], "data-seen-up-to") {
-		t.Error(".article-list has no data-seen-up-to")
+	for _, name := range []string{"data-seen-up-to", "data-timeline"} {
+		if !hasAttr(lists[0], name) {
+			t.Errorf(".article-list has no %s", name)
+		}
 	}
 	var children []string
 	for c := lists[0].FirstChild; c != nil; c = c.NextSibling {
@@ -134,8 +136,8 @@ func TestYouWereHereMarkup(t *testing.T) {
 		}
 	}
 
-	// The beacon reports the position, under the name timelineSeenHandler
-	// reads, and nothing else.
+	// The beacon reports the timeline and the position, under the names
+	// timelineSeenHandler reads, and nothing else.
 	js, err := fs.ReadFile(ui.Static, "static/js/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -144,8 +146,8 @@ func TestYouWereHereMarkup(t *testing.T) {
 	if beacon == nil {
 		t.Fatal("app.js doesn't send the beacon to /timeline/seen")
 	}
-	if got := strings.Join(strings.Fields(string(beacon[1])), " "); got != "up_to: seen.dataset.seenUpTo," {
-		t.Errorf("app.js's beacon sends %q, want up_to: seen.dataset.seenUpTo only", got)
+	if got, want := strings.Join(strings.Fields(string(beacon[1])), " "), "timeline: seen.dataset.timeline, up_to: seen.dataset.seenUpTo,"; got != want {
+		t.Errorf("app.js's beacon sends %q, want %q only", got, want)
 	}
 	// It reports when the page is shown (positions of what arrives next are
 	// set against the latest report) as well as when it's hidden.

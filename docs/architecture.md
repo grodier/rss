@@ -159,7 +159,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order (`/timelines/all/move` moves Home) |
 | `GET /timelines/{id}/share` | yes | A timeline's share page |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
-| `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen; 204 |
+| `POST /timeline/seen` | yes | "You were here" beacon: the newest position seen, and on which timeline (`all` or its ID); 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
@@ -201,6 +201,7 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               └──< site_icons
 
 users ──  timeline_marks (one row per user, once reported)
+users ──< timeline_lines (one per timeline seen: Home's with no timeline_id) >── timelines
 users ──< timeline_entries >── articles (feed_id, no foreign key)
 users ──< tags
 subscriptions ──< subscription_tags >── tags
@@ -219,7 +220,9 @@ emails   (the outbox: no foreign keys)
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
   Ingest flags copies (`articles.has_copies`, set by `saveArticles` and never cleared), and timelines check for an earlier copy only on flagged rows.
-- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to place the "You were here" divider, and at ingest and on subscribe, to set the reader's own positions (`timeline_entries`); its positions compare with the reader's positions (a row's, else `articles.timeline_at`), with no foreign key to an article.
+- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineLine`), for whether a new visit has started, and at ingest and on subscribe, to set the reader's own positions (`timeline_entries`); its positions compare with the reader's positions (a row's, else `articles.timeline_at`), with no foreign key to an article.
+- **`timeline_lines`** holds each timeline's own "You were here" line, one row per timeline the user has had on screen (Home's with a NULL `timeline_id`, unique with `NULLS NOT DISTINCT`): `MarkSeen` upserts the reported timeline's row in the transaction that updates `timeline_marks`, after checking the timeline is the user's, and a new visit moves every row's `divider_at` to its `seen_up_to`; `TimelineLine` reads it joined to the user's `timeline_marks` row.
+  Only the line is per timeline: ingest and trimming use `timeline_marks`.
 - **`timeline_entries`** holds each reader's own position for news that arrived in a feed they follow while they were looking, and for a feed's recent posts when they follow it: `saveArticles` writes rows for inserted articles, for each follower whose `timeline_marks.seen_at` is within `rss.NewsWindow`, and `SubscriptionRepository.Subscribe` for the feed's articles positioned within `rss.NewsWindow`; both raise the shared `timeline_at` above the reader's `seen_up_to` (`raisePositions`).
   Rows are inserted or deleted, never updated, and a row is never below the article's `timeline_at`, so deleting one is always safe; `feed_id` copies the article's feed so `Unsubscribe` can delete that feed's rows in the same transaction.
   `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
@@ -230,8 +233,8 @@ emails   (the outbox: no foreign keys)
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
-Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
-Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows (and `Unsubscribe` deletes the reader's `timeline_entries` rows for the feed), so subscribing again starts clean; deleting a tag removes it from subscriptions and timelines.
+Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
+Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows (and `Unsubscribe` deletes the reader's `timeline_entries` rows for the feed), so subscribing again starts clean; deleting a tag removes it from subscriptions and timelines; deleting a timeline deletes its `timeline_tags`, `timeline_feeds` and `timeline_lines` rows.
 Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 
 Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and `schema_fingerprint` (one row: the fingerprint of the migrations last applied), which `psql.Migrate` creates for the pre-alpha check (see "The process").

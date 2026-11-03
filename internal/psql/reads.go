@@ -85,33 +85,50 @@ func (r *ReadRepository) ReadArticleIDs(ctx context.Context, userID string, arti
 	return read, nil
 }
 
-// TimelineMark returns the user's mark, or a zero TimelineMark if the
-// timeline has never reported one.
-func (r *ReadRepository) TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error) {
-	stmt := `SELECT seen_up_to, seen_at, divider_at FROM timeline_marks WHERE user_id = $1`
+// TimelineLine returns what places timelineID's "You were here" line for
+// userID ("" for Home): the timeline's own SeenUpTo and DividerAt, with the
+// user's SeenAt, which says whether a new visit has started. It's zero if
+// the user has never reported a look, and has a zero SeenUpTo for a
+// timeline they've never had on screen.
+func (r *ReadRepository) TimelineLine(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error) {
+	stmt := `SELECT m.seen_at, l.seen_up_to, l.divider_at
+		FROM timeline_marks m
+		LEFT JOIN timeline_lines l ON l.user_id = m.user_id AND l.timeline_id IS NOT DISTINCT FROM $2::uuid
+		WHERE m.user_id = $1`
 
 	var m rss.TimelineMark
-	var dividerAt sql.NullTime
-	err := r.DB.QueryRowContext(ctx, stmt, userID).Scan(&m.SeenUpTo, &m.SeenAt, &dividerAt)
+	var seenUpTo, dividerAt sql.NullTime
+	err := r.DB.QueryRowContext(ctx, stmt, userID, nullUUID(timelineID)).Scan(&m.SeenAt, &seenUpTo, &dividerAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.TimelineMark{}, nil // the first visit hasn't reported yet
 	}
 	if err != nil {
 		return rss.TimelineMark{}, err
 	}
+	m.SeenUpTo = seenUpTo.Time
 	m.DividerAt = dividerAt.Time
 	return m, nil
 }
 
+// nullUUID is id as a query argument, NULL when it's "" (Home, for
+// timeline_lines.timeline_id).
+func nullUUID(id string) sql.NullString {
+	return sql.NullString{String: id, Valid: id != ""}
+}
+
 // MarkSeen records that the user has had the timeline position upTo on
-// screen. A report after rss.VisitGap without one starts a new visit: the
-// visit's divider becomes where the previous visit ended, and the reader's
+// screen on timelineID ("" for Home): it raises the user's mark and the
+// timeline's line (timeline_lines). A timelineID that isn't one of the
+// user's timelines records the user's mark only. A report after
+// rss.VisitGap without one starts a new visit: each divider (the user's,
+// and every one of their timelines') becomes where the previous visit left
+// it, before this report's position is recorded, and the reader's
 // own positions (timeline_entries) are trimmed to every row above the
 // previous visit's divider, but at least rss.MinEntries and at most
 // rss.MaxEntries, the newest by position (the newest rss.MaxEntries when
 // there's no divider yet). A deleted row's article goes back to its shared
 // position, which differs only if the row was raised, and is never higher.
-func (r *ReadRepository) MarkSeen(ctx context.Context, userID string, upTo time.Time) error {
+func (r *ReadRepository) MarkSeen(ctx context.Context, userID, timelineID string, upTo time.Time) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -161,6 +178,26 @@ func (r *ReadRepository) MarkSeen(ctx context.Context, userID string, upTo time.
 		if _, err := tx.ExecContext(ctx, trim, userID, rss.MaxEntries, rss.MinEntries, dividerAt); err != nil {
 			return err
 		}
+
+		// Every timeline's line moves to where the previous visit left it,
+		// including those not opened in it: their lines stay where the
+		// last visit they were opened in ended.
+		if _, err := tx.ExecContext(ctx, `UPDATE timeline_lines SET divider_at = seen_up_to WHERE user_id = $1`, userID); err != nil {
+			return err
+		}
+	}
+
+	// This timeline's own newest position, under the same cap as the mark's.
+	// The EXISTS keeps a report naming another user's timeline (or a deleted
+	// one) from writing a line.
+	line := `INSERT INTO timeline_lines (user_id, timeline_id, seen_up_to)
+		SELECT $1::uuid, $2::uuid, LEAST($3, now())
+		WHERE $2::uuid IS NULL OR EXISTS (SELECT 1 FROM timelines WHERE id = $2::uuid AND user_id = $1)
+		ON CONFLICT (user_id, timeline_id) DO UPDATE SET
+		    seen_up_to = GREATEST(timeline_lines.seen_up_to, EXCLUDED.seen_up_to)`
+
+	if _, err := tx.ExecContext(ctx, line, userID, nullUUID(timelineID), upTo); err != nil {
+		return err
 	}
 
 	return tx.Commit()

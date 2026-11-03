@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/validator"
 )
 
 // timelinePageSize is how many articles a timeline page shows.
@@ -116,11 +117,11 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
 		return
 	}
-	// The mark places the "You were here" line; starred-only timelines,
-	// ordered by star time, have none.
+	// The timeline's own line places "You were here"; starred-only
+	// timelines, ordered by star time, have none.
 	var line time.Time
 	if !current.Filter.StarredOnly {
-		line = s.timelineDivider(r, userID, time.Now())
+		line = s.timelineDivider(r, userID, current.ID, time.Now())
 	}
 
 	rows, next, err := s.timelineRows(r, userID, current.Filter, before)
@@ -161,6 +162,7 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		Timeline      rss.Timeline
 		Home          bool // current is Home
 		Tabs          timelineTabs
+		TabID         string // the timeline the beacon reports for: homeTabID or its ID
 		Path          string // the timeline's URL, for the pager
 		NoSources     bool   // it shows only some feeds but has none to show
 		Rows          []articleRow
@@ -172,6 +174,7 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		Timeline:      current,
 		Home:          home,
 		Tabs:          timelineTabs{Timelines: tabs, CurrentID: current.ID},
+		TabID:         tabID(current),
 		Path:          path,
 		NoSources:     filter.OnlyIncluded && len(filter.IncludeTagIDs) == 0 && len(filter.IncludeFeedIDs) == 0,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
@@ -197,11 +200,11 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 }
 
 // timelineDivider returns where the "You were here" line goes on userID's
-// timeline for a page rendered at now (see rss.TimelineMark.Divider). The
-// line is decoration: on a store error it logs and returns zero, so the page
-// shows no line.
-func (s *Server) timelineDivider(r *http.Request, userID string, now time.Time) time.Time {
-	mark, err := s.services.ReadService.TimelineMark(r.Context(), userID)
+// timeline timelineID ("" for Home) for a page rendered at now (see
+// rss.TimelineMark.Divider). The line is decoration: on a store error it
+// logs and returns zero, so the page shows no line.
+func (s *Server) timelineDivider(r *http.Request, userID, timelineID string, now time.Time) time.Time {
+	mark, err := s.services.ReadService.TimelineLine(r.Context(), userID, timelineID)
 	if err != nil {
 		s.logError(r, err)
 		return time.Time{}
@@ -228,12 +231,14 @@ func fillDivider(rows []articleRow, before rss.ArticleCursor, line time.Time) {
 }
 
 // timelineSeenHandler records the newest timeline position the reader has
-// had on screen, sent by app.js's beacon when a timeline page is shown or
-// hidden. It moves the "You were here" line at the reader's next visit, and
-// what arrives next is positioned above it (see psql's saveArticles).
+// had on screen, and on which timeline (homeTabID or a custom timeline's
+// ID), sent by app.js's beacon when a timeline page is shown or hidden. It
+// moves that timeline's "You were here" line at the reader's next visit,
+// and what arrives next is positioned above it (see psql's saveArticles).
 func (s *Server) timelineSeenHandler(w http.ResponseWriter, r *http.Request) {
 	var form struct {
-		UpTo string `form:"up_to"`
+		Timeline string `form:"timeline"`
+		UpTo     string `form:"up_to"`
 	}
 	if err := s.decodePostForm(w, r, &form); err != nil {
 		s.formErrorResponse(w, r, err)
@@ -244,9 +249,16 @@ func (s *Server) timelineSeenHandler(w http.ResponseWriter, r *http.Request) {
 		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That timeline position isn't valid.")
 		return
 	}
+	timelineID := form.Timeline
+	if timelineID == homeTabID {
+		timelineID = ""
+	} else if !validator.Matches(timelineID, validator.UUIDRX) {
+		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That timeline isn't valid.")
+		return
+	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.services.ReadService.MarkSeen(r.Context(), userID, upTo); err != nil {
+	if err := s.services.ReadService.MarkSeen(r.Context(), userID, timelineID, upTo); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}

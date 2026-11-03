@@ -308,6 +308,25 @@ CREATE TABLE timeline_feeds (
 
 CREATE INDEX timeline_feeds_user_feed_idx ON timeline_feeds (user_id, feed_id);
 
+-- Where each of a user's timelines puts its "You were here" line (see
+-- psql.TimelineLine). One row per timeline the user has had on screen,
+-- written by the timeline's beacon (MarkSeen); timeline_marks keeps the
+-- user's own newest position and visits.
+CREATE TABLE timeline_lines (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    timeline_id UUID              -- NULL for Home
+        REFERENCES timelines(id)
+        ON DELETE CASCADE,
+
+    seen_up_to TIMESTAMPTZ NOT NULL, -- the newest position this timeline has had on screen
+    divider_at TIMESTAMPTZ,          -- its seen_up_to when the user's previous visit ended; NULL until then
+
+    UNIQUE NULLS NOT DISTINCT (user_id, timeline_id)
+);
+
 -- The enrichment queue: articles whose web page should be fetched for a
 -- missing image, title or excerpt. A row is deleted once its work is done
 -- or given up on.
@@ -448,6 +467,7 @@ DROP TABLE import_feeds;
 DROP TABLE imports;
 DROP TABLE site_icons;
 DROP TABLE enrich_jobs;
+DROP TABLE timeline_lines;
 DROP TABLE timeline_feeds;
 DROP TABLE timeline_tags;
 DROP TABLE timelines;

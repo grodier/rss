@@ -1628,6 +1628,136 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchAfterNoAttempts(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	ctx := t.Context()
+
+	// setFetched saves feed once, then sets when it was last fetched and
+	// attempted, each that long before now.
+	setFetched := func(t *testing.T, feed rss.Feed, fetchedAgo, attemptedAgo time.Duration) {
+		t.Helper()
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "first", Title: "First", PublishedAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}}, feed.NextFetch); err != nil {
+			t.Fatalf("first SaveFetch: %v", err)
+		}
+		if _, err := db.Exec(`UPDATE feeds SET last_fetched_at = now() - $2 * interval '1 microsecond', last_attempt_at = now() - $3 * interval '1 microsecond' WHERE id = $1`,
+			feed.ID, fetchedAgo.Microseconds(), attemptedAgo.Microseconds()); err != nil {
+			t.Fatalf("set last_fetched_at, last_attempt_at: %v", err)
+		}
+	}
+
+	// save saves the later items and returns the result and the saved
+	// articles by external ID.
+	save := func(t *testing.T, feed rss.Feed) (rss.FetchResult, time.Time, map[string]rss.Article) {
+		t.Helper()
+		now := dbNow(t, db).Truncate(time.Second)
+		res, err := feeds.SaveFetch(ctx, feed, []rss.Article{
+			{ExternalID: "days", Title: "Days", PublishedAt: now.Add(-48 * time.Hour)},
+			{ExternalID: "hour", Title: "Hour", PublishedAt: now.Add(-time.Hour)},
+			{ExternalID: "undated", Title: "Undated"},
+		}, feed.NextFetch)
+		if err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		got, err := articles.ListByFeed(ctx, feed.ID, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		byID := make(map[string]rss.Article)
+		for _, a := range got {
+			byID[a.ExternalID] = a
+		}
+		return res, now, byID
+	}
+
+	assertFirstSave := func(t *testing.T, res rss.FetchResult, now time.Time, got map[string]rss.Article) {
+		t.Helper()
+		if res.Behind {
+			t.Errorf("got %+v, want not Behind", res)
+		}
+		for _, id := range []string{"days", "hour", "undated"} {
+			if !got[id].Backlog {
+				t.Errorf("%s: Backlog = false, want true", id)
+			}
+		}
+		for _, id := range []string{"days", "hour"} {
+			if a := got[id]; !a.TimelineAt.Equal(a.PublishedAt) {
+				t.Errorf("%s: got TimelineAt %v, want published %v", id, a.TimelineAt, a.PublishedAt)
+			}
+		}
+		if u := got["undated"]; u.TimelineAt.After(now.Add(-24 * time.Hour)) {
+			t.Errorf("undated: got TimelineAt %v, want at least a day before %v", u.TimelineAt, now)
+		}
+	}
+
+	t.Run("no attempt for three days: placed as a first save", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setFetched(t, feed, 72*time.Hour, 72*time.Hour)
+		res, now, got := save(t, feed)
+		assertFirstSave(t, res, now, got)
+	})
+
+	t.Run("attempted exactly staleFeedAfter ago: placed as a first save", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setFetched(t, feed, staleFeedAfter, staleFeedAfter)
+		res, now, got := save(t, feed)
+		assertFirstSave(t, res, now, got)
+	})
+
+	t.Run("failing but attempted: news", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setFetched(t, feed, 72*time.Hour, time.Hour)
+		_, now, got := save(t, feed)
+		after := dbNow(t, db)
+		for _, id := range []string{"days", "hour"} {
+			a := got[id]
+			if a.Backlog {
+				t.Errorf("%s: Backlog = true, want false", id)
+			}
+			if a.TimelineAt.Before(now.Add(-rss.NewsWindow)) || a.TimelineAt.After(after) {
+				t.Errorf("%s: got TimelineAt %v, want within the %v before %v", id, a.TimelineAt, rss.NewsWindow, after)
+			}
+		}
+		if u := got["undated"]; u.Backlog || !u.TimelineAt.Equal(u.CreatedAt) {
+			t.Errorf("undated: got Backlog %t, TimelineAt %v; want news at the save time %v", u.Backlog, u.TimelineAt, u.CreatedAt)
+		}
+	})
+
+	t.Run("enrichment follows the first save's allowance", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		setFetched(t, feed, 72*time.Hour, 72*time.Hour)
+		if _, err := db.Exec(`DELETE FROM enrich_jobs j USING articles a WHERE a.id = j.article_id AND a.feed_id = $1`, feed.ID); err != nil {
+			t.Fatalf("delete jobs: %v", err)
+		}
+		date := dbNow(t, db).Add(-30 * 24 * time.Hour)
+		items := make([]rss.Article, 30)
+		for i := range items {
+			items[i] = rss.Article{
+				ExternalID:  fmt.Sprintf("n%02d", i),
+				URL:         fmt.Sprintf("https://example.com/%d", i),
+				Title:       "Title",
+				Excerpt:     "Excerpt",
+				PublishedAt: date.Add(time.Duration(i) * time.Hour),
+			}
+		}
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+
+		jobs := enrichJobs(t, db, feed.ID)
+		if len(jobs) > enrichFirstSave {
+			t.Errorf("got %d jobs, want at most %d: %v", len(jobs), enrichFirstSave, jobs)
+		}
+		for id, priority := range jobs {
+			if priority != enrichPriorityBacklog {
+				t.Errorf("article %s priority = %d, want %d", id, priority, enrichPriorityBacklog)
+			}
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestGetByIDReadsPageColumns(t *testing.T) {
 	db := psqltest.NewDB(t)
 	id := newTestArticles(t, db, 1)[0]

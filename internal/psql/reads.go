@@ -105,8 +105,32 @@ func (r *ReadRepository) TimelineMark(ctx context.Context, userID string) (rss.T
 
 // MarkSeen records that the user has had the timeline position upTo on
 // screen. A report after rss.VisitGap without one starts a new visit: the
-// visit's divider becomes where the previous visit ended.
+// visit's divider becomes where the previous visit ended, and the reader's
+// own positions (timeline_entries) are trimmed to every row above the
+// previous visit's divider, but at least rss.MinEntries and at most
+// rss.MaxEntries, the newest by position (the newest rss.MaxEntries when
+// there's no divider yet). A deleted row's article goes back to its shared
+// position, which differs only if the row was raised, and is never higher.
 func (r *ReadRepository) MarkSeen(ctx context.Context, userID string, upTo time.Time) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	// The previous visit's divider, and whether this report starts a new
+	// visit, judged by the same now() as the upsert below (the transaction's
+	// start). FOR UPDATE keeps a concurrent report from starting the same
+	// visit again.
+	var newVisit bool
+	var dividerAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `SELECT seen_at <= now() - make_interval(secs => $2), divider_at
+		FROM timeline_marks WHERE user_id = $1 FOR UPDATE`, userID, rss.VisitGap.Seconds()).Scan(&newVisit, &dividerAt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) { // no row: the first report, nothing to trim
+		return err
+	}
+
 	// A client-supplied position is never stored later than now, so a bad
 	// clock or a forged report can't hide future articles above the line,
 	// or raise the positions of what arrives next past them.
@@ -119,6 +143,25 @@ func (r *ReadRepository) MarkSeen(ctx context.Context, userID string, upTo time.
 		    seen_up_to = GREATEST(timeline_marks.seen_up_to, EXCLUDED.seen_up_to),
 		    seen_at = now()`
 
-	_, err := r.DB.ExecContext(ctx, stmt, userID, upTo, rss.VisitGap.Seconds())
-	return err
+	if _, err := tx.ExecContext(ctx, stmt, userID, upTo, rss.VisitGap.Seconds()); err != nil {
+		return err
+	}
+
+	if newVisit {
+		trim := `DELETE FROM timeline_entries e
+			USING (
+			    SELECT article_id, timeline_at,
+			        row_number() OVER (ORDER BY timeline_at DESC, article_id DESC) AS rank
+			    FROM timeline_entries
+			    WHERE user_id = $1
+			) r
+			WHERE e.user_id = $1 AND e.article_id = r.article_id
+			    AND (r.rank > $2 OR (r.rank > $3 AND $4::timestamptz IS NOT NULL AND r.timeline_at <= $4))`
+
+		if _, err := tx.ExecContext(ctx, trim, userID, rss.MaxEntries, rss.MinEntries, dividerAt); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

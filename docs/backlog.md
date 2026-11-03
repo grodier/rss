@@ -543,6 +543,7 @@ Pages and queries:
 - [ ] **Trimming at every visit start** (#495, planned in #491).
   `MarkSeen` deletes a reader's rows past what's kept at the start of each visit: a few hundred rows a visit for a heavy reader, so `timeline_entries` churns and needs vacuuming.
   *Measured 2026-11-02* on the prototype above: 4–8 ms to trim a reader's 800 rows to 500.
+  *Measured 2026-11-03* with #495 (`make db/loadseed` plus 1,000 readers of 500 rows each, 501,000 rows taking 115 MB; Postgres 16 on a dev container, warm cache, the prepared statement's generic plan): 0.8–1.1 ms to trim the 300-subscription reader's 800 rows to 500, and about 1.0 ms to 200.
   *Signal:* dead tuples or bloat on `timeline_entries` (`pg_stat_user_tables.n_dead_tup`, its size well over 224 B a row), or autovacuum falling behind on it.
   *Fix:* trim only once a reader is well past `rss.MaxEntries`, or in batches.
 - [ ] **Filtered timelines read past many articles** (#356, #359, #360).

@@ -328,6 +328,14 @@ func DefaultTimelines() []Timeline {
 // starts and the "You were here" divider moves.
 const VisitGap = 30 * time.Minute
 
+// What MarkSeen keeps of a reader's own positions (timeline_entries) at the
+// start of each visit: every row above the previous visit's divider, but at
+// least MinEntries and at most MaxEntries, the newest by position.
+const (
+	MinEntries = 100
+	MaxEntries = 500
+)
+
 // TimelineMark is what decides where a user's "You were here" line goes,
 // and what their own positions for what arrives are raised above.
 type TimelineMark struct {

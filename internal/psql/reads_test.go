@@ -355,3 +355,116 @@ func TestTimelineMarkDeletedWithUser(t *testing.T) {
 		t.Errorf("the mark outlived its user")
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestMarkSeenTrimsReaderPositions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewReadRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+	feed := newTestFeed(t, db)
+	// Rows are a second apart, the newest at base.
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	second := func(i int) time.Time { return base.Add(-time.Duration(i) * time.Second) }
+
+	// newReader returns a new user following feed, with n rows for articles
+	// of it at base, base - 1s, … (their articles at the same positions).
+	newReader := func(t *testing.T, n int) string {
+		t.Helper()
+		user := newTestUser(t, db)
+		if err := subs.Subscribe(ctx, user, feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		_, err := db.Exec(`WITH a AS (
+			    INSERT INTO articles (feed_id, external_id, title, timeline_at, created_at)
+			    SELECT $1, $2::text || '-' || g, 'Article', $3::timestamptz - g * interval '1 second', $3::timestamptz - g * interval '1 second'
+			    FROM generate_series(0, $4 - 1) g
+			    RETURNING id, timeline_at
+			)
+			INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+			SELECT $2::uuid, id, $1, timeline_at FROM a`, feed.ID, user, base, n)
+		if err != nil {
+			t.Fatalf("insert %d rows: %v", n, err)
+		}
+		return user
+	}
+	// setMark gives user a mark reported ago, with dividerAt (NULL if zero).
+	setMark := func(t *testing.T, user string, ago time.Duration, dividerAt time.Time) {
+		t.Helper()
+		divider := sql.NullTime{Time: dividerAt, Valid: !dividerAt.IsZero()}
+		if _, err := db.Exec(`INSERT INTO timeline_marks (user_id, seen_up_to, seen_at, divider_at)
+			VALUES ($1, $2, now() - $3 * interval '1 microsecond', $4)`, user, base, ago.Microseconds(), divider); err != nil {
+			t.Fatalf("insert timeline_marks: %v", err)
+		}
+	}
+	// wantNewest checks user's rows are exactly the newest n of those
+	// newReader inserted.
+	wantNewest := func(t *testing.T, user string, n int) {
+		t.Helper()
+		var count int
+		var newest, oldest sql.NullTime
+		if err := db.QueryRow(`SELECT count(*), max(timeline_at), min(timeline_at) FROM timeline_entries WHERE user_id = $1`, user).Scan(&count, &newest, &oldest); err != nil {
+			t.Fatalf("count timeline_entries: %v", err)
+		}
+		if count != n || !newest.Time.Equal(base) || !oldest.Time.Equal(second(n-1)) {
+			t.Errorf("%d rows from %v to %v, want the newest %d: from %v to %v", count, newest.Time, oldest.Time, n, base, second(n-1))
+		}
+	}
+	markSeen := func(t *testing.T, user string) {
+		t.Helper()
+		if err := repo.MarkSeen(ctx, user, time.Now()); err != nil {
+			t.Fatalf("MarkSeen: %v", err)
+		}
+	}
+
+	t.Run("the first report trims nothing", func(t *testing.T) {
+		user := newReader(t, 600)
+		markSeen(t, user)
+		wantNewest(t, user, 600)
+	})
+
+	t.Run("a report during a visit trims nothing", func(t *testing.T) {
+		user := newReader(t, 600)
+		setMark(t, user, 10*time.Minute, second(1000))
+		markSeen(t, user)
+		wantNewest(t, user, 600)
+	})
+
+	t.Run("a new visit keeps every row above the previous visit's line", func(t *testing.T) {
+		user := newReader(t, 500)
+		// Rows 0–299 are above the line; row 300 is at it.
+		setMark(t, user, time.Hour, second(300))
+		markSeen(t, user)
+		wantNewest(t, user, 300)
+	})
+
+	t.Run("at least MinEntries", func(t *testing.T) {
+		user := newReader(t, 250)
+		setMark(t, user, time.Hour, base) // the newest row is at the line
+		markSeen(t, user)
+		wantNewest(t, user, rss.MinEntries)
+	})
+
+	t.Run("at most MaxEntries", func(t *testing.T) {
+		user := newReader(t, 600)
+		setMark(t, user, time.Hour, second(1000))
+		markSeen(t, user)
+		wantNewest(t, user, rss.MaxEntries)
+	})
+
+	t.Run("the second visit keeps the newest MaxEntries", func(t *testing.T) {
+		user := newReader(t, 600)
+		setMark(t, user, time.Hour, time.Time{})
+		markSeen(t, user)
+		wantNewest(t, user, rss.MaxEntries)
+	})
+
+	t.Run("other readers' rows are untouched", func(t *testing.T) {
+		user := newReader(t, 600)
+		other := newReader(t, 600)
+		setMark(t, user, time.Hour, base)
+		markSeen(t, user)
+		wantNewest(t, user, rss.MinEntries)
+		wantNewest(t, other, 600)
+	})
+}

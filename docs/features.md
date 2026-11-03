@@ -328,7 +328,7 @@ So new items land near the top in publish order (and, for a reader who has looke
 `saveArticles` writes one per inserted article that is news or positioned within `rss.NewsWindow` of the save (a first save's latest posts, for followers who subscribed before the feed was fetched), for each follower whose mark's `seen_at` is that recent; `Subscribe` writes one per article of the feed positioned within `rss.NewsWindow`, when the subscription is new and the reader has a mark, so imports (`importer.Runner.run`) do too.
 Both use `raisePositions`: a shared position above the reader's `seen_up_to` is kept, and those at or below it are spread evenly, newest first, just above it, so nothing they get lands among what they've seen.
 Shared news is never below its feed's floor, so a follower whose `seen_up_to` is at or below the floor gets the shared positions, and one away longer than `rss.NewsWindow` would, so gets no rows; readers without a mark read shared positions.
-`Unsubscribe` deletes the reader's rows for that feed.
+`Unsubscribe` deletes the reader's rows for that feed, and each new visit trims them (see "You were here").
 
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.
@@ -341,6 +341,8 @@ List pages ask `ReadArticleIDs` which rows are read (matching any copy with the 
 
 **"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and `app.js` sends it to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
 `MarkSeen` keeps the newest position reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`).
+A new visit also trims the reader's positions, in the same transaction: it keeps every row above the previous visit's divider (the mark's `divider_at` before the report), but at least `rss.MinEntries` and at most `rss.MaxEntries`, the newest by position, or the newest `rss.MaxEntries` when there's no divider yet.
+Since the page reports when it's shown, this runs right after a visit's first page renders, before any older page loads; a deleted row's article goes back to its shared position, which differs only if the row was raised, and is never higher.
 At render, `TimelineMark.Divider` gives the line, the newest position the previous visit had on screen, and `fillDivider` puts it above the first row at or below it, only when something is above it: an earlier row, or a cursor positioned above it.
 So above the line is everything that arrived since the previous visit, by the reader's positions, including articles published before it but fetched after.
 A store error renders the page without the line.

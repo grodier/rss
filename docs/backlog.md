@@ -459,6 +459,7 @@ Background refresh:
   `saveArticles` writes a `timeline_entries` row for each new news article and each follower who looked in the last 6 hours, in one statement but inside the fetch's transaction, which holds the feed's row lock.
   *Measured 2026-11-02* on a prototype (`make db/loadseed`'s seed plus 1,000 readers with 500 rows each; Postgres 16 on a dev container): 1.2 ms a save with 1 follower; 2.4 ms for one article and 21 ms for 20 with 50 followers; 20 ms for one article and 430 ms for 20 with 1,000 followers, about 20 µs a row (the article's own upsert is about 1 ms).
   Following a feed also writes the reader's rows for its posts from the last 6 hours, a few per feed, in the subscription's transaction, so an OPML import writes a few hundred.
+  It also checks each of the feed's articles flagged `has_copies` for a copy in the reader's other feeds (`keepCopiesInPlace`, #506), an index lookup each: *measured 2026-11-03* (`make db/loadseed`, Postgres 16 on a dev container), 20–27 ms to follow the unfollowed feed with the most flagged articles (948 of its 36,500), for the 300-feed reader.
   *Signal:* `SaveFetch` time, or the `feed refreshed` log's `duration`, climbing with a feed's follower count.
   *Fix:* write the rows from a job queued in the transaction and run outside the feed's lock, or insert followers on the shared positions with one `INSERT … SELECT` over `subscriptions` and only raised ones from arrays.
 - [ ] **Writes from feed page views** (#137).
@@ -557,7 +558,7 @@ Pages and queries:
   #482 gives every new account a Quiet posters timeline, so the rate filter's query runs for everyone who opens that tab, not only those who made one.
   *Fix:* "Word filters from a full-text index" under Filtering and timelines.
 - [ ] **A write on every timeline view** (#493, #498, planned in #491).
-  The "seen" beacon reports when a timeline page is shown as well as when it's hidden (#493), and each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice.
+  The "seen" beacon reports when a timeline page is shown as well as when it's hidden (#493), and every 10 minutes while it's being used (#506), and each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice, plus six times an hour of reading.
   *Signal:* `MarkSeen` in `pg_stat_statements` totals, or `timeline_marks` updates showing up in row-lock waits or WAL volume.
   *Fix:* skip a report that changes nothing (the same position, `seen_at` under a minute old), or batch them in the browser.
 - [ ] **Deleting a timeline scans `timeline_lines`** (#498).

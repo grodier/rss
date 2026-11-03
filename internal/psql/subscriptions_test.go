@@ -573,41 +573,184 @@ func TestSubscribeWritesReaderPositions(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
-func TestUnsubscribeDeletesReaderPositions(t *testing.T) {
+func TestUnsubscribeKeepsReaderPositions(t *testing.T) {
 	db := psqltest.NewDB(t)
 	subs := NewSubscriptionRepository(db)
 	ctx := t.Context()
 
-	left, kept := newTestFeed(t, db), newTestFeed(t, db)
-	leftArticle, _ := insertPositionedArticle(t, db, left.ID, "left", time.Hour)
-	keptArticle, _ := insertPositionedArticle(t, db, kept.ID, "kept", time.Hour)
-	user, other := newTestUser(t, db), newTestUser(t, db)
-	for _, u := range []string{user, other} {
-		setTimelineMark(t, db, u, 10*time.Minute, time.Minute)
-		for _, f := range []rss.Feed{left, kept} {
-			if err := subs.Subscribe(ctx, u, f.ID); err != nil {
+	feed := newTestFeed(t, db)
+	article, at := insertPositionedArticle(t, db, feed.ID, "recent", time.Hour)
+	user := newTestUser(t, db)
+	setTimelineMark(t, db, user, 10*time.Minute, time.Minute)
+	if err := subs.Subscribe(ctx, user, feed.ID); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	raised, ok := readerPositions(t, db, user)[article]
+	if !ok || !raised.After(at) {
+		t.Fatalf("got row %v (ok %v) after subscribing, want one raised above %v", raised, ok, at)
+	}
+
+	if err := subs.Unsubscribe(ctx, user, feed.ID); err != nil {
+		t.Fatalf("Unsubscribe: %v", err)
+	}
+	if got, ok := readerPositions(t, db, user)[article]; !ok || !got.Equal(raised) {
+		t.Errorf("after Unsubscribe got row %v (ok %v), want it kept at %v", got, ok, raised)
+	}
+
+	// The reader looks again, above the raised row, then follows the feed
+	// again: the post stays where it was rather than being raised above
+	// what they've now seen.
+	setTimelineMark(t, db, user, 0, 0)
+	if err := subs.Subscribe(ctx, user, feed.ID); err != nil {
+		t.Fatalf("Subscribe again: %v", err)
+	}
+	if got := readerPositions(t, db, user)[article]; !got.Equal(raised) {
+		t.Errorf("after subscribing again got %v, want %v", got, raised)
+	}
+}
+
+func TestSubscribeKeepsCopiesInPlace(t *testing.T) {
+	db := psqltest.NewDB(t)
+	subs := NewSubscriptionRepository(db)
+	articles := NewArticleRepository(db)
+	ctx := t.Context()
+
+	// insertCopy inserts an article of feedID with canonical URL url,
+	// flagged as having copies, positioned that long ago.
+	insertCopy := func(t *testing.T, feedID, title, url string, ago time.Duration) (string, time.Time) {
+		t.Helper()
+		var id string
+		var at time.Time
+		err := db.QueryRow(`INSERT INTO articles (feed_id, external_id, title, url, canonical_url, has_copies, timeline_at, created_at)
+			VALUES ($1, $2, $2, $3, $3, true, now() - $4 * interval '1 microsecond', now() - $4 * interval '1 microsecond')
+			RETURNING id, timeline_at`, feedID, title, url, ago.Microseconds()).Scan(&id, &at)
+		if err != nil {
+			t.Fatalf("insert %s: %v", title, err)
+		}
+		return id, at
+	}
+	subscribe := func(t *testing.T, userID string, feeds ...rss.Feed) {
+		t.Helper()
+		for _, f := range feeds {
+			if err := subs.Subscribe(ctx, userID, f.ID); err != nil {
 				t.Fatalf("Subscribe: %v", err)
 			}
 		}
 	}
-	for _, u := range []string{user, other} {
-		if got := readerPositions(t, db, u); len(got) != 2 {
-			t.Fatalf("got %d rows before Unsubscribe, want 2", len(got))
+	url := func(t *testing.T) string { return "https://blog.example/" + t.Name() }
+	// ownPosition gives userID their own position for articleID.
+	ownPosition := func(t *testing.T, userID, articleID string, at time.Time) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+			SELECT $1, id, feed_id, $3 FROM articles WHERE id = $2`, userID, articleID, at.Truncate(time.Microsecond)); err != nil {
+			t.Fatalf("insert row: %v", err)
 		}
 	}
-
-	if err := subs.Unsubscribe(ctx, user, left.ID); err != nil {
-		t.Fatalf("Unsubscribe: %v", err)
+	// olderOf inserts another article of feed, 10 minutes old, and returns its ID.
+	olderOf := func(t *testing.T, feed rss.Feed) string {
+		t.Helper()
+		id, _ := insertPositionedArticle(t, db, feed.ID, "older", 10*time.Minute)
+		return id
 	}
 
-	got := readerPositions(t, db, user)
-	if _, ok := got[leftArticle]; ok {
-		t.Error("the user's row for the unsubscribed feed is still there")
-	}
-	if _, ok := got[keptArticle]; !ok {
-		t.Error("the user's row for another feed is gone")
-	}
-	if _, ok := readerPositions(t, db, other)[leftArticle]; !ok {
-		t.Error("another user's row for the unsubscribed feed is gone")
-	}
+	t.Run("an older copy takes the entry's place instead of moving it", func(t *testing.T) {
+		agg, blog, other := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		_, aggAt := insertCopy(t, agg.ID, "via the aggregator", url(t), 5*time.Minute)
+		blogID, _ := insertCopy(t, blog.ID, "on the blog", url(t), 48*time.Hour)
+		insertPositionedArticle(t, db, other.ID, "newer", time.Minute)
+		olderID, olderAt := insertPositionedArticle(t, db, other.ID, "older", 10*time.Minute)
+		subscribe(t, reader, agg, other)
+		ownPosition(t, reader, olderID, olderAt) // an active reader has rows for what arrived lately
+
+		subscribe(t, reader, blog)
+
+		items, err := articles.ListTimeline(ctx, reader, rss.TimelineFilter{}, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListTimeline: %v", err)
+		}
+		var got []string
+		for _, item := range items {
+			got = append(got, item.Article.Title)
+		}
+		if want := []string{"newer", "on the blog", "older"}; !slices.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		entry := items[1]
+		if want := aggAt.Add(-time.Microsecond); !entry.Position.Equal(want) {
+			t.Errorf("the blog's copy is at %v, want just below the aggregator's, %v", entry.Position, want)
+		}
+		if len(entry.AlsoIn) != 1 || entry.AlsoIn[0].ID != agg.ID {
+			t.Errorf("AlsoIn = %v, want the aggregator", entry.AlsoIn)
+		}
+		if _, ok := readerPositions(t, db, reader)[blogID]; !ok {
+			t.Error("the blog's copy has no row")
+		}
+	})
+
+	t.Run("below the reader's own position for the entry", func(t *testing.T) {
+		agg, blog := newTestFeed(t, db), newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		aggID, _ := insertCopy(t, agg.ID, "via the aggregator", url(t), time.Hour)
+		blogID, _ := insertCopy(t, blog.ID, "on the blog", url(t), 48*time.Hour)
+		subscribe(t, reader, agg)
+		raised := time.Now().Add(-3 * time.Minute).Truncate(time.Microsecond)
+		if _, err := db.Exec(`INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at) VALUES ($1, $2, $3, $4)`, reader, aggID, agg.ID, raised); err != nil {
+			t.Fatalf("insert row: %v", err)
+		}
+
+		subscribe(t, reader, blog)
+
+		if got, want := readerPositions(t, db, reader)[blogID], raised.Add(-time.Microsecond); !got.Equal(want) {
+			t.Errorf("the blog's copy is at %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a recent copy isn't raised above what the reader saw", func(t *testing.T) {
+		agg, blog := newTestFeed(t, db), newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		_, aggAt := insertCopy(t, agg.ID, "via the aggregator", url(t), 5*time.Minute)
+		blogID, _ := insertCopy(t, blog.ID, "on the blog", url(t), time.Hour)
+		subscribe(t, reader, agg)
+		ownPosition(t, reader, olderOf(t, agg), time.Now().Add(-10*time.Minute))
+		setTimelineMark(t, db, reader, time.Minute, time.Minute)
+
+		subscribe(t, reader, blog)
+
+		if got, want := readerPositions(t, db, reader)[blogID], aggAt.Add(-time.Microsecond); !got.Equal(want) {
+			t.Errorf("the blog's copy is at %v, want %v", got, want)
+		}
+	})
+
+	t.Run("an entry below the reader's own positions moves as before", func(t *testing.T) {
+		agg, blog := newTestFeed(t, db), newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		insertCopy(t, agg.ID, "via the aggregator", url(t), 72*time.Hour)
+		blogID, _ := insertCopy(t, blog.ID, "on the blog", url(t), 120*time.Hour)
+		subscribe(t, reader, agg)
+		ownPosition(t, reader, olderOf(t, agg), time.Now().Add(-10*time.Minute))
+
+		subscribe(t, reader, blog)
+
+		if _, ok := readerPositions(t, db, reader)[blogID]; ok {
+			t.Error("the blog's copy got a row below the reader's own positions")
+		}
+	})
+
+	t.Run("a later copy, or a copy of an article not in the timeline, gets no row", func(t *testing.T) {
+		agg, blog, unfollowed := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+		reader := newTestUser(t, db)
+		insertCopy(t, agg.ID, "via the aggregator", url(t), 48*time.Hour)
+		insertCopy(t, blog.ID, "on the blog", url(t), 24*time.Hour)
+		insertCopy(t, unfollowed.ID, "elsewhere", url(t)+"/other", time.Minute)
+		insertCopy(t, blog.ID, "other post", url(t)+"/other", 24*time.Hour)
+		subscribe(t, reader, agg)
+		ownPosition(t, reader, olderOf(t, agg), time.Now().Add(-72*time.Hour))
+
+		subscribe(t, reader, blog)
+
+		if got := readerPositions(t, db, reader); len(got) != 1 {
+			t.Errorf("got rows %v, want only the reader's own one", got)
+		}
+	})
 }

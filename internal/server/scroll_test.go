@@ -91,7 +91,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 
 // TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
 // and infinite scroll rely on: a timeline's first page puts data-seen-up-to
-// and data-seen-as-of on .article-list itself, app.js sends both, and the divider is a .timeline-divider directly
+// and data-seen-as-of on .article-list itself, app.js sends both when the page is shown and when it's hidden, and the divider is a .timeline-divider directly
 // inside .article-list, so appending a later page's children in order keeps
 // it in place.
 func TestYouWereHereMarkup(t *testing.T) {
@@ -144,6 +144,13 @@ func TestYouWereHereMarkup(t *testing.T) {
 	for _, sent := range []string{"up_to: seen.dataset.seenUpTo", "as_of: seen.dataset.seenAsOf"} {
 		if !strings.Contains(string(js), sent) {
 			t.Errorf("app.js doesn't send %q", sent)
+		}
+	}
+	// It reports when the page is shown (positions of what arrives next are
+	// set against the latest report) as well as when it's hidden.
+	for _, when := range []string{`"visible"`, `"pageshow"`, `"hidden"`} {
+		if !strings.Contains(string(js), when) {
+			t.Errorf("app.js doesn't report on %s", when)
 		}
 	}
 }

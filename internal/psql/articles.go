@@ -555,6 +555,53 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 	return positions
 }
 
+// raisePositions returns a reader's positions for articles whose shared
+// positions are positions, given seenUpTo, the newest position the reader
+// has had on screen (zero for none): a position after seenUpTo is kept, and
+// those at or before it are spread evenly, newest first, between seenUpTo
+// and the lowest kept one (else now), at least 1 µs apart and never at or
+// before seenUpTo. So nothing a reader gets lands among what they've seen,
+// and what's spread keeps its order.
+//
+// Where there's less than 1 µs of room per article, the lowest are clamped
+// to 1 µs after seenUpTo (timelines break ties by ID).
+func raisePositions(positions []time.Time, seenUpTo, now time.Time) []time.Time {
+	raised := slices.Clone(positions)
+	if seenUpTo.IsZero() {
+		return raised
+	}
+
+	var spread []int
+	lowest := now // the lowest kept position
+	for i, p := range positions {
+		if p.After(seenUpTo) {
+			if p.Before(lowest) {
+				lowest = p
+			}
+			continue
+		}
+		spread = append(spread, i)
+	}
+	if len(spread) == 0 {
+		return raised
+	}
+
+	sort.SliceStable(spread, func(x, y int) bool {
+		return positions[spread[x]].After(positions[spread[y]])
+	})
+	// Postgres keeps microseconds, so whole steps keep the stored positions
+	// the ones computed here.
+	step := max((lowest.Sub(seenUpTo) / time.Duration(len(spread)+1)).Truncate(time.Microsecond), time.Microsecond)
+	least := seenUpTo.Add(time.Microsecond)
+	for k, i := range spread {
+		raised[i] = lowest.Add(-time.Duration(k+1) * step)
+		if raised[i].Before(least) {
+			raised[i] = least
+		}
+	}
+	return raised
+}
+
 // isBacklog reports whether timelineAt places a as backlog, for a save of a
 // feed whose previous successful fetch was prevFetched: every item of a first
 // save (prevFetched zero), dated or not, and later items published before
@@ -742,6 +789,14 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // included, gets has_copies (never cleared). It locks the feed row so
 // concurrent saves of a feed are ordered.
 //
+// Each follower who has looked in the last rss.NewsWindow (their
+// timeline_marks.seen_at) gets their own position, a timeline_entries row,
+// for each newly inserted article that is news or positioned within
+// rss.NewsWindow of now (a first save's latest posts, for followers who
+// subscribed before the feed was fetched): its timeline_at raised above
+// what they've seen (see writeReaderPositions). Updated articles never get
+// one: a position is set once.
+//
 // A save of a feed with no fetch attempt in the last staleFeedAfter (or none
 // ever) is placed as a first save: prevFetched is taken as zero for
 // timelineAt, isBacklog and enrichCandidates, since nobody was fetching the
@@ -788,6 +843,11 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 
 	var res rss.FetchResult
 	var saved []string // the non-empty canonical URLs of inserted or updated articles
+	// The inserted articles followers may get their own positions for (see
+	// writeReaderPositions), and their shared positions.
+	var arrivedIDs []string
+	var arrivedAt []time.Time
+	recent := now.Add(-rss.NewsWindow)
 	for i, a := range articles {
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
@@ -803,6 +863,12 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			return rss.FetchResult{}, err
 		case inserted:
 			res.New++
+			// Only a first save's backlog can be recent: a later save's is
+			// over a day old.
+			if !isBacklog(a, prevFetched.Time) || positions[i].After(recent) {
+				arrivedIDs = append(arrivedIDs, id)
+				arrivedAt = append(arrivedAt, positions[i])
+			}
 			if enrichable[i] && needsEnrichment(a) {
 				if _, err := q.ExecContext(ctx, enrichStmt, id, priority); err != nil {
 					return rss.FetchResult{}, err
@@ -827,6 +893,10 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		}
 	}
 
+	if err := writeReaderPositions(ctx, q, feedID, arrivedIDs, arrivedAt, now); err != nil {
+		return rss.FetchResult{}, err
+	}
+
 	// posts_per_week is recomputed after the inserts so it counts them.
 	feedStmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
 			last_error = '', consecutive_failures = 0, posts_per_week = ` + postsPerWeek + `
@@ -837,4 +907,78 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 
 	res.Behind = prevFetched.Valid && len(articles) >= 2 && res.New == len(articles)
 	return res, nil
+}
+
+// writeReaderPositions gives each follower of feedID who has looked in the
+// last rss.NewsWindow their own positions for the articles articleIDs, whose
+// shared positions are positions: raisePositions of them against the
+// follower's seen_up_to. A follower away longer than that needs none: their
+// seen_up_to is below every news position's floor, so their positions would
+// be the shared ones. Followers without a mark get none and read shared
+// positions.
+func writeReaderPositions(ctx context.Context, q querier, feedID string, articleIDs []string, positions []time.Time, now time.Time) error {
+	if len(articleIDs) == 0 {
+		return nil
+	}
+
+	stmt := `SELECT s.user_id, m.seen_up_to
+		FROM subscriptions s
+		JOIN timeline_marks m ON m.user_id = s.user_id
+		WHERE s.feed_id = $1 AND m.seen_at > now() - make_interval(secs => $2)`
+
+	rows, err := q.QueryContext(ctx, stmt, feedID, int(rss.NewsWindow.Seconds()))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var entries timelineEntries
+	raised := map[int64][]time.Time{} // by seen_up_to, in µs
+	for rows.Next() {
+		var userID string
+		var seenUpTo time.Time
+		if err := rows.Scan(&userID, &seenUpTo); err != nil {
+			return err
+		}
+		key := seenUpTo.UnixMicro()
+		if _, ok := raised[key]; !ok {
+			raised[key] = raisePositions(positions, seenUpTo, now)
+		}
+		entries.add(userID, articleIDs, raised[key])
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	return entries.insert(ctx, q, feedID)
+}
+
+// timelineEntries are timeline_entries rows of one feed to insert, as
+// columns.
+type timelineEntries struct {
+	userIDs, articleIDs, positions []string
+}
+
+// add adds userID's positions for articleIDs.
+func (e *timelineEntries) add(userID string, articleIDs []string, positions []time.Time) {
+	for i, id := range articleIDs {
+		e.userIDs = append(e.userIDs, userID)
+		e.articleIDs = append(e.articleIDs, id)
+		e.positions = append(e.positions, positions[i].Format(time.RFC3339Nano))
+	}
+}
+
+// insert inserts the rows, of feedID's articles, in one statement. A row
+// already there is kept as it is: a position is set once.
+func (e *timelineEntries) insert(ctx context.Context, q querier, feedID string) error {
+	if len(e.userIDs) == 0 {
+		return nil
+	}
+	stmt := `INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+		SELECT x.user_id, x.article_id, $1, x.timeline_at
+		FROM unnest($2::uuid[], $3::uuid[], $4::timestamptz[]) AS x (user_id, article_id, timeline_at)
+		ON CONFLICT DO NOTHING`
+	_, err := q.ExecContext(ctx, stmt, feedID, pq.Array(e.userIDs), pq.Array(e.articleIDs), pq.Array(e.positions))
+	return err
 }

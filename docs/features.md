@@ -326,6 +326,12 @@ A later save of a feed with no fetch attempt for two days (`staleFeedAfter`), su
 Whether an article was placed as backlog is stored with it (`isBacklog`), and only news counts as arriving when timelines group (`rss.Article.IsNews`, `newsCond`): a first save's latest post sits within `rss.NewsWindow` of the save by its date alone, so it would otherwise go first on a reload, then drop to its date on the next look.
 So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.
 
+**The reader's position.** A reader who has looked in the last `rss.NewsWindow` also gets their own position for what arrives in a feed they follow, a `timeline_entries` row set once and never changed (rows are written, but timelines don't read them until #494).
+`saveArticles` writes one per inserted article that is news or positioned within `rss.NewsWindow` of the save (a first save's latest posts, for followers who subscribed before the feed was fetched), for each follower whose mark's `seen_at` is that recent; `Subscribe` writes one per article of the feed positioned within `rss.NewsWindow`, when the subscription is new and the reader has a mark, so imports (`importer.Runner.run`) do too.
+Both use `raisePositions`: a shared position above the reader's `seen_up_to` is kept, and those at or below it are spread evenly, newest first, just above it, so nothing they get lands among what they've seen.
+Shared news is never below its feed's floor, so a follower whose `seen_up_to` is at or below the floor gets the shared positions, and one away longer than `rss.NewsWindow` would, so gets no rows; readers without a mark read shared positions.
+`Unsubscribe` deletes the reader's rows for that feed.
+
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.
 The body is the content, else the summary, through `sanitize.HTML` (relative URLs resolved against the article's URL); with neither, the page's description as plain text.
@@ -335,7 +341,7 @@ The card image shows above the text unless `sanitize.ShowsImage` finds the conte
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**"You were here."** A timeline's first page (not starred-only) carries the newest `timeline_at` among its rows in `.article-list[data-seen-up-to]` and its render time in `data-seen-as-of`, and `app.js` sends both to `POST /timeline/seen` with a beacon each time the page is hidden.
+**"You were here."** A timeline's first page (not starred-only) carries the newest `timeline_at` among its rows in `.article-list[data-seen-up-to]` and its render time in `data-seen-as-of`, and `app.js` sends both to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
 `MarkSeen` keeps the newest position and render time reported (never later than now) and when; a report after `rss.VisitGap` without one starts a new visit, whose divider and its render time become where the previous visit ended (`divider_at`, `divider_as_of`).
 At render, `TimelineMark.Anchors` turns the mark into the timeline's groups, and `fillDivider` puts the line above the first group-0 row, only when something is above it: an earlier row in group 1 or 2, or a cursor in one.
 So above the line is everything that arrived since the previous visit, including articles published before it but fetched after, just above the line.
@@ -353,7 +359,7 @@ Without JavaScript the link just works.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
 5. `partials/article_row.html` and `internal/ui/static/js/app.js`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 

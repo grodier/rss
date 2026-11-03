@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/lib/pq"
@@ -19,26 +20,102 @@ func NewSubscriptionRepository(db *sql.DB) *SubscriptionRepository {
 
 // Subscribe subscribes userID to feedID. Subscribing twice is not an error.
 // rss.ErrNoRecord if the feed (or user) doesn't exist.
+//
+// A new subscription makes the feed's posts from the last rss.NewsWindow new
+// to the reader: if they have a timeline mark, each article positioned within
+// rss.NewsWindow of now gets their own position, a timeline_entries row, its
+// timeline_at raised above what they've seen (see raisePositions). Older
+// posts stay at their shared positions. An OPML import subscribes through
+// this too.
 func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
 	stmt := `INSERT INTO subscriptions (user_id, feed_id) VALUES ($1, $2)
 		ON CONFLICT DO NOTHING`
 
-	if _, err := r.DB.ExecContext(ctx, stmt, userID, feedID); err != nil {
+	res, err := tx.ExecContext(ctx, stmt, userID, feedID)
+	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
 			return rss.ErrNoRecord
 		}
 		return err
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil // already subscribed: their positions are set
+	}
+
+	var seenUpTo, now time.Time
+	err = tx.QueryRowContext(ctx, `SELECT seen_up_to, now() FROM timeline_marks WHERE user_id = $1`, userID).Scan(&seenUpTo, &now)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tx.Commit() // no mark: shared positions
+	}
+	if err != nil {
+		return err
+	}
+
+	recentStmt := `SELECT id, timeline_at
+		FROM articles
+		WHERE feed_id = $1 AND timeline_at > now() - make_interval(secs => $2)
+		ORDER BY timeline_at DESC, id DESC`
+
+	rows, err := tx.QueryContext(ctx, recentStmt, feedID, int(rss.NewsWindow.Seconds()))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var ids []string
+	var positions []time.Time
+	for rows.Next() {
+		var id string
+		var at time.Time
+		if err := rows.Scan(&id, &at); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+		positions = append(positions, at)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	var entries timelineEntries
+	entries.add(userID, ids, raisePositions(positions, seenUpTo, now))
+	if err := entries.insert(ctx, tx, feedID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-// Unsubscribe removes userID's subscription to feedID. Not an error if there is none.
+// Unsubscribe removes userID's subscription to feedID, and their own
+// positions for its articles (their timeline_entries rows), in one
+// transaction. Not an error if there is none.
 func (r *SubscriptionRepository) Unsubscribe(ctx context.Context, userID, feedID string) error {
-	stmt := `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
 
-	_, err := r.DB.ExecContext(ctx, stmt, userID, feedID)
-	return err
+	if _, err := tx.ExecContext(ctx, `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM timeline_entries WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SubscribedFeedIDs reports which of feedIDs userID is subscribed to.

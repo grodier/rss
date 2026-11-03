@@ -851,6 +851,335 @@ func TestIsBacklog(t *testing.T) {
 	}
 }
 
+func TestRaisePositions(t *testing.T) {
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	m := time.Minute
+	ago := func(d time.Duration) time.Time { return now.Add(-d) }
+
+	tests := []struct {
+		name      string
+		positions []time.Time
+		seenUpTo  time.Time
+		want      []time.Time
+	}{
+		{
+			name:      "no floor: unchanged",
+			positions: []time.Time{ago(30 * m), ago(3 * time.Hour)},
+			want:      []time.Time{ago(30 * m), ago(3 * time.Hour)},
+		},
+		{
+			name:      "all after seenUpTo: unchanged",
+			positions: []time.Time{ago(time.Hour), ago(10 * m)},
+			seenUpTo:  ago(3 * time.Hour),
+			want:      []time.Time{ago(time.Hour), ago(10 * m)},
+		},
+		{
+			name:      "one at or before seenUpTo goes halfway to now",
+			positions: []time.Time{ago(30 * m)},
+			seenUpTo:  ago(10 * m),
+			want:      []time.Time{ago(5 * m)},
+		},
+		{
+			name:      "several are spread, newest first, keeping their order",
+			positions: []time.Time{ago(40 * m), ago(20 * m)},
+			seenUpTo:  ago(10 * m),
+			want:      []time.Time{ago(6*m + 40*time.Second), ago(3*m + 20*time.Second)},
+		},
+		{
+			name:      "spread below the lowest kept one",
+			positions: []time.Time{ago(5 * m), ago(30 * m)},
+			seenUpTo:  ago(10 * m),
+			want:      []time.Time{ago(5 * m), ago(7*m + 30*time.Second)},
+		},
+		{
+			name:      "exactly at seenUpTo is raised",
+			positions: []time.Time{ago(10 * m)},
+			seenUpTo:  ago(10 * m),
+			want:      []time.Time{ago(5 * m)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := raisePositions(tt.positions, tt.seenUpTo, now)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d positions, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if !got[i].Equal(tt.want[i]) {
+					t.Errorf("position %d: got %v, want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+
+	t.Run("never at or before seenUpTo", func(t *testing.T) {
+		seenUpTo := ago(2 * time.Microsecond)
+		positions := []time.Time{ago(time.Hour), ago(time.Hour), ago(time.Hour)}
+		for i, p := range raisePositions(positions, seenUpTo, now) {
+			if !p.After(seenUpTo) || p.After(now) {
+				t.Errorf("position %d: got %v, want after %v and not after %v", i, p, seenUpTo, now)
+			}
+		}
+	})
+
+	t.Run("doesn't change its argument", func(t *testing.T) {
+		positions := []time.Time{ago(30 * m)}
+		raisePositions(positions, ago(10*m), now)
+		if !positions[0].Equal(ago(30 * m)) {
+			t.Errorf("positions[0] = %v, want %v", positions[0], ago(30*m))
+		}
+	})
+}
+
+// setTimelineMark sets userID's timeline mark: what they've seen up to, and
+// when they reported it, each that long before the database's now().
+func setTimelineMark(t *testing.T, db *sql.DB, userID string, seenUpToAgo, seenAgo time.Duration) time.Time {
+	t.Helper()
+	var seenUpTo time.Time
+	err := db.QueryRow(`INSERT INTO timeline_marks (user_id, seen_up_to, seen_as_of, seen_at)
+		VALUES ($1, now() - $2 * interval '1 microsecond', now() - $3 * interval '1 microsecond', now() - $3 * interval '1 microsecond')
+		ON CONFLICT (user_id) DO UPDATE SET seen_up_to = EXCLUDED.seen_up_to, seen_as_of = EXCLUDED.seen_as_of, seen_at = EXCLUDED.seen_at
+		RETURNING seen_up_to`,
+		userID, seenUpToAgo.Microseconds(), seenAgo.Microseconds()).Scan(&seenUpTo)
+	if err != nil {
+		t.Fatalf("set timeline mark: %v", err)
+	}
+	return seenUpTo
+}
+
+// readerPositions returns userID's own positions (timeline_entries rows), by
+// article ID.
+func readerPositions(t *testing.T, db *sql.DB, userID string) map[string]time.Time {
+	t.Helper()
+	rows, err := db.Query(`SELECT article_id, timeline_at FROM timeline_entries WHERE user_id = $1`, userID)
+	if err != nil {
+		t.Fatalf("select timeline_entries: %v", err)
+	}
+	defer rows.Close()
+	got := map[string]time.Time{}
+	for rows.Next() {
+		var id string
+		var at time.Time
+		if err := rows.Scan(&id, &at); err != nil {
+			t.Fatalf("scan timeline_entries: %v", err)
+		}
+		got[id] = at
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("select timeline_entries: %v", err)
+	}
+	return got
+}
+
+// insertPositionedArticle inserts an article of feedID positioned that long
+// before the database's now(), and returns its ID and position.
+func insertPositionedArticle(t *testing.T, db *sql.DB, feedID, externalID string, ago time.Duration) (string, time.Time) {
+	t.Helper()
+	var id string
+	var at time.Time
+	err := db.QueryRow(`INSERT INTO articles (feed_id, external_id, title, timeline_at, created_at)
+		VALUES ($1, $2, $2, now() - $3 * interval '1 microsecond', now() - $3 * interval '1 microsecond')
+		RETURNING id, timeline_at`, feedID, externalID, ago.Microseconds()).Scan(&id, &at)
+	if err != nil {
+		t.Fatalf("insert %s: %v", externalID, err)
+	}
+	return id, at
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSaveFetchWritesReaderPositions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	articles := NewArticleRepository(db)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	subscribe := func(t *testing.T, feedID string, users ...string) {
+		t.Helper()
+		for _, u := range users {
+			if err := subs.Subscribe(ctx, u, feedID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+	}
+	// byExternalID returns feedID's articles by external ID.
+	byExternalID := func(t *testing.T, feedID string) map[string]rss.Article {
+		t.Helper()
+		got, err := articles.ListByFeed(ctx, feedID, rss.ArticleCursor{}, 10)
+		if err != nil {
+			t.Fatalf("ListByFeed: %v", err)
+		}
+		m := map[string]rss.Article{}
+		for _, a := range got {
+			m[a.ExternalID] = a
+		}
+		return m
+	}
+
+	active, below, away, noMark, other := newTestUser(t, db), newTestUser(t, db), newTestUser(t, db), newTestUser(t, db), newTestUser(t, db)
+	activeSeen := setTimelineMark(t, db, active, 10*time.Minute, 10*time.Minute)
+	setTimelineMark(t, db, below, 2*time.Hour, 2*time.Hour)
+	setTimelineMark(t, db, away, 7*time.Hour, 7*time.Hour)
+	setTimelineMark(t, db, other, 10*time.Minute, 10*time.Minute)
+
+	// A feed with a previous fetch an hour ago, then a later save.
+	feed := newTestFeed(t, db)
+	if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "first", Title: "First", PublishedAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}}, feed.NextFetch); err != nil {
+		t.Fatalf("first SaveFetch: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE feeds SET last_fetched_at = now() - interval '1 hour', last_attempt_at = now() - interval '1 hour' WHERE id = $1`, feed.ID); err != nil {
+		t.Fatalf("set last_fetched_at: %v", err)
+	}
+	subscribe(t, feed.ID, active, below, away, noMark)
+
+	now := dbNow(t, db).Truncate(time.Second)
+	later := []rss.Article{
+		{ExternalID: "recent", Title: "Recent", PublishedAt: now.Add(-30 * time.Minute)},
+		{ExternalID: "backlog", Title: "Backlog", PublishedAt: now.Add(-72 * time.Hour)},
+		{ExternalID: "undated", Title: "Undated"},
+	}
+	if _, err := feeds.SaveFetch(ctx, feed, later, feed.NextFetch); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	saved := byExternalID(t, feed.ID)
+
+	t.Run("a row per inserted news article for each follower who looked in the last NewsWindow", func(t *testing.T) {
+		for _, u := range []string{active, below} {
+			got := readerPositions(t, db, u)
+			if len(got) != 2 {
+				t.Errorf("got %d rows, want 2: %v", len(got), got)
+			}
+			for _, id := range []string{"recent", "undated"} {
+				if _, ok := got[saved[id].ID]; !ok {
+					t.Errorf("no row for %s", id)
+				}
+			}
+			if _, ok := got[saved["backlog"].ID]; ok {
+				t.Error("a row for the backlog item")
+			}
+		}
+	})
+
+	t.Run("news dated below what the reader saw goes above it", func(t *testing.T) {
+		a := saved["recent"]
+		got := readerPositions(t, db, active)[a.ID]
+		if !got.After(activeSeen) || !got.After(a.TimelineAt) {
+			t.Errorf("got %v, want after seen_up_to %v and timeline_at %v", got, activeSeen, a.TimelineAt)
+		}
+	})
+
+	t.Run("a floor below the shared floor gets the shared positions", func(t *testing.T) {
+		got := readerPositions(t, db, below)
+		for _, id := range []string{"recent", "undated"} {
+			if a := saved[id]; !got[a.ID].Equal(a.TimelineAt) {
+				t.Errorf("%s: got %v, want timeline_at %v", id, got[a.ID], a.TimelineAt)
+			}
+		}
+	})
+
+	t.Run("no rows for a follower away longer than NewsWindow, without a mark, or not following", func(t *testing.T) {
+		for name, u := range map[string]string{"away": away, "no mark": noMark, "not following": other} {
+			if got := readerPositions(t, db, u); len(got) != 0 {
+				t.Errorf("%s: got %d rows, want none", name, len(got))
+			}
+		}
+	})
+
+	t.Run("a first save's posts from the last NewsWindow get rows, raised", func(t *testing.T) {
+		added := newTestFeed(t, db)
+		subscribe(t, added.ID, active, away)
+		before, beforeAway := readerPositions(t, db, active), readerPositions(t, db, away)
+		if _, err := feeds.SaveFetch(ctx, added, []rss.Article{
+			{ExternalID: "hour", Title: "Hour", PublishedAt: now.Add(-time.Hour)},
+			{ExternalID: "days", Title: "Days", PublishedAt: now.Add(-48 * time.Hour)},
+			{ExternalID: "undated", Title: "Undated"},
+		}, added.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		first := byExternalID(t, added.ID)
+
+		got := readerPositions(t, db, active)
+		if len(got) != len(before)+1 {
+			t.Errorf("got %d new rows, want 1", len(got)-len(before))
+		}
+		hour, ok := got[first["hour"].ID]
+		if !ok {
+			t.Fatal("no row for the hour-ago item")
+		}
+		if !hour.After(activeSeen) {
+			t.Errorf("hour-ago item: got %v, want after seen_up_to %v", hour, activeSeen)
+		}
+		if got := readerPositions(t, db, away); len(got) != len(beforeAway) {
+			t.Errorf("away: got %d new rows, want none", len(got)-len(beforeAway))
+		}
+	})
+
+	t.Run("an update writes no rows and changes none", func(t *testing.T) {
+		before := map[string]map[string]time.Time{active: readerPositions(t, db, active), below: readerPositions(t, db, below)}
+		changed := slices.Clone(later)
+		changed[0].Title = "Recent, edited"
+		changed[2].Title = "Undated, edited"
+		res, err := feeds.SaveFetch(ctx, feed, changed, feed.NextFetch)
+		if err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if res.Updated != 2 {
+			t.Fatalf("got %+v, want 2 updated", res)
+		}
+		for u, want := range before {
+			if got := readerPositions(t, db, u); !maps.EqualFunc(got, want, time.Time.Equal) {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestReaderPositionsDeletedWith(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feed := newTestFeed(t, db)
+
+	// insertRow gives userID a row for articleID.
+	insertRow := func(t *testing.T, userID, articleID string) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at) VALUES ($1, $2, $3, now())`, userID, articleID, feed.ID); err != nil {
+			t.Fatalf("insert timeline_entries: %v", err)
+		}
+	}
+	count := func(t *testing.T, column, id string) int {
+		t.Helper()
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM timeline_entries WHERE `+column+` = $1`, id).Scan(&n); err != nil {
+			t.Fatalf("count timeline_entries: %v", err)
+		}
+		return n
+	}
+
+	t.Run("the user", func(t *testing.T) {
+		user := newTestUser(t, db)
+		article, _ := insertPositionedArticle(t, db, feed.ID, "user-deleted", time.Hour)
+		insertRow(t, user, article)
+		if _, err := db.Exec(`DELETE FROM users WHERE id = $1`, user); err != nil {
+			t.Fatalf("delete user: %v", err)
+		}
+		if n := count(t, "user_id", user); n != 0 {
+			t.Errorf("got %d rows, want none", n)
+		}
+	})
+
+	t.Run("the article", func(t *testing.T) {
+		user := newTestUser(t, db)
+		article, _ := insertPositionedArticle(t, db, feed.ID, "article-deleted", time.Hour)
+		insertRow(t, user, article)
+		if _, err := db.Exec(`DELETE FROM articles WHERE id = $1`, article); err != nil {
+			t.Fatalf("delete article: %v", err)
+		}
+		if n := count(t, "article_id", article); n != 0 {
+			t.Errorf("got %d rows, want none", n)
+		}
+	})
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestArticleRepositoryGetByID(t *testing.T) {
 	db := psqltest.NewDB(t)

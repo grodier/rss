@@ -165,6 +165,32 @@ CREATE TABLE timeline_marks (
     divider_as_of TIMESTAMPTZ        -- the previous visit's latest look (its seen_as_of); NULL during the first visit
 );
 
+-- Each reader's own timeline position for news that arrived in a feed they
+-- follow within rss.NewsWindow of their latest look (psql.saveArticles), and
+-- for a feed's posts from the last rss.NewsWindow when they start following
+-- it (psql.SubscriptionRepository.Subscribe): where the article goes in
+-- their timelines instead of articles.timeline_at.
+-- Rows are inserted or deleted, never updated. A row's position is never
+-- below the article's timeline_at, so deleting one only returns the article
+-- to its shared position: dropping rows is always safe.
+CREATE TABLE timeline_entries (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    feed_id UUID NOT NULL,            -- the article's feed, so unsubscribing deletes its rows; deleting the feed deletes them through its articles
+    timeline_at TIMESTAMPTZ NOT NULL, -- the reader's position (psql.raisePositions); set on insert, never updated
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX timeline_entries_user_timeline_idx ON timeline_entries (user_id, timeline_at DESC, article_id DESC);
+CREATE INDEX timeline_entries_article_id_idx ON timeline_entries (article_id);
+
 -- Articles a user saved to keep. Saving covers every copy of an article
 -- (same canonical_url); see psql.SaveRepository.
 CREATE TABLE saves (
@@ -431,6 +457,7 @@ DROP TABLE subscription_tags;
 DROP TABLE tags;
 DROP TABLE stars;
 DROP TABLE saves;
+DROP TABLE timeline_entries;
 DROP TABLE timeline_marks;
 DROP TABLE reads;
 DROP TABLE subscriptions;

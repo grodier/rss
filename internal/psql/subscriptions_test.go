@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -499,4 +500,114 @@ func TestSubscriptionTags(t *testing.T) {
 			t.Errorf("tags = %v, want %v", names, want)
 		}
 	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSubscribeWritesReaderPositions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	feed := newTestFeed(t, db)
+	hourID, hourAt := insertPositionedArticle(t, db, feed.ID, "hour", time.Hour)
+	threeID, threeAt := insertPositionedArticle(t, db, feed.ID, "three-hours", 3*time.Hour)
+	daysID, _ := insertPositionedArticle(t, db, feed.ID, "two-days", 48*time.Hour)
+
+	subscribe := func(t *testing.T, user string) {
+		t.Helper()
+		if err := subs.Subscribe(ctx, user, feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+	}
+
+	recentReader := newTestUser(t, db)
+	recentSeen := setTimelineMark(t, db, recentReader, 30*time.Minute, time.Minute)
+	subscribe(t, recentReader)
+
+	t.Run("posts from the last NewsWindow go above what the reader saw", func(t *testing.T) {
+		got := readerPositions(t, db, recentReader)
+		if len(got) != 2 {
+			t.Fatalf("got %d rows, want 2: %v", len(got), got)
+		}
+		hour, three := got[hourID], got[threeID]
+		if !hour.After(recentSeen) || !three.After(recentSeen) {
+			t.Errorf("got %v and %v, want both after seen_up_to %v", hour, three, recentSeen)
+		}
+		if !hour.After(three) {
+			t.Errorf("hour-ago at %v, want after three-hours-ago at %v", hour, three)
+		}
+		if _, ok := got[daysID]; ok {
+			t.Error("a row for the two-days-ago article")
+		}
+	})
+
+	t.Run("after seenUpTo: the shared position", func(t *testing.T) {
+		user := newTestUser(t, db)
+		seen := setTimelineMark(t, db, user, 2*time.Hour, time.Minute)
+		subscribe(t, user)
+		got := readerPositions(t, db, user)
+		if !got[hourID].Equal(hourAt) {
+			t.Errorf("hour-ago: got %v, want timeline_at %v", got[hourID], hourAt)
+		}
+		if three, ok := got[threeID]; !ok || !three.After(seen) || !three.Before(hourAt) || !three.After(threeAt) {
+			t.Errorf("three-hours-ago: got %v (row %v), want between seen_up_to %v and %v", three, ok, seen, hourAt)
+		}
+	})
+
+	t.Run("no mark, no rows", func(t *testing.T) {
+		user := newTestUser(t, db)
+		subscribe(t, user)
+		if got := readerPositions(t, db, user); len(got) != 0 {
+			t.Errorf("got %d rows, want none", len(got))
+		}
+	})
+
+	t.Run("subscribing again changes nothing", func(t *testing.T) {
+		before := readerPositions(t, db, recentReader)
+		insertPositionedArticle(t, db, feed.ID, "since", 10*time.Minute)
+		subscribe(t, recentReader)
+		if got := readerPositions(t, db, recentReader); !maps.EqualFunc(got, before, time.Time.Equal) {
+			t.Errorf("got %v, want %v", got, before)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestUnsubscribeDeletesReaderPositions(t *testing.T) {
+	db := psqltest.NewDB(t)
+	subs := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	left, kept := newTestFeed(t, db), newTestFeed(t, db)
+	leftArticle, _ := insertPositionedArticle(t, db, left.ID, "left", time.Hour)
+	keptArticle, _ := insertPositionedArticle(t, db, kept.ID, "kept", time.Hour)
+	user, other := newTestUser(t, db), newTestUser(t, db)
+	for _, u := range []string{user, other} {
+		setTimelineMark(t, db, u, 10*time.Minute, time.Minute)
+		for _, f := range []rss.Feed{left, kept} {
+			if err := subs.Subscribe(ctx, u, f.ID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+	}
+	for _, u := range []string{user, other} {
+		if got := readerPositions(t, db, u); len(got) != 2 {
+			t.Fatalf("got %d rows before Unsubscribe, want 2", len(got))
+		}
+	}
+
+	if err := subs.Unsubscribe(ctx, user, left.ID); err != nil {
+		t.Fatalf("Unsubscribe: %v", err)
+	}
+
+	got := readerPositions(t, db, user)
+	if _, ok := got[leftArticle]; ok {
+		t.Error("the user's row for the unsubscribed feed is still there")
+	}
+	if _, ok := got[keptArticle]; !ok {
+		t.Error("the user's row for another feed is gone")
+	}
+	if _, ok := readerPositions(t, db, other)[leftArticle]; !ok {
+		t.Error("another user's row for the unsubscribed feed is gone")
+	}
 }

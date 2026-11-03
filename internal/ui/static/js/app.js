@@ -472,18 +472,33 @@
 
   // "You were here": a timeline's first page carries the newest position on
   // it in .article-list[data-seen-up-to], and when it was rendered in
-  // data-seen-as-of. Each time the page is hidden (another tab, the app
-  // backgrounded, the page closed, where unload doesn't fire on phones),
-  // report both; the server moves the divider at the reader's next visit,
-  // and a reload puts what arrived since the render first.
+  // data-seen-as-of. Report both when the page is first shown (at load, or
+  // its first time visible if it loaded in the background, and again when
+  // it's restored from the back-forward cache), and each time it's hidden
+  // (another tab, the app backgrounded, the page closed, where unload doesn't
+  // fire on phones). The positions of what arrives next are set against the
+  // latest report, so reporting on show means an article arriving while the
+  // page is open already counts what's on it. The server moves the divider
+  // at the reader's next visit, and a reload puts what arrived since the
+  // render first.
   const seen = document.querySelector(".article-list[data-seen-up-to]");
   if (seen) {
+    const report = () => navigator.sendBeacon("/timeline/seen", new URLSearchParams({
+      up_to: seen.dataset.seenUpTo,
+      as_of: seen.dataset.seenAsOf,
+    }));
+    let shown = document.visibilityState === "visible";
+    if (shown) report();
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "hidden") return;
-      navigator.sendBeacon("/timeline/seen", new URLSearchParams({
-        up_to: seen.dataset.seenUpTo,
-        as_of: seen.dataset.seenAsOf,
-      }));
+      if (document.visibilityState === "hidden") {
+        report();
+      } else if (!shown && document.visibilityState === "visible") {
+        shown = true;
+        report();
+      }
+    });
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) report();
     });
   }
 

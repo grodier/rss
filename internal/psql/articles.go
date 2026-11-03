@@ -508,6 +508,12 @@ func cursorArgs(before rss.ArticleCursor) (sql.NullTime, sql.NullString) {
 // article's published date must be for it to count as backlog.
 const backlogSlack = 24 * time.Hour
 
+// staleFeedAfter is how long a feed must go without a fetch attempt for its
+// next save to be placed as a first save: nobody was fetching it (no
+// subscribers, or gone), since a followed feed is attempted at least once a
+// day, failing or not (ingest.MaxRetryDelay).
+const staleFeedAfter = 48 * time.Hour
+
 // undatedBacklogStep spaces out the undated articles of a feed's first save:
 // the newest goes this long before the save, and none are further apart (see
 // placeUndated).
@@ -734,14 +740,22 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // enrichCandidates gets an enrich_jobs row. Every article sharing a
 // non-empty canonical_url with an inserted or updated one, that one
 // included, gets has_copies (never cleared). It locks the feed row so
-// concurrent saves of a feed are ordered. The result is Behind on a later
-// save (the feed was fetched before) of two or more articles, all inserted.
+// concurrent saves of a feed are ordered.
+//
+// A save of a feed with no fetch attempt in the last staleFeedAfter (or none
+// ever) is placed as a first save: prevFetched is taken as zero for
+// timelineAt, isBacklog and enrichCandidates, since nobody was fetching the
+// feed and when its new items appeared is unknown. The result is Behind on
+// any other later save of two or more articles, all inserted.
 // Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
-	var prevFetched sql.NullTime
+	var prevFetched, prevAttempt sql.NullTime
 	var now time.Time
-	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &now); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, last_attempt_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &prevAttempt, &now); err != nil {
 		return rss.FetchResult{}, err
+	}
+	if !prevAttempt.Valid || !prevAttempt.Time.After(now.Add(-staleFeedAfter)) {
+		prevFetched = sql.NullTime{}
 	}
 	positions := timelineAt(articles, prevFetched.Time, now)
 	enrichable, priority := enrichCandidates(articles, positions, prevFetched.Time)

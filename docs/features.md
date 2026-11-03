@@ -137,7 +137,7 @@ The last two share one path, `ingest.Refresher.Refresh`:
 1. A conditional GET with the stored `ETag` / `Last-Modified`.
 2. The outcome is recorded and the next fetch scheduled.
    After a success (2xx or 304) the feed is due again after an interval set by its posting rate as of its last save (`NextFetch`, from `feed.PostsPerWeek`): about four fetches per expected article, between 15 minutes and an hour (an hour for a rate of 0), ±10%.
-   A save that finds the feed may have outrun its file (`FetchResult.Behind`: a later save of two or more articles, all new) schedules a catch-up fetch instead: half the time since the previous successful fetch, at least 15 minutes, and never later than the rate's interval (`CatchUpFetch`); `SaveFetch` picks between the two after saving the articles, and the next ordinary save goes back to the rate.
+   A save that finds the feed may have outrun its file (`FetchResult.Behind`: a later save of two or more articles, all new, of a feed attempted within two days) schedules a catch-up fetch instead: half the time since the previous successful fetch, at least 15 minutes, and never later than the rate's interval (`CatchUpFetch`); `SaveFetch` picks between the two after saving the articles, and the next ordinary save goes back to the rate.
    Either is delayed if `Cache-Control` / `Expires` says the response stays fresh longer (capped at 24 h).
    The workers log `behind` with each refreshed feed.
    - **304:** `RecordNotModified`.
@@ -322,6 +322,7 @@ The page's values come from enrichment and only fill gaps.
 *News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `rss.NewsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
+A later save of a feed with no fetch attempt for two days (`staleFeedAfter`), such as a catalog feed nobody followed until now, counts as a first save: nobody was fetching it, so when its items appeared is unknown and their dates are the best order (the previous attempt decides, not the previous success, so a followed feed that was down keeps its news); it gets the first save's enrichment allowance and is never `Behind`.
 Whether an article was placed as backlog is stored with it (`isBacklog`), and only news counts as arriving when timelines group (`rss.Article.IsNews`, `newsCond`): a first save's latest post sits within `rss.NewsWindow` of the save by its date alone, so it would otherwise go first on a reload, then drop to its date on the next look.
 So new items land near the top in publish order, never below what the reader saw at their previous visit once grouped (see "Timeline"), and an imported archive, dated or not, doesn't.
 

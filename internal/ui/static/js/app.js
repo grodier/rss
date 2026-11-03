@@ -499,6 +499,22 @@
     window.addEventListener("pageshow", (e) => {
       if (e.persisted) report();
     });
+    // While the reader is using the page, report every ten minutes too: a
+    // visit ends after 30 minutes without a report (rss.VisitGap), so a long
+    // read of one page would otherwise end it, moving the line to the top of
+    // the page still on screen. Only use counts (scrolling, a key, a tap or a
+    // click), so a page left on screen while the reader is away still lets
+    // the visit end.
+    let used = false;
+    for (const type of ["scroll", "keydown", "pointerdown"]) {
+      window.addEventListener(type, () => { used = true; }, { passive: true });
+    }
+    setInterval(() => {
+      if (used && document.visibilityState === "visible") {
+        used = false;
+        report();
+      }
+    }, 10 * 60 * 1000);
   }
 
   // Infinite scroll: when the "Older articles" link (.pager a[rel=next])

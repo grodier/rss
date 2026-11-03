@@ -27,6 +27,13 @@ func NewSubscriptionRepository(db *sql.DB) *SubscriptionRepository {
 // timeline_at raised above what they've seen (see raisePositions). Older
 // posts stay at their shared positions. An OPML import subscribes through
 // this too.
+//
+// A copy of an article already in the reader's timeline doesn't move it:
+// copies collapse into the earliest (see ListTimeline), so a new feed's copy
+// at an earlier position, such as a blog's post from two days ago that the
+// reader just saw at the top through an aggregator, would take the entry down
+// to its own date. Such a copy gets the reader's own position just below the
+// entry they have (see keepCopiesInPlace), so the entry stays where it was.
 func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID string) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -52,6 +59,11 @@ func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID s
 	}
 	if n == 0 {
 		return nil // already subscribed: their positions are set
+	}
+
+	kept, err := keepCopiesInPlace(ctx, tx, userID, feedID)
+	if err != nil {
+		return err
 	}
 
 	var seenUpTo, now time.Time
@@ -82,6 +94,9 @@ func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID s
 		if err := rows.Scan(&id, &at); err != nil {
 			return err
 		}
+		if kept[id] {
+			continue // where its copy was
+		}
 		ids = append(ids, id)
 		positions = append(positions, at)
 	}
@@ -98,24 +113,67 @@ func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID s
 	return tx.Commit()
 }
 
-// Unsubscribe removes userID's subscription to feedID, and their own
-// positions for its articles (their timeline_entries rows), in one
-// transaction. Not an error if there is none.
-func (r *SubscriptionRepository) Unsubscribe(ctx context.Context, userID, feedID string) error {
-	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	// The error after a successful Commit is expected and ignored.
-	defer tx.Rollback()
+// keepCopiesInPlace gives userID their own position for each of feedID's
+// articles that is a copy of an article already in their timeline, earlier by
+// position than the entry they have (the earliest of the copies in their
+// other feeds, at their own positions where they have them): 1 µs below that
+// entry, which is never below the copy's timeline_at. So when they follow
+// feedID, the copy takes the entry's place instead of taking it down to the
+// copy's date. It returns the articles given a position. A copy that already
+// has the reader's position (from an earlier subscription) keeps it.
+//
+// Only entries at or above the reader's oldest own position are kept in
+// place: that's the part of the timeline their positions cover (what's new
+// since about their previous visit, see MarkSeen), and a row below it would
+// be trimmed at their next visit anyway. A reader without own positions (no
+// mark) gets none.
+func keepCopiesInPlace(ctx context.Context, tx *sql.Tx, userID, feedID string) (map[string]bool, error) {
+	stmt := `INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+		SELECT $1, a.id, a.feed_id, c.timeline_at - interval '1 microsecond'
+		FROM articles a
+		CROSS JOIN LATERAL (
+			SELECT min(COALESCE(eb.timeline_at, b.timeline_at)) AS timeline_at
+			FROM articles b
+			JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = b.feed_id
+			LEFT JOIN timeline_entries eb ON eb.user_id = $1 AND eb.article_id = b.id
+			WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> '' AND b.feed_id <> a.feed_id
+		) c
+		WHERE a.feed_id = $2 AND a.has_copies AND a.canonical_url <> ''
+			AND a.timeline_at < c.timeline_at
+			AND c.timeline_at >= (SELECT min(timeline_at) FROM timeline_entries WHERE user_id = $1)
+		ON CONFLICT DO NOTHING
+		RETURNING article_id`
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
-		return err
+	rows, err := tx.QueryContext(ctx, stmt, userID, feedID)
+	if err != nil {
+		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM timeline_entries WHERE user_id = $1 AND feed_id = $2`, userID, feedID); err != nil {
-		return err
+	defer rows.Close()
+
+	kept := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		kept[id] = true
 	}
-	return tx.Commit()
+	return kept, rows.Err()
+}
+
+// Unsubscribe removes userID's subscription to feedID. Not an error if there
+// is none.
+//
+// The reader's own positions for the feed's articles (timeline_entries rows)
+// stay: timelines only show rows of feeds the reader follows, so they're
+// unseen until the reader subscribes again, when they keep the articles where
+// they were rather than raising the feed's recent posts above what the
+// reader has seen a second time. Visits trim them like any other row.
+func (r *SubscriptionRepository) Unsubscribe(ctx context.Context, userID, feedID string) error {
+	stmt := `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`
+
+	_, err := r.DB.ExecContext(ctx, stmt, userID, feedID)
+	return err
 }
 
 // SubscribedFeedIDs reports which of feedIDs userID is subscribed to.

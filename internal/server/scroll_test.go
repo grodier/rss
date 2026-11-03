@@ -156,6 +156,20 @@ func TestYouWereHereMarkup(t *testing.T) {
 			t.Errorf("app.js doesn't report on %s", when)
 		}
 	}
+	// And every ten minutes while the reader is using the page, so a long
+	// read of one page stays one visit (rss.VisitGap is 30 minutes).
+	heartbeat := regexp.MustCompile(`(?s)setInterval\(\(\) => \{\s*if \(used && document\.visibilityState === "visible"\) \{.*?report\(\);.*?\}, 10 \* 60 \* 1000\)`)
+	if !heartbeat.Match(js) {
+		t.Error("app.js doesn't report every ten minutes while the page is used and visible")
+	}
+	for _, use := range []string{`"scroll"`, `"keydown"`, `"pointerdown"`} {
+		if !strings.Contains(string(js), use) {
+			t.Errorf("app.js doesn't count %s as using the page", use)
+		}
+	}
+	if 10*time.Minute >= rss.VisitGap {
+		t.Errorf("the ten-minute report doesn't keep a visit going: rss.VisitGap is %v", rss.VisitGap)
+	}
 }
 
 // TestToggleButtonMarkup checks the markup app.js's Save and Star buttons

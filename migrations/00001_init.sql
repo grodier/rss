@@ -165,9 +165,10 @@ CREATE TABLE timeline_marks (
 
 -- Each reader's own timeline position for news that arrived in a feed they
 -- follow within rss.NewsWindow of their latest look (psql.saveArticles), and
--- for a feed's posts from the last rss.NewsWindow when they start following
--- it (psql.SubscriptionRepository.Subscribe): where the article goes in
--- their timelines instead of articles.timeline_at.
+-- for a feed's posts from the last rss.NewsWindow, and its copies of what's
+-- already in their timeline, when they start following it
+-- (psql.SubscriptionRepository.Subscribe): where the article goes in their
+-- timelines instead of articles.timeline_at.
 -- Rows are inserted or deleted, never updated. A row's position is never
 -- below the article's timeline_at, so deleting one only returns the article
 -- to its shared position: dropping rows is always safe.
@@ -180,7 +181,7 @@ CREATE TABLE timeline_entries (
         REFERENCES articles(id)
         ON DELETE CASCADE,
 
-    feed_id UUID NOT NULL,            -- the article's feed, so unsubscribing deletes its rows; deleting the feed deletes them through its articles
+    feed_id UUID NOT NULL,            -- the article's feed, so timelines show only rows of feeds the reader follows; deleting the feed deletes them through its articles
     timeline_at TIMESTAMPTZ NOT NULL, -- the reader's position (psql.raisePositions); set on insert, never updated
 
     PRIMARY KEY (user_id, article_id)

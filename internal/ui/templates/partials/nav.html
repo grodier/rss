@@ -1,4 +1,6 @@
 {{define "brand"}}<a class="brand" href="/"><img class="brand-mark" src="{{asset "img/logo.svg"}}" alt=""><span class="brand-name">Paper Round</span></a>{{end}}
+{{/* brand-solo is the brand with the inline logo whose sun rises (logo.html), for Log in; the rail and the other logged-out pages keep the still <img>. */}}
+{{define "brand-solo"}}<a class="brand" href="/">{{template "logo-mark"}}<span class="brand-name">Paper Round</span></a>{{end}}
 
 {{/* app-nav is the logged-in navigation: a rail on wide screens, a top bar
      and tab bar on narrow ones, with an account entry (the user's avatar,

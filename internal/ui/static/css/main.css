@@ -1298,6 +1298,124 @@
     color: var(--accent);
   }
 
+  /* A copy's outcome (app.js's showCopied): a pill centered 6 px above the
+     button, so nothing in the row moves. It fades out over --duration-quick,
+     keeping its text while it fades, and is hidden once it has. */
+  .share-button {
+    position: relative;
+  }
+
+  .copied-label {
+    position: absolute;
+    inset-block-end: calc(100% + 6px);
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--duration-quick) var(--ease-in), visibility 0s var(--duration-quick);
+  }
+
+  /* Under reduced motion it only fades in, and a copy repeated while it
+     shows dips it to 0.4 and fades it back (app.js sets data-copy-dip for an
+     instant). */
+  :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--duration-quick) var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .share-button[data-copy-dip] .copied-label {
+      opacity: 0.4;
+      transition: none;
+    }
+  }
+
+  /* With motion it comes in with an animation instead, rising 4 px, and the
+     check draws itself from its short end as the share icon goes. A copy
+     repeated while it shows replays the rise, without fading, and the check:
+     data-copy-round alternates between two copies of their keyframes, since
+     changing an animation's name restarts it. */
+  @media (prefers-reduced-motion: no-preference) {
+    :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
+      transition: none;
+      animation: copied-in var(--duration-base) var(--ease-out);
+    }
+
+    .share-button[data-copy-round="a"] .copied-label {
+      animation-name: copied-again-a;
+    }
+
+    .share-button[data-copy-round="b"] .copied-label {
+      animation-name: copied-again-b;
+    }
+
+    .share-button[data-copied] .icon-check path {
+      stroke-dasharray: 1;
+      animation: check-draw var(--duration-base) var(--ease-out);
+    }
+
+    .share-button[data-copied][data-copy-round="a"] .icon-check path {
+      animation-name: check-draw-a;
+    }
+
+    .share-button[data-copied][data-copy-round="b"] .icon-check path {
+      animation-name: check-draw-b;
+    }
+  }
+
+  @keyframes copied-in {
+    from {
+      opacity: 0;
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes copied-again-a {
+    from {
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes copied-again-b {
+    from {
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes check-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-a {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-b {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .copied-label {
+      border: 1px solid CanvasText;
+    }
+  }
+
   /* While a Save or Star request runs the button is aria-disabled; app.js
      adds data-busy only once it has taken --delay-busy, so a quick one never
      flickers. */

@@ -355,6 +355,7 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
   `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in `main.css` enlarges it for `(pointer: coarse)` (found in #431).
   Making it 44 px there changes the height of every small button, so decide it with the phone review pass.
   Plain buttons (Save, Log out, the Settings rows' "Log them out" and "Turn on") are 41 px, a little under too (#446).
+  The article actions' icon buttons (Star, Share) are 30 px with a 4 px gap, enough for WCAG 2.5.8 but close for a thumb; a wider gap under `(pointer: coarse)` would keep the tight group on desktop (found in #511).
 - [ ] **Install hint.**
   If testers don't find the browser's install, a short "Add Paper Round to your home screen" note in Settings with the steps for iOS and Android.
   Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).

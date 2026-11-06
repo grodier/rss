@@ -247,7 +247,8 @@ func TestToggleButtonMarkup(t *testing.T) {
 
 // TestShareButtonMarkup checks the markup app.js's Share buttons rely on:
 // each row of an article with a canonical URL has one hidden
-// button[data-share-url] with its URL and a data-share-title.
+// button[data-share-url] with its URL and a data-share-title, named
+// "Share", holding the aria-hidden .copied-label showCopied fills.
 func TestShareButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	for i := range items {
@@ -282,6 +283,15 @@ func TestShareButtonMarkup(t *testing.T) {
 		}
 		if !hasAttr(b, "hidden") {
 			t.Errorf("row %d: Share button isn't hidden", i)
+		}
+		if got := attr(b, "aria-label"); got != "Share" {
+			t.Errorf("row %d: aria-label = %q, want %q", i, got, "Share")
+		}
+		labels := findAll(b, func(n *html.Node) bool { return n.Data == "span" && hasClass(n, "copied-label") })
+		if len(labels) != 1 {
+			t.Errorf("row %d: found %d .copied-label in the Share button, want 1", i, len(labels))
+		} else if got := attr(labels[0], "aria-hidden"); got != "true" {
+			t.Errorf("row %d: .copied-label aria-hidden = %q, want %q", i, got, "true")
 		}
 	}
 }

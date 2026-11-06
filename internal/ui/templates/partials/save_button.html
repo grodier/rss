@@ -23,7 +23,7 @@
      app.js's "Share buttons" shows it and does the sharing, so it never
      appears without JavaScript. Only for articles with a canonical URL. */}}
 {{define "share-button"}}
-{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}</button>{{end}}
+{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}<span class="copied-label" aria-hidden="true"></span></button>{{end}}
 {{end}}
 
 {{/* The actions on an article: icon-only Star and Share left of a labelled

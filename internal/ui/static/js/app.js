@@ -100,13 +100,16 @@
   });
 
   // Share buttons: button[data-share-url] (the share-button partial) is
-  // rendered hidden, since it needs JavaScript; show it. On click, open the
-  // share sheet with data-share-title and the URL where there is one, else
-  // copy the URL, set data-copied for 2 seconds (main.css swaps the icon for
-  // a check) and announce it, in the page's polite live region (announce,
-  // also used by live search). Takes a root so rows added to the page later
-  // can be enhanced too; the click is delegated.
+  // rendered hidden, since it needs JavaScript; show it where it can work
+  // (a share sheet or the Clipboard API, which needs a secure context). On
+  // click, open the share sheet with data-share-title and the URL where there
+  // is one, else copy the URL, show the outcome with showCopied and announce
+  // it, in the page's polite live region (announce, also used by live
+  // search). Takes a root so rows added to the page later can be enhanced
+  // too; the click is delegated.
+  const canShare = Boolean(navigator.share || navigator.clipboard?.writeText);
   const enhanceShare = (root) => {
+    if (!canShare) return;
     for (const b of root.querySelectorAll("button[data-share-url]")) b.hidden = false;
   };
   enhanceShare(document);
@@ -121,6 +124,73 @@
     // Clear it first so the same message is announced again.
     liveStatus.textContent = "";
     setTimeout(() => { liveStatus.textContent = msg; }, 50);
+  };
+  // showCopied shows a copy's outcome on its button: its .copied-label
+  // (aria-hidden, since announce says it) reads "Link copied" or "Couldn't
+  // copy", shown by data-copied (main.css also swaps the icon for a check
+  // that draws itself) or data-copy-failed. Only the latest copy shows, since
+  // the clipboard holds one link: a copy hides any other button's label at
+  // once. A success shows for 2 seconds, and longer while a mouse is over
+  // the button (until it leaves) or it has keyboard focus (until the next key
+  // or focus moves); a failure stays until the reader's next press or key,
+  // so it never times out before it's read. A success repeated while it
+  // shows replays its entrance without hiding and starts its time over:
+  // data-copy-round alternates "a" and "b", which main.css uses to restart
+  // the animations, and data-copy-dip, set for an instant, dips the label
+  // under reduced motion (reading its style applies the dip before it goes,
+  // so the label fades back). The label keeps its text when it hides, so it fades out
+  // with it. lastPointer is the type of the latest press, since a touch
+  // leaves :hover on what it tapped, even on a device that also has a mouse.
+  let lastPointer = "";
+  document.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, { capture: true });
+  let showing; // the button whose label is showing
+  const showCopied = (button, ok) => {
+    const label = button.querySelector(".copied-label");
+    const again = ok && button === showing && "copied" in button.dataset;
+    if (again) {
+      button.stopCopied();
+      button.dataset.copyRound = button.dataset.copyRound === "a" ? "b" : "a";
+      button.dataset.copyDip = "";
+      if (label) void getComputedStyle(label).opacity;
+      delete button.dataset.copyDip;
+    } else {
+      showing?.hideCopied();
+      if (label) label.textContent = ok ? "Link copied" : "Couldn't copy";
+      button.dataset[ok ? "copied" : "copyFailed"] = "";
+    }
+    showing = button;
+    const done = new AbortController();
+    const { signal } = done;
+    let timer;
+    const stop = () => {
+      clearTimeout(timer);
+      done.abort();
+    };
+    const hide = () => {
+      stop();
+      delete button.dataset.copied;
+      delete button.dataset.copyFailed;
+      delete button.dataset.copyRound;
+      if (showing === button) showing = undefined;
+    };
+    button.stopCopied = stop;
+    button.hideCopied = hide;
+    if (!ok) {
+      for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, hide, { signal, capture: true });
+      return;
+    }
+    const hovered = () => lastPointer === "mouse" && button.matches(":hover");
+    const focused = () => button.matches(":focus-visible");
+    timer = setTimeout(() => {
+      if (hovered()) {
+        button.addEventListener("pointerleave", hide, { signal });
+      } else if (focused()) {
+        button.addEventListener("blur", hide, { signal });
+        document.addEventListener("keydown", hide, { signal, capture: true });
+      } else {
+        hide();
+      }
+    }, 2000);
   };
   document.addEventListener("click", async (e) => {
     const button = e.target instanceof Element && e.target.closest("button[data-share-url]");
@@ -137,12 +207,11 @@
     try {
       await navigator.clipboard.writeText(url);
     } catch {
+      showCopied(button, false);
       announce("Couldn't copy the link");
       return;
     }
-    button.dataset.copied = "";
-    clearTimeout(button.copiedTimer);
-    button.copiedTimer = setTimeout(() => { delete button.dataset.copied; }, 2000);
+    showCopied(button, true);
     announce("Link copied");
   });
 

@@ -231,6 +231,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | P7 Unknown or malformed article | `/articles/{uuid}`, `/articles/abc` | 404 (H2) | As H2 | Home only | ok |
 | P8 Read ping fails | `curl` a post to `/articles/{uuid}/read` | 404, unseen | None | n/a | ok (silent by design) |
 | P9 Save or Star fails | A post for `/articles/{uuid}/save`; with JavaScript, a click on a row whose article was deleted (anything but a 204 submits the form normally) | 404 (H2) | As H2 | Home only | ok |
+| P10 Share can't copy the link | Where there's no share sheet (or it fails), deny clipboard permission (in Playwright, don't grant `clipboard-write`) and press Share | Any page with Share, above the button until the next press or key; the share icon stays | "Couldn't copy" (visible, hidden from assistive technology); "Couldn't copy the link" announced | Yes: copy the link from the article page's "Read on" link | ok |
 
 ## Timelines
 

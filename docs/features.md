@@ -385,6 +385,7 @@ Stars are private, with no counts; starred-only timelines list them (see "Timeli
 It's rendered `hidden` and "Share buttons" in `app.js` shows it, so it never appears without JavaScript.
 A click opens the system share sheet (`navigator.share`) where there is one, else copies the link and announces "Link copied" in a polite live region.
 When it copies, `showCopied` in `app.js` also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
+Only the latest copy's label shows, and a copy repeated while it shows replays its entrance (`data-copy-round` restarts the CSS animations).
 The label is `aria-hidden`, so it isn't read on top of the announcement.
 A browser that can neither share nor copy never shows the button.
 It never talks to the server: nothing about a share is recorded.

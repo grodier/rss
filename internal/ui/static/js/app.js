@@ -128,31 +128,52 @@
   // showCopied shows a copy's outcome on its button: its .copied-label
   // (aria-hidden, since announce says it) reads "Link copied" or "Couldn't
   // copy", shown by data-copied (main.css also swaps the icon for a check
-  // that draws itself) or data-copy-failed. A success shows for 2 seconds,
-  // and longer while a mouse is over the button (until it leaves) or it has
-  // keyboard focus (until the next key or focus moves); a failure stays
-  // until the reader's next press or key, so it never times out before it's
-  // read. A second copy restarts the time (the pill and check don't replay).
-  // The label keeps its text when it hides, so it fades out with it.
-  // lastPointer is the type of the latest press, since a touch leaves :hover
-  // on what it tapped, even on a device that also has a mouse.
+  // that draws itself) or data-copy-failed. Only the latest copy shows, since
+  // the clipboard holds one link: a copy hides any other button's label at
+  // once. A success shows for 2 seconds, and longer while a mouse is over
+  // the button (until it leaves) or it has keyboard focus (until the next key
+  // or focus moves); a failure stays until the reader's next press or key,
+  // so it never times out before it's read. A success repeated while it
+  // shows replays its entrance without hiding and starts its time over:
+  // data-copy-round alternates "a" and "b", which main.css uses to restart
+  // the animations, and data-copy-dip, set for an instant, dips the label
+  // under reduced motion (reading its style applies the dip before it goes,
+  // so the label fades back). The label keeps its text when it hides, so it fades out
+  // with it. lastPointer is the type of the latest press, since a touch
+  // leaves :hover on what it tapped, even on a device that also has a mouse.
   let lastPointer = "";
   document.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, { capture: true });
+  let showing; // the button whose label is showing
   const showCopied = (button, ok) => {
-    button.hideCopied?.();
     const label = button.querySelector(".copied-label");
-    if (label) label.textContent = ok ? "Link copied" : "Couldn't copy";
-    button.dataset[ok ? "copied" : "copyFailed"] = "";
+    const again = ok && button === showing && "copied" in button.dataset;
+    if (again) {
+      button.stopCopied();
+      button.dataset.copyRound = button.dataset.copyRound === "a" ? "b" : "a";
+      button.dataset.copyDip = "";
+      if (label) void getComputedStyle(label).opacity;
+      delete button.dataset.copyDip;
+    } else {
+      showing?.hideCopied();
+      if (label) label.textContent = ok ? "Link copied" : "Couldn't copy";
+      button.dataset[ok ? "copied" : "copyFailed"] = "";
+    }
+    showing = button;
     const done = new AbortController();
     const { signal } = done;
     let timer;
-    const hide = () => {
+    const stop = () => {
       clearTimeout(timer);
       done.abort();
+    };
+    const hide = () => {
+      stop();
       delete button.dataset.copied;
       delete button.dataset.copyFailed;
-      delete button.hideCopied;
+      delete button.dataset.copyRound;
+      if (showing === button) showing = undefined;
     };
+    button.stopCopied = stop;
     button.hideCopied = hide;
     if (!ok) {
       for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, hide, { signal, capture: true });

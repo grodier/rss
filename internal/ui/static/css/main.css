@@ -1299,9 +1299,8 @@
   }
 
   /* A copy's outcome (app.js's showCopied): a pill centered 6 px above the
-     button, so nothing in the row moves. It fades in on --duration-base and
-     out on --duration-quick; it keeps its text while it fades, and is
-     hidden once it has. */
+     button, so nothing in the row moves. It fades out over --duration-quick,
+     keeping its text while it fades, and is hidden once it has. */
   .share-button {
     position: relative;
   }
@@ -1325,33 +1324,87 @@
     transition: opacity var(--duration-quick) var(--ease-in), visibility 0s var(--duration-quick);
   }
 
+  /* Under reduced motion it only fades in, and a copy repeated while it
+     shows dips it to 0.4 and fades it back (app.js sets data-copy-dip for an
+     instant). */
   :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
     opacity: 1;
     visibility: visible;
     transition: opacity var(--duration-quick) var(--ease-out);
   }
 
-  /* The pill rises 4 px as it appears (it's put back once it has faded
-     out), and the check draws itself from its short end as the share icon
-     goes. */
+  @media (prefers-reduced-motion: reduce) {
+    .share-button[data-copy-dip] .copied-label {
+      opacity: 0.4;
+      transition: none;
+    }
+  }
+
+  /* With motion it comes in with an animation instead, rising 4 px, and the
+     check draws itself from its short end as the share icon goes. A copy
+     repeated while it shows replays the rise, without fading, and the check:
+     data-copy-round alternates between two copies of their keyframes, since
+     changing an animation's name restarts it. */
   @media (prefers-reduced-motion: no-preference) {
-    .copied-label {
-      translate: 0 4px;
-      transition: opacity var(--duration-quick) var(--ease-in), visibility 0s var(--duration-quick), translate 0s var(--duration-quick);
+    :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
+      transition: none;
+      animation: copied-in var(--duration-base) var(--ease-out);
     }
 
-    :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
-      translate: 0 0;
-      transition: opacity var(--duration-base) var(--ease-out), translate var(--duration-base) var(--ease-out);
+    .share-button[data-copy-round="a"] .copied-label {
+      animation-name: copied-again-a;
+    }
+
+    .share-button[data-copy-round="b"] .copied-label {
+      animation-name: copied-again-b;
     }
 
     .share-button[data-copied] .icon-check path {
       stroke-dasharray: 1;
       animation: check-draw var(--duration-base) var(--ease-out);
     }
+
+    .share-button[data-copied][data-copy-round="a"] .icon-check path {
+      animation-name: check-draw-a;
+    }
+
+    .share-button[data-copied][data-copy-round="b"] .icon-check path {
+      animation-name: check-draw-b;
+    }
+  }
+
+  @keyframes copied-in {
+    from {
+      opacity: 0;
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes copied-again-a {
+    from {
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes copied-again-b {
+    from {
+      translate: 0 4px;
+    }
   }
 
   @keyframes check-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-a {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-b {
     from {
       stroke-dashoffset: 1;
     }

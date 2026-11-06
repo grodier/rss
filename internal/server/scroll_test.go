@@ -176,7 +176,8 @@ func TestYouWereHereMarkup(t *testing.T) {
 // rely on: each row has a form[data-toggle] posting to /articles/{id}/save
 // (or /unsave when saved) and one posting to /articles/{id}/star (or /unstar
 // when starred), each with a return_to input and a button whose aria-pressed
-// is the state.
+// is the state. The Star button is named "Star" and holds the star-burst SVG
+// main.css animates, hidden from assistive technology.
 func TestToggleButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	s := newTestServerWith(t, Services{
@@ -219,6 +220,27 @@ func TestToggleButtonMarkup(t *testing.T) {
 			if got := forms[id]; got != w {
 				t.Errorf("%s form for %s = %+v, want %+v", tt.verb, id, got, w)
 			}
+		}
+	}
+
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stars := findAll(doc, func(n *html.Node) bool { return n.Data == "button" && hasClass(n, "star-button") })
+	if len(stars) != len(items) {
+		t.Errorf("found %d Star buttons, want %d", len(stars), len(items))
+	}
+	for _, b := range stars {
+		if b.Parent == nil || b.Parent.Data != "form" || !hasAttr(b.Parent, "data-toggle") {
+			t.Error("Star button isn't in a form[data-toggle]")
+		}
+		if !hasAttr(b, "aria-pressed") || attr(b, "aria-label") != "Star" {
+			t.Errorf("Star button aria-pressed=%q aria-label=%q, want aria-pressed and aria-label=\"Star\"", attr(b, "aria-pressed"), attr(b, "aria-label"))
+		}
+		bursts := findAll(b, func(n *html.Node) bool { return n.Data == "svg" && hasClass(n, "star-burst") })
+		if len(bursts) != 1 || attr(bursts[0], "aria-hidden") != "true" {
+			t.Errorf("Star button: want one svg.star-burst with aria-hidden=\"true\", found %d", len(bursts))
 		}
 	}
 }

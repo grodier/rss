@@ -10,11 +10,12 @@
 </form>
 {{end}}
 
-{{/* The Star button: icon-only, named by its aria-label. */}}
+{{/* The Star button: icon-only, named by its aria-label. The star-burst
+     dots are drawn only while main.css animates a star just turned on. */}}
 {{define "star-button"}}
 <form class="star-form" method="post" action="/articles/{{.Article.ID}}/{{if .Starred}}unstar{{else}}star{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}</button>
+  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}{{template "star-burst"}}</button>
 </form>
 {{end}}
 

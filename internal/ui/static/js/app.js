@@ -102,10 +102,9 @@
   // Share buttons: button[data-share-url] (the share-button partial) is
   // rendered hidden, since it needs JavaScript; show it. On click, open the
   // share sheet with data-share-title and the URL where there is one, else
-  // copy the URL, set data-copied for 2 seconds (main.css swaps the icon for
-  // a check) and announce it, in the page's polite live region (announce,
-  // also used by live search). Takes a root so rows added to the page later
-  // can be enhanced too; the click is delegated.
+  // copy the URL, show it with showCopied and announce it, in the page's
+  // polite live region (announce, also used by live search). Takes a root so
+  // rows added to the page later can be enhanced too; the click is delegated.
   const enhanceShare = (root) => {
     for (const b of root.querySelectorAll("button[data-share-url]")) b.hidden = false;
   };
@@ -122,6 +121,24 @@
     liveStatus.textContent = "";
     setTimeout(() => { liveStatus.textContent = msg; }, 50);
   };
+  // showCopied shows a copy's outcome on its button for 2 seconds: the
+  // button's .copied-label (aria-hidden, since announce says it) reads
+  // "Copied" or "Couldn't copy", and data-copied (main.css swaps the icon for
+  // a check that draws itself) or data-copy-failed shows it. A second copy
+  // restarts the timer. The label keeps its text after, so it fades out
+  // with it.
+  const showCopied = (button, ok) => {
+    const label = button.querySelector(".copied-label");
+    if (label) label.textContent = ok ? "Copied" : "Couldn't copy";
+    delete button.dataset.copied;
+    delete button.dataset.copyFailed;
+    button.dataset[ok ? "copied" : "copyFailed"] = "";
+    clearTimeout(button.copiedTimer);
+    button.copiedTimer = setTimeout(() => {
+      delete button.dataset.copied;
+      delete button.dataset.copyFailed;
+    }, 2000);
+  };
   document.addEventListener("click", async (e) => {
     const button = e.target instanceof Element && e.target.closest("button[data-share-url]");
     if (!button) return;
@@ -137,12 +154,11 @@
     try {
       await navigator.clipboard.writeText(url);
     } catch {
+      showCopied(button, false);
       announce("Couldn't copy the link");
       return;
     }
-    button.dataset.copied = "";
-    clearTimeout(button.copiedTimer);
-    button.copiedTimer = setTimeout(() => { delete button.dataset.copied; }, 2000);
+    showCopied(button, true);
     announce("Link copied");
   });
 

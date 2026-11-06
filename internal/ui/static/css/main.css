@@ -1298,6 +1298,71 @@
     color: var(--accent);
   }
 
+  /* A copy's outcome (app.js's showCopied): a pill centered 6 px above the
+     button, so nothing in the row moves. It fades in on --duration-base and
+     out on --duration-quick; it keeps its text while it fades, and is
+     hidden once it has. */
+  .share-button {
+    position: relative;
+  }
+
+  .copied-label {
+    position: absolute;
+    inset-block-end: calc(100% + 6px);
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--duration-quick) var(--ease-in), visibility 0s var(--duration-quick);
+  }
+
+  :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--duration-quick) var(--ease-out);
+  }
+
+  /* The pill rises 4 px as it appears (it's put back once it has faded
+     out), and the check draws itself from its short end as the share icon
+     goes. */
+  @media (prefers-reduced-motion: no-preference) {
+    .copied-label {
+      translate: 0 4px;
+      transition: opacity var(--duration-quick) var(--ease-in), visibility 0s var(--duration-quick), translate 0s var(--duration-quick);
+    }
+
+    :is(.share-button[data-copied], .share-button[data-copy-failed]) .copied-label {
+      translate: 0 0;
+      transition: opacity var(--duration-base) var(--ease-out), translate var(--duration-base) var(--ease-out);
+    }
+
+    .share-button[data-copied] .icon-check path {
+      stroke-dasharray: 1;
+      animation: check-draw var(--duration-base) var(--ease-out);
+    }
+  }
+
+  @keyframes check-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .copied-label {
+      border: 1px solid CanvasText;
+    }
+  }
+
   /* While a Save or Star request runs the button is aria-disabled; app.js
      adds data-busy only once it has taken --delay-busy, so a quick one never
      flickers. */

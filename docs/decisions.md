@@ -677,6 +677,10 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
 - **Small distances and cheap properties** (#508): travel 3–8 px, presses scale to 0.97–0.99 and only the star goes past 1.
   Only `opacity`, `transform`, `clip-path` and SVG `stroke-dashoffset` animate, which stay smooth on phones; never layout (except the timeline form's disclosures, #520), and never blur or shadows on large areas.
 - **Presses act only while pressed** (`:active`), so a target never shrinks while it's being aimed at; the focus ring isn't animated (#508).
+- **Press states** (#510): the browser's tap highlight is off, and every control has its own press.
+  Buttons scale to 0.97, icon buttons take the hover background and their icon scales to 0.9, rows take their hover background, and the phone tab bar and timeline tabs take `--text` (the tab bar icon scales to 0.9).
+  An article card firms its border and scales to 0.99 only while its own title link is pressed, and is never tinted, since the tint is the read marker.
+  Presses go in over `--duration-press` and out over `--duration-quick`; colors apply under reduced motion, scales don't.
 - **Under reduced motion the spinner pulses instead of freezing** (#508): a frozen ring no longer says "working", and a slow opacity pulse moves nothing and is far below the flashing threshold.
 - **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
 - **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.

@@ -3320,4 +3320,85 @@
       gap: 0;
     }
   }
+
+  /* Press states: feedback while a finger or button is down, on touch where
+     nothing hovers and on every device for keyboards (Enter and Space press
+     buttons too). Colors apply under reduced motion; the scales are in the
+     motion block below. See "Motion and feedback" in docs/decisions.md. */
+  a,
+  button,
+  summary,
+  label {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* An article card's own link pressed (not its source link or actions):
+     the border firms as on hover. Never a tint, since that is the read
+     marker. */
+  .article-card:has(.article-title a:active) {
+    border-color: color-mix(in srgb, var(--text) 40%, transparent);
+  }
+
+  :is(.save-button, .star-button, .share-button, .row-icon-btn, .reorder-handle, .password-toggle):active:not(:disabled, [aria-disabled="true"]) {
+    background: var(--surface);
+  }
+
+  :is(a.settings-row, .my-feed, .timeline-row):active {
+    background: var(--surface);
+  }
+
+  .result li a:active {
+    text-decoration: underline;
+  }
+
+  :is(button, .btn):not(.btn-primary, .btn-danger):active:not(:disabled, [aria-disabled="true"]) {
+    background: var(--surface);
+  }
+
+  .timeline-tabs li a:active {
+    color: var(--text);
+  }
+
+  @media (max-width: 42.99rem) {
+    .rail-links a:active {
+      color: var(--text);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :is(button, .btn):not(.save-button, .star-button, .share-button, .row-icon-btn, .reorder-handle, .password-toggle) {
+      transition: background-color var(--duration-quick) var(--ease-out), opacity var(--duration-quick) var(--ease-out), transform var(--duration-quick) var(--ease-out);
+    }
+
+    :is(button, .btn):not(.save-button, .star-button, .share-button, .row-icon-btn, .reorder-handle, .password-toggle):active:not(:disabled, [aria-disabled="true"]) {
+      transform: scale(0.97);
+      transition-duration: var(--duration-press);
+    }
+
+    :is(.save-button, .star-button, .share-button, .row-icon-btn, .reorder-handle, .password-toggle) .icon,
+    .rail-links a .icon {
+      transition: transform var(--duration-quick) var(--ease-out);
+    }
+
+    :is(.save-button, .star-button, .share-button, .row-icon-btn, .reorder-handle):active:not(:disabled, [aria-disabled="true"]) .icon {
+      transform: scale(0.9);
+      transition-duration: var(--duration-press);
+    }
+
+    .article-card {
+      transition: border-color var(--duration-quick) var(--ease-out), transform var(--duration-quick) var(--ease-out);
+    }
+
+    .article-card:has(.article-title a:active) {
+      transform: scale(0.99);
+      transition-duration: var(--duration-press);
+    }
+
+    @media (max-width: 42.99rem) {
+      .rail-links a:active .icon {
+        transform: scale(0.9);
+        transition-duration: var(--duration-press);
+      }
+    }
+  }
 }

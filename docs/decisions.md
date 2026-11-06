@@ -668,6 +668,16 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
 - **Motion is an enhancement the reader opts into.** It's written inside `@media (prefers-reduced-motion: no-preference)`, so a forgotten guard means no motion rather than unwanted motion.
   With reduced motion nothing moves, scales or slides, and view transitions are off; color and opacity changes of up to 150 ms stay, since they aren't motion (WCAG 2.3.3).
   The reorder tint (#481) already followed this.
+- **The feel is quick and soft, like a sheet of paper sliding into place** (#508): things answer a tap at once and slow down as they arrive; nothing bounces except starring; motion is felt more than watched.
+  The values are tokens on `:root` in `main.css`, so a value tuned there changes everywhere; later issues use them by name.
+- **Four curves** (#508): `--ease-out` for anything appearing or answering the reader (most motion), since it starts at full speed and a slow start reads as lag on a press; `--ease-in` for things leaving, so the eye isn't held on them; `--ease-in-out` for moving from one place on screen to another, since both ends are on screen; `--ease-spring` (one overshoot of about 16%) only for the star, the one celebratory moment.
+- **Five durations and a busy delay** (#508): `--duration-press` for pressing in, `--duration-quick` for hover and color changes and everything leaving, `--duration-base` for small things appearing or changing state, `--duration-move` for moving across the screen and page to page, `--duration-flourish` for the rare celebratory moments, and `--delay-busy` before a busy indicator.
+  Exits take about two-thirds of their entrance.
+  Only a highlight fading away (the reorder tint) and the sunrise (#523) run longer, each with a comment where it's set.
+- **Small distances and cheap properties** (#508): travel 3–8 px, presses scale to 0.97–0.99 and only the star goes past 1.
+  Only `opacity`, `transform`, `clip-path` and SVG `stroke-dashoffset` animate, which stay smooth on phones; never layout (except the timeline form's disclosures, #520), and never blur or shadows on large areas.
+- **Presses act only while pressed** (`:active`), so a target never shrinks while it's being aimed at; the focus ring isn't animated (#508).
+- **Under reduced motion the spinner pulses instead of freezing** (#508): a frozen ring no longer says "working", and a slow opacity pulse moves nothing and is far below the flashing threshold.
 - **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
 - **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.
   Nothing flashes more than three times a second (WCAG 2.3.1), only progress spinners loop, no animation moves focus, and decoration drops out in forced-colors mode.

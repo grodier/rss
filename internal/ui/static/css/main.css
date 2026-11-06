@@ -154,6 +154,20 @@
     --font-display: "Bricolage Grotesque", var(--font);
     --font-reading: "Newsreader", Charter, Georgia, serif;
     --font-reading-weight: 400;
+
+    /* Motion: the guidelines are "Motion and feedback" in docs/decisions.md. */
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    /* A damped spring (damping ratio 0.5, ω 10): one overshoot of about 16% of
+       the distance, then it settles. Sampled at 25 points until within 0.1%. */
+    --ease-spring: linear(0, 0.116, 0.372, 0.656, 0.896, 1.06, 1.144, 1.163, 1.139, 1.096, 1.05, 1.012, 0.987, 0.976, 0.974, 0.978, 0.986, 0.993, 0.999, 1.002, 1.004, 1.004, 1.003, 1.002, 1);
+    --duration-press: 100ms;
+    --duration-quick: 150ms;
+    --duration-base: 220ms;
+    --duration-move: 280ms;
+    --duration-flourish: 450ms;
+    --delay-busy: 300ms;
   }
 
   /* The dark theme: the same tokens, when the device is dark and the user
@@ -313,7 +327,7 @@
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color 0.15s, opacity 0.15s;
+    transition: background-color var(--duration-quick) var(--ease-out), opacity var(--duration-quick) var(--ease-out);
   }
 
   button:hover,
@@ -430,6 +444,7 @@
     font-size: 1.125rem;
     font-weight: 400;
     text-decoration: none;
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .rail-links a:hover,
@@ -1013,7 +1028,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg);
-    transition: border-color 0.15s;
+    transition: border-color var(--duration-quick) var(--ease-out);
   }
 
   .article-card:has(.article-title a:focus-visible) {
@@ -1195,6 +1210,7 @@
     font-size: 0.8125rem;
     font-weight: 550;
     cursor: pointer;
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .star-button,
@@ -1414,6 +1430,10 @@
     border-block-end: 1px solid var(--border);
     color: var(--text);
     text-decoration: none;
+  }
+
+  a.settings-row {
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   a.settings-row:hover {
@@ -1746,6 +1766,7 @@
      ::after; the row's other links sit above it. */
   .my-feed {
     position: relative;
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .my-feed:hover {
@@ -1793,6 +1814,7 @@
     block-size: 2.25rem;
     border-radius: 999px;
     color: var(--text-3);
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .row-icon-btn:hover {
@@ -2014,6 +2036,7 @@
     text-decoration: none;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .timeline-tabs li a:hover {
@@ -2129,6 +2152,7 @@
     color: var(--text-3);
     cursor: grab;
     touch-action: none;
+    transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
   .reorder-handle[hidden] {
@@ -2151,19 +2175,17 @@
     cursor: grabbing;
   }
 
-  .timeline-row.just-moved {
-    animation: row-moved 0.8s ease-out;
+  /* The highlight-fade exception: a tint fading away moves nothing, so it
+     may run longer than --duration-flourish. */
+  @media (prefers-reduced-motion: no-preference) {
+    .timeline-row.just-moved {
+      animation: row-moved 800ms var(--ease-out);
+    }
   }
 
   @keyframes row-moved {
     from {
       background: var(--info-bg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .timeline-row.just-moved {
-      animation: none;
     }
   }
 
@@ -3064,7 +3086,13 @@
     border: 3px solid var(--border);
     border-block-start-color: var(--text);
     border-radius: 50%;
-    animation: spin 0.9s linear infinite;
+  }
+
+  /* A spinner turns at a constant speed. */
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner {
+      animation: spin 0.9s linear infinite;
+    }
   }
 
   @keyframes spin {
@@ -3073,9 +3101,17 @@
     }
   }
 
+  /* Under reduced motion the ring pulses instead, which moves nothing and is
+     far below the flashing threshold, so it still says "working". */
   @media (prefers-reduced-motion: reduce) {
     .spinner {
-      animation: none;
+      animation: pulse 1.6s var(--ease-in-out) infinite;
+    }
+  }
+
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
     }
   }
 

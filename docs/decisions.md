@@ -681,6 +681,10 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
   Buttons scale to 0.97, icon buttons take the hover background and their icon scales to 0.9, rows take their hover background, and the phone tab bar and timeline tabs take `--text` (the tab bar icon scales to 0.9).
   An article card firms its border and scales to 0.99 only while its own title link is pressed, and is never tinted, since the tint is the read marker.
   Presses go in over `--duration-press` and out over `--duration-quick`; colors apply under reduced motion, scales don't.
+- **Starring and saving** (#512): while the request runs the button is `aria-disabled` and dims to 0.6 only after `--delay-busy`.
+  Once a `204` turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
+  Turning Save on drops the bookmark 3 px into place over `--duration-base` on `--ease-out`, with no overshoot or burst, since saving is frequent.
+  Turning either off doesn't animate, so only the reader's own change is marked.
 - **Under reduced motion the spinner pulses instead of freezing** (#508): a frozen ring no longer says "working", and a slow opacity pulse moves nothing and is far below the flashing threshold.
 - **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
 - **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.

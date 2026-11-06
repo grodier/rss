@@ -379,6 +379,12 @@
    labelled rail, medium ones an icon rail, narrow ones a top bar and a tab
    bar. */
 @layer layout {
+  /* Pages with and without a scrollbar line the column up in the same place
+     (overlay scrollbars, as on phones, take no room either way). */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   .shell {
     display: grid;
     grid-template-columns: 1fr minmax(0, var(--column)) 1fr;
@@ -666,6 +672,93 @@
 
     .page-head h1 {
       font-size: 1.625rem;
+    }
+  }
+
+  /* Page to page (#513): a cross-document view transition. The old page
+     fades out over --duration-quick while the new one fades in over
+     --duration-base, both at once, and the nav holds still. Without support,
+     or with reduced motion, navigating cuts as before. See "Motion and
+     feedback" in docs/decisions.md. */
+  @media (prefers-reduced-motion: no-preference) {
+    @view-transition {
+      navigation: auto;
+    }
+
+    @keyframes vt-fade-out {
+      to {
+        opacity: 0;
+      }
+    }
+
+    @keyframes vt-fade-in {
+      from {
+        opacity: 0;
+      }
+    }
+
+    /* The browser's own group animations last 250 ms; the page takes no
+       input until every animation ends. */
+    ::view-transition-group(*) {
+      animation-duration: var(--duration-base);
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-old(page-head) {
+      animation: vt-fade-out var(--duration-quick) var(--ease-in) both;
+    }
+
+    ::view-transition-new(root),
+    ::view-transition-new(page-head) {
+      animation: vt-fade-in var(--duration-base) var(--ease-out) both;
+    }
+
+    /* The nav: the new one replaces the old at once, so the current
+       section's highlight moves instantly. The phone tab bar is fixed,
+       outside the top bar's box, so it has its own name. Between a
+       logged-out page and a logged-in one, the nav fades with the page. */
+    .rail {
+      view-transition-name: rail;
+    }
+
+    .rail-links {
+      view-transition-name: tabbar;
+    }
+
+    ::view-transition-group(rail),
+    ::view-transition-group(tabbar),
+    ::view-transition-new(rail),
+    ::view-transition-new(tabbar) {
+      animation: none;
+    }
+
+    ::view-transition-old(rail),
+    ::view-transition-old(tabbar) {
+      display: none;
+    }
+
+    ::view-transition-old(rail):only-child,
+    ::view-transition-old(tabbar):only-child {
+      display: block;
+      animation: vt-fade-out var(--duration-quick) var(--ease-in) both;
+    }
+
+    ::view-transition-new(rail):only-child,
+    ::view-transition-new(tabbar):only-child {
+      animation: vt-fade-in var(--duration-base) var(--ease-out) both;
+    }
+
+    /* The page head's nameplate rule stays put while its title crossfades
+       within it. Only where the head is sticky: on phones it scrolls with
+       the page, so a head scrolled out of view would slide back in. */
+    @media (min-width: 43rem) {
+      .page-head {
+        view-transition-name: page-head;
+      }
+
+      ::view-transition-group(page-head) {
+        animation-timing-function: var(--ease-in-out);
+      }
     }
   }
 }

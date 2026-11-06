@@ -8,9 +8,6 @@
   <link rel="stylesheet" href="{{asset "css/main.css"}}" />
   {{template "app-head" .Nav}}
   <script src="{{asset "js/app.js"}}" defer></script>
-  {{/* Not deferred: it has to listen for pagereveal before the page is
-       first drawn (see tabs.js). */}}
-  <script src="{{asset "js/tabs.js"}}"></script>
 </head>
 
 <body>

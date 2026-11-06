@@ -2115,7 +2115,7 @@
      as one that scrolls, and the end padding lets the last tab scroll clear
      of the fade. Only the mask's alpha counts, so any opaque token does. */
   .timeline-tabs ul {
-    position: relative; /* the offsetParent tabs.js measures tabs against */
+    position: relative; /* the offsetParent app.js measures tabs against */
     display: flex;
     flex: 1;
     gap: 1.25rem;
@@ -2171,9 +2171,11 @@
 
   /* Tab to tab (#521): the underline is named, so between two tab pages
      the browser draws it apart from the page's crossfade and moves it from
-     the old tab's place and width to the new one's. tabs.js replaces that
-     move, which is this --ease-in-out slide when the script doesn't run,
-     with an elastic one. The old and new snapshots are the same line, so the
+     the old tab's place and width to the new one's, here on --ease-out,
+     while the line stretches about its middle as it leaves, squashes a
+     little as it lands and settles. When app.js is listening before the new
+     page is first drawn, it replaces this with an elastic move that reaches
+     toward the new tab. The old and new snapshots are the same line, so the
      new one is shown alone, stretched to the moving box rather than scaled
      with it (which would thicken it). To or from a page without the tab
      row, the line fades with the page. See "Motion and feedback" in
@@ -2183,7 +2185,7 @@
       view-transition-name: tab-indicator;
     }
 
-    /* tabs.js, on the page being left, when its tab is scrolled out of the
+    /* app.js, on the page being left, when its tab is scrolled out of the
        row: its snapshot isn't clipped by the row, so it would slide in from
        outside it. Unnamed, the new page's line fades in. */
     .tab-indicator[data-unnamed] {
@@ -2192,13 +2194,18 @@
 
     ::view-transition-group(tab-indicator) {
       animation-duration: var(--duration-move);
-      animation-timing-function: var(--ease-in-out);
+      animation-timing-function: var(--ease-out);
     }
 
     ::view-transition-old(tab-indicator),
     ::view-transition-new(tab-indicator) {
       block-size: 100%;
       animation: none;
+    }
+
+    ::view-transition-new(tab-indicator) {
+      transform-origin: 50% 100%;
+      animation: tab-indicator-stretch var(--duration-move) var(--ease-in-out);
     }
 
     ::view-transition-old(tab-indicator) {
@@ -2213,6 +2220,26 @@
 
     ::view-transition-new(tab-indicator):only-child {
       animation: tab-indicator-in var(--duration-quick) var(--ease-out) both;
+    }
+  }
+
+  /* Scaled from its bottom middle: longer and thinner as it leaves, then
+     shorter and thicker as it lands, keeping about the same area. */
+  @keyframes tab-indicator-stretch {
+    12% {
+      transform: scale(1.35, 0.8);
+    }
+
+    36% {
+      transform: scale(1.04, 0.97);
+    }
+
+    52% {
+      transform: scale(0.95, 1.08);
+    }
+
+    72% {
+      transform: scale(1.015, 0.99);
     }
   }
 

@@ -693,8 +693,6 @@ func TestTimelineHandler(t *testing.T) {
 			// The current tab's link alone holds the underline.
 			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI<span class="tab-indicator" aria-hidden="true"></span></a>`,
 			`<li><a href="/timelines/all">All feeds</a></li>`,
-			// Not deferred: it listens for pagereveal before the first render.
-			`<script src="/static/js/tabs.js?v=`+staticVersions["js/tabs.js"]+`"></script>`,
 			// The tab row's Edit goes to this timeline's row on /timelines.
 			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",

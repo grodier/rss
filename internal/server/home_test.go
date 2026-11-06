@@ -406,7 +406,7 @@ func TestHomeHandlerTabs(t *testing.T) {
 	timelines := &fakeTimelineStore{}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
-	// tabs.js scrolls the list in .timeline-tabs to its [aria-current=page]
+	// app.js scrolls the list in .timeline-tabs to its [aria-current=page]
 	// link, and slides the underline (.tab-indicator) in that link.
 	// The tab row ends in an Edit pill (not a tab) to /timelines, at Home's
 	// row from Home.

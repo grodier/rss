@@ -690,12 +690,16 @@ func TestTimelineHandler(t *testing.T) {
 			`<h1 class="visually-hidden">AI</h1>`,
 			`<div class="timeline-about">
         <p>Models &amp; more</p>`,
-			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
+			// The current tab's link alone holds the underline.
+			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI<span class="tab-indicator" aria-hidden="true"></span></a>`,
 			`<li><a href="/timelines/all">All feeds</a></li>`,
 			// The tab row's Edit goes to this timeline's row on /timelines.
 			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",
 		)
+		if n := strings.Count(body, "tab-indicator"); n != 1 {
+			t.Errorf("%d tab indicators, want 1 (in the current tab): %s", n, body)
+		}
 		if strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected Back to newest")
 		}

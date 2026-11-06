@@ -379,6 +379,7 @@ Planned in #395 (issue #396).
   Articles without a usable URL have no Share button.
 - **The system share sheet where there is one, else copy the link** (the link alone, so it pastes cleanly).
 - **It needs JavaScript, so without it there's no button**, rather than a button that does nothing; "Read on" and the browser's own share remain.
+  For the same reason a browser with neither a share sheet nor the Clipboard API (which needs a secure context) gets no button either (#511).
 - **An icon-only button between Star and Save**, as "Saved articles" planned.
 - **Nothing about sharing is recorded**: no counts, no request to the server.
 
@@ -685,6 +686,11 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
   Once a `204` turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
   Turning Save on drops the bookmark 3 px into place over `--duration-base` on `--ease-out`, with no overshoot or burst, since saving is frequent.
   Turning either off doesn't animate, so only the reader's own change is marked.
+- **Share's copy feedback** (#511; the owner's pick at its design checkpoint, #533, from four options): where there's no share sheet, a pill in the inverse colors appears 6 px above the button, over whatever is there, so nothing in the row moves, and on success the check draws itself in place of the share icon.
+  It says "Link copied", not "Copied", since the button says Share and the words say what it did; a failure says "Couldn't copy" and keeps the share icon.
+  It fades in and rises 4 px over `--duration-base` on `--ease-out` and fades out over `--duration-quick` on `--ease-in`, and under reduced motion only fades; it has no arrow, so it reads as the button answering rather than a hover tooltip.
+  A success stays 2 s, and longer while a mouse is over the button or it has keyboard focus (until the next key); a failure stays until the reader's next press or key, since a message that times out before it's read fails WCAG 2.2.1 (why toasts aren't taken, below).
+  Not taken: status text at the row's open end (on phones it lands on "Also in", and it left the screen on the article page), and the button turning into a labelled, tinted "Copied" (it widens about 60 px, so Star jumps aside and at 320 px "Also in" is squeezed to a word a line).
 - **Page to page** (#513): following a link or a form post that redirects crossfades into the next page with the browser's own cross-document view transition, over `--duration-quick` on `--ease-out`.
   The browser's crossfade blends the two pages, so whatever is the same on both (the nav, the head's rule, card frames) holds still and only what differs fades; separate fade-out and fade-in animations, as first planned, left both pages half visible for about 70 ms, putting text on text and dimming the parts that don't change.
   Nothing else has a `view-transition-name` (the tab underline does, #521, below): a named element is drawn from a snapshot during the transition, and the phone tab bar's frosted glass doesn't match its snapshot, so it jumped at the start and end; without names the current section's highlight crossfades with the page instead of switching at once.

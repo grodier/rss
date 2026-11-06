@@ -100,12 +100,16 @@
   });
 
   // Share buttons: button[data-share-url] (the share-button partial) is
-  // rendered hidden, since it needs JavaScript; show it. On click, open the
-  // share sheet with data-share-title and the URL where there is one, else
-  // copy the URL, show it with showCopied and announce it, in the page's
-  // polite live region (announce, also used by live search). Takes a root so
-  // rows added to the page later can be enhanced too; the click is delegated.
+  // rendered hidden, since it needs JavaScript; show it where it can work
+  // (a share sheet or the Clipboard API, which needs a secure context). On
+  // click, open the share sheet with data-share-title and the URL where there
+  // is one, else copy the URL, show the outcome with showCopied and announce
+  // it, in the page's polite live region (announce, also used by live
+  // search). Takes a root so rows added to the page later can be enhanced
+  // too; the click is delegated.
+  const canShare = Boolean(navigator.share || navigator.clipboard?.writeText);
   const enhanceShare = (root) => {
+    if (!canShare) return;
     for (const b of root.querySelectorAll("button[data-share-url]")) b.hidden = false;
   };
   enhanceShare(document);
@@ -121,22 +125,50 @@
     liveStatus.textContent = "";
     setTimeout(() => { liveStatus.textContent = msg; }, 50);
   };
-  // showCopied shows a copy's outcome on its button for 2 seconds: the
-  // button's .copied-label (aria-hidden, since announce says it) reads
-  // "Copied" or "Couldn't copy", and data-copied (main.css swaps the icon for
-  // a check that draws itself) or data-copy-failed shows it. A second copy
-  // restarts the timer. The label keeps its text after, so it fades out
-  // with it.
+  // showCopied shows a copy's outcome on its button: its .copied-label
+  // (aria-hidden, since announce says it) reads "Link copied" or "Couldn't
+  // copy", shown by data-copied (main.css also swaps the icon for a check
+  // that draws itself) or data-copy-failed. A success shows for 2 seconds,
+  // and longer while a mouse is over the button (until it leaves) or it has
+  // keyboard focus (until the next key or focus moves); a failure stays
+  // until the reader's next press or key, so it never times out before it's
+  // read. A second copy restarts the time (the pill and check don't replay).
+  // The label keeps its text when it hides, so it fades out with it.
+  // lastPointer is the type of the latest press, since a touch leaves :hover
+  // on what it tapped, even on a device that also has a mouse.
+  let lastPointer = "";
+  document.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; }, { capture: true });
   const showCopied = (button, ok) => {
+    button.hideCopied?.();
     const label = button.querySelector(".copied-label");
-    if (label) label.textContent = ok ? "Copied" : "Couldn't copy";
-    delete button.dataset.copied;
-    delete button.dataset.copyFailed;
+    if (label) label.textContent = ok ? "Link copied" : "Couldn't copy";
     button.dataset[ok ? "copied" : "copyFailed"] = "";
-    clearTimeout(button.copiedTimer);
-    button.copiedTimer = setTimeout(() => {
+    const done = new AbortController();
+    const { signal } = done;
+    let timer;
+    const hide = () => {
+      clearTimeout(timer);
+      done.abort();
       delete button.dataset.copied;
       delete button.dataset.copyFailed;
+      delete button.hideCopied;
+    };
+    button.hideCopied = hide;
+    if (!ok) {
+      for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, hide, { signal, capture: true });
+      return;
+    }
+    const hovered = () => lastPointer === "mouse" && button.matches(":hover");
+    const focused = () => button.matches(":focus-visible");
+    timer = setTimeout(() => {
+      if (hovered()) {
+        button.addEventListener("pointerleave", hide, { signal });
+      } else if (focused()) {
+        button.addEventListener("blur", hide, { signal });
+        document.addEventListener("keydown", hide, { signal, capture: true });
+      } else {
+        hide();
+      }
     }, 2000);
   };
   document.addEventListener("click", async (e) => {

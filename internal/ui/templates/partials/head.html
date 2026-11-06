@@ -13,7 +13,9 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0f1626" media="(prefers-color-scheme: dark)" />
   {{- end}}
-  <meta name="apple-mobile-web-app-title" content="Paper Round" />{{end}}
+  <meta name="apple-mobile-web-app-title" content="Paper Round" />
+  {{- /* Not deferred: it must listen for pagereveal before the first render. */}}
+  <script src="{{asset "js/transitions.js"}}"></script>{{end}}
 
 {{/* html-theme is the data-theme attribute of a logged-in page's <html>,
      from its navData: the user's theme, or nothing to follow the system. */}}

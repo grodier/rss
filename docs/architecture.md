@@ -365,9 +365,12 @@ Beyond those:
   The dark values are written twice (system and chosen), and `internal/ui/css_test.go` fails if the two differ or a color token has no dark value.
   Logged-out and error pages have no user, so they always follow the system.
 - **Motion:** the easing curves and durations are tokens on `:root` in `main.css`, next to the colors, and every animation and moving transition is written inside `@media (prefers-reduced-motion: no-preference)`; `internal/ui/css_test.go` (`TestMotionIsOptIn`) fails on motion outside it.
-- **View transitions** (#513): navigating from page to page crossfades, in CSS only (`@view-transition` in `main.css`, inside the reduced-motion opt-in), for links, form posts that redirect, and Back and Forward, but not reloads.
-  The nav holds still: `.rail` and the phone tab bar `.rail-links` are named `rail` and `tabbar`, and their new state replaces the old at once; `.page-head` is named `page-head` where it's sticky (not on phones), so its rule stays put.
-  A view transition name must be unique on a page, or the browser skips the transition, so each page has at most one of each.
+- **View transitions** (#513): navigating from page to page crossfades (`@view-transition` in `main.css`, inside the reduced-motion opt-in), for links and form posts that redirect, but not reloads.
+  The crossfade is the browser's own, which blends the two pages so that whatever is the same on both stays still; `main.css` only sets its timing on `::view-transition-group(*)`, which the images inherit.
+  The nav holds still: `.rail` and the phone tab bar `.rail-links` are named `rail` and `tabbar`, and their new state replaces the old at once.
+  A view transition name must be unique on a page, or the browser skips the transition, so each page has one of each at most.
+  Back and Forward cut: `js/transitions.js` skips the transition in `pagereveal` for traverse navigations (from the Navigation API, else the navigation timing entry or a `pageshow` from the back/forward cache).
+  It's a classic script in `app-head`, not deferred like `app.js`, since `pagereveal` fires before the first render; `TestTransitionsScriptBlocksRender` fails if it's deferred.
   Browsers without cross-document view transitions, and readers who ask for less motion, navigate with a plain cut; `html` reserves the scrollbar gutter so the column doesn't shift between short and long pages.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.

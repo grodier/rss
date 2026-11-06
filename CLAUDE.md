@@ -130,7 +130,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - Only `cmd/www` handles OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
-  Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer`; no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one.
+  Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer` (the one exception is `transitions.js`, which must run before the first render; see "View transitions" in `docs/architecture.md`); no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.
 - Debug panels and inspectors live in `internal/server/debug.go`, `internal/psql/debug.go` and `partials/debug.html`.

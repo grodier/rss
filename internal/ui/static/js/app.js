@@ -571,11 +571,43 @@
   // order that changed in another window, goes to /timelines, where the
   // flash says why; redirect: "manual" keeps that flash for it. The move
   // buttons stay: they're the single-pointer and keyboard way to reorder.
+  // Rows glide to their new places (#519; none under reduced motion): the
+  // order changes at once and the motion is drawn on top, so a press is
+  // never held up by the one before it. See "Timelines" and "Motion and
+  // feedback" in docs/decisions.md.
   {
     const list = document.querySelector("ul[data-reorder]");
     if (list) {
       const rows = () => [...list.children];
       for (const handle of list.querySelectorAll(".reorder-handle")) handle.hidden = false;
+
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+      const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      const timing = (duration, easing) => ({ duration: parseFloat(token(duration)) || 0, easing: token(easing) || "ease-out" });
+
+      // Glides, as FLIP: note where each row is drawn (mid-glide, if one is
+      // running), make the change, and slide each row from where it was to
+      // its new place. A glide that's interrupted continues from where it
+      // is rather than skipping to its end. `lead` (the row the reader
+      // moved) is drawn above the rows it passes. Real elements move, not
+      // snapshots (a view transition would take the page's clicks while it
+      // ran), so the buttons keep their focus and take every press.
+      const glides = new Map(); // row → Animation
+      const glide = (change, options, lead, z = 1) => {
+        const from = new Map(rows().map((li) => [li, li.getBoundingClientRect().top]));
+        for (const a of glides.values()) a.cancel();
+        glides.clear();
+        change();
+        if (reduced.matches) return;
+        for (const li of rows()) {
+          const dy = from.get(li) - li.getBoundingClientRect().top;
+          if (Math.abs(dy) < 0.5) continue;
+          const zIndex = li === lead ? z : "auto";
+          const a = li.animate([{ transform: `translateY(${dy}px)`, zIndex }, { transform: "none", zIndex }], options);
+          glides.set(li, a);
+          a.onfinish = () => glides.delete(li);
+        }
+      };
 
       const refresh = () => {
         const all = rows();
@@ -610,6 +642,10 @@
 
       // Move buttons: one place up or down, keeping focus on the pressed
       // button, or its sibling once the pressed one is disabled at an end.
+      // The row and its neighbour trade places over --duration-move on
+      // --ease-in-out; a press while a row is still gliding takes over at
+      // its current speed (--ease-out), since a curve that starts slowly
+      // would stall it on every press.
       list.addEventListener("submit", (e) => {
         const form = e.target;
         if (!(form instanceof HTMLFormElement) || !form.matches("form[data-move]")) return;
@@ -618,55 +654,152 @@
         const li = form.closest("li");
         const up = button?.value === "up";
         const neighbour = up ? li.previousElementSibling : li.nextElementSibling;
-        if (!button || !neighbour) return;
-        if (up) list.insertBefore(li, neighbour);
-        else list.insertBefore(neighbour, li);
+        if (!button || !neighbour || drag) return;
+        const options = timing("--duration-move", glides.size ? "--ease-out" : "--ease-in-out");
+        glide(() => {
+          if (up) list.insertBefore(li, neighbour);
+          else list.insertBefore(neighbour, li);
+        }, options, li);
         moved(li);
         (button.disabled ? li.querySelector(`button[value="${up ? "down" : "up"}"]`) : button).focus();
       });
 
-      // Dragging a handle: the row swaps with a neighbour whose midpoint
-      // the pointer crosses. Escape or a cancelled pointer puts every row
-      // back.
-      let drag = null; // { li, before }
-      const middle = (el) => {
-        const r = el.getBoundingClientRect();
-        return r.top + r.height / 2;
+      // Dragging a handle: the row lifts and follows the pointer, held
+      // within the list, and the rows it passes slide out of its way as its
+      // edge crosses their midpoints (main.css's transition). The order
+      // only changes on the drop, when the row settles into the gap. Near
+      // the top or bottom of the visible page (clear of the sticky head and
+      // the phone tab bar) the page scrolls, faster the closer the pointer
+      // is to the edge. Escape, a cancelled pointer, or leaving the page
+      // glides every row back.
+      let drag = null;
+      const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
+
+      // Where the list can be seen: below the sticky bars at the top, above
+      // the fixed tab bar at the bottom (only those across the list count,
+      // so not the desktop rail beside it).
+      const visible = () => {
+        const l = list.getBoundingClientRect();
+        let top = 0, bottom = innerHeight;
+        for (const el of document.querySelectorAll(".rail, .page-head, .rail-links")) {
+          if (!/^(sticky|fixed)$/.test(getComputedStyle(el).position)) continue;
+          const r = el.getBoundingClientRect();
+          if (r.right <= l.left || r.left >= l.right || r.height > innerHeight / 2) continue;
+          if (r.top <= 1) top = Math.max(top, r.bottom);
+          else if (r.bottom >= innerHeight - 1) bottom = Math.min(bottom, r.top);
+        }
+        return { top, bottom };
       };
+
+      // Place the dragged row under the pointer and move the others aside.
+      // Positions are in page coordinates, as they were when the drag
+      // began, so scrolling during the drag moves the row with the pointer.
+      const follow = () => {
+        const { li, all, index, tops, heights, gap } = drag;
+        const last = all.length - 1;
+        const dy = clamp(drag.y + scrollY - drag.grab, tops[0] - tops[index], tops[last] + heights[last] - tops[index] - heights[index]);
+        li.style.transform = `translateY(${dy}px)`;
+        const top = tops[index] + dy, bottom = top + heights[index];
+        const shift = heights[index] + gap;
+        let target = index;
+        all.forEach((row, i) => {
+          if (i === index) return;
+          const middle = tops[i] + heights[i] / 2;
+          let d = 0;
+          if (i < index && top < middle) {
+            d = shift;
+            target--;
+          } else if (i > index && bottom > middle) {
+            d = -shift;
+            target++;
+          }
+          row.style.transform = d ? `translateY(${d}px)` : "";
+        });
+        drag.target = target;
+      };
+
+      const EDGE = 72; // px: how close to an edge the page starts to scroll
+      const SPEED = 900; // px/s at the edge itself
+      const scroll = (now) => {
+        if (!drag) return;
+        const { top, bottom } = visible();
+        const l = list.getBoundingClientRect();
+        // Only towards rows that are out of sight.
+        const over = (l.top < top ? Math.max(top + EDGE - drag.y, 0) : 0) - (l.bottom > bottom ? Math.max(drag.y - (bottom - EDGE), 0) : 0);
+        const dt = drag.at ? Math.min(now - drag.at, 50) : 0;
+        drag.at = now;
+        if (over && dt) {
+          const v = SPEED * Math.min(Math.abs(over) / EDGE, 1) ** 2;
+          scrollBy(0, -Math.sign(over) * v * dt / 1000);
+        }
+        drag.frame = requestAnimationFrame(scroll);
+      };
+
       list.addEventListener("pointerdown", (e) => {
         const handle = e.target instanceof Element && e.target.closest(".reorder-handle");
-        if (!handle || e.button !== 0) return;
+        if (!handle || e.button !== 0 || !e.isPrimary || drag) return;
         e.preventDefault();
-        drag = { li: handle.closest("li"), before: rows() };
-        drag.li.classList.add("dragging");
+        for (const a of glides.values()) a.finish();
+        const li = handle.closest("li");
+        const all = rows();
+        const rects = all.map((row) => row.getBoundingClientRect());
+        drag = {
+          li,
+          all,
+          index: all.indexOf(li),
+          target: all.indexOf(li),
+          tops: rects.map((r) => r.top + scrollY),
+          heights: rects.map((r) => r.height),
+          gap: all.length > 1 ? rects[1].top - rects[0].bottom : 0,
+          grab: e.clientY + scrollY,
+          y: e.clientY,
+          at: 0,
+        };
+        list.dataset.dragging = "";
+        li.classList.add("dragging");
         handle.setPointerCapture(e.pointerId);
+        drag.frame = requestAnimationFrame(scroll);
       });
       list.addEventListener("pointermove", (e) => {
-        if (!drag) return;
-        for (;;) {
-          const prev = drag.li.previousElementSibling;
-          const next = drag.li.nextElementSibling;
-          if (prev && e.clientY < middle(prev)) list.insertBefore(drag.li, prev);
-          else if (next && e.clientY > middle(next)) list.insertBefore(next, drag.li);
-          else break;
-        }
+        if (!drag || !e.isPrimary) return;
+        drag.y = e.clientY;
+        follow();
       });
+      addEventListener("scroll", () => {
+        if (drag) follow();
+      }, { passive: true });
+
       const end = (cancel) => {
         if (!drag) return;
-        const { li, before } = drag;
+        const { li, all, index, frame } = drag;
+        const target = cancel ? index : drag.target;
         drag = null;
-        li.classList.remove("dragging");
-        if (cancel) {
-          list.append(...before);
-          return;
-        }
-        if (rows().some((row, i) => row !== before[i])) moved(li);
+        cancelAnimationFrame(frame);
+        glide(() => {
+          delete list.dataset.dragging;
+          li.classList.remove("dragging");
+          for (const row of all) row.style.transform = "";
+          if (target === index) return;
+          // Only the dragged row moves in the document, and it keeps focus
+          // if it had it (a move button pressed before the drag).
+          const focused = li.contains(document.activeElement) && document.activeElement;
+          list.insertBefore(li, all.filter((row) => row !== li)[target] ?? null);
+          if (focused) focused.focus();
+        }, timing("--duration-base", "--ease-out"), li, 2);
+        if (target !== index) moved(li);
       };
-      list.addEventListener("pointerup", () => end(false));
-      list.addEventListener("pointercancel", () => end(true));
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") end(true);
+      list.addEventListener("pointerup", (e) => {
+        if (e.isPrimary) end(false);
       });
+      list.addEventListener("pointercancel", () => end(true));
+      list.addEventListener("lostpointercapture", () => end(true));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && drag) {
+          e.preventDefault();
+          end(true);
+        }
+      });
+      addEventListener("blur", () => end(true));
     }
   }
 

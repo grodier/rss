@@ -104,8 +104,9 @@ The decisions are under "Accounts" in decisions.md.
 
 ## Feed discovery
 
-- [ ] **Live updates for pending work (lookups and feed refreshes).**
-  Replace the lookup status page's `<meta http-equiv="refresh">` with JavaScript polling, server-sent events or websockets, and use the same mechanism to update a feed page after the background refresh it requested (#137) finishes: the request is pending while `feeds.refresh_requested_at` is set.
+- [ ] **Live updates for feed refreshes.**
+  Update a feed page in place once the background refresh it requested (#137) finishes: the request is pending while `feeds.refresh_requested_at` is set.
+  The lookup page's polling (#515) is the pattern, but polling the feed page itself would run `feedHandler`'s upkeep (queuing a refresh of a stale feed) on every poll, so this likely needs a small status endpoint: server work, deferred from #507.
   Progressive enhancement: pages keep working without JavaScript.
 - [ ] **Logged-out access.**
   Let logged-out visitors search and view site and feed pages, to help people find the app.
@@ -330,6 +331,18 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Templates link assets through `asset` (#199), so only `asset` changes: it looks names up in the build's manifest instead of hashing files at startup, and every file under `/static` gets the immutable `Cache-Control`.
   This reverses the "no build step" decision ("Overall" in decisions.md, and CLAUDE.md), so planning it updates both.
   Pages must still work without JavaScript.
+- [ ] **Instant navigation (needs planning).**
+  Make moving between pages feel instant, beyond the view transitions in #513; deferred from #507, since each option needs server work ("Motion and feedback" in decisions.md).
+  Options, to measure against each other:
+  - The back-forward cache: Back from an article would restore the timeline at once, in place, with the pages infinite scroll added.
+    Logged-in pages send `Cache-Control: no-store` (so nothing is shown from the cache after logging out), which keeps them out of it in Safari and Firefox and often in Chrome; `Clear-Site-Data: "cache"` on logout may make dropping it safe.
+    Back to the timeline is the trip readers make most, so measure this first.
+  - Speculation rules: a `Speculation-Rules` header naming a static rules file (the CSP blocks inline rules), prefetching article and feed pages on hover or press.
+    A prefetch (`Sec-Purpose: prefetch`) must skip a GET's upkeep: `articleHandler` records an opened article and `feedHandler` queues a refresh.
+    Prefetch rather than prerender, which runs `app.js` in a hidden page.
+    Chromium only; check whether Chrome uses a prefetched `no-store` response, and add each prefetched page's queries to the watchlist.
+  - Our own navigation in plain JavaScript: fetch the next page and swap in its `<main>`, as infinite scroll and live search do; the most JavaScript, and it must handle focus, the title, announcements, history and scroll itself.
+  - A faster server, from what "Load and performance testing" finds.
 
 ## Mobile
 
@@ -524,6 +537,10 @@ Pages and queries:
   *Measured 2026-11-01* (#449, on a dev container with about 1,300 sites and feeds): 5–11 ms per `/search` request while typing, 3–8 ms of it the query.
   *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
+- [ ] **Infinite scroll keeps every page in the DOM** (#155, #159).
+  A long read appends a page of rows at a time and never removes any, so style, layout and memory grow with every page, and phones feel it first; the motion batch (#507) adds animations to those pages.
+  *Signal:* scrolling, pressing or opening an article gets janky after many pages on a mid-range phone (long style and layout tasks in DevTools' Performance panel), or testers report it.
+  *Fix:* `content-visibility: auto` with `contain-intrinsic-size` on rows, checked against Back's anchored position; or drop rows far above once the URL has moved past them.
 - [ ] **Timeline cost per followed feed** (#404).
   `ListTimeline` reads each subscription's newest page of entries from `articles_feed_timeline_idx` and merges them, so a page costs about one index scan per followed feed (about 0.2 ms each), however deep the page or long the history.
   *Signal:* `/` p95 rising with subscription count, or Home page 1 over 100 ms for heavy readers.

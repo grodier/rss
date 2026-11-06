@@ -406,7 +406,8 @@ func TestHomeHandlerTabs(t *testing.T) {
 	timelines := &fakeTimelineStore{}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
-	// app.js scrolls the list in .timeline-tabs to its [aria-current=page] link.
+	// tabs.js scrolls the list in .timeline-tabs to its [aria-current=page]
+	// link, and slides the underline (.tab-indicator) in that link.
 	// The tab row ends in an Edit pill (not a tab) to /timelines, at Home's
 	// row from Home.
 	const editTimelines = `<a class="btn btn-sm" href="/timelines#timeline-all">Edit<span class="visually-hidden"> timelines</span></a>`
@@ -417,7 +418,7 @@ func TestHomeHandlerTabs(t *testing.T) {
 			`<header class="page-head tabs-head">
         <h1 class="visually-hidden">All feeds</h1>`,
 			`<nav class="timeline-tabs" aria-label="Timelines">`,
-			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds<span class="tab-indicator" aria-hidden="true"></span></a></li>`,
 			`</ul>
   `+editTimelines,
 		)
@@ -441,11 +442,11 @@ func TestHomeHandlerTabs(t *testing.T) {
 		body := getHome(t, s, "/timelines/all", true).Body.String()
 		assertBodyContains(t, body,
 			`<li><a href="/timelines/t-1">AI</a></li>`,
-			`<li><a href="/timelines/all" aria-current="page">All feeds</a></li>`,
+			`<li><a href="/timelines/all" aria-current="page">All feeds<span class="tab-indicator" aria-hidden="true"></span></a></li>`,
 			`<li><a href="/timelines/t-2">News &amp; views</a></li>`,
 			editTimelines,
 		)
-		ai, home, news := strings.Index(body, ">AI<"), strings.Index(body, ">All feeds</a></li>"), strings.Index(body, ">News &amp; views<")
+		ai, home, news := strings.Index(body, ">AI<"), strings.Index(body, ">All feeds<span class=\"tab-indicator\""), strings.Index(body, ">News &amp; views<")
 		if !(ai < home && home < news) {
 			t.Errorf("tabs out of order: %s", body)
 		}

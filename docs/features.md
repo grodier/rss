@@ -241,7 +241,7 @@ Unsubscribing cascades to the subscription's tags; the tags themselves stay.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): the user's tabs in order, Home wherever they put it, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); `app.js` scrolls the row so the current tab shows.
+**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): the user's tabs in order, Home wherever they put it, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); `tabs.js` keeps the row where the reader scrolled it when they move to another tab, scrolls it so the current tab shows when it's out of view, and between two tabs the current tab's underline slides and stretches from the old tab to the new one (a view transition, #521).
 Under the tabs, a row shows only for the timeline's description or an older page's "Back to newest".
 A timeline is a name, an optional description and an `rss.TimelineFilter` over the user's subscriptions:
 

@@ -4,13 +4,15 @@
      /timelines at the current tab's row.
      Its data is a timelineTabs. Each tab is its own page, so this is
      navigation (links with aria-current), not ARIA tabs, which switch panels
-     within a page. No counts ("Reading" in docs/decisions.md). app.js
-     scrolls the current tab into view. */}}
+     within a page. No counts ("Reading" in docs/decisions.md). The current
+     tab's underline is its own element, .tab-indicator, so it can slide
+     from tab to tab (main.css, tabs.js). tabs.js scrolls the current tab
+     into view. */}}
 {{define "timeline-tabs"}}
 <nav class="timeline-tabs" aria-label="Timelines">
   <ul role="list">
     {{range .Timelines}}
-    <li><a href="/timelines/{{or .ID "all"}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{or .Name homeName}}</a></li>
+    <li><a href="/timelines/{{or .ID "all"}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{or .Name homeName}}{{if eq .ID $.CurrentID}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
     {{end}}
   </ul>
   <a class="btn btn-sm" href="/timelines#timeline-{{or .CurrentID "all"}}">Edit<span class="visually-hidden"> timelines</span></a>

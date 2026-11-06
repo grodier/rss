@@ -266,17 +266,6 @@
     if (input.form) input.form.addEventListener("submit", () => show(false));
   }
 
-  // Timeline tabs: when the current tab (.timeline-tabs [aria-current])
-  // is scrolled out of its row, scroll the row (not the page) so it shows.
-  // Without this the row starts at Home and the reader scrolls it.
-  {
-    const current = document.querySelector(".timeline-tabs [aria-current=page]");
-    const row = current && current.closest("ul");
-    if (row && current.offsetLeft + current.offsetWidth > row.clientWidth) {
-      row.scrollLeft = current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2;
-    }
-  }
-
   // The timeline form (form[data-timeline-form]): rebuild the summary above
   // it ([data-summary-sentence], [data-summary-count], [data-summary-feeds])
   // and the counts in it as fields change, with the same rules and words as

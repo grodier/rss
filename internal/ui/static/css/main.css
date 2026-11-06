@@ -379,6 +379,12 @@
    labelled rail, medium ones an icon rail, narrow ones a top bar and a tab
    bar. */
 @layer layout {
+  /* Pages with and without a scrollbar line the column up in the same place
+     (overlay scrollbars, as on phones, take no room either way). */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   .shell {
     display: grid;
     grid-template-columns: 1fr minmax(0, var(--column)) 1fr;
@@ -666,6 +672,26 @@
 
     .page-head h1 {
       font-size: 1.625rem;
+    }
+  }
+
+  /* Page to page (#513): a cross-document view transition, the browser's
+     own crossfade. It blends the two pages, so whatever is the same on both
+     (the nav, the head's rule, card frames) holds still and only what
+     differs fades, over --duration-quick on --ease-out. Nothing is named:
+     a named element is drawn from a snapshot during the transition, and a
+     frosted bar's snapshot doesn't match it live. Back and Forward cut
+     (app.js). Without support, or with reduced motion, navigating cuts as
+     before. See "Motion and feedback" in docs/decisions.md. */
+  @media (prefers-reduced-motion: no-preference) {
+    @view-transition {
+      navigation: auto;
+    }
+
+    /* The images inherit their timing from their group. */
+    ::view-transition-group(root) {
+      animation-duration: var(--duration-quick);
+      animation-timing-function: var(--ease-out);
     }
   }
 }

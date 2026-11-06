@@ -2425,10 +2425,8 @@
     }
   }
 
-  /* The rows a dragged row passes slide aside on --ease-out, since they
-     answer the reader's hand; the dragged row itself has no transition, so
-     it never lags behind the pointer. app.js glides rows into place after
-     a drop or a move button (#519). */
+  /* The rows themselves move on app.js's springs (#519): the dragged row
+     follows the pointer, and the others slide aside and glide into place. */
   @media (prefers-reduced-motion: no-preference) {
     .timeline-row::before {
       transition: opacity var(--duration-base) var(--ease-out);
@@ -2436,10 +2434,6 @@
 
     .timeline-row.dragging::before {
       transition-duration: var(--duration-quick);
-    }
-
-    ul[data-dragging] > .timeline-row:not(.dragging) {
-      transition: transform var(--duration-base) var(--ease-out);
     }
   }
 

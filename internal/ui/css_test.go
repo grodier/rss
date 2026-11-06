@@ -69,3 +69,121 @@ func TestDarkThemeTokens(t *testing.T) {
 		t.Errorf("light and dark define different color tokens:\nlight: %q\ndark:  %q", light, dark)
 	}
 }
+
+// motionProperties are the properties a transition may not name outside
+// prefers-reduced-motion: no-preference: they move, scale or resize things.
+var motionProperties = map[string]bool{
+	"transform": true, "translate": true, "scale": true, "rotate": true,
+	"all": true, "block-size": true, "height": true, "clip-path": true,
+}
+
+// motionOutsideOptIn returns a description of each piece of motion in css
+// that isn't inside a @media (prefers-reduced-motion: no-preference) block:
+// animations, transitions of motionProperties and @view-transition rules.
+// The spinner's pulse under prefers-reduced-motion: reduce is allowed.
+func motionOutsideOptIn(css string) []string {
+	css = cssComment.ReplaceAllString(css, "")
+	var (
+		stack []string // the preludes of the open blocks, outermost first
+		found []string
+		start int
+	)
+	optedIn := func() bool {
+		return slices.ContainsFunc(stack, func(p string) bool {
+			return strings.HasPrefix(p, "@media") && strings.Contains(p, "prefers-reduced-motion: no-preference")
+		})
+	}
+	spinnerPulse := func() bool {
+		return len(stack) > 0 && stack[len(stack)-1] == ".spinner" &&
+			slices.ContainsFunc(stack, func(p string) bool {
+				return strings.HasPrefix(p, "@media") && strings.Contains(p, "prefers-reduced-motion: reduce")
+			})
+	}
+	where := func() string { return strings.Join(stack, " > ") }
+	declaration := func(d string) {
+		name, value, ok := strings.Cut(strings.TrimSpace(d), ":")
+		if !ok || optedIn() {
+			return
+		}
+		name = strings.TrimSpace(name)
+		switch name {
+		case "animation", "animation-name":
+			if !spinnerPulse() {
+				found = append(found, where()+": "+strings.TrimSpace(d))
+			}
+		case "transition", "transition-property":
+			for w := range strings.FieldsFuncSeq(value, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' }) {
+				if motionProperties[w] {
+					found = append(found, where()+": "+strings.TrimSpace(d))
+					break
+				}
+			}
+		}
+	}
+	for i, c := range css {
+		switch c {
+		case '{':
+			prelude := strings.Join(strings.Fields(css[start:i]), " ")
+			if strings.HasPrefix(prelude, "@view-transition") && !optedIn() {
+				found = append(found, where()+": "+prelude)
+			}
+			stack = append(stack, prelude)
+			start = i + 1
+		case ';':
+			declaration(css[start:i])
+			start = i + 1
+		case '}':
+			declaration(css[start:i])
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			start = i + 1
+		}
+	}
+	return found
+}
+
+// Motion is opt-in: every animation, and every transition that moves
+// something, is written inside @media (prefers-reduced-motion: no-preference).
+// See "Motion and feedback" in docs/decisions.md.
+func TestMotionIsOptIn(t *testing.T) {
+	b, err := fs.ReadFile(Static, "static/css/main.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := motionOutsideOptIn(string(b)); len(found) > 0 {
+		t.Errorf("main.css has motion outside @media (prefers-reduced-motion: no-preference):\n%s", strings.Join(found, "\n"))
+	}
+
+	tests := []struct {
+		name string
+		css  string
+		ok   bool
+	}{
+		{"animation at the top level", `.a { animation: x 1s; }`, false},
+		{"animation-name at the top level", `.a { animation-name: x }`, false},
+		{"animation inside no-preference", `@media (prefers-reduced-motion: no-preference) { .a { animation: x 1s; } }`, true},
+		{"animation nested in a layer", `@layer components { @media (prefers-reduced-motion: no-preference) { .a { animation: x 1s; } } }`, true},
+		{"animation in a layer only", `@layer components { .a { animation: x 1s; } }`, false},
+		{"background-color transition", `.a { transition: background-color 150ms ease-out; }`, true},
+		{"color and opacity transitions", `.a { transition: color 150ms, opacity 150ms; }`, true},
+		{"transform transition", `.a { transition: transform 150ms; }`, false},
+		{"transform as a later transition", `.a { transition: color 150ms, transform 150ms; }`, false},
+		{"all transition", `.a { transition: all 150ms; }`, false},
+		{"transition-property height", `.a { transition-property: height; }`, false},
+		{"transform transition inside no-preference", `@media (prefers-reduced-motion: no-preference) { .a { transition: transform 150ms; } }`, true},
+		{"view transition at the top level", `@view-transition { navigation: auto; }`, false},
+		{"view transition inside no-preference", `@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }`, true},
+		{"spinner pulse inside reduce", `@media (prefers-reduced-motion: reduce) { .spinner { animation: pulse 1.6s infinite; } }`, true},
+		{"another animation inside reduce", `@media (prefers-reduced-motion: reduce) { .a { animation: pulse 1.6s infinite; } }`, false},
+		{"commented-out animation", `.a { /* animation: x 1s; */ color: red; }`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			found := motionOutsideOptIn(tt.css)
+			if ok := len(found) == 0; ok != tt.ok {
+				t.Errorf("motionOutsideOptIn(%q) = %q, want ok = %v", tt.css, found, tt.ok)
+			}
+		})
+	}
+}

@@ -361,6 +361,7 @@ Beyond those:
   A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
   The dark values are written twice (system and chosen), and `internal/ui/css_test.go` fails if the two differ or a color token has no dark value.
   Logged-out and error pages have no user, so they always follow the system.
+- **Motion:** the easing curves and durations are tokens on `:root` in `main.css`, next to the colors, and every animation and moving transition is written inside `@media (prefers-reduced-motion: no-preference)`; `internal/ui/css_test.go` (`TestMotionIsOptIn`) fails on motion outside it.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
   Log out is a button on the Settings home.

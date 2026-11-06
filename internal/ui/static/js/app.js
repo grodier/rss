@@ -271,28 +271,36 @@
     // The row (not the page) keeps where the reader scrolled it when they
     // move to another tab, so its labels don't jump and the underline slides
     // along a row that stays put: the page being left saves its scrollLeft
-    // for the page it goes to (pageswap, below). Then, if the current tab
-    // isn't fully in view (always the case on a fresh visit to a tab past the
-    // row's end), the row centers it. When this script runs before the page
-    // is first drawn, as it usually does, a view transition captures the row
-    // already in place; when it runs later, the row moves after the
-    // crossfade.
+    // for the page it goes to (pageswap, below). main.css already starts the
+    // row with the current tab in view, before the page is first drawn
+    // (scroll-initial-target). The saved scroll is restored only before the
+    // row is first seen: during a view transition in pagereveal, which this
+    // deferred script only hears when it runs before the transition captures
+    // the row, and otherwise when nothing has been painted yet. When it runs
+    // later (on a slow device, say), the row stays where main.css put it
+    // rather than jump under the reader. Then, if the current tab isn't fully
+    // in view, clear of the fade at the row's end (the row's scroll padding),
+    // the row scrolls just enough to show it, as main.css does where
+    // scroll-initial-target isn't supported.
     const SAVED = "tab-row";
     const current = document.querySelector(".timeline-tabs [aria-current=page]");
     const row = current && current.closest("ul");
-    if (row) {
+    const placeRow = (restore) => {
       try {
         const saved = JSON.parse(sessionStorage.getItem(SAVED));
         sessionStorage.removeItem(SAVED);
-        if (saved && saved.to === location.href) row.scrollLeft = saved.left;
+        if (restore && saved && saved.to === location.href) row.scrollLeft = saved.left;
       } catch {
-        // No storage: the row starts at Home.
+        // No storage: the row stays where main.css put it.
       }
+      const fade = parseFloat(getComputedStyle(row).scrollPaddingInlineEnd) || 0;
       const left = current.offsetLeft, right = left + current.offsetWidth;
-      if (left < row.scrollLeft || right > row.scrollLeft + row.clientWidth) {
-        row.scrollLeft = left - (row.clientWidth - current.offsetWidth) / 2;
-      }
-    }
+      // Within a pixel is in view: main.css's own placement may round.
+      if (left < row.scrollLeft - 1) row.scrollLeft = left;
+      else if (right > row.scrollLeft + row.clientWidth - fade + 1) row.scrollLeft = right - row.clientWidth + fade;
+    };
+    if (row && document.activeViewTransition) addEventListener("pagereveal", () => placeRow(true), { once: true });
+    else if (row) placeRow(performance.getEntriesByType("paint").length === 0);
 
     // The page being left saves its row's scroll for the next page (above),
     // when the browser says where it's going (the Navigation API). And when

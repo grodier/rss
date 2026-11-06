@@ -2125,6 +2125,7 @@
     scrollbar-width: thin;
     -webkit-mask-image: linear-gradient(to left, transparent, var(--text) 1.5rem);
     mask-image: linear-gradient(to left, transparent, var(--text) 1.5rem);
+    scroll-padding-inline-end: 1.5rem; /* the fade */
   }
 
   .timeline-tabs li {
@@ -2155,8 +2156,16 @@
     color: var(--text);
   }
 
+  /* The row starts scrolled just enough to show the current tab, clear of
+     the fade, before the page is first drawn, so a view transition never
+     captures it out of view however late app.js runs (which keeps the row
+     where the reader left it, and does this where scroll-initial-target
+     isn't supported). Without scroll-snap-type, the alignment only places
+     it; the row doesn't snap. */
   .timeline-tabs li a[aria-current="page"] {
     color: var(--text);
+    scroll-initial-target: nearest;
+    scroll-snap-align: end;
   }
 
   /* The current tab's underline is its own element (in the current tab's

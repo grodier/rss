@@ -671,7 +671,7 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
 - **The feel is quick and soft, like a sheet of paper sliding into place** (#508): things answer a tap at once and slow down as they arrive; nothing bounces except starring; motion is felt more than watched.
   The values are tokens on `:root` in `main.css`, so a value tuned there changes everywhere; later issues use them by name.
 - **Four curves** (#508): `--ease-out` for anything appearing or answering the reader (most motion), since it starts at full speed and a slow start reads as lag on a press; `--ease-in` for things leaving, so the eye isn't held on them; `--ease-in-out` for moving from one place on screen to another, since both ends are on screen; `--ease-spring` (one overshoot of about 16%) only for the star, the one celebratory moment.
-- **Five durations and a busy delay** (#508): `--duration-press` for pressing in, `--duration-quick` for hover and color changes and everything leaving, `--duration-base` for small things appearing or changing state, `--duration-move` for moving across the screen and page to page, `--duration-flourish` for the rare celebratory moments, and `--delay-busy` before a busy indicator.
+- **Five durations and a busy delay** (#508): `--duration-press` for pressing in, `--duration-quick` for hover and color changes, everything leaving and the crossfade between pages (#513), `--duration-base` for small things appearing or changing state, `--duration-move` for moving across the screen, `--duration-flourish` for the rare celebratory moments, and `--delay-busy` before a busy indicator.
   Exits take about two-thirds of their entrance.
   Only a highlight fading away (the reorder tint) and the sunrise (#523) run longer, each with a comment where it's set.
 - **Small distances and cheap properties** (#508): travel 3–8 px, presses scale to 0.97–0.99 and only the star goes past 1.
@@ -685,6 +685,11 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
   Once a `204` turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
   Turning Save on drops the bookmark 3 px into place over `--duration-base` on `--ease-out`, with no overshoot or burst, since saving is frequent.
   Turning either off doesn't animate, so only the reader's own change is marked.
+- **Page to page** (#513): following a link or a form post that redirects crossfades into the next page with the browser's own cross-document view transition, over `--duration-quick` on `--ease-out`.
+  The browser's crossfade blends the two pages, so whatever is the same on both (the nav, the head's rule, card frames) holds still and only what differs fades; separate fade-out and fade-in animations, as first planned, left both pages half visible for about 70 ms, putting text on text and dimming the parts that don't change.
+  Nothing has a `view-transition-name`: a named element is drawn from a snapshot during the transition, and the phone tab bar's frosted glass doesn't match its snapshot, so it jumped at the start and end; without names the current section's highlight crossfades with the page instead of switching at once.
+  Back and Forward cut: Safari animates its own swipe-back (iOS, and macOS with a trackpad), and a page can't tell a swipe from the Back button on a cross-document navigation, so a crossfade could play after the browser's animation; an instant Back also suits a page restored with its scroll position.
+  The skip is in the deferred `app.js` (`pageswap` on the page being left), not a render-blocking script: if it ever misses, Back gets a 150 ms crossfade, which isn't worth blocking every page's first render for.
 - **Under reduced motion the spinner pulses instead of freezing** (#508): a frozen ring no longer says "working", and a slow opacity pulse moves nothing and is far below the flashing threshold.
 - **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
 - **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.
@@ -696,7 +701,7 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
 - **No backend changes in this batch**, so it's all quick wins.
   Making navigation itself faster (prefetching, the back-forward cache) needs server work, so it's planned separately ("Instant navigation" in backlog.md).
 - **Two issues are experiments** (#524, the card growing into the article page, and #525, images fading in): built to be seen, then kept or closed as not planned.
-- **No framework for page transitions** (Turbo, htmx): cross-document view transitions are CSS only, and every page keeps working without JavaScript.
+- **No framework for page transitions** (Turbo, htmx): cross-document view transitions are CSS, with `app.js` only skipping them on Back and Forward (#513), and every page keeps working without JavaScript.
 - **Not taken**, each for its reason:
   - Toasts that dismiss themselves: easy to miss, and a time limit on reading them fails WCAG 2.2.1; flash messages stay until the next page.
   - An "all caught up" ending, a "new articles" pill or pull-to-refresh: they make the timeline an inbox ("Reading"), and #394 already turned down pull-to-refresh ("Mobile").

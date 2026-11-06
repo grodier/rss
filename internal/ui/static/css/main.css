@@ -2294,6 +2294,7 @@
     gap: 0.125rem;
     padding: 0.875rem 0.75rem 0.875rem 1rem;
     border-block-end: 1px solid var(--border);
+    background: var(--bg); /* opaque, so rows passing each other don't show through */
     scroll-margin-block-start: 4.5rem; /* clear of the sticky page head */
   }
 
@@ -2354,7 +2355,8 @@
   /* Reordering with JavaScript: a grip at the start of each row (app.js
      shows it), above the row's link and the only part that takes a touch
      drag, so the rest of the row still scrolls; the row being dragged
-     lifts, and a moved row flashes a tint. */
+     lifts, the others slide out of its way, and a moved row flashes a
+     tint. */
   .reorder-handle {
     position: relative;
     z-index: 1;
@@ -2368,6 +2370,9 @@
     color: var(--text-3);
     cursor: grab;
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none; /* no callout on a long press (iOS) */
     transition: background-color var(--duration-quick) var(--ease-out), color var(--duration-quick) var(--ease-out);
   }
 
@@ -2384,11 +2389,52 @@
     color: var(--text);
   }
 
-  .timeline-row.dragging {
+  /* The lift: a shadow on a pseudo-element, so only its opacity changes
+     as it fades in on the pickup and out as the row settles. In forced
+     colors, where shadows are dropped, an outline shows the dragged row. */
+  .timeline-row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    box-shadow: 0 0.25rem 1rem color-mix(in srgb, var(--text) 18%, transparent);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Held, not pressed: the row keeps the page's color (over the row press
+     state below), like a sheet lifted off it. */
+  .timeline-row.dragging:is(*, :active) {
     z-index: 2;
     background: var(--bg);
-    box-shadow: 0 0.25rem 1rem color-mix(in srgb, var(--text) 18%, transparent);
     cursor: grabbing;
+  }
+
+  .timeline-row.dragging::before {
+    opacity: 1;
+  }
+
+  .timeline-row.dragging .reorder-handle {
+    color: var(--text);
+    cursor: grabbing;
+  }
+
+  @media (forced-colors: active) {
+    .timeline-row.dragging {
+      outline: 2px solid;
+      outline-offset: -2px;
+    }
+  }
+
+  /* The rows themselves move on app.js's springs (#519): the dragged row
+     follows the pointer, and the others slide aside and glide into place. */
+  @media (prefers-reduced-motion: no-preference) {
+    .timeline-row::before {
+      transition: opacity var(--duration-base) var(--ease-out);
+    }
+
+    .timeline-row.dragging::before {
+      transition-duration: var(--duration-quick);
+    }
   }
 
   /* The highlight-fade exception: a tint fading away moves nothing, so it

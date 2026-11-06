@@ -571,11 +571,108 @@
   // order that changed in another window, goes to /timelines, where the
   // flash says why; redirect: "manual" keeps that flash for it. The move
   // buttons stay: they're the single-pointer and keyboard way to reorder.
+  // Rows glide to their places (#519; not under reduced motion): the order
+  // changes at once and the motion is drawn on top, so a press is never
+  // held up by the one before it. See "Timelines" and "Motion and
+  // feedback" in docs/decisions.md.
   {
     const list = document.querySelector("ul[data-reorder]");
     if (list) {
       const rows = () => [...list.children];
       for (const handle of list.querySelectorAll(".reorder-handle")) handle.hidden = false;
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+
+      // Every row moves on a critically damped spring, x(t) = (x0 + (v0 +
+      // ωx0)t)e^(−ωt), from x0 px away from where it's going at v0 px/s.
+      // From rest it eases in and out; interrupted (another press, a drag
+      // changing its mind), it carries on from where it is at the speed it
+      // has, so nothing jumps or restarts. It never overshoots: rows don't
+      // bounce into each other. Rows move the real elements, not snapshots
+      // (a view transition would take the page's clicks while it ran), so
+      // the buttons keep their focus and take every press.
+      const OMEGA = 28; // rad/s: one row's height in about 260 ms
+      const STEP = 1000 / 120; // ms between keyframes
+      const at = (x0, v0, t) => {
+        const b = v0 + OMEGA * x0, e = Math.exp(-OMEGA * t);
+        return { x: (x0 + b * t) * e, v: (b - OMEGA * (x0 + b * t)) * e };
+      };
+      const held = new Map(); // row → px from its place it rests at (aside, during a drag)
+      const springs = new Map(); // row → { x0, v0, anim }
+      // Where a row is drawn now, from its place in the list, and its speed.
+      const motion = (row) => {
+        const to = held.get(row) ?? 0;
+        const s = springs.get(row);
+        if (!s || s.anim.playState !== "running") return { x: to, v: 0 };
+        const { x, v } = at(s.x0, s.v0, (s.anim.currentTime ?? 0) / 1000);
+        return { x: to + x, v };
+      };
+      // Move a row to rest `to` px from its place, from `from` px at v0 px/s.
+      const spring = (row, to, from, v0 = 0, zIndex = "auto") => {
+        springs.get(row)?.anim.cancel();
+        springs.delete(row);
+        if (to) held.set(row, to);
+        else held.delete(row);
+        row.style.transform = to ? `translateY(${to}px)` : "";
+        const x0 = from - to;
+        // Faster than this towards its place and it would overshoot.
+        if (x0 * v0 < 0 && Math.abs(v0) > OMEGA * Math.abs(x0)) v0 = -OMEGA * x0;
+        if (reduced.matches || (Math.abs(x0) < 0.5 && Math.abs(v0) < 30)) return;
+        const frames = [];
+        for (let ms = 0; ; ms += STEP) {
+          const { x, v } = at(x0, v0, ms / 1000);
+          frames.push({ transform: `translateY(${to + x}px)`, zIndex });
+          if ((Math.abs(x) < 0.5 && Math.abs(v) < 30) || ms > 1000) break;
+        }
+        frames.push({ transform: to ? `translateY(${to}px)` : "none", zIndex });
+        const anim = row.animate(frames, { duration: (frames.length - 1) * STEP });
+        // Start now, as of this frame, not at the next one: x0 and v0 are
+        // where the row is in this frame, and a pending start would hold it
+        // there for a frame, a stop in the middle of a move.
+        anim.startTime = document.timeline.currentTime;
+        springs.set(row, { x0, v0, anim });
+        anim.onfinish = () => {
+          if (springs.get(row)?.anim === anim) springs.delete(row);
+        };
+      };
+      // Change the order and glide every row from where it's drawn to its
+      // new place, keeping its speed. `lead` (the row the reader moved) is
+      // drawn above the rows it passes, at `speed` if given.
+      const glide = (change, lead, z, speed) => {
+        const before = new Map(rows().map((li) => [li, { top: li.getBoundingClientRect().top, v: motion(li).v }]));
+        if (speed !== undefined) before.get(lead).v = speed;
+        for (const s of springs.values()) s.anim.cancel();
+        springs.clear();
+        change();
+        for (const li of rows()) {
+          const { top, v } = before.get(li);
+          spring(li, 0, top - li.getBoundingClientRect().top, v, li === lead ? z : "auto");
+        }
+      };
+
+      // Where the list can be seen: below the sticky bars at the top, above
+      // the fixed tab bar at the bottom (only those across the list count,
+      // so not the desktop rail beside it).
+      const visible = () => {
+        const l = list.getBoundingClientRect();
+        let top = 0, bottom = innerHeight;
+        for (const el of document.querySelectorAll(".rail, .page-head, .rail-links")) {
+          if (!/^(sticky|fixed)$/.test(getComputedStyle(el).position)) continue;
+          const r = el.getBoundingClientRect();
+          if (r.right <= l.left || r.left >= l.right || r.height > innerHeight / 2) continue;
+          if (r.top <= 1) top = Math.max(top, r.bottom);
+          else if (r.bottom >= innerHeight - 1) bottom = Math.min(bottom, r.top);
+        }
+        return { top, bottom };
+      };
+      // Keep a moved row in sight, clear of the bars, scrolling with it.
+      // Called while nothing is animating, so the row's box is its place.
+      const reveal = (li) => {
+        const { top, bottom } = visible();
+        const r = li.getBoundingClientRect();
+        const MARGIN = 12;
+        const by = r.bottom + MARGIN > bottom ? r.bottom + MARGIN - bottom : r.top - MARGIN < top ? r.top - MARGIN - top : 0;
+        if (by) scrollBy({ top: by, behavior: reduced.matches ? "instant" : "smooth" });
+      };
 
       const refresh = () => {
         const all = rows();
@@ -609,7 +706,10 @@
       };
 
       // Move buttons: one place up or down, keeping focus on the pressed
-      // button, or its sibling once the pressed one is disabled at an end.
+      // button, or its sibling once the pressed one is disabled at an end,
+      // and the row in sight. The row and its neighbour trade places, the
+      // moved row drawn above.
+      let drag = null;
       list.addEventListener("submit", (e) => {
         const form = e.target;
         if (!(form instanceof HTMLFormElement) || !form.matches("form[data-move]")) return;
@@ -618,55 +718,154 @@
         const li = form.closest("li");
         const up = button?.value === "up";
         const neighbour = up ? li.previousElementSibling : li.nextElementSibling;
-        if (!button || !neighbour) return;
-        if (up) list.insertBefore(li, neighbour);
-        else list.insertBefore(neighbour, li);
+        if (!button || !neighbour || drag) return;
+        glide(() => {
+          if (up) list.insertBefore(li, neighbour);
+          else list.insertBefore(neighbour, li);
+          reveal(li);
+        }, li, 1);
         moved(li);
-        (button.disabled ? li.querySelector(`button[value="${up ? "down" : "up"}"]`) : button).focus();
+        (button.disabled ? li.querySelector(`button[value="${up ? "down" : "up"}"]`) : button).focus({ preventScroll: true });
       });
 
-      // Dragging a handle: the row swaps with a neighbour whose midpoint
-      // the pointer crosses. Escape or a cancelled pointer puts every row
-      // back.
-      let drag = null; // { li, before }
-      const middle = (el) => {
-        const r = el.getBoundingClientRect();
-        return r.top + r.height / 2;
+      // Dragging a handle: the row lifts and follows the pointer, held
+      // within the list, and the rows it passes slide out of its way as its
+      // edge crosses their midpoints. The order only changes on the drop,
+      // when the row settles into the gap, carrying the pointer's speed.
+      // Near the top or bottom of the visible page the page scrolls, faster
+      // the closer the pointer is to the edge. Escape, a cancelled pointer,
+      // or leaving the window glides every row back.
+      const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
+
+      // Place the dragged row under the pointer and move the others aside.
+      // Positions are in page coordinates, from the rows' places when the
+      // drag began, so scrolling during the drag moves the row with the
+      // pointer.
+      const follow = () => {
+        const { li, all, index, tops, heights, gap } = drag;
+        const last = all.length - 1;
+        const want = drag.y + scrollY - drag.grab;
+        const dy = clamp(want, tops[0] - tops[index], tops[last] + heights[last] - tops[index] - heights[index]);
+        drag.clamped = dy !== want;
+        li.style.transform = `translateY(${dy}px)`;
+        const top = tops[index] + dy, bottom = top + heights[index];
+        const shift = heights[index] + gap;
+        let target = index;
+        all.forEach((row, i) => {
+          if (i === index) return;
+          const middle = tops[i] + heights[i] / 2;
+          let d = 0;
+          if (i < index && top < middle) {
+            d = shift;
+            target--;
+          } else if (i > index && bottom > middle) {
+            d = -shift;
+            target++;
+          }
+          if (d !== (held.get(row) ?? 0)) {
+            const { x, v } = motion(row);
+            spring(row, d, x, v);
+          }
+        });
+        drag.target = target;
       };
+
+      const EDGE = 72; // px: how close to an edge the page starts to scroll
+      const SPEED = 900; // px/s at the edge itself
+      const scroll = (now) => {
+        if (!drag) return;
+        const { top, bottom } = visible();
+        const l = list.getBoundingClientRect();
+        // Only towards rows that are out of sight.
+        const over = (l.top < top ? Math.max(top + EDGE - drag.y, 0) : 0) - (l.bottom > bottom ? Math.max(drag.y - (bottom - EDGE), 0) : 0);
+        const dt = drag.at ? Math.min(now - drag.at, 50) : 0;
+        drag.at = now;
+        if (over && dt) {
+          const v = SPEED * Math.min(Math.abs(over) / EDGE, 1) ** 2;
+          scrollBy(0, (-Math.sign(over) * v * dt) / 1000);
+        }
+        drag.frame = requestAnimationFrame(scroll);
+      };
+
       list.addEventListener("pointerdown", (e) => {
         const handle = e.target instanceof Element && e.target.closest(".reorder-handle");
-        if (!handle || e.button !== 0) return;
+        if (!handle || e.button !== 0 || !e.isPrimary || drag) return;
         e.preventDefault();
-        drag = { li: handle.closest("li"), before: rows() };
-        drag.li.classList.add("dragging");
+        const li = handle.closest("li");
+        const all = rows();
+        const index = all.indexOf(li);
+        // Rows still gliding keep going; their places are where they're
+        // going, and the grabbed row stops where it's drawn.
+        const offsets = all.map((row) => motion(row).x);
+        const rects = all.map((row) => row.getBoundingClientRect());
+        const tops = rects.map((r, i) => r.top - offsets[i] + scrollY);
+        const heights = rects.map((r) => r.height);
+        spring(li, offsets[index], offsets[index]);
+        held.delete(li);
+        drag = {
+          li,
+          all,
+          index,
+          target: index,
+          tops,
+          heights,
+          gap: all.length > 1 ? tops[1] - tops[0] - heights[0] : 0,
+          grab: e.clientY + scrollY - offsets[index],
+          y: e.clientY,
+          t: e.timeStamp,
+          v: 0, // px/s, the pointer's
+          at: 0,
+        };
+        li.classList.add("dragging");
         handle.setPointerCapture(e.pointerId);
+        drag.frame = requestAnimationFrame(scroll);
       });
       list.addEventListener("pointermove", (e) => {
-        if (!drag) return;
-        for (;;) {
-          const prev = drag.li.previousElementSibling;
-          const next = drag.li.nextElementSibling;
-          if (prev && e.clientY < middle(prev)) list.insertBefore(drag.li, prev);
-          else if (next && e.clientY > middle(next)) list.insertBefore(next, drag.li);
-          else break;
-        }
+        if (!drag || !e.isPrimary) return;
+        const dt = e.timeStamp - drag.t;
+        if (dt > 0) drag.v = 0.6 * ((e.clientY - drag.y) * 1000 / dt) + 0.4 * drag.v;
+        drag.y = e.clientY;
+        drag.t = e.timeStamp;
+        follow();
       });
-      const end = (cancel) => {
+      addEventListener("scroll", () => {
+        if (drag) follow();
+      }, { passive: true });
+
+      const end = (cancel, e) => {
         if (!drag) return;
-        const { li, before } = drag;
+        const { li, all, index, frame } = drag;
+        const target = cancel ? index : drag.target;
+        // A pointer that had stopped, or a row held at an end, is at rest.
+        const still = cancel || drag.clamped || !e || e.timeStamp - drag.t > 60;
+        const speed = still ? 0 : drag.v;
         drag = null;
-        li.classList.remove("dragging");
-        if (cancel) {
-          list.append(...before);
-          return;
-        }
-        if (rows().some((row, i) => row !== before[i])) moved(li);
+        cancelAnimationFrame(frame);
+        glide(() => {
+          li.classList.remove("dragging");
+          for (const row of all) row.style.transform = "";
+          held.clear();
+          if (target === index) return;
+          // Only the dragged row moves in the document, and it keeps focus
+          // if it had it (a move button pressed before the drag).
+          const focused = li.contains(document.activeElement) && document.activeElement;
+          list.insertBefore(li, all.filter((row) => row !== li)[target] ?? null);
+          if (focused) focused.focus({ preventScroll: true });
+        }, li, 2, speed);
+        if (target !== index) moved(li);
       };
-      list.addEventListener("pointerup", () => end(false));
-      list.addEventListener("pointercancel", () => end(true));
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") end(true);
+      list.addEventListener("pointerup", (e) => {
+        if (e.isPrimary) end(false, e);
       });
+      list.addEventListener("pointercancel", () => end(true));
+      list.addEventListener("lostpointercapture", () => end(true));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && drag) {
+          e.preventDefault();
+          end(true);
+        }
+      });
+      addEventListener("blur", () => end(true));
     }
   }
 

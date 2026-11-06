@@ -660,6 +660,37 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.
   Until then the issue holds them as the current thinking, and the implementation PR adds them to this file.
 
+### Motion and feedback
+
+Planned in #507 (issues #508–#525), from a review of where progressive enhancement and subtle motion would make the app nicer to use.
+Each piece's look (its timing, curve and effect) is recorded here once the owner approves it in its implementation (above); these are the rules all of them follow.
+
+- **Motion is an enhancement the reader opts into.** It's written inside `@media (prefers-reduced-motion: no-preference)`, so a forgotten guard means no motion rather than unwanted motion.
+  With reduced motion nothing moves, scales or slides, and view transitions are off; color and opacity changes of up to 150 ms stay, since they aren't motion (WCAG 2.3.3).
+  The reorder tint (#481) already followed this.
+- **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
+- **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.
+  Nothing flashes more than three times a second (WCAG 2.3.1), only progress spinners loop, no animation moves focus, and decoration drops out in forced-colors mode.
+- **Delight only on rare or meaningful moments**: starring, first seeing "You were here", the sunrise on logged-out pages.
+  What readers do many times a visit (opening articles, saving, pressing buttons) gets quick feedback only, so the effects don't wear out.
+- **Busy indicators wait about 300 ms**, so fast responses never flicker; the control stops taking presses at once, with `aria-disabled` rather than `disabled`, so focus stays on it.
+- **A design checkpoint for motion includes short recordings** (desktop and phone, with and without reduced motion), since screenshots can't show it; this adds to the checkpoint rule above.
+- **No backend changes in this batch**, so it's all quick wins.
+  Making navigation itself faster (prefetching, the back-forward cache) needs server work, so it's planned separately ("Instant navigation" in backlog.md).
+- **Two issues are experiments** (#524, the card growing into the article page, and #525, images fading in): built to be seen, then kept or closed as not planned.
+- **No framework for page transitions** (Turbo, htmx): cross-document view transitions are CSS only, and every page keeps working without JavaScript.
+- **Not taken**, each for its reason:
+  - Toasts that dismiss themselves: easy to miss, and a time limit on reading them fails WCAG 2.2.1; flash messages stay until the next page.
+  - An "all caught up" ending, a "new articles" pill or pull-to-refresh: they make the timeline an inbox ("Reading"), and #394 already turned down pull-to-refresh ("Mobile").
+  - A tab bar that hides as you scroll: it moves on every scroll and makes the nav something to look for.
+  - Cards that lift on hover: the firmer border is the hover (#421), and cards stay quiet previews.
+  - Crossfading live search results: it makes typing feel slow.
+  - An animated theme switch, for something people do once.
+  - Skeleton screens: server-rendered pages arrive whole, so a skeleton only adds a flash.
+  - Smooth scrolling everywhere: it fights Back's anchored position and can make people queasy.
+  - A reading-progress bar: it moves on every scroll, and the scrollbar already shows how far you are.
+  - "You were here" animated by scroll position: tied to scrolling, it replays back and forth and wears out, so it plays once instead (#522).
+
 ## Mobile
 
 Planned in #395, from a discussion of what would stop people switching to the app; the first issue is #394.

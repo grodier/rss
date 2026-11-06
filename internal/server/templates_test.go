@@ -595,3 +595,56 @@ func TestSoloPagesShowBrand(t *testing.T) {
 		})
 	}
 }
+
+// TestSunriseLogo checks which pages draw the logo inline, so its sun rises
+// (partials/logo.html): the landing page and Log in do, with no <img> of
+// logo.svg; the rail on logged-in pages keeps the still <img>.
+func TestSunriseLogo(t *testing.T) {
+	isInlineMark := func(n *html.Node) bool { return n.Data == "svg" && hasClass(n, "logo-mark") }
+	isLogoImg := func(n *html.Node) bool { return n.Data == "img" && strings.Contains(attr(n, "src"), "logo") }
+
+	for _, target := range []string{"/", "/login"} {
+		t.Run(target, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			newTestServer(t).router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, target, nil))
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rr.Code)
+			}
+			doc, err := html.Parse(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marks := findAll(doc, isInlineMark)
+			if len(marks) != 1 {
+				t.Fatalf("found %d inline logos, want 1", len(marks))
+			}
+			if got := attr(marks[0], "aria-hidden"); got != "true" {
+				t.Errorf("inline logo aria-hidden = %q, want true", got)
+			}
+			if imgs := findAll(doc, isLogoImg); len(imgs) != 0 {
+				t.Errorf("found %d <img> of the logo, want 0", len(imgs))
+			}
+		})
+	}
+
+	t.Run("rail", func(t *testing.T) {
+		ts, err := parseTemplates()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if err := ts["timeline.html"].ExecuteTemplate(&buf, "app-nav", navData{Section: "home", User: rss.User{ID: "00000000-0000-4000-8000-000000000001", Name: "ada lovelace"}}); err != nil {
+			t.Fatal(err)
+		}
+		doc, err := html.Parse(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if marks := findAll(doc, isInlineMark); len(marks) != 0 {
+			t.Errorf("found %d inline logos in the rail, want 0", len(marks))
+		}
+		if imgs := findAll(doc, isLogoImg); len(imgs) != 1 {
+			t.Errorf("found %d <img> of the logo in the rail, want 1", len(imgs))
+		}
+	})
+}

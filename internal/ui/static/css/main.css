@@ -966,37 +966,6 @@
     background: var(--info-bg);
   }
 
-  /* A flash comes in once as the page appears, so it reads as new (#516).
-     Under reduced motion it only fades in, over --duration-quick, from its
-     starting style; browsers without @starting-style show it at once. With
-     motion it waits out the page crossfade (#513, --duration-quick) and then
-     fades in and settles 6 px into place over --duration-base, so it's read
-     within about 370 ms. It never leaves by itself. See "Motion and
-     feedback" in docs/decisions.md. */
-  .flash {
-    transition: opacity var(--duration-quick) var(--ease-out);
-  }
-
-  @starting-style {
-    .flash {
-      opacity: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .flash {
-      transition: none;
-      animation: flash-in var(--duration-base) var(--ease-out) var(--duration-quick) both;
-    }
-  }
-
-  @keyframes flash-in {
-    from {
-      opacity: 0;
-      translate: 0 -6px;
-    }
-  }
-
   /* A quiet request, like confirming your email address, with a small
      form beside it. */
   .notice {

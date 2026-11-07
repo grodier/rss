@@ -373,6 +373,7 @@ Beyond those:
   Only the tab row's underline has a `view-transition-name` (see the tab row below): a named element is drawn from a snapshot during the transition, and the frosted bars' snapshots don't match them live, so they'd jump at the start and end.
   Back and Forward cut: `app.js` skips the transition for traverse navigations (see below), so it never plays after a browser's own swipe-back animation.
   Browsers without cross-document view transitions, and readers who ask for less motion, navigate with a plain cut; `html` reserves the scrollbar gutter so the column doesn't shift between short and long pages.
+- **Flash entrance** (#516): a `.flash` animates in once as its page appears, starting after the page crossfade's length so it lands as the page settles; under reduced motion it fades in from its `@starting-style` with an opacity transition instead, since an animation there would be motion outside the opt-in.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
   Log out is a button on the Settings home.

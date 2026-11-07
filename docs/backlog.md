@@ -331,6 +331,10 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
+- [ ] **Flash messages push the page down (needs planning).**
+  A flash is in the column above the page's content, so a page that gains one after a redirect lays its content out about 40 px lower than the page before it; the page crossfade (#513) blends the two, so everything below shows twice, offset, for its 150 ms (unsubscribing on a feed page shows it best).
+  An entrance animation (#516; its PR, #551, was closed) made it worse: the content landed before the flash appeared in its empty space, so the page seemed pushed down by nothing.
+  Options: a flash that takes no space in the column (laid over the top of the content, but never dismissing itself, "Motion and feedback" in decisions.md), or naming the content for the view transition so it slides rather than doubles; each needs a design checkpoint.
 - [ ] **Reading preferences (needs planning).**
   Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as fieldsets in Settings → Reading's form (#446), next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).

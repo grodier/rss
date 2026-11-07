@@ -314,59 +314,139 @@
     }
   }
 
-  // Lookup status: while a lookup runs, its page ([data-lookup-poll]) fetches
-  // itself 2 s after the previous answer arrived (never overlapping), only
-  // while the page is visible, instead of the meta refresh it uses without
-  // JavaScript. A redirect to the site page replaces this page, so Back skips
-  // the finished lookup; any other redirect (Log in) is followed. A 200
-  // without [data-lookup-poll] (failed, or no feeds) swaps in its .empty
-  // section and announces its first line in the polite live region; focus
-  // never moves. Still in progress, a network error or another status: the
-  // page is left alone, so the spinner keeps turning, and polling goes on.
+  // pollSelf fetches location.href 2 s after the previous answer arrived
+  // (never overlapping), only while the page is visible. A redirect calls
+  // onRedirect(url) (default: location.assign) and stops; a 200 calls
+  // onPage(doc) with the parsed page, which returns true to stop; anything
+  // else, or a network error, polls again. It's what the lookup and import
+  // pages use instead of the meta refresh they use without JavaScript.
+  const pollSelf = ({ onPage, onRedirect = (url) => location.assign(url) }) => {
+    const interval = 2000;
+    let timer = 0;
+    let inFlight = false;
+    let finished = false;
+    const poll = async () => {
+      timer = 0;
+      // Hidden: stop; visibilitychange polls again when it's shown.
+      if (document.hidden) return;
+      inFlight = true;
+      try {
+        const res = await fetch(location.href, { credentials: "same-origin" });
+        if (res.redirected) {
+          finished = true;
+          onRedirect(res.url);
+          return;
+        }
+        if (res.status !== 200) return;
+        const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+        if (onPage(doc)) finished = true;
+      } catch {
+        // Network error: try again at the same interval.
+      } finally {
+        inFlight = false;
+        if (!finished) timer = setTimeout(poll, interval);
+      }
+    };
+    // Poll at once when shown again if the wait ran out while hidden (no
+    // timer and no request); otherwise the pending timer polls.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !finished && !inFlight && !timer) poll();
+    });
+    timer = setTimeout(poll, interval);
+  };
+
+  // Lookup status: while a lookup runs, its page ([data-lookup-poll]) polls
+  // itself with pollSelf. A redirect to the site page replaces this page, so
+  // Back skips the finished lookup; any other redirect (Log in) is followed.
+  // A 200 without [data-lookup-poll] (failed, or no feeds) swaps in its
+  // .empty section and announces its first line in the polite live region;
+  // focus never moves. Still in progress: the page is left alone, so the
+  // spinner keeps turning.
   {
     let section = document.querySelector("[data-lookup-poll]");
     if (section) {
-      const interval = 2000;
-      let timer = 0;
-      let inFlight = false;
-      let finished = false;
-      const poll = async () => {
-        timer = 0;
-        // Hidden: stop; visibilitychange polls again when it's shown.
-        if (document.hidden) return;
-        inFlight = true;
-        try {
-          const res = await fetch(location.href, { credentials: "same-origin" });
-          if (res.redirected) {
-            finished = true;
-            const to = new URL(res.url);
-            if (to.origin === location.origin && to.pathname.startsWith("/sites/")) location.replace(to.href);
-            else location.assign(to.href);
-            return;
-          }
-          if (res.status !== 200) return;
-          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-          if (doc.querySelector("[data-lookup-poll]")) return;
+      pollSelf({
+        onRedirect: (url) => {
+          const to = new URL(url);
+          if (to.origin === location.origin && to.pathname.startsWith("/sites/")) location.replace(to.href);
+          else location.assign(to.href);
+        },
+        onPage: (doc) => {
+          if (doc.querySelector("[data-lookup-poll]")) return false;
           const next = doc.querySelector("main .empty");
-          if (!next) return;
-          finished = true;
+          if (!next) return false;
           section.replaceWith(next);
           section = next;
           const line = next.querySelector("p");
           if (line) announce(line.textContent.trim());
-        } catch {
-          // Network error: try again at the same interval.
-        } finally {
-          inFlight = false;
-          if (!finished) timer = setTimeout(poll, interval);
+          return true;
+        },
+      });
+    }
+  }
+
+  // Import status: while an import runs, its page ([data-import-poll]) polls
+  // itself with pollSelf and inserts what's new without replacing anything
+  // already on the page, so focus, selection and the scroll position stay
+  // put. A row lands in one group ([data-import-group]) once and never
+  // moves, and rows are in position order, so data-position is a row's key
+  // and where to insert it. A missing group is inserted whole in its place
+  // in groupOrder. While it runs, the progress line changes silently; when it
+  // finishes, the status section, h1 and title change to the finished ones
+  // and only the finish is announced. Focus never moves. Inserted rows hold
+  // nothing app.js enhances; if that changes, run them through
+  // localizeTimes, enhancePings and enhanceShare, as live search does.
+  {
+    const status = document.querySelector("[data-import-poll]");
+    const main = status && status.closest("main");
+    if (main) {
+      const groupOrder = ["subscribed", "already", "failed"];
+      const groupOf = (el) => groupOrder.indexOf(el.dataset.importGroup);
+      const mergeGroup = (next) => {
+        const name = next.dataset.importGroup;
+        const groups = [...main.querySelectorAll("[data-import-group]")];
+        const current = groups.find((g) => g.dataset.importGroup === name);
+        if (!current) {
+          const after = groups.find((g) => groupOf(g) > groupOf(next));
+          if (after) after.before(next);
+          else main.append(next);
+          return;
+        }
+        const list = current.querySelector("ul");
+        if (!list) return;
+        const rows = [...list.querySelectorAll(":scope > li[data-position]")];
+        const have = new Set(rows.map((li) => Number(li.dataset.position)));
+        for (const li of next.querySelectorAll("li[data-position]")) {
+          const pos = Number(li.dataset.position);
+          if (have.has(pos)) continue;
+          const before = rows.find((r) => Number(r.dataset.position) > pos);
+          if (before) before.before(li);
+          else list.append(li);
+          have.add(pos);
+          rows.splice(before ? rows.indexOf(before) : rows.length, 0, li);
         }
       };
-      // Poll at once when shown again if the wait ran out while hidden (no
-      // timer and no request); otherwise the pending timer polls.
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && !finished && !inFlight && !timer) poll();
+      pollSelf({
+        onPage: (doc) => {
+          for (const next of doc.querySelectorAll("[data-import-group]")) mergeGroup(next);
+          if (doc.querySelector("[data-import-poll]")) {
+            const progress = status.querySelector("[data-import-progress]");
+            const nextProgress = doc.querySelector("[data-import-progress]");
+            if (progress && nextProgress) progress.textContent = nextProgress.textContent;
+            return false;
+          }
+          const nextStatus = doc.querySelector(".import-status");
+          if (!nextStatus) return false;
+          status.replaceWith(nextStatus);
+          const h1 = main.querySelector("h1");
+          const nextH1 = doc.querySelector("h1");
+          if (h1 && nextH1) h1.textContent = nextH1.textContent;
+          document.title = doc.title;
+          const summary = nextStatus.querySelector("p");
+          announce("Import finished. " + (summary ? summary.textContent.trim() : ""));
+          return true;
+        },
       });
-      timer = setTimeout(poll, interval);
     }
   }
 

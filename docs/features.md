@@ -193,7 +193,7 @@ It's encoded into a buffer first, so an error is an HTML 500 instead of half a f
 
 **Import.** `/settings/import` uploads an OPML file, with a choice to turn folders into tags (the default), and lists the user's last 5 imports.
 `settingsImportFormHandler` caps the body with `http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and re-renders with an error on the file field for no file (422), over 1 MiB (413), not OPML, no feeds or over 1,000 (422), or a sixth import within the hour (429).
-Otherwise it turns each feed's folders into tags (`importTags`: normalized like typed tags, cut to 50 characters, repeats dropped), creates the import and redirects to `/settings/imports/{id}`, which refreshes itself while feeds are pending and then lists what was subscribed, already subscribed, or couldn't be added and why.
+Otherwise it turns each feed's folders into tags (`importTags`: normalized like typed tags, cut to 50 characters, repeats dropped), creates the import and redirects to `/settings/imports/{id}`, which updates in place while feeds are pending (`app.js` polls it and inserts new rows; a meta refresh without JavaScript) and then lists what was subscribed, already subscribed, or couldn't be added and why.
 
 `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any depth, in file order and without repeats; each feed's folders are those it's nested in, at any depth.
 It parses non-strictly and decodes legacy charsets, since older readers' exports are sloppy.

@@ -165,7 +165,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | O4 Over 1 MiB | A 1.5 MB OPML file | Import, 413 | "That file is too large. Imports can be up to 1 MB." | Yes | ok |
 | O5 Over 1,000 feeds | An OPML file with 1,001 outlines | Import, 422 | "That file has more than 1,000 feeds. Split it into smaller files and import each one." | Yes | ok |
 | O6 Rate limited | A 6th import in an hour | Import, 429, under the file | "You've started several imports in the last hour. Try again later." | After the wait, but it doesn't say how long | needs work: say how long, like the other limits |
-| O7 Import running | Any valid import, at once | Import results, refreshes itself | "Importing {file}…" / "Checked N of M feeds." | Waits | ok |
+| O7 Import running | Any valid import, at once | Import results, updates in place (JavaScript) or refreshes itself every 2 s | "Importing {file}…" / "Checked N of M feeds." | Waits | ok |
 | O8 Import with failures | Outlines with `xmlUrl="not a url"`, an unreachable host, and an address without a feed | Import results, 200 | Per feed: "Not a valid web address."; "Couldn't reach the site." + "Search for {host}"; "There's no feed at this address." | Yes | ok |
 | O9 Another user's import | As B, open A's import URL | 404 (H3) | As H2 | Home only | ok |
 | O10 Malformed upload | `curl` a post that isn't multipart | 400 error page | "Bad request" / "That form submission couldn't be read." | Home only | needs work: see H1 |

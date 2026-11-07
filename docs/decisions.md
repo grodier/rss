@@ -217,7 +217,9 @@ Planned in #309 (issues #302, #303).
   Six fits production's 10 database connections: a worker holds one only while it queries or saves, and a 100-feed import with six workers and 10 connections never waited for one.
 - **The results page reports every feed**: subscribed, already subscribed, or couldn't add, with a plain reason ("Not a valid web address.", "Couldn't reach the site.", "There's no feed at this address.") and a link to search for the site.
   Failures aren't retried automatically and there's no "Try again"; uploading the file again retries them.
-  While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.
+  While it runs, the page updates in place (#536), polling its own URL like the lookup page (see "Feed discovery"), with `<meta http-equiv="refresh">` inside `<noscript>` as the fallback; a reload restarted the spinner, sent focus back to the top and had screen readers read the page again every 2 s.
+  New rows and groups are inserted around the ones on the page and nothing on it is replaced while it runs, so focus, selection and the scroll position stay put in a list that grows while it's read; this holds because a row lands in a group once and never moves, and rows are listed by position.
+  Only the finish is announced, once, and it doesn't move the reader: no redirect and no focus change; announcing the progress line on every poll would bring back the repeated reading.
 - **An outline's name becomes the subscription's name when it differs from the feed's title** (#442), so a reader's renames survive export and import; a name matching the feed's title stays `""`, so the feed's own title changes still reach them.
   "Differs" ignores case and whitespace, so a reader that exports the feed's title with different capitalization doesn't freeze it.
   Only a feed the import subscribes to is named: an already subscribed one keeps the name the reader has, as an import only ever adds tags.

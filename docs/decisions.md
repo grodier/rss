@@ -130,7 +130,10 @@ Planned in #50 (issues #51–#67).
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.
   Only the home page (path `/`, no query) of a site already found keeps the cached result, so `npr.org` and `www.npr.org/` still go straight to the site page.
   A lookup in progress is never re-queued, so two people typing different addresses don't keep restarting each other's lookup, and re-runs need no limit of their own: each is a lookup the per-user limit already counts.
-- **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that refreshes itself with `<meta http-equiv="refresh">` (no JavaScript).
+- **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that updates in place while the lookup runs (#515).
+  With JavaScript it fetches its own URL every 2 s, as live search fetches its own, so it needs no new route, and moves on when the answer changes; the 2 s interval was kept, and polling stops while the page is hidden, so the server sees no more requests than the meta refresh made.
+  It doesn't reload itself, which restarted the spinner, sent focus back to the top and had screen readers read the page again every 2 s (WCAG failure F41); without JavaScript it falls back to `<meta http-equiv="refresh">` inside `<noscript>`.
+  A redirect to the site page replaces the lookup page in the history, so Back skips the finished lookup.
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.
   A feed belongs to the first site it was discovered from.

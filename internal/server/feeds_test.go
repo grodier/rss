@@ -473,6 +473,26 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 	}
 }
 
+func TestFeedFirstImageEager(t *testing.T) {
+	articles := feedArticles(3)
+	articles[1].ImageURL = "https://example.com/1.jpg"
+	articles[2].ImageURL = "https://example.com/2.jpg"
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return articles, nil
+		},
+	})
+	before := "?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: articles[0].ID}))
+	testFirstImageEager(t, before, func(t *testing.T, query string) string {
+		t.Helper()
+		rr := serveFeedQuery(t, s, testFeedID, query)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}
+
 func TestFeedHandlerPageMetadata(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {

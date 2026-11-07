@@ -158,6 +158,9 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.fillDebug(r, rows)
+	if before.IsZero() {
+		markFirstImageEager(rows)
+	}
 
 	var subscribed bool
 	sub, err := s.services.SubscriptionService.Get(r.Context(), userID, feed.ID)

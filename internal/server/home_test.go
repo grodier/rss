@@ -397,6 +397,35 @@ func TestHomeHandlerSiteIcons(t *testing.T) {
 	})
 }
 
+func TestTimelineFirstImageEager(t *testing.T) {
+	items := timelineItems(3)
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
+		ArticleService: &fakeArticleStore{
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+				return items, nil
+			},
+		}})
+	render := func(t *testing.T, query string) string {
+		t.Helper()
+		rr := getHome(t, s, "/timelines/all"+query, true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	}
+
+	t.Run("no images", func(t *testing.T) {
+		if got := cardImageLoading(t, render(t, "")); len(got) != 0 {
+			t.Errorf("card images = %q, want none", got)
+		}
+	})
+
+	items[1].Article.ImageURL = "https://example.com/1.jpg"
+	items[2].Article.PageImageURL = "https://example.com/2.jpg"
+	before := "?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: items[0].Article.ID}))
+	testFirstImageEager(t, before, render)
+}
+
 func TestHomeHandlerTabs(t *testing.T) {
 	var gotFilter *rss.TimelineFilter
 	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {

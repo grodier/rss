@@ -139,6 +139,9 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 	}
 	s.fillDebug(r, rows)
 	s.fillIcons(r, rows)
+	if before.IsZero() {
+		markFirstImageEager(rows)
+	}
 
 	// The position the page's beacon reports (first pages only) is the
 	// newest on the page: the first row's. Starred-only timelines don't

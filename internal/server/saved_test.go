@@ -285,3 +285,22 @@ func TestSavedHandlerSiteIcons(t *testing.T) {
 		return rr.Body.String()
 	})
 }
+
+func TestSavedFirstImageEager(t *testing.T) {
+	items := savedItems(3)
+	items[1].Article.ImageURL = "https://example.com/1.jpg"
+	items[2].Article.ImageURL = "https://example.com/2.jpg"
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{},
+		SaveService: &fakeSaveStore{listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+			return items, nil
+		}}})
+	before := "?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: items[0].Article.ID}))
+	testFirstImageEager(t, before, func(t *testing.T, query string) string {
+		t.Helper()
+		rr := getSaved(t, s, "/saved"+query)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
+}

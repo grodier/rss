@@ -292,6 +292,13 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - *Later:* a one-line note on a pick ("why I liked this"), which is what made Google Reader's sharing personal.
   Open questions for planning: whether a shared link lets someone sign up while signup needs an invite (the growth case depends on it); where picks live (Saved or the nav); whether the sharer ever sees who follows; the privacy policy's new wording; and the cost each followed timeline adds to every Home page (a watchlist entry).
   Its counterpart is "Shared timelines in Search" (above): this keeps links unlisted.
+- [ ] **Group timeline (needs planning).**
+  A shared timeline several people post to, for friends, a team or a family: each member adds articles and sees what the others add.
+  It's different from "Your friends' picks" (above): that is one person's stream that others follow, one-way and built from stars.
+  This one belongs to the group, so anyone in it can contribute, and it could also be offered as an Atom feed like other shared timelines (#381).
+  Nothing here is decided.
+  Questions for planning: how people join (invite link, email, or an owner adding them); roles (owner and members, who can remove an item or a member); how an item is added (a "Share to…" action on an article, pasting a URL, or both), and whether it can carry a note; whether members see who added what; how it relates to the "Shared timelines" and "Your friends' picks" work so there aren't three sharing systems; whether it's visible to people outside the group; and the privacy policy's wording.
+  Add its cost to Home pages and any moderation needs to the Performance watchlist when it's planned.
 - [ ] **More posting-frequency conditions.**
   Beyond "at most N posts a week" (#359): posts a day, "posted in the last N days", "hasn't posted for N months".
   When someone asks.

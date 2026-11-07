@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"path"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -23,6 +25,10 @@ func TestStaticRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	font, err := asset("fonts/newsreader.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	const immutable = "public, max-age=31536000, immutable"
 
 	tests := []struct {
@@ -33,10 +39,12 @@ func TestStaticRoutes(t *testing.T) {
 	}{
 		{"/static/", http.StatusNotFound, "text/html", ""},
 		{"/static/css/", http.StatusNotFound, "text/html", ""},
-		{"/static/css/main.css", http.StatusOK, "text/css", ""},
-		{"/static/css/main.css?v=000000000000", http.StatusOK, "text/css", ""},
+		{"/static/css/main.css", http.StatusOK, "text/css", "no-cache"},
+		{"/static/css/main.css?v=000000000000", http.StatusOK, "text/css", "no-cache"},
 		{css, http.StatusOK, "text/css", immutable},
-		{"/static/js/app.js", http.StatusOK, "text/javascript", ""},
+		{"/static/js/app.js", http.StatusOK, "text/javascript", "no-cache"},
+		{font, http.StatusOK, "font/woff2", immutable},
+		{"/static/fonts/newsreader.woff2", http.StatusOK, "font/woff2", "no-cache"},
 	}
 
 	for _, tt := range tests {
@@ -57,13 +65,109 @@ func TestStaticRoutes(t *testing.T) {
 	}
 }
 
-func TestAsset(t *testing.T) {
-	for _, name := range []string{"css/main.css", "js/app.js"} {
-		b, err := fs.ReadFile(ui.Static, "static/"+name)
-		if err != nil {
-			t.Fatal(err)
+func TestStaticRoutesRevalidate(t *testing.T) {
+	h := newTestServer(t).router()
+	for _, name := range []string{"css/main.css", "fonts/newsreader.woff2", "js/app.js"} {
+		t.Run(name, func(t *testing.T) {
+			etag := `"` + staticVersions[name] + `"`
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/static/"+name, nil))
+			if got := rr.Header().Get("ETag"); got != etag {
+				t.Errorf("ETag = %q, want %q", got, etag)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/static/"+name, nil)
+			req.Header.Set("If-None-Match", etag)
+			rr = httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusNotModified {
+				t.Errorf("If-None-Match %s: status = %d, want %d", etag, rr.Code, http.StatusNotModified)
+			}
+		})
+	}
+}
+
+func TestStylesheetURLsVersioned(t *testing.T) {
+	h := newTestServer(t).router()
+	css, err := asset("css/main.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, css, nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, want %d", css, rr.Code, http.StatusOK)
+	}
+
+	urls := regexp.MustCompile(`url\(\s*["']?([^"')\s]+)`).FindAllStringSubmatch(rr.Body.String(), -1)
+	if len(urls) == 0 {
+		t.Fatal("main.css has no url()s")
+	}
+	for _, m := range urls {
+		ref, version, ok := strings.Cut(m[1], "?v=")
+		if !ok {
+			t.Errorf("url(%s) has no ?v=", m[1])
+			continue
 		}
-		sum := sha256.Sum256(b)
+		target := path.Join("css", ref)
+		if want := staticVersions[target]; version != want {
+			t.Errorf("url(%s): version %q, want %q", m[1], version, want)
+		}
+		u := "/static/" + target + "?v=" + version
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, u, nil))
+		if rr.Code != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want %d", u, rr.Code, http.StatusOK)
+		}
+		if cc, want := rr.Header().Get("Cache-Control"), "public, max-age=31536000, immutable"; cc != want {
+			t.Errorf("GET %s: Cache-Control = %q, want %q", u, cc, want)
+		}
+	}
+}
+
+func TestVersionStylesheetURLs(t *testing.T) {
+	versions := map[string]string{"fonts/a.woff2": "0123456789ab", "css/b.svg": "ba9876543210"}
+	tests := []struct {
+		name, css, want string
+		wantErr         bool
+	}{
+		{"double quotes", `src: url("../fonts/a.woff2")`, `src: url("../fonts/a.woff2?v=0123456789ab")`, false},
+		{"single quotes", `src: url('../fonts/a.woff2')`, `src: url("../fonts/a.woff2?v=0123456789ab")`, false},
+		{"no quotes", `background: url(b.svg)`, `background: url("b.svg?v=ba9876543210")`, false},
+		{"data URL", `url("data:image/png;base64,AAAA")`, `url("data:image/png;base64,AAAA")`, false},
+		{"absolute URL", `url("https://example.com/a.woff2")`, `url("https://example.com/a.woff2")`, false},
+		{"root-relative URL", `url("/static/fonts/a.woff2")`, `url("/static/fonts/a.woff2")`, false},
+		{"unknown file", `url("../fonts/nope.woff2")`, "", true},
+		{"outside static", `url("../../a.woff2")`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := versionStylesheetURLs("css/main.css", []byte(tt.css), versions)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("err = nil, want error")
+				}
+				return
+			}
+			if err != nil || string(got) != tt.want {
+				t.Errorf("got %q, %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAsset(t *testing.T) {
+	h := newTestServer(t).router()
+	for _, name := range []string{"css/main.css", "js/app.js"} {
+		// The version is the hash of the served bytes: main.css is served
+		// with its url()s rewritten, not as embedded.
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/static/"+name, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("GET /static/%s: status = %d", name, rr.Code)
+		}
+		sum := sha256.Sum256(rr.Body.Bytes())
 		want := "/static/" + name + "?v=" + hex.EncodeToString(sum[:])[:12]
 		if got, err := asset(name); err != nil || got != want {
 			t.Errorf("asset(%q) = %q, %v; want %q", name, got, err, want)

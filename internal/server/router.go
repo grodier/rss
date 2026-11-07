@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -42,9 +44,22 @@ func (s *Server) router() http.Handler {
 			return
 		}
 		// Only a request for the file's current version is cached; any other
-		// (no v, or a stale one) is served without Cache-Control.
-		if v := r.URL.Query().Get("v"); v != "" && v == staticVersions[strings.TrimPrefix(r.URL.Path, "/static/")] {
+		// (no v, or a stale one) must be revalidated, against the ETag
+		// (embedded files have no modification time to revalidate with).
+		name := strings.TrimPrefix(r.URL.Path, "/static/")
+		version, known := staticVersions[name]
+		if known {
+			w.Header().Set("ETag", `"`+version+`"`)
+		}
+		if v := r.URL.Query().Get("v"); known && v == version {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		// Stylesheets are served as rewritten at startup (see mustHashStatic).
+		if b, ok := staticRewritten[name]; ok {
+			http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(b))
+			return
 		}
 		fileServer.ServeHTTP(w, r)
 	}))

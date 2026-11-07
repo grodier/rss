@@ -130,7 +130,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | Route | Login | What it does |
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
-| `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year |
+| `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year, others revalidated |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
@@ -352,6 +352,8 @@ Beyond those:
 
 - **Static files** are embedded and served at `/static/…?v=<hash>`.
   The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
+  At startup, every relative `url()` in a stylesheet is rewritten to its target's versioned URL before the stylesheet is hashed (`mustHashStatic` in `internal/server/static.go`), so the fonts are cached too and a changed font changes `main.css`'s URL.
+  Every response carries an `ETag` of the version; a URL without the current `?v=` gets `Cache-Control: no-cache`, so it's revalidated rather than kept.
   Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted fonts (`fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
   The landing page and Log in draw the logo inline instead (`partials/logo.html`), so its sun can rise when they load; change it together with `img/logo.svg` (`TestInlineLogoMatchesFile` checks their shapes match).
   The install icons (`img/icon-192.png`, `img/icon-512.png`, `img/apple-touch-icon.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.

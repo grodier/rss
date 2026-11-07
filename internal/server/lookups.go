@@ -104,8 +104,9 @@ func lookupInProgress(l rss.Lookup) bool {
 	return l.Status == rss.LookupPending || l.Status == rss.LookupRunning
 }
 
-// lookupHandler shows a lookup's status. While the lookup is in progress the
-// page refreshes itself; once it has found a site it redirects there.
+// lookupHandler shows a lookup's status. While the lookup is in progress
+// app.js fetches the page again every 2 s (a meta refresh without
+// JavaScript); once it has found a site it redirects there.
 func (s *Server) lookupHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {

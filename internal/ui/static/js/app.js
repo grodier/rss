@@ -280,6 +280,62 @@
     }
   }
 
+  // Lookup status: while a lookup runs, its page ([data-lookup-poll]) fetches
+  // itself 2 s after the previous answer arrived (never overlapping), only
+  // while the page is visible, instead of the meta refresh it uses without
+  // JavaScript. A redirect to the site page replaces this page, so Back skips
+  // the finished lookup; any other redirect (Log in) is followed. A 200
+  // without [data-lookup-poll] (failed, or no feeds) swaps in its .empty
+  // section and announces its first line in the polite live region; focus
+  // never moves. Still in progress, a network error or another status: the
+  // page is left alone, so the spinner keeps turning, and polling goes on.
+  {
+    let section = document.querySelector("[data-lookup-poll]");
+    if (section) {
+      const interval = 2000;
+      let timer = 0;
+      let inFlight = false;
+      let finished = false;
+      const poll = async () => {
+        timer = 0;
+        // Hidden: stop; visibilitychange polls again when it's shown.
+        if (document.hidden) return;
+        inFlight = true;
+        try {
+          const res = await fetch(location.href, { credentials: "same-origin" });
+          if (res.redirected) {
+            finished = true;
+            const to = new URL(res.url);
+            if (to.origin === location.origin && to.pathname.startsWith("/sites/")) location.replace(to.href);
+            else location.assign(to.href);
+            return;
+          }
+          if (res.status !== 200) return;
+          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+          if (doc.querySelector("[data-lookup-poll]")) return;
+          const next = doc.querySelector("main .empty");
+          if (!next) return;
+          finished = true;
+          section.replaceWith(next);
+          section = next;
+          const line = next.querySelector("p");
+          if (line) announce(line.textContent.trim());
+        } catch {
+          // Network error: try again at the same interval.
+        } finally {
+          inFlight = false;
+          if (!finished) timer = setTimeout(poll, interval);
+        }
+      };
+      // Poll at once when shown again if the wait ran out while hidden (no
+      // timer and no request); otherwise the pending timer polls.
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && !finished && !inFlight && !timer) poll();
+      });
+      timer = setTimeout(poll, interval);
+    }
+  }
+
   // Video embeds: figure.embed[data-embed] (sanitize's videoEmbed) holds a
   // link to the video. On a plain click, swap the link for the player, built
   // from the validated data-embed-id, never from a URL in the feed.

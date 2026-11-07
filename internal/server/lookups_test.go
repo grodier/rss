@@ -255,10 +255,19 @@ func TestLookupHandlerInProgress(t *testing.T) {
 				t.Fatalf("status = %d, want 200", rr.Code)
 			}
 			body := rr.Body.String()
-			for _, want := range []string{`http-equiv="refresh"`, "Looking for feeds on example.com", `href="/lookups/` + testLookupID + `"`} {
+			for _, want := range []string{
+				`<noscript><meta http-equiv="refresh" content="2" /></noscript>`,
+				`<script src="/static/js/app.js`,
+				"data-lookup-poll",
+				"Looking for feeds on example.com",
+				`href="/lookups/` + testLookupID + `"`,
+			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("body missing %q", want)
 				}
+			}
+			if n := strings.Count(body, `http-equiv="refresh"`); n != 1 {
+				t.Errorf("body has %d meta refreshes, want 1 (inside <noscript>)", n)
 			}
 		})
 	}
@@ -285,6 +294,9 @@ func TestLookupHandlerDoneNoFeeds(t *testing.T) {
 	if strings.Contains(body, `http-equiv="refresh"`) {
 		t.Error("finished lookup must not refresh")
 	}
+	if strings.Contains(body, "data-lookup-poll") {
+		t.Error("finished lookup must not poll")
+	}
 }
 
 func TestLookupHandlerFailed(t *testing.T) {
@@ -302,6 +314,9 @@ func TestLookupHandlerFailed(t *testing.T) {
 	}
 	if strings.Contains(body, `http-equiv="refresh"`) {
 		t.Error("finished lookup must not refresh")
+	}
+	if strings.Contains(body, "data-lookup-poll") {
+		t.Error("finished lookup must not poll")
 	}
 }
 

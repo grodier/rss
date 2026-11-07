@@ -16,8 +16,8 @@ Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), 
   `lookups` has a status column; `feeds` is claimed with a lease on `next_fetch_at` instead of a status column.
   (#50, #126)
 - **Server-rendered HTML; JavaScript is progressive enhancement.** Every page works without it.
-  The rules that follow (one plain file, no build step, no libraries without a justification) are in CLAUDE.md.
-  (#50, #163)
+  The rules that follow are in CLAUDE.md.
+  (#50, #163; #543 reverses their "one plain file, no build step": see "Frontend assets")
 - **Outbound requests to user-influenced URLs only go through `internal/fetch`**, which blocks private addresses (SSRF) and limits time, size and redirects.
   (#50)
 - **Cross-site requests are blocked with Go's `http.CrossOriginProtection`** (`Sec-Fetch-Site` / `Origin` headers) rather than CSRF tokens, so forms and sessions carry no tokens.
@@ -785,6 +785,43 @@ Planned in #395, from a discussion of what would stop people switching to the ap
 - **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
   People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.
   Revisit if trial users or cancellations keep asking for it, or if the app's own mobile experience can't get good enough; the small Fever API would be the first step, possibly on a paid plan.
+
+## Frontend assets
+
+Planned with #540–#547, from a review of how the app serves its assets: the fonts were downloaded again on every page view, and the JavaScript and CSS shipped unminified.
+
+- **Every asset URL carries a hash of its content and is cached for a year (`immutable`)**, the fonts included (#540): the fonts' URLs in `main.css` had no version, so browsers couldn't cache them.
+  A URL without the current hash gets `no-cache` and an `ETag`, so neither browsers nor the edge keep a copy they can't revalidate.
+  Built files carry the hash in their names; files that need a fixed URL (the install icons the web app manifest names) keep `?v=` (#543).
+- **An outdated hash of an entry or stylesheet still gets the current file, uncached** (#543): Render runs the old and new versions side by side during a deploy, and a page rendered by the old one must keep its styles.
+  An outdated chunk is a 404 (#547): a page loaded in that window loses only its enhancements, and works without them.
+- **Render's edge cache, not a CDN of our own** (#541): Render already puts Cloudflare in front of the service and caches "Common static files" at no extra charge.
+  Proxying our own Cloudflare records would add an `X-Forwarded-For` hop ("Client IP" under "Deployment"), and a separate assets host would cost every first visit a DNS lookup and a TLS handshake that the page's own HTTP/2 connection doesn't.
+  Not "All files": logged-out pages send no `Cache-Control`, so the edge would keep them for 2 hours.
+- **HTTP/2, HTTP/3 and compression are the edge's job**: the app doesn't compress responses or speak HTTP/2 itself, and nothing is precompressed; #541 records what production serves.
+- **A build step** (#543; this reverses #50's and #163's "one plain file, no build step" under "Overall"): bundling and minifying halves the JavaScript and CSS (with Brotli, `app.js` from 16.8 to about 8.3 KB and `main.css` from 15.8 to about 9.2 KB), and lets the code become tested TypeScript modules that a second site can share.
+  - **One npm project in `web/`** for every site (the reader now, an admin site later), with what they share in `web/shared`: not at the repository root, which is the Go module's, and not inside one site's Go package.
+    Its output is embedded by a Go package in `web/` that each site's server imports.
+  - **Vite, as a build tool only**: its manifest tells Go which files, stylesheets and chunks each entry needs, and Vitest shares its config.
+    Not its dev server: Go renders every page, and the dev client would need CSP exceptions and a development-only template path.
+    Not esbuild on its own (a second tool next to Vitest, and no manifest of that kind), and no PostCSS (Vite bundles and minifies CSS without it).
+  - **A failed build fails the build, not the server**: `make`, the Dockerfile and CI build the assets before Go compiles, and `web/dist` is gitignored with no placeholder, so a missing build is a compile error.
+    Building in the server at startup with esbuild's Go library was considered and not taken: a broken build would only show when the server started, and TypeScript wants a real build step anyway.
+  - **Node only at build time**: the image stays distroless, and the Node version is pinned in `web/.node-version`.
+- **TypeScript (`strict`) and Prettier** (#544): `tsc --noEmit` checks types and Prettier checks formatting in CI, like gofmt; no linter beyond `tsc`.
+- **One module per enhancement** (#544), each still hooked onto server-rendered markup, so pages work without JavaScript and nothing is inlined (the CSP).
+  Earlier entries here name `app.js` and `main.css`; after #544 their code lives in modules and partials under `web/app` and `web/shared`.
+- **Vitest with happy-dom** (#545), tests next to their modules; where JavaScript mirrors Go (the timeline form's summary), a fixture the Go tests generate keeps both in step, with Go as the spec.
+- **Bundles by page group, not by feature** (#547): a few entries (reading pages, Search, Timelines, account forms), each template naming its group once, with stylesheets, `modulepreload`s and the module script written into the head from Vite's manifest.
+  Not `import()` when a feature's markup turns up: enhancements would arrive a round trip late, buttons revealed by script would shift the layout, and the deferred `pagereveal` listener (#521) would miss more often.
+- **No lazy-loaded or inlined CSS**: both need inline code the CSP blocks, lazy CSS flashes unstyled content, and inlining defeats caching; a small, cached stylesheet that blocks rendering is the better trade.
+- **No prefetching of assets, on load or on intent**: the article page shares the reading pages' bundle, so nothing article-specific is left to fetch, and other pages' bundles are small; prefetching the next page itself belongs to "Instant navigation" in backlog.md.
+- **The first card image on a list's first page isn't lazy** (#542) and gets `fetchpriority="high"`: it's usually the largest thing on a phone's first screen, and a lazy image only starts after layout; the rest stay lazy.
+- **Font preloads use the build's URLs** (#546), or the font downloads twice; how text looks while the fonts load is decided at #546's design checkpoint.
+- **Not now**, each for its reason:
+  - A service worker: the HTTP cache with hashed, immutable URLs already does its caching, and offline reading is its own backlog item.
+  - 103 Early Hints: they only help first visits to slow pages, and Render's support is unconfirmed.
+  - Subsetting the fonts further: they're Latin-only already, with only the axes the CSS uses.
 
 ## Security
 

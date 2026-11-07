@@ -369,7 +369,8 @@ func toggleForms(t *testing.T, body, verb string) map[string]toggleFormMarkup {
 // TestBusyFormsMarkup checks the markup app.js's busy forms rely on: each
 // slow form is form[data-busy], and its submit button has the busy label in
 // data-busy-label and its own label in a [data-busy-text] span, so the
-// script swaps only the text and keeps any icon. Fast forms aren't marked.
+// script swaps only the text and keeps any icon, and each page loads
+// app.js. Fast forms aren't marked.
 func TestBusyFormsMarkup(t *testing.T) {
 	get := func(t *testing.T, s *Server, target string) string {
 		t.Helper()
@@ -452,7 +453,11 @@ func TestBusyFormsMarkup(t *testing.T) {
 		{"subscribed feed", "/feeds/" + testFeedID + "/unsubscribe", "", ""},
 	} {
 		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
-			doc, err := html.Parse(strings.NewReader(page(tt.page)(t)))
+			body := page(tt.page)(t)
+			if !strings.Contains(body, `<script src="/static/js/app.js?v=`) {
+				t.Error("page doesn't load app.js")
+			}
+			doc, err := html.Parse(strings.NewReader(body))
 			if err != nil {
 				t.Fatal(err)
 			}

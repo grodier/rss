@@ -22,9 +22,9 @@
         <div class="profile-top">
           {{template "avatar" (avatar .Site.ID (or .Site.Title .Site.Host) (index .Icons .Site.ID))}}
           {{if .CanRecheck}}
-          <form action="/lookups" method="post">
+          <form action="/lookups" method="post" data-busy>
             <input type="hidden" name="q" value="{{.Site.URL}}">
-            <button class="btn-sm" type="submit">{{template "icon-refresh"}}Check for new feeds</button>
+            <button class="btn-sm" type="submit" data-busy-label="Checking for new feeds…">{{template "icon-refresh"}}<span data-busy-text>Check for new feeds</span></button>
           </form>
           {{end}}
         </div>

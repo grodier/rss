@@ -760,6 +760,48 @@
     stroke-width: 2;
   }
 
+  /* A slow form's button while its form posts (form[data-busy]; app.js):
+     hover no longer changes it, and once the post has taken --delay-busy a
+     1em .spinner ring in currentColor takes its icon's place before the
+     label. The ring turns and pulses with .spinner; it fades in below. */
+  form[data-busy] button[data-busy] {
+    cursor: progress;
+  }
+
+  form[data-busy] button[data-busy]:hover {
+    background: var(--bg);
+  }
+
+  form[data-busy] .btn-primary[data-busy]:hover {
+    background: var(--text);
+    opacity: 1;
+  }
+
+  form[data-busy] button[data-busy]:has(.btn-spinner) .icon {
+    display: none;
+  }
+
+  .spinner.btn-spinner {
+    flex: none;
+    inline-size: 1em;
+    block-size: 1em;
+    margin-inline: 0;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner.btn-spinner {
+      animation: spin 0.9s linear infinite, btn-spinner-in var(--duration-quick) var(--ease-out);
+    }
+  }
+
+  @keyframes btn-spinner-in {
+    from {
+      opacity: 0;
+    }
+  }
+
   .chip,
   .subscribed {
     display: inline-flex;

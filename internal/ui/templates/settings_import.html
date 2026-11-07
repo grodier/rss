@@ -19,7 +19,7 @@
       </header>
 
       {{$focus := .Form.FirstError "file"}}
-      <form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">
+      <form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data" data-busy>
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
@@ -41,7 +41,7 @@
           <p class="hint" id="folders-hint">A feed in several folders gets a tag for each. Tags you already have are reused, and feeds you already follow keep their tags.</p>
         </fieldset>
         <div class="form-actions">
-          <button class="btn-primary" type="submit">Import</button>
+          <button class="btn-primary" type="submit" data-busy-label="Importing…"><span data-busy-text>Import</span></button>
           <a class="btn" href="/settings/data">Cancel</a>
         </div>
       </form>

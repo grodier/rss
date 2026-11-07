@@ -58,8 +58,8 @@
         <p class="fetch-error">The last {{.Feed.ConsecutiveFailures}} attempts to fetch this feed failed, most recently {{template "local-time" .Feed.LastAttempt}}. We'll keep trying.</p>
         {{end}}
         <div class="profile-actions">
-          <form action="/feeds/{{.Feed.ID}}/refresh" method="post">
-            <button class="btn-sm" type="submit">{{template "icon-refresh"}}Refresh</button>
+          <form action="/feeds/{{.Feed.ID}}/refresh" method="post" data-busy>
+            <button class="btn-sm" type="submit" data-busy-label="Refreshing…">{{template "icon-refresh"}}<span data-busy-text>Refresh</span></button>
           </form>
           {{if .RefreshPending}}
           <p class="quiet">Checking for new articles…</p>

@@ -43,9 +43,9 @@
       {{with .LookupQ}}
       <section class="lookup-cta">
         <p>Not what you're looking for? Find the feeds a website publishes.</p>
-        <form action="/lookups" method="post">
+        <form action="/lookups" method="post" data-busy>
           <input type="hidden" name="q" value="{{.}}">
-          <button class="btn-sm" type="submit">Look up {{.}}</button>
+          <button class="btn-sm" type="submit" data-busy-label="Looking up {{.}}…"><span data-busy-text>Look up {{.}}</span></button>
         </form>
       </section>
       {{end}}

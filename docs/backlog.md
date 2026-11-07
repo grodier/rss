@@ -242,6 +242,7 @@ Each with when it pays off:
   Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times.
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
+  It would also cut the timeline's heaviest bytes: publishers' card images are usually full-size (1200×630 or larger), and could be resized and re-encoded (WebP or AVIF) for the card's width (noted while planning #540–#547).
 - [ ] **Keyboard shortcuts.**
   E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.
   Single-key shortcuts must be possible to turn off (WCAG 2.1.4: they collide with screen readers and speech input), so plan an off switch in Settings, a typed column on `users`.
@@ -333,11 +334,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **Reading preferences (needs planning).**
   Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as fieldsets in Settings → Reading's form (#446), next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).
-- [ ] **Asset build step (needs planning).**
-  Bundle and minify the CSS and JavaScript for production, writing content-hashed file names.
-  Templates link assets through `asset` (#199), so only `asset` changes: it looks names up in the build's manifest instead of hashing files at startup, and every file under `/static` gets the immutable `Cache-Control`.
-  This reverses the "no build step" decision ("Overall" in decisions.md, and CLAUDE.md), so planning it updates both.
-  Pages must still work without JavaScript.
+- [ ] **Rebuild assets without restarting `go run`.**
+  Once Vite builds the frontend (#543), a development-only flag could serve `web/dist` from disk instead of the embedded copy, so `make assets/watch`'s output shows on reload.
+  Templates are embedded too, so it only helps with CSS and JavaScript changes; when restarting after each one gets in the way.
 - [ ] **Instant navigation (needs planning).**
   Make moving between pages feel instant, beyond the view transitions in #513; deferred from #507, since each option needs server work ("Motion and feedback" in decisions.md).
   Options, to measure against each other:
@@ -348,6 +347,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
     A prefetch (`Sec-Purpose: prefetch`) must skip a GET's upkeep: `articleHandler` records an opened article and `feedHandler` queues a refresh.
     Prefetch rather than prerender, which runs `app.js` in a hidden page.
     Chromium only; check whether Chrome uses a prefetched `no-store` response, and add each prefetched page's queries to the watchlist.
+    Prefetching on intent (hover, press or keyboard focus) is the rules' `eagerness`; the next page's assets need no prefetch of their own, since the article page shares the reading pages' bundle ("Frontend assets" in decisions.md).
   - Our own navigation in plain JavaScript: fetch the next page and swap in its `<main>`, as infinite scroll and live search do; the most JavaScript, and it must handle focus, the title, announcements, history and scroll itself.
   - A faster server, from what "Load and performance testing" finds.
 

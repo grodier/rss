@@ -830,7 +830,7 @@ func TestLoginPageSaysLogIn(t *testing.T) {
 	}
 
 	login := get("/login")
-	assertBodyContains(t, login, `<h1>Log in</h1>`, `type="submit">Log in</button>`)
+	assertBodyContains(t, login, `<h1>Log in</h1>`, `>Log in</span></button>`)
 	if strings.Contains(login, ">Login<") {
 		t.Error("GET /login contains >Login<")
 	}

@@ -25,6 +25,7 @@ Logging out deletes the row and renews the token.
 A login lasts at most a year (scs's `Lifetime`).
 
 Both forms follow the field pattern in CLAUDE.md, and signup shows the name and password hints all the time.
+With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]` in `app.js`)).
 The other way to make an account is `www create-user` (`runCreateUser`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
@@ -100,6 +101,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 With JavaScript, results update as you type: `app.js`'s live search fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
+With JavaScript, Look up and the site page's "Check for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]` in `app.js`)).
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
 While it runs, `app.js` fetches the page's own URL 2 s after each answer, only while the page is visible: a redirect to the site page replaces the lookup page (`location.replace`, so Back skips it), any other redirect (Log in) is followed, and a finished page's message replaces the spinner and is announced in the polite live region; without JavaScript, a `<meta http-equiv="refresh">` in `<noscript>` reloads the page instead.
@@ -159,6 +161,7 @@ A newly inserted article missing an image, title or excerpt gets an enrichment j
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a pending refresh request, requested ones first.
 A request is made when someone views a stale feed's page (`feedHandler` calls `RequestRefresh`).
 The Refresh button instead fetches right away, within 8 s, and reports the result in a flash; it refuses gone feeds, feeds fetched successfully in the last 5 minutes, and users over the per-user limit.
+With JavaScript, the button shows it's working ("Refreshing…") while the fetch runs (busy forms (`form[data-busy]` in `app.js`)).
 
 **Start at:**
 
@@ -192,6 +195,7 @@ With folders, feeds are nested in a folder per tag (a feed with two tags in both
 It's encoded into a buffer first, so an error is an HTML 500 instead of half a file.
 
 **Import.** `/settings/import` uploads an OPML file, with a choice to turn folders into tags (the default), and lists the user's last 5 imports.
+With JavaScript, the Import button shows it's working while the file uploads and is read (busy forms (`form[data-busy]` in `app.js`)).
 `settingsImportFormHandler` caps the body with `http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and re-renders with an error on the file field for no file (422), over 1 MiB (413), not OPML, no feeds or over 1,000 (422), or a sixth import within the hour (429).
 Otherwise it turns each feed's folders into tags (`importTags`: normalized like typed tags, cut to 50 characters, repeats dropped), creates the import and redirects to `/settings/imports/{id}`, which updates in place while feeds are pending (`app.js` polls it and inserts new rows; a meta refresh without JavaScript) and then lists what was subscribed, already subscribed, or couldn't be added and why.
 

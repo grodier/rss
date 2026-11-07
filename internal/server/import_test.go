@@ -325,7 +325,7 @@ func TestSettingsImportHandler(t *testing.T) {
 	body := rr.Body.String()
 	assertBodyContains(t, body,
 		"<h1>Import subscriptions</h1>",
-		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">`,
+		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data" data-busy>`,
 		`<input type="file" id="file" name="file" required`,
 		`<input type="radio" name="folders" value="tags" checked> Turn each folder into a tag`,
 		`<input type="radio" name="folders" value="ignore"> Ignore folders`,

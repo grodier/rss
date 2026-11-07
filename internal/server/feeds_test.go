@@ -902,7 +902,7 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 	if !strings.Contains(body, want) {
 		t.Errorf("body does not contain %q: %s", want, body)
 	}
-	for _, w := range []string{"attempts to fetch this feed failed", "Next check", "/refresh", "Refresh</button>"} {
+	for _, w := range []string{"attempts to fetch this feed failed", "Next check", "/refresh", "Refresh</span></button>"} {
 		if strings.Contains(body, w) {
 			t.Errorf("body contains %q: %s", w, body)
 		}

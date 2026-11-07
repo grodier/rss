@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"slices"
 	"strings"
@@ -362,6 +364,133 @@ func toggleForms(t *testing.T, body, verb string) map[string]toggleFormMarkup {
 		forms[m[1]] = got
 	}
 	return forms
+}
+
+// TestBusyFormsMarkup checks the markup app.js's busy forms rely on: each
+// slow form is form[data-busy], and its submit button has the busy label in
+// data-busy-label and its own label in a [data-busy-text] span, so the
+// script swaps only the text and keeps any icon, and each page loads
+// app.js. Fast forms aren't marked.
+func TestBusyFormsMarkup(t *testing.T) {
+	get := func(t *testing.T, s *Server, target string) string {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, target, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d, want %d", target, rr.Code, http.StatusOK)
+		}
+		return rr.Body.String()
+	}
+	feedServices := func(sub *fakeSubscriptionStore) Services {
+		return Services{
+			SubscriptionService: sub,
+			ReadService:         &fakeReadStore{},
+			SaveService:         &fakeSaveStore{},
+			ArticleService:      &fakeArticleStore{},
+			FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
+			}},
+			SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+				return rss.Site{ID: id, Host: "example.com"}, nil
+			}},
+		}
+	}
+	subscribed := &fakeSubscriptionStore{getFn: func(context.Context, string, string) (rss.Subscription, error) {
+		return rss.Subscription{}, nil
+	}}
+	notSubscribed := &fakeSubscriptionStore{}
+
+	page := func(name string) func(t *testing.T) string {
+		switch name {
+		case "search":
+			return func(t *testing.T) string {
+				s := newTestServerWith(t, Services{SearchService: &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+					return nil, nil
+				}}})
+				return searchRequest(t, s, "example.com").Body.String()
+			}
+		case "site":
+			return func(t *testing.T) string {
+				s := siteServerWithLookup(t, rss.Site{ID: testSiteID, Host: "example.com", URL: "https://www.example.com/"}, nil, nil, nil, rss.Lookup{}, rss.ErrNoRecord)
+				return serveSite(t, s, testSiteID).Body.String()
+			}
+		case "feed":
+			return func(t *testing.T) string {
+				return serveFeed(t, newTestServerWith(t, feedServices(notSubscribed)), testFeedID).Body.String()
+			}
+		case "subscribed feed":
+			return func(t *testing.T) string {
+				return serveFeed(t, newTestServerWith(t, feedServices(subscribed)), testFeedID).Body.String()
+			}
+		case "import":
+			return func(t *testing.T) string {
+				rr := httptest.NewRecorder()
+				importServer(t, &fakeImportStore{}).settingsImportHandler(rr, requestWithSession(settingsSession))
+				return rr.Body.String()
+			}
+		case "login":
+			return func(t *testing.T) string { return get(t, newTestServer(t), "/login") }
+		case "signup":
+			return func(t *testing.T) string {
+				return get(t, newSignupTestServer(t, Services{}), "/signup?invite="+testInviteCode)
+			}
+		}
+		panic("unknown page " + name)
+	}
+
+	for _, tt := range []struct {
+		page, action string
+		label, busy  string // the button's label and busy label; "" for a form that isn't busy
+	}{
+		{"search", "/lookups", "Look up example.com", "Looking up example.com…"},
+		{"site", "/lookups", "Check for new feeds", "Checking for new feeds…"},
+		{"feed", "/feeds/" + testFeedID + "/refresh", "Refresh", "Refreshing…"},
+		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "Refresh", "Refreshing…"},
+		{"import", "/settings/import", "Import", "Importing…"},
+		{"login", "/login", "Log in", "Logging in…"},
+		{"signup", "/signup", "Sign up", "Signing up…"},
+		{"feed", "/feeds/" + testFeedID + "/subscribe", "", ""},
+		{"subscribed feed", "/feeds/" + testFeedID + "/unsubscribe", "", ""},
+	} {
+		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
+			body := page(tt.page)(t)
+			if !strings.Contains(body, `<script src="/static/js/app.js?v=`) {
+				t.Error("page doesn't load app.js")
+			}
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && attr(n, "action") == tt.action })
+			if len(forms) != 1 {
+				t.Fatalf("found %d forms with action %q, want 1", len(forms), tt.action)
+			}
+			form := forms[0]
+			if tt.busy == "" {
+				if hasAttr(form, "data-busy") {
+					t.Error("form has data-busy, want none")
+				}
+				return
+			}
+			if !hasAttr(form, "data-busy") {
+				t.Error("form has no data-busy")
+			}
+			buttons := findAll(form, func(n *html.Node) bool { return n.Data == "button" && attr(n, "type") == "submit" })
+			if len(buttons) != 1 {
+				t.Fatalf("found %d submit buttons, want 1", len(buttons))
+			}
+			if got := attr(buttons[0], "data-busy-label"); got != tt.busy {
+				t.Errorf("data-busy-label = %q, want %q", got, tt.busy)
+			}
+			texts := findAll(buttons[0], func(n *html.Node) bool { return hasAttr(n, "data-busy-text") })
+			if len(texts) != 1 {
+				t.Fatalf("found %d [data-busy-text] in the button, want 1", len(texts))
+			}
+			if got := textContent(texts[0]); got != tt.label {
+				t.Errorf("[data-busy-text] = %q, want %q", got, tt.label)
+			}
+		})
+	}
 }
 
 func findAll(n *html.Node, match func(*html.Node) bool) []*html.Node {

@@ -108,9 +108,6 @@ The decisions are under "Accounts" in decisions.md.
   Update a feed page in place once the background refresh it requested (#137) finishes: the request is pending while `feeds.refresh_requested_at` is set.
   The lookup page's polling (#515) is the pattern, but polling the feed page itself would run `feedHandler`'s upkeep (queuing a refresh of a stale feed) on every poll, so this likely needs a small status endpoint: server work, deferred from #507.
   Progressive enhancement: pages keep working without JavaScript.
-- [ ] **Live updates for OPML imports.**
-  The import results page (`/settings/imports/{id}`) still reloads itself with `<meta http-equiv="refresh">` while feeds are pending, with the problems #515 fixed on the lookup page (the page flickers, focus resets, screen readers re-read it).
-  The lookup page's polling (#515) likely fits as is, since `importHandler` has no upkeep, but the page's counts change on every poll, so it needs to decide what to swap and what to announce.
 - [ ] **Logged-out access.**
   Let logged-out visitors search and view site and feed pages, to help people find the app.
   Keep lookups login-only.

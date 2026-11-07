@@ -55,6 +55,9 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.fillIcons(r, rows)
 	s.fillDebug(r, rows)
+	if before.IsZero() {
+		markFirstImageEager(rows)
+	}
 
 	data := struct {
 		Nav    navData

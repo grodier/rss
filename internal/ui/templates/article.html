@@ -56,7 +56,7 @@
           {{end}}
         </details>
         {{end}}
-        {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" referrerpolicy="no-referrer">{{end}}
+        {{with .LeadImage}}<img class="reader-image" src="{{.}}" alt="" fetchpriority="high" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>
         {{else if .Article.PageDescription}}

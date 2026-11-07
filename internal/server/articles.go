@@ -266,6 +266,22 @@ type articleRow struct {
 	Debug    *articleRowDebug // the row's debug line; nil unless debug mode is on
 	Divider  bool             // the "You were here" line goes above this row
 	Position time.Time        // the row's position in the reader's timeline (see rss.ArticleWithFeed); zero elsewhere
+	Eager    bool             // load the card image at once: the first row with an image on a list's first page
+}
+
+// markFirstImageEager sets Eager on the first row with a card image. Call it
+// only for a list's first page: rows on later pages (before) are appended by
+// infinite scroll, below the fold by definition. On a phone that first image
+// is usually the page's largest element; the rest stay lazy, since they're
+// publishers' full-size images most readers never scroll to, and the
+// browser's lazy loading already fetches them as they near the viewport.
+func markFirstImageEager(rows []articleRow) {
+	for i := range rows {
+		if rows[i].Article.CardImageURL() != "" {
+			rows[i].Eager = true
+			return
+		}
+	}
 }
 
 // fillIcons sets Icon on each row whose feed's site has an icon. Icons are

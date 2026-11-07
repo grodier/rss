@@ -210,11 +210,31 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 			}
 			body := rr.Body.String()
 			if tt.want {
-				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" referrerpolicy="no-referrer">`)
+				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" fetchpriority="high" referrerpolicy="no-referrer">`)
 			} else if strings.Contains(body, "reader-image") {
 				t.Errorf("body has a lead image: %s", body)
 			}
 		})
+	}
+}
+
+// TestArticleLeadImageHighPriority checks the lead image, the article page's
+// largest, is fetched ahead of other images: fetchpriority="high", not lazy.
+func TestArticleLeadImageHighPriority(t *testing.T) {
+	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", ImageURL: "https://example.com/lead.jpg", Content: "<p>Text</p>"}, nil, nil, nil), testArticleID)
+	doc, err := html.Parse(strings.NewReader(rr.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgs := findAll(doc, func(n *html.Node) bool { return n.Data == "img" && hasClass(n, "reader-image") })
+	if len(imgs) != 1 {
+		t.Fatalf("lead images = %d, want 1", len(imgs))
+	}
+	if got := attr(imgs[0], "fetchpriority"); got != "high" {
+		t.Errorf("fetchpriority = %q, want high", got)
+	}
+	if got := attr(imgs[0], "loading"); got != "" {
+		t.Errorf("loading = %q, want none", got)
 	}
 }
 

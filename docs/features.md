@@ -323,6 +323,7 @@ Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) before the source link.
 The page's values come from enrichment and only fill gaps.
+Card images are lazy except one: on a list's first page (timeline, Saved, a feed), `markFirstImageEager` makes the first row with an image load at once with `fetchpriority="high"`, since it's usually a phone's largest first-screen element; the article page's lead image is eager and high priority too.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
 *News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `rss.NewsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.

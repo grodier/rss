@@ -879,19 +879,16 @@
   }
 
   /* Live search's busy state (app.js): once a search has taken
-     --delay-busy, a small spinner in --text-3 fades in at the end of the box,
-     inside its padding, and the stale results dim, so it's clear they're
-     about to change. Both go at once when the results arrive. The spinner is
-     hidden with visibility, not only opacity, so the reduced-motion pulse
-     can't show it. */
-  [data-live-search] .search-field input:not([type="hidden"]) {
-    padding-inline-end: 2.5rem;
-  }
-
+     --delay-busy, a small spinner in --text-3 takes the search icon's place
+     (the icon fades out as it fades in), so the clear button keeps its
+     place at the end of the box, and the stale results dim, so it's clear
+     they're about to change. Both go at once when the results arrive. The
+     spinner is hidden with visibility, not only opacity, so the
+     reduced-motion pulse can't show it. */
   .search-field .search-spinner {
     position: absolute;
     inset-block-start: 50%;
-    inset-inline-end: 0.875rem;
+    inset-inline-start: 0.9375rem;
     translate: 0 -50%;
     inline-size: 1rem;
     block-size: 1rem;
@@ -906,6 +903,11 @@
   .search-field .search-spinner[data-shown] {
     opacity: 1;
     visibility: visible;
+    transition: opacity var(--duration-quick) var(--ease-out);
+  }
+
+  .search-field:has(.search-spinner[data-shown]) .icon {
+    opacity: 0;
     transition: opacity var(--duration-quick) var(--ease-out);
   }
 

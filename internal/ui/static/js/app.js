@@ -229,7 +229,8 @@
   // still works.
   // While a request is in flight the results container is aria-busy; once
   // it has taken --delay-busy, data-busy dims the stale results and the
-  // spinner (made here once, at the end of the box) fades in, so a fast
+  // spinner (made here once, in place of the box's search icon) fades in,
+  // so a fast
   // search shows nothing extra. Both clear when the results are swapped in,
   // the request fails, or the box is emptied; a keystroke that aborts a
   // request for a new one keeps them on, without restarting the delay.

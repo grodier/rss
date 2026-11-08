@@ -10,13 +10,21 @@ help:
 confirm:
 	@echo -n "Are you sure? [y/N] " && read ans && [ $${ans:-N} = y ]
 
+## run: run the app (http://localhost:8080)
 .PHONY: run
 run: assets
 	go run ./cmd/www
 
+## run/admin: run the admin site, locally only (http://localhost:4001)
+.PHONY: run/admin
+run/admin: assets
+	go run ./cmd/admin
+
+## build: build both binaries into bin/
 .PHONY: build
 build: assets
 	go build -o bin/www ./cmd/www
+	go build -o bin/admin ./cmd/admin
 
 ## test: run tests, the frontend's too (database tests are skipped unless RSS_TEST_DB_DSN is set)
 .PHONY: test
@@ -51,12 +59,14 @@ web/node_modules/.package-lock.json: web/package-lock.json
 	npm --prefix web ci
 
 # The build, again only when its sources change, so an unchanged build is instant.
-web/dist/app/.vite/manifest.json: $(shell find web/app web/shared -type f) web/vite.config.ts web/node_modules/.package-lock.json
+# npm run build writes the reader's build (web/dist/app), then the admin's
+# (web/dist/admin): the admin's manifest is the last file it writes.
+web/dist/admin/.vite/manifest.json: $(shell find web/app web/admin web/shared -type f) web/vite.config.ts web/vite.admin.config.ts web/node_modules/.package-lock.json
 	npm --prefix web run build
 
-## assets: build the frontend into web/dist
+## assets: build the frontend into web/dist (the reader's and the admin's)
 .PHONY: assets
-assets: web/dist/app/.vite/manifest.json
+assets: web/dist/admin/.vite/manifest.json
 
 ## assets/watch: rebuild the frontend on every change (restart go run to pick it up)
 .PHONY: assets/watch

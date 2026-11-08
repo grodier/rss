@@ -140,13 +140,37 @@ Its flags are `-to` and the mail flags of `www` (above), with the same environme
 
 It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 after logging it, with no SMTP host), exits 1 when sending fails, and exits 2 for a missing or invalid `-to` or invalid mail flags.
 
+## The admin site
+
+`cmd/admin` is the admin site, the owner's tools, a second binary built into the same image (see "Admin" in [docs/features.md](docs/features.md)).
+It has no login yet (#567), so it only runs locally: `-env production` refuses to start.
+Run it next to the app, against the same database:
+
+```sh
+make run/admin           # http://localhost:4001 (or: go run ./cmd/admin)
+```
+
+`admin` and `admin serve` run the site; `admin -help` lists its flags, each also settable by its environment variable, as for `www`, so it reads `RSS_DB_DSN` from `.env` too:
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-env` | `RSS_ENV` | `development` | Environment (`development`; `production` refuses to start until the admin has a login) |
+| `-port` | `RSS_PORT` | `4001` | Server port |
+| `-base-url` | `RSS_BASE_URL` | `http://localhost:<port>` | The admin's own URL: `http` or `https`, no path, query or fragment |
+| `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the admin that append to `X-Forwarded-For` (0–3), as for `www` |
+| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
+| `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `3` | PostgreSQL max open connections (1–10): the admin shares the database with `www` |
+| `-version` | `RSS_VERSION` | `false` | Print the build's version and exit |
+
+Since the variables are shared, `RSS_PORT` or `RSS_BASE_URL` in `.env` apply to both binaries; set the admin's on its command line instead (`go run ./cmd/admin -port 4002`).
+
 ## Make targets
 
 Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports).
-Others: `make run`, `make build` (outputs `bin/www`), `make clean` (also removes `web/dist`).
+Among them: `make run` (the app), `make run/admin` (the admin site, locally), `make build` (outputs `bin/www` and `bin/admin`); also `make clean` (also removes `web/dist`).
 
-`make assets` builds the frontend (`web/`) into `web/dist`, which package `web` embeds: it runs `npm ci` when `web/package-lock.json` changes and `vite build` when a file under `web/app` or `web/shared` (or the Vite config) does, so it's instant when nothing changed.
-`make run`, `make build`, `make test`, `make test/db` and the database targets that run the app depend on it.
+`make assets` builds the frontend (`web/`) into `web/dist`, which package `web` embeds: it runs `npm ci` when `web/package-lock.json` changes and `npm run build` (the reader's build into `web/dist/app`, then the admin's into `web/dist/admin`) when a file under `web/app`, `web/admin` or `web/shared` (or a Vite config) does, so it's instant when nothing changed.
+`make run`, `make run/admin`, `make build`, `make test`, `make test/db` and the database targets that run the app depend on it.
 `make assets/watch` rebuilds on every change; restart `go run` to pick up a build, since it's embedded.
 In `web/`, `npm run typecheck` checks the TypeScript (`tsc --noEmit`) and `npm run format:check` the formatting ([Prettier](https://prettier.io); `npm run format` fixes it); CI's `web` job runs both and the tests, then the build.
 

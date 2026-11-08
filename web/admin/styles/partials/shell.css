@@ -1,0 +1,168 @@
+/* The admin's shell: a sidebar of the sections beside the page on wide
+   screens; on phones, a top bar whose Menu opens the same list. The brand
+   carries an "Admin" mark, so the admin is never mistaken for the reader. */
+@layer layout {
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  /* The sidebar's color runs the page's full height, however long. */
+  .admin {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    min-block-size: 100vh;
+    background: linear-gradient(
+      to right,
+      var(--surface) 15rem,
+      var(--border) 15rem calc(15rem + 1px),
+      var(--bg) calc(15rem + 1px)
+    );
+  }
+
+  .admin-side {
+    position: sticky;
+    inset-block-start: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    block-size: 100vh;
+    padding: 0.75rem;
+    overflow-y: auto;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .brand-mark {
+    flex: none;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+  }
+
+  /* "Admin", after the name: the reader has nothing like it. */
+  .admin-mark {
+    padding: 0.0625rem 0.4375rem;
+    border-radius: 999px;
+    background: var(--brand-strong);
+    color: var(--bg);
+    font-family: var(--font);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .admin-links {
+    display: grid;
+    gap: 0.0625rem;
+  }
+
+  .admin-links a {
+    display: block;
+    padding: 0.4375rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .admin-links a:hover {
+    background: var(--border);
+  }
+
+  .admin-links a[aria-current="page"] {
+    background: var(--bg);
+    font-weight: 650;
+    box-shadow: inset 3px 0 0 var(--brand);
+  }
+
+  /* The phone menu: hidden on wide screens, where the sidebar shows the
+     links. */
+  .admin-menu {
+    display: none;
+  }
+
+  .admin-main {
+    min-inline-size: 0;
+    padding-block-end: 3rem;
+  }
+
+  @media (max-width: 47.99rem) {
+    .admin {
+      display: block;
+      background: var(--bg);
+    }
+
+    /* A top bar: the brand, and Menu, which opens the links below it. */
+    .admin-side {
+      position: sticky;
+      z-index: 20;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0;
+      block-size: auto;
+      padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+      overflow: visible;
+      border-block-end: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .admin-side > nav {
+      display: none;
+    }
+
+    .admin-menu {
+      display: contents;
+    }
+
+    .admin-menu summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.375rem 0.875rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      background: var(--bg);
+      font-size: 0.875rem;
+      font-weight: 600;
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .admin-menu summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .admin-menu summary .icon {
+      inline-size: 1rem;
+      block-size: 1rem;
+      stroke-width: 2;
+    }
+
+    .admin-menu[open] summary {
+      background: var(--text);
+      border-color: var(--text);
+      color: var(--bg);
+    }
+
+    /* The open list takes the bar's full width, under the brand. */
+    .admin-menu nav {
+      flex-basis: 100%;
+      padding-block: 0.5rem 0.25rem;
+    }
+  }
+}

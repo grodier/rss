@@ -20,12 +20,15 @@ COPY --from=web /web/dist ./web/dist
 
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/www ./cmd/www
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/admin ./cmd/admin
 
 # Final stage: distroless static includes the CA certificates feed fetching needs
 # and runs as a non-root user. Configuration arrives at runtime, never at build time.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/www /www
+# The admin site: its own service runs /admin with its own command (#573).
+COPY --from=build /out/admin /admin
 
 EXPOSE 8080
 

@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "watch": "vite build --watch",
+    "build": "vite build && vite build --config vite.admin.config.ts",
+    "watch": "vite build --watch & vite build --watch --config vite.admin.config.ts & wait",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

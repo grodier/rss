@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -34,7 +35,7 @@ func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, s
 	fs.StringVar(&name, "name", name, "The account's name")
 	fs.StringVar(&email, "email", email, "The account's email")
 
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
+	if err := cli.SetFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/migrations"
@@ -29,7 +30,7 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 	fs.StringVar(&dsn, "db-dsn", dsn, "PostgreSQL DSN")
 	fs.BoolVar(&seedList, "seed", seedList, "After migrating, queue lookups of the seed list's sites not found yet, as www seed does")
 
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
+	if err := cli.SetFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
@@ -53,7 +54,7 @@ func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Wri
 		return 2
 	}
 
-	logger := newLogger(stdout, env)
+	logger := cli.NewLogger(stdout, env)
 	cfg := defaultConfig().db
 	db, err := psql.OpenDB(dsn, cfg.maxOpenConns, cfg.maxIdleConns, cfg.maxIdleTime)
 	if err != nil {

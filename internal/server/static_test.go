@@ -10,18 +10,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grodier/rss/internal/assets"
 	"github.com/grodier/rss/internal/ui"
 	"github.com/grodier/rss/web"
 )
 
 // builtChunks returns the build's chunks, sorted by file.
-func builtChunks(t *testing.T) []manifestEntry {
+func builtChunks(t *testing.T) []assets.ManifestEntry {
 	t.Helper()
-	m, err := readManifest(web.App)
+	m, err := assets.ReadManifest(web.App)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var chunks []manifestEntry
+	var chunks []assets.ManifestEntry
 	for src, e := range m {
 		if strings.HasPrefix(src, "_") && strings.HasSuffix(e.File, ".js") {
 			chunks = append(chunks, e)
@@ -30,14 +31,14 @@ func builtChunks(t *testing.T) []manifestEntry {
 	if len(chunks) == 0 {
 		t.Fatal("the build has no chunks")
 	}
-	slices.SortFunc(chunks, func(a, b manifestEntry) int { return strings.Compare(a.File, b.File) })
+	slices.SortFunc(chunks, func(a, b assets.ManifestEntry) int { return strings.Compare(a.File, b.File) })
 	return chunks
 }
 
 // outdated returns the path of e, a built file, with another hash of the
 // same length. The hash is what follows e's name, as a hash can itself
 // hold a "-".
-func outdated(t *testing.T, e manifestEntry) string {
+func outdated(t *testing.T, e assets.ManifestEntry) string {
 	t.Helper()
 	ext := path.Ext(e.File)
 	prefix := path.Dir(e.File) + "/" + e.Name + "-"
@@ -88,7 +89,11 @@ func TestAssetTags(t *testing.T) {
 			for _, imp := range manifestImports(t, src) {
 				if !seen[imp] {
 					seen[imp] = true
-					urls = append(urls, "/static/"+static.manifest[imp])
+					u, err := asset(imp)
+					if err != nil {
+						t.Fatal(err)
+					}
+					urls = append(urls, u)
 					walk(imp)
 				}
 			}
@@ -179,7 +184,7 @@ func TestAssetTags(t *testing.T) {
 // build's manifest.
 func manifestImports(t *testing.T, src string) []string {
 	t.Helper()
-	m, err := readManifest(web.App)
+	m, err := assets.ReadManifest(web.App)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,54 +193,6 @@ func manifestImports(t *testing.T, src string) []string {
 		t.Fatalf("the manifest has no %s", src)
 	}
 	return e.Imports
-}
-
-// groupTags against a manifest written here: shared chunks, CSS imported by
-// an entry and by a chunk, and broken manifests.
-func TestGroupTags(t *testing.T) {
-	m := map[string]manifestEntry{
-		"app/styles/base.css":   {File: "assets/base-1.css", IsEntry: true},
-		"app/styles/a.css":      {File: "assets/a-1.css", IsEntry: true},
-		"app/styles/other.css":  {File: "assets/other-1.css", IsEntry: true},
-		"app/entries/a.ts":      {File: "assets/a-1.js", IsEntry: true, Imports: []string{"_x.js", "_y.js"}, CSS: []string{"assets/a-1.css", "assets/other-1.css"}},
-		"app/entries/b.ts":      {File: "assets/b-1.js", IsEntry: true},
-		"_x.js":                 {File: "assets/chunks/x-1.js", Imports: []string{"_z.js"}},
-		"_y.js":                 {File: "assets/chunks/y-1.js", Imports: []string{"_z.js"}, CSS: []string{"assets/y-1.css"}},
-		"_z.js":                 {File: "assets/chunks/z-1.js"},
-		"shared/fonts/f.woff2":  {File: "assets/f-1.woff2"},
-		"app/entries/broken.ts": {File: "assets/broken-1.js", IsEntry: true, Imports: []string{"_missing.js"}},
-	}
-	tests := []struct {
-		group, want string
-	}{
-		{"a", `<link rel="stylesheet" href="/static/assets/base-1.css" />
-  <link rel="stylesheet" href="/static/assets/a-1.css" />
-  <link rel="stylesheet" href="/static/assets/other-1.css" />
-  <link rel="stylesheet" href="/static/assets/y-1.css" />
-  <link rel="modulepreload" href="/static/assets/chunks/x-1.js" />
-  <link rel="modulepreload" href="/static/assets/chunks/z-1.js" />
-  <link rel="modulepreload" href="/static/assets/chunks/y-1.js" />
-  <script type="module" src="/static/assets/a-1.js"></script>`},
-		{"b", `<link rel="stylesheet" href="/static/assets/base-1.css" />
-  <script type="module" src="/static/assets/b-1.js"></script>`},
-		{"other", `<link rel="stylesheet" href="/static/assets/base-1.css" />
-  <link rel="stylesheet" href="/static/assets/other-1.css" />`},
-	}
-	for _, tt := range tests {
-		got, err := groupTags(m, tt.group)
-		if err != nil || string(got) != tt.want {
-			t.Errorf("groupTags(%q) = %v\n%s\nwant:\n%s", tt.group, err, got, tt.want)
-		}
-	}
-	for _, group := range []string{"nope", "broken"} {
-		if got, err := groupTags(m, group); err == nil {
-			t.Errorf("groupTags(%q) = %q, nil error; want an error", group, got)
-		}
-	}
-	delete(m, "app/styles/base.css")
-	if got, err := groupTags(m, "a"); err == nil {
-		t.Errorf("groupTags without base.css = %q, nil error; want an error", got)
-	}
 }
 
 // Every page names its group once, through the assets partial, and links no

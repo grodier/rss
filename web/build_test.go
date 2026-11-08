@@ -16,10 +16,24 @@ import (
 // cssURL matches a url() in a stylesheet and captures its target.
 var cssURL = regexp.MustCompile(`url\(\s*["']?([^"')\s]+)`)
 
+// builds are the frontend's two builds, by name.
+var builds = []struct {
+	name string
+	fsys fs.FS
+}{{"app", App}, {"admin", Admin}}
+
 // Vite rewrites the url()s of the stylesheets it builds to the files it
-// emits; each must be one /static serves.
+// emits; each must be one /static serves, from the same build.
 func TestBuiltCSSURLsResolve(t *testing.T) {
-	stylesheets, err := fs.Glob(App, "assets/*.css")
+	for _, b := range builds {
+		t.Run(b.name, func(t *testing.T) {
+			testBuiltCSSURLsResolve(t, b.fsys)
+		})
+	}
+}
+
+func testBuiltCSSURLsResolve(t *testing.T, fsys fs.FS) {
+	stylesheets, err := fs.Glob(fsys, "assets/*.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +42,7 @@ func TestBuiltCSSURLsResolve(t *testing.T) {
 	}
 	urls := 0
 	for _, name := range stylesheets {
-		b, err := fs.ReadFile(App, name)
+		b, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +61,7 @@ func TestBuiltCSSURLsResolve(t *testing.T) {
 				target = path.Join(path.Dir(name), ref)
 			}
 			target, _, _ = strings.Cut(target, "?")
-			if _, err := fs.Stat(App, target); err != nil {
+			if _, err := fs.Stat(fsys, target); err != nil {
 				t.Errorf("%s: url(%s): %v", name, ref, err)
 			}
 		}
@@ -78,12 +92,20 @@ func TestBuiltCSSKeepsStandardProperties(t *testing.T) {
 		}
 	}
 
-	built, err := fs.Glob(App, "assets/*.css")
+	for _, b := range builds {
+		t.Run(b.name, func(t *testing.T) {
+			testBuiltCSSKeepsStandardProperties(t, b.fsys, standard)
+		})
+	}
+}
+
+func testBuiltCSSKeepsStandardProperties(t *testing.T, fsys fs.FS, standard map[string]bool) {
+	built, err := fs.Glob(fsys, "assets/*.css")
 	if err != nil || len(built) == 0 {
 		t.Fatalf("built stylesheets: %v, %v", built, err)
 	}
 	for _, name := range built {
-		b, err := fs.ReadFile(App, name)
+		b, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,6 +141,34 @@ const (
 	readingJSBudget  = 5970  // 5427 measured
 	readingCSSBudget = 10210 // 9284 measured
 )
+
+// The admin's build has a manifest, with its page group's entry and the base
+// sheet every admin page links (internal/admin reads them at startup).
+func TestAdminManifest(t *testing.T) {
+	b, err := fs.ReadFile(Admin, ".vite/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]manifestEntry
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range []string{"admin/entries/admin.ts", "admin/styles/base.css"} {
+		e, ok := m[src]
+		if !ok {
+			t.Errorf("the admin manifest has no %s", src)
+			continue
+		}
+		if _, err := fs.Stat(Admin, e.File); err != nil {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	for src := range m {
+		if strings.HasPrefix(src, "app/") {
+			t.Errorf("the admin build has the reader's %s", src)
+		}
+	}
+}
 
 func TestReadingBundleBudget(t *testing.T) {
 	b, err := fs.ReadFile(App, ".vite/manifest.json")

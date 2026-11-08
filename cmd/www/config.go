@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/mail"
 )
 
@@ -281,7 +282,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 
 	registerMailFlags(fs, &cfg.mail)
 
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
+	if err := cli.SetFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(out, err)
 		return config{}, err
 	}
@@ -310,29 +311,4 @@ func parseDebugEmails(s string) []string {
 		}
 	}
 	return emails
-}
-
-// setFlagsFromEnv sets each flag in fs from its RSS_ environment variable, if
-// set and not empty, and appends "(env RSS_…)" to its usage. Call it before
-// fs.Parse so flags on the command line win.
-func setFlagsFromEnv(fs *flag.FlagSet, getenv func(string) string) error {
-	var err error
-	fs.VisitAll(func(f *flag.Flag) {
-		name := envName(f.Name)
-		f.Usage += " (env " + name + ")"
-		if err != nil {
-			return
-		}
-		if v := getenv(name); v != "" {
-			if setErr := f.Value.Set(v); setErr != nil {
-				err = fmt.Errorf("invalid value %q for %s: %w", v, name, setErr)
-			}
-		}
-	})
-	return err
-}
-
-// envName returns the environment variable for a flag: -db-dsn → RSS_DB_DSN.
-func envName(flagName string) string {
-	return "RSS_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
 }

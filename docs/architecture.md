@@ -28,8 +28,8 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
 
 ## The process
 
-There is one binary, `www` (`cmd/www`), and one Postgres database.
-Inside the process run seven long-lived components, all stopped by one context:
+There are two binaries, `www` (`cmd/www`), the reader, and `admin` (`cmd/admin`), the admin site (below), and one Postgres database.
+Inside the `www` process run seven long-lived components, all stopped by one context:
 
 - The **HTTP server** (`internal/server`) handles requests and reads and writes the database through the `internal/psql` repositories.
   Its Refresh button calls `ingest.Refresher` directly.
@@ -43,7 +43,7 @@ Inside the process run seven long-lived components, all stopped by one context:
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
 
 `cmd/www/main.go` (`run`) hands `www migrate`, `www seed`, `www create-user` and `www send-test-email` to their own functions (below).
-Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, or else its default) and builds the slog logger on stdout (JSON in production, text otherwise).
+Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
 Only `cmd/www` handles signals.
@@ -58,12 +58,21 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 `www create-user` (`cmd/www/create_user.go`) creates an account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
 `www send-test-email` (`cmd/www/send_test_email.go`) renders the `test` email and sends it with the configured sender, without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
+`admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and later its command-line tools; an unknown subcommand prints the usage and exits 2.
+Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
+Inside it runs one component, the HTTP server (`internal/admin`), on port 4001; it runs none of `www`'s workers.
+On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the database is closed.
+Until it has a login (#567), `admin serve -env production` refuses to start.
+
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
+| `cmd/admin` | The admin's flags, wiring and signal handling, and its `serve` command | `admin`, `cli`, `psql` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates | `assets`, `clientip`, `ui`, `web` |
+| `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger | — |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
@@ -81,12 +90,14 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
-| `internal/ui` | Embedded page templates, email templates and the web app manifest | — |
+| `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |
+| `internal/assets` | Read a frontend build's Vite manifest: page groups' tags, files' URLs, serving `/static` | — |
+| `internal/clientip` | The client's address behind `-proxy-hops` reverse proxies | — |
 | `internal/validator` | Form validation helpers and the rules for new passwords | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
-| `web` | The frontend's npm project; its Go package embeds the build (`App`, what `/static` serves) | — |
+| `web` | The frontend's npm project; its Go package embeds the builds (`App`, what the reader's `/static` serves, and `Admin`, the admin's) | — |
 
-Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
+Consumers define the interfaces they need, and only `cmd/www` and `cmd/admin` build the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct that holds them are in `internal/server/server.go`, with compile-time checks that the `psql` repositories satisfy them.
 `lookup`, `importer`, `refresh`, `siteicon`, `enrich`, `ingest` and `discovery` each declare their own small interfaces (`Store`, `Fetcher`, `Saver`, …).
 That's what lets every package be tested with fakes (see Testing).
@@ -121,7 +132,9 @@ The frontend's npm devDependencies (`web/package.json`) are Vite, which builds t
 5. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
 6. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
-Then routes are split into groups.
+The admin's middleware (`internal/admin/router.go`) is the same chain without `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); it has no sessions yet (#567), and its routes are `/static/*`, `/healthcheck` and `/`.
+
+Then the reader's routes are split into groups.
 `/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
 All other routes load the session (`sessionManager.LoadAndSave`) and `authenticate` (see "Accounts and sessions" in features.md).
 Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set `Cache-Control: no-store`.
@@ -295,6 +308,9 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   `http:` image URLs would be blocked, so `CardImageURL` and `sanitize.HTML` rewrite them to `https:` when rendering; the database keeps the publisher's URLs.
   YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `video-embeds.ts` builds from the validated video ID.
   Every other iframe becomes a link.
+- **The admin** (`internal/admin`, `commonHeaders`) sends its own headers on every response: `Content-Security-Policy: default-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (static files set their own), `nosniff`, `X-Frame-Options: deny`, and HSTS in production.
+  It's on its own origin (`admin.paperround.app`, #573), so `CrossOriginProtection` refuses form posts from the reader's pages, which are same-site but not same-origin.
+  It runs only locally until it has a login (#567).
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.
   Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO) are served, with their stored `Content-Type`, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
@@ -341,9 +357,9 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue` queues about 20 to one address (ignoring case) per hour and returns `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
   It counts, then inserts, so simultaneous requests can slightly exceed 20.
 
-- **Client IP:** `Server.clientIP` (`internal/server/clientip.go`) is the only code that reads `RemoteAddr`.
+- **Client IP:** `clientip.FromRequest` (`internal/clientip`), which both servers' `clientIP` call, is the only code that reads `RemoteAddr`.
   With `-proxy-hops` N above 0 it reads `X-Forwarded-For` instead, taking the entry N places from the right, and falls back to `RemoteAddr` when the header is missing, has fewer than N entries, or that entry doesn't parse.
-  If that entry isn't a public address, it logs a warning once per process.
+  If that entry isn't a public address, each server logs a warning once per process.
 - **Internal errors** (the internal columns, Go errors) go to the logs, never to pages, except debug panels.
 - **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the default, turns it off for everyone), and both checks run on every request.
   Its panels show internal details to those accounts only, as escaped text, and only read.
@@ -354,8 +370,9 @@ Templates, CSS and JavaScript follow the conventions in CLAUDE.md.
 Beyond those:
 
 - **Static files** are built by Vite from the npm project in `web/` (`make assets`; `web/vite.config.ts`) into `web/dist/app`, embedded by package `web` and served at `/static/`.
+  The admin's frontend (`web/admin`) is a second build, with the same rules, into `web/dist/admin` (`web/vite.admin.config.ts`; both configs come from `frontend` in `vite.config.ts`, and `npm run build` runs both), served at the admin's `/static/`; it imports `web/shared` and copies the reader's public files, for the logo and favicons.
   Vite bundles and minifies every entry in `app/entries/` and every sheet in `app/styles/` (with the partials it imports, inlined in its order), splits the modules two entries share into chunks (`assets/chunks/`), writes them and the fonts they link under `assets/` with a content hash in their names, rewrites the stylesheets' `url()`s to those names, and lists every built file in `.vite/manifest.json`, with each script's imported chunks and CSS.
-  At startup the server reads that manifest and hashes every other file (`loadStatic` in `internal/server/static.go`); pages link their stylesheets and scripts through their page group (below), and the `asset` template function links any other source path through the manifest (`shared/fonts/newsreader.woff2` → `/static/assets/newsreader-<hash>.woff2`) and a public file, copied as-is from `web/app/public`, with `?v=<hash>`, so a changed file gets a new URL and can be cached for a year.
+  At startup each server reads its build's manifest and hashes every other file (`assets.Load` in `internal/assets`); pages link their stylesheets and scripts through their page group (below), and the `asset` template function links any other source path through the manifest (`shared/fonts/newsreader.woff2` → `/static/assets/newsreader-<hash>.woff2`) and a public file, copied as-is from `web/app/public`, with `?v=<hash>`, so a changed file gets a new URL and can be cached for a year.
   Every response carries an `ETag` of its content; a public file without its current `?v=` gets `Cache-Control: no-cache`, so it's revalidated rather than kept.
   During a deploy Render runs the old and new versions side by side, so a request for an outdated hashed name of an entry or a sheet (`assets/reading-<old hash>.js`, `assets/base-<old hash>.css`) gets the current file, uncached; any other missing file is a 404.
   That includes an outdated chunk (`assets/chunks/…`): only a page that loaded an old entry from its cache in that window misses it, and it loses its enhancements but still works without them.
@@ -370,7 +387,7 @@ Beyond those:
 - **Page groups** (#547): each page loads only the CSS and JavaScript of its group, named once in its head, `{{template "assets" "<group>"}}` (`partials/head.html`).
   A group is a sheet, `web/app/styles/<group>.css`, an entry, `web/app/entries/<group>.ts`, or both; an entry imports the modules its pages use and sets them up, and can import another group's sheet, which Vite lists as its CSS.
   The groups: `reading` (timelines, Saved, feeds, sites, articles, the debug inspectors), `search` (Search, a lookup), `settings` (no script: the Settings pages without one, My feeds, tags, a subscription's edit page, New timeline and a timeline's share page), `timelines` (the Timelines page and the timeline form, with `settings.css`), `account` (the Settings pages with password fields, Import and an import's progress, with `settings.css`), `solo` (no script: logged-out pages, errors, the policies, a shared timeline) and `login` (Log in, Sign up and Reset password, with `solo.css`).
-  `assetTags` (`internal/server/static.go`), built once per group at startup from the manifest, writes the head's tags in this order: stylesheets (`base.css`, the group's sheet, then the CSS the entry and its chunks list), a `<link rel="modulepreload">` for each chunk the entry imports, recursively (so they download alongside it rather than after it), then the entry's `<script type="module">`, each file once.
+  `assetTags` (`internal/server/static.go`, through `Assets.Tags` in `internal/assets`), built once per group at startup from the manifest, writes the head's tags in this order: stylesheets (`base.css`, the group's sheet, then the CSS the entry and its chunks list), a `<link rel="modulepreload">` for each chunk the entry imports, recursively (so they download alongside it rather than after it), then the entry's `<script type="module">`, each file once.
   Everything loads at once from the head: nothing is imported when a feature's markup is found, as an enhancement would then arrive a round trip late.
   An unknown group is an error, which fails the page's template; `TestPagesNameOneGroup` checks every page names one.
   `web/build_test.go` (`TestReadingBundleBudget`) holds the reading pages' JavaScript and CSS, gzipped, to a budget.
@@ -422,7 +439,7 @@ Production runs on Render since #214.
 Why this setup is under "Deployment" in [decisions.md](decisions.md).
 What runs where, and how to operate it, is in [`infra/README.md`](../infra/README.md) (the runbook) and the Terraform in `infra/`; this section is the overview.
 
-- **Images.** The `Dockerfile` builds the frontend in a Node stage (the version in `web/.node-version`), then `www` as a static binary, embedding it, into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`); the image has no Node.
+- **Images.** The `Dockerfile` builds the frontend in a Node stage (the version in `web/.node-version`), then `www` and `admin` as static binaries, embedding it (the image's entrypoint is `/www`; the admin's service will run `/admin`, #573), into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`); the image has no Node.
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
 - **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.

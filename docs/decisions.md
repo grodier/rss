@@ -870,6 +870,9 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 - **A build step** (#543; this reverses #50's and #163's "one plain file, no build step" under "Overall"): bundling and minifying halves the JavaScript and CSS (with Brotli, `app.js` from 16.8 to about 8.3 KB and `main.css` from 15.8 to about 9.2 KB), and lets the code become tested TypeScript modules that a second site can share.
   - **One npm project in `web/`** for every site (the reader now, an admin site later), with what they share in `web/shared`: not at the repository root, which is the Go module's, and not inside one site's Go package.
     Its output is embedded by a Go package in `web/` that each site's server imports.
+  - **The admin is a second build, from a second config** (#562): each server reads its own manifest (`internal/assets`), and a Vite build writes one, so `web/vite.admin.config.ts` builds `web/admin` into `web/dist/admin`, both configs made by one function in `vite.config.ts`, and `npm run build` runs both.
+    Not one build with both sites' entries: its one manifest would mix the sites' files, and each binary would embed the other's.
+    The admin build copies the reader's public files, for the logo and favicons, rather than keeping copies of them.
   - **Vite, as a build tool only**: its manifest tells Go which files, stylesheets and chunks each entry needs, and Vitest shares its config.
     Not its dev server: Go renders every page, and the dev client would need CSP exceptions and a development-only template path.
     Not esbuild on its own (a second tool next to Vitest, and no manifest of that kind), and no PostCSS (Vite bundles and minifies CSS without it).

@@ -4,8 +4,9 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"log/slog"
 	"os"
+
+	"github.com/grodier/rss/internal/cli"
 )
 
 // version identifies the build; the container image sets it to the commit SHA
@@ -44,19 +45,10 @@ func run(args []string, getenv func(string) string, stdin io.Reader, stdout, std
 		return 2
 	}
 
-	logger := newLogger(stdout, cfg.env)
+	logger := cli.NewLogger(stdout, cfg.env)
 	if err := NewApplication(cfg, logger).Run(); err != nil {
 		logger.Error(err.Error())
 		return 1
 	}
 	return 0
-}
-
-// newLogger logs to out as JSON in production, where the host's log search can
-// filter by field, and as text otherwise, for reading in a terminal.
-func newLogger(out io.Writer, env string) *slog.Logger {
-	if env == "production" {
-		return slog.New(slog.NewJSONHandler(out, nil))
-	}
-	return slog.New(slog.NewTextHandler(out, nil))
 }

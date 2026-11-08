@@ -515,6 +515,31 @@ Pages read them only through the card-value accessors (see "Card values" under "
 
 **Why:** "Debug mode" in decisions.md.
 
+## Admin
+
+**Flow.** The admin site is a second binary, `admin`, with its own server on its own origin (production's, `admin.paperround.app`, is #573), for the owner only; this is its skeleton (#562), and later admin issues add its sections.
+It has no login until #567, so `admin serve -env production` refuses to start: it only runs locally (`make run/admin`, http://localhost:4001).
+
+1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`; an unknown subcommand prints the usage and exits 2.
+   `parseConfig` reads the flags, each also settable by its `RSS_` variable (`internal/cli`), and `serve` opens a pool of at most `-db-max-open-conns` (3) connections on the reader's database and runs `admin.Server` until a signal.
+2. **Server.** `internal/admin` has the reader's middleware order (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
+3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
+   The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
+   The Overview (`homeHandler`) is an empty state until #575.
+4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`); `admin/entries/admin.ts` sets up busy forms.
+
+**Start at:**
+
+1. `cmd/admin/main.go`, `config.go` and `serve.go`.
+2. `internal/admin/router.go` and `middleware.go`.
+3. `internal/ui/admin/partials/nav.html` and `home.html`.
+4. `web/admin/styles/base.css`.
+
+**Tests:** `internal/admin/server_test.go`; `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
+
+**Why:** "Admin" in decisions.md.
+
 ## Adding a feature
 
 The usual path for a new page or action, following the conventions in CLAUDE.md:

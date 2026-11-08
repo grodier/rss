@@ -279,3 +279,17 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | --- | --- | --- | --- | --- | --- |
 | N1 Flash messages | Any flash above (S6, E6, D5, U1, …) | Top of the page after a redirect | (per row) | n/a | needs work: `.flash` has no `role="status"`, so screen readers don't announce it, including failures (D6) |
 | N2 Required-field messages | F12, E15, E22, T1, G1 | | "Email is required" and "Name is required" beside "Enter your password." and "Enter a name." | n/a | needs work: two styles, with and without a final period |
+
+## Admin
+
+The admin site (`make run/admin`, http://localhost:4001) is the owner's alone; its error page is the admin layout (the sidebar, no section current) with a heading, a sentence and "Go to the overview".
+
+| State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| A1 Overview: nothing yet | Open `/` | 200, the Overview | "Nothing here yet." | n/a | new in #562, not reviewed (filled by #575) |
+| A2 404 | `/nope`, or a missing file under `/static/` | 404 error page | "Page not found" / "There's no admin page here." | The sidebar, "Go to the overview" | new in #562, not reviewed |
+| A3 405 | `curl -X POST -H 'Sec-Fetch-Site: same-origin' localhost:4001/` | 405 with `Allow: GET, HEAD` | "Method not allowed" / "That action isn't supported for this page." | As A2 | new in #562, not reviewed |
+| A4 403: a post from another origin, the reader's included | `curl -X POST -H 'Sec-Fetch-Site: same-site' localhost:4001/` | 403 error page | "Request blocked" / "This form was submitted from another site, so it was rejected." | As A2 | new in #562, not reviewed |
+| A5 500 | Code read: a template or handler error | 500 error page | "Something went wrong" / "The server encountered a problem and could not process your request." | As A2 | new in #562, not reviewed |
+| A6 Database down: health check | Stop Postgres, `curl localhost:4001/healthcheck` | 200 | `{"status":"degraded","database":"unreachable",…}`, as H11 | n/a | new in #562, not reviewed |
+| A7 Started in production | `go run ./cmd/admin -env production` | Exits 2 | "admin has no login yet (#567); it only runs locally" | Run it locally | new in #562, until #567 |

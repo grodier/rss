@@ -1,0 +1,66 @@
+/* Dense tables: smaller type and tighter rows than the reader's lists. A
+   table too wide for the screen scrolls in its .table-wrap, not the page. */
+@layer components {
+  .table-wrap {
+    overflow-x: auto;
+    border-block: 1px solid var(--border);
+  }
+
+  .data {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .data th,
+  .data td {
+    padding: 0.375rem 0.625rem;
+    border-block-end: 1px solid var(--border);
+    text-align: start;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .data tr:last-child td {
+    border-block-end: 0;
+  }
+
+  .data thead th {
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .data tbody tr:hover {
+    background: var(--surface);
+  }
+
+  /* Numbers line up on the right. */
+  .data .num {
+    text-align: end;
+  }
+
+  /* The checkbox column, for acting on several rows at once. */
+  .data .check {
+    inline-size: 1.75rem;
+    padding-inline-end: 0;
+  }
+
+  .data input[type="checkbox"] {
+    display: inline-block;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  /* A column of free text that may wrap, like an email or a feed's title;
+     narrow screens scroll the table rather than squeeze it. */
+  .data .wrap {
+    min-inline-size: 12rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

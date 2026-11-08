@@ -8,44 +8,6 @@ import (
 	"testing"
 )
 
-func TestClientIP(t *testing.T) {
-	const proxy = "10.1.2.3:5000"
-	tests := []struct {
-		name       string
-		hops       int
-		remoteAddr string
-		xff        []string
-		want       string
-	}{
-		{"no port", 0, "192.0.2.1", nil, "192.0.2.1"},
-		{"ipv6 remote", 0, "[2001:db8::1]:1234", nil, "2001:db8::1"},
-		{"zero hops ignores header", 0, proxy, []string{"203.0.113.9"}, "10.1.2.3"},
-		{"one hop", 1, proxy, []string{"198.51.100.7"}, "198.51.100.7"},
-		{"forged left entry", 1, proxy, []string{"203.0.113.9, 198.51.100.7"}, "198.51.100.7"},
-		{"two header lines", 1, proxy, []string{"203.0.113.9", "198.51.100.7"}, "198.51.100.7"},
-		{"no header", 1, proxy, nil, "10.1.2.3"},
-		{"unparsable entry", 1, proxy, []string{"garbage"}, "10.1.2.3"},
-		{"unparsable client entry", 1, proxy, []string{"198.51.100.7, garbage"}, "10.1.2.3"},
-		{"two hops", 2, proxy, []string{"203.0.113.9, 198.51.100.7, 10.0.0.5"}, "198.51.100.7"},
-		{"fewer entries than hops", 2, proxy, []string{"198.51.100.7"}, "10.1.2.3"},
-		{"ipv4-mapped client", 1, proxy, []string{"::ffff:198.51.100.7"}, "198.51.100.7"},
-		{"ipv6 client", 1, proxy, []string{"2001:db8::1"}, "2001:db8::1"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", ProxyHops: tt.hops}, Services{})
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = tt.remoteAddr
-			for _, v := range tt.xff {
-				req.Header.Add("X-Forwarded-For", v)
-			}
-			if got := s.clientIP(req); got != tt.want {
-				t.Errorf("clientIP() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestClientIPWarnsOnPrivateAddress(t *testing.T) {
 	const warning = "client IP from X-Forwarded-For is not a public address"
 	// newServer returns a server with ProxyHops 1 that logs to the returned

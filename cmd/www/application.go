@@ -23,6 +23,7 @@ import (
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/lookup"
 	"github.com/grodier/rss/internal/mail"
+	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/refresh"
 	"github.com/grodier/rss/internal/server"
@@ -131,6 +132,20 @@ func (app *Application) Run() error {
 		app.logger.Info("mail runner off (-mail-workers 0): emails are queued but not sent by this instance")
 	}
 
+	// Request and runtime metrics, for the admin (see "Observability" in
+	// docs/decisions.md). Rows name their instance by host name.
+	instance, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("host name for metrics: %w", err)
+	}
+	metricsRepo := psql.NewMetricsRepository(db)
+	requestMetrics := &metrics.Requests{Store: metricsRepo, Instance: instance, Logger: app.logger}
+	runtimeMetrics := &metrics.Runtime{Store: metricsRepo, DB: db, Instance: instance, Logger: app.logger}
+	housekeeper := &metrics.Housekeeper{Store: metricsRepo, Logger: app.logger}
+	background = append(background,
+		named("runtime metrics", runtimeMetrics.Run),
+		named("metrics housekeeper", housekeeper.Run))
+
 	services := server.Services{
 		Database:            db,
 		FeedService:         psql.NewFeedRepository(db),
@@ -153,6 +168,7 @@ func (app *Application) Run() error {
 		EmailQueue:          &mail.Queue{Store: emails, Runner: mailRunner},
 		Fetcher:             fetcher,
 		Discoverer:          discoverer,
+		Metrics:             requestMetrics,
 	}
 
 	srvConfig := server.Config{
@@ -196,12 +212,23 @@ func (app *Application) Run() error {
 		}()
 	}
 
+	// The request metrics run until the server has drained its requests, so
+	// their last write counts every one.
+	metricsCtx, stopMetrics := context.WithCancel(context.Background())
+	metricsDone := make(chan struct{})
+	go func() {
+		defer close(metricsDone)
+		requestMetrics.Run(metricsCtx)
+	}()
+
 	err = srv.Serve(ctx)
 
 	// Stop the background components (if Serve returned on its own) and
 	// wait for them before the deferred db.Close runs.
 	cancel()
+	stopMetrics()
 	wg.Wait()
+	<-metricsDone
 
 	return errors.Join(append([]error{err}, errs...)...)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/mail"
+	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
@@ -284,6 +285,12 @@ type EmailQueue interface {
 	Enqueue(ctx context.Context, m mail.Message) error
 }
 
+// RequestRecorder counts requests for the request metrics; satisfied by
+// *metrics.Requests.
+type RequestRecorder interface {
+	Observe(route, method string, status int, d time.Duration, bytes int)
+}
+
 var (
 	_ ArticleStore      = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
@@ -305,6 +312,7 @@ var (
 	_ EmailQueue        = (*mail.Queue)(nil)
 	_ URLFetcher        = (*fetch.Client)(nil)
 	_ SiteDiscoverer    = (*discovery.Discoverer)(nil)
+	_ RequestRecorder   = (*metrics.Requests)(nil)
 )
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -334,6 +342,7 @@ type Services struct {
 	Fetcher             URLFetcher
 	Discoverer          SiteDiscoverer
 	Database            DatabasePinger
+	Metrics             RequestRecorder
 }
 
 type Server struct {

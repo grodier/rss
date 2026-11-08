@@ -59,6 +59,10 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.Database == nil {
 		svc.Database = &fakeDatabase{}
 	}
+	// Every request is counted; a test that doesn't care drops the counts.
+	if svc.Metrics == nil {
+		svc.Metrics = &fakeRecorder{}
+	}
 	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -32,6 +33,103 @@ func TestRecoverPanicRendersHTML(t *testing.T) {
 	}
 	if got := rr.Header().Get("Connection"); got != "close" {
 		t.Errorf("Connection = %q, want close", got)
+	}
+}
+
+func TestRecordRequest(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantRoute  string
+		wantStatus int
+	}{
+		// Anonymous, so the login redirect, but counted by its pattern.
+		{"pattern, not path", http.MethodGet, "/feeds/0b6e1c5e-0000-4000-8000-000000000001", "/feeds/{id}", http.StatusSeeOther},
+		{"public page", http.MethodGet, "/privacy", "/privacy", http.StatusOK},
+		{"unknown path", http.MethodGet, "/no/such/page", "(unmatched)", http.StatusNotFound},
+		// chi matches no pattern when the method is wrong.
+		{"wrong method", http.MethodPut, "/privacy", "(unmatched)", http.StatusMethodNotAllowed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &fakeRecorder{}
+			s := newTestServerWith(t, Services{Metrics: rec})
+			rr := httptest.NewRecorder()
+			s.router().ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+			}
+			seen := rec.observations()
+			if len(seen) != 1 {
+				t.Fatalf("observed %d requests, want 1: %+v", len(seen), seen)
+			}
+			o := seen[0]
+			if o.route != tt.wantRoute || o.method != tt.method || o.status != tt.wantStatus {
+				t.Errorf("observed %+v, want route %q, method %s, status %d", o, tt.wantRoute, tt.method, tt.wantStatus)
+			}
+			if o.bytes != rr.Body.Len() {
+				t.Errorf("bytes = %d, want %d", o.bytes, rr.Body.Len())
+			}
+			if o.d <= 0 {
+				t.Errorf("duration = %v, want > 0", o.d)
+			}
+		})
+	}
+
+	t.Run("recovered panic", func(t *testing.T) {
+		rec := &fakeRecorder{}
+		s := newTestServerWith(t, Services{Metrics: rec})
+		// The real router's middleware order, around a route that panics.
+		router := chi.NewRouter()
+		router.Use(s.recordRequest, s.serverTiming, s.recoverPanic)
+		router.Get("/boom/{id}", func(w http.ResponseWriter, r *http.Request) { panic("boom") })
+
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/boom/1", nil))
+
+		seen := rec.observations()
+		if len(seen) != 1 {
+			t.Fatalf("observed %d requests, want 1", len(seen))
+		}
+		if seen[0].route != "/boom/{id}" || seen[0].status != http.StatusInternalServerError {
+			t.Errorf("observed %+v, want /boom/{id} with 500", seen[0])
+		}
+	})
+}
+
+func TestServerTiming(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"HTML page", "/privacy", true},
+		{"HTML error page", "/no/such/page", true},
+		{"JSON", "/healthcheck", false},
+		{"static file", "/static/img/logo.svg", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			newTestServer(t).router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			got := rr.Header().Get("Server-Timing")
+			if !tt.want {
+				if got != "" {
+					t.Errorf("Server-Timing = %q, want none", got)
+				}
+				return
+			}
+			dur, ok := strings.CutPrefix(got, "app;dur=")
+			if !ok {
+				t.Fatalf("Server-Timing = %q, want app;dur=<ms>", got)
+			}
+			if _, frac, ok := strings.Cut(dur, "."); !ok || len(frac) != 1 {
+				t.Errorf("Server-Timing duration %q, want one decimal", dur)
+			}
+		})
 	}
 }
 

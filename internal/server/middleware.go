@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -80,6 +82,71 @@ func (s *Server) logRequest(next http.Handler) http.Handler {
 			"ip", s.clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
 			"status", status, "size", ww.BytesWritten(), "duration", time.Since(start))
 	})
+}
+
+// recordRequest counts every request in the request metrics, by its chi
+// route pattern, never its URL, so no IDs or tokens are stored (see
+// "Observability" in docs/decisions.md). It runs right after logRequest, so
+// recovered panics and CrossOriginProtection's 403s are counted.
+func (s *Server) recordRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
+
+		// The router's context is filled in as the request is routed, and
+		// still holds the pattern when the handlers return.
+		route := ""
+		if rctx := chi.RouteContext(r.Context()); rctx != nil {
+			route = rctx.RoutePattern()
+		}
+		if route == "" {
+			route = metrics.Unmatched
+		}
+		s.services.Metrics.Observe(route, r.Method, ww.Status(), time.Since(start), ww.BytesWritten())
+	})
+}
+
+// serverTiming sends HTML pages with a Server-Timing header giving the
+// server's time until the headers were written, so the browser can split
+// its time to first byte into server and network. It carries durations
+// only (see "Observability" in docs/decisions.md).
+func (s *Server) serverTiming(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&timingWriter{ResponseWriter: w, start: time.Now()}, r)
+	})
+}
+
+// timingWriter adds Server-Timing to an HTML response when its headers are
+// written.
+type timingWriter struct {
+	http.ResponseWriter
+	start       time.Time
+	wroteHeader bool
+}
+
+func (w *timingWriter) WriteHeader(code int) {
+	// 1xx responses are followed by the real one.
+	if !w.wroteHeader && code >= 200 {
+		w.wroteHeader = true
+		if strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+			ms := float64(time.Since(w.start)) / float64(time.Millisecond)
+			w.Header().Set("Server-Timing", fmt.Sprintf("app;dur=%.1f", ms))
+		}
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *timingWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w *timingWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (s *Server) requireAuthentication(next http.Handler) http.Handler {

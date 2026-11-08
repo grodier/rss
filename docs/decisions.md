@@ -134,6 +134,7 @@ Planned in #583 with the admin, which is where it's read.
   Render's latency by path and its metrics streaming need a Professional workspace (production is on Hobby), and a hosted tool (Grafana, Datadog) would be another data processor in the privacy policy, for volumes Postgres handles easily.
 - **Request metrics are grouped by chi route pattern** (`/feeds/{id}`), never by URL, so no IDs or tokens are stored (#563).
   Each instance counts in memory and writes one row per route per minute, with latency in fixed histogram buckets, from which the admin reads percentiles.
+  Requests no route matches (404s and 405s) share one route, `(unmatched)`, and methods outside the standard ones share `OTHER`, so clients can't add rows (#563).
 - **A `Server-Timing` header gives the browser the server's time** (#563), so real-user TTFB splits into server and network; it carries durations only.
 - **Real-user metrics: one beacon per page view** (#565), sent when the page is hidden, with Core Web Vitals (LCP, INP, CLS), loading timings and coarse context (device class, installed or not, browser family).
   Measured with Google's `web-vitals` package (about 2 KB), the frontend's first runtime library: its INP and CLS rules (session windows, back/forward cache, background tabs, prerendering) are easy to get subtly wrong, and it matches what Chrome reports.

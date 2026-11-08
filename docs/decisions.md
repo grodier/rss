@@ -33,10 +33,19 @@ Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), 
 
 - **Testers' data isn't kept**: schema changes keep editing the initial migration and wipe the database, and testers are told so.
   The rule and its scope are under "Prototype stage" in CLAUDE.md.
-  (#180)
+  (#180; ended by #561, below)
 - **A planned batch lands its schema in one change**, so production is reset once per batch rather than once per feature: the account tables (#255), then the reading features' tables (#293), then subscription names and the filtering batch's (#348).
   A prototype that may be dropped adds its own table instead, so dropping it leaves nothing behind.
   Before a reset, export your OPML, and import it afterwards (#303).
+  (Until #561; afterwards each change adds its own migration.)
+- **Production data is kept from #561 on**, before the waitlist (#566) collects its first address: a reset after that would delete everyone waiting, and the people invited from it are the next testers.
+  The app is still pre-alpha in every other way.
+  Rejected: keep resetting and carry the waitlist across each reset with an export and import in the admin, a compatibility path that loses everyone the one time it's forgotten.
+  (#583)
+- **Data is kept, old code isn't.** A schema change migrates the rows that exist in its own migration, so code still never handles rows or flows the old code produced, and the "no compatibility shims" rule in CLAUDE.md stands.
+  (#583)
+- **A migration must work with the version still running during a deploy**, which overlaps the new one for a few seconds ("Deploys switch with no downtime" under "Deployment"): add before the code uses it, drop only after the code has stopped using it.
+  (#583, from "Leaving pre-alpha" in the backlog)
 
 ## Debug mode
 
@@ -80,7 +89,57 @@ Its purpose is exploration more than bug fixing: showing how pages are put toget
   The lookup and import runners ignore both.
   (#330)
 - **No subscriber counts or other cross-user data.** Those belong to an owner admin page, which would build on the same allowlist (backlog).
-  (#327)
+  (#327; the admin, planned in #583, has its own accounts instead of this allowlist and shows cross-user data only as aggregates: see "Admin")
+
+## Admin
+
+Planned in #583, from the owner's list and must-haves; the issues are on the [Admin Roadmap](https://github.com/grodier/rss/issues/560).
+
+- **A separate admin site and command, `cmd/admin`**, built into the same image as `www` and run as its own Render web service (about $7 a month).
+  Its web pages and its CLI subcommands share one package, `internal/admin`, so each action is written once.
+  Rejected: admin routes inside `www`, which would put owner-only code and credentials behind the reader's host and sessions.
+  The production database is only reachable from Render's private network, so `admin` commands against production run in the admin service's shell; the web pages are the everyday tool.
+- **It runs none of `www`'s background workers**, only its own small jobs (the health pinger, #576).
+- **On a subdomain, `admin.paperround.app`, set up as its own origin**: `__Host-` cookies with `SameSite=Strict`, its own CSP and its own HSTS (the reader's has no `includeSubDomains`).
+  The reader and the admin are same-site but not same-origin, and `http.CrossOriginProtection` only lets same-origin form posts through, so no reader page can post to the admin.
+  Rejected: a separate domain, which hides nothing (certificate transparency logs list every hostname) and is one more domain to keep.
+- **Three layers in front of it**: Cloudflare Access on the hostname, whose DNS record is the only proxied one; the service's `onrender.com` subdomain turned off, so Access can't be bypassed; and the admin's own login, which is the real gate.
+  Access is defense in depth and needs no code.
+- **Admins are their own accounts, not readers** (an `admins` table), so a leaked reader password never opens the admin.
+  A second factor is required: TOTP, with hashed one-time recovery codes, and the TOTP secret encrypted with a key held only in the admin service's environment.
+  TOTP is a few lines of the standard library (RFC 6238); passkeys are a later upgrade (backlog).
+  The first admin is created with `admin enroll` in the service's shell; nothing seeds one.
+- **Short sessions**: 30 minutes idle and 12 hours at most, and a destructive action asks for a TOTP code again when the last one is over 10 minutes old.
+- **Every write is recorded in an audit log** (who, what, which record, before and after, when), and so are logins and failed logins; destructive actions also need a typed confirmation.
+- **No impersonation.** Support uses read-only views: logging in as a reader would show their private reading.
+- **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
+  A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.
+  Seeing what someone reads has no clear use, and isn't what readers or the privacy policy expect; a later need names its use case and updates the policy first.
+- **The admin has one design checkpoint, in its skeleton (#562)**: later admin pages reuse its layout without their own, since only the owner uses them.
+  What the admin changes for readers (the waitlist form) keeps its checkpoint.
+- **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
+- **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
+
+## Observability
+
+Planned in #583 with the admin, which is where it's read.
+
+- **One place to look: the admin.** The app records its own request, background-job and real-user metrics in Postgres, and the admin fetches container CPU and memory and deploys from Render's API, and uptime from UptimeRobot's (#576).
+  Render's latency by path and its metrics streaming need a Professional workspace (production is on Hobby), and a hosted tool (Grafana, Datadog) would be another data processor in the privacy policy, for volumes Postgres handles easily.
+- **Request metrics are grouped by chi route pattern** (`/feeds/{id}`), never by URL, so no IDs or tokens are stored (#563).
+  Each instance counts in memory and writes one row per route per minute, with latency in fixed histogram buckets, from which the admin reads percentiles.
+- **A `Server-Timing` header gives the browser the server's time** (#563), so real-user TTFB splits into server and network; it carries durations only.
+- **Real-user metrics: one beacon per page view** (#565), sent when the page is hidden, with Core Web Vitals (LCP, INP, CLS), loading timings and coarse context (device class, installed or not, browser family).
+  Measured with Google's `web-vitals` package (about 2 KB), the frontend's first runtime library: its INP and CLS rules (session windows, back/forward cache, background tabs, prerendering) are easy to get subtly wrong, and it matches what Chrome reports.
+  Rejected: Cloudflare Web Analytics, a third-party script and processor that also needs a proxied DNS record.
+- **Beacons carry no identifiers**: no cookie, user ID, IP address or URL.
+  The server resolves the page's path to its route pattern and drops the path; another site's referrer is kept as a host only.
+  So there are page views, not visitors or sessions.
+  The beacon stores nothing in the browser either, so "no cookie banner" (under "Accounts") stands; the privacy policy says what's measured.
+- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days and daily rollups for 13 months (#563, #565).
+- **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
+- **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
+- **Availability is checked from both sides** (#576): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
 
 ## Feed discovery
 
@@ -977,6 +1036,26 @@ In these flows, trade-offs favor the user's experience.
   The app sets only the essential session cookie, so there's no cookie banner; anything else (analytics, third-party scripts) means revisiting that.
 - **All the account tables land in one schema change** (#255), so production is reset once rather than four times.
 
+### Waitlist and invites
+
+Planned in #583.
+
+- **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
+- **Joining asks for an email, a name and up to two optional onboarding questions** (#566), whose wording is settled at its design checkpoint.
+  Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
+  Every waitlist email has a link to leave the list.
+- **Joining twice says so**: "already on the waitlist" for a confirmed address, a new confirmation email for an unconfirmed one, and "there's already an account" with a link to log in, as signup does ("Helpful errors" above).
+- **Bots meet a honeypot field and a per-IP limit**, not Turnstile yet, which needs a script and a CSP change (backlog, under "Security").
+- **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.
+- **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
+  An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
+  Invites expire and can be revoked; the token is stored hashed, like email links.
+- **Invites go out in waves from the admin** (#574): pick people (checkboxes, or "the oldest N"), review, send.
+  No open or click tracking.
+- **The email limit is checked before a wave is sent** (#574): emails queued in the last 24 hours and still pending, against the daily and monthly limits (Resend's free tier: 100 a day, 3,000 a month), less a reserve for account emails, so a wave can't use up the day and block a password reset.
+  Past 80% of the day it warns; past the limit it says how many fit and offers to send just those.
+  Moving to SES changes only the limits (`-mail-daily-limit`, `-mail-monthly-limit`, `-mail-reserve`).
+
 ## Deployment
 
 Planned in #218; issues #208–#217.
@@ -998,6 +1077,7 @@ Planned in #218; issues #208–#217.
   A one-off Render job can't do it, since it runs the old image.
   - The fingerprint is stored in a `schema_fingerprint` table that `migrate` creates itself, not in `00001_init.sql`: it belongs to the migration mechanism, not the app, and goes away with the pre-alpha rule.
     A database with no stored fingerprint (one migrated by the goose CLI) is refused like a changed one, with no special case (#211).
+  - #561 ends production resets (see "Pre-alpha testing"): the fingerprint check, `-allow-reset-to` and the reset workflow go, and CI refuses a change to a migration already on `main`, which replaces the check.
 - **No account is seeded after a production reset.** It would need a credential (or its hash) stored in Render, Terraform state or GitHub, and a one-off job to run `www create-user` in.
   Signing up again with the invite link (#226) is the way back in, so production isn't reset before that's live.
   (#214, #215)
@@ -1062,6 +1142,8 @@ The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md
   `features.md` names a feature's entry points and test files, not every symbol and test, and none of the docs repeat user-facing strings, CSS classes, column lists or Terraform values.
   Before this, every name the docs mentioned still existed, but 3,700 lines of them were a cost on every PR and every read.
 - **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
+- **The admin and its observability have their own roadmap**, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560), at the owner's request, so the reader's roadmap stays readable; it works like #385, and neither edits the other's waves.
+  (#583)
 - **Measure the reading queries before planning load testing** (#388), with a dev-only seed tool outside `cmd/www`, so seeding code never ships, measuring the repository methods themselves rather than copied SQL.
   The timeline query collapses copies over a user's whole history before paginating, so it's the likeliest to break first; its numbers decide what load testing covers.
 - **The first error-state pass is by hand, with no tool** (#392), and fixes nothing itself: it shows how many states there are and how much needs work before deciding whether a walkthrough tool is worth building.

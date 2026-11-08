@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/grodier/rss/internal/ui"
+	"github.com/grodier/rss/web"
 )
 
 func TestManifestHandler(t *testing.T) {
@@ -61,7 +62,7 @@ func TestManifestHandler(t *testing.T) {
 			t.Errorf("icon src %q is not under /static/", icon.Src)
 			continue
 		}
-		if _, err := fs.Stat(ui.Static, "static/"+name); err != nil {
+		if _, err := fs.Stat(web.App, name); err != nil {
 			t.Errorf("icon %q: %v", icon.Src, err)
 		}
 	}
@@ -89,6 +90,10 @@ func TestPagesIncludeAppHead(t *testing.T) {
 }
 
 func TestAppHeadRendered(t *testing.T) {
+	bricolage, err := asset("shared/fonts/bricolage-grotesque.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := newTestServer(t).router()
 	for _, path := range []string{"/login", "/no-such-page"} {
 		rr := httptest.NewRecorder()
@@ -97,6 +102,7 @@ func TestAppHeadRendered(t *testing.T) {
 		for _, want := range []string{
 			`<link rel="manifest" href="/manifest.webmanifest"`,
 			`<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png?v=`,
+			`<link rel="preload" href="` + bricolage + `" as="font" type="font/woff2" crossorigin`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("GET %s: body lacks %s", path, want)
@@ -112,7 +118,7 @@ func TestInstallIconSizes(t *testing.T) {
 		"icon-192.png":         192,
 		"icon-512.png":         512,
 	} {
-		f, err := ui.Static.Open("static/img/" + name)
+		f, err := web.App.Open("img/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +136,7 @@ func TestInstallIconSizes(t *testing.T) {
 
 // iOS fills an apple-touch-icon's transparent pixels with black.
 func TestAppleTouchIconOpaque(t *testing.T) {
-	f, err := ui.Static.Open("static/img/apple-touch-icon.png")
+	f, err := web.App.Open("img/apple-touch-icon.png")
 	if err != nil {
 		t.Fatal(err)
 	}

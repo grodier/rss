@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -16,27 +17,53 @@ import (
 )
 
 func TestStaticRoutes(t *testing.T) {
-	s := newTestServer(t)
-	h := s.router()
+	h := newTestServer(t).router()
 
-	css, err := asset("css/main.css")
+	js := entryJS("reading")
+	css, err := asset("app/styles/reading.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := builtChunks(t)
+	font, err := asset("shared/fonts/newsreader.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logo, err := asset("img/logo.svg")
 	if err != nil {
 		t.Fatal(err)
 	}
 	const immutable = "public, max-age=31536000, immutable"
 
-	tests := []struct {
+	type staticTest struct {
 		path        string
 		wantStatus  int
 		wantContent string
 		wantCache   string
-	}{
-		{"/static/", http.StatusNotFound, "text/html", ""},
-		{"/static/css/", http.StatusNotFound, "text/html", ""},
-		{"/static/css/main.css", http.StatusOK, "text/css", ""},
-		{"/static/css/main.css?v=000000000000", http.StatusOK, "text/css", ""},
+	}
+	tests := []staticTest{
+		{js, http.StatusOK, "text/javascript", immutable},
 		{css, http.StatusOK, "text/css", immutable},
-		{"/static/js/app.js", http.StatusOK, "text/javascript", ""},
+		{"/static/" + chunks[0].File, http.StatusOK, "text/javascript", immutable},
+		{font, http.StatusOK, "font/woff2", immutable},
+		{logo, http.StatusOK, "image/svg+xml", immutable},
+		{"/static/img/logo.svg", http.StatusOK, "image/svg+xml", "no-cache"},
+		{"/static/img/logo.svg?v=000000000000", http.StatusOK, "image/svg+xml", "no-cache"},
+		// Outdated names: an entry's or a sheet's gets the current file; a
+		// chunk's is a 404.
+		{"/static/assets/reading-AAAAAAAA.js", http.StatusOK, "text/javascript", "no-cache"},
+		{"/static/assets/base-AAAAAAAA.css", http.StatusOK, "text/css", "no-cache"},
+		{"/static/assets/nope-AAAAAAAA.js", http.StatusNotFound, "text/html", ""},
+		{"/static/assets/login-AAAAAAAA.css", http.StatusNotFound, "text/html", ""},
+		{"/static/assets/reading-AAAA.js", http.StatusNotFound, "text/html", ""},
+		{"/static/", http.StatusNotFound, "text/html", ""},
+		{"/static/assets/", http.StatusNotFound, "text/html", ""},
+		{"/static/assets", http.StatusNotFound, "text/html", ""},
+		{"/static/.vite/manifest.json", http.StatusNotFound, "text/html", ""},
+		{"/static/nope.css", http.StatusNotFound, "text/html", ""},
+	}
+	for _, c := range chunks {
+		tests = append(tests, staticTest{"/static/" + outdated(t, c), http.StatusNotFound, "text/html", ""})
 	}
 
 	for _, tt := range tests {
@@ -57,20 +84,86 @@ func TestStaticRoutes(t *testing.T) {
 	}
 }
 
-func TestAsset(t *testing.T) {
-	for _, name := range []string{"css/main.css", "js/app.js"} {
-		b, err := fs.ReadFile(ui.Static, "static/"+name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sum := sha256.Sum256(b)
-		want := "/static/" + name + "?v=" + hex.EncodeToString(sum[:])[:12]
-		if got, err := asset(name); err != nil || got != want {
-			t.Errorf("asset(%q) = %q, %v; want %q", name, got, err, want)
-		}
+// A page rendered by the version being replaced during a deploy asks for its
+// own hashed entries; they get the current ones' content.
+func TestStaticOutdatedEntryServesCurrent(t *testing.T) {
+	h := newTestServer(t).router()
+	for _, tt := range []struct{ src, outdated string }{
+		{"app/entries/reading.ts", "/static/assets/reading-AAAAAAAA.js"},
+		{"app/styles/base.css", "/static/assets/base-AAAAAAAA.css"},
+	} {
+		t.Run(tt.src, func(t *testing.T) {
+			u, err := asset(tt.src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current := httptest.NewRecorder()
+			h.ServeHTTP(current, httptest.NewRequest(http.MethodGet, u, nil))
+			outdated := httptest.NewRecorder()
+			h.ServeHTTP(outdated, httptest.NewRequest(http.MethodGet, tt.outdated, nil))
+			if outdated.Code != http.StatusOK || outdated.Body.String() != current.Body.String() {
+				t.Errorf("GET %s: status %d, body of %d bytes; want 200 and the %d bytes of %s", tt.outdated, outdated.Code, outdated.Body.Len(), current.Body.Len(), u)
+			}
+			if got, want := outdated.Header().Get("ETag"), current.Header().Get("ETag"); got != want {
+				t.Errorf("GET %s: ETag = %q, want %q", tt.outdated, got, want)
+			}
+		})
 	}
-	if _, err := asset("nope.css"); err == nil {
-		t.Error(`asset("nope.css") = nil error, want error`)
+}
+
+func TestStaticRoutesRevalidate(t *testing.T) {
+	h := newTestServer(t).router()
+	for _, name := range []string{"app/entries/reading.ts", "app/styles/reading.css", "shared/fonts/newsreader.woff2", "img/logo.svg"} {
+		t.Run(name, func(t *testing.T) {
+			u, err := asset(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, _, _ = strings.Cut(u, "?")
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, u, nil))
+			sum := sha256.Sum256(rr.Body.Bytes())
+			etag := `"` + hex.EncodeToString(sum[:])[:12] + `"`
+			if got := rr.Header().Get("ETag"); got != etag {
+				t.Errorf("ETag = %q, want %q", got, etag)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, u, nil)
+			req.Header.Set("If-None-Match", etag)
+			rr = httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusNotModified {
+				t.Errorf("If-None-Match %s: status = %d, want %d", etag, rr.Code, http.StatusNotModified)
+			}
+		})
+	}
+}
+
+func TestAsset(t *testing.T) {
+	h := newTestServer(t).router()
+
+	js, err := asset("app/entries/reading.ts")
+	if err != nil || !regexp.MustCompile(`^/static/assets/reading-[\w-]+\.js$`).MatchString(js) {
+		t.Errorf(`asset("app/entries/reading.ts") = %q, %v; want /static/assets/reading-<hash>.js`, js, err)
+	}
+
+	// A public file's version is the hash of the bytes it's served with.
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/static/img/logo.svg", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /static/img/logo.svg: status = %d", rr.Code)
+	}
+	sum := sha256.Sum256(rr.Body.Bytes())
+	want := "/static/img/logo.svg?v=" + hex.EncodeToString(sum[:])[:12]
+	if got, err := asset("img/logo.svg"); err != nil || got != want {
+		t.Errorf(`asset("img/logo.svg") = %q, %v; want %q`, got, err, want)
+	}
+
+	for _, name := range []string{"nope.css", strings.TrimPrefix(js, "/static/"), ".vite/manifest.json"} {
+		if got, err := asset(name); err == nil {
+			t.Errorf("asset(%q) = %q, nil error; want error", name, got)
+		}
 	}
 }
 
@@ -91,12 +184,6 @@ func TestTemplatesLinkAssetsThroughAsset(t *testing.T) {
 		if strings.Contains(string(b), `"/static/`) {
 			t.Errorf("%s: link static files through the asset function", f)
 		}
-	}
-
-	rr := httptest.NewRecorder()
-	newTestServer(t).router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/login", nil))
-	if !strings.Contains(rr.Body.String(), `href="/static/css/main.css?v=`) {
-		t.Errorf("GET /login does not link a versioned main.css:\n%s", rr.Body.String())
 	}
 }
 
@@ -199,7 +286,7 @@ func TestHeadRequests(t *testing.T) {
 		{path: "/", status: http.StatusOK, contentType: "text/html"},
 		{path: "/login", status: http.StatusOK, contentType: "text/html"},
 		{path: "/feeds", status: http.StatusSeeOther, location: "/login"},
-		{path: "/static/css/main.css", status: http.StatusOK, contentType: "text/css"},
+		{path: "/static/img/logo.svg", status: http.StatusOK, contentType: "image/svg+xml"},
 		{path: "/nope", status: http.StatusNotFound},
 		{path: "/logout", status: http.StatusMethodNotAllowed, allow: "POST"},
 	}
@@ -288,8 +375,12 @@ func TestSignupRoutes(t *testing.T) {
 	}
 }
 
-// jsVersion is the version in the app.js URL the templates render.
-var jsVersion = staticVersions["js/app.js"]
+// entryJS returns the URL of a page group's entry script (TestAssetTags
+// checks the pages' heads link it).
+func entryJS(group string) string {
+	u, _ := asset("app/entries/" + group + ".ts")
+	return u
+}
 
 // TestRoutesRequireAuthentication walks every route and checks that an
 // anonymous request is redirected to /login, unless the route is one of the

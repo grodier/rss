@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - Timelines</title>
-  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "assets" "timelines"}}
   {{template "app-head" .Nav}}
 </head>
 
@@ -23,28 +23,41 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{if .Timelines}}
-      <ul class="timeline-list" role="list">
-        {{/* $last is the index of the last row. */}}
-        {{$last := len (slice .Timelines 1)}}
-        {{range $i, $t := .Timelines}}
-        <li id="timeline-{{.ID}}">
-          <div class="timeline-list-text">
-            <a class="timeline-list-name" href="/timelines/{{.ID}}">{{.Name}}</a>
+      {{/* The tab row as a list, in its order. Rows are built like My
+           feeds': the row opens the timeline (its name's link covers it),
+           and its controls are icon buttons at the end. Move buttons are
+           disabled at the ends rather than left out, so the rows line up. */}}
+      {{/* Home is the row with no ID: "all" in its fragment and move route,
+           its name is homeName, and it has no pencil, since it can't be
+           edited (an empty slot keeps the columns aligned). */}}
+      {{/* reorder.ts shows each row's drag handle (rendered hidden, since it
+           needs JavaScript) and moves rows in place, posting the whole order
+           to /timelines/order. */}}
+      <ul class="timeline-list" role="list" data-reorder>
+        {{range .Rows}}
+        {{$id := or .ID "all"}}
+        {{$name := .Name}}{{if not .ID}}{{$name = homeName}}{{end}}
+        <li class="timeline-row" id="timeline-{{$id}}" data-id="{{$id}}" data-name="{{$name}}">
+          <span class="reorder-handle" aria-hidden="true" hidden>{{template "icon-grip"}}</span>
+          <div>
+            <a class="timeline-row-name" href="/timelines/{{$id}}">{{if not .ID}}{{template "icon-home"}}{{end}}{{$name}}</a>
             {{if .ShareToken}}<span class="chip">Shared</span>{{end}}
-            {{with .Description}}<p>{{.}}</p>{{end}}
+            <p>{{.Summary}}</p>
           </div>
-          {{if $last}}
-          <form class="timeline-move" action="/timelines/{{.ID}}/move" method="post">
-            {{if gt $i 0}}<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move {{.Name}} up">Move up</button>{{end}}
-            {{if lt $i $last}}<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move {{.Name}} down">Move down</button>{{end}}
+          <form class="timeline-row-move" action="/timelines/{{$id}}/move" method="post" data-move>
+            <button class="row-icon-btn" type="submit" name="direction" value="up" aria-label="Move {{$name}} up" title="Move up"{{if .First}} disabled{{end}}>{{template "icon-arrow-up"}}</button>
+            <button class="row-icon-btn" type="submit" name="direction" value="down" aria-label="Move {{$name}} down" title="Move down"{{if .Last}} disabled{{end}}>{{template "icon-arrow-down"}}</button>
           </form>
+          {{if .ID}}
+          <a class="row-icon-btn" href="/timelines/{{.ID}}/edit" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
+          {{else}}
+          <span class="row-icon-slot" aria-hidden="true"></span>
           {{end}}
-          <a href="/timelines/{{.ID}}/edit">Edit<span class="visually-hidden"> {{.Name}}</span></a>
         </li>
         {{end}}
       </ul>
-      {{else}}
+
+      {{if not .Custom}}
       <div class="empty">
         <p>You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.</p>
       </div>

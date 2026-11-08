@@ -37,27 +37,39 @@ type timelineForm struct {
 	ExcludeTags         []string `form:"exclude_tags"`
 	ExcludeFeeds        []string `form:"exclude_feeds"`
 	StarredOnly         bool     `form:"starred_only"`
-	MaxPostsPerWeek     string   `form:"max_posts_per_week"` // "": any rate
+	Quiet               bool     `form:"quiet"`              // "From quiet feeds" is ticked
+	MaxPostsPerWeek     string   `form:"max_posts_per_week"` // counts only when Quiet is ticked
 	MediaOnly           bool     `form:"media_only"`
-	IncludeWords        string   `form:"include_words"` // comma-separated
-	ExcludeWords        string   `form:"exclude_words"`
+	Mentions            bool     `form:"mentions"`      // "Mentioning" is ticked
+	IncludeWords        string   `form:"include_words"` // comma-separated; counts only when Mentions is ticked
+	NotMentions         bool     `form:"not_mentions"`  // "Not mentioning" is ticked
+	ExcludeWords        string   `form:"exclude_words"` // counts only when NotMentions is ticked
 	validator.Validator `form:"-"`
 }
 
-// timelineFormFor returns the form showing t's settings.
+// defaultMaxPostsPerWeek is the number "From quiet feeds" starts at when
+// it isn't ticked, so ticking it begins somewhere sensible.
+const defaultMaxPostsPerWeek = "2"
+
+// timelineFormFor returns the form showing t's settings: a condition is
+// ticked when it has a value.
 func timelineFormFor(t rss.Timeline) timelineForm {
 	form := timelineForm{
-		Name:         t.Name,
-		Description:  t.Description,
-		Show:         "all",
-		ExcludeTags:  t.Filter.ExcludeTagIDs,
-		ExcludeFeeds: t.Filter.ExcludeFeedIDs,
-		StarredOnly:  t.Filter.StarredOnly,
-		MediaOnly:    t.Filter.MediaOnly,
-		IncludeWords: strings.Join(t.Filter.IncludeWords, ", "),
-		ExcludeWords: strings.Join(t.Filter.ExcludeWords, ", "),
+		Name:            t.Name,
+		Description:     t.Description,
+		Show:            "all",
+		ExcludeTags:     t.Filter.ExcludeTagIDs,
+		ExcludeFeeds:    t.Filter.ExcludeFeedIDs,
+		StarredOnly:     t.Filter.StarredOnly,
+		MaxPostsPerWeek: defaultMaxPostsPerWeek,
+		MediaOnly:       t.Filter.MediaOnly,
+		Mentions:        len(t.Filter.IncludeWords) > 0,
+		IncludeWords:    strings.Join(t.Filter.IncludeWords, ", "),
+		NotMentions:     len(t.Filter.ExcludeWords) > 0,
+		ExcludeWords:    strings.Join(t.Filter.ExcludeWords, ", "),
 	}
 	if t.Filter.MaxPostsPerWeek > 0 {
+		form.Quiet = true
 		form.MaxPostsPerWeek = strconv.Itoa(t.Filter.MaxPostsPerWeek)
 	}
 	if t.Filter.OnlyIncluded {
@@ -70,7 +82,8 @@ func timelineFormFor(t rss.Timeline) timelineForm {
 
 // check trims the name and description, keeps only the user's tags and
 // feeds (and each once), and validates the form. Show must already be "all"
-// or "some".
+// or "some". A condition's field is validated only when it's ticked: hidden
+// fields still post (the reveal is CSS), and an unticked one isn't stored.
 func (f *timelineForm) check(tags []rss.Tag, subs []rss.Subscription) {
 	f.Name = strings.TrimSpace(f.Name)
 	f.Description = strings.TrimSpace(f.Description)
@@ -94,14 +107,21 @@ func (f *timelineForm) check(tags []rss.Tag, subs []rss.Subscription) {
 	f.CheckField(validator.MaxChars(f.Description, timelineDescriptionMaxChars), "description", "Must be 280 characters or fewer.")
 	f.CheckField(f.Show == "all" || len(f.IncludeTags) > 0 || len(f.IncludeFeeds) > 0, "show",
 		"Choose at least one tag or feed, or show all your feeds.")
-	_, ok := f.maxPostsPerWeek()
-	f.CheckField(ok, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank.")
-	f.checkTerms(splitTerms(f.IncludeWords), "include_words")
-	f.checkTerms(splitTerms(f.ExcludeWords), "exclude_words")
+	if f.Quiet {
+		n, ok := f.maxPostsPerWeek()
+		f.CheckField(ok && n > 0, "max_posts_per_week", "Enter a whole number from 1 to 100.")
+	}
+	if f.Mentions {
+		f.checkTerms(splitTerms(f.IncludeWords), "include_words")
+	}
+	if f.NotMentions {
+		f.checkTerms(splitTerms(f.ExcludeWords), "exclude_words")
+	}
 }
 
-// checkTerms validates the words or phrases of field.
+// checkTerms validates the words or phrases of a ticked field.
 func (f *timelineForm) checkTerms(terms []string, field string) {
+	f.CheckField(len(terms) > 0, field, "Enter at least one word or phrase.")
 	f.CheckField(len(terms) <= timelineMaxTerms, field, "At most 20 words or phrases.")
 	for _, term := range terms {
 		f.CheckField(validator.MaxChars(term, timelineTermMaxChars), field, "Each word or phrase must be 50 characters or fewer.")
@@ -151,23 +171,308 @@ func keepKnown(ids []string, known map[string]bool) []string {
 	return kept
 }
 
+// timelineSummary says what t is made of, for its row on /timelines:
+// fragments joined by " · ", such as "Tagged Tech · Mentions “AI” ·
+// Leaves out 1 feed". tags are the user's, ordered by name; tag names come
+// out in that order, and IDs that aren't among them (deleted since) are
+// skipped. A timeline with no conditions at all is "All your feeds".
+func timelineSummary(t rss.Timeline, tags []rss.Tag) string {
+	f := t.Filter
+	var parts []string
+	if f.StarredOnly && !f.OnlyIncluded {
+		parts = append(parts, "Your stars, newest star first")
+	}
+	if f.OnlyIncluded {
+		names := tagNames(tags, f.IncludeTagIDs)
+		if len(names) > 0 {
+			parts = append(parts, "Tagged "+joinOr(names))
+		}
+		if n := len(f.IncludeFeedIDs); n > 0 {
+			parts = append(parts, countPhrase(n, "chosen feed", "chosen feeds"))
+		}
+		if len(names) == 0 && len(f.IncludeFeedIDs) == 0 {
+			parts = append(parts, "No feeds chosen")
+		}
+		if f.StarredOnly {
+			parts = append(parts, "Starred only")
+		}
+	}
+	if n := f.MaxPostsPerWeek; n > 0 {
+		parts = append(parts, "At most "+countPhrase(n, "post", "posts")+" a week")
+	}
+	if f.MediaOnly {
+		parts = append(parts, "Audio or video")
+	}
+	if words := wordsPhrase(f.IncludeWords); words != "" {
+		parts = append(parts, "Mentions "+words)
+	}
+	if words := wordsPhrase(f.ExcludeWords); words != "" {
+		parts = append(parts, "Leaves out "+words)
+	}
+	if names := tagNames(tags, f.ExcludeTagIDs); len(names) > 0 {
+		parts = append(parts, "Leaves out feeds tagged "+joinOr(names))
+	}
+	if n := len(f.ExcludeFeedIDs); n > 0 {
+		parts = append(parts, "Leaves out "+countPhrase(n, "feed", "feeds"))
+	}
+	if len(parts) == 0 {
+		return "All your feeds"
+	}
+	return strings.Join(parts, " · ")
+}
+
+// tagNames returns the names of the tags among tags whose IDs are in ids,
+// in tags' order.
+func tagNames(tags []rss.Tag, ids []string) []string {
+	var names []string
+	for _, tag := range tags {
+		if slices.Contains(ids, tag.ID) {
+			names = append(names, tag.Name)
+		}
+	}
+	return names
+}
+
+// wordsPhrase quotes up to three words or phrases, joined as joinOr does;
+// more are counted instead ("5 words or phrases"). "" for none.
+func wordsPhrase(words []string) string {
+	switch {
+	case len(words) == 0:
+		return ""
+	case len(words) > 3:
+		return fmt.Sprintf("%d words or phrases", len(words))
+	}
+	return joinOr(quoted(words))
+}
+
+// joinOr joins items as "A", "A or B", "A, B or C".
+func joinOr(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
+}
+
+// countPhrase returns "1 {one}" or "{n} {many}".
+func countPhrase(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
+}
+
+// timelineFormSummary is the box at the top of the timeline form: what the
+// timeline shows, in a sentence, and which of the user's feeds it draws
+// from. timeline-form.ts rebuilds it as the form changes, with the same rules and
+// words as timelineSentence and timelineFeedCount.
+type timelineFormSummary struct {
+	Sentence string
+	Count    string   // "From 4 of your 14 feeds"
+	Feeds    []string // the matching feeds' names
+	RateHint string   // under "At most N posts a week": how many feeds post that little; "" when N isn't valid
+}
+
+// summary returns the form's summary box for the user's tags and subs.
+func (f *timelineForm) summary(tags []rss.Tag, subs []rss.Subscription) timelineFormSummary {
+	sum := timelineFormSummary{Sentence: timelineSentence(*f, tags, subs)}
+	if f.Show == "some" && len(f.IncludeTags) == 0 && len(f.IncludeFeeds) == 0 {
+		sum.Count = "No feeds yet"
+	} else {
+		matched := timelineFeedCount(*f, subs)
+		for _, sub := range matched {
+			sum.Feeds = append(sum.Feeds, subscriptionName(sub))
+		}
+		switch {
+		case len(matched) == 0:
+			sum.Count = "None of your feeds match yet"
+		case len(subs) == 1:
+			sum.Count = "From your only feed"
+		default:
+			sum.Count = fmt.Sprintf("From %d of your %d feeds", len(matched), len(subs))
+		}
+	}
+	if n, ok := f.maxPostsPerWeek(); ok && n > 0 {
+		quiet := 0
+		for _, sub := range subs {
+			if sub.Feed.PostsPerWeek <= float64(n) {
+				quiet++
+			}
+		}
+		if quiet == 1 {
+			sum.RateHint = "1 of your feeds posts this little right now."
+		} else {
+			sum.RateHint = fmt.Sprintf("%d of your feeds post this little right now.", quiet)
+		}
+	}
+	return sum
+}
+
+// subscriptionName is the name the user's reading shows for sub's feed.
+func subscriptionName(sub rss.Subscription) string {
+	switch {
+	case sub.Title != "":
+		return sub.Title
+	case sub.Feed.Title != "":
+		return sub.Feed.Title
+	}
+	return sub.Feed.Url
+}
+
+// timelineSentence says, in one sentence, what the timeline f describes
+// shows, such as "Articles mentioning “AI” from feeds tagged Tech, except
+// The Verge." It spells out the form's rules (Leave out always wins; every
+// ticked condition must hold). Tags come in tags' order (by name) and feeds
+// in subs' order. timeline-form.ts builds the same sentence; change both
+// together (TestTimelineSummaryFixture writes what timeline-form.test.ts
+// checks it against).
+func timelineSentence(f timelineForm, tags []rss.Tag, subs []rss.Subscription) string {
+	feedNames := func(ids []string) []string {
+		var names []string
+		for _, sub := range subs {
+			if slices.Contains(ids, sub.Feed.ID) {
+				names = append(names, subscriptionName(sub))
+			}
+		}
+		return names
+	}
+	some := f.Show == "some"
+	inTags, inFeeds := tagNames(tags, f.IncludeTags), feedNames(f.IncludeFeeds)
+	if some && len(inTags) == 0 && len(inFeeds) == 0 {
+		return "Choose at least one tag or feed, or show all your feeds."
+	}
+
+	var b strings.Builder
+	b.WriteString("Articles")
+	if f.StarredOnly {
+		b.WriteString(" you’ve starred")
+	}
+	if f.MediaOnly {
+		b.WriteString(" with audio or video")
+	}
+	var words, notWords []string
+	if f.Mentions {
+		words = quoted(splitTerms(f.IncludeWords))
+	}
+	if f.NotMentions {
+		notWords = quoted(splitTerms(f.ExcludeWords))
+	}
+	if len(words) > 0 {
+		b.WriteString(" mentioning " + joinOr(words))
+	}
+	if len(notWords) > 0 {
+		if len(words) > 0 {
+			b.WriteString(" but not ")
+		} else {
+			b.WriteString(" not mentioning ")
+		}
+		b.WriteString(joinOr(notWords))
+	}
+
+	rate := ""
+	if n, ok := f.maxPostsPerWeek(); f.Quiet && ok && n > 0 {
+		rate = "post at most " + strconv.Itoa(n) + " times a week"
+		if n == 1 {
+			rate = "post at most once a week"
+		}
+	}
+	switch {
+	case !some && rate != "":
+		b.WriteString(" from feeds that " + rate)
+	case !some:
+		b.WriteString(" from all your feeds")
+	default:
+		var src []string
+		if len(inTags) > 0 {
+			src = append(src, "feeds tagged "+joinOr(inTags))
+		}
+		src = append(src, inFeeds...)
+		b.WriteString(" from " + joinAnd(src))
+		switch {
+		case rate != "" && len(inFeeds) > 0:
+			b.WriteString(", if they " + rate)
+		case rate != "":
+			b.WriteString(" that " + rate)
+		}
+	}
+
+	var except []string
+	if names := tagNames(tags, f.ExcludeTags); len(names) > 0 {
+		except = append(except, "feeds tagged "+joinOr(names))
+	}
+	except = append(except, feedNames(f.ExcludeFeeds)...)
+	if len(except) > 0 {
+		b.WriteString(", except " + joinAnd(except))
+	}
+	b.WriteString(".")
+	if f.StarredOnly {
+		b.WriteString(" Newest star first.")
+	}
+	return b.String()
+}
+
+// timelineFeedCount returns the subscriptions the timeline f describes draws
+// from, in subs' order: those its Show lets through, that Leave out doesn't,
+// within its posting rate when Quiet is ticked. Starred, audio and words
+// pick articles, not feeds, so they don't count here.
+func timelineFeedCount(f timelineForm, subs []rss.Subscription) []rss.Subscription {
+	rate := 0
+	if n, ok := f.maxPostsPerWeek(); f.Quiet && ok {
+		rate = n
+	}
+	hasTag := func(sub rss.Subscription, ids []string) bool {
+		return slices.ContainsFunc(sub.Tags, func(t rss.Tag) bool { return slices.Contains(ids, t.ID) })
+	}
+	var matched []rss.Subscription
+	for _, sub := range subs {
+		shown := f.Show != "some" || hasTag(sub, f.IncludeTags) || slices.Contains(f.IncludeFeeds, sub.Feed.ID)
+		out := hasTag(sub, f.ExcludeTags) || slices.Contains(f.ExcludeFeeds, sub.Feed.ID)
+		if shown && !out && (rate == 0 || sub.Feed.PostsPerWeek <= float64(rate)) {
+			matched = append(matched, sub)
+		}
+	}
+	return matched
+}
+
+// quoted returns words in curly quotes.
+func quoted(words []string) []string {
+	q := make([]string, len(words))
+	for i, w := range words {
+		q[i] = "“" + w + "”"
+	}
+	return q
+}
+
+// joinAnd joins items as "A", "A and B", "A, B and C".
+func joinAnd(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
+
 // timeline returns the timeline the form describes; the form must be valid.
-// With Show "all" the ticked Show tags and feeds are dropped: they'd have no
-// effect.
+// With Show "all" the ticked Show tags and feeds are dropped, and an
+// unticked condition stores nothing, whatever its field holds: they'd have
+// no effect.
 func (f *timelineForm) timeline() rss.Timeline {
-	maxPostsPerWeek, _ := f.maxPostsPerWeek()
 	t := rss.Timeline{
 		Name:        f.Name,
 		Description: f.Description,
 		Filter: rss.TimelineFilter{
-			ExcludeTagIDs:   f.ExcludeTags,
-			ExcludeFeedIDs:  f.ExcludeFeeds,
-			StarredOnly:     f.StarredOnly,
-			MaxPostsPerWeek: maxPostsPerWeek,
-			MediaOnly:       f.MediaOnly,
-			IncludeWords:    splitTerms(f.IncludeWords),
-			ExcludeWords:    splitTerms(f.ExcludeWords),
+			ExcludeTagIDs:  f.ExcludeTags,
+			ExcludeFeedIDs: f.ExcludeFeeds,
+			StarredOnly:    f.StarredOnly,
+			MediaOnly:      f.MediaOnly,
 		},
+	}
+	if f.Quiet {
+		t.Filter.MaxPostsPerWeek, _ = f.maxPostsPerWeek()
+	}
+	if f.Mentions {
+		t.Filter.IncludeWords = splitTerms(f.IncludeWords)
+	}
+	if f.NotMentions {
+		t.Filter.ExcludeWords = splitTerms(f.ExcludeWords)
 	}
 	if f.Show == "some" {
 		t.Filter.OnlyIncluded = true
@@ -204,62 +509,139 @@ func (f *timelineForm) checks(tags []rss.Tag, subs []rss.Subscription, icons map
 	}
 }
 
-// timelinesHandler lists the user's custom timelines.
+// timelineRow is one of the user's custom timelines on /timelines.
+type timelineRow struct {
+	rss.Timeline
+	Summary     string // what it's made of: timelineSummary
+	First, Last bool   // its place in tab order, which disables a move button
+}
+
+// timelinesHandler lists the user's tabs in order, Home among them, each
+// with a summary of what it shows.
 func (s *Server) timelinesHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
-	timelines, err := s.services.TimelineService.List(r.Context(), userID)
+	timelines, err := s.services.TimelineService.ListWithFilters(r.Context(), userID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	custom := slices.ContainsFunc(timelines, func(t rss.Timeline) bool { return t.ID != "" })
+	var tags []rss.Tag
+	if custom {
+		tags, err = s.services.TagService.List(r.Context(), userID)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
+
+	rows := make([]timelineRow, len(timelines))
+	for i, t := range timelines {
+		summary := "Every feed you follow"
+		if t.ID != "" {
+			summary = timelineSummary(t, tags)
+		}
+		rows[i] = timelineRow{Timeline: t, Summary: summary, First: i == 0, Last: i == len(timelines)-1}
+	}
 
 	data := struct {
-		Nav       navData
-		Timelines []rss.Timeline
-		Flash     string
+		Nav    navData
+		Rows   []timelineRow
+		Custom bool // the user has custom timelines, not only Home
+		Flash  string
 	}{
-		Nav:       s.nav(r, "home"),
-		Timelines: timelines,
-		Flash:     s.sessionManager.PopString(r.Context(), "flash"),
+		Nav:    s.nav(r, "home"),
+		Rows:   rows,
+		Custom: custom,
+		Flash:  s.sessionManager.PopString(r.Context(), "flash"),
 	}
 	if err := s.renderHTML(w, http.StatusOK, "timelines.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
 
-// timelineNewHandler shows the New timeline form, showing all feeds. With
-// ?preset=starred it's named Starred and shows only starred articles; with
-// ?preset=quiet it's named Quiet posters and shows only feeds posting at
-// most 2 times a week. With
-// ?tag={id} (one of the user's tags) it's named after the tag (even with a
-// preset) and shows only its feeds. Any other tag or preset is ignored.
-func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
-	form := timelineForm{Show: "all"}
+// timelinePresets are New timeline's starting points: what each ?preset=
+// fills in on the form, which shows all feeds unless the preset says.
+var timelinePresets = map[string]func(f *timelineForm){
+	"tags": func(f *timelineForm) { f.Show = "some" },
+	"quiet": func(f *timelineForm) {
+		f.Name = "Quiet posters"
+		f.Quiet = true
+	},
+	"starred": func(f *timelineForm) {
+		f.Name = "Starred"
+		f.StarredOnly = true
+	},
+	"keywords": func(f *timelineForm) { f.Mentions = true },
+	"media": func(f *timelineForm) {
+		f.Name = "Audio and video"
+		f.MediaOnly = true
+	},
+	"blank": func(f *timelineForm) {},
+}
 
-	switch r.URL.Query().Get("preset") {
-	case "starred":
-		form.Name = "Starred"
-		form.StarredOnly = true
-	case "quiet":
-		form.Name = "Quiet posters"
-		form.MaxPostsPerWeek = "2"
+// timelineNewHandler shows New timeline. Without ?preset= or ?tag= it's a
+// list of starting points (timeline_new.html), each a link back here with
+// a preset. With a preset in timelinePresets it's the form, filled in as
+// the preset says. With ?tag={id} (one of the user's tags, as a tag's page
+// links) it's the form named after the tag, showing only its feeds, even
+// with a preset. An unknown preset, or a tag that isn't the user's, shows
+// the list.
+func (s *Server) timelineNewHandler(w http.ResponseWriter, r *http.Request) {
+	userID, _ := s.authenticatedUserID(r)
+	q := r.URL.Query()
+	preset, known := timelinePresets[q.Get("preset")]
+	if (q.Has("preset") && !known) || (!q.Has("preset") && !q.Has("tag")) {
+		s.renderTimelineStart(w, r, userID)
+		return
 	}
 
-	if id := r.URL.Query().Get("tag"); validator.Matches(id, validator.UUIDRX) {
-		userID, _ := s.authenticatedUserID(r)
+	form := timelineForm{Show: "all", MaxPostsPerWeek: defaultMaxPostsPerWeek}
+	if preset != nil {
+		preset(&form)
+	}
+	if q.Has("tag") {
+		id := q.Get("tag")
+		if !validator.Matches(id, validator.UUIDRX) {
+			s.renderTimelineStart(w, r, userID)
+			return
+		}
 		tag, err := s.services.TagService.Get(r.Context(), userID, id)
 		switch {
-		case err == nil:
-			form.Name = tag.Name
-			form.Show = "some"
-			form.IncludeTags = []string{tag.ID}
-		case !errors.Is(err, rss.ErrNoRecord):
+		case errors.Is(err, rss.ErrNoRecord):
+			s.renderTimelineStart(w, r, userID)
+			return
+		case err != nil:
 			s.serverErrorHTML(w, r, err)
 			return
 		}
+		form.Name = tag.Name
+		form.Show = "some"
+		form.IncludeTags = []string{tag.ID}
 	}
 
 	s.renderTimelineForm(w, r, http.StatusOK, rss.Timeline{}, form)
+}
+
+// renderTimelineStart renders New timeline's list of starting points. The
+// user's tags decide only where "Feeds with a tag" goes: to the form, or to
+// /tags to make one first.
+func (s *Server) renderTimelineStart(w http.ResponseWriter, r *http.Request, userID string) {
+	tags, err := s.services.TagService.List(r.Context(), userID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	data := struct {
+		Nav     navData
+		HasTags bool
+	}{
+		Nav:     s.nav(r, "home"),
+		HasTags: len(tags) > 0,
+	}
+	if err := s.renderHTML(w, http.StatusOK, "timeline_new.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 // timelineCreateHandler makes a timeline and goes to it.
@@ -360,6 +742,48 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/timelines", http.StatusSeeOther)
 }
 
+// timelineOrderForm is the whole tab order, which reorder.ts posts after a
+// drag or a move button press on /timelines.
+type timelineOrderForm struct {
+	Order []string `form:"order"` // tab IDs in order, "all" for Home
+}
+
+// timelineOrderHandler sets the user's tab order. Only reorder.ts posts here, so
+// success is a 204. An order that isn't exactly the user's tabs (one made
+// or deleted in another window) flashes why and goes back to /timelines,
+// where reorder.ts sends the reader.
+func (s *Server) timelineOrderHandler(w http.ResponseWriter, r *http.Request) {
+	var form timelineOrderForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	ids := make([]string, len(form.Order))
+	for i, id := range form.Order {
+		switch {
+		case id == homeTabID:
+			ids[i] = ""
+		case validator.Matches(id, validator.UUIDRX):
+			ids[i] = id
+		default:
+			s.formErrorResponse(w, r, fmt.Errorf("order = %q", id))
+			return
+		}
+	}
+
+	userID, _ := s.authenticatedUserID(r)
+	err := s.services.TimelineService.Reorder(r.Context(), userID, ids)
+	switch {
+	case errors.Is(err, rss.ErrOrderChanged):
+		s.sessionManager.Put(r.Context(), "flash", "Your timelines changed in another window, so the new order wasn't saved.")
+		http.Redirect(w, r, "/timelines", http.StatusSeeOther)
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // timelineShareHandler shares a timeline: it gets a share token, unless it
 // has one. It needs a confirmed email address.
 // timelineMoveForm is the Move up or Move down button on /timelines.
@@ -367,11 +791,12 @@ type timelineMoveForm struct {
 	Direction string `form:"direction"` // "up" or "down"
 }
 
-// timelineMoveHandler moves the user's custom timeline one place up or down
-// the tab order, then goes back to its row on /timelines.
+// timelineMoveHandler moves one of the user's tabs (a custom timeline, or
+// Home as "all") one place up or down the tab order, then goes back to its
+// row on /timelines.
 func (s *Server) timelineMoveHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
+	if id != homeTabID && !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
 		return
 	}
@@ -387,7 +812,11 @@ func (s *Server) timelineMoveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.services.TimelineService.Move(r.Context(), userID, id, form.Direction == "up"); err != nil {
+	storeID := id
+	if id == homeTabID {
+		storeID = ""
+	}
+	if err := s.services.TimelineService.Move(r.Context(), userID, storeID, form.Direction == "up"); err != nil {
 		s.timelineWriteError(w, r, err)
 		return
 	}
@@ -463,11 +892,40 @@ func (s *Server) timelineNewLinkHandler(w http.ResponseWriter, r *http.Request) 
 // address.
 const shareNeedsConfirmation = "Confirm your email address to share timelines."
 
-// redirectToSharing flashes msg and goes to the Sharing section of t's edit
-// page.
+// redirectToSharing flashes msg and goes to t's share page.
 func (s *Server) redirectToSharing(w http.ResponseWriter, r *http.Request, t rss.Timeline, msg string) {
 	s.sessionManager.Put(r.Context(), "flash", msg)
-	http.Redirect(w, r, "/timelines/"+t.ID+"/edit#sharing", http.StatusSeeOther)
+	http.Redirect(w, r, "/timelines/"+t.ID+"/share", http.StatusSeeOther)
+}
+
+// timelineSharePageHandler shows a timeline's share page: sharing it, its
+// links, a new link and stopping, or confirming the email address first.
+func (s *Server) timelineSharePageHandler(w http.ResponseWriter, r *http.Request) {
+	t, ok := s.timelineFromURL(w, r)
+	if !ok {
+		return
+	}
+	sharing := timelineSharing{
+		Confirmed: s.emailConfirmed(r),
+		ReturnTo:  "/timelines/" + t.ID + "/share",
+	}
+	if t.ShareToken != "" {
+		sharing.PageURL, sharing.FeedURL = s.sharedURLs(t.ShareToken)
+	}
+	data := struct {
+		Nav      navData
+		Timeline rss.Timeline
+		Sharing  timelineSharing
+		Flash    string
+	}{
+		Nav:      s.nav(r, "home"),
+		Timeline: t,
+		Sharing:  sharing,
+		Flash:    s.sessionManager.PopString(r.Context(), "flash"),
+	}
+	if err := s.renderHTML(w, http.StatusOK, "timeline_share.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 // timelineWriteError writes the response for err from changing a timeline:
@@ -487,7 +945,7 @@ func (s *Server) emailConfirmed(r *http.Request) bool {
 	return ok && !sess.User.EmailConfirmedAt.IsZero()
 }
 
-// timelineSharing is the Sharing section of a timeline's edit page.
+// timelineSharing is what a timeline's share page shows.
 type timelineSharing struct {
 	Confirmed bool
 	// PageURL and FeedURL are the shared links; "" unless it's shared.
@@ -585,24 +1043,22 @@ func (s *Server) renderTimelineFormWith(w http.ResponseWriter, r *http.Request, 
 		Timeline rss.Timeline
 		Form     timelineForm
 		Tags     []rss.Tag
+		Subs     []rss.Subscription
 		Checks   map[string]timelineChecks
-		Sharing  *timelineSharing // nil for New timeline
+		Summary  timelineFormSummary
+		LeaveOut int // how many tags and feeds are left out, for the disclosure's label
 		Flash    string
 	}{
 		Nav:      s.nav(r, "home"),
 		Timeline: t,
 		Form:     form,
 		Tags:     tags,
+		Subs:     subs,
 		Checks:   form.checks(tags, subs, s.pageIcons(r, siteIDs)),
+		Summary:  form.summary(tags, subs),
+		LeaveOut: len(form.ExcludeTags) + len(form.ExcludeFeeds),
 	}
 	if t.ID != "" {
-		data.Sharing = &timelineSharing{
-			Confirmed: s.emailConfirmed(r),
-			ReturnTo:  "/timelines/" + t.ID + "/edit#sharing",
-		}
-		if t.ShareToken != "" {
-			data.Sharing.PageURL, data.Sharing.FeedURL = s.sharedURLs(t.ShareToken)
-		}
 		data.Flash = s.sessionManager.PopString(r.Context(), "flash")
 	}
 	if err := s.renderHTML(w, status, "timeline_form.html", data); err != nil {

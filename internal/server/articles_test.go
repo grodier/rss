@@ -103,7 +103,7 @@ func TestArticleHandler(t *testing.T) {
 		"<h1>A &lt;b&gt;title&lt;/b&gt;</h1>",
 		`<a href="/feeds/`+testFeedID+`">Example Feed Title</a>`,
 		`<p class="reader-dateline"><span class="reader-byline">By Ada and &lt;b&gt;Grace&lt;/b&gt;</span> <span aria-hidden="true">·</span> <time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time></p>`,
-		`<script src="/static/js/app.js?v=`+jsVersion+`" defer></script>`,
+		`<script type="module" src="`+entryJS("reading")+`"></script>`,
 		`<div class="article-body">`,
 		"<strong>world</strong>",
 		`src="https://example.com/pic.png"`,
@@ -210,11 +210,31 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 			}
 			body := rr.Body.String()
 			if tt.want {
-				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" referrerpolicy="no-referrer">`)
+				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" fetchpriority="high" referrerpolicy="no-referrer">`)
 			} else if strings.Contains(body, "reader-image") {
 				t.Errorf("body has a lead image: %s", body)
 			}
 		})
+	}
+}
+
+// TestArticleLeadImageHighPriority checks the lead image, the article page's
+// largest, is fetched ahead of other images: fetchpriority="high", not lazy.
+func TestArticleLeadImageHighPriority(t *testing.T) {
+	rr := serveArticle(t, articleServer(t, rss.Article{Title: "T", ImageURL: "https://example.com/lead.jpg", Content: "<p>Text</p>"}, nil, nil, nil), testArticleID)
+	doc, err := html.Parse(strings.NewReader(rr.Body.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgs := findAll(doc, func(n *html.Node) bool { return n.Data == "img" && hasClass(n, "reader-image") })
+	if len(imgs) != 1 {
+		t.Fatalf("lead images = %d, want 1", len(imgs))
+	}
+	if got := attr(imgs[0], "fetchpriority"); got != "high" {
+		t.Errorf("fetchpriority = %q, want high", got)
+	}
+	if got := attr(imgs[0], "loading"); got != "" {
+		t.Errorf("loading = %q, want none", got)
 	}
 }
 
@@ -598,7 +618,7 @@ func TestShareButton(t *testing.T) {
 		t.Helper()
 		a.ID = testArticleID
 		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return []rss.ArticleWithFeed{{Article: a, Feed: rss.Feed{ID: "feed-1", Title: "Feed One"}}}, nil
 			},
 		}})

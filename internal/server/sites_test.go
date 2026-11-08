@@ -197,8 +197,8 @@ func TestCanRecheck(t *testing.T) {
 func TestSiteHandlerRecheck(t *testing.T) {
 	now := time.Now()
 	site := rss.Site{ID: testSiteID, Host: "example.com", URL: "https://www.example.com/"}
-	const button = "Check for new feeds</button>"
-	const checking = "Checking for new feeds"
+	const button = "Check for new feeds</span></button>"
+	const checking = "<span>Checking for new feeds"
 
 	tests := []struct {
 		name        string

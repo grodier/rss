@@ -1,0 +1,72 @@
+/* The fonts, self-hosted from shared/fonts. */
+@layer base {
+  /* Bricolage Grotesque (SIL Open Font License, fonts/bricolage-grotesque-OFL.txt),
+     subset to Latin, weights 600-800, for the name and headlines only. */
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("../fonts/bricolage-grotesque.woff2") format("woff2");
+    font-weight: 600 800;
+    font-display: swap;
+  }
+
+  /* Newsreader (SIL Open Font License, fonts/newsreader-OFL.txt), subset to
+     Latin, weights 400-700, for what people read: article text and card
+     excerpts. The italic loads only on pages that use it. */
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader-italic.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: italic;
+    font-display: swap;
+  }
+
+  /* Fallback faces, sized to match the web fonts, so the swap when they
+     arrive (font-display: swap) barely moves the text: each is a local font
+     scaled to the web font's average character width, with its line metrics
+     overridden to the web font's. Computed as Capsize and fontaine do:
+       size-adjust = web font's xWidthAvg / local font's xWidthAvg
+       ascent-override = web font's ascender / size-adjust
+       descent-override = web font's descender / size-adjust
+       line-gap-override = web font's line gap / size-adjust
+     where xWidthAvg is the advance width averaged over Latin text with
+     Capsize's character frequencies (@capsizecss/unpack's weightings), in
+     ems, and the line metrics are the web fonts' OS/2 typo ones (they set
+     USE_TYPO_METRICS), in ems. The web fonts' numbers come from instancing
+     the files in shared/fonts with fontTools at the weight and optical size
+     used most; the local fonts' from @capsizecss/metrics (Arial and Georgia,
+     the first local() of each; the others are close enough to share them).
+     Recompute them when a font file changes. */
+
+  /* Bricolage Grotesque at wght 700, opsz 18 (.article-title): xWidthAvg
+     0.4865em, ascender 0.93em, descender 0.27em, no line gap. Arial: xWidthAvg
+     913/2048em. Headlines are bold, so the browser emboldens the regular
+     local face, keeping its widths. */
+  @font-face {
+    font-family: "Bricolage Grotesque Fallback";
+    src: local("Arial"), local("Helvetica"), local("Roboto");
+    size-adjust: 109.14%;
+    ascent-override: 85.21%;
+    descent-override: 24.74%;
+    line-gap-override: 0%;
+  }
+
+  /* Newsreader at wght 400, opsz 18 (excerpts and article text): xWidthAvg
+     0.4090em, ascender 0.735em, descender 0.265em, no line gap. Georgia:
+     xWidthAvg 913/2048em. */
+  @font-face {
+    font-family: "Newsreader Fallback";
+    src: local("Georgia"), local("Noto Serif");
+    size-adjust: 91.74%;
+    ascent-override: 80.11%;
+    descent-override: 28.88%;
+    line-gap-override: 0%;
+  }
+}

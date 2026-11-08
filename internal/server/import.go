@@ -172,11 +172,12 @@ func importFilename(name string) string {
 
 // importRow is one feed on an import's results page.
 type importRow struct {
-	Title  string
-	URL    string
-	FeedID string
-	Reason string // why it couldn't be added
-	Host   string // to search for; "" when the URL has none
+	Position int // the feed's place in the file; import-status.ts keys rows by it
+	Title    string
+	URL      string
+	FeedID   string
+	Reason   string // why it couldn't be added
+	Host     string // to search for; "" when the URL has none
 }
 
 type importPage struct {
@@ -200,7 +201,9 @@ var importReasons = map[rss.ImportFailure]string{
 }
 
 // importHandler shows an import's progress and then its results. While any
-// feed is pending or running the page refreshes itself.
+// feed is pending or running, import-status.ts fetches the page every 2 s and inserts
+// the new rows in place; without JavaScript a meta refresh reloads it.
+// It makes no writes, so polling it is harmless.
 func (s *Server) importHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
@@ -225,7 +228,7 @@ func (s *Server) importHandler(w http.ResponseWriter, r *http.Request) {
 	data := importPage{Nav: s.nav(r, "settings"), Filename: imp.Filename, Total: len(feeds)}
 	for _, f := range feeds {
 		// f.Error is internal detail and must never reach the template.
-		row := importRow{Title: f.Title, URL: f.URL, FeedID: f.FeedID}
+		row := importRow{Position: f.Position, Title: f.Title, URL: f.URL, FeedID: f.FeedID}
 		switch f.Status {
 		case rss.ImportSubscribed, rss.ImportAlreadySubscribed:
 			row.Title = cmp.Or(row.Title, f.FeedTitle, f.URL)

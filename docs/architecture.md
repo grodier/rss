@@ -19,8 +19,8 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
   Its row is also the cached result for that site key.
 - **Article:** one item of a feed.
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
-- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`rss.NewsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save, where undated ones get spaced-out positions at least a day back), its published date.
-- **Arrived:** an article arrives at its `created_at` when it's news by position (`timeline_at` no more than `rss.NewsWindow` below `created_at`, `Article.IsNews`); timelines put what arrived since the reader last looked first (see "Timeline" in features.md).
+- **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`rss.NewsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save or on a save after two days without a fetch attempt, where undated ones get spaced-out positions at least a day back), its published date.
+- **Reader's position** (`timeline_entries.timeline_at`): where an article sits in one reader's timelines instead of its timeline position, for news that arrived while they were looking and a newly followed feed's recent posts, raised above what they've seen and set once (see "The reader's position" in features.md).
 - **Subscription:** a user following a feed.
   Subscriptions decide what's in the user's timeline and which feeds are refreshed in the background.
 - **Read:** the user opened the article, or clicked through to the original, or did either for a copy of it.
@@ -64,7 +64,7 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
@@ -82,9 +82,10 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
-| `internal/ui` | Embedded page templates, email templates and static files | — |
+| `internal/ui` | Embedded page templates, email templates and the web app manifest | — |
 | `internal/validator` | Form validation helpers and the rules for new passwords | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
+| `web` | The frontend's npm project; its Go package embeds the build (`App`, what `/static` serves) | — |
 
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct that holds them are in `internal/server/server.go`, with compile-time checks that the `psql` repositories satisfy them.
@@ -106,6 +107,8 @@ Third-party modules and what they're for (CLAUDE.md asks for a justification bef
 | `golang.org/x/crypto/argon2` | Password hashing |
 | `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
+
+The frontend's npm devDependencies (`web/package.json`) are Vite, which builds the JavaScript and CSS, TypeScript, which checks the modules' types (`tsc --noEmit`; Vite strips the types when it builds), Prettier, which formats the sources, and Vitest with happy-dom, which tests the modules; they run only at build time and in CI, and nothing from npm reaches the browser but our own code.
 
 ## HTTP
 
@@ -130,13 +133,13 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | Route | Login | What it does |
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
-| `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year |
+| `GET /static/*` | no | The built frontend (`web.App`): hashed files under `assets/` and public files with their current `?v=` are cached for a year, others revalidated; an outdated entry's hashed name gets the current file |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
 | `GET /shared/{token}/feed.atom` | no | A shared timeline's Atom feed |
-| `GET /` | no | Landing page; when logged in, Home under the tab row |
+| `GET /` | no | Landing page; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row |
 | `GET, POST /signup` | no | Only registered with `-invite-code` |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
@@ -152,11 +155,14 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET, POST /feeds/{id}/edit` | yes | Edit subscription: name and tags (and Unsubscribe) |
 | `GET, POST /tags` | yes | Tags, and making one |
 | `GET /tags/{id}`; `POST /tags/{id}/feeds`, `/rename`, `/delete` | yes | A tag's page, and changing it |
+| `POST /timelines/order` | yes | The whole tab order, posted by `reorder.ts` after a drag or a move (204) |
 | `GET, POST /timelines`, `GET /timelines/new` | yes | Timelines, and making one (`?preset=`, `?tag=`) |
+| `GET /timelines/all` | yes | Home at its own address, since `/` may show another tab |
 | `GET /timelines/{id}`, `GET, POST /timelines/{id}/edit` | yes | A custom timeline, and editing it |
-| `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order |
+| `POST /timelines/{id}/delete`, `/move` | yes | Delete; move up or down in tab order (`/timelines/all/move` moves Home) |
+| `GET /timelines/{id}/share` | yes | A timeline's share page |
 | `POST /timelines/{id}/share`, `/unshare`, `/share/new-link` | yes | Sharing (needs a confirmed email) |
-| `POST /timeline/seen` | yes | "You were here" beacon: the newest timeline position seen and when its page was rendered; 204 |
+| `POST /timeline/seen` | yes | "You were here" beacon: the newest position seen, and on which timeline (`all` or its ID); 204 |
 | `GET /articles/{id}` | yes | Article page; records the read |
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
@@ -198,6 +204,8 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               └──< site_icons
 
 users ──  timeline_marks (one row per user, once reported)
+users ──< timeline_lines (one per timeline seen: Home's with no timeline_id) >── timelines
+users ──< timeline_entries >── articles (feed_id, no foreign key)
 users ──< tags
 subscriptions ──< subscription_tags >── tags
 users ──< timelines ──< timeline_tags (>── tags) / timeline_feeds (>── subscriptions)
@@ -215,15 +223,23 @@ emails   (the outbox: no foreign keys)
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.
   Ingest flags copies (`articles.has_copies`, set by `saveArticles` and never cleared), and timelines check for an earlier copy only on flagged rows.
-- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineMark`), to group the timeline and place the "You were here" divider; its positions compare with `articles.timeline_at` and its render times (`seen_as_of`, `divider_as_of`) with `articles.created_at`, with no foreign key to an article.
+- **`timeline_marks`** is written only by the timeline's beacon (`MarkSeen`) and read by every timeline page that isn't starred-only (`TimelineLine`), for whether a new visit has started, and at ingest and on subscribe, to set the reader's own positions (`timeline_entries`); its positions compare with the reader's positions (a row's, else `articles.timeline_at`), with no foreign key to an article.
+- **`timeline_lines`** holds each timeline's own "You were here" line, one row per timeline the user has had on screen (Home's with a NULL `timeline_id`, unique with `NULLS NOT DISTINCT`): `MarkSeen` upserts the reported timeline's row in the transaction that updates `timeline_marks`, after checking the timeline is the user's, and a new visit moves every row's `divider_at` to its `seen_up_to`; `TimelineLine` reads it joined to the user's `timeline_marks` row.
+  Only the line is per timeline: ingest and trimming use `timeline_marks`.
+- **`timeline_entries`** holds each reader's own position for news that arrived in a feed they follow while they were looking, and for a feed's recent posts when they follow it: `saveArticles` writes rows for inserted articles, for each follower whose `timeline_marks.seen_at` is within `rss.NewsWindow`, and `SubscriptionRepository.Subscribe` for the feed's articles positioned within `rss.NewsWindow`; both raise the shared `timeline_at` above the reader's `seen_up_to` (`raisePositions`).
+  `Subscribe` also writes a row for each of the new feed's copies that would otherwise take an entry of the reader's down to the copy's date (`keepCopiesInPlace`).
+  Rows are inserted or deleted, never updated, and a row is never below the article's `timeline_at`, so deleting one is always safe; `feed_id` copies the article's feed so timelines can join a row to the reader's subscription to it.
+  `Unsubscribe` keeps the reader's rows for the feed, so following it again finds its posts where they were.
+  `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
+  Every timeline that isn't starred-only or shared reads them (`ListTimeline`): an entry is at the reader's row's position when there is one, else at `timeline_at`, and rows of feeds the reader no longer follows are left out by a join with `subscriptions`.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
-Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads and enrich job; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
-Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean; deleting a tag removes it from subscriptions and timelines.
+Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
+Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean, except for the reader's `timeline_entries` rows for the feed, which stay until a visit trims them; deleting a tag removes it from subscriptions and timelines; deleting a timeline deletes its `timeline_tags`, `timeline_feeds` and `timeline_lines` rows.
 Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 
 Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and `schema_fingerprint` (one row: the fingerprint of the migrations last applied), which `psql.Migrate` creates for the pre-alpha check (see "The process").
@@ -278,12 +294,13 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **Untrusted HTML:** `sanitize.HTML` (see "Reading" in features.md).
   The CSP is `default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com`: no inline scripts or styles, images from any `https:` host.
   `http:` image URLs would be blocked, so `CardImageURL` and `sanitize.HTML` rewrite them to `https:` when rendering; the database keeps the publisher's URLs.
-  YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `app.js` builds from the validated video ID.
+  YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `video-embeds.ts` builds from the validated video ID.
   Every other iframe becomes a link.
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.
   Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO) are served, with their stored `Content-Type`, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies are `SameSite=Lax`, and `Secure` with `-env production`.
+- **The `tab` cookie** remembers the tab a reader was on for a visit (`rss.VisitGap`), so `/` can return to it; it's a cookie rather than a session value because sessions are stored in Postgres and it's set on every timeline page. It's `HttpOnly`, `SameSite=Lax`, `Secure` like the session cookie, and checked against the reader's tabs on every use.
   Each login is a `user_sessions` row: it ends after 90 days unused (`sessionIdleTimeout`) and at most a year after login (scs's `Lifetime`), and logging out deletes it.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most `GOMAXPROCS` hashes run at once and the rest wait.
   `Hash` and `Verify` normalize the password to Unicode NFKC first.
@@ -337,17 +354,42 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 Templates, CSS and JavaScript follow the conventions in CLAUDE.md.
 Beyond those:
 
-- **Static files** are embedded and served at `/static/…?v=<hash>`.
-  The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
-  Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted fonts (`fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
+- **Static files** are built by Vite from the npm project in `web/` (`make assets`; `web/vite.config.ts`) into `web/dist/app`, embedded by package `web` and served at `/static/`.
+  Vite bundles and minifies every entry in `app/entries/` and every sheet in `app/styles/` (with the partials it imports, inlined in its order), splits the modules two entries share into chunks (`assets/chunks/`), writes them and the fonts they link under `assets/` with a content hash in their names, rewrites the stylesheets' `url()`s to those names, and lists every built file in `.vite/manifest.json`, with each script's imported chunks and CSS.
+  At startup the server reads that manifest and hashes every other file (`loadStatic` in `internal/server/static.go`); pages link their stylesheets and scripts through their page group (below), and the `asset` template function links any other source path through the manifest (`shared/fonts/newsreader.woff2` → `/static/assets/newsreader-<hash>.woff2`) and a public file, copied as-is from `web/app/public`, with `?v=<hash>`, so a changed file gets a new URL and can be cached for a year.
+  Every response carries an `ETag` of its content; a public file without its current `?v=` gets `Cache-Control: no-cache`, so it's revalidated rather than kept.
+  During a deploy Render runs the old and new versions side by side, so a request for an outdated hashed name of an entry or a sheet (`assets/reading-<old hash>.js`, `assets/base-<old hash>.css`) gets the current file, uncached; any other missing file is a 404.
+  That includes an outdated chunk (`assets/chunks/…`): only a page that loaded an old entry from its cache in that window misses it, and it loses its enhancements but still works without them.
+  Besides the CSS and JavaScript, they're the logo and favicons (`web/app/public/img/`) and the self-hosted fonts (`web/shared/fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
+  The fonts load with `font-display: swap`, so text first shows in a size-matched fallback face (`"Bricolage Grotesque Fallback"`, `"Newsreader Fallback"` in `web/shared/styles/fonts.css`: local Arial and Georgia scaled to the web fonts' widths and line metrics, named right after the web font in `--font-display` and `--font-reading`), and the swap barely moves it; the comment above them says how their numbers are computed.
+  So the fonts don't wait for the stylesheet, `app-head` preloads Bricolage on every page and the `reading-font` partial preloads Newsreader (never the italic) on the pages with reading text on their first screen; both preload the font's built URL through `asset`, the one `base.css`'s `url()` names (`TestFontPreloadsMatchCSS`), as otherwise it downloads twice.
+  The landing page and Log in draw the logo inline instead (`partials/logo.html`), so its sun can rise when they load; change it together with `img/logo.svg` (`TestInlineLogoMatchesFile` checks their shapes match).
   The install icons (`img/icon-192.png`, `img/icon-512.png`, `img/apple-touch-icon.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
 - **The web app manifest** (`ui/manifest.webmanifest`) is embedded and served by its own handler, not from `/static`: Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would sniff it as `text/plain`.
   Pages are standalone, so each includes `app-head` (`partials/head.html`: icons, manifest link, `theme-color`); a test fails for a page without it.
   The manifest and the `theme-color` metas repeat `--bg`, as they can't read CSS custom properties: the manifest the light one, and `app-head` the user's theme's on logged-in pages (they pass it their navData), else a light and dark pair with `prefers-color-scheme` media queries.
-- **Themes:** `main.css` defines the color tokens on `:root` (light), then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme="light"])`, and for `:root[data-theme="dark"]`.
+- **Page groups** (#547): each page loads only the CSS and JavaScript of its group, named once in its head, `{{template "assets" "<group>"}}` (`partials/head.html`).
+  A group is a sheet, `web/app/styles/<group>.css`, an entry, `web/app/entries/<group>.ts`, or both; an entry imports the modules its pages use and sets them up, and can import another group's sheet, which Vite lists as its CSS.
+  The groups: `reading` (timelines, Saved, feeds, sites, articles, the debug inspectors), `search` (Search, a lookup), `settings` (no script: the Settings pages without one, My feeds, tags, a subscription's edit page, New timeline and a timeline's share page), `timelines` (the Timelines page and the timeline form, with `settings.css`), `account` (the Settings pages with password fields, Import and an import's progress, with `settings.css`), `solo` (no script: logged-out pages, errors, the policies, a shared timeline) and `login` (Log in, Sign up and Reset password, with `solo.css`).
+  `assetTags` (`internal/server/static.go`), built once per group at startup from the manifest, writes the head's tags in this order: stylesheets (`base.css`, the group's sheet, then the CSS the entry and its chunks list), a `<link rel="modulepreload">` for each chunk the entry imports, recursively (so they download alongside it rather than after it), then the entry's `<script type="module">`, each file once.
+  Everything loads at once from the head: nothing is imported when a feature's markup is found, as an enhancement would then arrive a round trip late.
+  An unknown group is an error, which fails the page's template; `TestPagesNameOneGroup` checks every page names one.
+  `web/build_test.go` (`TestReadingBundleBudget`) holds the reading pages' JavaScript and CSS, gzipped, to a budget.
+- **Stylesheets:** `web/app/styles/base.css`, on every page, imports the shared partials (`web/shared/styles`: the layer order, reset, fonts, tokens, and base elements, buttons, forms and messages), then the shell and avatars; each other sheet in `web/app/styles` imports the reader's partials (`web/app/styles/partials`, one per area) its pages use.
+  Every partial wraps its rules in their cascade layer, and the partials have one order (in `base.css`'s comment), which every sheet imports them in, with `press.css` last: `base.css` followed by a group's sheet is the same cascade as one stylesheet of every partial would be, for the rules that match its pages, so a rule only moves with the partial it's in.
+- **Press states** (#510): the last partial, `press.css`, holds the `:active` styles that give touch, mouse and keyboard presses feedback, since hover is limited to devices that hover.
+  Colors apply always; the scales sit in the `prefers-reduced-motion: no-preference` block.
+  The browser's tap highlight is turned off.
+- **Themes:** `tokens.css` (`web/shared/styles`) defines the color tokens on `:root` (light), then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme="light"])`, and for `:root[data-theme="dark"]`.
   A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
-  The dark values are written twice (system and chosen), and `internal/ui/css_test.go` fails if the two differ or a color token has no dark value.
+  The dark values are written twice (system and chosen), and `web/css_test.go` fails if the two differ or a color token has no dark value.
   Logged-out and error pages have no user, so they always follow the system.
+- **Motion:** the easing curves and durations are tokens on `:root` in `tokens.css`, next to the colors, and every animation and moving transition is written inside `@media (prefers-reduced-motion: no-preference)`; `web/css_test.go` (`TestMotionIsOptIn`, over every partial) fails on motion outside it.
+- **View transitions** (#513): navigating from page to page crossfades (`@view-transition` in `shell.css`, inside the reduced-motion opt-in), for links and form posts that redirect, but not reloads.
+  The crossfade is the browser's own, which blends the two pages so that whatever is the same on both, the nav included, stays still; `shell.css` only sets its timing on `::view-transition-group(root)`, which the images inherit.
+  Only the tab row's underline has a `view-transition-name` (see the tab row below): a named element is drawn from a snapshot during the transition, and the frosted bars' snapshots don't match them live, so they'd jump at the start and end.
+  Back and Forward cut: `back-forward.ts` skips the transition for traverse navigations (see below), so it never plays after a browser's own swipe-back animation.
+  Browsers without cross-document view transitions, and readers who ask for less motion, navigate with a plain cut; `html` reserves the scrollbar gutter so the column doesn't shift between short and long pages.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.
   Log out is a button on the Settings home.
@@ -355,13 +397,24 @@ Beyond those:
   People's avatars (the nav, Settings) stay circles.
 - **The tab row** (`partials/timeline_tabs.html`) heads Home and each custom timeline in place of the page's visible heading (the `<h1>` is visually hidden).
   It's a `nav` of links with `aria-current`, not ARIA tabs, and shows no counts.
-- **`app.js`** has ten enhancements, each hooked onto server-rendered markup: local times (`<time data-local>`), read pings (`<a ping>` → `navigator.sendBeacon`), Save and Star buttons (`form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally), Share buttons (`button[data-share-url]`, rendered hidden and shown by `app.js`; the share sheet, else the clipboard), video embeds (`figure.embed[data-embed]`), the "You were here" beacon (`.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is hidden), infinite scroll (`.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), scrolling the tab row to its current tab, and a show/hide toggle on every password input.
-  `internal/server/scroll_test.go` pins the markup the script relies on, and `search_test.go` (`TestLiveSearchMarkup`) live search's.
+  The current tab's underline is its own element, `.tab-indicator` (`aria-hidden`), named `tab-indicator` for view transitions (#521): between two tab pages the browser moves it from the old tab to the new one apart from the page's crossfade, and to or from a page without the row it fades with the page.
+  `timeline-tabs.css` moves it on `--ease-out` and stretches and squashes the new snapshot about its middle (`tab-indicator-stretch`).
+  When the script (`timeline-tabs.ts`) has loaded before the new page's first render (it's deferred, so on a slow device it may not have), its `pagereveal` listener replaces that with an elastic move: two springs, one per edge, as keyframes on `::view-transition-group(tab-indicator)`.
+  The row starts scrolled just enough to show the current tab before the first render, with no script (`scroll-initial-target` and `scroll-snap-align: end` on it, the row's scroll padding keeping it clear of the fade), so a transition never captures the new tab out of view.
+  `timeline-tabs.ts` puts the row back where the reader left it on the previous tab page (its `scrollLeft`, saved to `sessionStorage` in `pageswap` for the URL being opened), but only before the row is first seen (in `pagereveal` during a transition, else when nothing has been painted), and scrolls the current tab into view where `scroll-initial-target` isn't supported; on the page being left it unnames an underline scrolled out of the row (`data-unnamed`), whose unclipped snapshot would slide in from outside it.
+- **The enhancements** are TypeScript modules, one per enhancement, set up in order by the entries of the page groups whose pages use them (`web/app/entries`, above); those another site could reuse are in `web/shared/lib`, the reader's in `web/app/features`.
+  Each exports a setup function (`init`, or one that takes a root, like `localizeTimes`, for rows added later) and runs nothing on import.
+  There are fifteen, each hooked onto server-rendered markup or page events: local times (`local-times.ts`, `<time data-local>`), read pings (`read-pings.ts`, `<a ping>` → `navigator.sendBeacon`), Back and Forward without a view transition (`back-forward.ts`; the page being left skips it in `pageswap` when `activation.navigationType` is `traverse`, which runs whenever the script has loaded, so it needn't block rendering; where there's no activation, a page restored from the back/forward cache skips it in `pagereveal`), Save and Star buttons (`save-star.ts`, `form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally; `aria-disabled` while the request runs, dimmed by `data-busy` only after `--delay-busy`, and `data-just-toggled` on a button just turned on, which `rows.css` animates), Share buttons (`share.ts`, `button[data-share-url]`, rendered hidden and shown by the script; the share sheet, else the clipboard), busy forms (`busy-forms.ts`, `form[data-busy]`: the slow forms post normally, and their button is `aria-disabled` at once, takes its `data-busy-label` and ignores further submits, then shows a spinner and announces the label after `--delay-busy`; restored on `pageshow` from the back/forward cache), video embeds (`video-embeds.ts`, `figure.embed[data-embed]`), the "You were here" beacon (`seen-beacon.ts`, `.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is first shown and each time it's hidden), infinite scroll (`infinite-scroll.ts`, `.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`live-search.ts`, `form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), lookup and import status (`lookup-status.ts` and `import-status.ts`, `[data-lookup-poll]` and `[data-import-poll]`, sharing `pollSelf` from `poll-self.ts`: the page fetches itself every 2 s while visible, with the meta refresh in `<noscript>`; the lookup page follows a redirect to the site page with `location.replace`, and swaps in and announces a failure or "No feeds"; the import page inserts new rows and groups by `data-position` without replacing any, updates its progress line silently, and announces only the finish), the tab row (`timeline-tabs.ts`: its scroll, and the underline's move between tabs, above), the timeline form's live summary and feed filter boxes (`timeline-form.ts`, `form[data-timeline-form]`), reordering on `/timelines` (`reorder.ts`, `ul[data-reorder]`: drag handles and in-place move buttons, posting the order to `/timelines/order`; rows glide into place on springs with the Web Animations API, not a view transition, and a drag scrolls the page near its edges), and a show/hide toggle on every password input (`password-toggle.ts`).
+  The polite live region they announce in is `announce.ts`'s, and `--delay-busy` is read once by `busy-delay.ts`.
+  Each module's behavior is tested in its `*.test.ts` (see Testing); `internal/server/scroll_test.go` pins the markup the modules rely on, and `search_test.go` (`TestLiveSearchMarkup`) live search's.
 
 ## Testing
 
 Server and DB test conventions are in CLAUDE.md.
 The other packages test against fakes of their own interfaces, and use `httptest` servers with `fetch.Options{AllowPrivate: true}` where real HTTP matters (`fetch`, `discovery`, `ingest`).
+The frontend's modules are tested with Vitest in happy-dom (`make test/web`), each in a `*.test.ts` next to it, through the markup hooks the server renders, with `fetch`, timers and the browser APIs happy-dom lacks (`sendBeacon`, the Clipboard API) faked; `isolate()` in `web/shared/test/setup.ts` gives each test fresh modules and removes the listeners it added.
+happy-dom has no layout, view transitions, Navigation API or Web Animations, so the tab underline's move, dragging and the page transitions are checked by hand, and only their springs (`spring`, `at`) are tested.
+Where a module mirrors Go, Go is the spec: `TestTimelineSummaryFixture` writes the timeline form's summary for a table of form states to `web/app/features/testdata/timeline-summary.json` (with `-update`; it fails when the file is stale), and `timeline-form.test.ts` checks `timeline-form.ts` gives the same.
 `tools/loadseed` (`make db/loadseed`, dev only, not in the `www` binary) seeds a development database at realistic scale and times the `psql` reading methods themselves, printing their plans from `auto_explain`, on a connection set up as the app's (`psql.NewConnector`).
 
 ## Deployment
@@ -370,11 +423,14 @@ Production runs on Render since #214.
 Why this setup is under "Deployment" in [decisions.md](decisions.md).
 What runs where, and how to operate it, is in [`infra/README.md`](../infra/README.md) (the runbook) and the Terraform in `infra/`; this section is the overview.
 
-- **Images.** The `Dockerfile` builds `www` as a static binary into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`).
+- **Images.** The `Dockerfile` builds the frontend in a Node stage (the version in `web/.node-version`), then `www` as a static binary, embedding it, into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`); the image has no Node.
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
 - **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
   Values that change outside Terraform (the images, the invite code, the SMTP password, `RSS_ALLOW_RESET_TO`) are in `ignore_changes`.
 - **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `reset-db.yml` allows a pre-alpha schema reset, then deploys; `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.
-- **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Go modules, GitHub Actions, the base images and the Terraform providers.
+- **Edge** (#541): Render's Cloudflare edge terminates TLS and serves HTTP/2 and HTTP/3 (`h3` seen in DevTools), compresses responses (Brotli, when the client accepts it), and caches `/static` files ("Common static files", set in Render's dashboard), purging them on every successful deploy.
+  Pages and `/sites/{id}/icon` aren't cached there.
+  Checks and the setting: "Edge caching" in [`infra/README.md`](../infra/README.md).
+- **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Go modules, the frontend's npm packages (Vite and Vitest in one PR), GitHub Actions, the base images and the Terraform providers.

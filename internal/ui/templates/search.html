@@ -5,9 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - search</title>
-  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "assets" "search"}}
   {{template "app-head" .Nav}}
-  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -37,7 +36,7 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{/* app.js's live search replaces this container's contents with the
+      {{/* live-search.ts replaces this container's contents with the
            same container from /search?q=… as the reader types. */}}
       <div id="search-results" data-search-results>
       {{if .AppLink}}
@@ -48,9 +47,9 @@
       {{with .LookupQ}}
       <section class="lookup-cta">
         <p>Not what you're looking for? Find the feeds a website publishes.</p>
-        <form action="/lookups" method="post">
+        <form action="/lookups" method="post" data-busy>
           <input type="hidden" name="q" value="{{.}}">
-          <button class="btn-sm" type="submit">Look up {{.}}</button>
+          <button class="btn-sm" type="submit" data-busy-label="Looking up {{.}}…"><span data-busy-text>Look up {{.}}</span></button>
         </form>
       </section>
       {{end}}

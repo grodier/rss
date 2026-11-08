@@ -117,9 +117,9 @@ type ArticleStore interface {
 	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	// ListTimeline returns a page of the user's subscriptions' articles that
-	// filter shows (the zero filter for Home), grouped by anchors (zero
-	// anchors: one group). Summary and Content are left empty.
-	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	// filter shows (the zero filter for Home), in the user's position order
+	// (see rss.ArticleWithFeed.Position). Summary and Content are left empty.
+	ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	// ListShared returns the newest limit articles with a URL of the owner's
 	// timeline with filter, with each feed's own title, for its shared feed.
 	// Summary and Content are left empty.
@@ -144,13 +144,13 @@ type SubscriptionStore interface {
 type ReadStore interface {
 	MarkRead(ctx context.Context, userID, articleID string) error
 	ReadArticleIDs(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
-	// TimelineMark returns what the user's timeline groups and "You were
-	// here" divider are decided from; a zero mark if the timeline has never
-	// reported one.
-	TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error)
+	// TimelineLine returns what timelineID's "You were here" line is
+	// decided from ("" for Home); zero if the user has never reported a
+	// look.
+	TimelineLine(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error)
 	// MarkSeen records that the user has had the timeline position upTo on
-	// screen, on a page rendered at asOf.
-	MarkSeen(ctx context.Context, userID string, upTo, asOf time.Time) error
+	// screen on timelineID ("" for Home).
+	MarkSeen(ctx context.Context, userID, timelineID string, upTo time.Time) error
 }
 
 // SaveStore records and lists which articles a user has saved.
@@ -212,19 +212,26 @@ type TimelineStore interface {
 	// Get returns the user's custom timeline id with its filter, or
 	// rss.ErrNoRecord.
 	Get(ctx context.Context, userID, id string) (rss.Timeline, error)
-	// List returns the user's custom timelines in tab order, without their
-	// filters.
+	// List returns the user's tabs in order, without their filters: Home
+	// (the rss.Timeline with no ID) wherever the user put it, and their
+	// custom timelines.
 	List(ctx context.Context, userID string) ([]rss.Timeline, error)
+	// ListWithFilters is List with each timeline's filter.
+	ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error)
 	// Update replaces the name, description and filter of the user's custom
 	// timeline t.ID. rss.ErrNoRecord as Create, or if there's no such
 	// timeline.
 	Update(ctx context.Context, userID string, t rss.Timeline) error
 	// Delete deletes the user's custom timeline id, or rss.ErrNoRecord.
 	Delete(ctx context.Context, userID, id string) error
-	// Move swaps the user's custom timeline id with the one before it in tab
-	// order if up, else the one after it; at either end it does nothing.
-	// rss.ErrNoRecord as Get.
+	// Move swaps the user's tab id (a custom timeline, or "" for Home) with
+	// the one before it in tab order if up, else the one after it; at either
+	// end it does nothing. rss.ErrNoRecord as Get, unless id is "".
 	Move(ctx context.Context, userID, id string, up bool) error
+	// Reorder sets the user's tab order to ids (custom timeline IDs, "" for
+	// Home, each exactly once), or returns rss.ErrOrderChanged if they
+	// aren't exactly the user's tabs.
+	Reorder(ctx context.Context, userID string, ids []string) error
 	// Share gives the user's custom timeline id the share token newToken if
 	// it has none, and returns its token. rss.ErrNoRecord as Get.
 	Share(ctx context.Context, userID, id, newToken string) (string, error)

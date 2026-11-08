@@ -1,0 +1,217 @@
+/* The tab row on Home and custom timelines, and its underline. */
+@layer components {
+  .timeline-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+  }
+
+  .timeline-about {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+  }
+
+  .timeline-about .timeline-links {
+    margin-inline-start: auto;
+    font-size: 0.875rem;
+  }
+
+  /* The tabs fill the page head in place of its heading, and scroll
+     sideways when they don't fit. The scrollbar stays (thin) where a mouse
+     may need it, and is hidden on touch screens, which swipe. */
+  /* The active tab's underline sits on the head's edge, so tabs keep a
+     plain divider instead of the nameplate rule. */
+  .page-head.tabs-head {
+    padding-block: 0;
+    border-block-end: 1px solid var(--border);
+    box-shadow: none;
+  }
+
+  .timeline-tabs {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 0.75rem;
+    min-inline-size: 0;
+  }
+
+  /* The tabs fade out before the Edit pill, so a row that overflows reads
+     as one that scrolls, and the end padding lets the last tab scroll clear
+     of the fade. Only the mask's alpha counts, so any opaque token does. */
+  .timeline-tabs ul {
+    position: relative; /* the offsetParent timeline-tabs.ts measures tabs against */
+    display: flex;
+    flex: 1;
+    gap: 1.25rem;
+    min-inline-size: 0;
+    padding-inline-end: 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    -webkit-mask-image: linear-gradient(to left, transparent, var(--text) 1.5rem);
+    mask-image: linear-gradient(to left, transparent, var(--text) 1.5rem);
+    scroll-padding-inline-end: 1.5rem; /* the fade */
+  }
+
+  .timeline-tabs li {
+    flex: none;
+  }
+
+  .timeline-tabs .btn {
+    flex: none;
+  }
+
+  /* The bottom padding leaves room for the current tab's underline. */
+  .timeline-tabs li a {
+    position: relative;
+    display: block;
+    max-inline-size: 16rem;
+    padding: 1rem 0 calc(0.875rem + 2px);
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: 1rem;
+    font-weight: 650;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition:
+      background-color var(--duration-quick) var(--ease-out),
+      color var(--duration-quick) var(--ease-out);
+  }
+
+  .timeline-tabs li a:hover {
+    color: var(--text);
+  }
+
+  /* The row starts scrolled just enough to show the current tab, clear of
+     the fade, before the page is first drawn, so a view transition never
+     captures it out of view however late timeline-tabs.ts runs (which keeps the row
+     where the reader left it, and does this where scroll-initial-target
+     isn't supported). Without scroll-snap-type, the alignment only places
+     it; the row doesn't snap. */
+  .timeline-tabs li a[aria-current="page"] {
+    color: var(--text);
+    scroll-initial-target: nearest;
+    scroll-snap-align: end;
+  }
+
+  /* The current tab's underline is its own element (in the current tab's
+     link only), so it can slide from tab to tab (below). It's a border, not
+     a background, so forced colors keep it. */
+  .tab-indicator {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    border-block-end: 2px solid var(--brand-strong);
+  }
+
+  /* Tab to tab (#521): the underline is named, so between two tab pages
+     the browser draws it apart from the page's crossfade and moves it from
+     the old tab's place and width to the new one's, here on --ease-out,
+     while the line stretches about its middle as it leaves, squashes a
+     little as it lands and settles. When timeline-tabs.ts is listening before the new
+     page is first drawn, it replaces this with an elastic move that reaches
+     toward the new tab. The old and new snapshots are the same line, so the
+     new one is shown alone, stretched to the moving box rather than scaled
+     with it (which would thicken it). To or from a page without the tab
+     row, the line fades with the page. See "Motion and feedback" in
+     docs/decisions.md. */
+  @media (prefers-reduced-motion: no-preference) {
+    .tab-indicator {
+      view-transition-name: tab-indicator;
+    }
+
+    /* timeline-tabs.ts, on the page being left, when its tab is scrolled out of the
+       row: its snapshot isn't clipped by the row, so it would slide in from
+       outside it. Unnamed, the new page's line fades in. */
+    .tab-indicator[data-unnamed] {
+      view-transition-name: none;
+    }
+
+    ::view-transition-group(tab-indicator) {
+      animation-duration: var(--duration-move);
+      animation-timing-function: var(--ease-out);
+    }
+
+    ::view-transition-old(tab-indicator),
+    ::view-transition-new(tab-indicator) {
+      block-size: 100%;
+      animation: none;
+    }
+
+    ::view-transition-new(tab-indicator) {
+      transform-origin: 50% 100%;
+      animation: tab-indicator-stretch var(--duration-move) var(--ease-in-out);
+    }
+
+    ::view-transition-old(tab-indicator) {
+      opacity: 0;
+    }
+
+    /* Alone, it's entering or leaving: it fades with the page. */
+    ::view-transition-old(tab-indicator):only-child {
+      opacity: 1;
+      animation: tab-indicator-out var(--duration-quick) var(--ease-out) both;
+    }
+
+    ::view-transition-new(tab-indicator):only-child {
+      animation: tab-indicator-in var(--duration-quick) var(--ease-out) both;
+    }
+  }
+
+  /* Scaled from its bottom middle: longer and thinner as it leaves, then
+     shorter and thicker as it lands, keeping about the same area. */
+  @keyframes tab-indicator-stretch {
+    12% {
+      transform: scale(1.35, 0.8);
+    }
+
+    36% {
+      transform: scale(1.04, 0.97);
+    }
+
+    52% {
+      transform: scale(0.95, 1.08);
+    }
+
+    72% {
+      transform: scale(1.015, 0.99);
+    }
+  }
+
+  @keyframes tab-indicator-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes tab-indicator-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .timeline-tabs li a:focus-visible {
+    outline-offset: -2px;
+  }
+
+  @media (pointer: coarse) {
+    .timeline-tabs ul {
+      scrollbar-width: none;
+    }
+  }
+
+  @media (max-width: 42.99rem) {
+    .page-head.tabs-head {
+      padding: 0 1rem;
+    }
+
+    .timeline-tabs li a {
+      max-inline-size: 12rem;
+    }
+  }
+}

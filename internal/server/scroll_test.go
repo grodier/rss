@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"io/fs"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,15 +16,14 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/ui"
 )
 
-// TestInfiniteScrollMarkup checks the markup app.js's infinite scroll relies
+// TestInfiniteScrollMarkup checks the markup infinite-scroll.ts relies
 // on: rows are .article-row elements with an article-{id} id directly inside
 // .article-list, and the next page is linked by .pager a[rel=next].
 func TestInfiniteScrollMarkup(t *testing.T) {
 	timeline := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 			return timelineItems(31), nil
 		},
 	}})
@@ -41,7 +43,7 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 		body     string
 		nextPath string
 	}{
-		{"timeline", getHome(t, timeline, "/", true).Body.String(), "/"},
+		{"timeline", getHome(t, timeline, "/", true).Body.String(), "/timelines/all"},
 		{"saved", getSaved(t, saved, "/saved").Body.String(), "/saved"},
 		{"feed page", serveFeed(t, feed, testFeedID).Body.String(), "/feeds/" + testFeedID},
 	}
@@ -89,20 +91,21 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 	}
 }
 
-// TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
-// and infinite scroll rely on: a timeline's first page puts data-seen-up-to
-// and data-seen-as-of on .article-list itself, app.js sends both, and the divider is a .timeline-divider directly
-// inside .article-list, so appending a later page's children in order keeps
-// it in place.
+// TestYouWereHereMarkup checks the markup the "You were here" beacon
+// (seen-beacon.ts) and infinite scroll rely on: a timeline's first page puts
+// data-seen-up-to and data-timeline on .article-list itself, which the
+// beacon sends as up_to and timeline, and the divider is a .timeline-divider
+// directly inside .article-list, so appending a later page's children in
+// order keeps it in place.
 func TestYouWereHereMarkup(t *testing.T) {
 	items := timelineItems(3)
 	s := newTestServerWith(t, Services{
-		ReadService: &fakeReadStore{timelineMarkFn: func(context.Context, string) (rss.TimelineMark, error) {
-			return rss.TimelineMark{SeenAt: time.Now(), DividerAt: items[1].Article.TimelineAt}, nil
+		ReadService: &fakeReadStore{timelineLineFn: func(context.Context, string, string) (rss.TimelineMark, error) {
+			return rss.TimelineMark{SeenAt: time.Now(), DividerAt: items[1].Position}, nil
 		}},
 		SaveService: &fakeSaveStore{},
-		ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
-			return inGroups(items, 1, 0, 0), nil
+		ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			return items, nil
 		}},
 	})
 	doc, err := html.Parse(strings.NewReader(getHome(t, s, "/", true).Body.String()))
@@ -114,7 +117,7 @@ func TestYouWereHereMarkup(t *testing.T) {
 	if len(lists) != 1 {
 		t.Fatalf("found %d .article-list, want 1", len(lists))
 	}
-	for _, name := range []string{"data-seen-up-to", "data-seen-as-of"} {
+	for _, name := range []string{"data-seen-up-to", "data-timeline"} {
 		if !hasAttr(lists[0], name) {
 			t.Errorf(".article-list has no %s", name)
 		}
@@ -135,24 +138,37 @@ func TestYouWereHereMarkup(t *testing.T) {
 		}
 	}
 
-	// The beacon reports both attributes, under the names
-	// timelineSeenHandler reads.
-	js, err := fs.ReadFile(ui.Static, "static/js/app.js")
+	// What the beacon sends and when is tested in seen-beacon.test.ts. It
+	// reports every HEARTBEAT while the reader is using the page, which must
+	// be shorter than rss.VisitGap so a long read of one page stays one
+	// visit.
+	js, err := os.ReadFile("../../web/app/features/seen-beacon.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, sent := range []string{"up_to: seen.dataset.seenUpTo", "as_of: seen.dataset.seenAsOf"} {
-		if !strings.Contains(string(js), sent) {
-			t.Errorf("app.js doesn't send %q", sent)
+	m := regexp.MustCompile(`export const HEARTBEAT = ([\d *]+);`).FindSubmatch(js)
+	if m == nil {
+		t.Fatal("seen-beacon.ts has no HEARTBEAT = <ms>;")
+	}
+	ms := 1
+	for f := range strings.SplitSeq(string(m[1]), "*") {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil {
+			t.Fatalf("HEARTBEAT = %s: %v", m[1], err)
 		}
+		ms *= n
+	}
+	if heartbeat := time.Duration(ms) * time.Millisecond; heartbeat <= 0 || heartbeat >= rss.VisitGap {
+		t.Errorf("seen-beacon.ts's HEARTBEAT is %v, so it doesn't keep a visit going: rss.VisitGap is %v", heartbeat, rss.VisitGap)
 	}
 }
 
-// TestToggleButtonMarkup checks the markup app.js's Save and Star buttons
+// TestToggleButtonMarkup checks the markup save-star.ts's Save and Star buttons
 // rely on: each row has a form[data-toggle] posting to /articles/{id}/save
 // (or /unsave when saved) and one posting to /articles/{id}/star (or /unstar
 // when starred), each with a return_to input and a button whose aria-pressed
-// is the state.
+// is the state. The Star button is named "Star" and holds the star-burst SVG
+// rows.css animates, hidden from assistive technology.
 func TestToggleButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	s := newTestServerWith(t, Services{
@@ -164,7 +180,7 @@ func TestToggleButtonMarkup(t *testing.T) {
 			return map[string]bool{items[1].Article.ID: true}, nil
 		}},
 		ArticleService: &fakeArticleStore{
-			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+			listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 				return items, nil
 			},
 		},
@@ -197,18 +213,40 @@ func TestToggleButtonMarkup(t *testing.T) {
 			}
 		}
 	}
+
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stars := findAll(doc, func(n *html.Node) bool { return n.Data == "button" && hasClass(n, "star-button") })
+	if len(stars) != len(items) {
+		t.Errorf("found %d Star buttons, want %d", len(stars), len(items))
+	}
+	for _, b := range stars {
+		if b.Parent == nil || b.Parent.Data != "form" || !hasAttr(b.Parent, "data-toggle") {
+			t.Error("Star button isn't in a form[data-toggle]")
+		}
+		if !hasAttr(b, "aria-pressed") || attr(b, "aria-label") != "Star" {
+			t.Errorf("Star button aria-pressed=%q aria-label=%q, want aria-pressed and aria-label=\"Star\"", attr(b, "aria-pressed"), attr(b, "aria-label"))
+		}
+		bursts := findAll(b, func(n *html.Node) bool { return n.Data == "svg" && hasClass(n, "star-burst") })
+		if len(bursts) != 1 || attr(bursts[0], "aria-hidden") != "true" {
+			t.Errorf("Star button: want one svg.star-burst with aria-hidden=\"true\", found %d", len(bursts))
+		}
+	}
 }
 
-// TestShareButtonMarkup checks the markup app.js's Share buttons rely on:
+// TestShareButtonMarkup checks the markup share.ts's Share buttons rely on:
 // each row of an article with a canonical URL has one hidden
-// button[data-share-url] with its URL and a data-share-title.
+// button[data-share-url] with its URL and a data-share-title, named
+// "Share", holding the aria-hidden .copied-label showCopied fills.
 func TestShareButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	for i := range items {
 		items[i].Article.CanonicalURL = fmt.Sprintf("https://example.com/%d", i)
 	}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
-		listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+		listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 			return items, nil
 		},
 	}})
@@ -237,10 +275,19 @@ func TestShareButtonMarkup(t *testing.T) {
 		if !hasAttr(b, "hidden") {
 			t.Errorf("row %d: Share button isn't hidden", i)
 		}
+		if got := attr(b, "aria-label"); got != "Share" {
+			t.Errorf("row %d: aria-label = %q, want %q", i, got, "Share")
+		}
+		labels := findAll(b, func(n *html.Node) bool { return n.Data == "span" && hasClass(n, "copied-label") })
+		if len(labels) != 1 {
+			t.Errorf("row %d: found %d .copied-label in the Share button, want 1", i, len(labels))
+		} else if got := attr(labels[0], "aria-hidden"); got != "true" {
+			t.Errorf("row %d: .copied-label aria-hidden = %q, want %q", i, got, "true")
+		}
 	}
 }
 
-// toggleFormMarkup is what app.js reads from a Save or Star form.
+// toggleFormMarkup is what save-star.ts reads from a Save or Star form.
 type toggleFormMarkup struct {
 	Action   string // the form's action
 	Pressed  string // the submit button's aria-pressed
@@ -308,6 +355,134 @@ func toggleForms(t *testing.T, body, verb string) map[string]toggleFormMarkup {
 	return forms
 }
 
+// TestBusyFormsMarkup checks the markup busy-forms.ts relies on: each
+// slow form is form[data-busy], and its submit button has the busy label in
+// data-busy-label and its own label in a [data-busy-text] span, so the
+// script swaps only the text and keeps any icon, and each page loads
+// the app entry. Fast forms aren't marked.
+func TestBusyFormsMarkup(t *testing.T) {
+	get := func(t *testing.T, s *Server, target string) string {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, target, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d, want %d", target, rr.Code, http.StatusOK)
+		}
+		return rr.Body.String()
+	}
+	feedServices := func(sub *fakeSubscriptionStore) Services {
+		return Services{
+			SubscriptionService: sub,
+			ReadService:         &fakeReadStore{},
+			SaveService:         &fakeSaveStore{},
+			ArticleService:      &fakeArticleStore{},
+			FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
+			}},
+			SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
+				return rss.Site{ID: id, Host: "example.com"}, nil
+			}},
+		}
+	}
+	subscribed := &fakeSubscriptionStore{getFn: func(context.Context, string, string) (rss.Subscription, error) {
+		return rss.Subscription{}, nil
+	}}
+	notSubscribed := &fakeSubscriptionStore{}
+
+	page := func(name string) func(t *testing.T) string {
+		switch name {
+		case "search":
+			return func(t *testing.T) string {
+				s := newTestServerWith(t, Services{SearchService: &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+					return nil, nil
+				}}})
+				return searchRequest(t, s, "example.com").Body.String()
+			}
+		case "site":
+			return func(t *testing.T) string {
+				s := siteServerWithLookup(t, rss.Site{ID: testSiteID, Host: "example.com", URL: "https://www.example.com/"}, nil, nil, nil, rss.Lookup{}, rss.ErrNoRecord)
+				return serveSite(t, s, testSiteID).Body.String()
+			}
+		case "feed":
+			return func(t *testing.T) string {
+				return serveFeed(t, newTestServerWith(t, feedServices(notSubscribed)), testFeedID).Body.String()
+			}
+		case "subscribed feed":
+			return func(t *testing.T) string {
+				return serveFeed(t, newTestServerWith(t, feedServices(subscribed)), testFeedID).Body.String()
+			}
+		case "import":
+			return func(t *testing.T) string {
+				rr := httptest.NewRecorder()
+				importServer(t, &fakeImportStore{}).settingsImportHandler(rr, requestWithSession(settingsSession))
+				return rr.Body.String()
+			}
+		case "login":
+			return func(t *testing.T) string { return get(t, newTestServer(t), "/login") }
+		case "signup":
+			return func(t *testing.T) string {
+				return get(t, newSignupTestServer(t, Services{}), "/signup?invite="+testInviteCode)
+			}
+		}
+		panic("unknown page " + name)
+	}
+
+	for _, tt := range []struct {
+		page, action string
+		group        string // the page's group, whose entry sets up busy forms
+		label, busy  string // the button's label and busy label; "" for a form that isn't busy
+	}{
+		{"search", "/lookups", "search", "Look up example.com", "Looking up example.com…"},
+		{"site", "/lookups", "reading", "Check for new feeds", "Checking for new feeds…"},
+		{"feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
+		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
+		{"import", "/settings/import", "account", "Import", "Importing…"},
+		{"login", "/login", "login", "Log in", "Logging in…"},
+		{"signup", "/signup", "login", "Sign up", "Signing up…"},
+		{"feed", "/feeds/" + testFeedID + "/subscribe", "reading", "", ""},
+		{"subscribed feed", "/feeds/" + testFeedID + "/unsubscribe", "reading", "", ""},
+	} {
+		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
+			body := page(tt.page)(t)
+			if !strings.Contains(body, `<script type="module" src="`+entryJS(tt.group)+`"></script>`) {
+				t.Errorf("page doesn't load the %s entry", tt.group)
+			}
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && attr(n, "action") == tt.action })
+			if len(forms) != 1 {
+				t.Fatalf("found %d forms with action %q, want 1", len(forms), tt.action)
+			}
+			form := forms[0]
+			if tt.busy == "" {
+				if hasAttr(form, "data-busy") {
+					t.Error("form has data-busy, want none")
+				}
+				return
+			}
+			if !hasAttr(form, "data-busy") {
+				t.Error("form has no data-busy")
+			}
+			buttons := findAll(form, func(n *html.Node) bool { return n.Data == "button" && attr(n, "type") == "submit" })
+			if len(buttons) != 1 {
+				t.Fatalf("found %d submit buttons, want 1", len(buttons))
+			}
+			if got := attr(buttons[0], "data-busy-label"); got != tt.busy {
+				t.Errorf("data-busy-label = %q, want %q", got, tt.busy)
+			}
+			texts := findAll(buttons[0], func(n *html.Node) bool { return hasAttr(n, "data-busy-text") })
+			if len(texts) != 1 {
+				t.Fatalf("found %d [data-busy-text] in the button, want 1", len(texts))
+			}
+			if got := textContent(texts[0]); got != tt.label {
+				t.Errorf("[data-busy-text] = %q, want %q", got, tt.label)
+			}
+		})
+	}
+}
+
 func findAll(n *html.Node, match func(*html.Node) bool) []*html.Node {
 	var found []*html.Node
 	for d := range n.Descendants() {
@@ -331,7 +506,7 @@ func hasClass(n *html.Node, class string) bool {
 	return slices.Contains(strings.Fields(attr(n, "class")), class)
 }
 
-// TestVideoEmbedMarkup checks the markup app.js's video embeds rely on: an
+// TestVideoEmbedMarkup checks the markup video-embeds.ts relies on: an
 // article page whose content has a YouTube iframe renders
 // figure.embed[data-embed="youtube"][data-embed-id] with an <a> inside.
 func TestVideoEmbedMarkup(t *testing.T) {

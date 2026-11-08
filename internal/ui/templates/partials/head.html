@@ -1,4 +1,10 @@
-{{define "app-head"}}<link rel="icon" href="{{asset "img/favicon.svg"}}" type="image/svg+xml" />
+{{define "app-head"}}<link rel="preload" href="{{asset "shared/fonts/bricolage-grotesque.woff2"}}" as="font" type="font/woff2" crossorigin />
+  {{- /* Fonts are found late (after the stylesheet, once text uses them), so
+       they're preloaded: Bricolage on every page, for the brand and titles.
+       The URL must be the one the stylesheet's url() resolves to, or the
+       font downloads twice; crossorigin because fonts are fetched in CORS
+       mode. */}}
+  <link rel="icon" href="{{asset "img/favicon.svg"}}" type="image/svg+xml" />
   <link rel="icon" href="{{asset "img/favicon-32.png"}}" sizes="32x32" type="image/png" />
   <link rel="apple-touch-icon" href="{{asset "img/apple-touch-icon.png"}}" />
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -18,3 +24,13 @@
 {{/* html-theme is the data-theme attribute of a logged-in page's <html>,
      from its navData: the user's theme, or nothing to follow the system. */}}
 {{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}}{{end}}
+
+{{/* assets loads a page group's stylesheets and scripts, in the head:
+     {{template "assets" "<group>"}}, once per page (see assetTags). */}}
+{{define "assets"}}{{assetTags .}}{{end}}
+
+{{/* reading-font preloads Newsreader on the pages whose first screen has
+     reading text (--font-reading): timelines, Saved, feeds, sites, articles
+     and the timeline form's summary. Never the italic: only some articles
+     use it. */}}
+{{define "reading-font"}}<link rel="preload" href="{{asset "shared/fonts/newsreader.woff2"}}" as="font" type="font/woff2" crossorigin />{{end}}

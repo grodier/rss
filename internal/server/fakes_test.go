@@ -224,7 +224,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
-	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
+	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	listSharedFn   func(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
 }
 
@@ -239,11 +239,11 @@ func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before
 	return f.listByFeedFn(ctx, feedID, before, limit)
 }
 
-func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 	if f.listTimelineFn == nil {
 		return nil, nil
 	}
-	return f.listTimelineFn(ctx, userID, filter, anchors, before, limit)
+	return f.listTimelineFn(ctx, userID, filter, before, limit)
 }
 
 func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
@@ -256,8 +256,8 @@ func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filte
 type fakeReadStore struct {
 	markReadFn       func(ctx context.Context, userID, articleID string) error
 	readArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
-	timelineMarkFn   func(ctx context.Context, userID string) (rss.TimelineMark, error)
-	markSeenFn       func(ctx context.Context, userID string, upTo, asOf time.Time) error
+	timelineLineFn   func(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error)
+	markSeenFn       func(ctx context.Context, userID, timelineID string, upTo time.Time) error
 }
 
 func (f *fakeReadStore) MarkRead(ctx context.Context, userID, articleID string) error {
@@ -274,18 +274,18 @@ func (f *fakeReadStore) ReadArticleIDs(ctx context.Context, userID string, artic
 	return f.readArticleIDsFn(ctx, userID, articleIDs)
 }
 
-func (f *fakeReadStore) TimelineMark(ctx context.Context, userID string) (rss.TimelineMark, error) {
-	if f.timelineMarkFn == nil {
+func (f *fakeReadStore) TimelineLine(ctx context.Context, userID, timelineID string) (rss.TimelineMark, error) {
+	if f.timelineLineFn == nil {
 		return rss.TimelineMark{}, nil
 	}
-	return f.timelineMarkFn(ctx, userID)
+	return f.timelineLineFn(ctx, userID, timelineID)
 }
 
-func (f *fakeReadStore) MarkSeen(ctx context.Context, userID string, upTo, asOf time.Time) error {
+func (f *fakeReadStore) MarkSeen(ctx context.Context, userID, timelineID string, upTo time.Time) error {
 	if f.markSeenFn == nil {
 		return nil
 	}
-	return f.markSeenFn(ctx, userID, upTo, asOf)
+	return f.markSeenFn(ctx, userID, timelineID, upTo)
 }
 
 type fakeSubscriptionStore struct {
@@ -564,9 +564,12 @@ type fakeTimelineStore struct {
 	createFn func(ctx context.Context, userID string, t rss.Timeline) (string, error)
 	getFn    func(ctx context.Context, userID, id string) (rss.Timeline, error)
 	listFn   func(ctx context.Context, userID string) ([]rss.Timeline, error)
-	updateFn func(ctx context.Context, userID string, t rss.Timeline) error
-	deleteFn func(ctx context.Context, userID, id string) error
-	moveFn   func(ctx context.Context, userID, id string, up bool) error
+	// listWithFiltersFn falls back to listFn when nil.
+	listWithFiltersFn func(ctx context.Context, userID string) ([]rss.Timeline, error)
+	updateFn          func(ctx context.Context, userID string, t rss.Timeline) error
+	deleteFn          func(ctx context.Context, userID, id string) error
+	moveFn            func(ctx context.Context, userID, id string, up bool) error
+	reorderFn         func(ctx context.Context, userID string, ids []string) error
 
 	shareFn        func(ctx context.Context, userID, id, newToken string) (string, error)
 	newShareLinkFn func(ctx context.Context, userID, id, newToken string) error
@@ -588,11 +591,20 @@ func (f *fakeTimelineStore) Get(ctx context.Context, userID, id string) (rss.Tim
 	return f.getFn(ctx, userID, id)
 }
 
+// List returns only Home (the zero rss.Timeline) when listFn is nil, as
+// TimelineRepository.List does for a user without custom timelines.
 func (f *fakeTimelineStore) List(ctx context.Context, userID string) ([]rss.Timeline, error) {
 	if f.listFn == nil {
-		return nil, nil
+		return []rss.Timeline{{}}, nil
 	}
 	return f.listFn(ctx, userID)
+}
+
+func (f *fakeTimelineStore) ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	if f.listWithFiltersFn == nil {
+		return f.List(ctx, userID)
+	}
+	return f.listWithFiltersFn(ctx, userID)
 }
 
 func (f *fakeTimelineStore) Update(ctx context.Context, userID string, t rss.Timeline) error {
@@ -614,6 +626,13 @@ func (f *fakeTimelineStore) Move(ctx context.Context, userID, id string, up bool
 		return nil
 	}
 	return f.moveFn(ctx, userID, id, up)
+}
+
+func (f *fakeTimelineStore) Reorder(ctx context.Context, userID string, ids []string) error {
+	if f.reorderFn == nil {
+		return nil
+	}
+	return f.reorderFn(ctx, userID, ids)
 }
 
 func (f *fakeTimelineStore) Share(ctx context.Context, userID, id, newToken string) (string, error) {

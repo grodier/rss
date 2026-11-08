@@ -1,13 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -93,15 +97,33 @@ func timelineSourcesStores() (*fakeTagStore, *fakeSubscriptionStore) {
 }
 
 func TestTimelinesHandler(t *testing.T) {
-	t.Run("lists timelines with descriptions and edit links", func(t *testing.T) {
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
+	const thirdID = "99999999-9999-4999-8999-999999999999"
+	moveButton := func(name, dir string, disabled bool) string {
+		b := `<button class="row-icon-btn" type="submit" name="direction" value="` + dir + `" aria-label="Move ` + name + ` ` + dir + `" title="Move ` + dir + `"`
+		if disabled {
+			b += " disabled"
+		}
+		return b + ">"
+	}
+
+	t.Run("Home first, then each timeline with its summary and controls", func(t *testing.T) {
+		s := newTestServerWith(t, Services{
+			TimelineService: &fakeTimelineStore{listWithFiltersFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
 				if userID != "user-1" {
 					return nil, errors.New("wrong user")
 				}
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken}, {ID: newsTimelineID, Name: "News"}}, nil
-			},
-		}})
+				return []rss.Timeline{
+					{},
+					{ID: testTimelineID, Name: "AI", Description: "Models & more", ShareToken: testShareToken,
+						Filter: rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeWords: []string{"GPT"}}},
+					{ID: newsTimelineID, Name: "News", Filter: rss.TimelineFilter{MaxPostsPerWeek: 2}},
+					{ID: thirdID, Name: "Sports"},
+				}, nil
+			}},
+			TagService: &fakeTagStore{listFn: func(ctx context.Context, userID string) ([]rss.Tag, error) {
+				return []rss.Tag{{ID: testTagID, Name: "AI"}}, nil
+			}},
+		})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
@@ -110,11 +132,38 @@ func TestTimelinesHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			"<h1>Timelines</h1>",
 			`<a class="btn btn-sm" href="/timelines/new">New timeline</a>`,
-			`<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>`,
-			"<p>Models &amp; more</p>",
-			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
-			`<a class="timeline-list-name" href="/timelines/`+newsTimelineID+`">News</a>`,
+			`<li class="timeline-row" id="timeline-all" data-id="all" data-name="All feeds">`,
+			`<a class="timeline-row-name" href="/timelines/all">`, `All feeds</a>`, "<p>Every feed you follow</p>",
+			`<form class="timeline-row-move" action="/timelines/all/move" method="post" data-move>`,
+			`<span class="row-icon-slot" aria-hidden="true"></span>`,
+			`<ul class="timeline-list" role="list" data-reorder>`,
+			// Rendered hidden: reorder.ts shows it, since dragging needs JavaScript.
+			`<span class="reorder-handle" aria-hidden="true" hidden>`,
+			`<li class="timeline-row" id="timeline-`+testTimelineID+`" data-id="`+testTimelineID+`" data-name="AI">`,
+			`<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>`,
+			"<p>Tagged AI · Mentions “GPT”</p>",
+			`<form class="timeline-row-move" action="/timelines/`+testTimelineID+`/move" method="post" data-move>`,
+			`<a class="row-icon-btn" href="/timelines/`+testTimelineID+`/edit" aria-label="Edit AI" title="Edit">`,
+			`<a class="timeline-row-name" href="/timelines/`+newsTimelineID+`">News</a>`,
+			"<p>At most 2 posts a week</p>",
+			`<a class="timeline-row-name" href="/timelines/`+thirdID+`">Sports</a>`,
+			"<p>All your feeds</p>",
+			// Move buttons are disabled at the ends, not left out; Home is first.
+			moveButton("All feeds", "up", true), moveButton("All feeds", "down", false),
+			moveButton("AI", "up", false), moveButton("AI", "down", false),
+			moveButton("News", "up", false), moveButton("News", "down", false),
+			moveButton("Sports", "up", false), moveButton("Sports", "down", true),
 		)
+		if home, first := strings.Index(body, `id="timeline-all"`), strings.Index(body, `id="timeline-`+testTimelineID+`"`); home < 0 || home > first {
+			t.Errorf("Home's row isn't first: %s", body)
+		}
+		if strings.Index(body, ">AI</a>") > strings.Index(body, ">News</a>") || strings.Index(body, ">News</a>") > strings.Index(body, ">Sports</a>") {
+			t.Errorf("rows out of order: %s", body)
+		}
+		// The description is shown under the tabs and in the editor, not here.
+		if strings.Contains(body, "Models &amp; more") {
+			t.Errorf("shows the description: %s", body)
+		}
 		if strings.Contains(body, "You don't have any timelines yet.") {
 			t.Errorf("shows the empty state: %s", body)
 		}
@@ -122,185 +171,262 @@ func TestTimelinesHandler(t *testing.T) {
 		if n := strings.Count(body, `<span class="chip">Shared</span>`); n != 1 {
 			t.Errorf("%d timelines marked Shared, want 1: %s", n, body)
 		}
-		assertBodyContains(t, body, `<a class="timeline-list-name" href="/timelines/`+testTimelineID+`">AI</a>
+		assertBodyContains(t, body, `<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>
             <span class="chip">Shared</span>`)
 	})
 
-	t.Run("move buttons", func(t *testing.T) {
-		const thirdID = "99999999-9999-4999-8999-999999999999"
+	t.Run("Home alone has both move buttons disabled", func(t *testing.T) {
+		s := newTestServer(t)
+		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
+		assertBodyContains(t, rr.Body.String(), moveButton("All feeds", "up", true), moveButton("All feeds", "down", true))
+	})
+
+	t.Run("Home last can move up, not down", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
 			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}, {ID: newsTimelineID, Name: "News"}, {ID: thirdID, Name: "Sports"}}, nil
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}, {}}, nil
 			},
 		}})
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		body := rr.Body.String()
-		up := func(name string) string {
-			return `<button class="btn-sm" type="submit" name="direction" value="up" aria-label="Move ` + name + ` up">Move up</button>`
-		}
-		down := func(name string) string {
-			return `<button class="btn-sm" type="submit" name="direction" value="down" aria-label="Move ` + name + ` down">Move down</button>`
-		}
-		assertBodyContains(t, body,
-			`<li id="timeline-`+testTimelineID+`">`,
-			`<form class="timeline-move" action="/timelines/`+testTimelineID+`/move" method="post">`,
-			down("AI"),
-			up("News"), down("News"),
-			up("Sports"),
-		)
-		for _, unwanted := range []string{up("AI"), down("Sports")} {
-			if strings.Contains(body, unwanted) {
-				t.Errorf("body has %s", unwanted)
-			}
+		assertBodyContains(t, body, moveButton("AI", "up", true), moveButton("AI", "down", false), moveButton("All feeds", "up", false), moveButton("All feeds", "down", true))
+		if strings.Index(body, `id="timeline-all"`) < strings.Index(body, `id="timeline-`+testTimelineID+`"`) {
+			t.Errorf("Home's row isn't last: %s", body)
 		}
 	})
 
-	t.Run("no move buttons for one timeline", func(t *testing.T) {
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(ctx context.Context, userID string) ([]rss.Timeline, error) {
-				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
-			},
-		}})
-		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		if body := rr.Body.String(); strings.Contains(body, "timeline-move") {
-			t.Errorf("body has move buttons: %s", body)
-		}
-	})
-
-	t.Run("empty state", func(t *testing.T) {
+	t.Run("empty state follows Home's row", func(t *testing.T) {
 		s := newTestServer(t)
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
-		assertBodyContains(t, rr.Body.String(),
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			`<a class="timeline-row-name" href="/timelines/all">`,
 			"You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.")
-	})
-
-	t.Run("store error is 500", func(t *testing.T) {
-		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
-			listFn: func(context.Context, string) ([]rss.Timeline, error) { return nil, errors.New("boom") },
-		}})
-		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want 500", rr.Code)
+		if strings.Index(body, `href="/timelines/all">`) > strings.Index(body, "You don't have any timelines yet.") {
+			t.Errorf("the empty state comes before Home's row: %s", body)
 		}
 	})
+
+	t.Run("store errors are 500", func(t *testing.T) {
+		boom := func(context.Context, string) ([]rss.Timeline, error) { return nil, errors.New("boom") }
+		s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{listWithFiltersFn: boom}})
+		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("timelines: status = %d, want 500", rr.Code)
+		}
+		s = newTestServerWith(t, Services{
+			TimelineService: &fakeTimelineStore{listFn: func(context.Context, string) ([]rss.Timeline, error) {
+				return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+			}},
+			TagService: &fakeTagStore{listFn: func(context.Context, string) ([]rss.Tag, error) { return nil, errors.New("boom") }},
+		})
+		if rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("tags: status = %d, want 500", rr.Code)
+		}
+	})
+}
+
+func TestTimelineSummary(t *testing.T) {
+	const newsTagID, sportsTagID, goneTagID = "a1", "a2", "a3"
+	// Ordered by name, as TagRepository.List returns them.
+	tags := []rss.Tag{{ID: testTagID, Name: "AI"}, {ID: newsTagID, Name: "News"}, {ID: sportsTagID, Name: "Sports"}}
+
+	tests := []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   string
+	}{
+		{"no conditions", rss.TimelineFilter{}, "All your feeds"},
+		{"starred, all feeds", rss.TimelineFilter{StarredOnly: true}, "Your stars, newest star first"},
+		{"starred, some feeds", rss.TimelineFilter{StarredOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{newsTagID}}, "Tagged News · Starred only"},
+		{"one tag", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{newsTagID}}, "Tagged News"},
+		{"two tags, in name order", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{newsTagID, testTagID}}, "Tagged AI or News"},
+		{"three tags", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{sportsTagID, newsTagID, testTagID}}, "Tagged AI, News or Sports"},
+		{"one feed", rss.TimelineFilter{OnlyIncluded: true, IncludeFeedIDs: []string{timelineFeedID}}, "1 chosen feed"},
+		{"two feeds", rss.TimelineFilter{OnlyIncluded: true, IncludeFeedIDs: []string{timelineFeedID, timelineFeed2ID}}, "2 chosen feeds"},
+		{"tags and feeds", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeFeedIDs: []string{timelineFeedID}}, "Tagged AI · 1 chosen feed"},
+		{"no sources left", rss.TimelineFilter{OnlyIncluded: true}, "No feeds chosen"},
+		{"an unknown tag is skipped", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{goneTagID, newsTagID}}, "Tagged News"},
+		{"only unknown tags", rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{goneTagID}}, "No feeds chosen"},
+		{"one post a week", rss.TimelineFilter{MaxPostsPerWeek: 1}, "At most 1 post a week"},
+		{"two posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2}, "At most 2 posts a week"},
+		{"audio or video", rss.TimelineFilter{MediaOnly: true}, "Audio or video"},
+		{"one word", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Mentions “AI”"},
+		{"two words", rss.TimelineFilter{IncludeWords: []string{"AI", "machine learning"}}, "Mentions “AI” or “machine learning”"},
+		{"three words", rss.TimelineFilter{IncludeWords: []string{"AI", "LLM", "GPT"}}, "Mentions “AI”, “LLM” or “GPT”"},
+		{"four words are counted", rss.TimelineFilter{IncludeWords: []string{"a", "b", "c", "d"}}, "Mentions 4 words or phrases"},
+		{"left-out words", rss.TimelineFilter{ExcludeWords: []string{"crypto"}}, "Leaves out “crypto”"},
+		{"three left-out words", rss.TimelineFilter{ExcludeWords: []string{"a", "b", "c"}}, "Leaves out “a”, “b” or “c”"},
+		{"four left-out words are counted", rss.TimelineFilter{ExcludeWords: []string{"a", "b", "c", "d"}}, "Leaves out 4 words or phrases"},
+		{"left-out tags", rss.TimelineFilter{ExcludeTagIDs: []string{sportsTagID, newsTagID}}, "Leaves out feeds tagged News or Sports"},
+		{"one left-out feed", rss.TimelineFilter{ExcludeFeedIDs: []string{timelineFeedID}}, "Leaves out 1 feed"},
+		{"two left-out feeds", rss.TimelineFilter{ExcludeFeedIDs: []string{timelineFeedID, timelineFeed2ID}}, "Leaves out 2 feeds"},
+		{
+			"everything, in order",
+			rss.TimelineFilter{
+				OnlyIncluded: true, IncludeTagIDs: []string{testTagID}, IncludeFeedIDs: []string{timelineFeedID}, StarredOnly: true,
+				MaxPostsPerWeek: 3, MediaOnly: true, IncludeWords: []string{"GPT"}, ExcludeWords: []string{"crypto"},
+				ExcludeTagIDs: []string{sportsTagID}, ExcludeFeedIDs: []string{timelineFeed2ID},
+			},
+			"Tagged AI · 1 chosen feed · Starred only · At most 3 posts a week · Audio or video · Mentions “GPT” · Leaves out “crypto” · Leaves out feeds tagged Sports · Leaves out 1 feed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := timelineSummary(rss.Timeline{Filter: tt.filter}, tags); got != tt.want {
+				t.Errorf("timelineSummary = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestTimelineNewHandler(t *testing.T) {
 	tags, subs := timelineSourcesStores()
 	s := newTestServerWith(t, Services{TagService: tags, SubscriptionService: subs})
-
-	t.Run("shows all feeds by default", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
+	get := func(t *testing.T, s *Server, target string) string {
+		t.Helper()
+		rr, _ := serveTimeline(t, s, s.timelineNewHandler, target, "", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}
-		body := rr.Body.String()
+		return rr.Body.String()
+	}
+	// startRow is the start of a starting point's row on the list.
+	startRow := func(href string) string { return `<a class="settings-row" href="` + href + `">` }
+	assertList := func(t *testing.T, body string) {
+		t.Helper()
+		assertBodyContains(t, body, "<h1>New timeline</h1>", `<h2 id="start-heading">Start from</h2>`)
+		if strings.Contains(body, `<form class="timeline-form"`) {
+			t.Errorf("shows the form, not the list: %s", body)
+		}
+	}
+
+	t.Run("lists the starting points", func(t *testing.T) {
+		body := get(t, s, "/timelines/new")
+		assertList(t, body)
+		assertBodyContains(t, body,
+			startRow("/timelines/new?preset=tags"), "Feeds with a tag", "Everything with the tags you choose, like News or Tech.",
+			startRow("/timelines/new?preset=quiet"), "Quiet posters", "Feeds that post a couple of times a week or less, so busy ones can’t bury them.",
+			startRow("/timelines/new?preset=starred"), "Starred", "Articles you’ve starred, newest star first.",
+			startRow("/timelines/new?preset=keywords"), "Keywords", "Articles that mention words or phrases you choose.",
+			startRow("/timelines/new?preset=media"), "Audio and video", "Podcast episodes and videos attached to posts.",
+			startRow("/timelines/new?preset=blank"), "Start from scratch", "All your feeds, with filters you choose.",
+		)
+	})
+
+	t.Run("without tags, Feeds with a tag goes to Tags", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TagService: &fakeTagStore{}, SubscriptionService: subs})
+		body := get(t, s, "/timelines/new")
+		assertBodyContains(t, body, startRow("/tags"), "Make a tag first: tags group your feeds, like News or Tech.")
+		if strings.Contains(body, "preset=tags") {
+			t.Errorf("offers the tags preset without tags: %s", body)
+		}
+	})
+
+	t.Run("the list's tag store error is 500", func(t *testing.T) {
+		s := newTestServerWith(t, Services{TagService: &fakeTagStore{listFn: func(context.Context, string) ([]rss.Tag, error) {
+			return nil, errors.New("boom")
+		}}})
+		if rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	for _, target := range []string{"/timelines/new?preset=junk", "/timelines/new?preset=", "/timelines/new?tag=" + otherTagID, "/timelines/new?tag=not-a-uuid", "/timelines/new?preset=quiet&tag=" + otherTagID} {
+		t.Run(target+" shows the list", func(t *testing.T) {
+			assertList(t, get(t, s, target))
+		})
+	}
+
+	t.Run("?preset=blank is the empty form, showing all feeds", func(t *testing.T) {
+		body := get(t, s, "/timelines/new?preset=blank")
 		assertBodyContains(t, body,
 			"<h1>New timeline</h1>",
-			`<form class="timeline-form" action="/timelines" method="post">`,
+			// The summary reads the form back.
+			`<p class="timeline-summary-sentence" data-summary-sentence>Articles from all your feeds.</p>`,
+			`<summary data-summary-count>From 2 of your 2 feeds</summary>`,
+			"<li>Feed One</li><li>Feed Two</li>",
+			`<form class="timeline-form" action="/timelines" method="post" data-timeline-form>`,
+			`name="name" value=""`,
+			`<label for="description">Description <span class="label-optional">(optional)</span></label>`,
+			`<p class="hint" id="description-hint">Shown under the tabs.</p>`,
+			"<legend>Feeds</legend>",
 			`<input type="radio" name="show" value="all" checked`,
-			`<p class="hint" id="description-hint">Shown under the tabs. Optional.</p>`,
-			"<legend>Show</legend>",
-			"Only feeds with these tags, or these feeds:",
-			"<legend>Leave out</legend>",
-			`<p class="hint" id="exclude-hint">Feeds left out never show here, even if they have a tag you chose above.</p>`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`">`,
-			`<input type="checkbox" name="exclude_tags" value="`+testTagID+`">`,
-			`<input type="checkbox" name="include_feeds" value="`+timelineFeedID+`">`,
-			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`">`,
-			`<details class="feed-picker">`,
-			"<summary>Choose feeds</summary>",
+			"Only some",
+			`<p class="timeline-form-label" id="include-tags-label">Feeds with any of these tags</p>`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" data-name="AI">`,
+			`<summary>Or choose feeds <span class="timeline-disclosure-count" data-feeds-count></span></summary>`,
+			`<input type="checkbox" name="include_feeds" value="`+timelineFeedID+`" data-name="Feed One" data-rate="0" data-tags="">`,
+			`<summary>Leave out <span class="timeline-disclosure-count" data-leave-out-count></span></summary>`,
+			`<p class="hint">Always left out, even if they match above.</p>`,
+			`<input type="checkbox" name="exclude_tags" value="`+testTagID+`" data-name="AI">`,
+			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`" data-name="Feed Two"`,
+			"<legend>Articles</legend>",
+			`<p class="hint timeline-form-lede">Only show articles that match everything you tick.</p>`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
+			`<span class="hint" id="starred-only-hint">Ordered by when you starred them.</span>`,
+			`<input type="checkbox" name="quiet" value="1" aria-describedby="quiet-hint" />`,
+			`<label for="max_posts_per_week">At most</label>`,
+			`<input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"`,
+			`value="2"`,
+			`<p class="hint" id="max_posts_per_week-hint" data-rate-hint>2 of your feeds post this little right now.</p>`,
+			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" />`,
+			`<input type="checkbox" name="mentions" value="1" />`,
+			`<label class="visually-hidden" for="include_words">Words or phrases to look for</label>`,
+			`<input type="checkbox" name="not_mentions" value="1" />`,
+			`<button class="btn-primary" type="submit">Create timeline</button>`,
 			`<a class="btn" href="/timelines">Cancel</a>`,
 		)
-		for _, bad := range []string{"Delete timeline", " checked>", "autofocus"} {
+		for _, bad := range []string{"Delete timeline", " checked>", " checked />", "autofocus", "Start from", "/share"} {
 			if strings.Contains(body, bad) {
 				t.Errorf("body has %q: %s", bad, body)
 			}
 		}
+		// Save is the form's last field set's follower: after Articles.
+		if strings.Index(body, "Create timeline</button>") < strings.Index(body, "<legend>Articles</legend>") {
+			t.Errorf("the button comes before the fields: %s", body)
+		}
 	})
 
-	t.Run("offers the presets", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
-		body := rr.Body.String()
-		assertBodyContains(t, body,
-			`<span id="presets-label">Start from:</span>`,
-			`<li><a href="/timelines/new?preset=starred">Starred</a></li>`,
-			`<li><a href="/timelines/new?preset=quiet">Quiet posters</a></li>`,
-			"<legend>Only show</legend>",
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
-			`<p class="hint" id="starred-only-hint">Newest starred first. Stars stay here after you unsubscribe from a feed, unless you chose tags or feeds above.</p>`,
-			`<label for="max_posts_per_week">Feeds that post at most</label>`,
-			`<input type="number" id="max_posts_per_week" name="max_posts_per_week" min="1" max="100" inputmode="numeric"`,
-			`value=""`,
-			`aria-describedby="max_posts_per_week-hint"`,
-			"times a week",
-			`<p class="hint" id="max_posts_per_week-hint">Based on the last 30 days. My feeds shows each feed's rate.</p>`,
-			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" />`,
-			"Articles with audio or video",
-			`<p class="hint" id="media-only-hint">Podcast episodes and videos attached to the post.</p>`,
-		)
-	})
-
-	t.Run("?preset=quiet prefills Quiet posters", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=quiet", "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="Quiet posters"`,
-			`<input type="radio" name="show" value="all" checked`,
-			`value="2"`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
-		)
-	})
-
-	t.Run("?preset=starred prefills Starred", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred", "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="Starred"`,
-			`<input type="radio" name="show" value="all" checked`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
-		)
-	})
-
-	t.Run("?preset=starred with ?tag= is named after the tag", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=starred&tag="+testTagID, "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="AI"`,
-			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
-		)
-	})
-
-	t.Run("an unknown preset is ignored", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?preset=junk", "", nil)
-		body := rr.Body.String()
-		assertBodyContains(t, body, `name="name" value=""`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`)
-	})
-
-	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?tag="+testTagID, "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`<input type="text" id="name" name="name" value="AI"`,
-			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-		)
-	})
-
-	for _, tag := range []string{otherTagID, "not-a-uuid"} {
-		t.Run("?tag= ignores "+tag, func(t *testing.T) {
-			rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new?tag="+tag, "", nil)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d", rr.Code)
-			}
-			body := rr.Body.String()
-			assertBodyContains(t, body, `<input type="radio" name="show" value="all" checked`, `name="name" value=""`)
+	presets := []struct {
+		preset string
+		want   []string
+	}{
+		{"tags", []string{`name="name" value=""`, `<input type="radio" name="show" value="some" checked`, `<input type="checkbox" name="include_tags" value="` + testTagID + `" data-name="AI">`,
+			"Choose at least one tag or feed, or show all your feeds.", `<summary data-summary-count>No feeds yet</summary>`}},
+		{"quiet", []string{`<input type="text" id="name" name="name" value="Quiet posters"`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="quiet" value="1" aria-describedby="quiet-hint" checked />`, `value="2"`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" />`,
+			"Articles from feeds that post at most 2 times a week."}},
+		{"starred", []string{`<input type="text" id="name" name="name" value="Starred"`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`}},
+		{"keywords", []string{`name="name" value=""`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="mentions" value="1" checked />`, `<input type="text" id="include_words" name="include_words" value=""`}},
+		{"media", []string{`<input type="text" id="name" name="name" value="Audio and video"`, `<input type="radio" name="show" value="all" checked`, `<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`}},
+	}
+	for _, tt := range presets {
+		t.Run("?preset="+tt.preset+" fills in the form", func(t *testing.T) {
+			assertBodyContains(t, get(t, s, "/timelines/new?preset="+tt.preset), tt.want...)
 		})
 	}
 
+	t.Run("?preset=starred with ?tag= is named after the tag", func(t *testing.T) {
+		assertBodyContains(t, get(t, s, "/timelines/new?preset=starred&tag="+testTagID),
+			`<input type="text" id="name" name="name" value="AI"`,
+			`<input type="radio" name="show" value="some" checked`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" data-name="AI" checked>`,
+			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
+		)
+	})
+
+	t.Run("?tag= prefills from one of the user's tags", func(t *testing.T) {
+		assertBodyContains(t, get(t, s, "/timelines/new?tag="+testTagID),
+			`<input type="text" id="name" name="name" value="AI"`,
+			`<input type="radio" name="show" value="some" checked`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" data-name="AI" checked>`,
+		)
+	})
+
 	t.Run("no tags or feeds", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TagService: &fakeTagStore{}, SubscriptionService: &fakeSubscriptionStore{}})
-		rr, _ := serveTimeline(t, s, s.timelineNewHandler, "/timelines/new", "", nil)
-		body := rr.Body.String()
+		body := get(t, s, "/timelines/new?preset=blank")
 		assertBodyContains(t, body, `You don't have any tags yet. <a href="/tags">Make a tag</a> to group feeds.`)
-		if strings.Contains(body, "Choose feeds") {
+		if strings.Contains(body, "Or choose feeds") {
 			t.Errorf("feed picker shown without subscriptions: %s", body)
 		}
 	})
@@ -388,12 +514,16 @@ func TestTimelineCreateHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("saves the posting rate and audio or video", func(t *testing.T) {
+	t.Run("saves the posting rate when From quiet feeds is ticked, and audio or video", func(t *testing.T) {
 		for _, tt := range []struct {
+			quiet string // "" for unticked
 			value string
 			want  int
-		}{{"", 0}, {"2", 2}, {" 100 ", 100}} {
+		}{{"1", "2", 2}, {"1", " 100 ", 100}, {"", "", 0}, {"", "5", 0}, {"", "junk", 0}} {
 			form := url.Values{"name": {"Quiet"}, "show": {"all"}, "max_posts_per_week": {tt.value}, "media_only": {"1"}}
+			if tt.quiet != "" {
+				form.Set("quiet", tt.quiet)
+			}
 			res := post(t, form, nil)
 			if res.code != http.StatusSeeOther || res.created == nil {
 				t.Fatalf("%q: code %d, created %v", tt.value, res.code, res.created)
@@ -404,8 +534,19 @@ func TestTimelineCreateHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("an unticked condition stores nothing, whatever its field holds", func(t *testing.T) {
+		form := url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {"AI"}, "exclude_words": {"+++"}, "max_posts_per_week": {"0"}}
+		res := post(t, form, nil)
+		if res.code != http.StatusSeeOther || res.created == nil {
+			t.Fatalf("code %d, created %v", res.code, res.created)
+		}
+		if f := res.created.Filter; len(f.IncludeWords) != 0 || len(f.ExcludeWords) != 0 || f.MaxPostsPerWeek != 0 {
+			t.Errorf("filter = %+v, want no words and no rate", f)
+		}
+	})
+
 	t.Run("saves the words and phrases", func(t *testing.T) {
-		form := url.Values{"name": {"AI"}, "show": {"all"},
+		form := url.Values{"name": {"AI"}, "show": {"all"}, "mentions": {"1"}, "not_mentions": {"1"},
 			"include_words": {" AI, llm ,, machine \t learning, ai, C++ "}, "exclude_words": {"Sponsored"}}
 		res := post(t, form, nil)
 		if res.code != http.StatusSeeOther || res.created == nil {
@@ -430,16 +571,17 @@ func TestTimelineCreateHandler(t *testing.T) {
 		{"some with nothing ticked", url.Values{"name": {"X"}, "show": {"some"}, "exclude_tags": {testTagID}}, "show", "Choose at least one tag or feed, or show all your feeds."},
 		{"some with only foreign IDs", url.Values{"name": {"X"}, "show": {"some"}, "include_tags": {otherTagID}}, "show", "Choose at least one tag or feed, or show all your feeds."},
 	}
-	for _, rate := range []string{"0", "101", "2.5", "abc", "-1"} {
+	for _, rate := range []string{"", "0", "101", "2.5", "abc", "-1"} {
 		tests = append(tests, struct {
 			name    string
 			form    url.Values
 			field   string
 			message string
-		}{"posts a week " + rate, url.Values{"name": {"X"}, "show": {"all"}, "max_posts_per_week": {rate}}, "max_posts_per_week", "Enter a whole number from 1 to 100, or leave it blank."})
+		}{"posts a week " + rate, url.Values{"name": {"X"}, "show": {"all"}, "quiet": {"1"}, "max_posts_per_week": {rate}}, "max_posts_per_week", "Enter a whole number from 1 to 100."})
 	}
-	for _, field := range []string{"include_words", "exclude_words"} {
+	for field, box := range map[string]string{"include_words": "mentions", "exclude_words": "not_mentions"} {
 		for _, tt := range []struct{ name, value, message string }{
+			{"empty", " , ", "Enter at least one word or phrase."},
 			{"21 terms", numberedTerms(21), "At most 20 words or phrases."},
 			{"a term over 50 runes", "AI, " + strings.Repeat("é", 51), "Each word or phrase must be 50 characters or fewer."},
 			{"+++", "AI, +++", "Each word or phrase needs at least one letter or number."},
@@ -450,7 +592,7 @@ func TestTimelineCreateHandler(t *testing.T) {
 				form    url.Values
 				field   string
 				message string
-			}{field + " " + tt.name, url.Values{"name": {"X"}, "show": {"all"}, field: {tt.value}}, field, tt.message})
+			}{field + " " + tt.name, url.Values{"name": {"X"}, "show": {"all"}, box: {"1"}, field: {tt.value}}, field, tt.message})
 		}
 	}
 	for _, tt := range tests {
@@ -472,18 +614,25 @@ func TestTimelineCreateHandler(t *testing.T) {
 
 	t.Run("422 keeps everything", func(t *testing.T) {
 		form := url.Values{"name": {""}, "description": {"Kept"}, "show": {"some"}, "include_feeds": {timelineFeedID}, "exclude_tags": {testTagID},
-			"max_posts_per_week": {"7"}, "media_only": {"1"}, "include_words": {"AI,  C++"}, "exclude_words": {"deal"}}
+			"quiet": {"1"}, "max_posts_per_week": {"7"}, "media_only": {"1"}, "mentions": {"1"}, "include_words": {"AI,  C++"}, "not_mentions": {"1"}, "exclude_words": {"deal"}}
 		res := post(t, form, nil)
 		assertBodyContains(t, res.body,
 			">Kept</textarea>",
 			`name="include_words" value="AI,  C&#43;&#43;"`,
 			`name="exclude_words" value="deal"`,
 			`value="7"`,
+			`<input type="checkbox" name="quiet" value="1" aria-describedby="quiet-hint" checked />`,
 			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
+			`<input type="checkbox" name="mentions" value="1" checked />`,
+			`<input type="checkbox" name="not_mentions" value="1" checked />`,
 			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_feeds" value="`+timelineFeedID+`" checked>`,
-			`<input type="checkbox" name="exclude_tags" value="`+testTagID+`" checked>`,
-			`<details class="feed-picker" open>`,
+			`<input type="checkbox" name="include_feeds" value="`+timelineFeedID+`" data-name="Feed One" data-rate="0" data-tags="" checked>`,
+			`<input type="checkbox" name="exclude_tags" value="`+testTagID+`" data-name="AI" checked>`,
+			`<details class="timeline-disclosure" open>
+              <summary>Or choose feeds <span class="timeline-disclosure-count" data-feeds-count>(1)</span></summary>`,
+			`<summary>Leave out <span class="timeline-disclosure-count" data-leave-out-count>(1)</span></summary>`,
+			// The summary reads back the submitted values.
+			`data-summary-sentence>Articles with audio or video mentioning “AI” or “C&#43;&#43;” but not “deal” from Feed One, if they post at most 7 times a week, except feeds tagged AI.</p>`,
 		)
 	})
 
@@ -515,14 +664,14 @@ func TestTimelineHandler(t *testing.T) {
 	var gotFilter rss.TimelineFilter
 	var gotBefore rss.ArticleCursor
 	var result []rss.ArticleWithFeed
-	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
 		gotFilter, gotBefore = filter, before
 		return result, nil
 	}}
 	filter := rss.TimelineFilter{OnlyIncluded: true, IncludeTagIDs: []string{testTagID}}
 	timelines := userTimeline(rss.Timeline{Name: "AI", Description: "Models & more", Filter: filter})
 	timelines.listFn = func(context.Context, string) ([]rss.Timeline, error) {
-		return []rss.Timeline{{ID: testTimelineID, Name: "AI"}}, nil
+		return []rss.Timeline{{}, {ID: testTimelineID, Name: "AI"}}, nil
 	}
 	s := newTestServerWith(t, Services{ArticleService: articles, TimelineService: timelines, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
 	get := func(t *testing.T, target, id string) *httptest.ResponseRecorder {
@@ -543,14 +692,33 @@ func TestTimelineHandler(t *testing.T) {
 		body := rr.Body.String()
 		assertBodyContains(t, body,
 			`<h1 class="visually-hidden">AI</h1>`,
-			"<p>Models &amp; more</p>",
-			`<a href="/timelines/`+testTimelineID+`/edit">Edit<span class="visually-hidden"> AI</span></a>`,
-			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI</a>`,
-			`<li><a href="/">Home</a></li>`,
+			`<div class="timeline-about">
+        <p>Models &amp; more</p>`,
+			// The current tab's link alone holds the underline.
+			`<a href="/timelines/`+testTimelineID+`" aria-current="page">AI<span class="tab-indicator" aria-hidden="true"></span></a>`,
+			`<li><a href="/timelines/all">All feeds</a></li>`,
+			// The tab row's Edit goes to this timeline's row on /timelines.
+			`<a class="btn btn-sm" href="/timelines#timeline-`+testTimelineID+`">Edit<span class="visually-hidden"> timelines</span></a>`,
 			"Article 0", "Article 1",
 		)
+		if n := strings.Count(body, "tab-indicator"); n != 1 {
+			t.Errorf("%d tab indicators, want 1 (in the current tab): %s", n, body)
+		}
 		if strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected Back to newest")
+		}
+		if strings.Contains(body, `/timelines/`+testTimelineID+`/edit`) {
+			t.Errorf("links to the edit page; the tab row's Edit goes to /timelines: %s", body)
+		}
+	})
+
+	t.Run("no row under the tabs without a description", func(t *testing.T) {
+		result = timelineItems(1)
+		plain := userTimeline(rss.Timeline{Name: "AI", Filter: filter})
+		s := newTestServerWith(t, Services{ArticleService: articles, TimelineService: plain, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
+		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+		if body := rr.Body.String(); strings.Contains(body, "timeline-about") {
+			t.Errorf("has the row under the tabs: %s", body)
 		}
 	})
 
@@ -578,6 +746,32 @@ func TestTimelineHandler(t *testing.T) {
 			t.Errorf("wrong empty state: %s", body)
 		}
 	})
+
+	// A timeline of quiet feeds says what will show up, rather than that
+	// nothing has; one with words and no rate keeps the plain text.
+	for _, tt := range []struct {
+		name   string
+		filter rss.TimelineFilter
+		want   string
+	}{
+		{"empty, at most 2 posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2, IncludeWords: []string{"AI"}},
+			"When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
+		{"empty, at most 1 post a week", rss.TimelineFilter{MaxPostsPerWeek: 1},
+			"When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
+		{"empty, words only", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Nothing in this timeline yet."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result = nil
+			s := newTestServerWith(t, Services{ArticleService: articles, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
+				TimelineService: userTimeline(rss.Timeline{Name: "Quiet", Filter: tt.filter})})
+			rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want)
+			if tt.filter.MaxPostsPerWeek > 0 && strings.Contains(body, "Nothing in this timeline yet.") {
+				t.Errorf("also says nothing's here: %s", body)
+			}
+		})
+	}
 
 	t.Run("no sources", func(t *testing.T) {
 		result = nil
@@ -633,7 +827,7 @@ func TestStarredTimeline(t *testing.T) {
 			return result, nil
 		},
 	}
-	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.TimelineAnchors, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
+	articles := &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 		return nil, errors.New("ListTimeline called for a starred-only timeline")
 	}}
 	filter := rss.TimelineFilter{StarredOnly: true, OnlyIncluded: true, IncludeTagIDs: []string{testTagID}}
@@ -707,13 +901,20 @@ func TestTimelineEditHandler(t *testing.T) {
 			`name="name" value="AI"`,
 			">Models</textarea>",
 			`<input type="radio" name="show" value="some" checked`,
-			`<input type="checkbox" name="include_tags" value="`+testTagID+`" checked>`,
-			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`" checked>`,
+			`<input type="checkbox" name="include_tags" value="`+testTagID+`" data-name="AI" checked>`,
+			`<input type="checkbox" name="exclude_feeds" value="`+timelineFeed2ID+`" data-name="Feed Two" data-rate="0" data-tags="" checked>`,
 			`<input type="checkbox" name="starred_only" value="1" aria-describedby="starred-only-hint" checked />`,
+			`<input type="checkbox" name="quiet" value="1" aria-describedby="quiet-hint" checked />`,
 			`value="3"`,
 			`<input type="checkbox" name="media_only" value="1" aria-describedby="media-only-hint" checked />`,
+			`<input type="checkbox" name="mentions" value="1" checked />`,
 			`name="include_words" value="AI, machine learning"`,
+			`<input type="checkbox" name="not_mentions" value="1" checked />`,
 			`name="exclude_words" value="Sponsored"`,
+			// The head's Share opens the share page; the form has no Sharing section.
+			`<a class="btn btn-sm" href="/timelines/`+testTimelineID+`/share">Share</a>`,
+			`data-summary-sentence>Articles you’ve starred with audio or video mentioning “AI” or “machine learning” but not “Sponsored” from feeds tagged AI that post at most 3 times a week, except Feed Two. Newest star first.</p>`,
+			`<button class="btn-primary" type="submit">Save timeline</button>`,
 			`<a class="btn" href="/timelines/`+testTimelineID+`">Cancel</a>`,
 			`<form class="danger-zone" action="/timelines/`+testTimelineID+`/delete" method="post">`,
 			`<button class="btn-sm btn-danger-quiet" type="submit">Delete timeline</button>`,
@@ -765,7 +966,7 @@ func TestTimelineEditPostHandler(t *testing.T) {
 
 	t.Run("saves the posting rate and audio or video, and clears them", func(t *testing.T) {
 		updated = nil
-		form := url.Values{"name": {"Podcasts"}, "show": {"all"}, "max_posts_per_week": {"2"}, "media_only": {"1"}}
+		form := url.Values{"name": {"Podcasts"}, "show": {"all"}, "quiet": {"1"}, "max_posts_per_week": {"2"}, "media_only": {"1"}}
 		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d", rr.Code)
 		}
@@ -774,7 +975,7 @@ func TestTimelineEditPostHandler(t *testing.T) {
 		}
 
 		updated = nil
-		form = url.Values{"name": {"Podcasts"}, "show": {"all"}, "max_posts_per_week": {""}}
+		form = url.Values{"name": {"Podcasts"}, "show": {"all"}, "max_posts_per_week": {"2"}}
 		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d", rr.Code)
 		}
@@ -785,7 +986,7 @@ func TestTimelineEditPostHandler(t *testing.T) {
 
 	t.Run("saves the words and phrases, and clears them", func(t *testing.T) {
 		updated = nil
-		form := url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {"AI, LLM"}, "exclude_words": {"deal"}}
+		form := url.Values{"name": {"AI"}, "show": {"all"}, "mentions": {"1"}, "include_words": {"AI, LLM"}, "not_mentions": {"1"}, "exclude_words": {"deal"}}
 		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d", rr.Code)
 		}
@@ -794,7 +995,7 @@ func TestTimelineEditPostHandler(t *testing.T) {
 		}
 
 		updated = nil
-		form = url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {" , "}, "exclude_words": {""}}
+		form = url.Values{"name": {"AI"}, "show": {"all"}, "include_words": {"AI, LLM"}, "exclude_words": {"deal"}}
 		if rr, _ := serveTimeline(t, s, s.timelineEditPostHandler, "/", testTimelineID, form); rr.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d", rr.Code)
 		}
@@ -873,7 +1074,8 @@ func TestTimelineFormTerms(t *testing.T) {
 		value   string
 		message string // "": valid
 	}{
-		{"blank", "", ""},
+		{"blank, while ticked", "", "Enter at least one word or phrase."},
+		{"only commas", " , ,", "Enter at least one word or phrase."},
 		{"C++ and C#", "C++, C#, F#, .NET, @handle, #hashtag", ""},
 		{"20 terms", numberedTerms(20), ""},
 		{"21 terms", numberedTerms(21), "At most 20 words or phrases."},
@@ -889,17 +1091,39 @@ func TestTimelineFormTerms(t *testing.T) {
 			for _, field := range []string{"include_words", "exclude_words"} {
 				f := timelineForm{Name: "X", Show: "all"}
 				if field == "include_words" {
-					f.IncludeWords = tt.value
+					f.Mentions, f.IncludeWords = true, tt.value
 				} else {
-					f.ExcludeWords = tt.value
+					f.NotMentions, f.ExcludeWords = true, tt.value
 				}
 				f.check(nil, nil)
 				if got := f.FieldErrors[field]; got != tt.message {
 					t.Errorf("%s: error = %q, want %q", field, got, tt.message)
 				}
+
+				// Unticked, the field isn't checked: it won't be stored.
+				f = timelineForm{Name: "X", Show: "all", IncludeWords: tt.value, ExcludeWords: tt.value}
+				f.check(nil, nil)
+				if !f.Valid() {
+					t.Errorf("%s unticked: errors %v, want none", field, f.FieldErrors)
+				}
 			}
 		})
 	}
+}
+
+func TestTimelineFormFor(t *testing.T) {
+	t.Run("ticks the conditions that have a value", func(t *testing.T) {
+		f := timelineFormFor(rss.Timeline{Filter: rss.TimelineFilter{MaxPostsPerWeek: 3, IncludeWords: []string{"AI", "C++"}}})
+		if !f.Quiet || f.MaxPostsPerWeek != "3" || !f.Mentions || f.IncludeWords != "AI, C++" || f.NotMentions || f.StarredOnly || f.MediaOnly {
+			t.Errorf("form = %+v", f)
+		}
+	})
+	t.Run("an unticked rate starts at 2", func(t *testing.T) {
+		f := timelineFormFor(rss.Timeline{Filter: rss.TimelineFilter{ExcludeWords: []string{"crypto"}}})
+		if f.Quiet || f.MaxPostsPerWeek != "2" || f.Mentions || !f.NotMentions || f.ExcludeWords != "crypto" {
+			t.Errorf("form = %+v", f)
+		}
+	})
 }
 
 func TestTimelineDeleteHandler(t *testing.T) {
@@ -939,12 +1163,23 @@ func TestTimelineMoveHandler(t *testing.T) {
 	s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
 		moveFn: func(ctx context.Context, userID, id string, up bool) error {
 			calls = append(calls, call{userID, id, up})
-			if id != testTimelineID {
+			if id != testTimelineID && id != "" {
 				return rss.ErrNoRecord
 			}
 			return nil
 		},
 	}})
+
+	t.Run("all moves Home", func(t *testing.T) {
+		calls = nil
+		rr, _ := serveTimeline(t, s, s.timelineMoveHandler, "/", "all", url.Values{"direction": {"down"}})
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/timelines#timeline-all" {
+			t.Fatalf("code %d location %q", rr.Code, rr.Header().Get("Location"))
+		}
+		if want := []call{{"user-1", "", false}}; !slices.Equal(calls, want) {
+			t.Errorf("calls = %v, want %v (Home as \"\")", calls, want)
+		}
+	})
 
 	for _, tt := range []struct {
 		direction string
@@ -1017,10 +1252,10 @@ func newSharingTestServer(t *testing.T, timelines *fakeTimelineStore) *Server {
 		Services{TagService: tags, SubscriptionService: subs, TimelineService: timelines})
 }
 
-func TestTimelineEditSharing(t *testing.T) {
+func TestTimelineSharePage(t *testing.T) {
 	edit := func(t *testing.T, s *Server, sess *rss.Session) string {
 		t.Helper()
-		rr, _ := serveTimelineSession(t, s, sess, s.timelineEditHandler, "/timelines/"+testTimelineID+"/edit", testTimelineID, nil)
+		rr, _ := serveTimelineSession(t, s, sess, s.timelineSharePageHandler, "/timelines/"+testTimelineID+"/share", testTimelineID, nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}
@@ -1031,11 +1266,11 @@ func TestTimelineEditSharing(t *testing.T) {
 		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
 		body := edit(t, s, sharingUnconfirmed)
 		assertBodyContains(t, body,
-			`<section class="timeline-sharing" id="sharing" aria-labelledby="sharing-heading">`,
-			`<h2 id="sharing-heading">Sharing</h2>`,
+			"<title>Paper Round - Share timeline</title>",
+			"<h1>Share “AI”</h1>",
 			"<p>Confirm your email address to share timelines.</p>",
 			`<form action="/confirm-email/resend" method="post">`,
-			`<input type="hidden" name="return_to" value="/timelines/`+testTimelineID+`/edit#sharing" />`,
+			`<input type="hidden" name="return_to" value="/timelines/`+testTimelineID+`/share" />`,
 		)
 		if strings.Contains(body, "Share this timeline") {
 			t.Errorf("offers sharing without a confirmed email: %s", body)
@@ -1077,7 +1312,7 @@ func TestTimelineEditSharing(t *testing.T) {
 		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
 		rr, flash := serveTimelineSession(t, s, sharingConfirmed, func(w http.ResponseWriter, r *http.Request) {
 			s.sessionManager.Put(r.Context(), "flash", "Sharing turned on.")
-			s.timelineEditHandler(w, r)
+			s.timelineSharePageHandler(w, r)
 		}, "/", testTimelineID, nil)
 		assertBodyContains(t, rr.Body.String(), `<div class="flash">Sharing turned on.</div>`)
 		if flash != "" {
@@ -1085,11 +1320,24 @@ func TestTimelineEditSharing(t *testing.T) {
 		}
 	})
 
-	t.Run("New timeline has no Sharing section", func(t *testing.T) {
-		s := newSharingTestServer(t, &fakeTimelineStore{})
-		rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineNewHandler, "/timelines/new", "", nil)
-		if body := rr.Body.String(); strings.Contains(body, `id="sharing"`) {
-			t.Errorf("New timeline has a Sharing section: %s", body)
+	for _, id := range []string{"junk", otherTagID} {
+		t.Run(id+" is 404", func(t *testing.T) {
+			s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI"}))
+			if rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineSharePageHandler, "/", id, nil); rr.Code != http.StatusNotFound {
+				t.Errorf("status = %d, want 404", rr.Code)
+			}
+		})
+	}
+
+	t.Run("the edit page links to it and has no sharing of its own", func(t *testing.T) {
+		s := newSharingTestServer(t, userTimeline(rss.Timeline{Name: "AI", ShareToken: testShareToken}))
+		rr, _ := serveTimelineSession(t, s, sharingConfirmed, s.timelineEditHandler, "/", testTimelineID, nil)
+		body := rr.Body.String()
+		assertBodyContains(t, body, `<a class="btn btn-sm" href="/timelines/`+testTimelineID+`/share">Share</a>`)
+		for _, bad := range []string{"Stop sharing", "/shared/", "Share this timeline"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("edit page has %q: %s", bad, body)
+			}
 		}
 	})
 }
@@ -1146,7 +1394,7 @@ func TestTimelineSharingHandlers(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
 			}
 			if tt.wantStatus == http.StatusSeeOther {
-				if loc := rr.Header().Get("Location"); loc != "/timelines/"+testTimelineID+"/edit#sharing" {
+				if loc := rr.Header().Get("Location"); loc != "/timelines/"+testTimelineID+"/share" {
 					t.Errorf("Location = %q", loc)
 				}
 			}
@@ -1183,4 +1431,354 @@ func TestTimelineSharingHandlers(t *testing.T) {
 			})
 		}
 	}
+}
+
+// timelineSentenceCases are TestTimelineSentence's cases, for its tags and
+// subs. TestTimelineSummaryFixture writes them for timeline-form.ts too.
+func timelineSentenceCases() (tags []rss.Tag, subs []rss.Subscription, tests []timelineSentenceCase) {
+	const newsTagID = "a1"
+	tags = []rss.Tag{{ID: testTagID, Name: "AI"}, {ID: newsTagID, Name: "News"}}
+	subs = []rss.Subscription{
+		{Feed: rss.Feed{ID: timelineFeedID, Title: "Feed One"}},
+		{Feed: rss.Feed{ID: timelineFeed2ID, Title: "Feed Two"}, Title: "My Two"},
+	}
+	all := timelineForm{Show: "all"}
+	with := func(f timelineForm, change func(*timelineForm)) timelineForm { change(&f); return f }
+
+	return tags, subs, []timelineSentenceCase{
+		{"all feeds", all, "Articles from all your feeds."},
+		{"the Quiet posters default", with(all, func(f *timelineForm) { f.Quiet, f.MaxPostsPerWeek = true, "2" }), "Articles from feeds that post at most 2 times a week."},
+		{"once a week", with(all, func(f *timelineForm) { f.Quiet, f.MaxPostsPerWeek = true, "1" }), "Articles from feeds that post at most once a week."},
+		{"an unticked rate is ignored", with(all, func(f *timelineForm) { f.MaxPostsPerWeek = "2" }), "Articles from all your feeds."},
+		{"the Starred default", with(all, func(f *timelineForm) { f.StarredOnly = true }), "Articles you’ve starred from all your feeds. Newest star first."},
+		{"audio or video", with(all, func(f *timelineForm) { f.MediaOnly = true }), "Articles with audio or video from all your feeds."},
+		{"mentioning", with(all, func(f *timelineForm) { f.Mentions, f.IncludeWords = true, "AI, LLM, ai" }), "Articles mentioning “AI” or “LLM” from all your feeds."},
+		{"not mentioning alone", with(all, func(f *timelineForm) { f.NotMentions, f.ExcludeWords = true, "crypto" }), "Articles not mentioning “crypto” from all your feeds."},
+		{"mentioning but not", with(all, func(f *timelineForm) {
+			f.Mentions, f.IncludeWords, f.NotMentions, f.ExcludeWords = true, "AI", true, "crypto, NFT, web3"
+		}), "Articles mentioning “AI” but not “crypto”, “NFT” or “web3” from all your feeds."},
+		{"unticked words are ignored", with(all, func(f *timelineForm) { f.IncludeWords, f.ExcludeWords = "AI", "crypto" }), "Articles from all your feeds."},
+		{"some, tags", timelineForm{Show: "some", IncludeTags: []string{newsTagID, testTagID}}, "Articles from feeds tagged AI or News."},
+		{"some, feeds, by the user's names", timelineForm{Show: "some", IncludeFeeds: []string{timelineFeed2ID, timelineFeedID}}, "Articles from Feed One and My Two."},
+		{"some, tags and a feed", timelineForm{Show: "some", IncludeTags: []string{testTagID}, IncludeFeeds: []string{timelineFeedID}}, "Articles from feeds tagged AI and Feed One."},
+		{"some, tags with a rate", timelineForm{Show: "some", IncludeTags: []string{testTagID}, Quiet: true, MaxPostsPerWeek: "3"}, "Articles from feeds tagged AI that post at most 3 times a week."},
+		{"some, a feed with a rate", timelineForm{Show: "some", IncludeFeeds: []string{timelineFeedID}, Quiet: true, MaxPostsPerWeek: "3"}, "Articles from Feed One, if they post at most 3 times a week."},
+		{"some, nothing chosen", timelineForm{Show: "some", ExcludeTags: []string{testTagID}}, "Choose at least one tag or feed, or show all your feeds."},
+		{"leave out tags", with(all, func(f *timelineForm) { f.ExcludeTags = []string{testTagID, newsTagID} }), "Articles from all your feeds, except feeds tagged AI or News."},
+		{"leave out tags and feeds", with(all, func(f *timelineForm) {
+			f.ExcludeTags, f.ExcludeFeeds = []string{newsTagID}, []string{timelineFeedID, timelineFeed2ID}
+		}),
+			"Articles from all your feeds, except feeds tagged News, Feed One and My Two."},
+		{"a tag with words and a left-out feed", timelineForm{Show: "some", IncludeTags: []string{testTagID}, Mentions: true, IncludeWords: "AI, LLM", ExcludeFeeds: []string{timelineFeedID}},
+			"Articles mentioning “AI” or “LLM” from feeds tagged AI, except Feed One."},
+	}
+}
+
+type timelineSentenceCase struct {
+	name string
+	form timelineForm
+	want string
+}
+
+func TestTimelineSentence(t *testing.T) {
+	tags, subs, tests := timelineSentenceCases()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := timelineSentence(tt.form, tags, subs); got != tt.want {
+				t.Errorf("timelineSentence = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// timelineFeedCountCases are TestTimelineFeedCount's cases, for its tags
+// and subs. TestTimelineSummaryFixture writes them for timeline-form.ts too.
+func timelineFeedCountCases() (tags []rss.Tag, subs []rss.Subscription, tests []timelineFeedCountCase) {
+	const quietID, busyID, untaggedID = "f1", "f2", "f3"
+	ai, news := rss.Tag{ID: testTagID, Name: "AI"}, rss.Tag{ID: "t2", Name: "News"}
+	tags = []rss.Tag{ai, news}
+	subs = []rss.Subscription{
+		{Feed: rss.Feed{ID: quietID, Title: "Quiet", PostsPerWeek: 2}, Tags: []rss.Tag{ai}},
+		{Feed: rss.Feed{ID: busyID, Title: "Busy", PostsPerWeek: 40}, Tags: []rss.Tag{ai, news}},
+		{Feed: rss.Feed{ID: untaggedID, Title: "Untagged", PostsPerWeek: 0.5}},
+	}
+	return tags, subs, []timelineFeedCountCase{
+		{"all", timelineForm{Show: "all"}, []string{quietID, busyID, untaggedID}},
+		{"some by tag", timelineForm{Show: "some", IncludeTags: []string{testTagID}}, []string{quietID, busyID}},
+		{"some by feed", timelineForm{Show: "some", IncludeFeeds: []string{untaggedID}}, []string{untaggedID}},
+		{"leave out a tag wins over a shown tag", timelineForm{Show: "some", IncludeTags: []string{testTagID}, ExcludeTags: []string{"t2"}}, []string{quietID}},
+		{"leave out a feed", timelineForm{Show: "all", ExcludeFeeds: []string{busyID}}, []string{quietID, untaggedID}},
+		{"a rate, equal counts", timelineForm{Show: "all", Quiet: true, MaxPostsPerWeek: "2"}, []string{quietID, untaggedID}},
+		{"an unticked rate", timelineForm{Show: "all", MaxPostsPerWeek: "2"}, []string{quietID, busyID, untaggedID}},
+		{"articles conditions don't count", timelineForm{Show: "all", StarredOnly: true, MediaOnly: true, Mentions: true, IncludeWords: "x"}, []string{quietID, busyID, untaggedID}},
+	}
+}
+
+type timelineFeedCountCase struct {
+	name string
+	form timelineForm
+	want []string
+}
+
+func TestTimelineFeedCount(t *testing.T) {
+	_, subs, tests := timelineFeedCountCases()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, sub := range timelineFeedCount(tt.form, subs) {
+				got = append(got, sub.Feed.ID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("timelineFeedCount = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("the summary's count line", func(t *testing.T) {
+		for _, tt := range []struct {
+			subs []rss.Subscription
+			form timelineForm
+			want string
+		}{
+			{subs, timelineForm{Show: "all"}, "From 3 of your 3 feeds"},
+			{subs, timelineForm{Show: "some", IncludeTags: []string{testTagID}, ExcludeTags: []string{testTagID}}, "None of your feeds match yet"},
+			{subs[:1], timelineForm{Show: "all"}, "From your only feed"},
+			{subs, timelineForm{Show: "some"}, "No feeds yet"},
+		} {
+			if got := tt.form.summary(nil, tt.subs).Count; got != tt.want {
+				t.Errorf("Count = %q, want %q", got, tt.want)
+			}
+		}
+		if got := (&timelineForm{Show: "all", MaxPostsPerWeek: "1"}).summary(nil, subs).RateHint; got != "1 of your feeds posts this little right now." {
+			t.Errorf("RateHint = %q", got)
+		}
+		if got := (&timelineForm{Show: "all", MaxPostsPerWeek: "zero"}).summary(nil, subs).RateHint; got != "" {
+			t.Errorf("RateHint for an invalid number = %q, want none", got)
+		}
+	})
+}
+
+// updateFixtures makes TestTimelineSummaryFixture write its fixture instead
+// of checking it.
+var updateFixtures = flag.Bool("update", false, "write web/app/features/testdata/timeline-summary.json (TestTimelineSummaryFixture) instead of checking it")
+
+// timelineSummaryFixture is where TestTimelineSummaryFixture writes the
+// summaries timelineForm.summary builds, for timeline-form.test.ts to check
+// that timeline-form.ts builds the same: Go is the spec.
+const timelineSummaryFixture = "../../web/app/features/testdata/timeline-summary.json"
+
+// summaryFixtureCase is one entry of the fixture, its inputs in the shape
+// timeline-form.ts's summary takes: the feeds and the form's fields as the
+// page has them (ticked tags with their names, in the tags' order; ticked
+// feeds' IDs, in the subscriptions' order).
+type summaryFixtureCase struct {
+	Name    string               `json:"name"`
+	Feeds   []summaryFixtureFeed `json:"feeds"`
+	Fields  summaryFixtureFields `json:"fields"`
+	Summary summaryFixtureWant   `json:"summary"`
+}
+
+type summaryFixtureFeed struct {
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+	Rate float64  `json:"rate"`
+}
+
+type summaryFixtureTag struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type summaryFixtureFields struct {
+	Show            string              `json:"show"`
+	IncludeTags     []summaryFixtureTag `json:"includeTags"`
+	ExcludeTags     []summaryFixtureTag `json:"excludeTags"`
+	IncludeFeeds    []string            `json:"includeFeeds"`
+	ExcludeFeeds    []string            `json:"excludeFeeds"`
+	StarredOnly     bool                `json:"starredOnly"`
+	MediaOnly       bool                `json:"mediaOnly"`
+	Mentions        bool                `json:"mentions"`
+	IncludeWords    string              `json:"includeWords"`
+	NotMentions     bool                `json:"notMentions"`
+	ExcludeWords    string              `json:"excludeWords"`
+	Quiet           bool                `json:"quiet"`
+	MaxPostsPerWeek string              `json:"maxPostsPerWeek"`
+}
+
+type summaryFixtureWant struct {
+	Sentence string   `json:"sentence"`
+	Count    string   `json:"count"`
+	Feeds    []string `json:"feeds"`
+	RateHint string   `json:"rateHint"`
+}
+
+// summaryFixture returns the fixture's entry for f, given the user's tags
+// and subs.
+func summaryFixture(name string, f timelineForm, tags []rss.Tag, subs []rss.Subscription) summaryFixtureCase {
+	ticked := func(ids []string) []summaryFixtureTag {
+		out := []summaryFixtureTag{}
+		for _, tag := range tags {
+			if slices.Contains(ids, tag.ID) {
+				out = append(out, summaryFixtureTag{tag.ID, tag.Name})
+			}
+		}
+		return out
+	}
+	tickedFeeds := func(ids []string) []string {
+		out := []string{}
+		for _, sub := range subs {
+			if slices.Contains(ids, sub.Feed.ID) {
+				out = append(out, sub.Feed.ID)
+			}
+		}
+		return out
+	}
+	c := summaryFixtureCase{
+		Name:  name,
+		Feeds: []summaryFixtureFeed{},
+		Fields: summaryFixtureFields{
+			Show:            f.Show,
+			IncludeTags:     ticked(f.IncludeTags),
+			ExcludeTags:     ticked(f.ExcludeTags),
+			IncludeFeeds:    tickedFeeds(f.IncludeFeeds),
+			ExcludeFeeds:    tickedFeeds(f.ExcludeFeeds),
+			StarredOnly:     f.StarredOnly,
+			MediaOnly:       f.MediaOnly,
+			Mentions:        f.Mentions,
+			IncludeWords:    f.IncludeWords,
+			NotMentions:     f.NotMentions,
+			ExcludeWords:    f.ExcludeWords,
+			Quiet:           f.Quiet,
+			MaxPostsPerWeek: f.MaxPostsPerWeek,
+		},
+	}
+	for _, sub := range subs {
+		feed := summaryFixtureFeed{ID: sub.Feed.ID, Name: subscriptionName(sub), Tags: []string{}, Rate: sub.Feed.PostsPerWeek}
+		for _, tag := range sub.Tags {
+			feed.Tags = append(feed.Tags, tag.ID)
+		}
+		c.Feeds = append(c.Feeds, feed)
+	}
+	sum := f.summary(tags, subs)
+	c.Summary = summaryFixtureWant{Sentence: sum.Sentence, Count: sum.Count, Feeds: []string{}, RateHint: sum.RateHint}
+	c.Summary.Feeds = append(c.Summary.Feeds, sum.Feeds...)
+	return c
+}
+
+// TestTimelineSummaryFixture builds the timeline form's summary for
+// TestTimelineSentence's and TestTimelineFeedCount's cases and a few more,
+// and checks web/app/features/testdata/timeline-summary.json holds the
+// same; timeline-form.test.ts checks timeline-form.ts against that file.
+// With -update it writes the file instead.
+func TestTimelineSummaryFixture(t *testing.T) {
+	var cases []summaryFixtureCase
+	tags, subs, sentences := timelineSentenceCases()
+	for _, tt := range sentences {
+		cases = append(cases, summaryFixture("sentence: "+tt.name, tt.form, tags, subs))
+	}
+	tags, subs, counts := timelineFeedCountCases()
+	for _, tt := range counts {
+		cases = append(cases, summaryFixture("feed count: "+tt.name, tt.form, tags, subs))
+	}
+	for _, tt := range []struct {
+		name string
+		form timelineForm
+		subs []rss.Subscription
+	}{
+		{"none of the feeds match", timelineForm{Show: "some", IncludeTags: []string{testTagID}, ExcludeTags: []string{testTagID}}, subs},
+		{"the only feed", timelineForm{Show: "all"}, subs[:1]},
+		{"nothing chosen", timelineForm{Show: "some"}, subs},
+		{"a rate hint for one feed", timelineForm{Show: "all", MaxPostsPerWeek: "1"}, subs},
+		{"no rate hint for an invalid number", timelineForm{Show: "all", MaxPostsPerWeek: "zero"}, subs},
+		{"a ticked rate that's too high", timelineForm{Show: "all", Quiet: true, MaxPostsPerWeek: "101"}, subs},
+		{"everything at once", timelineForm{
+			Show: "some", IncludeTags: []string{testTagID}, IncludeFeeds: []string{"f3"}, ExcludeTags: []string{"t2"},
+			StarredOnly: true, MediaOnly: true, Mentions: true, IncludeWords: " AI ,  big   data, ai,,", NotMentions: true, ExcludeWords: "crypto",
+			Quiet: true, MaxPostsPerWeek: "2",
+		}, subs},
+	} {
+		cases = append(cases, summaryFixture("summary: "+tt.name, tt.form, tags, tt.subs))
+	}
+
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(cases); err != nil {
+		t.Fatal(err)
+	}
+	if *updateFixtures {
+		if err := os.WriteFile(timelineSummaryFixture, b.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(timelineSummaryFixture)
+	if err != nil {
+		t.Fatalf("%v; run: go test ./internal/server -run TestTimelineSummaryFixture -update", err)
+	}
+	if !bytes.Equal(got, b.Bytes()) {
+		t.Errorf("%s doesn't match timelineForm.summary; run: go test ./internal/server -run TestTimelineSummaryFixture -update", timelineSummaryFixture)
+	}
+}
+
+func TestTimelineOrderHandler(t *testing.T) {
+	type call struct {
+		userID string
+		ids    []string
+	}
+	var calls []call
+	var storeErr error
+	s := newTestServerWith(t, Services{TimelineService: &fakeTimelineStore{
+		reorderFn: func(ctx context.Context, userID string, ids []string) error {
+			calls = append(calls, call{userID, ids})
+			return storeErr
+		},
+	}})
+	post := func(order ...string) (*httptest.ResponseRecorder, string) {
+		form := url.Values{}
+		for _, id := range order {
+			form.Add("order", id)
+		}
+		return serveTimeline(t, s, s.timelineOrderHandler, "/timelines/order", "", form)
+	}
+
+	t.Run("a valid order is saved, Home as \"\"", func(t *testing.T) {
+		calls, storeErr = nil, nil
+		rr, flash := post(newsTimelineID, "all", testTimelineID)
+		if rr.Code != http.StatusNoContent || flash != "" {
+			t.Fatalf("code %d, flash %q; want 204 and none", rr.Code, flash)
+		}
+		if len(calls) != 1 || calls[0].userID != "user-1" || !slices.Equal(calls[0].ids, []string{newsTimelineID, "", testTimelineID}) {
+			t.Errorf("calls = %+v", calls)
+		}
+	})
+
+	for _, bad := range []string{"junk", "", "ALL"} {
+		t.Run(fmt.Sprintf("%q is 400", bad), func(t *testing.T) {
+			calls, storeErr = nil, nil
+			if rr, _ := post("all", bad); rr.Code != http.StatusBadRequest || calls != nil {
+				t.Errorf("code %d, calls %v; want 400 and none", rr.Code, calls)
+			}
+		})
+	}
+
+	t.Run("a changed set of tabs goes back to /timelines with the flash", func(t *testing.T) {
+		calls, storeErr = nil, rss.ErrOrderChanged
+		rr, flash := post("all", testTimelineID)
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/timelines" {
+			t.Fatalf("code %d location %q", rr.Code, rr.Header().Get("Location"))
+		}
+		if flash != "Your timelines changed in another window, so the new order wasn't saved." {
+			t.Errorf("flash = %q", flash)
+		}
+	})
+
+	t.Run("another store error is 500", func(t *testing.T) {
+		calls, storeErr = nil, errors.New("boom")
+		if rr, _ := post("all"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("code %d, want 500", rr.Code)
+		}
+	})
 }

@@ -1,0 +1,126 @@
+/* Feed and site heads, and list heads. */
+@layer components {
+  /* Profile headers on feed and site pages. */
+  .profile {
+    padding: 1.25rem 1rem 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .profile-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .profile-top form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .profile-top .avatar {
+    inline-size: 4.5rem;
+    block-size: 4.5rem;
+    font-size: 1.75rem;
+  }
+
+  .profile h1,
+  .profile-name {
+    font-family: var(--font-display);
+    margin-block-start: 0.875rem;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .profile-sub {
+    margin-block-start: 0.25rem;
+    color: var(--text-2);
+  }
+
+  .profile-sub a {
+    color: var(--text-2);
+  }
+
+  .profile-desc {
+    margin-block-start: 0.75rem;
+    font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
+    font-size: 1.125rem;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1.25rem;
+    margin-block-start: 0.875rem;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  .facts span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-inline-size: 0;
+  }
+
+  .facts .icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    color: var(--text-3);
+    stroke-width: 2;
+  }
+
+  .facts code {
+    overflow-wrap: anywhere;
+  }
+
+  .profile .fetch-error {
+    margin-block-start: 0.875rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: var(--radius-sm);
+    background: var(--danger-bg);
+    color: var(--on-danger-bg);
+    font-size: 0.875rem;
+  }
+
+  .profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-block-start: 1rem;
+  }
+
+  .list-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1rem 0.625rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .list-head h2 {
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .list-head h2 a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .list-head h2 a:hover {
+    color: var(--text);
+  }
+
+  .list-head > a {
+    font-size: 0.8125rem;
+  }
+}

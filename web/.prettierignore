@@ -1,0 +1,3 @@
+dist
+# Written by the Go tests (go test ./internal/server -run TestTimelineSummaryFixture -update).
+app/features/testdata

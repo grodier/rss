@@ -16,14 +16,16 @@ import (
 	"github.com/grodier/rss/internal/ui"
 )
 
-// avatarTones is how many avatar tints main.css defines (.tone-1 … .tone-6).
+// avatarTones is how many avatar tints avatars.css defines (.tone-1 … .tone-6).
 const avatarTones = 6
 
 var templateFuncs = template.FuncMap{
 	"asset":       asset,
+	"assetTags":   assetTags,
 	"avatar":      avatar,
 	"avatarTone":  avatarTone,
 	"debugPanel":  newDebugPanel,
+	"homeName":    func() string { return homeName },
 	"monogram":    monogram,
 	"postingRate": postingRate,
 }

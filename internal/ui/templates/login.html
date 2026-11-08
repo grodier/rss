@@ -5,15 +5,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - log in</title>
-  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "assets" "login"}}
   {{template "app-head"}}
-  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
   <main class="solo">
     <div class="solo-panel">
-      {{template "brand"}}
+      {{template "brand-solo"}}
       <h1>Log in</h1>
 
       {{with .Flash}}
@@ -21,7 +20,7 @@
       {{end}}
 
       {{$focus := .Form.FirstError "email" "password"}}
-      <form action="/login" method="post">
+      <form action="/login" method="post" data-busy>
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
@@ -45,7 +44,7 @@
           <p class="hint"><a href="/password/forgot{{with .Form.Email}}?email={{.}}{{end}}">Forgot password?</a></p>
         </div>
         <div>
-          <button class="btn-primary btn-block" type="submit">Log in</button>
+          <button class="btn-primary btn-block" type="submit" data-busy-label="Logging in…"><span data-busy-text>Log in</span></button>
         </div>
       </form>
 

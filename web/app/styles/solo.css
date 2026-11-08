@@ -1,0 +1,5 @@
+/* Logged-out pages, errors, a shared timeline's page and the policies. In
+   the partials' order (see base.css). */
+@import "./partials/solo.css";
+@import "./partials/spinner.css";
+@import "./partials/press.css";

@@ -2,11 +2,9 @@ package server
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/grodier/rss/internal/ui"
 )
 
 func (s *Server) router() http.Handler {
@@ -34,20 +32,7 @@ func (s *Server) router() http.Handler {
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
-	// Directory requests would otherwise get an auto-generated file listing.
-	fileServer := http.FileServerFS(ui.Static)
-	router.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") {
-			s.notFoundResponse(w, r)
-			return
-		}
-		// Only a request for the file's current version is cached; any other
-		// (no v, or a stale one) is served without Cache-Control.
-		if v := r.URL.Query().Get("v"); v != "" && v == staticVersions[strings.TrimPrefix(r.URL.Path, "/static/")] {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
-		fileServer.ServeHTTP(w, r)
-	}))
+	router.Handle("/static/*", http.HandlerFunc(s.staticHandler))
 
 	// The manifest needs no session, like /static: browsers fetch it without
 	// cookies. It has its own handler because the file server would sniff
@@ -89,12 +74,15 @@ func (s *Server) router() http.Handler {
 			r.Post("/tags/{id}/delete", s.tagDeleteHandler)
 			r.Get("/timelines", s.timelinesHandler)
 			r.Post("/timelines", s.timelineCreateHandler)
+			r.Post("/timelines/order", s.timelineOrderHandler) // posted by reorder.ts after a reorder
 			r.Get("/timelines/new", s.timelineNewHandler)
+			r.Get("/timelines/all", s.allTimelineHandler) // Home, as / may show another tab
 			r.Get("/timelines/{id}", s.timelineHandler)
 			r.Get("/timelines/{id}/edit", s.timelineEditHandler)
 			r.Post("/timelines/{id}/edit", s.timelineEditPostHandler)
 			r.Post("/timelines/{id}/delete", s.timelineDeleteHandler)
 			r.Post("/timelines/{id}/move", s.timelineMoveHandler)
+			r.Get("/timelines/{id}/share", s.timelineSharePageHandler)
 			r.Post("/timelines/{id}/share", s.timelineShareHandler)
 			r.Post("/timelines/{id}/unshare", s.timelineUnshareHandler)
 			r.Post("/timelines/{id}/share/new-link", s.timelineNewLinkHandler)

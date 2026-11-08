@@ -5,9 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - signup</title>
-  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "assets" "login"}}
   {{template "app-head"}}
-  <script src="{{asset "js/app.js"}}" defer></script>
 </head>
 
 <body>
@@ -17,7 +16,7 @@
       <h1>Sign Up</h1>
 
       {{$focus := .Form.FirstError "invite" "name" "email" "password"}}
-      <form action="/signup" method="post">
+      <form action="/signup" method="post" data-busy>
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
@@ -58,7 +57,7 @@
           {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
         </div>
         <div>
-          <button class="btn-primary btn-block" type="submit">Sign up</button>
+          <button class="btn-primary btn-block" type="submit" data-busy-label="Signing up…"><span data-busy-text>Sign up</span></button>
           <p class="solo-note">By signing up, you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy policy</a>.</p>
         </div>
       </form>

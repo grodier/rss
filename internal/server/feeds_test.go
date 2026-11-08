@@ -161,7 +161,7 @@ func TestFeedHandlerListsArticles(t *testing.T) {
 		`<p class="article-excerpt">First excerpt</p>`,
 		`<p class="article-source-line"><span class="article-author">Ada and Grace</span><span aria-hidden="true">·</span><a class="article-source" href="https://example.com/a"`,
 		`<time data-local datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
-		`<script src="/static/js/app.js?v=` + jsVersion + `" defer></script>`,
+		`<script type="module" src="` + entryJS("reading") + `"></script>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)
@@ -471,6 +471,26 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 	if strings.Contains(second, "<img") {
 		t.Errorf("article without an image rendered an <img>: %s", second)
 	}
+}
+
+func TestFeedFirstImageEager(t *testing.T) {
+	articles := feedArticles(3)
+	articles[1].ImageURL = "https://example.com/1.jpg"
+	articles[2].ImageURL = "https://example.com/2.jpg"
+	s := feedServerWithArticles(t, nil, &fakeArticleStore{
+		listByFeedFn: func(context.Context, string, rss.ArticleCursor, int) ([]rss.Article, error) {
+			return articles, nil
+		},
+	})
+	before := "?before=" + url.QueryEscape(encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: articles[0].ID}))
+	testFirstImageEager(t, before, func(t *testing.T, query string) string {
+		t.Helper()
+		rr := serveFeedQuery(t, s, testFeedID, query)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	})
 }
 
 func TestFeedHandlerPageMetadata(t *testing.T) {
@@ -902,7 +922,7 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 	if !strings.Contains(body, want) {
 		t.Errorf("body does not contain %q: %s", want, body)
 	}
-	for _, w := range []string{"attempts to fetch this feed failed", "Next check", "/refresh", "Refresh</button>"} {
+	for _, w := range []string{"attempts to fetch this feed failed", "Next check", "/refresh", "Refresh</span></button>"} {
 		if strings.Contains(body, w) {
 			t.Errorf("body contains %q: %s", w, body)
 		}

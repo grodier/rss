@@ -4,11 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  {{if .InProgress}}
-  <meta http-equiv="refresh" content="2" />
-  {{end}}
+  {{if .InProgress}}<noscript><meta http-equiv="refresh" content="2" /></noscript>{{end}}
   <title>Paper Round - {{if .InProgress}}importing {{.Filename}}{{else}}import finished{{end}}</title>
-  <link rel="stylesheet" href="{{asset "css/main.css"}}" />
+  {{template "assets" "account"}}
   {{template "app-head" .Nav}}
 </head>
 
@@ -21,10 +19,10 @@
         <h1>{{if .InProgress}}Importing {{.Filename}}…{{else}}Import finished{{end}}</h1>
       </header>
 
-      <section class="import-status">
+      <section class="import-status"{{if .InProgress}} data-import-poll{{end}}>
         {{if .InProgress}}
         <div class="spinner"></div>
-        <p>Checked {{.Done}} of {{.Total}} feeds.</p>
+        <p data-import-progress>Checked {{.Done}} of {{.Total}} feeds.</p>
         {{else}}
         <p>{{.Summary}}</p>
         <p><a href="/">Go to your timeline</a></p>
@@ -32,39 +30,39 @@
       </section>
 
       {{with .Subscribed}}
-      <section>
+      <section data-import-group="subscribed">
         <div class="list-head">
           <h2>Subscribed</h2>
         </div>
         <ul role="list">
           {{range .}}
-          <li class="import-row"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
+          <li class="import-row" data-position="{{.Position}}"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
           {{end}}
         </ul>
       </section>
       {{end}}
 
       {{with .AlreadySubscribed}}
-      <section>
+      <section data-import-group="already">
         <div class="list-head">
           <h2>Already subscribed</h2>
         </div>
         <ul role="list">
           {{range .}}
-          <li class="import-row"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
+          <li class="import-row" data-position="{{.Position}}"><a class="feed-row-title" href="/feeds/{{.FeedID}}">{{.Title}}</a></li>
           {{end}}
         </ul>
       </section>
       {{end}}
 
       {{with .Failed}}
-      <section>
+      <section data-import-group="failed">
         <div class="list-head">
           <h2>Couldn't add</h2>
         </div>
         <ul role="list">
           {{range .}}
-          <li class="import-row">
+          <li class="import-row" data-position="{{.Position}}">
             <p class="import-title">{{.Title}}</p>
             <p class="import-url">{{.URL}}</p>
             <p>{{.Reason}}{{with .Host}} <a href="/search?q={{.}}">Search for {{.}}</a>{{end}}</p>

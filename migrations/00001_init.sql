@@ -9,6 +9,7 @@ CREATE TABLE users (
     email_confirmed_at TIMESTAMPTZ, -- NULL until the user confirms their address; a password reset also confirms it
     hashed_password bytea NOT NULL,
     theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('system', 'light', 'dark')), -- 'system' follows the device's light or dark setting
+    home_position INT NOT NULL DEFAULT 0, -- Home's place among the user's tabs, in the same numbering as timelines.position
     created_at timestamp(0) with time zone NOT NULL DEFAULT now()
 );
 
@@ -104,8 +105,9 @@ CREATE TABLE articles (
     published_at TIMESTAMPTZ,         -- NULL if the feed gave no date
     published_date_only BOOLEAN NOT NULL DEFAULT false, -- the feed's date had no time of day
     timeline_at TIMESTAMPTZ NOT NULL, -- position in timelines (psql.timelineAt): news by its published date above a floor, backlog at its published date; set on insert, never updated
+    backlog BOOLEAN NOT NULL DEFAULT false, -- placed as backlog (psql.isBacklog), so readers never get their own position for it (timeline_entries); set on insert, never updated
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when it arrived; timelines group news by it (rss.Article.IsNews)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- when it arrived
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE (feed_id, external_id)
@@ -156,12 +158,37 @@ CREATE TABLE timeline_marks (
     user_id UUID PRIMARY KEY
         REFERENCES users(id)
         ON DELETE CASCADE,
-    seen_up_to TIMESTAMPTZ NOT NULL, -- the newest timeline_at the user has had on screen
-    seen_as_of TIMESTAMPTZ NOT NULL, -- when the page that reported seen_up_to was rendered: the latest look
+    seen_up_to TIMESTAMPTZ NOT NULL, -- the newest timeline position the user has had on screen (theirs, timeline_entries, where they have one)
     seen_at TIMESTAMPTZ NOT NULL,    -- when seen_up_to was last reported: the end of the latest visit so far
-    divider_at TIMESTAMPTZ,          -- the divider of the visit seen_at belongs to; NULL during the first visit
-    divider_as_of TIMESTAMPTZ        -- the previous visit's latest look (its seen_as_of); NULL during the first visit
+    divider_at TIMESTAMPTZ           -- the divider of the visit seen_at belongs to; NULL during the first visit
 );
+
+-- Each reader's own timeline position for news that arrived in a feed they
+-- follow within rss.NewsWindow of their latest look (psql.saveArticles), and
+-- for a feed's posts from the last rss.NewsWindow, and its copies of what's
+-- already in their timeline, when they start following it
+-- (psql.SubscriptionRepository.Subscribe): where the article goes in their
+-- timelines instead of articles.timeline_at.
+-- Rows are inserted or deleted, never updated. A row's position is never
+-- below the article's timeline_at, so deleting one only returns the article
+-- to its shared position: dropping rows is always safe.
+CREATE TABLE timeline_entries (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    article_id UUID NOT NULL
+        REFERENCES articles(id)
+        ON DELETE CASCADE,
+
+    feed_id UUID NOT NULL,            -- the article's feed, so timelines show only rows of feeds the reader follows; deleting the feed deletes them through its articles
+    timeline_at TIMESTAMPTZ NOT NULL, -- the reader's position (psql.raisePositions); set on insert, never updated
+
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE INDEX timeline_entries_user_timeline_idx ON timeline_entries (user_id, timeline_at DESC, article_id DESC);
+CREATE INDEX timeline_entries_article_id_idx ON timeline_entries (article_id);
 
 -- Articles a user saved to keep. Saving covers every copy of an article
 -- (same canonical_url); see psql.SaveRepository.
@@ -281,6 +308,25 @@ CREATE TABLE timeline_feeds (
 );
 
 CREATE INDEX timeline_feeds_user_feed_idx ON timeline_feeds (user_id, feed_id);
+
+-- Where each of a user's timelines puts its "You were here" line (see
+-- psql.TimelineLine). One row per timeline the user has had on screen,
+-- written by the timeline's beacon (MarkSeen); timeline_marks keeps the
+-- user's own newest position and visits.
+CREATE TABLE timeline_lines (
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    timeline_id UUID              -- NULL for Home
+        REFERENCES timelines(id)
+        ON DELETE CASCADE,
+
+    seen_up_to TIMESTAMPTZ NOT NULL, -- the newest position this timeline has had on screen
+    divider_at TIMESTAMPTZ,          -- its seen_up_to when the user's previous visit ended; NULL until then
+
+    UNIQUE NULLS NOT DISTINCT (user_id, timeline_id)
+);
 
 -- The enrichment queue: articles whose web page should be fetched for a
 -- missing image, title or excerpt. A row is deleted once its work is done
@@ -422,6 +468,7 @@ DROP TABLE import_feeds;
 DROP TABLE imports;
 DROP TABLE site_icons;
 DROP TABLE enrich_jobs;
+DROP TABLE timeline_lines;
 DROP TABLE timeline_feeds;
 DROP TABLE timeline_tags;
 DROP TABLE timelines;
@@ -429,6 +476,7 @@ DROP TABLE subscription_tags;
 DROP TABLE tags;
 DROP TABLE stars;
 DROP TABLE saves;
+DROP TABLE timeline_entries;
 DROP TABLE timeline_marks;
 DROP TABLE reads;
 DROP TABLE subscriptions;

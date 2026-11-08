@@ -16,8 +16,8 @@ Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), 
   `lookups` has a status column; `feeds` is claimed with a lease on `next_fetch_at` instead of a status column.
   (#50, #126)
 - **Server-rendered HTML; JavaScript is progressive enhancement.** Every page works without it.
-  The rules that follow (one plain file, no build step, no libraries without a justification) are in CLAUDE.md.
-  (#50, #163)
+  The rules that follow are in CLAUDE.md.
+  (#50, #163; #543 reverses their "one plain file, no build step": see "Frontend assets")
 - **Outbound requests to user-influenced URLs only go through `internal/fetch`**, which blocks private addresses (SSRF) and limits time, size and redirects.
   (#50)
 - **Cross-site requests are blocked with Go's `http.CrossOriginProtection`** (`Sec-Fetch-Site` / `Origin` headers) rather than CSRF tokens, so forms and sessions carry no tokens.
@@ -33,10 +33,19 @@ Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), 
 
 - **Testers' data isn't kept**: schema changes keep editing the initial migration and wipe the database, and testers are told so.
   The rule and its scope are under "Prototype stage" in CLAUDE.md.
-  (#180)
+  (#180; ended by #561, below)
 - **A planned batch lands its schema in one change**, so production is reset once per batch rather than once per feature: the account tables (#255), then the reading features' tables (#293), then subscription names and the filtering batch's (#348).
   A prototype that may be dropped adds its own table instead, so dropping it leaves nothing behind.
   Before a reset, export your OPML, and import it afterwards (#303).
+  (Until #561; afterwards each change adds its own migration.)
+- **Production data is kept from #561 on**, before the waitlist (#566) collects its first address: a reset after that would delete everyone waiting, and the people invited from it are the next testers.
+  The app is still pre-alpha in every other way.
+  Rejected: keep resetting and carry the waitlist across each reset with an export and import in the admin, a compatibility path that loses everyone the one time it's forgotten.
+  (#583)
+- **Data is kept, old code isn't.** A schema change migrates the rows that exist in its own migration, so code still never handles rows or flows the old code produced, and the "no compatibility shims" rule in CLAUDE.md stands.
+  (#583)
+- **A migration must work with the version still running during a deploy**, which overlaps the new one for a few seconds ("Deploys switch with no downtime" under "Deployment"): add before the code uses it, drop only after the code has stopped using it.
+  (#583, from "Leaving pre-alpha" in the backlog)
 
 ## Debug mode
 
@@ -80,7 +89,57 @@ Its purpose is exploration more than bug fixing: showing how pages are put toget
   The lookup and import runners ignore both.
   (#330)
 - **No subscriber counts or other cross-user data.** Those belong to an owner admin page, which would build on the same allowlist (backlog).
-  (#327)
+  (#327; the admin, planned in #583, has its own accounts instead of this allowlist and shows cross-user data only as aggregates: see "Admin")
+
+## Admin
+
+Planned in #583, from the owner's list and must-haves; the issues are on the [Admin Roadmap](https://github.com/grodier/rss/issues/560).
+
+- **A separate admin site and command, `cmd/admin`**, built into the same image as `www` and run as its own Render web service (about $7 a month).
+  Its web pages and its CLI subcommands share one package, `internal/admin`, so each action is written once.
+  Rejected: admin routes inside `www`, which would put owner-only code and credentials behind the reader's host and sessions.
+  The production database is only reachable from Render's private network, so `admin` commands against production run in the admin service's shell; the web pages are the everyday tool.
+- **It runs none of `www`'s background workers**, only its own small jobs (the health pinger, #576).
+- **On a subdomain, `admin.paperround.app`, set up as its own origin**: `__Host-` cookies with `SameSite=Strict`, its own CSP and its own HSTS (the reader's has no `includeSubDomains`).
+  The reader and the admin are same-site but not same-origin, and `http.CrossOriginProtection` only lets same-origin form posts through, so no reader page can post to the admin.
+  Rejected: a separate domain, which hides nothing (certificate transparency logs list every hostname) and is one more domain to keep.
+- **Three layers in front of it**: Cloudflare Access on the hostname, whose DNS record is the only proxied one; the service's `onrender.com` subdomain turned off, so Access can't be bypassed; and the admin's own login, which is the real gate.
+  Access is defense in depth and needs no code.
+- **Admins are their own accounts, not readers** (an `admins` table), so a leaked reader password never opens the admin.
+  A second factor is required: TOTP, with hashed one-time recovery codes, and the TOTP secret encrypted with a key held only in the admin service's environment.
+  TOTP is a few lines of the standard library (RFC 6238); passkeys are a later upgrade (backlog).
+  The first admin is created with `admin enroll` in the service's shell; nothing seeds one.
+- **Short sessions**: 30 minutes idle and 12 hours at most, and a destructive action asks for a TOTP code again when the last one is over 10 minutes old.
+- **Every write is recorded in an audit log** (who, what, which record, before and after, when), and so are logins and failed logins; destructive actions also need a typed confirmation.
+- **No impersonation.** Support uses read-only views: logging in as a reader would show their private reading.
+- **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
+  A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.
+  Seeing what someone reads has no clear use, and isn't what readers or the privacy policy expect; a later need names its use case and updates the policy first.
+- **The admin has one design checkpoint, in its skeleton (#562)**: later admin pages reuse its layout without their own, since only the owner uses them.
+  What the admin changes for readers (the waitlist form) keeps its checkpoint.
+- **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
+- **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
+
+## Observability
+
+Planned in #583 with the admin, which is where it's read.
+
+- **One place to look: the admin.** The app records its own request, background-job and real-user metrics in Postgres, and the admin fetches container CPU and memory and deploys from Render's API, and uptime from UptimeRobot's (#576).
+  Render's latency by path and its metrics streaming need a Professional workspace (production is on Hobby), and a hosted tool (Grafana, Datadog) would be another data processor in the privacy policy, for volumes Postgres handles easily.
+- **Request metrics are grouped by chi route pattern** (`/feeds/{id}`), never by URL, so no IDs or tokens are stored (#563).
+  Each instance counts in memory and writes one row per route per minute, with latency in fixed histogram buckets, from which the admin reads percentiles.
+- **A `Server-Timing` header gives the browser the server's time** (#563), so real-user TTFB splits into server and network; it carries durations only.
+- **Real-user metrics: one beacon per page view** (#565), sent when the page is hidden, with Core Web Vitals (LCP, INP, CLS), loading timings and coarse context (device class, installed or not, browser family).
+  Measured with Google's `web-vitals` package (about 2 KB), the frontend's first runtime library: its INP and CLS rules (session windows, back/forward cache, background tabs, prerendering) are easy to get subtly wrong, and it matches what Chrome reports.
+  Rejected: Cloudflare Web Analytics, a third-party script and processor that also needs a proxied DNS record.
+- **Beacons carry no identifiers**: no cookie, user ID, IP address or URL.
+  The server resolves the page's path to its route pattern and drops the path; another site's referrer is kept as a host only.
+  So there are page views, not visitors or sessions.
+  The beacon stores nothing in the browser either, so "no cookie banner" (under "Accounts") stands; the privacy policy says what's measured.
+- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days and daily rollups for 13 months (#563, #565).
+- **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
+- **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
+- **Availability is checked from both sides** (#576): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
 
 ## Feed discovery
 
@@ -130,7 +189,10 @@ Planned in #50 (issues #51–#67).
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.
   Only the home page (path `/`, no query) of a site already found keeps the cached result, so `npr.org` and `www.npr.org/` still go straight to the site page.
   A lookup in progress is never re-queued, so two people typing different addresses don't keep restarting each other's lookup, and re-runs need no limit of their own: each is a lookup the per-user limit already counts.
-- **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that refreshes itself with `<meta http-equiv="refresh">` (no JavaScript).
+- **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that updates in place while the lookup runs (#515).
+  With JavaScript it fetches its own URL every 2 s, as live search fetches its own, so it needs no new route, and moves on when the answer changes; the 2 s interval was kept, and polling stops while the page is hidden, so the server sees no more requests than the meta refresh made.
+  It doesn't reload itself, which restarted the spinner, sent focus back to the top and had screen readers read the page again every 2 s (WCAG failure F41); without JavaScript it falls back to `<meta http-equiv="refresh">` inside `<noscript>`.
+  A redirect to the site page replaces the lookup page in the history, so Back skips the finished lookup.
 - **A link to the app itself is refused, not hidden** (#471; why it never becomes a feed is under "Sharing" in "Filtering and timelines"): discovery refuses an address on the app's own site key before fetching it, and a result on it (a redirect, such as a URL shortener's), so lookups, imports and "Check for new feeds" all refuse it in one place.
   Search says so in place of Look up, the lookup form with a field error, and an import records it as its own failure, each pointing to another feed reader; the redirect case is rare and fails like any failed lookup, with no copy of its own.
   Saving such feeds but leaving the app's site out of search and site pages was rejected: a special case in two read paths, the feed still fetched from ourselves over the internet, and its link, token included, still in `feeds`.
@@ -162,6 +224,9 @@ Planned in #126, with issues #128–#133.
   Fetching quiet feeds less often (up to a day) would save requests but delay the rare posts readers value most; it's a backlog item for when fetch volume matters.
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
+- **A save after two days without a fetch attempt is placed as a feed's first save** (#497, planned in #491): everything is backlog at its date, undated items are spaced back, and only the first save's enrichment allowance applies.
+  Feeds nobody follows aren't refreshed, so a seeded or looked-up site followed weeks later would otherwise bring every post since a day before its last fetch in as news, spread into the top 6 hours as one block; nobody was fetching it, so we don't know when those posts appeared, and dates are the best order we have.
+  The previous attempt decides, not the previous success: a followed feed is attempted at least once a day even while it fails, so a feed that was down keeps its news.
 - **Articles keep their authors' names, never their email addresses** (`articles.authors`).
   RSS's `<author>` is an email address by spec, often a placeholder (`noreply@blogger.com (Unknown)`), so only the name in it is kept, and "Unknown" is dropped.
   For RSS every `dc:creator` is read, since that's how multi-author posts list their authors; otherwise the first source with an author wins, as in gofeed.
@@ -215,7 +280,9 @@ Planned in #309 (issues #302, #303).
   Six fits production's 10 database connections: a worker holds one only while it queries or saves, and a 100-feed import with six workers and 10 connections never waited for one.
 - **The results page reports every feed**: subscribed, already subscribed, or couldn't add, with a plain reason ("Not a valid web address.", "Couldn't reach the site.", "There's no feed at this address.") and a link to search for the site.
   Failures aren't retried automatically and there's no "Try again"; uploading the file again retries them.
-  While it runs, the page refreshes itself with `<meta http-equiv="refresh">`.
+  While it runs, the page updates in place (#536), polling its own URL like the lookup page (see "Feed discovery"), with `<meta http-equiv="refresh">` inside `<noscript>` as the fallback; a reload restarted the spinner, sent focus back to the top and had screen readers read the page again every 2 s.
+  New rows and groups are inserted around the ones on the page and nothing on it is replaced while it runs, so focus, selection and the scroll position stay put in a list that grows while it's read; this holds because a row lands in a group once and never moves, and rows are listed by position.
+  Only the finish is announced, once, and it doesn't move the reader: no redirect and no focus change; announcing the progress line on every poll would bring back the repeated reading.
 - **An outline's name becomes the subscription's name when it differs from the feed's title** (#442), so a reader's renames survive export and import; a name matching the feed's title stays `""`, so the feed's own title changes still reach them.
   "Differs" ignores case and whitespace, so a reader that exports the feed's title with different capitalization doesn't freeze it.
   Only a feed the import subscribes to is named: an already subscribed one keeps the name the reader has, as an import only ever adds tags.
@@ -243,30 +310,52 @@ Planned in #163 (issues #147–#162).
   Scrolling past doesn't; "seen" isn't recorded.
   Reads are per user and article, independent of subscriptions; an article counts as read if any copy with the same `canonical_url` was read.
   (#156, #158, #161)
-- **Timeline order is publish order, with what arrived since you looked first** (#147; changed by #455, planned on #438).
+- **Timeline order is publish order, never below what you've seen, and an entry never moves** (#147; changed by #455, planned on #438; per-reader positions planned in #491, issues #493–#495, #497 and #498, replacing #455's read-time grouping).
   Each article gets `timeline_at` once, on insert, shared by every reader: for news, its published date, but never below the later of the feed's previous fetch and 6 hours before the save, with news dated earlier spread evenly above that floor instead of stacked (aggregators date items by submission, some feeds only by day, some were down); the save time for undated news; its published date for backlog (how news and backlog are told apart is under Reading in features.md).
-  Each reader's timeline is then grouped at read time, each group in position order: on a reload, what arrived since their latest look; then what arrived since their previous visit; then the "You were here" line and everything else.
-  So new items can't land below ones you've seen, a busy feed's fetch no longer arrives as one block, and republished archives don't flood the top.
-  Until #455, news goes at the save time, which kept the first guarantee but made a busy site or aggregator a run of rows on every fetch.
+  A reader who has looked in the last 6 hours also gets their own position for news that arrives in a feed they follow, set once when it arrives, with the same rule but the floor raised to the newest position they've had on screen: news dated above what they saw keeps its date, and news dated below it is spread just above it (#491).
+  So new items can't land below ones you've seen, a busy feed's fetch doesn't arrive as one block, republished archives don't flood the top, and nothing moves between two looks.
+  With one shared position only two of those were possible: #455 grouped each reader's timeline at read time (on a reload, what arrived since their latest look; then since their previous visit; then the line), so a post published 4 hours ago and fetched while you read went first on the reload, then dropped to its 4-hours-ago spot on the next.
+  Until #455, news went at the save time, which kept the first guarantee but made a busy site or aggregator a run of rows on every fetch.
   In a simulation of ~120 mixed feeds over three weeks, rows in a run of three or more from one feed went from 74% to 5%, with new articles missed staying at 0.1% (posts dated over a day before they appeared, which are backlog).
-  Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again), and delaying articles so they interleave (31 minutes later on average, and aggregators still clumped).
-  A per-reader timeline table would give each reader their own positions instead of read-time groups; it stays in backlog.md for when the per-feed cost shows.
-  No bump on subscribe.
+  Rejected: publish order without grouping (any window wide enough to mix things buried 1–7% of new articles), raising the shared floor to other subscribers' latest look (it reveals when others read, and with 50 readers 43% of rows were in runs again; a floor per reader has neither problem), delaying articles so they interleave (31 minutes later on average, and aggregators still clumped), and giving an article its own position only when the "seen" beacon fires, for arrivals shown out of date order (an arrival shown at its shared position before the beacon would then move).
+  A feed you've just followed is new to you too: its posts from the last 6 hours get your own positions, above what you've seen, and its older posts stay at their dates, so you see what you subscribed to without its archive flooding the top (#491; imports follow the same rule).
+  That replaces #490's rule that a first save never counts as arriving, which only avoided #455's jump-then-drop: judged by position, a new feed's latest post went first on a reload, then dropped to its date, and positions set once can't do that.
   Displayed dates may look out of order; accepted.
   Feed pages keep publication order.
+- **Per-reader positions are kept only for each reader's recent entries** (#491, issues #493–#495; the table and the kept window were the owner's choice in triage).
+  A row per reader per news article (`timeline_entries`) is written in `saveArticles`' transaction, for each follower who has looked in the last 6 hours (`rss.NewsWindow`): a reader away longer than that has a floor below every news position, so their own position would be the shared one, and readers without a mark (no JavaScript) read shared positions.
+  Following a feed, one at a time or by import, writes rows for its posts from the last 6 hours, as does a first save for followers who subscribed before the feed was fetched.
+  Every row is the shared position raised above what the reader has seen, when it's at or below it.
+  At the start of each visit, a reader keeps every row above the previous visit's "You were here" line (what arrived since that visit started), but at least the newest 100 and at most the newest 500 by position (`rss.MinEntries`, `rss.MaxEntries`); older entries are at their shared positions.
+  500 covers what 300 feeds bring since the previous visit started (in #491's measurements, 168 articles overnight and 435 a day) with room to spare, and 100 keeps about 5 hours of a heavy reader's history stable; a row takes about 224 B, so 500 take about 110 KB.
+  A row's position is never below the article's `timeline_at`, so deleting one only returns the article to its shared position: trimming moves only rows that were raised, and only below the previous visit's line, where the reader isn't reading.
+  It's also why there's no rebuild tool for drift: a raised position can't be recomputed (it depended on what the reader had seen when the article arrived), and deleting a reader's rows is always safe.
+  A timeline is one list in position order, each entry at the reader's row if they have one, else at `timeline_at`: a page merges the reader's rows with #404's per-feed query for articles without a row, bounded below by the last row when the rows fill the page, so there's no seam to cross and no group in the cursor.
+  On #491's prototype at `make db/loadseed`'s scale, Home's first page for 300 feeds took 4.6 ms (79 ms with #404's query alone, 5–52 ms grouped), and the first page past the rows 75 ms, as #404's pages do.
+  As built (#494), the first page past the rows measured about 30% slower than #404's pages, from a lookup per scanned article to leave out those with a row; #502 checks the reader's row IDs in memory instead, after #495's trim bounds how many there are, rather than skipping the lookup below the oldest row, which cost page 1 more and didn't help the first page past the rows.
+  It does that with an uncorrelated `a.id NOT IN (SELECT article_id FROM timeline_entries WHERE user_id = $1)` in the same statement, which Postgres hashes once per query, rather than #502's plan of reading the IDs in a statement of their own and passing them back as a `uuid[]`: the buffers are the same (25,300 to 44,000 before the copy check's change below), but it saves a statement and a round trip, keeps up to 1,500 or so IDs out of Go and the query's parameters on every page, and reads them in the same snapshot as the articles it checks, as the lookup did.
+  Unlike hides' `NOT IN` (see "Hiding articles"), it doesn't outgrow `work_mem`: Postgres decides to hash from its estimate of a reader's rows, which the trim keeps near `rss.MaxEntries` (500), far below the over 100,000 IDs the default 4 MB holds, and a reader with 1,500 rows (a long visit's before its trim) measured the same.
+  #502 also checks a copy's shared position before looking up its row: a row is never below its article's `timeline_at`, so a copy that isn't earlier by `timeline_at` can't be earlier by its row, and the article itself and later copies are left out before the joins (20,450 buffers, against #404's 19,650 for the same page).
+  Copies collapse at query time by the reader's positions, so nothing is collapsed on write.
+  Following a feed doesn't move what's already in your timeline through its copies (#506): a blog's post from two days ago, just seen at the top through an aggregator, would otherwise become the earlier copy and take the entry down to its date, so the new feed's earlier copy gets your own position just below the entry you have, within the part of the timeline your rows cover (below that, a row would be trimmed at your next visit anyway).
+  Unsubscribing keeps your rows for the feed (#506): timelines only show rows of feeds you follow, so they're unseen until you follow it again, when its posts stay where they were instead of its last 6 hours being raised above what you've seen a second time; visits trim them like any other row.
+  Every timeline uses the same positions (the mark is already shared across tabs), except starred-only timelines (star order) and shared timelines, which have no reader and use `timeline_at`.
+  Older backlog stays shared: only a newly followed feed's posts from the last 6 hours get rows, so subscribing and importing write a few rows per feed rather than a backfill, and old posts never jump.
+  Rejected: rows for every article ever arrived (a backfill on every subscribe and import, 4.8 s for 300 feeds of two years, and storage growing with articles × followers); a fixed count alone (300 feeds bring well over 100 articles overnight, so the oldest arrivals since the last visit would lose their rows); a time window alone (unbounded for heavy readers, and still short after a long absence); rows complete above a stored seam, with backlog rows and a backfill above it on subscribe (page 1 from rows alone took 1.2 ms, but every write path would have to keep the seam whole); and trimming at ingest or in a background job (what's kept moves with visits).
 - **On a feed's first save, undated items are backlog too** (#438): each run goes below the item before it in the feed's document, a step apart (the median gap between the feed's dated items, at most a day; a day without one), the newest no later than a day before the save, and spread evenly down to the next dated item where stepping would pass it.
   We can't know when they were published, and an undated feed would otherwise fill the top of Home on import; spacing them keeps them from forming a block lower down too.
   Rejected: below the save's dated items 1 µs apart, as #438 first proposed (still a block), and the newest near the top as a taste of the new feed (an import with many undated feeds would put one per feed on top).
   On later saves an undated item is news.
-- **The timeline is `/`** for logged-in users (the nav label stays "Home").
+- **The timeline is `/`** for logged-in users (the nav label stays "Home"); `/` opens your first tab, or the one you were on during this visit (#480, "Timelines" under "Filtering and timelines").
   Duplicates are collapsed at query time on `canonical_url`, keeping the earliest copy by position, with "Also in" on the row.
   Feed pages show every copy.
   (#154, #162)
 - **Timelines read each followed feed's newest entries, then merge them** (#388, #404).
   A page reads at most a page of entries from each subscribed feed and keeps the newest, so its cost follows the number of feeds followed (about 0.1 ms each at #388's scale), not how much history is kept.
   Copies are still collapsed at query time, but ingest flags articles that have a copy (`has_copies`, set and never cleared), so only those get the earlier-copy check; a stale flag costs a lookup, never a wrong result.
-  Chosen over a per-reader timeline table, which measured faster (under 1 ms) but stores a row per reader per article, needs a backfill job on every subscribe and import, and must repair copies when someone unsubscribes; it's in backlog.md for when the per-feed cost shows.
-  It doesn't wait for the article-retention decision, since its cost doesn't depend on history; retention is decided before a per-reader table, whose size it bounds.
+  Chosen over a per-reader timeline table, which measured faster (under 1 ms) but stores a row per reader per article, needs a backfill job on every subscribe and import, and must repair copies when someone unsubscribes.
+  #491 adds per-reader rows for each reader's recent entries only (above), and older pages still come from this query.
+  It doesn't wait for the article-retention decision, since its cost doesn't depend on history; neither do the capped per-reader rows.
 - **JIT is off for the app's database connections** (#404).
   Postgres compiles queries whose estimated cost is high, which added 20–70 ms to each timeline query in #388 and saves nothing on queries this size.
   It's set per connection in `psql.NewConnector` (used by `psql.OpenDB` and by `tools/loadseed`'s measurements), so production, dev, CI and the measurements match without an owner step.
@@ -312,13 +401,16 @@ Planned in #163 (issues #147–#162).
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 - **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
   It's stored per user on the server (`timeline_marks`), so it follows the reader across devices; a marker in the browser would need no schema but differ on every device.
-  The page reports the newest position on it (with #455, which needn't be the first row's) with a beacon when it's hidden, never from the GET that renders it ("Overall").
-  One position per user serves Home and every custom timeline, since they share `timeline_at`; starred-only timelines, ordered by star time, show no line.
+  The page reports the newest position on it with a beacon, never from the GET that renders it ("Overall"): when it's hidden, and with #491 also when it's shown, since each arriving article's position for the reader is set against the latest report, so an article arriving while a page is open must already count what's on it.
+  The moment between a render and its report (well under a second) isn't covered; accepted.
+  Each timeline has its own line (#498, planned in #491): where you were on that timeline at the end of the last visit you opened it in, so reading only Quiet posters doesn't move Home's line above Home articles you never had on screen; starred-only timelines, ordered by star time, show no line.
+  The floor arrivals are raised above stays one per user, the newest position you've had on screen on any timeline: per-timeline floors would mean per-timeline positions (up to 21 times the rows and the writes, and the same article in a different order on each tab), and a shared floor can only put an arrival higher, by at most the minutes since its feed's previous fetch.
   The line moves only after 30 minutes away (`rss.VisitGap`), so a reload or a quick tab switch keeps it in place.
-  With #455 the line is also where grouping splits the timeline, so the mark keeps when each look was rendered, not only when it was reported: articles fetched while a page is open weren't on it.
-  Readers without a mark (before their first report, or without JavaScript) get publish order without grouping; accepted.
+  While you're using a timeline page (scrolling, a key, a tap or a click), it also reports every 10 minutes (#506): with the report on show, a visit was measured from the page's load, so a read of one page past 30 minutes started a new visit when you left it, moving every line to the top of the page you'd been reading; a page left on screen while you're away still lets the visit end.
+  With per-reader positions the line is just a position again (#491): everything that arrived since the previous visit is above it by position, so the mark no longer keeps when each look was rendered, as #455's grouping needed.
+  Readers without a mark (before their first report, or without JavaScript) get the shared positions; accepted.
   There's no line before the second visit, at the top of the page, or without JavaScript (no beacon, so it would never move).
-  Accepted: reading only a filtered timeline moves the line for Home too, so articles only Home shows can sit below it unseen; per-timeline markers would cost a row per timeline for a rare case.
+  #397 accepted one line for every timeline (a row per timeline for a rare case); with default tabs (#482) and `/` reopening the tab you were on (#480), reading one tab only is common, so #491 changed that.
 
 ### Saved articles
 
@@ -355,6 +447,7 @@ Planned in #395 (issue #396).
   Articles without a usable URL have no Share button.
 - **The system share sheet where there is one, else copy the link** (the link alone, so it pastes cleanly).
 - **It needs JavaScript, so without it there's no button**, rather than a button that does nothing; "Read on" and the browser's own share remain.
+  For the same reason a browser with neither a share sheet nor the Clipboard API (which needs a secure context) gets no button either (#511).
 - **An icon-only button between Star and Save**, as "Saved articles" planned.
 - **Nothing about sharing is recorded**: no counts, no request to the server.
 
@@ -419,25 +512,49 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 
 - **Timelines are explicit, not one per tag.** Tags organize; a timeline is made on purpose (a tag's page offers "Make a timeline"), which keeps the tab row short.
   (#356)
-- **Tabs at the top of Home**, at `/timelines/{id}`, managed at `/timelines` and reordered with Move up / Move down (no drag and drop, which needs JavaScript).
+- **Tabs at the top of the timeline pages**, at `/timelines/{id}`, managed at `/timelines`.
   The nav rail is unchanged, and tabs carry no counts.
   (#356, #357)
+- **Reordering works with buttons, and dragging is an extra** (#479, #481; this reverses #356's "no drag and drop, which needs JavaScript"): every row on `/timelines` has move up and move down buttons, which work without JavaScript, and `app.js` adds drag handles and moves rows in place.
+  The buttons stay where dragging works: WCAG 2.2's 2.5.7 (Dragging Movements, AA) needs a single-pointer way to do whatever dragging does (W3C's technique G219), and they're the keyboard path.
+  Dragging uses Pointer Events, not HTML drag and drop, which doesn't work with touch on many phones.
+  The look (#481, approved at its design checkpoint): a six-dot grip at the start of each row, rendered hidden and shown by `app.js` like the Share button, and the only part of the row that takes a touch drag, so the rest still scrolls; the dragged row lifts with a shadow and follows the pointer, held within the list, and the others slide out of its way when its edge crosses their midpoints (#519; they used to jump when its pointer did); Escape puts the rows back; a moved row flashes the info tint for under a second (none under reduced motion), and the live region says "{name} moved to position {n} of {total}."
+  Each change saves the whole order at once; an order that no longer matches the user's tabs (changed in another window) isn't saved, and the page reloads with a flash saying so.
+- **Deleting a timeline stays at the foot of its edit page, not on `/timelines`' rows** (#479): the move buttons beside it are pressed often, deleting has no confirmation or undo, and deleting a shared timeline breaks its link for everyone following it.
+  At 320 px a row has no room for a fourth control, and row menus were ruled out for My feeds (#424).
 - **The tab row is underlined tabs in place of the page head's heading**, the owner's pick of three options (pills under the heading; wrapping pills with More on phones) for its app-like look.
   The tabs scroll sideways when they don't fit; `app.js` scrolls the current one into view, and without JavaScript the row starts at Home.
-  The description and Edit link go in a row under the tabs.
-  (#356)
+  The row ends in an "Edit" pill to `/timelines`, outside the part that scrolls, so it shows on phones however many tabs there are; the tabs fade out before it when they overflow (#479, replacing the "New timeline" / "Timelines" item that changed its name and scrolled out of view).
+  A text pill rather than an icon, like every page-head action; a gear would read as Settings.
+  The description goes in a row under the tabs, only when there is one, so switching tabs doesn't move the articles; the Edit link that row used to hold is gone (#479).
+  (#356, #479)
+- **`/timelines` mirrors the tab row, with rows like My feeds'** (#479): Home first, then each timeline; the row opens the timeline, and move up, move down and the Edit pencil are icon buttons at its end, the arrows disabled at the ends so rows line up.
+  Each row says what the timeline is made of ("Tagged Tech · Mentions “AI” · Leaves out 1 feed") instead of its description, so a timeline can be told apart, or found broken, without opening it.
 - **The tab row is navigation, not ARIA tabs.** Each tab is its own page, so it's a `<nav aria-label="Timelines">` list of links with `aria-current="page"`; `role="tablist"` is for switching panels within a page and would promise arrow-key behavior links don't have.
   The `<h1>` (the timeline's name, or Home) stays, visually hidden and first in the header, so headings still outline the page.
   (#356)
 - **A filter is a form, not a query builder.** Show is all my feeds, or feeds with any of these tags or these feeds; Leave out is tags and feeds, and always wins; then conditions that must all hold: starred only, at most N posts a week, must mention / leave out words, audio or video only.
   Timelines pick only from your subscriptions, except a starred-only one showing all feeds.
   (#356, #358–#360)
+- **The form reads itself back** (#483, the owner's approval at the design checkpoint): a summary box first says what the timeline shows in a sentence ("Articles mentioning “AI” from feeds tagged Tech, except The Verge.") and how many of the user's feeds it draws from, then Name, Feeds and Articles, then Save.
+  The sentence spells out the rules the form can't show (Leave out wins; every ticked condition must hold), which is where a filter form goes wrong (Apple Mail's any/all menu is the cautionary case); the count answers "what number?" for the posting rate better than pointing at My feeds.
+  It replaced one long page that asked everything at once in four styles: the tag list twice, hints in rows of their own, and Save above a Sharing section it didn't save.
+- **One pattern per kind of setting** (#483): "All my feeds" or "Only some" as one segmented control, with tags as wrapping pills and feeds folded away with a filter box; Leave out folded away, open when it holds something; and every condition a checkbox that reveals its setting.
+  Reveals are CSS `:has()`, so no JavaScript is needed; since hidden fields still post, the server decides by the checkboxes, and an unticked condition stores nothing.
+  The summary is built in Go and rebuilt by `app.js` with the same words; the Go tests are the spec.
+- **Sharing has its own page** (#483), from Share in the editor's head, since sharing isn't part of what Save saves; the editor's "All timelines" pill went with it (Cancel and the tab row's Edit cover it).
 - **The same reading rules as Home:** arrival order, copies collapsed among the timeline's own feeds, "Also in", read markers.
   A starred-only timeline orders by star time instead, so new picks land on top.
   (#356, #358)
-- **Presets on New timeline, not built-in tabs:** Starred (all feeds, starred only), Quiet posters (at most 2 a week), and From a tag.
-  Each is an ordinary timeline you can rename, filter, share or delete.
-  (#356, #358, #359)
+- **New accounts start with Quiet posters and Starred** (#482; this replaces #356's "presets on New timeline, not built-in tabs"): two ordinary timelines, created with the account, that can be renamed, changed, shared, moved or deleted like any other, and count toward the limit.
+  Quiet posters best shows what the app is for, and nobody makes it on day one; without a starred-only timeline a star has nowhere to appear (NetNewsWire ships Starred as a built-in view for the same reason).
+  The cost is two tabs for people who'd use neither.
+  New timeline still offers both, among its starting points, so a deleted default can come back.
+  Accounts made before #482 don't get them (pre-alpha).
+- **New timeline starts from a list of starting points** (#482): Feeds with a tag, Quiet posters, Starred, Keywords, Audio and video, Start from scratch, each a row like Settings' home list (an icon on an avatar tone, a one-line hint, a chevron) that opens the form filled in.
+  It replaced a small "Start from" line above the form, so the form with every option was where everyone started; the list also says what timelines can be made of.
+  Without tags, Feeds with a tag leads to Tags, to make one first.
+- **An empty quiet-feeds timeline says what will show up** (#482): "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them.", since a new account's Quiet posters is empty until it follows quiet feeds, and "Nothing in this timeline yet." read as broken.
 - **Quiet posters use the feed's 30-day average**, stored as `feeds.posts_per_week` on every save and 304, and shown on My feeds and feed pages ("About 3 posts a week") to help pick N. One whole-number field for now; richer frequency rules are a backlog item.
   The average is over the time the feed's articles cover, up to 30 days and never less than 7: a feed we've just found only has its current file, so dividing by 30 days made a busy new feed look quiet.
   The 7-day minimum keeps a weekly feed whose file holds only its latest post from counting as 7 a week (as a 1-day minimum would); the cost is that a busy feed whose file holds few items is understated in its first week.
@@ -455,14 +572,21 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Home shows every feed you subscribe to and can't be edited; there's no muting.** To keep a noisy feed out of view, make a timeline that leaves it out.
   Muting on Home (#362, not built) was dropped: a feed missing from the main view, with the reason only on its Edit page, raises "why don't I see X?" with no answer on the page, and it would have been a second way to filter beside the timeline form.
   Home has no `timelines` row.
-  The cost: `/` always opens on Home, so someone who reads a filtered timeline first taps its tab each visit (a backlog item, "Start on a chosen timeline").
+- **Home can move, and `/` opens the tab you were on during this visit, else your first tab** (#480), for someone who reads a filtered timeline more than Home (the backlog's "Start on a chosen timeline").
+  Home is one of the tabs you order on `/timelines`, but it still can't be edited, shared or deleted; most people will keep it first.
+  A visit is the 30-minute gap that also moves "You were here" (`rss.VisitGap`), so the nav's Home and the logo bring you back to the tab you were reading, and a later visit starts on your first tab.
+  Per browser session was the other choice, but session cookies on phones last for days, so the first tab would rarely apply.
+  The visit's tab is a cookie, checked against the user's tabs on every use, rather than a session value: sessions are stored in Postgres, so it would be a write on every page view.
+  Home gets its own address, `/timelines/all`, since `/` may show another tab; its position is a column on `users` in the same numbering as `timelines.position`, since Home has no `timelines` row.
+  Its tab is called "All feeds" (the owner's pick at #480's design checkpoint, over keeping "Home" and over Bluesky's "Following"): once it can move, the nav's "Home", which opens your first tab, and a tab called "Home" sitting third would say different things, and "All feeds" says what it is in the app's own words ("My feeds").
+  The code still calls it Home (`homeName` holds the label).
 - **Limits:** 20 timelines; names up to 50 characters, descriptions up to 280.
   (#356)
 - **The form stores only what has an effect.** With Show set to all feeds, the tags and feeds ticked under Show are dropped on save; a tag or feed both shown and left out is stored as left out; IDs that aren't the user's are ignored.
   A timeline showing only some feeds whose sources are all gone (say its only tag was deleted) stays, with an empty state asking to edit it, rather than silently showing every feed.
   (#356)
-- **Home's heading is "Home"**, matching its tab, and each custom timeline's heading is its name, both visually hidden (above).
-  (#356)
+- **Home's heading is "All feeds"**, matching its tab, and each custom timeline's heading is its name, both visually hidden (above).
+  (#356, #480)
 - **No unread filter or counts**, as under "Reading".
 
 ### Sharing
@@ -567,9 +691,9 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
-- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
+- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).
   It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
-  The favicon (`static/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
+  The favicon (`web/app/public/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
   The P is outlined in both files, so they don't depend on the font loading.
 - **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
   Green and gold, maroon and an orange box were tried and dropped.
@@ -590,13 +714,18 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
 - **Page-head actions are small outlined pills** (`btn btn-sm`, #424), on every page that has them: they read as controls opposite a big heading, where text links were easy to miss.
   None is filled, since a filled pill is a form's primary action; two actions are grouped (`.head-actions`) so they stay on one line on phones.
-- **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
+- **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `web/shared/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
   It's subset to Latin and weights 600–800 (77 KB, cached for a year).
 - **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.
   It has optical sizes, so one file is sturdy in a 17 px excerpt and refined in 20 px article text.
   It was picked over Literata on a warm paper background (drifts from the logo's cool palette) and an all-sans option with Instrument Sans and ink outlines on every card (busier).
   Self-hosted like Bricolage, subset to Latin and weights 400–700 (93 KB; the italic, 103 KB, loads only on pages that use it).
   Nav, buttons and forms stay in the system font, so the interface feels native.
+- **While the fonts load, text shows in size-matched fallbacks, with `font-display: swap`** (#546, approved at its design checkpoint): adjusted Arial for Bricolage and adjusted Georgia for Newsreader, sized from the fonts' metrics so the swap barely rewraps anything.
+  `swap` rather than `optional`, which would sometimes show a first visit without the headline font, or `fallback`, which hides text for a moment for little gain over a matched fallback; with the fonts cached for a year, the swap happens once per device.
+  The first frame on Apple devices is adjusted Arial and Georgia rather than system-ui and Charter: closer to the final shape, which the recordings favoured.
+  Each fallback face is tuned for its first `local()` font, so Noto Serif (Linux without Georgia) matches less closely.
+- **Fonts are preloaded only where a page shows them** (#546): Bricolage on every page, upright Newsreader on pages with reading text on their first screen, never the italic, which only some articles use.
 - **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the option or options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Every option comes with a justification (what it fixes, why this way, and what it trades away), so the pick rests on reasons that can be recorded here rather than on taste alone.
   One option is enough when it's clearly right, but it's still shown and justified.
@@ -604,6 +733,99 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 - **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.
   Until then the issue holds them as the current thinking, and the implementation PR adds them to this file.
+
+### Motion and feedback
+
+Planned in #507 (issues #508–#525), from a review of where progressive enhancement and subtle motion would make the app nicer to use.
+Each piece's look (its timing, curve and effect) is recorded here once the owner approves it in its implementation (above); these are the rules all of them follow.
+
+- **Motion is an enhancement the reader opts into.** It's written inside `@media (prefers-reduced-motion: no-preference)`, so a forgotten guard means no motion rather than unwanted motion.
+  With reduced motion nothing moves, scales or slides, and view transitions are off; color and opacity changes of up to 150 ms stay, since they aren't motion (WCAG 2.3.3).
+  The reorder tint (#481) already followed this.
+- **The feel is quick and soft, like a sheet of paper sliding into place** (#508): things answer a tap at once and slow down as they arrive; nothing bounces except starring and, slightly, the tab underline (#521); motion is felt more than watched.
+  The values are tokens on `:root` in `main.css`, so a value tuned there changes everywhere; later issues use them by name.
+- **Four curves** (#508): `--ease-out` for anything appearing or answering the reader (most motion), since it starts at full speed and a slow start reads as lag on a press; `--ease-in` for things leaving, so the eye isn't held on them; `--ease-in-out` for moving from one place on screen to another, since both ends are on screen; `--ease-spring` (one overshoot of about 16%) only for the star, the one celebratory moment.
+- **Five durations and a busy delay** (#508): `--duration-press` for pressing in, `--duration-quick` for hover and color changes, everything leaving and the crossfade between pages (#513), `--duration-base` for small things appearing or changing state, `--duration-move` for moving across the screen, `--duration-flourish` for the rare celebratory moments, and `--delay-busy` before a busy indicator.
+  Exits take about two-thirds of their entrance.
+  Only a highlight fading away (the reorder tint) and the sunrise (#523) run longer, each with a comment where it's set.
+- **Small distances and cheap properties** (#508): travel 3–8 px, presses scale to 0.97–0.99 and only the star goes past 1.
+  Only `opacity`, `transform`, `clip-path` and SVG `stroke-dashoffset` animate, which stay smooth on phones; never layout (except the timeline form's disclosures, #520), and never blur or shadows on large areas.
+- **Presses act only while pressed** (`:active`), so a target never shrinks while it's being aimed at; the focus ring isn't animated (#508).
+- **Press states** (#510): the browser's tap highlight is off, and every control has its own press.
+  Buttons scale to 0.97, icon buttons take the hover background and their icon scales to 0.9, rows take their hover background, and the phone tab bar and timeline tabs take `--text` (the tab bar icon scales to 0.9).
+  An article card firms its border and scales to 0.99 only while its own title link is pressed, and is never tinted, since the tint is the read marker.
+  Presses go in over `--duration-press` and out over `--duration-quick`; colors apply under reduced motion, scales don't.
+- **Starring and saving** (#512): while the request runs the button is `aria-disabled` and dims to 0.6 only after `--delay-busy`.
+  Once a `204` turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
+  Turning Save on drops the bookmark 3 px into place over `--duration-base` on `--ease-out`, with no overshoot or burst, since saving is frequent.
+  Turning either off doesn't animate, so only the reader's own change is marked.
+- **Live search while it's working** (#518, approved at its design checkpoint; this departs from the issue's spinner at the end of the box): while a request is in flight the results are `aria-busy`, and once it has taken `--delay-busy` the box's search icon fades into a small spinner in `--text-3` and the stale results dim to 0.6, both over `--duration-quick`.
+  The spinner takes the icon's place rather than sitting at the end of the box, because the clear button is a control and stays at the edge where readers expect it, while the spinner is passing status; at the end it pushed the clear button in from the edge, and Firefox, which has no clear button, put them in a different order.
+  Both go at once when the new results arrive, the request fails or the box is emptied, so new results never fade in; a keystroke that aborts a request for a new one keeps them on without restarting the delay, and nothing new is announced.
+- **Slow forms show they're working** (#509, approved at its design checkpoint, #538): Look up, Check for new feeds, Refresh, Import, Log in and Sign up still post normally, but on submit the button is `aria-disabled`, takes a busy label ("Looking up {site}…", "Checking for new feeds…", "Refreshing…", "Importing…", "Logging in…", "Signing up…") and ignores further presses, with a `progress` cursor and no hover change.
+  It keeps its width where it can, so the row doesn't jump; once the post has taken `--delay-busy` a 1em spinner ring in `currentColor` fades in before the label over `--duration-quick` and the label is announced, since a changed label isn't read out by itself.
+  On Refresh and Check for new feeds the spinner takes the refresh icon's place, since two rings side by side read as a glitch; a page restored from the back/forward cache gets its buttons back.
+- **Share's copy feedback** (#511; the owner's pick at its design checkpoint, #533, from four options): where there's no share sheet, a pill in the inverse colors appears 6 px above the button, over whatever is there, so nothing in the row moves, and on success the check draws itself in place of the share icon.
+  It says "Link copied", not "Copied", since the button says Share and the words say what it did; a failure says "Couldn't copy" and keeps the share icon.
+  It fades in and rises 4 px over `--duration-base` on `--ease-out` and fades out over `--duration-quick` on `--ease-in`, and under reduced motion only fades; it has no arrow, so it reads as the button answering rather than a hover tooltip.
+  A success stays 2 s, and longer while a mouse is over the button or it has keyboard focus (until the next key); a failure stays until the reader's next press or key, since a message that times out before it's read fails WCAG 2.2.1 (why toasts aren't taken, below).
+  Only the latest copy shows (owner's call in #533): the clipboard holds one link, so copying another article hides the previous pill at once, rather than leaving it saying "Link copied" over a link that no longer is.
+  Every press gets a visible answer: a copy repeated while its pill shows replays the rise and the check without hiding the pill (under reduced motion its opacity dips to 0.4 and back over `--duration-quick`) and starts its 2 s over, since a reader who presses again usually wasn't sure the first press worked.
+  Not taken: status text at the row's open end (on phones it lands on "Also in", and it left the screen on the article page), and the button turning into a labelled, tinted "Copied" (it widens about 60 px, so Star jumps aside and at 320 px "Also in" is squeezed to a word a line).
+- **Page to page** (#513): following a link or a form post that redirects crossfades into the next page with the browser's own cross-document view transition, over `--duration-quick` on `--ease-out`.
+  The browser's crossfade blends the two pages, so whatever is the same on both (the nav, the head's rule, card frames) holds still and only what differs fades; separate fade-out and fade-in animations, as first planned, left both pages half visible for about 70 ms, putting text on text and dimming the parts that don't change.
+  Nothing else has a `view-transition-name` (the tab underline does, #521, below): a named element is drawn from a snapshot during the transition, and the phone tab bar's frosted glass doesn't match its snapshot, so it jumped at the start and end; without names the current section's highlight crossfades with the page instead of switching at once.
+  Back and Forward cut: Safari animates its own swipe-back (iOS, and macOS with a trackpad), and a page can't tell a swipe from the Back button on a cross-document navigation, so a crossfade could play after the browser's animation; an instant Back also suits a page restored with its scroll position.
+  The skip is in the deferred `app.js` (`pageswap` on the page being left), not a render-blocking script: if it ever misses, Back gets a 150 ms crossfade, which isn't worth blocking every page's first render for.
+- **Tab to tab** (#521): the current tab's underline is its own element, named for view transitions, so between two tab pages it moves from the old tab to the new one while the page crossfades, telling the reader where they moved along the row.
+  It moves like something elastic, not a rigid bar: the edge in front leaves at once on a stiff spring and the edge behind follows on a softer one, so the line reaches toward the new tab (about 1.4× its length between neighbours, topping out near 1.9× across the row, where the back edge follows more closely so long moves don't over-stretch), then the back edge catches up; the front edge overshoots by at most 6 px and springs back, and the line thins as it stretches, keeping its area, so the stretch reads as speed.
+  Springs reach every distance in about the same time, growing a little with distance: a neighbour is in place in about 175 ms and a tab across the row in about 240 ms, settled by 200–320 ms.
+  Slowing far moves further was tried and not taken: a third more time barely lowered their peak speed, since the speed is in the stretch, and lengthened the transition; there's no wind-up before it leaves, since a slow start reads as lag on a tap.
+  Only the page that's arriving can shape the move (a CSS curve moves both edges together, and the old page's `view-transition-class` doesn't carry over), so the springs are in the deferred `app.js`, in its `pagereveal` listener.
+  No script blocks rendering for it: one loaded without `defer` cost about 16 ms of first paint on a throttled phone, on every timeline page view, while the deferred `app.js` is listening in time on a typical device but misses about two in three on a 6× throttled CPU.
+  When it misses, `main.css`'s move plays: the line slides on `--ease-out` over `--duration-move` and stretches about its middle as it leaves (1.35×, thinning), squashes a little as it lands (0.95×) and settles, so it still feels alive, just without the reach.
+  The group animates `width` and `height` as well as `transform`, which is cheap here: it's a 2 px line drawn from a snapshot above the page.
+  The row keeps where the reader scrolled it from one tab page to the next, so its labels don't jump during the crossfade and the line slides along a row that stays put; it's only scrolled when the new tab isn't in view, now just far enough to show it clear of the fade rather than centered, since that's what CSS can do before the first render.
+  That first scroll is CSS (`scroll-initial-target`), not `app.js`: when the deferred script ran after the transition had captured the row, the row was still at its start, so the line flew toward a tab hidden past the Edit pill and the labels smeared between two scroll positions.
+  A late `app.js` leaves the row where CSS put it rather than restore the reader's scroll under them; on a slow device a far switch can then crossfade the labels between two scroll positions, but the line always moves between tabs that are in view.
+  An underline scrolled out of the row on the page being left isn't named, since its snapshot isn't clipped by the row and would slide in from outside it; the new underline fades in with the page, as it does to and from a page without the row.
+  Tapping the current tab moves nothing, and at rest the underline looks as before; in forced colors it's a border, so only the current tab is underlined (the old transparent borders on every tab were forced visible).
+- **The sunrise** (#523, approved at its design checkpoint): on the landing page and Log in, once per load, the logo's sun rises into place from 7 units lower (of the 64-unit drawing, so its top just shows) over 900 ms on `--ease-out`, after a 200 ms pause so the page has settled.
+  It's clipped to the sky, so it never paints over the water.
+  The sky brightens with it, a deeper blue fading to the logo's own over the same time, so it reads as dawn rather than a shape sliding up; the deeper blue is an overlay whose opacity fades, so only opacity and transform animate and `main.css` names no color.
+  The logo is drawn inline on those two pages only (the rail and the other logged-out pages keep the `<img>`), and it's still under reduced motion and in forced colors.
+- **Reordering** (#519, approved at its design checkpoint; this departs from the issue's view transition and eased curves, and widens it to dragging): on `/timelines`, rows glide to their places as an animation of the real rows with the Web Animations API, not a view transition.
+  A view transition draws snapshots over the page while it runs, so a click during a glide would land on the transition rather than a button, the focus ring would be frozen in the snapshot, and a press mid-glide could only skip to the end; real rows keep focus and take every press.
+  Every row moves on a critically damped spring (ω 28 rad/s: a row's height in about 260 ms), sampled into keyframes like the tab underline's (#521), not on the curve tokens: a curve restarts from rest, so five quick presses made the row stop and lurch at each one, and a curve fast enough to answer a press (`--ease-out`) moved a sliding row a quarter of its way in the first frame, which read as a jump.
+  A spring from rest eases in and out; interrupted, it carries on from where the row is at the speed it has, so nothing restarts or stops; it never overshoots, so rows don't bounce into each other, and it starts as of the current frame, since a pending start held the row still for a frame.
+  A move button's row and its neighbour trade places, the moved row drawn above, and the page scrolls smoothly to keep the moved row clear of the sticky bars and the phone tab bar (moving down never scrolled before, since the pressed button kept its focus, so on a phone the row went under the tab bar).
+  Dragging is direct: the row follows the pointer with no animation, so it never lags, and lifts with a shadow that fades in over `--duration-quick` (opacity only, on a pseudo-element); the rows it passes slide aside on the spring once its edge crosses their midpoints, and slide back if it changes its mind, keeping their speed.
+  The order changes only on the drop (moving rows in the document under the pointer made them jump a whole place at a time), and the row settles into its gap carrying the pointer's speed as its shadow fades; Escape, a cancelled pointer or leaving the window glide every row back.
+  Held near the top or bottom of the visible page (below the sticky bars, above the phone tab bar) a drag scrolls the page, faster nearer the edge, and only towards rows out of sight, so a phone can move a row the whole length of the list.
+  Under reduced motion nothing glides or slides aside, but the dragged row still follows the pointer, since that's the reader's own movement, not an animation; in forced colors an outline replaces the shadow.
+- **Under reduced motion the spinner pulses instead of freezing** (#508): a frozen ring no longer says "working", and a slow opacity pulse moves nothing and is far below the flashing threshold.
+- **The state changes first, and motion is drawn on top.** `aria-pressed`, text and `hidden` change at once; nothing waits for an animation before updating, moving focus or taking the next press.
+- **Motion never says anything on its own**: what it shows is also in the markup, the visible text or the live region.
+  Nothing flashes more than three times a second (WCAG 2.3.1), only progress spinners loop, no animation moves focus, and decoration drops out in forced-colors mode.
+- **Delight only on rare or meaningful moments**: starring, first seeing "You were here", the sunrise on logged-out pages.
+  What readers do many times a visit (opening articles, saving, pressing buttons) gets quick feedback only, so the effects don't wear out.
+- **Busy indicators wait about 300 ms**, so fast responses never flicker; the control stops taking presses at once, with `aria-disabled` rather than `disabled`, so focus stays on it.
+- **A design checkpoint for motion includes short recordings** (desktop and phone, with and without reduced motion), since screenshots can't show it; this adds to the checkpoint rule above.
+- **No backend changes in this batch**, so it's all quick wins.
+  Making navigation itself faster (prefetching, the back-forward cache) needs server work, so it's planned separately ("Instant navigation" in backlog.md).
+- **Two issues are experiments** (#524, the card growing into the article page, and #525, images fading in): built to be seen, then kept or closed as not planned.
+- **No framework for page transitions** (Turbo, htmx): cross-document view transitions are CSS, with `app.js` only skipping them on Back and Forward (#513) and shaping the tab underline's move when it's in time (#521), and every page keeps working without JavaScript.
+- **Not taken**, each for its reason:
+  - Toasts that dismiss themselves: easy to miss, and a time limit on reading them fails WCAG 2.2.1; flash messages stay until the next page.
+  - An "all caught up" ending, a "new articles" pill or pull-to-refresh: they make the timeline an inbox ("Reading"), and #394 already turned down pull-to-refresh ("Mobile").
+  - A tab bar that hides as you scroll: it moves on every scroll and makes the nav something to look for.
+  - Cards that lift on hover: the firmer border is the hover (#421), and cards stay quiet previews.
+  - Crossfading live search results: it makes typing feel slow.
+  - An animated theme switch, for something people do once.
+  - Skeleton screens: server-rendered pages arrive whole, so a skeleton only adds a flash.
+  - Smooth scrolling everywhere: it fights Back's anchored position and can make people queasy.
+  - A reading-progress bar: it moves on every scroll, and the scrollbar already shows how far you are.
+  - "You were here" animated by scroll position: tied to scrolling, it replays back and forth and wears out, so it plays once instead (#522).
 
 ## Mobile
 
@@ -631,6 +853,52 @@ Planned in #395, from a discussion of what would stop people switching to the ap
 - **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
   People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.
   Revisit if trial users or cancellations keep asking for it, or if the app's own mobile experience can't get good enough; the small Fever API would be the first step, possibly on a paid plan.
+
+## Frontend assets
+
+Planned with #540–#547, from a review of how the app serves its assets: the fonts were downloaded again on every page view, and the JavaScript and CSS shipped unminified.
+
+- **Every asset URL carries a hash of its content and is cached for a year (`immutable`)**, the fonts included (#540): the fonts' URLs in `main.css` had no version, so browsers couldn't cache them.
+  A URL without the current hash gets `no-cache` and an `ETag`, so neither browsers nor the edge keep a copy they can't revalidate.
+  Built files carry the hash in their names; files that need a fixed URL (the install icons the web app manifest names) keep `?v=` (#543).
+- **An outdated hash of an entry or stylesheet still gets the current file, uncached** (#543): Render runs the old and new versions side by side during a deploy, and a page rendered by the old one must keep its styles.
+  An outdated chunk is a 404 (#547): a page loaded in that window loses only its enhancements, and works without them.
+- **Render's edge cache, not a CDN of our own** (#541): Render already puts Cloudflare in front of the service and caches "Common static files" at no extra charge.
+  Proxying our own Cloudflare records would add an `X-Forwarded-For` hop ("Client IP" under "Deployment"), and a separate assets host would cost every first visit a DNS lookup and a TLS handshake that the page's own HTTP/2 connection doesn't.
+  Not "All files": logged-out pages send no `Cache-Control`, so the edge would keep them for 2 hours.
+- **HTTP/2, HTTP/3 and compression are the edge's job**: the app doesn't compress responses or speak HTTP/2 itself, and nothing is precompressed; production serves HTTP/3 as well as HTTP/2 (#541).
+- **A build step** (#543; this reverses #50's and #163's "one plain file, no build step" under "Overall"): bundling and minifying halves the JavaScript and CSS (with Brotli, `app.js` from 16.8 to about 8.3 KB and `main.css` from 15.8 to about 9.2 KB), and lets the code become tested TypeScript modules that a second site can share.
+  - **One npm project in `web/`** for every site (the reader now, an admin site later), with what they share in `web/shared`: not at the repository root, which is the Go module's, and not inside one site's Go package.
+    Its output is embedded by a Go package in `web/` that each site's server imports.
+  - **Vite, as a build tool only**: its manifest tells Go which files, stylesheets and chunks each entry needs, and Vitest shares its config.
+    Not its dev server: Go renders every page, and the dev client would need CSP exceptions and a development-only template path.
+    Not esbuild on its own (a second tool next to Vitest, and no manifest of that kind), and no PostCSS (Vite bundles and minifies CSS without it).
+  - **A failed build fails the build, not the server**: `make`, the Dockerfile and CI build the assets before Go compiles, and `web/dist` is gitignored with no placeholder, so a missing build is a compile error.
+    Building in the server at startup with esbuild's Go library was considered and not taken: a broken build would only show when the server started, and TypeScript wants a real build step anyway.
+  - **Node only at build time**: the image stays distroless, and the Node version is pinned in `web/.node-version`.
+  - **Stylesheets write standard properties, and the build adds the vendor prefixes** (#543): with the source's `backdrop-filter` and `-webkit-backdrop-filter` both set to `var(--blur)`, Vite's minifier (Lightning CSS) kept only the prefixed one, which Firefox ignores.
+    A prefixed property belongs in the source only where there's no standard one (`-webkit-tap-highlight-color`); `TestBuiltCSSKeepsStandardProperties` catches a standard property the build drops.
+- **TypeScript (`strict`) and Prettier** (#544): `tsc --noEmit` checks types and Prettier checks formatting in CI, like gofmt; no linter beyond `tsc`.
+- **One module per enhancement** (#544), each still hooked onto server-rendered markup, so pages work without JavaScript and nothing is inlined (the CSP).
+  Earlier entries here name `app.js` and `main.css`; after #544 their code lives in modules and partials under `web/app` and `web/shared`.
+- **Vitest with happy-dom** (#545), tests next to their modules; where JavaScript mirrors Go (the timeline form's summary), a fixture the Go tests generate keeps both in step, with Go as the spec.
+- **Bundles by page group, not by feature** (#547): a few entries (reading pages, Search, Timelines, account forms), each template naming its group once, with stylesheets, `modulepreload`s and the module script written into the head from Vite's manifest.
+  Not `import()` when a feature's markup turns up: enhancements would arrive a round trip late, buttons revealed by script would shift the layout, and the deferred `pagereveal` listener (#521) would miss more often.
+  - **A group is a sheet, an entry or both, by name, and an entry can import another group's sheet** (#547): a page that loads no script stays without one while sharing the stylesheet of pages that do (Settings pages without password fields, `settings`; those with them, `account`), and Vite links the imported sheet as the same file, so it's cached once.
+  - **One sheet for Settings, My feeds, tags and Timelines** (#547; planning had `settings.css` and `timelines.css`): their pages share most partials (the timeline form's choices are Settings > Reading's too, and its tag checklist a tag page's), so two sheets would be nearly the same file.
+    The reading pages, where readers spend their time, keep a sheet of their own.
+  - **The partials keep one order, and every sheet imports them in it, with `press.css` last** (#547): `base.css` followed by any one sheet is then the cascade one stylesheet of every partial would be, for the rules that match the page, so splitting the CSS can't change how a page looks.
+    A partial is split only where its sections meet, and a section a page needs goes in that page's sheet, even if it's mostly another area's (the nav's `.debug-badge` puts `debug.css` in every logged-in sheet).
+  - **Chunks get their own folder, `assets/chunks/`** (#547), so an outdated chunk's name can't be taken for an outdated entry's, which gets the current file.
+  - **The Newsreader preload stays a page's own include, `{{template "reading-font"}}`, not part of its group** (#547; planning had it in the `reading` group's partial): the pages with reading text on their first screen aren't a group (the timeline form has it, the debug inspectors don't), and a preload a page doesn't use costs a download and a console warning.
+- **No lazy-loaded or inlined CSS**: both need inline code the CSP blocks, lazy CSS flashes unstyled content, and inlining defeats caching; a small, cached stylesheet that blocks rendering is the better trade.
+- **No prefetching of assets, on load or on intent**: the article page shares the reading pages' bundle, so nothing article-specific is left to fetch, and other pages' bundles are small; prefetching the next page itself belongs to "Instant navigation" in backlog.md.
+- **The first card image on a list's first page isn't lazy** (#542) and gets `fetchpriority="high"`: it's usually the largest thing on a phone's first screen, and a lazy image only starts after layout; the rest stay lazy.
+- **Font preloads use the build's URLs** (#546), or the font downloads twice; how text looks while the fonts load is under "Design".
+- **Not now**, each for its reason:
+  - A service worker: the HTTP cache with hashed, immutable URLs already does its caching, and offline reading is its own backlog item.
+  - 103 Early Hints: they only help first visits to slow pages, and Render's support is unconfirmed.
+  - Subsetting the fonts further: they're Latin-only already, with only the axes the CSS uses.
 
 ## Security
 
@@ -772,6 +1040,26 @@ In these flows, trade-offs favor the user's experience.
   The app sets only the essential session cookie, so there's no cookie banner; anything else (analytics, third-party scripts) means revisiting that.
 - **All the account tables land in one schema change** (#255), so production is reset once rather than four times.
 
+### Waitlist and invites
+
+Planned in #583.
+
+- **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
+- **Joining asks for an email, a name and up to two optional onboarding questions** (#566), whose wording is settled at its design checkpoint.
+  Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
+  Every waitlist email has a link to leave the list.
+- **Joining twice says so**: "already on the waitlist" for a confirmed address, a new confirmation email for an unconfirmed one, and "there's already an account" with a link to log in, as signup does ("Helpful errors" above).
+- **Bots meet a honeypot field and a per-IP limit**, not Turnstile yet, which needs a script and a CSP change (backlog, under "Security").
+- **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.
+- **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
+  An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
+  Invites expire and can be revoked; the token is stored hashed, like email links.
+- **Invites go out in waves from the admin** (#574): pick people (checkboxes, or "the oldest N"), review, send.
+  No open or click tracking.
+- **The email limit is checked before a wave is sent** (#574): emails queued in the last 24 hours and still pending, against the daily and monthly limits (Resend's free tier: 100 a day, 3,000 a month), less a reserve for account emails, so a wave can't use up the day and block a password reset.
+  Past 80% of the day it warns; past the limit it says how many fit and offers to send just those.
+  Moving to SES changes only the limits (`-mail-daily-limit`, `-mail-monthly-limit`, `-mail-reserve`).
+
 ## Deployment
 
 Planned in #218; issues #208–#217.
@@ -793,6 +1081,7 @@ Planned in #218; issues #208–#217.
   A one-off Render job can't do it, since it runs the old image.
   - The fingerprint is stored in a `schema_fingerprint` table that `migrate` creates itself, not in `00001_init.sql`: it belongs to the migration mechanism, not the app, and goes away with the pre-alpha rule.
     A database with no stored fingerprint (one migrated by the goose CLI) is refused like a changed one, with no special case (#211).
+  - #561 ends production resets (see "Pre-alpha testing"): the fingerprint check, `-allow-reset-to` and the reset workflow go, and CI refuses a change to a migration already on `main`, which replaces the check.
 - **No account is seeded after a production reset.** It would need a credential (or its hash) stored in Render, Terraform state or GitHub, and a one-off job to run `www create-user` in.
   Signing up again with the invite link (#226) is the way back in, so production isn't reset before that's live.
   (#214, #215)
@@ -857,6 +1146,8 @@ The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md
   `features.md` names a feature's entry points and test files, not every symbol and test, and none of the docs repeat user-facing strings, CSS classes, column lists or Terraform values.
   Before this, every name the docs mentioned still existed, but 3,700 lines of them were a cost on every PR and every read.
 - **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
+- **The admin and its observability have their own roadmap**, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560), at the owner's request, so the reader's roadmap stays readable; it works like #385, and neither edits the other's waves.
+  (#583)
 - **Measure the reading queries before planning load testing** (#388), with a dev-only seed tool outside `cmd/www`, so seeding code never ships, measuring the repository methods themselves rather than copied SQL.
   The timeline query collapses copies over a user's whole history before paginating, so it's the likeliest to break first; its numbers decide what load testing covers.
 - **The first error-state pass is by hand, with no tool** (#392), and fixes nothing itself: it shows how many states there are and how much needs work before deciding whether a walkthrough tool is worth building.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -23,6 +24,7 @@ const (
 	pageLimit   = 31
 	pageSize    = 30
 	sharedLimit = 50
+	rowsPage    = 5 // a page within a seeded reader's rows (see readerEntries)
 	deepPage    = 20
 	runs        = 5
 )
@@ -200,46 +202,33 @@ func measurements(ctx context.Context, db *sql.DB, prefix string) ([]measurement
 	stars := psql.NewStarRepository(db)
 
 	var ms []measurement
-	grouped := func(name, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor) {
+	timeline := func(name, userID string, filter rss.TimelineFilter, before rss.ArticleCursor) {
 		ms = append(ms, measurement{name: name, call: func(ctx context.Context) (int, error) {
-			items, err := articles.ListTimeline(ctx, userID, filter, anchors, before, pageLimit)
+			items, err := articles.ListTimeline(ctx, userID, filter, before, pageLimit)
 			return len(items), err
 		}})
 	}
-	timeline := func(name, userID string, filter rss.TimelineFilter, before rss.ArticleCursor) {
-		grouped(name, userID, filter, rss.TimelineAnchors{}, before)
-	}
-	// home adds Home's page 1 and deep page for userID, without a mark, and
-	// its first page grouped by the marks of a few visits (see
-	// rss.TimelineMark.Anchors).
+	// home adds Home's page 1, a page in the reader's rows, the first page
+	// past them and a deep page for userID.
 	home := func(label, userID string) error {
 		timeline(fmt.Sprintf("ListTimeline: Home, %s, page 1", label), userID, rss.TimelineFilter{}, rss.ArticleCursor{})
-		page, before, err := followTimeline(ctx, articles, userID, deepPage)
-		if err != nil {
-			return err
+		for _, n := range []int{rowsPage, deepPage} {
+			page, before, err := followTimeline(ctx, articles, userID, n)
+			if err != nil {
+				return err
+			}
+			timeline(fmt.Sprintf("ListTimeline: Home, %s, page %d", label, page), userID, rss.TimelineFilter{}, before)
 		}
-		timeline(fmt.Sprintf("ListTimeline: Home, %s, page %d", label, page), userID, rss.TimelineFilter{}, before)
-
-		now := time.Now()
-		back := func(d time.Duration) rss.TimelineAnchors {
-			return rss.TimelineAnchors{Visit: now.Add(-d), Line: now.Add(-d)}
+		var last rss.ArticleCursor
+		stmt := `SELECT timeline_at, article_id FROM timeline_entries WHERE user_id = $1 ORDER BY timeline_at, article_id LIMIT 1`
+		err := db.QueryRowContext(ctx, stmt, userID).Scan(&last.At, &last.ID)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil // no rows to page past
+		case err != nil:
+			return fmt.Errorf("last reader position: %w", err)
 		}
-		night, reload := back(9*time.Hour), back(9*time.Hour+10*time.Minute)
-		reload.Look = now.Add(-10 * time.Minute)
-		for _, g := range []struct {
-			name    string
-			anchors rss.TimelineAnchors
-		}{
-			{"back after a night (9 h)", night},
-			{"back after 4 days", back(96 * time.Hour)},
-			{"a reload 10 minutes into a visit", reload},
-			{"back after 35 minutes", back(35 * time.Minute)},
-		} {
-			grouped(fmt.Sprintf("ListTimeline: Home, %s, grouped, %s, page 1", label, g.name), userID, rss.TimelineFilter{}, g.anchors, rss.ArticleCursor{})
-		}
-		// The first page below the line, back after a night.
-		below := rss.ArticleCursor{Group: 0, At: night.Line, ID: "ffffffff-ffff-ffff-ffff-ffffffffffff"}
-		grouped(fmt.Sprintf("ListTimeline: Home, %s, grouped, just below the line", label), userID, rss.TimelineFilter{}, night, below)
+		timeline(fmt.Sprintf("ListTimeline: Home, %s, first page past the reader's rows", label), userID, rss.TimelineFilter{}, last)
 		return nil
 	}
 
@@ -271,6 +260,9 @@ func measurements(ctx context.Context, db *sql.DB, prefix string) ([]measurement
 	var shared []rss.Timeline
 	filters := map[string]rss.TimelineFilter{}
 	for _, t := range list {
+		if t.ID == "" {
+			continue // Home, measured above as "ListTimeline: Home"
+		}
 		t, err := timelineRepo.Get(ctx, mainUser.ID, t.ID)
 		if err != nil {
 			return nil, err
@@ -335,15 +327,15 @@ func followTimeline(ctx context.Context, articles *psql.ArticleRepository, userI
 	var before rss.ArticleCursor
 	n := 1
 	for ; n < page; n++ {
-		items, err := articles.ListTimeline(ctx, userID, rss.TimelineFilter{}, rss.TimelineAnchors{}, before, pageLimit)
+		items, err := articles.ListTimeline(ctx, userID, rss.TimelineFilter{}, before, pageLimit)
 		if err != nil {
 			return 0, rss.ArticleCursor{}, err
 		}
 		if len(items) <= pageSize {
 			break
 		}
-		last := items[pageSize-1].Article
-		before = rss.ArticleCursor{At: last.TimelineAt, ID: last.ID}
+		last := items[pageSize-1]
+		before = rss.ArticleCursor{At: last.Position, ID: last.Article.ID}
 	}
 	return n, before, nil
 }

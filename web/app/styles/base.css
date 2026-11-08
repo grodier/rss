@@ -1,0 +1,18 @@
+/* Every page's first stylesheet: the shared partials, the shell (with the
+   view transitions every page opts into) and avatars. Each page then links
+   its group's sheet (partials/head.html). Vite inlines each @import when it
+   builds, so each sheet is one file.
+
+   The partials have one order, the one below and then rows, profiles,
+   settings, feeds, timeline-tabs, timelines, timeline-form, search,
+   article, solo, spinner, phone, debug, press. Within a layer a later rule
+   wins a tie, so every sheet imports its partials in that order, and press
+   last: base.css followed by any one sheet is then the same cascade as one
+   stylesheet of every partial would be, for the rules that match the page. */
+@import "../../shared/styles/layers.css";
+@import "../../shared/styles/reset.css";
+@import "../../shared/styles/fonts.css";
+@import "../../shared/styles/tokens.css";
+@import "../../shared/styles/base.css";
+@import "./partials/shell.css";
+@import "./partials/avatars.css";

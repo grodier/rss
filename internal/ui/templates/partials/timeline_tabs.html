@@ -1,21 +1,21 @@
-{{/* timeline-tabs is the tab row heading Home and custom timelines: Home,
-     the user's timelines in order, then a link to make or manage them. Its
-     data is a timelineTabs. Each tab is its own page, so this is navigation
-     (links with aria-current), not ARIA tabs, which switch panels within a
-     page. No counts ("Reading" in docs/decisions.md). app.js scrolls the
-     current tab into view. */}}
+{{/* timeline-tabs is the tab row heading Home and custom timelines: the
+     user's tabs in their order (Home, with no ID, wherever they put it),
+     then an Edit pill, outside the part that scrolls, that goes to
+     /timelines at the current tab's row.
+     Its data is a timelineTabs. Each tab is its own page, so this is
+     navigation (links with aria-current), not ARIA tabs, which switch panels
+     within a page. No counts ("Reading" in docs/decisions.md). The current
+     tab's underline is its own element, .tab-indicator, so it can slide
+     from tab to tab (timeline-tabs.css, timeline-tabs.ts). timeline-tabs.ts
+     scrolls the current tab
+     into view. */}}
 {{define "timeline-tabs"}}
 <nav class="timeline-tabs" aria-label="Timelines">
   <ul role="list">
-    <li><a href="/"{{if eq .CurrentID ""}} aria-current="page"{{end}}>Home</a></li>
     {{range .Timelines}}
-    <li><a href="/timelines/{{.ID}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{.Name}}</a></li>
-    {{end}}
-    {{if .Timelines}}
-    <li class="tab-manage"><a href="/timelines">Timelines</a></li>
-    {{else}}
-    <li class="tab-manage"><a href="/timelines/new">New timeline</a></li>
+    <li><a href="/timelines/{{or .ID "all"}}"{{if eq .ID $.CurrentID}} aria-current="page"{{end}}>{{or .Name homeName}}{{if eq .ID $.CurrentID}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
     {{end}}
   </ul>
+  <a class="btn btn-sm" href="/timelines#timeline-{{or .CurrentID "all"}}">Edit<span class="visually-hidden"> timelines</span></a>
 </nav>
 {{end}}

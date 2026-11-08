@@ -1,0 +1,19 @@
+/* Feed rows' buttons and article text on phones. */
+@layer components {
+  @media (max-width: 42.99rem) {
+    .feed-row button {
+      padding: 0.3125rem 0.75rem;
+      font-size: 0.8125rem;
+    }
+
+    /* Phone lines are short, so slightly smaller text, hyphenated to keep
+       the right edge even. */
+    .article-body {
+      font-size: 1.1875rem;
+    }
+
+    .article-body p {
+      hyphens: auto;
+    }
+  }
+}

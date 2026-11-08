@@ -4,13 +4,14 @@ Terraform for production on Render: one Postgres 17 database (`rss-db`), one web
 State lives in the R2 bucket `rss-tfstate`.
 Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own five things that change outside it, and ignores them:
+Terraform doesn't own six things that change outside it, and ignores them:
 
 - **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
 - **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
 - **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
+- **Edge caching**, set in Render's dashboard (see "Edge caching").
 
 ## Prerequisites
 
@@ -282,6 +283,25 @@ Done once, in dashboards, for #389:
 
 Render blocks outbound SMTP only on free instances; `rss` is on Starter.
 If connections to port 465 time out anyway, Resend also listens on 2465 (`RSS_SMTP_PORT`).
+
+## Edge caching
+
+Render puts Cloudflare in front of the `rss` service and can cache its static files there at no charge (#541, [Render's docs](https://render.com/docs/web-service-caching)).
+The setting is **Cacheable file types: Common static files**, under the service's **Settings → Edge Caching** in Render's dashboard.
+It isn't in Terraform: the `render_web_service` resource in the pinned `render-oss/render` provider (1.9.1) has no attribute for it, so check the dashboard after rebuilding the service.
+Not "All files": logged-out pages send no `Cache-Control`, so Render would cache them for 2 hours.
+`/sites/{id}/icon` has no file extension and isn't cached at the edge; browsers cache it.
+
+Check it with a current versioned asset URL from a page's source:
+
+```sh
+curl -sI "https://paperround.app/<versioned asset URL>" | grep -i 'cf-cache-status\|cache-control'
+```
+
+The first request after a deploy says `cf-cache-status: MISS` and the next `HIT`, with `cache-control: public, max-age=31536000, immutable`: every successful deploy purges the edge cache.
+Pages (`/login`, or a logged-in page) say `DYNAMIC` or `BYPASS`, never `HIT`.
+`curl -sI -H 'Accept-Encoding: br, gzip' <the CSS URL>` should answer `content-encoding: br`.
+DevTools' Network panel, Protocol column, shows `h3` (HTTP/3) on a reload; the edge serves HTTP/2 and HTTP/3, and the app serves neither itself.
 
 ## Checking the client IP
 

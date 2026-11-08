@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: weekly
 
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      vite:
+        patterns: ["vite", "vitest", "@vitest/*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -1,0 +1,38 @@
+/* The spinner. */
+@layer components {
+  .spinner {
+    inline-size: 2rem;
+    block-size: 2rem;
+    margin-inline: auto;
+    border: 3px solid var(--border);
+    border-block-start-color: var(--text);
+    border-radius: 50%;
+  }
+
+  /* A spinner turns at a constant speed. */
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner {
+      animation: spin 0.9s linear infinite;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  /* Under reduced motion the ring pulses instead, which moves nothing and is
+     far below the flashing threshold, so it still says "working". */
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: pulse 1.6s var(--ease-in-out) infinite;
+    }
+  }
+
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+}

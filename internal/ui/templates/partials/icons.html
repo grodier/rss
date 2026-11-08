@@ -1,4 +1,4 @@
-{{/* Inline SVG icons: 24×24 strokes in currentColor, sized by main.css. */}}
+{{/* Inline SVG icons: 24×24 strokes in currentColor, sized by base.css. */}}
 {{define "icon-rss"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 4.5A14.5 14.5 0 0 1 19.5 19"/><circle cx="5.75" cy="18.25" r="1.25"/></svg>{{end}}
 {{define "icon-home"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 10.5 12 3.75l8.5 6.75"/><path d="M5.75 9v10.25c0 .55.45 1 1 1H10v-5.5h4v5.5h3.25c.55 0 1-.45 1-1V9"/></svg>{{end}}
 {{define "icon-feeds"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.75" y="4" width="16.5" height="6" rx="2"/><rect x="3.75" y="14" width="16.5" height="6" rx="2"/></svg>{{end}}
@@ -7,6 +7,10 @@
 {{define "icon-refresh"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.75 4.5v4.25H15.5"/></svg>{{end}}
 {{define "icon-link"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg>{{end}}
 {{define "icon-clock"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></svg>{{end}}
+{{define "icon-tag"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.75 12.5V4.75c0-.55.45-1 1-1h7.75l7.75 7.75-8.75 8.75Z"/><circle cx="8.25" cy="8.25" r="1.25"/></svg>{{end}}
+{{define "icon-type"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7.25v-2.5h14v2.5"/><path d="M12 4.75v14.5"/><path d="M9 19.25h6"/></svg>{{end}}
+{{define "icon-play"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.75" y="5.25" width="16.5" height="13.5" rx="3"/><path d="m10.25 9.25 4.5 2.75-4.5 2.75Z"/></svg>{{end}}
+{{define "icon-plus"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14"/><path d="M5 12h14"/></svg>{{end}}
 {{define "icon-activity"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.75 12h3.5l2.5-6.5 4.5 13 2.5-6.5h3.5"/></svg>{{end}}
 {{define "icon-download"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.25v11"/><path d="m7.75 11 4.25 4.25L16.25 11"/><path d="M5 19.75h14"/></svg>{{end}}
 {{define "icon-chevron"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9.5 5.75 6.25 6.25-6.25 6.25"/></svg>{{end}}
@@ -14,6 +18,15 @@
 {{define "icon-bookmark-fill"}}<svg class="icon icon-bookmark-fill" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.75 3.75h10.5c.55 0 1 .45 1 1v15.5L12 15.75l-6.25 4.5V4.75c0-.55.45-1 1-1Z"/></svg>{{end}}
 {{define "icon-star"}}<svg class="icon icon-star" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.75l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.77l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83Z"/></svg>{{end}}
 {{define "icon-star-fill"}}<svg class="icon icon-star-fill" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.75l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.77l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83Z"/></svg>{{end}}
+{{/* The burst around a star just pressed on: five dots at the star's points
+     (its points are 8.68 from 12,12.43), drawn over icon-star-fill in the
+     Star button. Each <g> turns its dot to a point, so rows.css can move
+     the circle outward along its own y axis. Hidden unless rows.css
+     animates it. */}}
+{{define "star-burst"}}<svg class="star-burst" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(72 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(144 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(216 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(288 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g></svg>{{end}}
 {{define "icon-share"}}<svg class="icon icon-share" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 14.25V3.75"/><path d="m8.25 7.5 3.75-3.75 3.75 3.75"/><path d="M8.5 10.25H6.75c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h10.5c.55 0 1-.45 1-1v-8c0-.55-.45-1-1-1H15.5"/></svg>{{end}}
-{{define "icon-check"}}<svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>{{end}}
+{{define "icon-check"}}<svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.5 4.5 4.5L19 7.5" pathLength="1"/></svg>{{end}}
 {{define "icon-edit"}}<svg class="icon icon-edit" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.25 5.25 18.75 8.75"/><path d="M4.75 19.25l.9-4.1L16.1 4.7a1.75 1.75 0 0 1 2.48 0l.72.72a1.75 1.75 0 0 1 0 2.48L8.85 18.35Z"/></svg>{{end}}
+{{define "icon-arrow-up"}}<svg class="icon icon-arrow-up" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19.25V4.75"/><path d="M5.75 11 12 4.75 18.25 11"/></svg>{{end}}
+{{define "icon-arrow-down"}}<svg class="icon icon-arrow-down" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.75v14.5"/><path d="M18.25 13 12 19.25 5.75 13"/></svg>{{end}}
+{{define "icon-grip"}}<svg class="icon icon-grip" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>{{end}}

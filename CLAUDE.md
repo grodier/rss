@@ -19,14 +19,20 @@ Once backwards compatibility is actually needed (after we're in production and p
 ## Commands
 
 `make` targets need a `.env` file (`include .env`, exported) defining `RSS_DB_DSN`.
+Package `web` embeds the built frontend, so Go doesn't compile without it: on a fresh clone, run `make assets` before `go build`, `go vet`, `go test` or gopls work (the `make` targets that compile `cmd/www` run it first).
 Every `cmd/www` flag can also be set by an `RSS_` environment variable (`-db-dsn` → `RSS_DB_DSN`); a flag on the command line wins.
 
 ```sh
-gofmt -l .                       # must print nothing
+make assets                      # build the frontend into web/dist (npm ci, then vite build; instant when nothing changed)
+make assets/watch                # rebuild the frontend on every change (restart go run to pick it up)
+npm --prefix web run typecheck   # tsc --noEmit over the TypeScript modules
+npm --prefix web run format:check  # must pass (npm --prefix web run format fixes it); Prettier, for web/
+gofmt -l $(git ls-files '*.go')  # must print nothing (gofmt -l . would walk web/node_modules)
 go mod tidy -diff                # must print nothing
 go vet ./...
 go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
+make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
@@ -39,8 +45,8 @@ docker build -t rss .                    # build the container image (or: make d
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests.
-CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
+Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck, the format check and the frontend tests.
+CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check, the frontend tests and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
 `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
 
 ## Layout
@@ -64,8 +70,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
-- `internal/ui`: embedded templates, emails and static files
+- `internal/ui`: embedded templates, emails and the web app manifest
 - `internal/validator`: form validation
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -88,7 +95,7 @@ Update docs in the same PR as the code or plan they describe.
 | `docs/backlog.md` | Work that has no issue yet, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
 | `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
 
-The order of planned work isn't in a file: it's the [Roadmap issue](https://github.com/grodier/rss/issues/385), whose sub-issues are the planned issues (see "Finding work").
+The order of planned work isn't in a file: it's the [Roadmap issue](https://github.com/grodier/rss/issues/385), whose sub-issues are the planned issues, and, for the admin and its observability, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560) (see "Finding work").
 
 - Docs say what the code can't: reasons, flows that cross packages, and invariants that aren't obvious.
   Don't restate what lives in the code, templates, tests, the schema's comments or Terraform: user-facing strings, CSS classes, every helper or test name, column lists, configuration values.
@@ -112,7 +119,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   JSON (`writeJSON`) is only for `/healthcheck` (and its `serverErrorJSON` error path); future JSON endpoints go under their own subrouter with JSON error handlers.
 - GET handlers don't write, except idempotent upkeep documented at the call site: queuing a refresh of a stale feed (`feedHandler`), recording that the user opened an article (`articleHandler`), and updating a session's `last_seen_at` in `authenticate` (at most once a day).
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm(w, r, &form)` (on error, `s.formErrorResponse(w, r, err)`: 400, or 413 over 64 KiB), validated with `CheckField`, re-rendered with **422** when invalid.
-  Fields follow the pattern in `login.html`: the error after the input as `<p class="error" id="<field>-error">`, `aria-invalid` and `aria-describedby` on the input when it has an error (plus its `<field>-hint`), `autofocus` on `.Form.FirstError` of the fields in order, and `role="alert"` on non-field errors; `app.js` adds a show/hide toggle to every password input.
+  Fields follow the pattern in `login.html`: the error after the input as `<p class="error" id="<field>-error">`, `aria-invalid` and `aria-describedby` on the input when it has an error (plus its `<field>-hint`), `autofocus` on `.Form.FirstError` of the fields in order, and `role="alert"` on non-field errors; `password-toggle.ts` adds a show/hide toggle to every password input.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders.
   Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`).
@@ -124,12 +131,21 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `search`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
-  Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later.
+  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so themes can be added later.
+  Rules go in the partial for their area (`web/app/styles/partials`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block.
+  The partials have one order, listed in `web/app/styles/base.css`: a sheet imports the partials its pages use in that order, with `press.css` last, and a new partial goes in the list and in the sheets of every page it styles.
+  Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
+  Motion uses the motion tokens in `tokens.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
-  Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer`; no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one.
+  TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entries of the page groups whose pages use it import and call in order (and `entries.test.ts` lists); nothing runs on import.
+  Each page names its page group once in its head, `{{template "assets" "<group>"}}`, which links the group's stylesheets and scripts from Vite's manifest (`assetTags`): its sheet, `web/app/styles/<group>.css`, its entry, `web/app/entries/<group>.ts`, or both, and an entry can import another group's sheet.
+  A new page names an existing group, or a new one; a page that needs no script names a group without an entry.
+  No inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
+  An API TypeScript's DOM types lack gets a minimal declaration in `web/shared/types/dom.d.ts` (there's none yet), never `any`.
+  A new npm devDependency gets a one-line justification in its PR, like a Go dependency.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.
 - Debug panels and inspectors live in `internal/server/debug.go`, `internal/psql/debug.go` and `partials/debug.html`.
@@ -160,7 +176,11 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   When code is removed, delete its tests; don't add tests asserting that a removed route, handler or function is gone (e.g. "`GET /old` returns 404").
   They only re-test the router's or compiler's defaults and become dead weight.
   The same goes for issues and plans that ask for such tests; question them.
-- Standard library only for tests (no testify).
+- Standard library only for Go tests (no testify).
+- Frontend tests use Vitest with happy-dom (`npm --prefix web test`), in a `*.test.ts` next to their module (`share.ts`, `share.test.ts`).
+  Test through the markup hooks the server renders (`form[data-toggle]`, `button[data-share-url]`…), import the module in each test after `isolate()` (`web/shared/test/setup.ts`), and test pure functions directly.
+  Where a module mirrors Go, Go stays the spec: a Go test writes a fixture (`-update`) that both sides check, like `TestTimelineSummaryFixture`.
+  A changed module comes with tests.
 
 ## Git and PR workflow
 
@@ -184,6 +204,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 
 GitHub issues are the source of truth for scoped tasks.
 The [Roadmap issue (#385)](https://github.com/grodier/rss/issues/385) says what to do next and in which order: its sub-issues, grouped into waves that can be built in parallel.
+The [Admin Roadmap issue (#560)](https://github.com/grodier/rss/issues/560) does the same for the admin site (`cmd/admin`) and its observability, with the same rules.
 `docs/backlog.md` has work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
 Before working on a feature, read its section in `docs/features.md` (the flow and where the code is) and in `docs/decisions.md` (what's decided and why, so you don't reopen it); `docs/architecture.md` has the overall shape.
 
@@ -200,7 +221,7 @@ Issues are written for an implementer with no context from the planning conversa
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).
-- File each issue as a sub-issue of the Roadmap (#385), and update its waves.
+- File each issue as a sub-issue of the Roadmap (#385), or of the Admin Roadmap (#560) for the admin and its observability, and update its waves.
 - Performance risks: when planning, look at what the planned work could cost as data and traffic grow (queries that can't use an index, unpaginated lists, writes on page views, polling, per-row loops, unbounded tables).
   Add each risk to the Performance watchlist in `docs/backlog.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix.
   Don't fix risks early, but don't leave them unrecorded.

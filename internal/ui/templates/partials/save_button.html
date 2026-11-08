@@ -1,8 +1,8 @@
 {{/* The Save and Star buttons, for an article row or the article page:
-     data with Article, Saved, Starred and ReturnTo. app.js's "Save and Star
-     buttons" relies on this markup: form[data-toggle], its /save, /unsave,
+     data with Article, Saved, Starred and ReturnTo. save-star.ts relies on
+     this markup: form[data-toggle], its /save, /unsave,
      /star or /unstar action, the button's aria-pressed and the return_to
-     input. main.css shows the outline or the filled icon from aria-pressed. */}}
+     input. rows.css shows the outline or the filled icon from aria-pressed. */}}
 {{define "save-button"}}
 <form class="save-form" method="post" action="/articles/{{.Article.ID}}/{{if .Saved}}unsave{{else}}save{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
@@ -10,19 +10,20 @@
 </form>
 {{end}}
 
-{{/* The Star button: icon-only, named by its aria-label. */}}
+{{/* The Star button: icon-only, named by its aria-label. The star-burst
+     dots are drawn only while rows.css animates a star just turned on. */}}
 {{define "star-button"}}
 <form class="star-form" method="post" action="/articles/{{.Article.ID}}/{{if .Starred}}unstar{{else}}star{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}</button>
+  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}{{template "star-burst"}}</button>
 </form>
 {{end}}
 
 {{/* The Share button: icon-only, named by its aria-label. Rendered hidden:
-     app.js's "Share buttons" shows it and does the sharing, so it never
+     share.ts shows it and does the sharing, so it never
      appears without JavaScript. Only for articles with a canonical URL. */}}
 {{define "share-button"}}
-{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}</button>{{end}}
+{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}<span class="copied-label" aria-hidden="true"></span></button>{{end}}
 {{end}}
 
 {{/* The actions on an article: icon-only Star and Share left of a labelled

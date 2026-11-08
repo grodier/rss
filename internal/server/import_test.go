@@ -325,7 +325,7 @@ func TestSettingsImportHandler(t *testing.T) {
 	body := rr.Body.String()
 	assertBodyContains(t, body,
 		"<h1>Import subscriptions</h1>",
-		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data">`,
+		`<form class="settings-form" action="/settings/import" method="post" enctype="multipart/form-data" data-busy>`,
 		`<input type="file" id="file" name="file" required`,
 		`<input type="radio" name="folders" value="tags" checked> Turn each folder into a tag`,
 		`<input type="radio" name="folders" value="ignore"> Ignore folders`,
@@ -387,11 +387,11 @@ func TestImportHandler(t *testing.T) {
 
 	t.Run("in progress", func(t *testing.T) {
 		feeds := []rss.ImportFeed{
-			{URL: "https://a.example/feed", Title: "A", Status: rss.ImportSubscribed, FeedID: "feed-a"},
-			{URL: "https://b.example/feed", Status: rss.ImportFailed, Failure: rss.ImportNotFeed},
-			{URL: "https://c.example/feed", Status: rss.ImportRunning},
-			{URL: "https://d.example/feed", Status: rss.ImportPending},
-			{URL: "https://e.example/feed", Status: rss.ImportPending},
+			{Position: 0, URL: "https://a.example/feed", Title: "A", Status: rss.ImportSubscribed, FeedID: "feed-a"},
+			{Position: 1, URL: "https://b.example/feed", Status: rss.ImportFailed, Failure: rss.ImportNotFeed},
+			{Position: 2, URL: "https://c.example/feed", Status: rss.ImportRunning},
+			{Position: 3, URL: "https://d.example/feed", Status: rss.ImportPending},
+			{Position: 4, URL: "https://e.example/feed", Status: rss.ImportPending},
 		}
 		rr := serveImport(t, importServer(t, getReturns(imp, feeds, nil)), testImportID)
 
@@ -400,12 +400,20 @@ func TestImportHandler(t *testing.T) {
 		}
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			`<meta http-equiv="refresh" content="2" />`,
+			`<noscript><meta http-equiv="refresh" content="2" /></noscript>`,
+			`<script type="module" src="`+entryJS("account")+`"></script>`,
+			"data-import-poll",
+			"<p data-import-progress>Checked 2 of 5 feeds.</p>",
 			"Importing feeds.opml…",
-			"Checked 2 of 5 feeds.",
-			`<a class="feed-row-title" href="/feeds/feed-a">A</a>`,
+			`<section data-import-group="subscribed">`,
+			`<section data-import-group="failed">`,
+			`<li class="import-row" data-position="0"><a class="feed-row-title" href="/feeds/feed-a">A</a></li>`,
+			`<li class="import-row" data-position="1">`,
 			"There&#39;s no feed at this address.",
 		)
+		if n := strings.Count(body, `http-equiv="refresh"`); n != 1 {
+			t.Errorf("page has %d meta refreshes, want 1 (inside <noscript>)", n)
+		}
 		for _, unwanted := range []string{"Import finished", "Go to your timeline", "c.example", "d.example"} {
 			if strings.Contains(body, unwanted) {
 				t.Errorf("body contains %q while in progress", unwanted)
@@ -431,6 +439,9 @@ func TestImportHandler(t *testing.T) {
 		body := rr.Body.String()
 		if strings.Contains(body, "http-equiv") {
 			t.Error("finished page refreshes itself")
+		}
+		if strings.Contains(body, "data-import-poll") {
+			t.Error("finished page polls itself")
 		}
 		if strings.Contains(body, "secret detail") {
 			t.Error("page shows the internal error")

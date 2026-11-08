@@ -17,7 +17,7 @@ import (
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
 	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "authors", "title", "summary", "content",
-	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "created_at", "updated_at",
+	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "backlog", "created_at", "updated_at",
 }
 
 var (
@@ -53,7 +53,7 @@ func articleListColumns(prefix string) string {
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
 	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.Backlog, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
@@ -122,62 +122,52 @@ func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, befor
 // to that filter shows (see timelineWhere), starting after before (from the
 // start if before is zero).
 //
-// Entries are in groups, each ordered by timeline_at then ID, newest first,
-// with Group set; anchors turn the groups on (see timelineGroups):
-//
-//   - 2, when anchors.Look is set (a reload during a visit): news that arrived
-//     since the reader's latest look;
-//   - 1, when anchors.Visit is set: news that arrived since the reader's
-//     previous visit, and everything positioned above anchors.Line;
-//   - 0: everything else, below the "You were here" line.
-//
-// News arrives at its created_at; an article is news when it's positioned no
-// more than rss.NewsWindow below that (see newsCond), so backlog never
-// counts as arriving. The groups run as separate queries, from before's group down,
-// until the page is full; the cursor applies only in its own group. With zero
-// anchors there's one group, 0, in timeline order.
+// Entries are one list ordered by Position then ID, newest first: each at
+// the reader's own position (their timeline_entries row) when they have
+// one, else at the article's timeline_at. A page merges two queries: the
+// reader's rows (entriesStmt) and the articles without a row
+// (timelineStmt). When the rows fill the page, the second is bounded below
+// by the last of them, since nothing below it can be on the page: that keeps
+// each feed's scan a short range, so the reader's first pages are cheap.
+// Rows of feeds the reader no longer follows aren't shown.
 //
 // Copies of one article (same non-empty canonical_url) in several of those
-// feeds are one entry: the earliest copy to arrive (smallest timeline_at,
-// then ID), at that copy's position and in that copy's group, with AlsoIn
-// listing the other feeds that have a copy, ordered by title. Feed titles
-// are the user's names for their subscriptions where they've set one.
+// feeds are one entry: the earliest copy (smallest position, then ID, each
+// copy at the reader's row's position if it has one, else its timeline_at),
+// with AlsoIn listing the other feeds that have a copy, ordered by title.
+// Feed titles are the user's names for their subscriptions where they've
+// set one.
 //
 // Summary and Content are left empty.
-func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, anchors rss.TimelineAnchors, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
-	items := []rss.ArticleWithFeed{}
-	for _, g := range timelineGroups(anchors) {
-		if len(items) >= limit {
-			break
-		}
-		if !before.IsZero() && g.group > before.Group {
-			continue // already shown
-		}
-		cursor := rss.ArticleCursor{}
-		if g.group == before.Group {
-			cursor = before
-		}
-		at, id := cursorArgs(cursor)
-		args := []any{userID, at, id, limit - len(items)}
-		cond := g.cond(&args)
+func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {
+	at, id := cursorArgs(before)
 
-		rows, err := r.DB.QueryContext(ctx, timelineStmt(filter, false, cond, &args), args...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			item := rss.ArticleWithFeed{Group: g.group}
-			if item.Article, item.Feed, err = scanArticleWithFeed(rows); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			items = append(items, item)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
+	args := []any{userID, at, id, limit}
+	items, err := r.queryTimeline(ctx, entriesStmt(filter, &args), args, true)
+	if err != nil {
+		return nil, err
 	}
+
+	var above rss.ArticleCursor
+	if len(items) >= limit {
+		last := items[len(items)-1]
+		above = rss.ArticleCursor{At: last.Position, ID: last.Article.ID}
+	}
+	args = []any{userID, at, id, limit}
+	rest, err := r.queryTimeline(ctx, timelineStmt(filter, false, above, &args), args, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// UUIDs' lowercase strings sort as Postgres sorts uuids.
+	items = append(items, rest...)
+	slices.SortStableFunc(items, func(x, y rss.ArticleWithFeed) int {
+		if c := y.Position.Compare(x.Position); c != 0 {
+			return c
+		}
+		return strings.Compare(y.Article.ID, x.Article.ID)
+	})
+	items = items[:min(len(items), limit)]
 
 	if err := r.fillAlsoIn(ctx, userID, items); err != nil {
 		return nil, err
@@ -186,76 +176,61 @@ func (r *ArticleRepository) ListTimeline(ctx context.Context, userID string, fil
 	return items, nil
 }
 
-// timelineGroup is one of ListTimeline's groups: its number and the
-// condition it adds on each feed's articles a (see timelineStmt), which
-// appends its parameters to args.
-type timelineGroup struct {
-	group int
-	cond  func(args *[]any) string
-}
+// queryTimeline runs one of ListTimeline's queries: with position, its rows
+// end with the entry's position (entriesStmt); without, the entry is at the
+// article's timeline_at (timelineStmt).
+func (r *ArticleRepository) queryTimeline(ctx context.Context, stmt string, args []any, position bool) ([]rss.ArticleWithFeed, error) {
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-// timelineGroups returns the groups anchors turn on, highest first.
-//
-// The first two bound timeline_at from below, so each feed's scan is a
-// short range on articles_feed_timeline_idx: news is never placed more than
-// rss.NewsWindow below its created_at, so news created after t is
-// positioned after t - rss.NewsWindow.
-func timelineGroups(anchors rss.TimelineAnchors) []timelineGroup {
-	param := func(args *[]any, t time.Time) string {
-		*args = append(*args, t)
-		return fmt.Sprintf("$%d::timestamptz", len(*args))
-	}
-	// arrived is the condition that a is news created after t.
-	arrived := func(t string) string {
-		return `(a.created_at > ` + t + ` AND ` + newsCond("a") + `)`
-	}
-	window := fmt.Sprintf("make_interval(secs => %d)", int(rss.NewsWindow.Seconds()))
-
-	var groups []timelineGroup
-	if !anchors.Look.IsZero() {
-		groups = append(groups, timelineGroup{2, func(args *[]any) string {
-			look := param(args, anchors.Look)
-			return `
-				AND a.created_at > ` + look + ` AND a.timeline_at > ` + look + ` - ` + window + ` AND ` + newsCond("a")
-		}})
-	}
-	if !anchors.Visit.IsZero() {
-		groups = append(groups, timelineGroup{1, func(args *[]any) string {
-			line, visit := param(args, anchors.Line), param(args, anchors.Visit)
-			cond := `
-				AND a.timeline_at > LEAST(` + line + `, ` + visit + ` - ` + window + `)
-				AND (a.timeline_at > ` + line + ` OR ` + arrived(visit) + `)`
-			if !anchors.Look.IsZero() {
-				cond += `
-				AND NOT ` + arrived(param(args, anchors.Look))
-			}
-			return cond
-		}})
-	}
-	groups = append(groups, timelineGroup{0, func(args *[]any) string {
-		switch {
-		case !anchors.Visit.IsZero():
-			return `
-				AND a.timeline_at <= ` + param(args, anchors.Line) + ` AND NOT ` + arrived(param(args, anchors.Visit))
-		case !anchors.Look.IsZero():
-			return `
-				AND NOT ` + arrived(param(args, anchors.Look))
+	items := []rss.ArticleWithFeed{}
+	for rows.Next() {
+		var item rss.ArticleWithFeed
+		var extra []any
+		if position {
+			extra = append(extra, &item.Position)
 		}
-		return ""
-	}})
-	return groups
+		if item.Article, item.Feed, err = scanArticleWithFeed(rows, extra...); err != nil {
+			return nil, err
+		}
+		if !position {
+			item.Position = item.Article.TimelineAt
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-// newsCond returns the condition that the article a is news: positioned no
-// more than rss.NewsWindow below its created_at (rss.Article.IsNews in SQL).
-func newsCond(a string) string {
-	return fmt.Sprintf("%[1]s.timeline_at >= %[1]s.created_at - make_interval(secs => %[2]d)", a, int(rss.NewsWindow.Seconds()))
+// entriesStmt returns the query for the reader's own rows in ListTimeline,
+// appending filter's parameters to args, which starts with the user ID, the
+// cursor's time and ID, and the limit. It selects the row's position after
+// the feed's columns. Joining subscriptions leaves out rows of feeds the
+// reader no longer follows.
+func entriesStmt(filter rss.TimelineFilter, args *[]any) string {
+	return `SELECT ` + qualifiedListArticleColumns + `, ` + listFeedColumns(false) + `, e.timeline_at
+		FROM timeline_entries e
+		JOIN subscriptions sub ON sub.user_id = e.user_id AND sub.feed_id = e.feed_id
+		JOIN articles a ON a.id = e.article_id
+		JOIN feeds f ON f.id = e.feed_id
+		WHERE e.user_id = $1
+			AND ($2::timestamptz IS NULL OR (e.timeline_at, e.article_id) < ($2, $3::uuid))` +
+		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + `
+			AND NOT (a.has_copies AND ` + earlierCopy(filter, false, "e.timeline_at", args) + `)
+		ORDER BY e.timeline_at DESC, e.article_id DESC
+		LIMIT $4`
 }
 
 // ListShared returns the newest limit articles with a URL of ownerID's
 // timeline with filter, for its shared feed: like ListTimeline (or
-// ListStarred when filter.StarredOnly, with StarredAt set), but with each
-// feed's own title, never the owner's name for it, and without AlsoIn.
+// ListStarred when filter.StarredOnly, with StarredAt set), but at shared
+// positions (the owner's rows are ignored), with each feed's own title,
+// never the owner's name for it, and without AlsoIn.
 // Summary and Content are left empty.
 func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error) {
 	at, id := cursorArgs(rss.ArticleCursor{})
@@ -265,7 +240,7 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 	if filter.StarredOnly {
 		stmt = starredStmt(filter, true, &args)
 	} else {
-		stmt = timelineStmt(filter, true, "", &args)
+		stmt = timelineStmt(filter, true, rss.ArticleCursor{}, &args)
 	}
 	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
@@ -291,36 +266,46 @@ func (r *ArticleRepository) ListShared(ctx context.Context, ownerID string, filt
 	return items, nil
 }
 
-// timelineStmt returns ListTimeline's query for filter, appending filter's
-// parameters to args, which starts with the user ID, the cursor's time and
-// ID, and the limit. group is a condition on each feed's articles a (a
-// group's, see timelineGroups; "" for none); it doesn't apply to the copies
-// an entry collapses with. With shared (for ListShared), feeds have their
-// own titles, and articles without a URL are left out.
-func timelineStmt(filter rss.TimelineFilter, shared bool, group string, args *[]any) string {
+// timelineStmt returns the query for the articles without a row of the
+// reader's in ListTimeline (for ListShared, with shared: every article),
+// appending filter's parameters to args, which starts with the user ID, the
+// cursor's time and ID, and the limit. Entries are at their timeline_at.
+// When above isn't zero, only articles after it are read. With shared, feeds
+// have their own titles, articles without a URL are left out, and the
+// reader's rows are ignored.
+func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCursor, args *[]any) string {
 	// For each subscription, read the feed's newest limit entries before the
 	// cursor from articles_feed_timeline_idx, then merge them and keep limit.
-	// An entry is left out when an earlier copy (same canonical URL, smaller
-	// timeline_at then ID) is in one of the user's feeds that filter shows:
-	// copies collapse after filtering, so a left-out feed's copy never takes
-	// an entry's place. Only rows flagged has_copies at ingest are checked;
+	// Only rows flagged has_copies at ingest are checked for an earlier copy;
 	// articles with no canonical URL never are.
+	var where strings.Builder
+	if !shared {
+		// Leave out the articles the reader has a row for with NOT IN on
+		// $1 rather than a NOT EXISTS on sub.user_id: uncorrelated, it's a
+		// hashed SubPlan, which reads the reader's article IDs once per
+		// statement (at most about rss.MaxEntries plus a visit's arrivals,
+		// since MarkSeen trims them) and checks each scanned article in
+		// memory instead of with an index lookup. article_id is NOT NULL,
+		// so NOT IN has no NULL surprises.
+		where.WriteString(`
+				AND a.id NOT IN (SELECT e.article_id FROM timeline_entries e WHERE e.user_id = $1)`)
+	}
+	if !above.IsZero() {
+		// The scalar bound is what keeps the scan a short range on the
+		// index; the row comparison alone doesn't.
+		*args = append(*args, above.At, above.ID)
+		fmt.Fprintf(&where, `
+				AND a.timeline_at >= $%[1]d AND (a.timeline_at, a.id) > ($%[1]d, $%[2]d::uuid)`, len(*args)-1, len(*args))
+	}
+	where.WriteString(timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a"))
 	return `SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
 		FROM subscriptions sub
 		CROSS JOIN LATERAL (
 			SELECT ` + qualifiedListArticleColumns + `
 			FROM articles a
 			WHERE a.feed_id = sub.feed_id
-				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` + group +
-		timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a") + `
-				AND NOT (a.has_copies AND EXISTS (
-					SELECT 1
-					FROM articles b
-					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id
-					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
-						AND (b.timeline_at, b.id) < (a.timeline_at, a.id)` +
-		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
-				))
+				AND ($2::timestamptz IS NULL OR (a.timeline_at, a.id) < ($2, $3::uuid))` + where.String() + `
+				AND NOT (a.has_copies AND ` + earlierCopy(filter, shared, "a.timeline_at", args) + `)
 			ORDER BY a.timeline_at DESC, a.id DESC
 			LIMIT $4
 		) a
@@ -328,6 +313,35 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, group string, args *[]
 		WHERE sub.user_id = $1
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
+}
+
+// earlierCopy returns the condition that the entry of the article a (under
+// the subscription sub), at position, has an earlier copy: an article with
+// the same canonical URL, at a smaller position then ID, in one of the
+// user's feeds that filter shows. Each copy is at the reader's row's
+// position if it has one, else its timeline_at; with shared, rows are
+// ignored. Copies collapse after filtering, so a left-out feed's copy never
+// takes an entry's place. It appends filter's parameters to args.
+func earlierCopy(filter rss.TimelineFilter, shared bool, position string, args *[]any) string {
+	// A row is never below its article's timeline_at, so a copy whose
+	// timeline_at isn't earlier isn't earlier at its row either. Checking
+	// that first, on the copy alone, leaves out a itself and later copies
+	// before the joins, so only copies that may be earlier are looked up.
+	rows, raised := "", ""
+	if !shared {
+		rows = `
+					LEFT JOIN timeline_entries eb ON eb.user_id = sub.user_id AND eb.article_id = b.id`
+		raised = `
+						AND (COALESCE(eb.timeline_at, b.timeline_at), b.id) < (` + position + `, a.id)`
+	}
+	return `EXISTS (
+					SELECT 1
+					FROM articles b
+					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id` + rows + `
+					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
+						AND (b.timeline_at, b.id) < (` + position + `, a.id)` + raised +
+		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
+				)`
 }
 
 // listFeedColumns returns the feed columns of a timeline query: with the
@@ -507,6 +521,12 @@ func cursorArgs(before rss.ArticleCursor) (sql.NullTime, sql.NullString) {
 // article's published date must be for it to count as backlog.
 const backlogSlack = 24 * time.Hour
 
+// staleFeedAfter is how long a feed must go without a fetch attempt for its
+// next save to be placed as a first save: nobody was fetching it (no
+// subscribers, or gone), since a followed feed is attempted at least once a
+// day, failing or not (ingest.MaxRetryDelay).
+const staleFeedAfter = 48 * time.Hour
+
 // undatedBacklogStep spaces out the undated articles of a feed's first save:
 // the newest goes this long before the save, and none are further apart (see
 // placeUndated).
@@ -524,13 +544,11 @@ const undatedBacklogStep = 24 * time.Hour
 // The rest of a later save is news, placed no lower than a floor: the later
 // of prevFetched and now - rss.NewsWindow (see placeNews).
 func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time {
-	cutoff := prevFetched.Add(-backlogSlack)
 	positions := make([]time.Time, len(articles))
 
 	var news []int
 	for i, a := range articles {
-		backlog := !a.PublishedAt.IsZero() && (prevFetched.IsZero() || a.PublishedAt.Before(cutoff))
-		if backlog {
+		if isBacklog(a, prevFetched) && !a.PublishedAt.IsZero() {
 			positions[i] = a.PublishedAt
 			if positions[i].After(now) {
 				positions[i] = now
@@ -548,6 +566,62 @@ func timelineAt(articles []rss.Article, prevFetched, now time.Time) []time.Time 
 		placeNews(articles, news, positions, prevFetched, now)
 	}
 	return positions
+}
+
+// raisePositions returns a reader's positions for articles whose shared
+// positions are positions, given seenUpTo, the newest position the reader
+// has had on screen (zero for none): a position after seenUpTo is kept, and
+// those at or before it are spread evenly, newest first, between seenUpTo
+// and the lowest kept one (else now), at least 1 µs apart and never at or
+// before seenUpTo. So nothing a reader gets lands among what they've seen,
+// and what's spread keeps its order.
+//
+// Where there's less than 1 µs of room per article, the lowest are clamped
+// to 1 µs after seenUpTo (timelines break ties by ID).
+func raisePositions(positions []time.Time, seenUpTo, now time.Time) []time.Time {
+	raised := slices.Clone(positions)
+	if seenUpTo.IsZero() {
+		return raised
+	}
+
+	var spread []int
+	lowest := now // the lowest kept position
+	for i, p := range positions {
+		if p.After(seenUpTo) {
+			if p.Before(lowest) {
+				lowest = p
+			}
+			continue
+		}
+		spread = append(spread, i)
+	}
+	if len(spread) == 0 {
+		return raised
+	}
+
+	sort.SliceStable(spread, func(x, y int) bool {
+		return positions[spread[x]].After(positions[spread[y]])
+	})
+	// Postgres keeps microseconds, so whole steps keep the stored positions
+	// the ones computed here.
+	step := max((lowest.Sub(seenUpTo) / time.Duration(len(spread)+1)).Truncate(time.Microsecond), time.Microsecond)
+	least := seenUpTo.Add(time.Microsecond)
+	for k, i := range spread {
+		raised[i] = lowest.Add(-time.Duration(k+1) * step)
+		if raised[i].Before(least) {
+			raised[i] = least
+		}
+	}
+	return raised
+}
+
+// isBacklog reports whether timelineAt places a as backlog, for a save of a
+// feed whose previous successful fetch was prevFetched: every item of a first
+// save (prevFetched zero), dated or not, and later items published before
+// prevFetched - backlogSlack. A later save's backlog gets no reader positions
+// (see saveArticles); it's stored with the article for debug mode.
+func isBacklog(a rss.Article, prevFetched time.Time) bool {
+	return prevFetched.IsZero() || (!a.PublishedAt.IsZero() && a.PublishedAt.Before(prevFetched.Add(-backlogSlack)))
 }
 
 // placeNews sets the positions of a later save's news, the articles at the
@@ -720,19 +794,35 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // saveArticles upserts articles for feedID by (feed_id, external_id) and
 // records a successful fetch of the feed: sets last_fetched_at and
 // last_attempt_at to now() and clears last_error and consecutive_failures.
-// A new article's timeline_at is set on insert (see timelineAt) and never
-// changes. A newly inserted article that needsEnrichment and is among
+// A new article's timeline_at and backlog are set on insert (see timelineAt
+// and isBacklog) and never change. A newly inserted article that needsEnrichment and is among
 // enrichCandidates gets an enrich_jobs row. Every article sharing a
 // non-empty canonical_url with an inserted or updated one, that one
 // included, gets has_copies (never cleared). It locks the feed row so
-// concurrent saves of a feed are ordered. The result is Behind on a later
-// save (the feed was fetched before) of two or more articles, all inserted.
+// concurrent saves of a feed are ordered.
+//
+// Each follower who has looked in the last rss.NewsWindow (their
+// timeline_marks.seen_at) gets their own position, a timeline_entries row,
+// for each newly inserted article that is news or positioned within
+// rss.NewsWindow of now (a first save's latest posts, for followers who
+// subscribed before the feed was fetched): its timeline_at raised above
+// what they've seen (see writeReaderPositions). Updated articles never get
+// one: a position is set once.
+//
+// A save of a feed with no fetch attempt in the last staleFeedAfter (or none
+// ever) is placed as a first save: prevFetched is taken as zero for
+// timelineAt, isBacklog and enrichCandidates, since nobody was fetching the
+// feed and when its new items appeared is unknown. The result is Behind on
+// any other later save of two or more articles, all inserted.
 // Callers dedupe external IDs.
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
-	var prevFetched sql.NullTime
+	var prevFetched, prevAttempt sql.NullTime
 	var now time.Time
-	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &now); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, last_attempt_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &prevAttempt, &now); err != nil {
 		return rss.FetchResult{}, err
+	}
+	if !prevAttempt.Valid || !prevAttempt.Time.After(now.Add(-staleFeedAfter)) {
+		prevFetched = sql.NullTime{}
 	}
 	positions := timelineAt(articles, prevFetched.Time, now)
 	enrichable, priority := enrichCandidates(articles, positions, prevFetched.Time)
@@ -740,9 +830,9 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.
 	// published_date_only follows the kept published_at.
-	// timeline_at is deliberately not updated.
-	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, authors, title, summary, content, excerpt, published_at, published_date_only, timeline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12, $13, $14)
+	// timeline_at and backlog are deliberately not updated.
+	stmt := `INSERT INTO articles (feed_id, external_id, url, canonical_url, image_url, media_type, authors, title, summary, content, excerpt, published_at, published_date_only, timeline_at, backlog)
+		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (feed_id, external_id) DO UPDATE SET
 			url = EXCLUDED.url,
 			canonical_url = EXCLUDED.canonical_url,
@@ -765,6 +855,11 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 
 	var res rss.FetchResult
 	var saved []string // the non-empty canonical URLs of inserted or updated articles
+	// The inserted articles followers may get their own positions for (see
+	// writeReaderPositions), and their shared positions.
+	var arrivedIDs []string
+	var arrivedAt []time.Time
+	recent := now.Add(-rss.NewsWindow)
 	for i, a := range articles {
 		publishedAt := sql.NullTime{Time: a.PublishedAt, Valid: !a.PublishedAt.IsZero()}
 
@@ -772,7 +867,7 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			id       string
 			inserted bool
 		)
-		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, pq.Array(a.Authors), a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i]).Scan(&id, &inserted)
+		err := q.QueryRowContext(ctx, stmt, feedID, a.ExternalID, a.URL, a.CanonicalURL, a.ImageURL, a.MediaType, pq.Array(a.Authors), a.Title, a.Summary, a.Content, a.Excerpt, publishedAt, a.PublishedDateOnly, positions[i], isBacklog(a, prevFetched.Time)).Scan(&id, &inserted)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// Unchanged.
@@ -780,6 +875,12 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			return rss.FetchResult{}, err
 		case inserted:
 			res.New++
+			// Only a first save's backlog can be recent: a later save's is
+			// over a day old.
+			if !isBacklog(a, prevFetched.Time) || positions[i].After(recent) {
+				arrivedIDs = append(arrivedIDs, id)
+				arrivedAt = append(arrivedAt, positions[i])
+			}
 			if enrichable[i] && needsEnrichment(a) {
 				if _, err := q.ExecContext(ctx, enrichStmt, id, priority); err != nil {
 					return rss.FetchResult{}, err
@@ -804,6 +905,10 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 		}
 	}
 
+	if err := writeReaderPositions(ctx, q, feedID, arrivedIDs, arrivedAt, now); err != nil {
+		return rss.FetchResult{}, err
+	}
+
 	// posts_per_week is recomputed after the inserts so it counts them.
 	feedStmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
 			last_error = '', consecutive_failures = 0, posts_per_week = ` + postsPerWeek + `
@@ -814,4 +919,78 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 
 	res.Behind = prevFetched.Valid && len(articles) >= 2 && res.New == len(articles)
 	return res, nil
+}
+
+// writeReaderPositions gives each follower of feedID who has looked in the
+// last rss.NewsWindow their own positions for the articles articleIDs, whose
+// shared positions are positions: raisePositions of them against the
+// follower's seen_up_to. A follower away longer than that needs none: their
+// seen_up_to is below every news position's floor, so their positions would
+// be the shared ones. Followers without a mark get none and read shared
+// positions.
+func writeReaderPositions(ctx context.Context, q querier, feedID string, articleIDs []string, positions []time.Time, now time.Time) error {
+	if len(articleIDs) == 0 {
+		return nil
+	}
+
+	stmt := `SELECT s.user_id, m.seen_up_to
+		FROM subscriptions s
+		JOIN timeline_marks m ON m.user_id = s.user_id
+		WHERE s.feed_id = $1 AND m.seen_at > now() - make_interval(secs => $2)`
+
+	rows, err := q.QueryContext(ctx, stmt, feedID, int(rss.NewsWindow.Seconds()))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var entries timelineEntries
+	raised := map[int64][]time.Time{} // by seen_up_to, in µs
+	for rows.Next() {
+		var userID string
+		var seenUpTo time.Time
+		if err := rows.Scan(&userID, &seenUpTo); err != nil {
+			return err
+		}
+		key := seenUpTo.UnixMicro()
+		if _, ok := raised[key]; !ok {
+			raised[key] = raisePositions(positions, seenUpTo, now)
+		}
+		entries.add(userID, articleIDs, raised[key])
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	return entries.insert(ctx, q, feedID)
+}
+
+// timelineEntries are timeline_entries rows of one feed to insert, as
+// columns.
+type timelineEntries struct {
+	userIDs, articleIDs, positions []string
+}
+
+// add adds userID's positions for articleIDs.
+func (e *timelineEntries) add(userID string, articleIDs []string, positions []time.Time) {
+	for i, id := range articleIDs {
+		e.userIDs = append(e.userIDs, userID)
+		e.articleIDs = append(e.articleIDs, id)
+		e.positions = append(e.positions, positions[i].Format(time.RFC3339Nano))
+	}
+}
+
+// insert inserts the rows, of feedID's articles, in one statement. A row
+// already there is kept as it is: a position is set once.
+func (e *timelineEntries) insert(ctx context.Context, q querier, feedID string) error {
+	if len(e.userIDs) == 0 {
+		return nil
+	}
+	stmt := `INSERT INTO timeline_entries (user_id, article_id, feed_id, timeline_at)
+		SELECT x.user_id, x.article_id, $1, x.timeline_at
+		FROM unnest($2::uuid[], $3::uuid[], $4::timestamptz[]) AS x (user_id, article_id, timeline_at)
+		ON CONFLICT DO NOTHING`
+	_, err := q.ExecContext(ctx, stmt, feedID, pq.Array(e.userIDs), pq.Array(e.articleIDs), pq.Array(e.positions))
+	return err
 }

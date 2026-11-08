@@ -11,10 +11,6 @@ How to keep this file up to date is under "Docs" in CLAUDE.md; decisions already
 What's needed, after deployment, before other people use the app on a public URL.
 Running it locally for yourself needs none of this.
 
-- [ ] **Single-use invites.**
-  A table of invites with expiry and a CLI command to make them.
-  Only once people we don't know personally are invited.
-  When the code comes in the link, show "Invited" instead of the text field.
 - [ ] **Review the privacy policy and terms** (`privacy.html`, `terms.html`, #269).
   They were drafted without legal review and name George Rodier, in the United States, as who runs rss.
   Before launch: put in the product's name, and a business if one runs it; name a state for governing law (the terms only say "the United States"); check each section against what the app then does (processors, retention, the Settings features it mentions); have them reviewed; and bump "Last updated".
@@ -56,12 +52,6 @@ The decisions are under "Accounts" in decisions.md.
   The support address stays `rss-support@georgerodier.com` after #389; moving it needs Email Routing on the new domain's zone.
 - [ ] **Full data export.**
   A JSON file with your account, subscriptions, reading history and saved articles (#299), next to the OPML export.
-- [ ] **Clean up abandoned unconfirmed accounts**, e.g. delete accounts never confirmed and unused for 30 days after signup.
-  Only if they pile up.
-- [ ] **Support tools.**
-  `www` commands can't run in production, so the self-service flows are the support path.
-  If support requests need more (looking up an account, resending a confirmation for someone), plan an owner-only admin page.
-  It would build on debug mode's allowlist (#327), and is where cross-user data such as subscriber counts belongs.
 
 ## Plans and billing
 
@@ -84,10 +74,9 @@ The decisions are under "Accounts" in decisions.md.
 - [ ] **PR preview environments.**
   Render preview environments need the Professional workspace (about $19 per user a month plus compute).
   Only from same-repo branches: never `pull_request_target` with fork code, since this repository is public.
-- [ ] **Leaving pre-alpha.**
-  Remove the fingerprint check, `-allow-reset-to` and the "Reset production database" workflow, and make schema changes new migrations (see CLAUDE.md).
-  From then on every migration must also work with the version still running during a deploy ("expand/contract": add, deploy code using both, backfill, deploy code using the new, then drop the old).
-  Give migrations their own Postgres role that owns the schema, and the app a role that can only read and write data.
+- [ ] **Separate Postgres roles.**
+  Give migrations their own role that owns the schema, and `www` and `admin` roles that can only read and write data.
+  What's left of "Leaving pre-alpha" once #561 ends production resets.
 
 ## Security
 
@@ -95,12 +84,44 @@ The decisions are under "Accounts" in decisions.md.
   That's accepted while users are a handful of known people, and from #265 a locked-out owner can still get in by resetting their password.
   Revisit before signup is open to strangers (e.g. key the limit on IP and email together, or slow down with backoff instead of refusing).
 - [ ] **Bot protection on signup.**
-  Before signup opens beyond invite codes, add a challenge (e.g. Cloudflare Turnstile, which needs a script and a CSP change) or another bot check.
+  Before signup opens beyond invites, add a challenge (e.g. Cloudflare Turnstile, which needs a script and a CSP change) or another bot check.
+  The waitlist form (#566) starts with a honeypot field and a per-IP limit; add the challenge there too if bots get through.
 - [ ] **Rate limiter approach.**
   Evaluate whether the in-memory rate limiter (`internal/server/ratelimit.go`) is right long term.
   It resets on restart and isn't shared across instances.
   Before running more than one instance, or if limits need to survive restarts, compare options (e.g. Postgres-backed counters, a reverse-proxy/edge limit, Redis) and decide.
   No decision yet.
+
+## Admin
+
+The admin's later work, after the Admin Roadmap's waves (#560): most of it before signup opens to strangers.
+Each gets an issue once wave 4 is under way, since using the admin will change the details.
+The decisions are under "Admin" and "Observability" in decisions.md.
+
+- [ ] **Suspend accounts and block addresses.**
+  `users.disabled_at`, checked in `authenticate` (a suspended reader is logged out and can't log in), and refusing waitlist joins and signups from an address or domain.
+- [ ] **Runtime settings.**
+  A settings table the admin edits: signup open or closed, and debug mode's accounts, replacing `RSS_DEBUG_EMAILS` (no flag-or-setting fallback).
+- [ ] **Pause a background runner from the admin** (after runtime settings): a setting each runner checks before claiming, so a bad deploy or a misbehaving host can be stopped without a redeploy.
+- [ ] **An announcement banner for readers** (after runtime settings), set from the admin; a reader-facing change, so it has a design checkpoint.
+- [ ] **Shared timelines:** list them with what each costs to serve (the shared feed's query is on the watchlist), and revoke a link for abuse.
+- [ ] **Articles:** find one by ID or URL, re-enrich it, remove it for a takedown, and block a URL or host from ingestion.
+- [ ] **Feed fixes:** change a feed's URL by hand (until permanent redirects are followed, under "Feed ingestion"), merge duplicates, pause a feed, delete one (showing its subscriber count), and a per-host view of feeds and failures.
+- [ ] **Seed list status:** each seed site found, failed or pending, and re-queuing the failed ones.
+- [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
+- [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
+- [ ] **Performance watchlist board:** each watchlist entry's signal, read live.
+- [ ] **JavaScript errors through the real-user beacon**, counted per route and shown on its page.
+- [ ] **Waitlist reminders:** remind people invited a week ago who haven't signed up, and extend an invite's expiry.
+- [ ] **Admin login alerts and email previews:** an email on every new admin login, and every email template rendered with sample data.
+- [ ] **Support extras:** change a reader's email on request (with the security email to the old address), and export a reader's data for them.
+- [ ] **Passkeys for admins**, as an upgrade to TOTP (needs `go-webauthn`, like readers' passkeys under "Accounts").
+
+## Observability
+
+- [ ] **Alerts.** Email the owner when p95 latency, the error rate or a queue's backlog passes a threshold; UptimeRobot already covers downtime.
+- [ ] **Backup status.** The last R2 dump's time and size on the admin, which needs read access to the bucket from the admin service.
+- [ ] **A lab check in CI.** A Lighthouse run on a few pages, next to the real-user numbers, if regressions slip through before real users see them.
 
 ## Feed discovery
 
@@ -149,10 +170,6 @@ Each with when it pays off:
   Before launch, weigh deleting against keeping: storage and backup cost and the "Articles grow without bound" watchlist entry on one side; the value of a long article archive (search, history, business uses of the data) and its copyright and privacy implications on the other.
   Saved articles (#299) must survive whatever rule is chosen: deleting an article cascades to its `saves` rows.
   For scale: #388's seed takes about 1 KB per article on disk with `content` empty, so real full-text articles take several times that.
-- [ ] **Operational visibility.**
-  An admin page or metrics (due backlog, failure rate, 304 rate).
-  When the app runs somewhere the logs aren't at hand.
-  An admin page would build on debug mode's allowlist (#327).
 - [ ] **Titles and summaries from `media:group`.**
   YouTube entries have no `summary`; their text is in `media:group/media:description` (and `media:title`), which `Parse` doesn't read, so their excerpt stays empty and each one gets an enrichment job.
   Read them as fallbacks when enrichment fetches of video pages become a noticeable share.
@@ -446,6 +463,25 @@ Worth doing before production, or once there are a few thousand feeds.
 Things that are fine at today's scale but could become performance problems as feeds, articles, users or instances grow: what each is, the issue that introduced it, the signal that it has become a problem, and the planned fix.
 Don't fix these early: watch the signal, and use the load tests above to measure (see "Writing issues" in CLAUDE.md).
 Add a new entry next to related ones, not at the end, so parallel PRs don't conflict.
+
+Admin and observability:
+
+- [ ] **`request_metrics` grows with routes × statuses × instances × minutes** (#563).
+  Each instance writes a row per route, method and status class it served each minute, kept 7 days before hourly rollups.
+  *Signal:* the table passes a few million rows, or the hourly rollup takes over a second.
+  *Fix:* write every 5 minutes, or keep minute rows for a day.
+- [ ] **A database write on every page view** (#565).
+  Each page view sends one beacon, so `POST /rum` doubles page requests and inserts a `rum_views` row for each, kept 30 days.
+  *Signal:* the insert shows up near the top of `pg_stat_statements` by total time, or the table passes a few million rows.
+  *Fix:* count beacons in memory per instance and write per minute, as request metrics do, keeping raw rows only for a sample.
+- [ ] **The admin's overview counts big tables** (#575).
+  `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
+  *Signal:* the overview takes over a second.
+  *Fix:* an hourly counts table.
+- [ ] **A second service on the database's connections** (#573).
+  `www` opens up to 10 connections; the admin adds its own pool on the same small Postgres plan.
+  *Signal:* connection errors, or the waits in #563's runtime metrics rising.
+  *Fix:* cap the admin at 3 connections (from the start), or a bigger database plan.
 
 Background refresh:
 

@@ -522,7 +522,7 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
 
 1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`; an unknown subcommand prints the usage and exits 2.
    `parseConfig` reads the flags, each also settable by its `RSS_` variable (`internal/cli`), and `serve` opens a pool of at most `-db-max-open-conns` (3) connections on the reader's database and runs `admin.Server` until a signal.
-2. **Server.** `internal/admin` has the reader's middleware order (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
+2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
    The Overview (`homeHandler`) is an empty state until #575.
@@ -537,6 +537,26 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
 4. `web/admin/styles/base.css`.
 
 **Tests:** `internal/admin/server_test.go`; `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
+
+### Observability
+
+`www` records its own request and runtime metrics in Postgres for the admin to chart; the admin's pages that read them come later (#577).
+
+1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
+   `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.
+2. **Writing.** `Requests.Run` writes the counts at the start of each minute (`MetricsRepository.SaveRequests`, which adds to a row already there), and `metrics.Runtime` writes a sample of the process's memory, goroutines, GC pause p99 and connection pool.
+3. **Housekeeping.** `metrics.Housekeeper` rolls minute rows into hourly ones after 2 hours and deletes them after 7 days, hourly rows after 90 and runtime rows after 7 (see "Background work" in architecture.md).
+4. **Server-Timing.** `serverTiming` gives HTML responses `Server-Timing: app;dur=<ms>`, so the browser's timings (DevTools, and the real-user metrics of #565) can split time to first byte into server and network.
+
+**Start at:**
+
+1. `internal/server/middleware.go` (`recordRequest`, `serverTiming`).
+2. `internal/metrics/requests.go`, `runtime.go` and `housekeeper.go`.
+3. `internal/psql/metrics.go` (`RollUp`).
+
+**Tests:** `internal/metrics/*_test.go`; `internal/psql/metrics_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`).
+
+**Why:** "Observability" in decisions.md.
 
 **Why:** "Admin" in decisions.md.
 

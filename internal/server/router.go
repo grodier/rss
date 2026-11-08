@@ -13,6 +13,9 @@ func (s *Server) router() http.Handler {
 	// Outermost, so every response is logged, including those from recoverPanic
 	// and CrossOriginProtection.
 	router.Use(s.logRequest)
+	// Right after logRequest, so the same responses are counted.
+	router.Use(s.recordRequest)
+	router.Use(s.serverTiming)
 	router.Use(s.recoverPanic)
 
 	// After logRequest and recoverPanic, so redirects are logged; before

@@ -673,3 +673,29 @@ func (f *fakeDatabase) PingContext(ctx context.Context) error {
 	}
 	return f.pingFn(ctx)
 }
+
+// observation is one request fakeRecorder was told about.
+type observation struct {
+	route, method string
+	status        int
+	d             time.Duration
+	bytes         int
+}
+
+// fakeRecorder records the requests it's told about.
+type fakeRecorder struct {
+	mu   sync.Mutex
+	seen []observation
+}
+
+func (f *fakeRecorder) Observe(route, method string, status int, d time.Duration, bytes int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seen = append(f.seen, observation{route, method, status, d, bytes})
+}
+
+func (f *fakeRecorder) observations() []observation {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]observation(nil), f.seen...)
+}

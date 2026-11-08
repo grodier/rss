@@ -29,7 +29,7 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
 ## The process
 
 There are two binaries, `www` (`cmd/www`), the reader, and `admin` (`cmd/admin`), the admin site (below), and one Postgres database.
-Inside the `www` process run seven long-lived components, all stopped by one context:
+Inside the `www` process run ten long-lived components, all stopped by one context (the request metrics by their own, after the server has drained):
 
 - The **HTTP server** (`internal/server`) handles requests and reads and writes the database through the `internal/psql` repositories.
   Its Refresh button calls `ingest.Refresher` directly.
@@ -39,6 +39,9 @@ Inside the `www` process run seven long-lived components, all stopped by one con
 - The **site icon runner** (`internal/siteicon`) checks sites' home pages for a usable icon and stores it in `site_icons`.
 - The **enrich runner** (`internal/enrich`) fetches the web pages of new articles missing an image, title or excerpt, and stores their Open Graph values in the article's `page_*` columns.
 - The **mail runner** (`internal/mail`, `mail.Runner`) sends the emails the server queues in the `emails` outbox.
+- The **request metrics** (`metrics.Requests`) count the requests the server reports in memory and write them to `request_metrics` once a minute.
+- The **runtime sampler** (`metrics.Runtime`) writes the process's memory, goroutines, GC pauses and connection pool to `runtime_metrics` once a minute.
+- The **metrics housekeeper** (`metrics.Housekeeper`) rolls up and deletes old metrics every hour.
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
 
@@ -72,8 +75,8 @@ Until it has a login (#567), `admin serve -env production` refuses to start.
 | `cmd/admin` | The admin's flags, wiring and signal handling, and its `serve` command | `admin`, `cli`, `psql` |
 | `internal/admin` | The admin site: router, middleware, handlers, templates | `assets`, `clientip`, `ui`, `web` |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger | — |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `seed` (types), `password` |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
@@ -86,6 +89,7 @@ Until it has a login (#567), `admin serve -env production` refuses to start.
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
+| `internal/metrics` | Count requests and sample the runtime once a minute; roll up and delete old metrics | — |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
@@ -125,14 +129,16 @@ The frontend's npm devDependencies (`web/package.json`) are Vite, which builds t
 **Middleware**, outermost first (`internal/server/router.go`):
 
 1. `logRequest`: one log line per request with status, size and duration.
-2. `recoverPanic`: a panic becomes the 500 page.
-3. `redirectToCanonicalHost`: in production, a request for any host but `-base-url`'s gets a 308 to the same path and query there, except `/healthcheck`, which Render calls on the service's internal address.
-4. `http.CrossOriginProtection`: rejects cross-origin non-GET browser requests (`Sec-Fetch-Site` / `Origin`) with the 403 page.
+2. `recordRequest`: counts the request in the request metrics (`Services.Metrics`) by its chi route pattern, after the handlers return; a request that never reached a route is `(unmatched)`: 404s, 405s, and the responses of the middleware before routing (`CrossOriginProtection`'s 403s, canonical-host redirects).
+3. `serverTiming`: when an HTML response's headers are written, adds `Server-Timing: app;dur=<ms>`, the server's time so far.
+4. `recoverPanic`: a panic becomes the 500 page.
+5. `redirectToCanonicalHost`: in production, a request for any host but `-base-url`'s gets a 308 to the same path and query there, except `/healthcheck`, which Render calls on the service's internal address.
+6. `http.CrossOriginProtection`: rejects cross-origin non-GET browser requests (`Sec-Fetch-Site` / `Origin`) with the 403 page.
    There are no CSRF tokens.
-5. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
-6. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
+7. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
+8. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
-The admin's middleware (`internal/admin/router.go`) is the same chain without `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); it has no sessions yet (#567), and its routes are `/static/*`, `/healthcheck` and `/`.
+The admin's middleware (`internal/admin/router.go`) is the same chain without `recordRequest`, `serverTiming` and `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); it has no sessions yet (#567), and its routes are `/static/*`, `/healthcheck` and `/`.
 
 Then the reader's routes are split into groups.
 `/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
@@ -227,6 +233,7 @@ users ──< user_tokens
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
+request_metrics, runtime_metrics (written by each www instance, read by the admin; no foreign keys)
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").
@@ -248,6 +255,8 @@ emails   (the outbox: no foreign keys)
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
+- **Metrics:** each instance writes its own `request_metrics` minute rows (named by host name) and `runtime_metrics` rows; the hourly rollup sums every instance's minute rows of an hour into one row per route, method and status class, with `instance` `''`.
+  The rollup starts after the newest hourly row and inserts with `ON CONFLICT DO NOTHING`, so every instance runs it and an hour is rolled up once; it only takes whole hours, since an hour that has rows is never rolled up again.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
 Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
@@ -277,6 +286,11 @@ Retry schedules for feeds, icons and enrichment are in their sections of [featur
 A failed email is retried after 1, 2, 4, … minutes (`retryDelay`, capped at an hour) and marked `failed` after 8 attempts.
 Delivery is at least once: a crash between sending and recording the result sends the email again.
 Every hour the mail runner deletes sent and failed emails older than 7 days (`DeleteFinished`).
+
+The metrics components (`internal/metrics`) claim nothing: every instance runs them.
+`metrics.Requests` writes at the start of each minute the counts of the minutes that have ended, keyed by the minute each request finished in, and once more on shutdown, after the server has drained its requests; a failed write is logged and its counts dropped.
+`metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
+`metrics.Housekeeper` runs at startup and then hourly: it rolls minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes nothing.
 
 ## Outbound HTTP
 

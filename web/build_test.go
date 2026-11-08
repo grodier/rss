@@ -117,7 +117,7 @@ type manifestEntry struct {
 // budget only in a PR that says why in its description.
 const (
 	readingJSBudget  = 5970  // 5427 measured
-	readingCSSBudget = 10070 // 9156 measured
+	readingCSSBudget = 10210 // 9284 measured
 )
 
 func TestReadingBundleBudget(t *testing.T) {

@@ -19,10 +19,13 @@ Once backwards compatibility is actually needed (after we're in production and p
 ## Commands
 
 `make` targets need a `.env` file (`include .env`, exported) defining `RSS_DB_DSN`.
+Package `web` embeds the built frontend, so Go doesn't compile without it: on a fresh clone, run `make assets` before `go build`, `go vet`, `go test` or gopls work (the `make` targets that compile `cmd/www` run it first).
 Every `cmd/www` flag can also be set by an `RSS_` environment variable (`-db-dsn` → `RSS_DB_DSN`); a flag on the command line wins.
 
 ```sh
-gofmt -l .                       # must print nothing
+make assets                      # build the frontend into web/dist (npm ci, then vite build; instant when nothing changed)
+make assets/watch                # rebuild the frontend on every change (restart go run to pick it up)
+gofmt -l $(git ls-files '*.go')  # must print nothing (gofmt -l . would walk web/node_modules)
 go mod tidy -diff                # must print nothing
 go vet ./...
 go tool staticcheck ./...        # version pinned in go.mod (tool directive)
@@ -40,7 +43,7 @@ terraform fmt -recursive infra           # format Terraform; CI's terraform job 
 ```
 
 Before pushing: run gofmt, vet, staticcheck and tests.
-CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
+CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
 `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
 
 ## Layout
@@ -64,8 +67,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these (plus `-race`) against Postgr
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
-- `internal/ui`: embedded templates, emails and static files
+- `internal/ui`: embedded templates, emails and the web app manifest
 - `internal/validator`: form validation
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`app.js`, `styles/main.css`, and `public/` for files that need a fixed URL), `shared/` what sites share (the fonts)
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -125,12 +129,14 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Icons are inline SVG partials in `icons.html`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
   Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later.
+  Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
   Motion uses the motion tokens on `:root` in `main.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
-  Plain JavaScript in `internal/ui/static/js/app.js`, loaded with `defer`; no inline scripts or handlers (the CSP blocks them), no build step, and no libraries unless a PR justifies one.
+  Plain JavaScript in `web/app/app.js`, built by Vite and loaded as a module (`<script type="module" src="{{asset "app/app.js"}}">`); no inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
+  A new npm devDependency gets a one-line justification in its PR, like a Go dependency.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.
 - Debug panels and inspectors live in `internal/server/debug.go`, `internal/psql/debug.go` and `partials/debug.html`.

@@ -121,7 +121,7 @@ The command logs the sites it retried and those that failed too recently to retr
 
 **Start at:**
 
-1. `internal/server/search.go` and `internal/psql/search.go`; live search is "Live search" in `internal/ui/static/js/app.js`.
+1. `internal/server/search.go` and `internal/psql/search.go`; live search is "Live search" in `web/app/app.js`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
@@ -369,7 +369,7 @@ Without JavaScript the link just works.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
-5. `partials/article_row.html` and `internal/ui/static/js/app.js`.
+5. `partials/article_row.html` and `web/app/app.js`.
 
 **Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
@@ -449,7 +449,7 @@ There is no service worker, install button or banner, and no pull-to-refresh: ta
 
 1. `internal/server/manifest.go` (`manifestHandler`) and `internal/ui/manifest.webmanifest`.
 2. `internal/ui/templates/partials/head.html` (`app-head`).
-3. `internal/ui/static/img/app-icon.svg` (the source of every install icon, Apple's included).
+3. `web/app/public/img/app-icon.svg` (the source of every install icon, Apple's included).
 
 **Tests:** `internal/server/manifest_test.go`.
 

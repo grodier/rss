@@ -1,3 +1,7 @@
 .env
 .tmp
 .terraform/
+
+# The frontend build (see web/).
+web/node_modules/
+web/dist/

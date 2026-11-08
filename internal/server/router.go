@@ -1,14 +1,10 @@
 package server
 
 import (
-	"bytes"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/grodier/rss/internal/ui"
 )
 
 func (s *Server) router() http.Handler {
@@ -36,33 +32,7 @@ func (s *Server) router() http.Handler {
 	router.NotFound(s.notFoundResponse)
 	router.MethodNotAllowed(s.methodNotAllowedResponse)
 
-	// Directory requests would otherwise get an auto-generated file listing.
-	fileServer := http.FileServerFS(ui.Static)
-	router.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") {
-			s.notFoundResponse(w, r)
-			return
-		}
-		// Only a request for the file's current version is cached; any other
-		// (no v, or a stale one) must be revalidated, against the ETag
-		// (embedded files have no modification time to revalidate with).
-		name := strings.TrimPrefix(r.URL.Path, "/static/")
-		version, known := staticVersions[name]
-		if known {
-			w.Header().Set("ETag", `"`+version+`"`)
-		}
-		if v := r.URL.Query().Get("v"); known && v == version {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache")
-		}
-		// Stylesheets are served as rewritten at startup (see mustHashStatic).
-		if b, ok := staticRewritten[name]; ok {
-			http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(b))
-			return
-		}
-		fileServer.ServeHTTP(w, r)
-	}))
+	router.Handle("/static/*", http.HandlerFunc(s.staticHandler))
 
 	// The manifest needs no session, like /static: browsers fetch it without
 	// cookies. It has its own handler because the file server would sniff

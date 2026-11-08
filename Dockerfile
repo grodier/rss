@@ -1,3 +1,11 @@
+# Assets stage: the Node version matches web/.node-version.
+FROM node:26-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 # Build stage: the Go version matches go.mod's go directive.
 FROM golang:1.26.5 AS build
 
@@ -8,6 +16,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=web /web/dist ./web/dist
 
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/www ./cmd/www

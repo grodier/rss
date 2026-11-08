@@ -3,9 +3,9 @@ package server
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,7 +15,6 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/ui"
 )
 
 // TestInfiniteScrollMarkup checks the markup app.js's infinite scroll relies
@@ -140,7 +139,7 @@ func TestYouWereHereMarkup(t *testing.T) {
 
 	// The beacon reports the timeline and the position, under the names
 	// timelineSeenHandler reads, and nothing else.
-	js, err := fs.ReadFile(ui.Static, "static/js/app.js")
+	js, err := os.ReadFile("../../web/app/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +453,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 	} {
 		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
 			body := page(tt.page)(t)
-			if !strings.Contains(body, `<script src="/static/js/app.js?v=`) {
+			if !strings.Contains(body, `<script type="module" src="`+appJS+`"></script>`) {
 				t.Error("page doesn't load app.js")
 			}
 			doc, err := html.Parse(strings.NewReader(body))

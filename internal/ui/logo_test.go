@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/grodier/rss/web"
 )
 
 var templateAction = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
@@ -63,9 +65,10 @@ func logoShapes(t *testing.T, r io.Reader) []string {
 }
 
 // The landing page and Log in draw the logo inline so its sun can rise
-// (partials/logo.html); it must draw the same shapes as static/img/logo.svg.
+// (partials/logo.html); it must draw the same shapes as img/logo.svg, the
+// public file in web/app/public.
 func TestInlineLogoMatchesFile(t *testing.T) {
-	file, err := fs.ReadFile(Static, "static/img/logo.svg")
+	file, err := fs.ReadFile(web.App, "img/logo.svg")
 	if err != nil {
 		t.Fatal(err)
 	}

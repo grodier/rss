@@ -19,14 +19,12 @@ import (
 func TestStaticRoutes(t *testing.T) {
 	h := newTestServer(t).router()
 
-	js, err := asset("app/entries/app.ts")
+	js := entryJS("reading")
+	css, err := asset("app/styles/reading.css")
 	if err != nil {
 		t.Fatal(err)
 	}
-	css, err := asset("app/styles/main.css")
-	if err != nil {
-		t.Fatal(err)
-	}
+	chunk := "/static/" + aChunk(t)
 	font, err := asset("shared/fonts/newsreader.woff2")
 	if err != nil {
 		t.Fatal(err)
@@ -45,15 +43,19 @@ func TestStaticRoutes(t *testing.T) {
 	}{
 		{js, http.StatusOK, "text/javascript", immutable},
 		{css, http.StatusOK, "text/css", immutable},
+		{chunk, http.StatusOK, "text/javascript", immutable},
 		{font, http.StatusOK, "font/woff2", immutable},
 		{logo, http.StatusOK, "image/svg+xml", immutable},
 		{"/static/img/logo.svg", http.StatusOK, "image/svg+xml", "no-cache"},
 		{"/static/img/logo.svg?v=000000000000", http.StatusOK, "image/svg+xml", "no-cache"},
-		{"/static/assets/app-AAAAAAAA.js", http.StatusOK, "text/javascript", "no-cache"},
-		{"/static/assets/main-AAAAAAAA.css", http.StatusOK, "text/css", "no-cache"},
+		// Outdated names: an entry's or a sheet's gets the current file; a
+		// chunk's is a 404.
+		{"/static/assets/reading-AAAAAAAA.js", http.StatusOK, "text/javascript", "no-cache"},
+		{"/static/assets/base-AAAAAAAA.css", http.StatusOK, "text/css", "no-cache"},
+		{"/static/" + outdated(aChunk(t)), http.StatusNotFound, "text/html", ""},
 		{"/static/assets/nope-AAAAAAAA.js", http.StatusNotFound, "text/html", ""},
-		{"/static/assets/app-AAAAAAAA.css", http.StatusNotFound, "text/html", ""},
-		{"/static/assets/app-AAAA.js", http.StatusNotFound, "text/html", ""},
+		{"/static/assets/login-AAAAAAAA.css", http.StatusNotFound, "text/html", ""},
+		{"/static/assets/reading-AAAA.js", http.StatusNotFound, "text/html", ""},
 		{"/static/", http.StatusNotFound, "text/html", ""},
 		{"/static/assets/", http.StatusNotFound, "text/html", ""},
 		{"/static/assets", http.StatusNotFound, "text/html", ""},
@@ -84,8 +86,8 @@ func TestStaticRoutes(t *testing.T) {
 func TestStaticOutdatedEntryServesCurrent(t *testing.T) {
 	h := newTestServer(t).router()
 	for _, tt := range []struct{ src, outdated string }{
-		{"app/entries/app.ts", "/static/assets/app-AAAAAAAA.js"},
-		{"app/styles/main.css", "/static/assets/main-AAAAAAAA.css"},
+		{"app/entries/reading.ts", "/static/assets/reading-AAAAAAAA.js"},
+		{"app/styles/base.css", "/static/assets/base-AAAAAAAA.css"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
 			u, err := asset(tt.src)
@@ -108,7 +110,7 @@ func TestStaticOutdatedEntryServesCurrent(t *testing.T) {
 
 func TestStaticRoutesRevalidate(t *testing.T) {
 	h := newTestServer(t).router()
-	for _, name := range []string{"app/entries/app.ts", "app/styles/main.css", "shared/fonts/newsreader.woff2", "img/logo.svg"} {
+	for _, name := range []string{"app/entries/reading.ts", "app/styles/reading.css", "shared/fonts/newsreader.woff2", "img/logo.svg"} {
 		t.Run(name, func(t *testing.T) {
 			u, err := asset(name)
 			if err != nil {
@@ -138,9 +140,9 @@ func TestStaticRoutesRevalidate(t *testing.T) {
 func TestAsset(t *testing.T) {
 	h := newTestServer(t).router()
 
-	js, err := asset("app/entries/app.ts")
-	if err != nil || !regexp.MustCompile(`^/static/assets/app-[\w-]+\.js$`).MatchString(js) {
-		t.Errorf(`asset("app/entries/app.ts") = %q, %v; want /static/assets/app-<hash>.js`, js, err)
+	js, err := asset("app/entries/reading.ts")
+	if err != nil || !regexp.MustCompile(`^/static/assets/reading-[\w-]+\.js$`).MatchString(js) {
+		t.Errorf(`asset("app/entries/reading.ts") = %q, %v; want /static/assets/reading-<hash>.js`, js, err)
 	}
 
 	// A public file's version is the hash of the bytes it's served with.
@@ -179,12 +181,6 @@ func TestTemplatesLinkAssetsThroughAsset(t *testing.T) {
 		if strings.Contains(string(b), `"/static/`) {
 			t.Errorf("%s: link static files through the asset function", f)
 		}
-	}
-
-	rr := httptest.NewRecorder()
-	newTestServer(t).router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/login", nil))
-	if !regexp.MustCompile(`<link rel="stylesheet" href="/static/assets/main-[\w-]+\.css"`).MatchString(rr.Body.String()) {
-		t.Errorf("GET /login does not link a hashed main.css:\n%s", rr.Body.String())
 	}
 }
 
@@ -376,9 +372,12 @@ func TestSignupRoutes(t *testing.T) {
 	}
 }
 
-// appJS is the URL of the app entry the templates link (TestAsset checks it
-// resolves).
-var appJS, _ = asset("app/entries/app.ts")
+// entryJS returns the URL of a page group's entry script (TestAssetTags
+// checks the pages' heads link it).
+func entryJS(group string) string {
+	u, _ := asset("app/entries/" + group + ".ts")
+	return u
+}
 
 // TestRoutesRequireAuthentication walks every route and checks that an
 // anonymous request is redirected to /login, unless the route is one of the

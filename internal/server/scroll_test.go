@@ -429,22 +429,23 @@ func TestBusyFormsMarkup(t *testing.T) {
 
 	for _, tt := range []struct {
 		page, action string
+		group        string // the page's group, whose entry sets up busy forms
 		label, busy  string // the button's label and busy label; "" for a form that isn't busy
 	}{
-		{"search", "/lookups", "Look up example.com", "Looking up example.com…"},
-		{"site", "/lookups", "Check for new feeds", "Checking for new feeds…"},
-		{"feed", "/feeds/" + testFeedID + "/refresh", "Refresh", "Refreshing…"},
-		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "Refresh", "Refreshing…"},
-		{"import", "/settings/import", "Import", "Importing…"},
-		{"login", "/login", "Log in", "Logging in…"},
-		{"signup", "/signup", "Sign up", "Signing up…"},
-		{"feed", "/feeds/" + testFeedID + "/subscribe", "", ""},
-		{"subscribed feed", "/feeds/" + testFeedID + "/unsubscribe", "", ""},
+		{"search", "/lookups", "search", "Look up example.com", "Looking up example.com…"},
+		{"site", "/lookups", "reading", "Check for new feeds", "Checking for new feeds…"},
+		{"feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
+		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
+		{"import", "/settings/import", "account", "Import", "Importing…"},
+		{"login", "/login", "login", "Log in", "Logging in…"},
+		{"signup", "/signup", "login", "Sign up", "Signing up…"},
+		{"feed", "/feeds/" + testFeedID + "/subscribe", "reading", "", ""},
+		{"subscribed feed", "/feeds/" + testFeedID + "/unsubscribe", "reading", "", ""},
 	} {
 		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
 			body := page(tt.page)(t)
-			if !strings.Contains(body, `<script type="module" src="`+appJS+`"></script>`) {
-				t.Error("page doesn't load the app entry")
+			if !strings.Contains(body, `<script type="module" src="`+entryJS(tt.group)+`"></script>`) {
+				t.Errorf("page doesn't load the %s entry", tt.group)
 			}
 			doc, err := html.Parse(strings.NewReader(body))
 			if err != nil {

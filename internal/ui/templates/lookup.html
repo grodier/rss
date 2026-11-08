@@ -6,9 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   {{if .InProgress}}<noscript><meta http-equiv="refresh" content="2" /></noscript>{{end}}
   <title>Paper Round - looking up {{.SiteKey}}</title>
-  <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
+  {{template "assets" "search"}}
   {{template "app-head" .Nav}}
-  <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 
 <body>

@@ -80,8 +80,8 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		if !strings.Contains(body, `href="/feeds/feed-1"`) || !strings.Contains(body, "Feed One") {
 			t.Errorf("missing feed link: %s", body)
 		}
-		if !strings.Contains(body, `<script type="module" src="`+appJS+`"></script>`) {
-			t.Errorf("missing the app entry's script tag: %s", body)
+		if !strings.Contains(body, `<script type="module" src="`+entryJS("reading")+`"></script>`) {
+			t.Errorf("missing the reading entry's script tag: %s", body)
 		}
 		if strings.Contains(body, "Older articles") || strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected pager: %s", body)

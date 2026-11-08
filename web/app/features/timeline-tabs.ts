@@ -1,6 +1,6 @@
 // The timeline tab row (partials/timeline_tabs.html).
 
-// Tab to tab (#521): timelines.css moves the underline from the old tab to
+// Tab to tab (#521): timeline-tabs.css moves the underline from the old tab to
 // the new one and stretches it about its middle. When this script is
 // listening before the page is first drawn, it replaces that with an
 // elastic move that reaches toward the new tab: the edge in front leaves
@@ -12,7 +12,7 @@
 // on the row's divider. Springs reach every distance in about the same
 // time, so far moves are faster and stretch further, up to about 1.9x.
 // A deferred script can miss pagereveal (on a slow device, say), and then
-// timelines.css's move plays; the page never waits for this one. See
+// timeline-tabs.css's move plays; the page never waits for this one. See
 // "Motion and feedback" in docs/decisions.md.
 const GROUP = "::view-transition-group(tab-indicator)";
 const NEW = "::view-transition-new(tab-indicator)";
@@ -59,16 +59,16 @@ export function init(): void {
   // The row (not the page) keeps where the reader scrolled it when they
   // move to another tab, so its labels don't jump and the underline slides
   // along a row that stays put: the page being left saves its scrollLeft
-  // for the page it goes to (pageswap, below). timelines.css already starts
+  // for the page it goes to (pageswap, below). timeline-tabs.css already starts
   // the row with the current tab in view, before the page is first drawn
   // (scroll-initial-target). The saved scroll is restored only before the
   // row is first seen: during a view transition in pagereveal, which this
   // deferred script only hears when it runs before the transition captures
   // the row, and otherwise when nothing has been painted yet. When it runs
-  // later (on a slow device, say), the row stays where timelines.css put it
+  // later (on a slow device, say), the row stays where timeline-tabs.css put it
   // rather than jump under the reader. Then, if the current tab isn't fully
   // in view, clear of the fade at the row's end (the row's scroll padding),
-  // the row scrolls just enough to show it, as timelines.css does where
+  // the row scrolls just enough to show it, as timeline-tabs.css does where
   // scroll-initial-target isn't supported.
   const SAVED = "tab-row";
   const current = document.querySelector<HTMLElement>(".timeline-tabs [aria-current=page]");
@@ -80,12 +80,12 @@ export function init(): void {
         sessionStorage.removeItem(SAVED);
         if (restore && saved && saved.to === location.href) row.scrollLeft = saved.left;
       } catch {
-        // No storage: the row stays where timelines.css put it.
+        // No storage: the row stays where timeline-tabs.css put it.
       }
       const fade = parseFloat(getComputedStyle(row).scrollPaddingInlineEnd) || 0;
       const left = current.offsetLeft,
         right = left + current.offsetWidth;
-      // Within a pixel is in view: timelines.css's own placement may round.
+      // Within a pixel is in view: timeline-tabs.css's own placement may round.
       if (left < row.scrollLeft - 1) row.scrollLeft = left;
       else if (right > row.scrollLeft + row.clientWidth - fade + 1) row.scrollLeft = right - row.clientWidth + fade;
     };
@@ -96,7 +96,7 @@ export function init(): void {
   // The page being left saves its row's scroll for the next page (above),
   // when the browser says where it's going (the Navigation API). And when
   // its tab is scrolled out of the row, it unnames the underline
-  // (timelines.css): a named element's snapshot isn't clipped by the row,
+  // (timeline-tabs.css): a named element's snapshot isn't clipped by the row,
   // so it would slide in from outside it. The new page's underline fades
   // in instead.
   addEventListener("pageswap", (e) => {
@@ -130,7 +130,7 @@ export function init(): void {
     const from = new DOMMatrixReadOnly(String(first.transform));
     const w1 = parseFloat(String(first.width));
     const h = parseFloat(String(first.height));
-    // timelines.css's move ends where the group's style puts it: the new
+    // timeline-tabs.css's move ends where the group's style puts it: the new
     // underline's place, which shows once that move is gone.
     slide.cancel();
     const end = getComputedStyle(root, GROUP);
@@ -186,7 +186,7 @@ export function init(): void {
     if (last < 0) return; // the same tab again: nothing moves
     frames.length = last + 1;
     frames.push({ transform: `translate(${L2}px, ${to.f}px)`, width: `${w2}px`, height: `${h}px` });
-    // The line's own stretch (timelines.css) would add to this one.
+    // The line's own stretch (timeline-tabs.css) would add to this one.
     for (const a of animations)
       if (keyframeEffect(a)?.pseudoElement === NEW && (a as CSSAnimation).animationName === "tab-indicator-stretch")
         a.cancel();

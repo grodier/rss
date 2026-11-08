@@ -37,6 +37,7 @@ func (s *Server) router() http.Handler {
 	router.Get("/healthcheck", s.healthcheckHandler)
 
 	router.Get("/", s.homeHandler)
+	router.Get("/sample", s.sampleHandler) // the design checkpoint (#562), branch only
 
 	return router
 }

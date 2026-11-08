@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  {{template "admin-head"}}
+  <title>Sample - Paper Round admin</title>
+  {{template "assets" "admin"}}
+</head>
+
+<body>
+  {{- /* The design checkpoint's sample page (#562): on the branch only, not merged. */}}
+  <div class="admin">
+    {{template "admin-nav" ""}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Users</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/sample">Export CSV</a>
+          <a class="btn btn-sm btn-primary" href="/sample">Invite someone</a>
+        </div>
+        <p>Accounts, newest first. Counts only: never what anyone reads.</p>
+      </header>
+
+      <section class="admin-section">
+        <h2>Last 30 days</h2>
+        <dl class="stats">
+          <div class="stat"><dt>Accounts</dt><dd>1,284</dd></div>
+          <div class="stat"><dt>Signed up</dt><dd>96<small>+12%</small></dd></div>
+          <div class="stat"><dt>Active this week</dt><dd>731</dd></div>
+          <div class="stat"><dt>Unconfirmed</dt><dd>18</dd></div>
+          <div class="stat"><dt>Emails bounced</dt><dd>3</dd></div>
+        </dl>
+      </section>
+
+      <section class="admin-section">
+        <h2>Accounts</h2>
+        <form class="filters" method="get" action="/sample">
+          <div>
+            <label for="q">Email or name</label>
+            <input id="q" name="q" type="search" placeholder="Search accounts">
+          </div>
+          <div>
+            <label for="status">Status</label>
+            <select id="status" name="status">
+              <option>Any</option>
+              <option>Confirmed</option>
+              <option>Unconfirmed</option>
+            </select>
+          </div>
+          <button class="btn-sm" type="submit">Filter</button>
+        </form>
+        <form method="post" action="/sample">
+          <div class="table-wrap">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th class="check"><input type="checkbox" aria-label="Select every account"></th>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Signed up</th>
+                  <th>Last seen</th>
+                  <th class="num">Feeds</th>
+                  <th class="num">Sessions</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="check"><input type="checkbox" aria-label="Select ada@example.com"></td><td class="wrap">ada@example.com</td><td>Ada</td><td>2026-11-07</td><td>2 hours ago</td><td class="num">42</td><td class="num">2</td><td><span class="chip">Confirmed</span></td></tr>
+                <tr><td class="check"><input type="checkbox" aria-label="Select grace@example.org" checked></td><td class="wrap">grace@example.org</td><td>Grace Hopper</td><td>2026-11-06</td><td>Yesterday</td><td class="num">117</td><td class="num">3</td><td><span class="chip">Confirmed</span></td></tr>
+                <tr><td class="check"><input type="checkbox" aria-label="Select linus@example.net"></td><td class="wrap">linus@example.net</td><td>Linus</td><td>2026-11-04</td><td>4 days ago</td><td class="num">8</td><td class="num">1</td><td><span class="chip">Unconfirmed</span></td></tr>
+                <tr><td class="check"><input type="checkbox" aria-label="Select margaret@example.com"></td><td class="wrap">margaret@example.com</td><td>Margaret</td><td>2026-10-29</td><td>3 weeks ago</td><td class="num">1,204</td><td class="num">5</td><td><span class="chip">Confirmed</span></td></tr>
+                <tr><td class="check"><input type="checkbox" aria-label="Select alan@example.org"></td><td class="wrap">alan@example.org</td><td>Alan</td><td>2026-10-21</td><td>Never</td><td class="num">0</td><td class="num">0</td><td><span class="chip">Unconfirmed</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="form-actions">
+            <button class="btn-sm" type="submit">Resend confirmation</button>
+            <button class="btn-sm btn-danger-quiet" type="submit">Sign out of every device</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-section">
+        <h2>Delete an account</h2>
+        <form class="admin-form" method="post" action="/sample" data-busy>
+          <div role="alert" class="error">Nothing was deleted: fix the field below.</div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" value="grace@example.org">
+          </div>
+          <div class="field">
+            <label for="confirm">Type the email again to confirm</label>
+            <input id="confirm" name="confirm" type="text" value="grace@exmaple.org" aria-invalid="true" aria-describedby="confirm-hint confirm-error">
+            <p class="hint" id="confirm-hint">Deleting removes the account, its subscriptions and its sessions. It can't be undone.</p>
+            <p class="error" id="confirm-error">This doesn't match the email above.</p>
+          </div>
+          <div class="form-actions">
+            <button class="btn-danger" type="submit" data-busy data-busy-label="Deleting…">Delete account</button>
+            <a class="btn" href="/sample">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

@@ -390,6 +390,7 @@ func TestRoutesRequireAuthentication(t *testing.T) {
 		"/static/*":                    true,
 		"/sites/{id}/icon":             true,
 		"/healthcheck":                 true,
+		"/rum":                         true,
 		"/manifest.webmanifest":        true,
 		"/privacy":                     true,
 		"/terms":                       true,

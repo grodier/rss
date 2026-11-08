@@ -7,12 +7,14 @@ import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
 import * as infiniteScroll from "../features/infinite-scroll";
 import { enhancePings } from "../features/read-pings";
+import { setupRUM } from "../features/rum";
 import * as saveStar from "../features/save-star";
 import * as seenBeacon from "../features/seen-beacon";
 import * as share from "../features/share";
 import * as timelineTabs from "../features/timeline-tabs";
 import * as videoEmbeds from "../features/video-embeds";
 
+setupRUM(); // first, so a setup that throws can't stop the page being measured
 localizeTimes(document);
 enhancePings(document);
 backForward.init();

@@ -540,22 +540,30 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
 
 ### Observability
 
-`www` records its own request and runtime metrics and its recent server errors in Postgres for the admin; the admin's pages that read them come later (#577).
+`www` records its own request and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin; the admin's pages that read them come later (#577, #578).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.
 2. **Writing.** `Requests.Run` writes the counts at the start of each minute (`MetricsRepository.SaveRequests`, which adds to a row already there), and `metrics.Runtime` writes a sample of the process's memory, goroutines, GC pause p99 and connection pool.
 3. **Server errors.** `serverErrorHTML` and `serverErrorJSON` (`internal/server/errors.go`) hand the error behind each 500 to `metrics.ErrorLog.Record` (`recordError`), with its route pattern and method, and marked as a panic when `recoverPanic` caught it (`panicError`); `ErrorLog.Run` writes it to `server_errors` (`ServerErrorRepository.Record`, which cuts the message to 2,000 bytes) without the response waiting.
 4. **Housekeeping.** `metrics.Housekeeper` rolls minute rows into hourly ones after 2 hours and deletes them after 7 days, hourly rows after 90 and runtime rows after 7, and keeps the newest 1,000 server errors (see "Background work" in architecture.md).
-5. **Server-Timing.** `serverTiming` gives HTML responses `Server-Timing: app;dur=<ms>`, so the browser's timings (DevTools, and the real-user metrics of #565) can split time to first byte into server and network.
+5. **Server-Timing.** `serverTiming` gives HTML responses `Server-Timing: app;dur=<ms>`, so the browser's timings (DevTools, and the real-user metrics below) can split time to first byte into server and network.
+6. **Measuring a page view.** Every page's entry sets up `rum.ts` first (`setupRUM`), unless the browser has no `sendBeacon`.
+   `web-vitals` reports every change to TTFB, FCP, LCP, INP and CLS, and `rum.ts` keeps the latest of each, the LCP element's tag name and the slowest interaction's target, named by its control's first `data-*` attribute or its tag.
+7. **The beacon.** The first time the page is hidden (`visibilitychange`, or `pagehide`), it sends the view once to `POST /rum` with `navigator.sendBeacon`: its path, the metrics, the navigation entry's type (or `prerender`), load timings, transfer size, protocol and `Server-Timing` `app` duration, and the viewport width, whether it's installed, the effective connection type and another site's referrer host.
+   A page restored from the back/forward cache starts a new view, `nav=restore`, with only what `web-vitals` measures for the restore, sent when it's next hidden.
+8. **Storing it.** `rumHandler` (`internal/server/rum.go`) always answers 204; it drops the beacon over `rumLimiter`'s limit, or when its path resolves to no page (`rumRoute`), or its navigation type or width isn't valid.
+   It keeps the route pattern, a device class from the width, and the browser's family and major version from the User-Agent (`parseBrowser`), cuts numbers to their ranges (outside them, NULL) and checks every other field against a set or a pattern, then stores the row (`RUMRepository.Record`).
+9. **Rollup.** The housekeeper counts each UTC day's views into `rum_daily`, one row per route, device, browser and metric with its views per `metrics.RUMBounds` bucket, an hour after the day ends (`RUMRepository.RollUp`), and deletes views after 30 days and daily rows after 13 months.
 
 **Start at:**
 
 1. `internal/server/middleware.go` (`recordRequest`, `serverTiming`) and `errors.go` (`recordError`).
-2. `internal/metrics/requests.go`, `runtime.go`, `errors.go` and `housekeeper.go`.
-3. `internal/psql/metrics.go` (`RollUp`) and `server_errors.go`.
+2. `internal/metrics/requests.go`, `runtime.go`, `errors.go`, `housekeeper.go` and `rum.go`.
+3. `internal/psql/metrics.go` (`RollUp`), `server_errors.go` and `rum.go`.
+4. `web/app/features/rum.ts` and `internal/server/rum.go`.
 
-**Tests:** `internal/metrics/*_test.go`; `internal/psql/metrics_test.go` and `server_errors_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`) and `errors_test.go`.
+**Tests:** `internal/metrics/*_test.go`; `internal/psql/metrics_test.go`, `server_errors_test.go` and `rum_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`), `errors_test.go` and `rum_test.go`; `web/app/features/rum.test.ts`.
 
 **Why:** "Observability" in decisions.md.
 

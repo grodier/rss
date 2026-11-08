@@ -478,6 +478,10 @@ Admin and observability:
   Each page view sends one beacon, so `POST /rum` doubles page requests and inserts a `rum_views` row for each, kept 30 days.
   *Signal:* the insert shows up near the top of `pg_stat_statements` by total time, or the table passes a few million rows.
   *Fix:* count beacons in memory per instance and write per minute, as request metrics do, keeping raw rows only for a sample.
+- [ ] **Real-user rollups multiply by route, device, browser and metric** (#565).
+  Each day adds a `rum_daily` row for every combination seen (at most the app's 46 GET routes × 3 devices × 6 browsers × 6 metrics), kept 13 months, and the nightly rollup reads the day's `rum_views` rows once per metric.
+  *Signal:* `rum_daily` passes a million rows, or the rollup takes over a second.
+  *Fix:* past 30 days, keep rows by route and device only, or read the day's views once for every metric.
 - [ ] **The admin's overview counts big tables** (#575).
   `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
   *Signal:* the overview takes over a second.

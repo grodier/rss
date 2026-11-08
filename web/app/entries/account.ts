@@ -7,7 +7,9 @@ import { localizeTimes } from "../../shared/lib/local-times";
 import * as passwordToggle from "../../shared/lib/password-toggle";
 import * as backForward from "../features/back-forward";
 import * as importStatus from "../features/import-status";
+import { setupRUM } from "../features/rum";
 
+setupRUM(); // first, so a setup that throws can't stop the page being measured
 localizeTimes(document);
 backForward.init();
 busyForms.init();

@@ -9,6 +9,7 @@ import (
 
 func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
+	s.mux = router
 
 	// Outermost, so every response is logged, including those from recoverPanic
 	// and CrossOriginProtection.
@@ -46,6 +47,11 @@ func (s *Server) router() http.Handler {
 	router.Get("/sites/{id}/icon", s.siteIconHandler)
 
 	router.Get("/healthcheck", s.healthcheckHandler)
+
+	// The real-user beacon needs no session, so a beacon never loads or saves
+	// one: it carries no identifiers (see "Observability" in
+	// docs/decisions.md).
+	router.Post("/rum", s.rumHandler)
 
 	// The policy pages need no session: they're the same for everyone.
 	router.Get("/privacy", s.privacyHandler)

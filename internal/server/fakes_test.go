@@ -717,3 +717,26 @@ func (f *fakeErrorLog) recorded() []rss.ServerError {
 	defer f.mu.Unlock()
 	return append([]rss.ServerError(nil), f.errs...)
 }
+
+// fakeRUMStore keeps the real-user views it's given, or fails with err.
+type fakeRUMStore struct {
+	mu    sync.Mutex
+	err   error
+	views []rss.RUMView
+}
+
+func (f *fakeRUMStore) Record(_ context.Context, v rss.RUMView) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.views = append(f.views, v)
+	return nil
+}
+
+func (f *fakeRUMStore) recorded() []rss.RUMView {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]rss.RUMView(nil), f.views...)
+}

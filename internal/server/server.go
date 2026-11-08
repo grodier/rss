@@ -291,6 +291,12 @@ type RequestRecorder interface {
 	Observe(route, method string, status int, d time.Duration, bytes int)
 }
 
+// ErrorRecorder keeps the server's recent 500s and panics for the admin;
+// satisfied by *metrics.ErrorLog. Record must not block.
+type ErrorRecorder interface {
+	Record(e rss.ServerError)
+}
+
 var (
 	_ ArticleStore      = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
@@ -313,6 +319,7 @@ var (
 	_ URLFetcher        = (*fetch.Client)(nil)
 	_ SiteDiscoverer    = (*discovery.Discoverer)(nil)
 	_ RequestRecorder   = (*metrics.Requests)(nil)
+	_ ErrorRecorder     = (*metrics.ErrorLog)(nil)
 )
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -343,6 +350,7 @@ type Services struct {
 	Discoverer          SiteDiscoverer
 	Database            DatabasePinger
 	Metrics             RequestRecorder
+	ErrorLog            ErrorRecorder
 }
 
 type Server struct {

@@ -2,10 +2,13 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/metrics"
+	"github.com/grodier/rss/internal/rss"
 )
 
 // allowCandidates are the methods probed, in order, to build the Allow header.
@@ -82,10 +85,39 @@ func (s *Server) tooManyLookupsResponse(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) serverErrorJSON(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
+	s.recordError(r, err)
 	s.errorResponse(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "the server encountered a problem and could not process your request")
 }
 
 func (s *Server) serverErrorHTML(w http.ResponseWriter, r *http.Request, err error) {
 	s.logError(r, err)
+	s.recordError(r, err)
 	s.errorHTML(w, r, http.StatusInternalServerError, "Something went wrong", "The server encountered a problem and could not process your request.")
+}
+
+// panicError is a panic recoverPanic recovered, so recordError marks it.
+type panicError struct {
+	value any
+}
+
+func (e panicError) Error() string { return fmt.Sprint(e.value) }
+
+// recordError keeps err in the error log for the admin, by its request's chi
+// route pattern, never its URL (see "Observability" in docs/decisions.md).
+// It doesn't wait for the write.
+func (s *Server) recordError(r *http.Request, err error) {
+	route := ""
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		route = rctx.RoutePattern()
+	}
+	if route == "" {
+		route = metrics.Unmatched
+	}
+	_, isPanic := errors.AsType[panicError](err)
+	s.services.ErrorLog.Record(rss.ServerError{
+		Route:   route,
+		Method:  metrics.NormalizeMethod(r.Method),
+		Message: err.Error(),
+		Panic:   isPanic,
+	})
 }

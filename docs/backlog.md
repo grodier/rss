@@ -470,6 +470,10 @@ Admin and observability:
   Each instance writes a row per route, method and status class it served each minute, kept 7 days before hourly rollups.
   *Signal:* the table passes a few million rows, or the hourly rollup takes over a second.
   *Fix:* write every 5 minutes, or keep minute rows for a day.
+- [ ] **A database write on every 500** (#564).
+  A route that fails on every request (a template bug on Home) inserts a `server_errors` row per request, and the table holds an hour's worth until the housekeeper trims it to 1,000.
+  *Signal:* `server_errors` passes 100,000 rows between trims, or its insert shows up in `pg_stat_statements` by total time.
+  *Fix:* record at most one error per route per second in `ErrorLog.Record`, counting the rest.
 - [ ] **A database write on every page view** (#565).
   Each page view sends one beacon, so `POST /rum` doubles page requests and inserts a `rum_views` row for each, kept 30 days.
   *Signal:* the insert shows up near the top of `pg_stat_statements` by total time, or the table passes a few million rows.

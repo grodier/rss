@@ -540,21 +540,22 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
 
 ### Observability
 
-`www` records its own request and runtime metrics in Postgres for the admin to chart; the admin's pages that read them come later (#577).
+`www` records its own request and runtime metrics and its recent server errors in Postgres for the admin; the admin's pages that read them come later (#577).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.
 2. **Writing.** `Requests.Run` writes the counts at the start of each minute (`MetricsRepository.SaveRequests`, which adds to a row already there), and `metrics.Runtime` writes a sample of the process's memory, goroutines, GC pause p99 and connection pool.
-3. **Housekeeping.** `metrics.Housekeeper` rolls minute rows into hourly ones after 2 hours and deletes them after 7 days, hourly rows after 90 and runtime rows after 7 (see "Background work" in architecture.md).
-4. **Server-Timing.** `serverTiming` gives HTML responses `Server-Timing: app;dur=<ms>`, so the browser's timings (DevTools, and the real-user metrics of #565) can split time to first byte into server and network.
+3. **Server errors.** `serverErrorHTML` and `serverErrorJSON` (`internal/server/errors.go`) hand the error behind each 500 to `metrics.ErrorLog.Record` (`recordError`), with its route pattern and method, and marked as a panic when `recoverPanic` caught it (`panicError`); `ErrorLog.Run` writes it to `server_errors` (`ServerErrorRepository.Record`, which cuts the message to 2,000 bytes) without the response waiting.
+4. **Housekeeping.** `metrics.Housekeeper` rolls minute rows into hourly ones after 2 hours and deletes them after 7 days, hourly rows after 90 and runtime rows after 7, and keeps the newest 1,000 server errors (see "Background work" in architecture.md).
+5. **Server-Timing.** `serverTiming` gives HTML responses `Server-Timing: app;dur=<ms>`, so the browser's timings (DevTools, and the real-user metrics of #565) can split time to first byte into server and network.
 
 **Start at:**
 
-1. `internal/server/middleware.go` (`recordRequest`, `serverTiming`).
-2. `internal/metrics/requests.go`, `runtime.go` and `housekeeper.go`.
-3. `internal/psql/metrics.go` (`RollUp`).
+1. `internal/server/middleware.go` (`recordRequest`, `serverTiming`) and `errors.go` (`recordError`).
+2. `internal/metrics/requests.go`, `runtime.go`, `errors.go` and `housekeeper.go`.
+3. `internal/psql/metrics.go` (`RollUp`) and `server_errors.go`.
 
-**Tests:** `internal/metrics/*_test.go`; `internal/psql/metrics_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`).
+**Tests:** `internal/metrics/*_test.go`; `internal/psql/metrics_test.go` and `server_errors_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`) and `errors_test.go`.
 
 **Why:** "Observability" in decisions.md.
 

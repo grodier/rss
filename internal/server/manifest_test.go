@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/grodier/rss/internal/ui"
+	"github.com/grodier/rss/web"
 )
 
 func TestManifestHandler(t *testing.T) {
@@ -61,7 +62,7 @@ func TestManifestHandler(t *testing.T) {
 			t.Errorf("icon src %q is not under /static/", icon.Src)
 			continue
 		}
-		if _, err := fs.Stat(ui.Static, "static/"+name); err != nil {
+		if _, err := fs.Stat(web.App, name); err != nil {
 			t.Errorf("icon %q: %v", icon.Src, err)
 		}
 	}
@@ -112,7 +113,7 @@ func TestInstallIconSizes(t *testing.T) {
 		"icon-192.png":         192,
 		"icon-512.png":         512,
 	} {
-		f, err := ui.Static.Open("static/img/" + name)
+		f, err := web.App.Open("img/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +131,7 @@ func TestInstallIconSizes(t *testing.T) {
 
 // iOS fills an apple-touch-icon's transparent pixels with black.
 func TestAppleTouchIconOpaque(t *testing.T) {
-	f, err := ui.Static.Open("static/img/apple-touch-icon.png")
+	f, err := web.App.Open("img/apple-touch-icon.png")
 	if err != nil {
 		t.Fatal(err)
 	}

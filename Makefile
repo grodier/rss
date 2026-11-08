@@ -11,21 +11,21 @@ confirm:
 	@echo -n "Are you sure? [y/N] " && read ans && [ $${ans:-N} = y ]
 
 .PHONY: run
-run:
+run: assets
 	go run ./cmd/www
 
 .PHONY: build
-build:
+build: assets
 	go build -o bin/www ./cmd/www
 
 ## test: run tests (database tests are skipped unless RSS_TEST_DB_DSN is set)
 .PHONY: test
-test:
+test: assets
 	go test ./...
 
 ## test/db: run all tests, including database tests, against the local database
 .PHONY: test/db
-test/db: db/check
+test/db: assets db/check
 	RSS_TEST_DB_DSN=${RSS_DB_DSN} go test -count=1 ./...
 
 ## docker/build: build the container image, tagged rss, with the current commit as its version
@@ -35,7 +35,28 @@ docker/build:
 
 .PHONY: clean
 clean:
-	rm -rf bin
+	rm -rf bin web/dist
+
+# ==================================================================================== #
+# FRONTEND
+# ==================================================================================== #
+
+# npm ci, again only when package-lock.json changes (npm writes this file).
+web/node_modules/.package-lock.json: web/package-lock.json
+	npm --prefix web ci
+
+# The build, again only when its sources change, so an unchanged build is instant.
+web/dist/app/.vite/manifest.json: $(shell find web/app web/shared -type f) web/vite.config.ts web/node_modules/.package-lock.json
+	npm --prefix web run build
+
+## assets: build the frontend into web/dist
+.PHONY: assets
+assets: web/dist/app/.vite/manifest.json
+
+## assets/watch: rebuild the frontend on every change (restart go run to pick it up)
+.PHONY: assets/watch
+assets/watch: web/node_modules/.package-lock.json
+	npm --prefix web run watch
 
 # ==================================================================================== #
 # DATABASE
@@ -53,7 +74,7 @@ db/stop:
 
 ## db/reset: destroy the database and rebuild from scratch
 .PHONY: db/reset
-db/reset: confirm
+db/reset: confirm assets
 	docker compose down -v
 	docker compose up -d
 	@echo "Waiting for database to be ready..."
@@ -64,13 +85,13 @@ db/reset: confirm
 
 ## db/seed: create your account from RSS_DEV_EMAIL and RSS_DEV_PASSWORD in .env
 .PHONY: db/seed
-db/seed: db/check
+db/seed: assets db/check
 	@test -n "$$RSS_DEV_EMAIL" && test -n "$$RSS_DEV_PASSWORD" || { echo "Set RSS_DEV_EMAIL and RSS_DEV_PASSWORD in .env"; exit 1; }
 	@printf '%s\n' "$$RSS_DEV_PASSWORD" | go run ./cmd/www create-user -name "$${RSS_DEV_NAME:-Dev}" -email "$$RSS_DEV_EMAIL"
 
 ## db/seed-sites: queue lookups of the seed list's sites (internal/seed/sites.txt) not found yet
 .PHONY: db/seed-sites
-db/seed-sites: db/check
+db/seed-sites: assets db/check
 	go run ./cmd/www seed
 
 ## db/loadseed: seed the local database at realistic scale (1,000 feeds, 2 years), then measure the reading queries
@@ -100,7 +121,7 @@ db/migrations/new:
 
 ## db/migrations/up: apply all up database migrations
 .PHONY: db/migrations/up
-db/migrations/up: db/check confirm
+db/migrations/up: assets db/check confirm
 	@echo "Running up migrations..."
 	go run ./cmd/www migrate
 

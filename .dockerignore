@@ -3,3 +3,5 @@
 .env
 bin
 docs
+web/node_modules
+web/dist

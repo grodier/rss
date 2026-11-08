@@ -64,7 +64,7 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `validator`, `sanitize`, `mail`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
@@ -82,9 +82,10 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
-| `internal/ui` | Embedded page templates, email templates and static files | — |
+| `internal/ui` | Embedded page templates, email templates and the web app manifest | — |
 | `internal/validator` | Form validation helpers and the rules for new passwords | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
+| `web` | The frontend's npm project; its Go package embeds the build (`App`, what `/static` serves) | — |
 
 Consumers define the interfaces they need, and only `cmd/www` builds the concrete types.
 The server's store interfaces (`FeedStore`, `ArticleStore`, …) and the `Services` struct that holds them are in `internal/server/server.go`, with compile-time checks that the `psql` repositories satisfy them.
@@ -106,6 +107,8 @@ Third-party modules and what they're for (CLAUDE.md asks for a justification bef
 | `golang.org/x/crypto/argon2` | Password hashing |
 | `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
+
+The frontend has one npm devDependency, Vite (`web/package.json`), which builds the JavaScript and CSS; it runs only at build time, and nothing from npm reaches the browser but our own code.
 
 ## HTTP
 
@@ -130,7 +133,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | Route | Login | What it does |
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
-| `GET /static/*` | no | Embedded CSS, JS, images and fonts; `?v=<hash>` URLs are cached for a year, others revalidated |
+| `GET /static/*` | no | The built frontend (`web.App`): hashed files under `assets/` and public files with their current `?v=` are cached for a year, others revalidated; an outdated entry's hashed name gets the current file |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
@@ -350,11 +353,12 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 Templates, CSS and JavaScript follow the conventions in CLAUDE.md.
 Beyond those:
 
-- **Static files** are embedded and served at `/static/…?v=<hash>`.
-  The `asset` template function builds those URLs, so a changed file gets a new URL and can be cached for a year.
-  At startup, every relative `url()` in a stylesheet is rewritten to its target's versioned URL before the stylesheet is hashed (`mustHashStatic` in `internal/server/static.go`), so the fonts are cached too and a changed font changes `main.css`'s URL.
-  Every response carries an `ETag` of the version; a URL without the current `?v=` gets `Cache-Control: no-cache`, so it's revalidated rather than kept.
-  Besides the CSS and JavaScript, they're the logo and favicons (`img/`) and the self-hosted fonts (`fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
+- **Static files** are built by Vite from the npm project in `web/` (`make assets`; `web/vite.config.ts`) into `web/dist/app`, embedded by package `web` and served at `/static/`.
+  Vite minifies `app/app.js` (loaded as a module script) and `app/styles/main.css`, writes them and the fonts they link under `assets/` with a content hash in their names, rewrites the stylesheet's `url()`s to those names, and lists every built file in `.vite/manifest.json`.
+  At startup the server reads that manifest and hashes every other file (`loadStatic` in `internal/server/static.go`); the `asset` template function links a source path through the manifest (`app/app.js` → `/static/assets/app-<hash>.js`) and a public file, copied as-is from `web/app/public`, with `?v=<hash>`, so a changed file gets a new URL and can be cached for a year.
+  Every response carries an `ETag` of its content; a public file without its current `?v=` gets `Cache-Control: no-cache`, so it's revalidated rather than kept.
+  During a deploy Render runs the old and new versions side by side, so a request for an outdated hashed name of an entry (`assets/app-<old hash>.js`, `assets/main-<old hash>.css`) gets the current file, uncached; any other missing file is a 404.
+  Besides the CSS and JavaScript, they're the logo and favicons (`web/app/public/img/`) and the self-hosted fonts (`web/shared/fonts/`: Bricolage Grotesque for headlines and Newsreader for reading, with their licences); every page links the favicons through `partials/head.html`.
   The landing page and Log in draw the logo inline instead (`partials/logo.html`), so its sun can rise when they load; change it together with `img/logo.svg` (`TestInlineLogoMatchesFile` checks their shapes match).
   The install icons (`img/icon-192.png`, `img/icon-512.png`, `img/apple-touch-icon.png`) are rendered from `img/app-icon.svg`, whose comment says how to regenerate them.
 - **The web app manifest** (`ui/manifest.webmanifest`) is embedded and served by its own handler, not from `/static`: Go's `mime` table has no `.webmanifest` type and the distroless image has no `/etc/mime.types`, so the file server would sniff it as `text/plain`.
@@ -400,7 +404,7 @@ Production runs on Render since #214.
 Why this setup is under "Deployment" in [decisions.md](decisions.md).
 What runs where, and how to operate it, is in [`infra/README.md`](../infra/README.md) (the runbook) and the Terraform in `infra/`; this section is the overview.
 
-- **Images.** The `Dockerfile` builds `www` as a static binary into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`).
+- **Images.** The `Dockerfile` builds the frontend in a Node stage (the version in `web/.node-version`), then `www` as a static binary, embedding it, into `gcr.io/distroless/static-debian12:nonroot`, with the commit SHA as `version` (reported by `/healthcheck`); the image has no Node.
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
 - **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
@@ -410,4 +414,4 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
 - **Edge** (#541): Render's Cloudflare edge terminates TLS and serves HTTP/2 and HTTP/3 (`h3` seen in DevTools), compresses responses (Brotli, when the client accepts it), and caches `/static` files ("Common static files", set in Render's dashboard), purging them on every successful deploy.
   Pages and `/sites/{id}/icon` aren't cached there.
   Checks and the setting: "Edge caching" in [`infra/README.md`](../infra/README.md).
-- **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Go modules, GitHub Actions, the base images and the Terraform providers.
+- **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Go modules, the frontend's npm packages (Vite and Vitest in one PR), GitHub Actions, the base images and the Terraform providers.

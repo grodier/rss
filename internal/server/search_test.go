@@ -131,10 +131,10 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 
 			scripts := findAll(doc, func(n *html.Node) bool {
-				return n.Data == "script" && strings.Contains(attr(n, "src"), "js/app.") && hasAttr(n, "defer")
+				return n.Data == "script" && attr(n, "src") == appJS && attr(n, "type") == "module"
 			})
 			if len(scripts) != 1 {
-				t.Errorf("found %d deferred app.js scripts, want 1", len(scripts))
+				t.Errorf("found %d app.js module scripts, want 1", len(scripts))
 			}
 
 			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-live-search") })

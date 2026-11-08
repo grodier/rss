@@ -257,7 +257,7 @@ func TestLookupHandlerInProgress(t *testing.T) {
 			body := rr.Body.String()
 			for _, want := range []string{
 				`<noscript><meta http-equiv="refresh" content="2" /></noscript>`,
-				`<script src="/static/js/app.js`,
+				`<script type="module" src="` + appJS + `"></script>`,
 				"data-lookup-poll",
 				"Looking for feeds on example.com",
 				`href="/lookups/` + testLookupID + `"`,

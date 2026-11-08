@@ -1,7 +1,7 @@
-package ui
+package web
 
 import (
-	"io/fs"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -48,7 +48,7 @@ func colorTokens(decls []string) []string {
 // setting and for the user's choice, so they must stay the same; and every
 // color token needs a dark value.
 func TestDarkThemeTokens(t *testing.T) {
-	b, err := fs.ReadFile(Static, "static/css/main.css")
+	b, err := os.ReadFile("app/styles/main.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func motionOutsideOptIn(css string) []string {
 // something, is written inside @media (prefers-reduced-motion: no-preference).
 // See "Motion and feedback" in docs/decisions.md.
 func TestMotionIsOptIn(t *testing.T) {
-	b, err := fs.ReadFile(Static, "static/css/main.css")
+	b, err := os.ReadFile("app/styles/main.css")
 	if err != nil {
 		t.Fatal(err)
 	}

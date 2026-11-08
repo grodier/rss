@@ -628,9 +628,9 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
-- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`static/img/logo.svg`).
+- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).
   It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
-  The favicon (`static/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
+  The favicon (`web/app/public/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
   The P is outlined in both files, so they don't depend on the font loading.
 - **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
   Green and gold, maroon and an orange box were tried and dropped.
@@ -651,7 +651,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Pages that are hard to leave without one (sub-nav pages such as Tags and Timelines) get a better way in rather than a back link.
 - **Page-head actions are small outlined pills** (`btn btn-sm`, #424), on every page that has them: they read as controls opposite a big heading, where text links were easy to miss.
   None is filled, since a filled pill is a form's primary action; two actions are grouped (`.head-actions`) so they stay on one line on phones.
-- **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `static/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
+- **Bricolage Grotesque for the name and headlines** (the brand, page titles, article titles), self-hosted from `web/shared/fonts` rather than loaded from Google Fonts, so the CSP stays `default-src 'self'` and readers' browsers make no third-party requests.
   It's subset to Latin and weights 600–800 (77 KB, cached for a year).
 - **Newsreader for what people read** (#414): article text, card excerpts and feed descriptions, so a grotesque headline sits over serif text like a front page.
   It has optical sizes, so one file is sturdy in a 17 px excerpt and refined in 20 px article text.
@@ -808,6 +808,8 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
   - **A failed build fails the build, not the server**: `make`, the Dockerfile and CI build the assets before Go compiles, and `web/dist` is gitignored with no placeholder, so a missing build is a compile error.
     Building in the server at startup with esbuild's Go library was considered and not taken: a broken build would only show when the server started, and TypeScript wants a real build step anyway.
   - **Node only at build time**: the image stays distroless, and the Node version is pinned in `web/.node-version`.
+  - **Stylesheets write standard properties, and the build adds the vendor prefixes** (#543): with the source's `backdrop-filter` and `-webkit-backdrop-filter` both set to `var(--blur)`, Vite's minifier (Lightning CSS) kept only the prefixed one, which Firefox ignores.
+    A prefixed property belongs in the source only where there's no standard one (`-webkit-tap-highlight-color`); `TestBuiltCSSKeepsStandardProperties` catches a standard property the build drops.
 - **TypeScript (`strict`) and Prettier** (#544): `tsc --noEmit` checks types and Prettier checks formatting in CI, like gofmt; no linter beyond `tsc`.
 - **One module per enhancement** (#544), each still hooked onto server-rendered markup, so pages work without JavaScript and nothing is inlined (the CSP).
   Earlier entries here name `app.js` and `main.css`; after #544 their code lives in modules and partials under `web/app` and `web/shared`.

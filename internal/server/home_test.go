@@ -81,7 +81,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 			t.Errorf("missing feed link: %s", body)
 		}
 		if !strings.Contains(body, `<script type="module" src="`+appJS+`"></script>`) {
-			t.Errorf("missing app.js script tag: %s", body)
+			t.Errorf("missing the app entry's script tag: %s", body)
 		}
 		if strings.Contains(body, "Older articles") || strings.Contains(body, "Back to newest") {
 			t.Errorf("unexpected pager: %s", body)
@@ -435,7 +435,7 @@ func TestHomeHandlerTabs(t *testing.T) {
 	timelines := &fakeTimelineStore{}
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: articles, TimelineService: timelines})
 
-	// app.js scrolls the list in .timeline-tabs to its [aria-current=page]
+	// timeline-tabs.ts scrolls the list in .timeline-tabs to its [aria-current=page]
 	// link, and slides the underline (.tab-indicator) in that link.
 	// The tab row ends in an Edit pill (not a tab) to /timelines, at Home's
 	// row from Home.

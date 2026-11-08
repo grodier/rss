@@ -19,7 +19,7 @@ import (
 func TestStaticRoutes(t *testing.T) {
 	h := newTestServer(t).router()
 
-	js, err := asset("app/app.js")
+	js, err := asset("app/entries/app.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestStaticRoutes(t *testing.T) {
 func TestStaticOutdatedEntryServesCurrent(t *testing.T) {
 	h := newTestServer(t).router()
 	for _, tt := range []struct{ src, outdated string }{
-		{"app/app.js", "/static/assets/app-AAAAAAAA.js"},
+		{"app/entries/app.ts", "/static/assets/app-AAAAAAAA.js"},
 		{"app/styles/main.css", "/static/assets/main-AAAAAAAA.css"},
 	} {
 		t.Run(tt.src, func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestStaticOutdatedEntryServesCurrent(t *testing.T) {
 
 func TestStaticRoutesRevalidate(t *testing.T) {
 	h := newTestServer(t).router()
-	for _, name := range []string{"app/app.js", "app/styles/main.css", "shared/fonts/newsreader.woff2", "img/logo.svg"} {
+	for _, name := range []string{"app/entries/app.ts", "app/styles/main.css", "shared/fonts/newsreader.woff2", "img/logo.svg"} {
 		t.Run(name, func(t *testing.T) {
 			u, err := asset(name)
 			if err != nil {
@@ -138,9 +138,9 @@ func TestStaticRoutesRevalidate(t *testing.T) {
 func TestAsset(t *testing.T) {
 	h := newTestServer(t).router()
 
-	js, err := asset("app/app.js")
+	js, err := asset("app/entries/app.ts")
 	if err != nil || !regexp.MustCompile(`^/static/assets/app-[\w-]+\.js$`).MatchString(js) {
-		t.Errorf(`asset("app/app.js") = %q, %v; want /static/assets/app-<hash>.js`, js, err)
+		t.Errorf(`asset("app/entries/app.ts") = %q, %v; want /static/assets/app-<hash>.js`, js, err)
 	}
 
 	// A public file's version is the hash of the bytes it's served with.
@@ -376,9 +376,9 @@ func TestSignupRoutes(t *testing.T) {
 	}
 }
 
-// appJS is the URL of app.js the templates link (TestAsset checks it
+// appJS is the URL of the app entry the templates link (TestAsset checks it
 // resolves).
-var appJS, _ = asset("app/app.js")
+var appJS, _ = asset("app/entries/app.ts")
 
 // TestRoutesRequireAuthentication walks every route and checks that an
 // anonymous request is redirected to /login, unless the route is one of the

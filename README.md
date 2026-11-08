@@ -152,6 +152,7 @@ Others: `make run`, `make build` (outputs `bin/www`), `make clean` (also removes
 `make assets` builds the frontend (`web/`) into `web/dist`, which package `web` embeds: it runs `npm ci` when `web/package-lock.json` changes and `vite build` when a file under `web/app` or `web/shared` (or the Vite config) does, so it's instant when nothing changed.
 `make run`, `make build`, `make test`, `make test/db` and the database targets that run the app depend on it.
 `make assets/watch` rebuilds on every change; restart `go run` to pick up a build, since it's embedded.
+In `web/`, `npm run typecheck` checks the TypeScript (`tsc --noEmit`) and `npm run format:check` the formatting ([Prettier](https://prettier.io); `npm run format` fixes it); CI's `web` job runs both, then the build.
 
 `make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`.
 `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.

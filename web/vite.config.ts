@@ -17,7 +17,7 @@ export default defineConfig({
     // Every supported browser has modulepreload.
     modulePreload: { polyfill: false },
     rolldownOptions: {
-      input: ["app/app.js", "app/styles/main.css"],
+      input: ["app/entries/app.ts", "app/styles/main.css"],
     },
   },
 });

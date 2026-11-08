@@ -7,7 +7,7 @@
   <title>Paper Round - Timelines</title>
   <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
   {{template "app-head" .Nav}}
-  <script type="module" src="{{asset "app/app.js"}}"></script>
+  <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 
 <body>
@@ -31,7 +31,7 @@
       {{/* Home is the row with no ID: "all" in its fragment and move route,
            its name is homeName, and it has no pencil, since it can't be
            edited (an empty slot keeps the columns aligned). */}}
-      {{/* app.js shows each row's drag handle (rendered hidden, since it
+      {{/* reorder.ts shows each row's drag handle (rendered hidden, since it
            needs JavaScript) and moves rows in place, posting the whole order
            to /timelines/order. */}}
       <ul class="timeline-list" role="list" data-reorder>

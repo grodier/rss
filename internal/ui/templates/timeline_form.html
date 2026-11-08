@@ -7,7 +7,7 @@
   <title>Paper Round - {{if .Timeline.ID}}Edit timeline{{else}}New timeline{{end}}</title>
   <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
   {{template "app-head" .Nav}}
-  <script type="module" src="{{asset "app/app.js"}}"></script>
+  <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 
 <body>
@@ -25,7 +25,7 @@
       {{end}}
 
       {{/* What the timeline shows, read back in a sentence, and the feeds it
-           draws from (timelineFormSummary). app.js rebuilds it as the form
+           draws from (timelineFormSummary). timeline-form.ts rebuilds it as the form
            changes. */}}
       <div class="timeline-summary">
         <p class="timeline-summary-label">This timeline shows</p>
@@ -194,7 +194,7 @@
 
 {{/* timeline-tag-pills and timeline-feed-list are a field's checkboxes for
      the user's tags and feeds; their data is a timelineChecks. Each carries
-     what app.js needs to rebuild the summary: a tag's name; a feed's name,
+     what timeline-form.ts needs to rebuild the summary: a tag's name; a feed's name,
      tag IDs and posting rate. */}}
 {{define "timeline-tag-pills"}}
 <ul class="tag-pills" role="list"{{if eq .Field "include_tags"}} aria-labelledby="include-tags-label"{{else}} aria-label="Leave out feeds with these tags"{{end}}>

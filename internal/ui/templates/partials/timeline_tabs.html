@@ -6,7 +6,8 @@
      navigation (links with aria-current), not ARIA tabs, which switch panels
      within a page. No counts ("Reading" in docs/decisions.md). The current
      tab's underline is its own element, .tab-indicator, so it can slide
-     from tab to tab (main.css, app.js). app.js scrolls the current tab
+     from tab to tab (timelines.css, timeline-tabs.ts). timeline-tabs.ts
+     scrolls the current tab
      into view. */}}
 {{define "timeline-tabs"}}
 <nav class="timeline-tabs" aria-label="Timelines">

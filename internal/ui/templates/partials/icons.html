@@ -1,4 +1,4 @@
-{{/* Inline SVG icons: 24×24 strokes in currentColor, sized by main.css. */}}
+{{/* Inline SVG icons: 24×24 strokes in currentColor, sized by base.css. */}}
 {{define "icon-rss"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 4.5A14.5 14.5 0 0 1 19.5 19"/><circle cx="5.75" cy="18.25" r="1.25"/></svg>{{end}}
 {{define "icon-home"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 10.5 12 3.75l8.5 6.75"/><path d="M5.75 9v10.25c0 .55.45 1 1 1H10v-5.5h4v5.5h3.25c.55 0 1-.45 1-1V9"/></svg>{{end}}
 {{define "icon-feeds"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.75" y="4" width="16.5" height="6" rx="2"/><rect x="3.75" y="14" width="16.5" height="6" rx="2"/></svg>{{end}}
@@ -20,8 +20,8 @@
 {{define "icon-star-fill"}}<svg class="icon icon-star-fill" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.75l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.77l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83Z"/></svg>{{end}}
 {{/* The burst around a star just pressed on: five dots at the star's points
      (its points are 8.68 from 12,12.43), drawn over icon-star-fill in the
-     Star button. Each <g> turns its dot to a point, so main.css can move
-     the circle outward along its own y axis. Hidden unless main.css
+     Star button. Each <g> turns its dot to a point, so rows.css can move
+     the circle outward along its own y axis. Hidden unless rows.css
      animates it. */}}
 {{define "star-burst"}}<svg class="star-burst" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(72 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(144 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(216 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g><g transform="rotate(288 12 12.43)"><circle cx="12" cy="2.25" r="1.25"/></g></svg>{{end}}
 {{define "icon-share"}}<svg class="icon icon-share" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 14.25V3.75"/><path d="m8.25 7.5 3.75-3.75 3.75 3.75"/><path d="M8.5 10.25H6.75c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h10.5c.55 0 1-.45 1-1v-8c0-.55-.45-1-1-1H15.5"/></svg>{{end}}

@@ -17,7 +17,7 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// TestInfiniteScrollMarkup checks the markup app.js's infinite scroll relies
+// TestInfiniteScrollMarkup checks the markup infinite-scroll.ts relies
 // on: rows are .article-row elements with an article-{id} id directly inside
 // .article-list, and the next page is linked by .pager a[rel=next].
 func TestInfiniteScrollMarkup(t *testing.T) {
@@ -90,12 +90,13 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 	}
 }
 
-// TestYouWereHereMarkup checks the markup app.js's "You were here" beacon
-// and infinite scroll rely on: a timeline's first page puts data-seen-up-to
-// and data-timeline on .article-list itself, app.js sends them as up_to and
-// timeline (and nothing else) when the page is shown and when it's hidden,
-// and the divider is a .timeline-divider directly inside .article-list, so
-// appending a later page's children in order keeps it in place.
+// TestYouWereHereMarkup checks the markup the "You were here" beacon
+// (seen-beacon.ts) and infinite scroll rely on: a timeline's first page puts
+// data-seen-up-to and data-timeline on .article-list itself, the beacon sends
+// them as up_to and timeline (and nothing else) when the page is shown and
+// when it's hidden, and the divider is a .timeline-divider directly inside
+// .article-list, so appending a later page's children in order keeps it in
+// place.
 func TestYouWereHereMarkup(t *testing.T) {
 	items := timelineItems(3)
 	s := newTestServerWith(t, Services{
@@ -139,33 +140,33 @@ func TestYouWereHereMarkup(t *testing.T) {
 
 	// The beacon reports the timeline and the position, under the names
 	// timelineSeenHandler reads, and nothing else.
-	js, err := os.ReadFile("../../web/app/app.js")
+	js, err := os.ReadFile("../../web/app/features/seen-beacon.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	beacon := regexp.MustCompile(`(?s)sendBeacon\("/timeline/seen", new URLSearchParams\(\{(.*?)\}\)\)`).FindSubmatch(js)
+	beacon := regexp.MustCompile(`(?s)sendBeacon\(\s*"/timeline/seen",\s*new URLSearchParams\(\{(.*?)\}\)`).FindSubmatch(js)
 	if beacon == nil {
-		t.Fatal("app.js doesn't send the beacon to /timeline/seen")
+		t.Fatal("seen-beacon.ts doesn't send the beacon to /timeline/seen")
 	}
 	if got, want := strings.Join(strings.Fields(string(beacon[1])), " "), "timeline: seen.dataset.timeline, up_to: seen.dataset.seenUpTo,"; got != want {
-		t.Errorf("app.js's beacon sends %q, want %q only", got, want)
+		t.Errorf("seen-beacon.ts's beacon sends %q, want %q only", got, want)
 	}
 	// It reports when the page is shown (positions of what arrives next are
 	// set against the latest report) as well as when it's hidden.
 	for _, when := range []string{`"visible"`, `"pageshow"`, `"hidden"`} {
 		if !strings.Contains(string(js), when) {
-			t.Errorf("app.js doesn't report on %s", when)
+			t.Errorf("seen-beacon.ts doesn't report on %s", when)
 		}
 	}
 	// And every ten minutes while the reader is using the page, so a long
 	// read of one page stays one visit (rss.VisitGap is 30 minutes).
-	heartbeat := regexp.MustCompile(`(?s)setInterval\(\(\) => \{\s*if \(used && document\.visibilityState === "visible"\) \{.*?report\(\);.*?\}, 10 \* 60 \* 1000\)`)
+	heartbeat := regexp.MustCompile(`(?s)setInterval\(\s*\(\) => \{\s*if \(used && document\.visibilityState === "visible"\) \{.*?report\(\);.*?\},\s*10 \* 60 \* 1000,?\s*\)`)
 	if !heartbeat.Match(js) {
-		t.Error("app.js doesn't report every ten minutes while the page is used and visible")
+		t.Error("seen-beacon.ts doesn't report every ten minutes while the page is used and visible")
 	}
 	for _, use := range []string{`"scroll"`, `"keydown"`, `"pointerdown"`} {
 		if !strings.Contains(string(js), use) {
-			t.Errorf("app.js doesn't count %s as using the page", use)
+			t.Errorf("seen-beacon.ts doesn't count %s as using the page", use)
 		}
 	}
 	if 10*time.Minute >= rss.VisitGap {
@@ -173,12 +174,12 @@ func TestYouWereHereMarkup(t *testing.T) {
 	}
 }
 
-// TestToggleButtonMarkup checks the markup app.js's Save and Star buttons
+// TestToggleButtonMarkup checks the markup save-star.ts's Save and Star buttons
 // rely on: each row has a form[data-toggle] posting to /articles/{id}/save
 // (or /unsave when saved) and one posting to /articles/{id}/star (or /unstar
 // when starred), each with a return_to input and a button whose aria-pressed
 // is the state. The Star button is named "Star" and holds the star-burst SVG
-// main.css animates, hidden from assistive technology.
+// rows.css animates, hidden from assistive technology.
 func TestToggleButtonMarkup(t *testing.T) {
 	items := timelineItems(2)
 	s := newTestServerWith(t, Services{
@@ -246,7 +247,7 @@ func TestToggleButtonMarkup(t *testing.T) {
 	}
 }
 
-// TestShareButtonMarkup checks the markup app.js's Share buttons rely on:
+// TestShareButtonMarkup checks the markup share.ts's Share buttons rely on:
 // each row of an article with a canonical URL has one hidden
 // button[data-share-url] with its URL and a data-share-title, named
 // "Share", holding the aria-hidden .copied-label showCopied fills.
@@ -297,7 +298,7 @@ func TestShareButtonMarkup(t *testing.T) {
 	}
 }
 
-// toggleFormMarkup is what app.js reads from a Save or Star form.
+// toggleFormMarkup is what save-star.ts reads from a Save or Star form.
 type toggleFormMarkup struct {
 	Action   string // the form's action
 	Pressed  string // the submit button's aria-pressed
@@ -365,11 +366,11 @@ func toggleForms(t *testing.T, body, verb string) map[string]toggleFormMarkup {
 	return forms
 }
 
-// TestBusyFormsMarkup checks the markup app.js's busy forms rely on: each
+// TestBusyFormsMarkup checks the markup busy-forms.ts relies on: each
 // slow form is form[data-busy], and its submit button has the busy label in
 // data-busy-label and its own label in a [data-busy-text] span, so the
 // script swaps only the text and keeps any icon, and each page loads
-// app.js. Fast forms aren't marked.
+// the app entry. Fast forms aren't marked.
 func TestBusyFormsMarkup(t *testing.T) {
 	get := func(t *testing.T, s *Server, target string) string {
 		t.Helper()
@@ -454,7 +455,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 		t.Run(tt.page+" "+tt.action, func(t *testing.T) {
 			body := page(tt.page)(t)
 			if !strings.Contains(body, `<script type="module" src="`+appJS+`"></script>`) {
-				t.Error("page doesn't load app.js")
+				t.Error("page doesn't load the app entry")
 			}
 			doc, err := html.Parse(strings.NewReader(body))
 			if err != nil {
@@ -515,7 +516,7 @@ func hasClass(n *html.Node, class string) bool {
 	return slices.Contains(strings.Fields(attr(n, "class")), class)
 }
 
-// TestVideoEmbedMarkup checks the markup app.js's video embeds rely on: an
+// TestVideoEmbedMarkup checks the markup video-embeds.ts relies on: an
 // article page whose content has a YouTube iframe renders
 // figure.embed[data-embed="youtube"][data-embed-id] with an <a> inside.
 func TestVideoEmbedMarkup(t *testing.T) {

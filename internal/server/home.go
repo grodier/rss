@@ -171,7 +171,7 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		Rows          []articleRow
 		Before        bool
 		Next          string
-		SeenUpTo      time.Time // the position app.js reports when the page is shown or hidden; zero for none
+		SeenUpTo      time.Time // the position seen-beacon.ts reports when the page is shown or hidden; zero for none
 	}{
 		Nav:           s.nav(r, "home"),
 		Timeline:      current,
@@ -235,7 +235,7 @@ func fillDivider(rows []articleRow, before rss.ArticleCursor, line time.Time) {
 
 // timelineSeenHandler records the newest timeline position the reader has
 // had on screen, and on which timeline (homeTabID or a custom timeline's
-// ID), sent by app.js's beacon when a timeline page is shown or hidden. It
+// ID), sent by seen-beacon.ts when a timeline page is shown or hidden. It
 // moves that timeline's "You were here" line at the reader's next visit,
 // and what arrives next is positioned above it (see psql's saveArticles).
 func (s *Server) timelineSeenHandler(w http.ResponseWriter, r *http.Request) {

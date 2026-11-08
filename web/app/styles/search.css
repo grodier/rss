@@ -1,0 +1,78 @@
+/* Search results. */
+@layer components {
+  /* Search results: a site, with its feeds grouped in a box. */
+  .lookup-cta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin: 0.75rem 1rem 0;
+    padding: 0.875rem 1rem;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+  }
+
+  .lookup-cta p {
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  .result {
+    padding: 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .result-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .result-head h2 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+  }
+
+  .result-head h2 a {
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .result-head h2 a:hover {
+    text-decoration: underline;
+  }
+
+  .result-head p {
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  .result ul {
+    margin-block-start: 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .result li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+  }
+
+  .result li + li {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .result li a {
+    color: var(--text);
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .result li a:hover {
+    text-decoration: underline;
+  }
+}

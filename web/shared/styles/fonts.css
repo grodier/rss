@@ -1,0 +1,30 @@
+/* The fonts, self-hosted from shared/fonts. */
+@layer base {
+  /* Bricolage Grotesque (SIL Open Font License, fonts/bricolage-grotesque-OFL.txt),
+     subset to Latin, weights 600-800, for the name and headlines only. */
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("../fonts/bricolage-grotesque.woff2") format("woff2");
+    font-weight: 600 800;
+    font-display: swap;
+  }
+
+  /* Newsreader (SIL Open Font License, fonts/newsreader-OFL.txt), subset to
+     Latin, weights 400-700, for what people read: article text and card
+     excerpts. The italic loads only on pages that use it. */
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Newsreader";
+    src: url("../fonts/newsreader-italic.woff2") format("woff2");
+    font-weight: 400 700;
+    font-style: italic;
+    font-display: swap;
+  }
+}

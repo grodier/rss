@@ -45,8 +45,8 @@
     --column: 40rem;
     --blur: saturate(180%) blur(14px);
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-display: "Bricolage Grotesque", var(--font);
-    --font-reading: "Newsreader", Charter, Georgia, serif;
+    --font-display: "Bricolage Grotesque", "Bricolage Grotesque Fallback", var(--font);
+    --font-reading: "Newsreader", "Newsreader Fallback", Charter, Georgia, serif;
     --font-reading-weight: 400;
 
     /* Motion: the guidelines are "Motion and feedback" in docs/decisions.md. */

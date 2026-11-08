@@ -90,6 +90,10 @@ func TestPagesIncludeAppHead(t *testing.T) {
 }
 
 func TestAppHeadRendered(t *testing.T) {
+	bricolage, err := asset("shared/fonts/bricolage-grotesque.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := newTestServer(t).router()
 	for _, path := range []string{"/login", "/no-such-page"} {
 		rr := httptest.NewRecorder()
@@ -98,6 +102,7 @@ func TestAppHeadRendered(t *testing.T) {
 		for _, want := range []string{
 			`<link rel="manifest" href="/manifest.webmanifest"`,
 			`<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png?v=`,
+			`<link rel="preload" href="` + bricolage + `" as="font" type="font/woff2" crossorigin`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("GET %s: body lacks %s", path, want)

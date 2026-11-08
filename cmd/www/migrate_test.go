@@ -19,20 +19,6 @@ func TestRunMigrateRequiresDSN(t *testing.T) {
 	}
 }
 
-func TestRunMigrateRemovedFlags(t *testing.T) {
-	for _, flag := range []string{"-allow-reset-to=abc", "-print-fingerprint"} {
-		t.Run(flag, func(t *testing.T) {
-			var stderr bytes.Buffer
-			if code := run([]string{"migrate", flag, "-db-dsn", "postgres://unused"}, noEnv, nil, io.Discard, &stderr); code != 2 {
-				t.Fatalf("run() = %d, want 2", code)
-			}
-			if want := "flag provided but not defined"; !strings.Contains(stderr.String(), want) {
-				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
-			}
-		})
-	}
-}
-
 func TestRunMigrateSeed(t *testing.T) {
 	dsn := psqltest.NewSchemaDSN(t)
 

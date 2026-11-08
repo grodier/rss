@@ -14,10 +14,10 @@ import (
 
 // runMigrate runs "www migrate [flags]": it applies the embedded migrations to
 // the database, then with -seed queues the seed list's lookups (seedSites),
-// and returns the exit code. Hosts run
-// it before new code goes live (Render's pre-deploy command, which takes one
-// command: hence -seed rather than running "www seed" after it). Like
-// parseConfig, it writes flag errors and the -help output to stderr.
+// and returns the exit code. Hosts run it before new code goes live (Render's
+// pre-deploy command, which takes one command: hence -seed rather than running
+// "www seed" after it). Like parseConfig, it writes flag errors and the -help
+// output to stderr.
 func runMigrate(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	env := "development"
 	var dsn string

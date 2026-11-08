@@ -64,13 +64,16 @@ var (
 // rumHandler stores a page view's real-user beacon, sent by rum.ts when the
 // page is hidden (see "Observability" in docs/decisions.md). It answers 204
 // whatever happens: the page has gone, and nothing reads the answer. It
-// drops a beacon over rumLimiter's limit, one it can't read, and one whose
-// path is no page of ours; of the path it keeps only the route pattern, and
-// of the User-Agent only the browser's family and major version.
+// drops a beacon over rumLimiter's or rumTotalLimiter's limit, one it can't
+// read, and one whose path is no page of ours; of the path it keeps only the
+// route pattern, and of the User-Agent only the browser's family and major
+// version.
 func (s *Server) rumHandler(w http.ResponseWriter, r *http.Request) {
 	defer w.WriteHeader(http.StatusNoContent)
 
-	if !s.rumLimiter.Allow(ipRateLimitKey(s.clientIP(r))) {
+	// The address's limit first, so one client over it can't use up
+	// everyone's.
+	if !s.rumLimiter.Allow(ipRateLimitKey(s.clientIP(r))) || !s.rumTotalLimiter.Allow("") {
 		return
 	}
 	var form rumForm

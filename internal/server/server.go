@@ -434,6 +434,10 @@ type Server struct {
 	// ipRateLimitKey).
 	rumLimiter *rateLimiter
 
+	// rumTotalLimiter caps every client's real-user beacons together (one
+	// key, ""), which rumLimiter can't: a client can rotate addresses.
+	rumTotalLimiter *rateLimiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
@@ -480,6 +484,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		deleteAccountLimiter:  newRateLimiter(10, 10*time.Minute),
 		emailChangeLimiter:    newRateLimiter(5, time.Hour),
 		rumLimiter:            newRateLimiter(120, 10*time.Minute),
+		rumTotalLimiter:       newRateLimiter(600, time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

@@ -255,6 +255,48 @@ func TestRUMRollUp(t *testing.T) {
 	}
 }
 
+func TestRUMTrim(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	for i := range 5 {
+		recordViews(t, repo, rumView(now, fmt.Sprintf("/view-%d", i), nil))
+	}
+	routes := func() []string {
+		t.Helper()
+		rows, err := db.Query(`SELECT route FROM rum_views ORDER BY id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var route string
+			if err := rows.Scan(&route); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, route)
+		}
+		return out
+	}
+
+	// Keeping as many as there are, or more, deletes nothing.
+	for _, keep := range []int{5, 6} {
+		if err := repo.Trim(ctx, keep); err != nil {
+			t.Fatalf("Trim(%d): %v", keep, err)
+		}
+		if got := routes(); len(got) != 5 {
+			t.Errorf("after Trim(%d), views = %v, want all 5", keep, got)
+		}
+	}
+	if err := repo.Trim(ctx, 3); err != nil {
+		t.Fatalf("Trim(3): %v", err)
+	}
+	if got, want := routes(), []string{"/view-2", "/view-3", "/view-4"}; !slices.Equal(got, want) {
+		t.Errorf("after Trim(3), views = %v, want the newest 3, %v", got, want)
+	}
+}
+
 func TestRUMDeleteBefore(t *testing.T) {
 	repo, db := newRUMRepo(t)
 	ctx := context.Background()

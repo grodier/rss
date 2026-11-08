@@ -121,6 +121,7 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 
 - [ ] **Alerts.** Email the owner when p95 latency, the error rate or a queue's backlog passes a threshold; UptimeRobot already covers downtime.
 - [ ] **Backup status.** The last R2 dump's time and size on the admin, which needs read access to the bucket from the admin service.
+- [ ] **Real-user data quality.** Drop beacons from headless browsers and crawlers that run scripts (their User-Agents name `HeadlessChrome` or a bot), which count as Chrome today, and have the admin (#578) show referrer hosts as text, never links: anyone can post one, so they invite referrer spam.
 - [ ] **A lab check in CI.** A Lighthouse run on a few pages, next to the real-user numbers, if regressions slip through before real users see them.
 
 ## Feed discovery
@@ -476,7 +477,7 @@ Admin and observability:
   *Fix:* record at most one error per route per second in `ErrorLog.Record`, counting the rest.
 - [ ] **A database write on every page view** (#565).
   Each page view sends one beacon, so `POST /rum` doubles page requests and inserts a `rum_views` row for each, kept 30 days.
-  *Signal:* the insert shows up near the top of `pg_stat_statements` by total time, or the table passes a few million rows.
+  *Signal:* the insert shows up near the top of `pg_stat_statements` by total time, `/rum` nears `rumTotalLimiter`'s 600 a minute on an instance (in the request metrics), or `rum_views` holds its cap of 500,000 rows with real traffic, so raw views go before 30 days.
   *Fix:* count beacons in memory per instance and write per minute, as request metrics do, keeping raw rows only for a sample.
 - [ ] **Real-user rollups multiply by route, device, browser and metric** (#565).
   Each day adds a `rum_daily` row for every combination seen (at most the app's 46 GET routes × 3 devices × 6 browsers × 6 metrics), kept 13 months, and the nightly rollup reads the day's `rum_views` rows once per metric.

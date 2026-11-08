@@ -16,9 +16,12 @@ const (
 	HourRetention    = 90 * 24 * time.Hour
 	RuntimeRetention = 7 * 24 * time.Hour
 	// RUMRollUpAfter leaves a day's last beacons time to be stored.
-	RUMRollUpAfter      = time.Hour
-	RUMViewRetention    = 30 * 24 * time.Hour
-	RUMDailyMonths      = 13
+	RUMRollUpAfter   = time.Hour
+	RUMViewRetention = 30 * 24 * time.Hour
+	RUMDailyMonths   = 13
+	// RUMViewsKept caps the real-user views however recent, so a flood of
+	// beacons can't fill the disk.
+	RUMViewsKept        = 500_000
 	housekeepingPeriod  = time.Hour
 	housekeepingTimeout = time.Minute
 )
@@ -43,10 +46,13 @@ type RUMHousekeepingStore interface {
 	// DeleteBefore deletes views received before views, and the daily rows
 	// of the UTC days before daily's.
 	DeleteBefore(ctx context.Context, views, daily time.Time) error
+	// Trim deletes every view but the newest keep.
+	Trim(ctx context.Context, keep int) error
 }
 
 // Housekeeper rolls up and deletes old metrics and real-user views, and
-// deletes all but the newest ErrorsKept server errors, once an hour. Every
+// deletes all but the newest ErrorsKept server errors and RUMViewsKept
+// views, once an hour. Every
 // instance runs one; the work is idempotent, so they don't need to
 // coordinate.
 type Housekeeper struct {
@@ -97,11 +103,18 @@ func (h *Housekeeper) tidyRequests(ctx context.Context, now time.Time) {
 }
 
 func (h *Housekeeper) tidyRUM(ctx context.Context, now time.Time) {
+	// The cap holds even when the rollup fails, as a flood that makes it
+	// fail is what the cap is for.
+	defer func() {
+		if err := h.RUM.Trim(ctx, RUMViewsKept); err != nil && ctx.Err() == nil {
+			logger(h.Logger).Error("metrics: trim real-user views", "error", err)
+		}
+	}()
 	if err := h.RUM.RollUp(ctx, now.Add(-RUMRollUpAfter)); err != nil {
 		if ctx.Err() == nil {
 			logger(h.Logger).Error("metrics: roll up real-user views", "error", err)
 		}
-		// Deleting views that weren't rolled up would lose them.
+		// Deleting views by age that weren't rolled up would lose them.
 		return
 	}
 	err := h.RUM.DeleteBefore(ctx, now.Add(-RUMViewRetention), now.AddDate(0, -RUMDailyMonths, 0))

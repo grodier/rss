@@ -120,6 +120,16 @@ func (r *RUMRepository) RollUp(ctx context.Context, before time.Time) error {
 	return tx.Commit()
 }
 
+// Trim deletes every view but the newest keep, by ID, which follows the
+// order they were stored in.
+func (r *RUMRepository) Trim(ctx context.Context, keep int) error {
+	// The keep-th newest ID, found on the primary key's index; with keep
+	// views or fewer, there's none, and nothing is deleted.
+	_, err := r.DB.ExecContext(ctx, `DELETE FROM rum_views
+		WHERE id < (SELECT id FROM rum_views ORDER BY id DESC OFFSET $1 LIMIT 1)`, keep-1)
+	return err
+}
+
 // DeleteBefore deletes the views received before views, and the daily rows
 // of the UTC days before daily's.
 func (r *RUMRepository) DeleteBefore(ctx context.Context, views, daily time.Time) error {

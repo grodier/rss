@@ -327,6 +327,25 @@ func TestRUMRateLimit(t *testing.T) {
 	}
 }
 
+func TestRUMTotalRateLimit(t *testing.T) {
+	_, h, store := newRUMTestServer(t)
+	// One beacon from each of 601 addresses, as from a client rotating
+	// them: each is within its own limit, and the total is capped.
+	for i := range 601 {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(rumBeacon("/").Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = fmt.Sprintf("[2001:db8:%x::1]:1234", i)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusNoContent {
+			t.Fatalf("POST /rum %d = %d, want %d", i, rr.Code, http.StatusNoContent)
+		}
+	}
+	if n := len(store.recorded()); n != 600 {
+		t.Errorf("stored %d of 601 beacons from as many addresses, want 600", n)
+	}
+}
+
 func TestRUMNoSession(t *testing.T) {
 	_, h, store := newRUMTestServer(t)
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(rumBeacon("/").Encode()))

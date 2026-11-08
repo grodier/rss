@@ -149,7 +149,11 @@ Planned in #583 with the admin, which is where it's read.
 - **Real-user histograms bound the Core Web Vitals' thresholds** (#565): times are roughly log-spaced from 50 ms to 20 s with each metric's "good" and "poor" limits among the bounds, and CLS from 0.01 to 1 with 0.1 and 0.25, so the share of good and poor views is exact rather than interpolated.
   The server's time has the request metrics' bounds (5 ms to 10 s), since it's mostly under 50 ms.
   A day is rolled up an hour after it ends (UTC), so the day's last beacons are in.
-- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days and daily rollups for 13 months (#563, #565).
+- **The beacon is capped three ways** (#565), as it's the one route that writes a row per request without a login: 120 beacons per client IP per 10 minutes, 600 a minute per instance from every client together, and the newest 500,000 raw views kept, whatever the rollup does.
+  The per-IP limit alone can be got round by rotating addresses (an IPv6 /48 holds 65,536 /64s), and a full disk would take the whole app down, not just its metrics; beacons past a cap are dropped, real ones too, which only loses measurements.
+  The total also bounds a day's views, at 864,000 per instance, whose rollup took about 6 s on a local database, inside the housekeeping's minute.
+  Not prevented, as nothing identifies a beacon's sender: plausible made-up values, which can outweigh real ones on a quiet route.
+- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days (at most 500,000) and daily rollups for 13 months (#563, #565).
 - **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
 - **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
 - **Availability is checked from both sides** (#576): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.

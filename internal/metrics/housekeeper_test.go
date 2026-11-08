@@ -30,6 +30,7 @@ type fakeRUMStore struct {
 	rolledUpBefore time.Time
 	deleted        bool
 	views, daily   time.Time
+	keep           int
 }
 
 func (f *fakeRUMStore) RollUp(ctx context.Context, before time.Time) error {
@@ -40,6 +41,11 @@ func (f *fakeRUMStore) RollUp(ctx context.Context, before time.Time) error {
 func (f *fakeRUMStore) DeleteBefore(ctx context.Context, views, daily time.Time) error {
 	f.deleted = true
 	f.views, f.daily = views, daily
+	return nil
+}
+
+func (f *fakeRUMStore) Trim(ctx context.Context, keep int) error {
+	f.keep = keep
 	return nil
 }
 
@@ -76,6 +82,9 @@ func TestTidy(t *testing.T) {
 	if want := time.Date(2025, 5, 1, 12, 30, 0, 0, time.UTC); !rum.views.Equal(now.Add(-30*day)) || !rum.daily.Equal(want) {
 		t.Errorf("RUM DeleteBefore(%v, %v), want 30 days and 13 months ago", rum.views, rum.daily)
 	}
+	if rum.keep != 500_000 {
+		t.Errorf("RUM Trim(%d), want Trim(500000)", rum.keep)
+	}
 }
 
 func TestTidyTrimFailureStillTidiesMetrics(t *testing.T) {
@@ -105,6 +114,9 @@ func TestTidyKeepsViewsWhenRUMRollUpFails(t *testing.T) {
 	(&Housekeeper{Store: store, RUM: rum, Errors: &fakeErrorTrimmer{}}).Tidy(context.Background(), time.Now())
 	if rum.deleted {
 		t.Error("RUM DeleteBefore ran after its RollUp failed")
+	}
+	if rum.keep != RUMViewsKept {
+		t.Errorf("RUM Trim(%d) after its RollUp failed, want Trim(%d): the cap holds anyway", rum.keep, RUMViewsKept)
 	}
 	if !store.deleted {
 		t.Error("request metrics weren't tidied after the real-user views' RollUp failed")

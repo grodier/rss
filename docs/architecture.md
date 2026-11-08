@@ -298,7 +298,8 @@ The metrics components (`internal/metrics`) claim nothing: every instance runs t
 `metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
 `metrics.ErrorLog.Record` never blocks a response: it queues the error in a buffer of 100, dropping it with a warning when the buffer is full, and `Run` writes each with a 2-second timeout, logging and dropping one that fails (the database may be why the request failed).
 `metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
-It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views if their rollup fails.
+It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
+Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 
 ## Outbound HTTP
 
@@ -376,6 +377,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | `deleteAccountLimiter` | user | 10 per 10 min |
   | `emailChangeLimiter` | user | 5 email change requests per hour |
   | `rumLimiter` | client IP (IPv6 by /64) | 120 real-user beacons per 10 min; the rest are dropped, still with a 204 |
+  | `rumTotalLimiter` | every client together | 600 real-user beacons per minute, checked after `rumLimiter`; the rest are dropped, still with a 204 |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue` queues about 20 to one address (ignoring case) per hour and returns `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
   It counts, then inserts, so simultaneous requests can slightly exceed 20.
@@ -387,6 +389,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   `serverErrorHTML` and `serverErrorJSON` also store the errors behind 500s and panics in `server_errors`, by route pattern, never the URL, so no IDs or tokens are kept; only the admin shows them.
 - **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (`Mux.Find`), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.
   Every other field is a number, cut to its range (outside it, NULL), or one of a fixed set, a host name or a tag or `data-*` name, else empty, so a beacon can't carry free text; `CrossOriginProtection` lets only same-origin pages post it.
+  It's the one route that writes a row per request without a login, so it's capped three ways: per client IP (`rumLimiter`), for every client together (`rumTotalLimiter`), against a client rotating addresses, and by the housekeeper's cap on `rum_views`.
 - **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the default, turns it off for everyone), and both checks run on every request.
   Its panels show internal details to those accounts only, as escaped text, and only read.
 

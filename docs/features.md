@@ -552,9 +552,9 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
    `web-vitals` reports every change to TTFB, FCP, LCP, INP and CLS, and `rum.ts` keeps the latest of each, the LCP element's tag name and the slowest interaction's target, named by its control's first `data-*` attribute or its tag.
 7. **The beacon.** The first time the page is hidden (`visibilitychange`, or `pagehide`), it sends the view once to `POST /rum` with `navigator.sendBeacon`: its path, the metrics, the navigation entry's type (or `prerender`), load timings, transfer size, protocol and `Server-Timing` `app` duration, and the viewport width, whether it's installed, the effective connection type and another site's referrer host.
    A page restored from the back/forward cache starts a new view, `nav=restore`, with only what `web-vitals` measures for the restore, sent when it's next hidden.
-8. **Storing it.** `rumHandler` (`internal/server/rum.go`) always answers 204; it drops the beacon over `rumLimiter`'s limit, or when its path resolves to no page (`rumRoute`), or its navigation type or width isn't valid.
+8. **Storing it.** `rumHandler` (`internal/server/rum.go`) always answers 204; it drops the beacon over `rumLimiter`'s or `rumTotalLimiter`'s limit, or when its path resolves to no page (`rumRoute`), or its navigation type or width isn't valid.
    It keeps the route pattern, a device class from the width, and the browser's family and major version from the User-Agent (`parseBrowser`), cuts numbers to their ranges (outside them, NULL) and checks every other field against a set or a pattern, then stores the row (`RUMRepository.Record`).
-9. **Rollup.** The housekeeper counts each UTC day's views into `rum_daily`, one row per route, device, browser and metric with its views per `metrics.RUMBounds` bucket, an hour after the day ends (`RUMRepository.RollUp`), and deletes views after 30 days and daily rows after 13 months.
+9. **Rollup.** The housekeeper counts each UTC day's views into `rum_daily`, one row per route, device, browser and metric with its views per `metrics.RUMBounds` bucket, an hour after the day ends (`RUMRepository.RollUp`), deletes views after 30 days and daily rows after 13 months, and keeps at most the newest 500,000 views (`Trim`).
 
 **Start at:**
 

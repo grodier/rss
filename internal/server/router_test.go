@@ -24,7 +24,7 @@ func TestStaticRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunk := "/static/" + aChunk(t)
+	chunks := builtChunks(t)
 	font, err := asset("shared/fonts/newsreader.woff2")
 	if err != nil {
 		t.Fatal(err)
@@ -35,15 +35,16 @@ func TestStaticRoutes(t *testing.T) {
 	}
 	const immutable = "public, max-age=31536000, immutable"
 
-	tests := []struct {
+	type staticTest struct {
 		path        string
 		wantStatus  int
 		wantContent string
 		wantCache   string
-	}{
+	}
+	tests := []staticTest{
 		{js, http.StatusOK, "text/javascript", immutable},
 		{css, http.StatusOK, "text/css", immutable},
-		{chunk, http.StatusOK, "text/javascript", immutable},
+		{"/static/" + chunks[0].File, http.StatusOK, "text/javascript", immutable},
 		{font, http.StatusOK, "font/woff2", immutable},
 		{logo, http.StatusOK, "image/svg+xml", immutable},
 		{"/static/img/logo.svg", http.StatusOK, "image/svg+xml", "no-cache"},
@@ -52,7 +53,6 @@ func TestStaticRoutes(t *testing.T) {
 		// chunk's is a 404.
 		{"/static/assets/reading-AAAAAAAA.js", http.StatusOK, "text/javascript", "no-cache"},
 		{"/static/assets/base-AAAAAAAA.css", http.StatusOK, "text/css", "no-cache"},
-		{"/static/" + outdated(aChunk(t)), http.StatusNotFound, "text/html", ""},
 		{"/static/assets/nope-AAAAAAAA.js", http.StatusNotFound, "text/html", ""},
 		{"/static/assets/login-AAAAAAAA.css", http.StatusNotFound, "text/html", ""},
 		{"/static/assets/reading-AAAA.js", http.StatusNotFound, "text/html", ""},
@@ -61,6 +61,9 @@ func TestStaticRoutes(t *testing.T) {
 		{"/static/assets", http.StatusNotFound, "text/html", ""},
 		{"/static/.vite/manifest.json", http.StatusNotFound, "text/html", ""},
 		{"/static/nope.css", http.StatusNotFound, "text/html", ""},
+	}
+	for _, c := range chunks {
+		tests = append(tests, staticTest{"/static/" + outdated(t, c), http.StatusNotFound, "text/html", ""})
 	}
 
 	for _, tt := range tests {

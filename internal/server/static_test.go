@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,23 +14,38 @@ import (
 	"github.com/grodier/rss/web"
 )
 
-// aChunk returns the path in web.App of one of the build's chunks.
-func aChunk(t *testing.T) string {
+// builtChunks returns the build's chunks, sorted by file.
+func builtChunks(t *testing.T) []manifestEntry {
 	t.Helper()
-	for src, file := range static.manifest {
-		if strings.HasPrefix(src, "_") && strings.HasSuffix(file, ".js") {
-			return file
+	m, err := readManifest(web.App)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunks []manifestEntry
+	for src, e := range m {
+		if strings.HasPrefix(src, "_") && strings.HasSuffix(e.File, ".js") {
+			chunks = append(chunks, e)
 		}
 	}
-	t.Fatal("the build has no chunks")
-	return ""
+	if len(chunks) == 0 {
+		t.Fatal("the build has no chunks")
+	}
+	slices.SortFunc(chunks, func(a, b manifestEntry) int { return strings.Compare(a.File, b.File) })
+	return chunks
 }
 
-// outdated returns name, a hashed file, with another hash of the same length.
-func outdated(name string) string {
-	ext := name[strings.LastIndex(name, "."):]
-	i := strings.LastIndex(name, "-")
-	return name[:i+1] + strings.Repeat("A", len(name)-i-1-len(ext)) + ext
+// outdated returns the path of e, a built file, with another hash of the
+// same length. The hash is what follows e's name, as a hash can itself
+// hold a "-".
+func outdated(t *testing.T, e manifestEntry) string {
+	t.Helper()
+	ext := path.Ext(e.File)
+	prefix := path.Dir(e.File) + "/" + e.Name + "-"
+	hash, ok := strings.CutPrefix(strings.TrimSuffix(e.File, ext), prefix)
+	if !ok || hash == "" {
+		t.Fatalf("%s isn't named %s<hash>%s", e.File, prefix, ext)
+	}
+	return prefix + strings.Repeat("A", len(hash)) + ext
 }
 
 // assetTag is one tag assetTags writes: its kind ("stylesheet",

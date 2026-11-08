@@ -1,67 +1,6 @@
-/* Avatars, article rows, the "You were here" line, and the rows' actions:
-   Save, Star and Share (with its copied pill). */
+/* Article rows, the "You were here" line, and the rows' actions: Save,
+   Star and Share (with its copied pill). */
 @layer components {
-  /* Avatars: a feed's or site's icon, else its letter on a tint picked by
-     site (see avatarTone), in a rounded square. People are circles. */
-  .avatar {
-    display: grid;
-    place-items: center;
-    flex: none;
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text-2);
-    font-size: 1rem;
-    font-weight: 700;
-  }
-
-  .avatar-person {
-    border-radius: 50%;
-  }
-
-  .avatar-icon {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    background: var(--avatar-icon-bg);
-  }
-
-  .avatar-icon img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: contain;
-  }
-
-  .tone-1 {
-    background: var(--tone-1-bg);
-    color: var(--tone-1);
-  }
-
-  .tone-2 {
-    background: var(--tone-2-bg);
-    color: var(--tone-2);
-  }
-
-  .tone-3 {
-    background: var(--tone-3-bg);
-    color: var(--tone-3);
-  }
-
-  .tone-4 {
-    background: var(--tone-4-bg);
-    color: var(--tone-4);
-  }
-
-  .tone-5 {
-    background: var(--tone-5-bg);
-    color: var(--tone-5);
-  }
-
-  .tone-6 {
-    background: var(--tone-6-bg);
-    color: var(--tone-6);
-  }
-
   /* Article rows: a divided section per article, with a preview card
      inside. The avatar column is empty on a feed's own page. */
   .article-row {

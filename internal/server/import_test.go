@@ -401,7 +401,7 @@ func TestImportHandler(t *testing.T) {
 		body := rr.Body.String()
 		assertBodyContains(t, body,
 			`<noscript><meta http-equiv="refresh" content="2" /></noscript>`,
-			`<script type="module" src="`+appJS+`"></script>`,
+			`<script type="module" src="`+entryJS("account")+`"></script>`,
 			"data-import-poll",
 			"<p data-import-progress>Checked 2 of 5 feeds.</p>",
 			"Importing feeds.opml…",

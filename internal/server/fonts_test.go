@@ -87,26 +87,30 @@ func headLinks(t *testing.T, body string) (preloads []fontPreload, stylesheets [
 }
 
 // TestFontPreloadsMatchCSS checks that each font a page preloads is one its
-// stylesheet uses, at the same URL (else the browser downloads it twice), and
+// stylesheets use, at the same URL (else the browser downloads it twice), and
 // is preloaded the way fonts must be: as="font", type="font/woff2" and
 // crossorigin (fonts are fetched in CORS mode).
 func TestFontPreloadsMatchCSS(t *testing.T) {
 	for name, body := range fontPages(t) {
 		t.Run(name, func(t *testing.T) {
 			preloads, stylesheets := headLinks(t, body)
-			if len(stylesheets) != 1 {
-				t.Fatalf("stylesheets = %q, want one", stylesheets)
+			if len(stylesheets) == 0 {
+				t.Fatal("links no stylesheet")
 			}
-			css, err := fs.ReadFile(web.App, strings.TrimPrefix(stylesheets[0], "/static/"))
-			if err != nil {
-				t.Fatalf("read the page's stylesheet: %v", err)
+			var css strings.Builder
+			for _, href := range stylesheets {
+				b, err := fs.ReadFile(web.App, strings.TrimPrefix(href, "/static/"))
+				if err != nil {
+					t.Fatalf("read the page's stylesheet: %v", err)
+				}
+				css.Write(b)
 			}
 			if len(preloads) == 0 {
 				t.Fatal("preloads no font")
 			}
 			for _, p := range preloads {
-				if !strings.Contains(string(css), "url("+p.href+")") {
-					t.Errorf("preloads %q, which isn't a url() in %s", p.href, stylesheets[0])
+				if !strings.Contains(css.String(), "url("+p.href+")") {
+					t.Errorf("preloads %q, which isn't a url() in %q", p.href, stylesheets)
 				}
 				if p.typ != "font/woff2" {
 					t.Errorf("preload of %q has type=%q, want font/woff2", p.href, p.typ)

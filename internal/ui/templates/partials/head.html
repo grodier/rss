@@ -25,6 +25,10 @@
      from its navData: the user's theme, or nothing to follow the system. */}}
 {{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}}{{end}}
 
+{{/* assets loads a page group's stylesheets and scripts, in the head:
+     {{template "assets" "<group>"}}, once per page (see assetTags). */}}
+{{define "assets"}}{{assetTags .}}{{end}}
+
 {{/* reading-font preloads Newsreader on the pages whose first screen has
      reading text (--font-reading): timelines, Saved, feeds, sites, articles
      and the timeline form's summary. Never the italic: only some articles

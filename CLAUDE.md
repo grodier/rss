@@ -72,7 +72,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates, emails and the web app manifest
 - `internal/validator`: form validation
-- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/app.ts`, which sets up the enhancements in `features/`; `styles/main.css`, which imports the partials; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -132,15 +132,18 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Icons are inline SVG partials in `icons.html`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
   Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so themes can be added later.
-  Rules go in the partial for their area (`web/app/styles`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block; `main.css` imports the partials in the cascade's order.
+  Rules go in the partial for their area (`web/app/styles/partials`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block.
+  The partials have one order, listed in `web/app/styles/base.css`: a sheet imports the partials its pages use in that order, with `press.css` last, and a new partial goes in the list and in the sheets of every page it styles.
   Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
   Motion uses the motion tokens in `tokens.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
-  TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entry `web/app/entries/app.ts` calls in order; nothing runs on import.
-  Vite bundles the entry into one module script (`<script type="module" src="{{asset "app/entries/app.ts"}}">`); no inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
+  TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entries of the page groups whose pages use it import and call in order (and `entries.test.ts` lists); nothing runs on import.
+  Each page names its page group once in its head, `{{template "assets" "<group>"}}`, which links the group's stylesheets and scripts from Vite's manifest (`assetTags`): its sheet, `web/app/styles/<group>.css`, its entry, `web/app/entries/<group>.ts`, or both, and an entry can import another group's sheet.
+  A new page names an existing group, or a new one; a page that needs no script names a group without an entry.
+  No inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
   An API TypeScript's DOM types lack gets a minimal declaration in `web/shared/types/dom.d.ts` (there's none yet), never `any`.
   A new npm devDependency gets a one-line justification in its PR, like a Go dependency.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).

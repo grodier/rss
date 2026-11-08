@@ -5,10 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round - {{or .Name .Feed.Title .Feed.Url}}</title>
-  <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
+  {{template "assets" "reading"}}
   {{template "app-head" .Nav}}
   {{template "reading-font"}}
-  <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 
 <body>

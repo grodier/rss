@@ -45,9 +45,21 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # Package web embeds the build, so www doesn't compile without it.
+      - name: build assets
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
 
       # Adds or updates only this key, without starting a deploy (Render's
       # Terraform provider deploys explicitly after changing variables); the

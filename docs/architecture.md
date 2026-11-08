@@ -50,8 +50,7 @@ Only `cmd/www` handles signals.
 
 `www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits.
 It runs before new code goes live, never at startup.
-While pre-alpha, `Migrate` compares `psql.Fingerprint` (a SHA-256 of the names and contents of `migrations/*.sql`) with the one stored in `schema_fingerprint` when it last ran: if migrations were applied from different files, it refuses, unless `-allow-reset-to` is the new fingerprint, in which case it drops and recreates the current schema first.
-So any edit to a migration, comments included, needs a reset.
+`Migrate` applies the migrations the database doesn't have yet, with goose, and never wipes anything; CI refuses a PR that changes a migration already on `main`.
 
 `www seed` (`cmd/www/seed.go`) queues lookups of the seed list's sites (`internal/seed/sites.txt`, embedded) that haven't been found, behind readers', and exits; the app's lookup runner fetches them.
 It only writes `lookups` rows, so it's cheap to run on every deploy: production runs it as `www migrate -seed`, its pre-deploy command, and locally it runs only by hand (`make db/seed-sites`), never on `make db/reset`.
@@ -190,7 +189,7 @@ Inspectors are the exception: `extendWriteDeadline` moves their response's write
 
 ## Data model
 
-The whole schema is `migrations/00001_init.sql` (edited in place while pre-alpha; see CLAUDE.md), and its comments describe the columns.
+The schema is `migrations/*.sql` applied in order (`00001_init.sql`, then one migration per change; see CLAUDE.md), and their comments describe the columns.
 This section covers what the comments don't: how tables are used together.
 
 ```
@@ -242,7 +241,7 @@ Deleting a site cascades to its feeds and their articles, subscriptions, reads, 
 Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean, except for the reader's `timeline_entries` rows for the feed, which stay until a visit trims them; deleting a tag removes it from subscriptions and timelines; deleting a timeline deletes its `timeline_tags`, `timeline_feeds` and `timeline_lines` rows.
 Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 
-Two tables aren't in `00001_init.sql`: goose's `goose_db_version`, and `schema_fingerprint` (one row: the fingerprint of the migrations last applied), which `psql.Migrate` creates for the pre-alpha check (see "The process").
+One table isn't in the migrations: goose's `goose_db_version`, the versions applied.
 
 ## Background work
 
@@ -427,8 +426,8 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
 - **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
-  Values that change outside Terraform (the images, the invite code, the SMTP password, `RSS_ALLOW_RESET_TO`) are in `ignore_changes`.
-- **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `reset-db.yml` allows a pre-alpha schema reset, then deploys; `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
+  Values that change outside Terraform (the images, the invite code, the SMTP password) are in `ignore_changes`.
+- **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.
 - **Edge** (#541): Render's Cloudflare edge terminates TLS and serves HTTP/2 and HTTP/3 (`h3` seen in DevTools), compresses responses (Brotli, when the client accepts it), and caches `/static` files ("Common static files", set in Render's dashboard), purging them on every successful deploy.
   Pages and `/sites/{id}/icon` aren't cached there.

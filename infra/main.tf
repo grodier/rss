@@ -65,8 +65,6 @@ resource "render_web_service" "rss" {
       # Deploys (the deploy workflow) set the image by digest; apply must
       # never roll them back.
       runtime_source.image,
-      # Set by the "Reset production database" workflow.
-      env_vars["RSS_ALLOW_RESET_TO"],
       # Set in Render's dashboard: the accounts allowed debug mode.
       env_vars["RSS_DEBUG_EMAILS"],
       # Set in Render's dashboard; see "Signing up" in infra/README.md.

@@ -921,7 +921,7 @@ Planned in #187 (issues #182–#186).
     While signup needs an invite code, no page links to `/signup`: without a code it's useless, and advertising it only invites guessing, which the per-IP signup limit (#182) bounds.
     Whatever opens signup more widely adds the links back.
   - At least 16 characters, compared in constant time.
-  - In production it's set in Render's dashboard and ignored by Terraform, like `RSS_ALLOW_RESET_TO`: a Terraform variable would keep it in plain text in the state and need a PR and an approved apply to rotate.
+  - In production it's set in Render's dashboard and ignored by Terraform, like `RSS_SMTP_PASSWORD`: a Terraform variable would keep it in plain text in the state and need a PR and an approved apply to rotate.
   - It may appear in request logs (they log the URI); only the owner reads them, and the owner sets it.
 - **`www create-user` makes accounts locally** (#225), and `make db/reset` uses it to put your account back.
   Not seeding in `www migrate`: that manages the schema and runs before every deploy.
@@ -1076,12 +1076,9 @@ Planned in #218; issues #208–#217.
   Which domain is under "Accounts".
 - **Migrations are built into the binary** (`www migrate`) and run before each deploy, not at app startup, so they also work with several instances, and a failed migration aborts the deploy while the old version keeps serving.
   One artifact carries the code and the migrations it expects, and the same command runs everywhere.
-- **Wiping the database is never automatic.** While pre-alpha, `migrate` refuses to run when `migrations/*.sql` have changed since they were applied (code-only changes never touch the database).
-  It wipes and rebuilds only when given the new migrations' exact fingerprint: locally `make db/reset`, in production the "Reset production database" workflow (typed confirmation), which sets `RSS_ALLOW_RESET_TO` and redeploys.
-  A one-off Render job can't do it, since it runs the old image.
-  - The fingerprint is stored in a `schema_fingerprint` table that `migrate` creates itself, not in `00001_init.sql`: it belongs to the migration mechanism, not the app, and goes away with the pre-alpha rule.
-    A database with no stored fingerprint (one migrated by the goose CLI) is refused like a changed one, with no special case (#211).
-  - #561 ends production resets (see "Pre-alpha testing"): the fingerprint check, `-allow-reset-to` and the reset workflow go, and CI refuses a change to a migration already on `main`, which replaces the check.
+- **Wiping the database is never automatic.** `migrate` only applies new migrations; nothing in the app or its workflows drops the schema, and only `make db/reset` rebuilds a local database.
+  - Until #561, while production was reset on schema changes, `migrate` refused to run when `migrations/*.sql` had changed since they were applied, and wiped only when given the new migrations' fingerprint (a `schema_fingerprint` table, #211); production resets went through a workflow with a typed confirmation.
+  - #561 ended production resets (see "Pre-alpha testing"): the fingerprint check, `-allow-reset-to` and the reset workflow went, migration `00002` drops `schema_fingerprint`, and a CI step fails a PR that edits, renames or deletes a migration already on `main`, which replaces the check.
 - **No account is seeded after a production reset.** It would need a credential (or its hash) stored in Render, Terraform state or GitHub, and a one-off job to run `www create-user` in.
   Signing up again with the invite link (#226) is the way back in, so production isn't reset before that's live.
   (#214, #215)

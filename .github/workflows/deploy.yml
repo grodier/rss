@@ -90,7 +90,7 @@ jobs:
                 break
                 ;;
               pre_deploy_failed)
-                echo "::error::The pre-deploy command (www migrate) failed, so the old version keeps serving; its output is in the deploy's logs in Render's dashboard. If migrate refused because the migrations changed, run the Reset production database workflow."
+                echo "::error::The pre-deploy command (www migrate) failed, so the old version keeps serving; its output is in the deploy's logs in Render's dashboard."
                 exit 1
                 ;;
               build_failed | update_failed | canceled | deactivated)

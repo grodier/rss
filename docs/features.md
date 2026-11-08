@@ -519,7 +519,7 @@ Pages read them only through the card-value accessors (see "Card values" under "
 
 The usual path for a new page or action, following the conventions in CLAUDE.md:
 
-1. **Schema:** edit `migrations/00001_init.sql` and run `make db/reset`.
+1. **Schema:** a new migration (`make db/migrations/new name=<name>`), applied with `go run ./cmd/www migrate`.
 2. **Domain type:** add or extend a type in `internal/rss`, and a sentinel error in `errors.go` if handlers need to tell a case apart.
 3. **Repository:** a method in `internal/psql` with a DB test.
 4. **Interface:** add the method to the store interface in `internal/server/server.go` (or a new interface, a `Services` field, the compile-time check, and the wiring in `cmd/www/application.go`), and a function field to the fake in `fakes_test.go`.

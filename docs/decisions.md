@@ -115,8 +115,14 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
   A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.
   Seeing what someone reads has no clear use, and isn't what readers or the privacy policy expect; a later need names its use case and updates the policy first.
-- **The admin has one design checkpoint, in its skeleton (#562)**: later admin pages reuse its layout without their own, since only the owner uses them.
+- **The admin's skeleton (#562) set its layout, and later admin pages reuse it; a large feature that changes how the admin looks or works still gets its own design checkpoint** (the owner, at #562's checkpoint; planning had the skeleton as the admin's only one).
+  A page built from the approved parts (tables, forms, stat rows) needs none.
   What the admin changes for readers (the waitlist form) keeps its checkpoint.
+- **The admin's layout** (#562, approved at its design checkpoint): a sidebar of the sections on wide screens, and on phones a top bar whose Menu opens the same list, a `<details>`, so it needs no script.
+  Rejected: top tabs on every width, which ten sections would make wrap or scroll, and the reader's `.shell`, a reading column too narrow for tables.
+- **It looks like the reader, marked as the admin** (#562): the reader's tokens and fonts, a tinted sidebar, and an "Admin" mark beside the logo, so it's never mistaken for the reader; it follows the system's theme, as it has no settings.
+- **Dense tables** (#562): smaller type and tighter rows than the reader's lists, since it's a working tool; on a phone a wide table scrolls in its own frame, not the page.
+  Figures are stat rows separated by dividers, not cards, as in the reader ("Design").
 - **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 

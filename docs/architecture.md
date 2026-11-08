@@ -46,7 +46,7 @@ Inside the `www` process run seven long-lived components, all stopped by one con
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
-Only `cmd/www` handles signals.
+Only `cmd/www` and `cmd/admin` handle signals.
 
 `www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits.
 It runs before new code goes live, never at startup.

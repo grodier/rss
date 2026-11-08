@@ -147,7 +147,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
   Motion uses the motion tokens in `tokens.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
-- Only `cmd/www` handles OS signals.
+- Only the commands (`cmd/www`, `cmd/admin`) handle OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
   TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entries of the page groups whose pages use it import and call in order (and `entries.test.ts` lists); nothing runs on import.

@@ -349,7 +349,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
     Back to the timeline is the trip readers make most, so measure this first.
   - Speculation rules: a `Speculation-Rules` header naming a static rules file (the CSP blocks inline rules), prefetching article and feed pages on hover or press.
     A prefetch (`Sec-Purpose: prefetch`) must skip a GET's upkeep: `articleHandler` records an opened article and `feedHandler` queues a refresh.
-    Prefetch rather than prerender, which runs `app.js` in a hidden page.
+    Prefetch rather than prerender, which runs the app's script in a hidden page.
     Chromium only; check whether Chrome uses a prefetched `no-store` response, and add each prefetched page's queries to the watchlist.
     Prefetching on intent (hover, press or keyboard focus) is the rules' `eagerness`; the next page's assets need no prefetch of their own, since the article page shares the reading pages' bundle ("Frontend assets" in decisions.md).
   - Our own navigation in plain JavaScript: fetch the next page and swap in its `<main>`, as infinite scroll and live search do; the most JavaScript, and it must handle focus, the title, announcements, history and scroll itself.
@@ -363,7 +363,7 @@ The plan, and why, is under "Mobile" in decisions.md; installing the web app is 
   Every page on a phone, in the browser and installed (#394): tap targets, the bottom tab bar over long pages and forms, the keyboard covering inputs, wide tables and code, and anything under the status bar or the home indicator.
   By hand, like the first error-state pass (#392), listing fixes as issues; best done right after #394 ships.
 - [ ] **Tap targets on small buttons.**
-  `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in `main.css` enlarges it for `(pointer: coarse)` (found in #431).
+  `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in the stylesheets enlarges it for `(pointer: coarse)` (found in #431).
   Making it 44 px there changes the height of every small button, so decide it with the phone review pass.
   Plain buttons (Save, Log out, the Settings rows' "Log them out" and "Turn on") are 41 px, a little under too (#446).
   The article actions' icon buttons (Star, Share) are 30 px with a 4 px gap, enough for WCAG 2.5.8 but close for a thumb; a wider gap under `(pointer: coarse)` would keep the tight group on desktop (found in #511).
@@ -634,7 +634,7 @@ Pages and queries:
 - [ ] **Timeline marks on every timeline view** (#397).
   Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and each time a timeline page is hidden its beacon upserts that row, so an active reader writes it every few minutes.
   *Signal:* `MarkSeen` in `pg_stat_statements` totals, or bloat on `timeline_marks` from frequent updates of the same rows.
-  *Fix:* have `app.js` skip the beacon when the position hasn't changed since its last report, or report at most once a minute per page.
+  *Fix:* have `seen-beacon.ts` skip the beacon when the position hasn't changed since its last report, or report at most once a minute per page.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.

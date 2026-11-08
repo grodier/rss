@@ -25,6 +25,8 @@ Every `cmd/www` flag can also be set by an `RSS_` environment variable (`-db-dsn
 ```sh
 make assets                      # build the frontend into web/dist (npm ci, then vite build; instant when nothing changed)
 make assets/watch                # rebuild the frontend on every change (restart go run to pick it up)
+npm --prefix web run typecheck   # tsc --noEmit over the TypeScript modules
+npm --prefix web run format:check  # must pass (npm --prefix web run format fixes it); Prettier, for web/
 gofmt -l $(git ls-files '*.go')  # must print nothing (gofmt -l . would walk web/node_modules)
 go mod tidy -diff                # must print nothing
 go vet ./...
@@ -42,8 +44,8 @@ docker build -t rss .                    # build the container image (or: make d
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests.
-CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
+Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck and format check.
+CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
 `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
 
 ## Layout
@@ -69,7 +71,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates, emails and the web app manifest
 - `internal/validator`: form validation
-- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`app.js`, `styles/main.css`, and `public/` for files that need a fixed URL), `shared/` what sites share (the fonts)
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/app.ts`, which sets up the enhancements in `features/`; `styles/main.css`, which imports the partials; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts)
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -116,7 +118,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   JSON (`writeJSON`) is only for `/healthcheck` (and its `serverErrorJSON` error path); future JSON endpoints go under their own subrouter with JSON error handlers.
 - GET handlers don't write, except idempotent upkeep documented at the call site: queuing a refresh of a stale feed (`feedHandler`), recording that the user opened an article (`articleHandler`), and updating a session's `last_seen_at` in `authenticate` (at most once a day).
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm(w, r, &form)` (on error, `s.formErrorResponse(w, r, err)`: 400, or 413 over 64 KiB), validated with `CheckField`, re-rendered with **422** when invalid.
-  Fields follow the pattern in `login.html`: the error after the input as `<p class="error" id="<field>-error">`, `aria-invalid` and `aria-describedby` on the input when it has an error (plus its `<field>-hint`), `autofocus` on `.Form.FirstError` of the fields in order, and `role="alert"` on non-field errors; `app.js` adds a show/hide toggle to every password input.
+  Fields follow the pattern in `login.html`: the error after the input as `<p class="error" id="<field>-error">`, `aria-invalid` and `aria-describedby` on the input when it has an error (plus its `<field>-hint`), `autofocus` on `.Form.FirstError` of the fields in order, and `role="alert"` on non-field errors; `password-toggle.ts` adds a show/hide toggle to every password input.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders.
   Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`).
@@ -128,14 +130,17 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `search`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
-  Use the color custom properties on `:root` in `main.css`, never literal colors, so themes can be added later.
+  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so themes can be added later.
+  Rules go in the partial for their area (`web/app/styles`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block; `main.css` imports the partials in the cascade's order.
   Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
-  Motion uses the motion tokens on `:root` in `main.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
+  Motion uses the motion tokens in `tokens.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
 - Only `cmd/www` handles OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
-  Plain JavaScript in `web/app/app.js`, built by Vite and loaded as a module (`<script type="module" src="{{asset "app/app.js"}}">`); no inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
+  TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entry `web/app/entries/app.ts` calls in order; nothing runs on import.
+  Vite bundles the entry into one module script (`<script type="module" src="{{asset "app/entries/app.ts"}}">`); no inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
+  An API TypeScript's DOM types lack gets a minimal declaration in `web/shared/types/dom.d.ts` (there's none yet), never `any`.
   A new npm devDependency gets a one-line justification in its PR, like a Go dependency.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.

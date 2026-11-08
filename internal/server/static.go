@@ -16,7 +16,7 @@ import (
 // staticAssets describes the built frontend in web.App, read once at startup.
 type staticAssets struct {
 	// manifest maps each source path Vite built (the manifest's keys, e.g.
-	// "app/app.js") to its built file under web.App ("assets/app-B2x9kQ1z.js").
+	// "app/entries/app.ts") to its built file under web.App ("assets/app-B2x9kQ1z.js").
 	manifest map[string]string
 	// versions maps every file /static serves, by its path in web.App, to the
 	// first 12 hex digits of its content's SHA-256: its ETag, and the ?v= of a
@@ -129,7 +129,7 @@ func (s *staticAssets) current(name string) (string, bool) {
 
 // asset returns the URL of a static file, so it can be cached until it
 // changes. A name Vite built (a manifest key: its source path under web/,
-// e.g. "app/app.js") links its hashed file: "/static/assets/app-B2x9kQ1z.js".
+// e.g. "app/entries/app.ts") links its hashed file: "/static/assets/app-B2x9kQ1z.js".
 // Any other name is a public file, copied as-is from web/app/public (e.g.
 // "img/logo.svg"), and gets its version: "/static/img/logo.svg?v=0123456789ab".
 // An unknown name is an error, which fails the template that uses it.

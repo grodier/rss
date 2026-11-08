@@ -58,17 +58,19 @@ var cssProperty = regexp.MustCompile(`(?:^|[;{\s])(-(?:webkit|moz)-)?([a-z][a-z-
 
 // The minifier adds vendor-prefixed copies of properties for older browsers,
 // and can drop the standard one when the source writes both with the same
-// var() (backdrop-filter did). Every property the source stylesheet writes
+// var() (backdrop-filter did). Every property the source stylesheets write
 // unprefixed, and the build prefixes, must stay unprefixed in the build too.
 func TestBuiltCSSKeepsStandardProperties(t *testing.T) {
-	src, err := os.ReadFile("app/styles/main.css")
-	if err != nil {
-		t.Fatal(err)
-	}
 	standard := map[string]bool{}
-	for _, m := range cssProperty.FindAllStringSubmatch(string(src), -1) {
-		if m[1] == "" {
-			standard[m[2]] = true
+	for _, name := range stylesheets(t) {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range cssProperty.FindAllStringSubmatch(string(src), -1) {
+			if m[1] == "" {
+				standard[m[2]] = true
+			}
 		}
 	}
 

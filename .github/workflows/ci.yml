@@ -76,6 +76,34 @@ jobs:
       - name: test
         run: go test -race -count=1 ./...
 
+  # The frontend's own checks: types, formatting and the build.
+  web:
+    name: web # a required status check; don't rename casually
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: format
+        run: npm run format:check
+
+      - name: build
+        run: npm run build
+
   # Checks infra/ without credentials or state: -backend=false skips the R2 backend.
   terraform:
     name: terraform # a required status check; don't rename casually

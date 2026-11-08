@@ -7,7 +7,7 @@
   <title>Paper Round - search</title>
   <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
   {{template "app-head" .Nav}}
-  <script type="module" src="{{asset "app/app.js"}}"></script>
+  <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 
 <body>
@@ -37,7 +37,7 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{/* app.js's live search replaces this container's contents with the
+      {{/* live-search.ts replaces this container's contents with the
            same container from /search?q=… as the reader types. */}}
       <div id="search-results" data-search-results>
       {{with .LookupQ}}

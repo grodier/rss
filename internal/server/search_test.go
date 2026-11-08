@@ -87,9 +87,9 @@ func TestSearchResults(t *testing.T) {
 	}
 }
 
-// TestLiveSearchMarkup checks the markup app.js's live search relies on, in
+// TestLiveSearchMarkup checks the markup live-search.ts relies on, in
 // every state of the page, since a page in any state can be typed into: the
-// app.js script, a GET
+// app entry's script, a GET
 // form[data-live-search] to /search with a q input, and one
 // [data-search-results] container holding the lookup offer, the results
 // (.result) and the no-results message, and empty with no query.
@@ -134,7 +134,7 @@ func TestLiveSearchMarkup(t *testing.T) {
 				return n.Data == "script" && attr(n, "src") == appJS && attr(n, "type") == "module"
 			})
 			if len(scripts) != 1 {
-				t.Errorf("found %d app.js module scripts, want 1", len(scripts))
+				t.Errorf("found %d app entry module scripts, want 1", len(scripts))
 			}
 
 			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasAttr(n, "data-live-search") })

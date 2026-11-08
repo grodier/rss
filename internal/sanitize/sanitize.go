@@ -532,7 +532,7 @@ var (
 //	</figure>
 //
 // Vimeo's links to https://vimeo.com/ID, reads "Play on Vimeo" and has no
-// <img> (its thumbnails need an API call). app.js swaps the link for the
+// <img> (its thumbnails need an API call). video-embeds.ts swaps the link for the
 // player, built from data-embed-id.
 func videoEmbed(iframe *html.Node) *html.Node {
 	src, ok := attr(iframe, "src")

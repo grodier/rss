@@ -1,0 +1,179 @@
+/* The tokens every rule uses by name: colors (light, then dark), font
+   stacks, and the motion curves and durations. */
+@layer base {
+  /* Colors are tokens so a theme can redefine them in one place.
+     The palette is the logo's: ink, sky and tomato. */
+  :root {
+    color-scheme: light;
+    --bg: #fff;
+    --bg-glass: rgb(255 255 255 / 0.82);
+    --surface: #eff4fa;
+    --read-bg: #eff4fa;
+    --border: #dfe6ef;
+    --border-strong: #8794a8;
+    --text: #14213a;
+    --text-2: #56627a;
+    --text-3: #627089;
+    --accent: #1f5fa8;
+    --brand: #ff6a3d;
+    --brand-strong: #c8431a;
+    --selection: #cfe6fa;
+    --danger: #c0281e;
+    --embed-bg: #14213a;
+    --on-embed: #fff;
+    --embed-play: rgb(0 0 0 / 0.7);
+    --danger-bg: #fdf1f0;
+    --on-danger-bg: #c0281e;
+    --info-bg: #eef3fe;
+    --tone-1: #9a4316;
+    --tone-1-bg: #fde7d9;
+    --tone-2: #2c6b3f;
+    --tone-2-bg: #dff1e4;
+    --tone-3: #2b55a5;
+    --tone-3-bg: #e1ebfd;
+    --tone-4: #6a3d97;
+    --tone-4-bg: #efe3fa;
+    --tone-5: #9b3049;
+    --tone-5-bg: #fbe2e7;
+    --tone-6: #22666a;
+    --tone-6-bg: #def3f3;
+    --avatar-icon-bg: #fff;
+    --debug-bg: #fffbea;
+    --debug-border: #c99a06;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --column: 40rem;
+    --blur: saturate(180%) blur(14px);
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: "Bricolage Grotesque", var(--font);
+    --font-reading: "Newsreader", Charter, Georgia, serif;
+    --font-reading-weight: 400;
+
+    /* Motion: the guidelines are "Motion and feedback" in docs/decisions.md. */
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    /* A damped spring (damping ratio 0.5, ω 10): one overshoot of about 16% of
+       the distance, then it settles. Sampled at 25 points until within 0.1%. */
+    --ease-spring: linear(
+      0,
+      0.116,
+      0.372,
+      0.656,
+      0.896,
+      1.06,
+      1.144,
+      1.163,
+      1.139,
+      1.096,
+      1.05,
+      1.012,
+      0.987,
+      0.976,
+      0.974,
+      0.978,
+      0.986,
+      0.993,
+      0.999,
+      1.002,
+      1.004,
+      1.004,
+      1.003,
+      1.002,
+      1
+    );
+    --duration-press: 100ms;
+    --duration-quick: 150ms;
+    --duration-base: 220ms;
+    --duration-move: 280ms;
+    --duration-flourish: 450ms;
+    --delay-busy: 300ms;
+  }
+
+  /* The dark theme: the same tokens, when the device is dark and the user
+     hasn't chosen light, or when they chose dark (data-theme on <html>, from
+     Settings). The two blocks hold the same values; change them together. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f1626;
+      --bg-glass: rgb(15 22 38 / 0.82);
+      --surface: #18233a;
+      --read-bg: #0a101c;
+      --border: #26324a;
+      --border-strong: #56647f;
+      --text: #e8edf5;
+      --text-2: #b3bdcc;
+      --text-3: #98a3b5;
+      --accent: #71bfff;
+      --brand: #ff6a3d;
+      --brand-strong: #ff7a52;
+      --selection: #1d487c;
+      --danger: #ff8a80;
+      --embed-bg: #222e47;
+      --on-embed: #fff;
+      --embed-play: rgb(0 0 0 / 0.7);
+      --danger-bg: #742e2b;
+      --on-danger-bg: #ffe7e4;
+      --info-bg: #203e64;
+      --tone-1: #ffecdd;
+      --tone-1-bg: #7d3f17;
+      --tone-2: #e2f9e6;
+      --tone-2-bg: #206133;
+      --tone-3: #e4f3ff;
+      --tone-3-bg: #305289;
+      --tone-4: #f7ecff;
+      --tone-4-bg: #60437e;
+      --tone-5: #ffe9ee;
+      --tone-5-bg: #7f384b;
+      --tone-6: #d8faf9;
+      --tone-6-bg: #006060;
+      --avatar-icon-bg: #e8edf5;
+      --debug-bg: #473506;
+      --debug-border: #e1b75c;
+      /* Light text on dark reads thinner, so the reading font gets a
+         little heavier. */
+      --font-reading-weight: 440;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f1626;
+    --bg-glass: rgb(15 22 38 / 0.82);
+    --surface: #18233a;
+    --read-bg: #0a101c;
+    --border: #26324a;
+    --border-strong: #56647f;
+    --text: #e8edf5;
+    --text-2: #b3bdcc;
+    --text-3: #98a3b5;
+    --accent: #71bfff;
+    --brand: #ff6a3d;
+    --brand-strong: #ff7a52;
+    --selection: #1d487c;
+    --danger: #ff8a80;
+    --embed-bg: #222e47;
+    --on-embed: #fff;
+    --embed-play: rgb(0 0 0 / 0.7);
+    --danger-bg: #742e2b;
+    --on-danger-bg: #ffe7e4;
+    --info-bg: #203e64;
+    --tone-1: #ffecdd;
+    --tone-1-bg: #7d3f17;
+    --tone-2: #e2f9e6;
+    --tone-2-bg: #206133;
+    --tone-3: #e4f3ff;
+    --tone-3-bg: #305289;
+    --tone-4: #f7ecff;
+    --tone-4-bg: #60437e;
+    --tone-5: #ffe9ee;
+    --tone-5-bg: #7f384b;
+    --tone-6: #d8faf9;
+    --tone-6-bg: #006060;
+    --avatar-icon-bg: #e8edf5;
+    --debug-bg: #473506;
+    --debug-border: #e1b75c;
+    --font-reading-weight: 440;
+  }
+}

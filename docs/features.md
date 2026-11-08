@@ -25,7 +25,7 @@ Logging out deletes the row and renews the token.
 A login lasts at most a year (scs's `Lifetime`).
 
 Both forms follow the field pattern in CLAUDE.md, and signup shows the name and password hints all the time.
-With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]` in `app.js`)).
+With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]`, `busy-forms.ts`)).
 The other way to make an account is `www create-user` (`runCreateUser`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
@@ -98,13 +98,13 @@ Links sent to the old address stop working by themselves, since tokens are only 
 ## Search, site lookups and discovery
 
 **Flow.** `GET /search?q=…` only searches the database: sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
-With JavaScript, results update as you type: `app.js`'s live search fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query.
+With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
-With JavaScript, Look up and the site page's "Check for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]` in `app.js`)).
+With JavaScript, Look up and the site page's "Check for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
-While it runs, `app.js` fetches the page's own URL 2 s after each answer, only while the page is visible: a redirect to the site page replaces the lookup page (`location.replace`, so Back skips it), any other redirect (Log in) is followed, and a finished page's message replaces the spinner and is announced in the polite live region; without JavaScript, a `<meta http-equiv="refresh">` in `<noscript>` reloads the page instead.
+While it runs, `lookup-status.ts` fetches the page's own URL 2 s after each answer, only while the page is visible: a redirect to the site page replaces the lookup page (`location.replace`, so Back skips it), any other redirect (Log in) is followed, and a finished page's message replaces the spinner and is announced in the polite live region; without JavaScript, a `<meta http-equiv="refresh">` in `<noscript>` reloads the page instead.
 
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
 Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`.
@@ -121,7 +121,7 @@ The command logs the sites it retried and those that failed too recently to retr
 
 **Start at:**
 
-1. `internal/server/search.go` and `internal/psql/search.go`; live search is "Live search" in `web/app/app.js`.
+1. `internal/server/search.go` and `internal/psql/search.go`; live search is `web/app/features/live-search.ts`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
@@ -161,7 +161,7 @@ A newly inserted article missing an image, title or excerpt gets an enrichment j
 Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a pending refresh request, requested ones first.
 A request is made when someone views a stale feed's page (`feedHandler` calls `RequestRefresh`).
 The Refresh button instead fetches right away, within 8 s, and reports the result in a flash; it refuses gone feeds, feeds fetched successfully in the last 5 minutes, and users over the per-user limit.
-With JavaScript, the button shows it's working ("Refreshing…") while the fetch runs (busy forms (`form[data-busy]` in `app.js`)).
+With JavaScript, the button shows it's working ("Refreshing…") while the fetch runs (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 
 **Start at:**
 
@@ -180,7 +180,7 @@ With JavaScript, the button shows it's working ("Refreshing…") while the fetch
 Gone feeds can't be subscribed to but can be unsubscribed from.
 My feeds (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest article date, posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
 Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
-Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `main.css`), and has one control, an Edit pencil.
+Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `feeds.css`), and has one control, an Edit pencil.
 Site, feed and search pages mark subscribed feeds with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
@@ -195,9 +195,9 @@ With folders, feeds are nested in a folder per tag (a feed with two tags in both
 It's encoded into a buffer first, so an error is an HTML 500 instead of half a file.
 
 **Import.** `/settings/import` uploads an OPML file, with a choice to turn folders into tags (the default), and lists the user's last 5 imports.
-With JavaScript, the Import button shows it's working while the file uploads and is read (busy forms (`form[data-busy]` in `app.js`)).
+With JavaScript, the Import button shows it's working while the file uploads and is read (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 `settingsImportFormHandler` caps the body with `http.MaxBytesReader` (not `decodePostForm`), parses the file with `opml.Parse`, and re-renders with an error on the file field for no file (422), over 1 MiB (413), not OPML, no feeds or over 1,000 (422), or a sixth import within the hour (429).
-Otherwise it turns each feed's folders into tags (`importTags`: normalized like typed tags, cut to 50 characters, repeats dropped), creates the import and redirects to `/settings/imports/{id}`, which updates in place while feeds are pending (`app.js` polls it and inserts new rows; a meta refresh without JavaScript) and then lists what was subscribed, already subscribed, or couldn't be added and why.
+Otherwise it turns each feed's folders into tags (`importTags`: normalized like typed tags, cut to 50 characters, repeats dropped), creates the import and redirects to `/settings/imports/{id}`, which updates in place while feeds are pending (`import-status.ts` polls it and inserts new rows; a meta refresh without JavaScript) and then lists what was subscribed, already subscribed, or couldn't be added and why.
 
 `opml.Parse` reads every `<outline>` with an `xmlUrl`, at any depth, in file order and without repeats; each feed's folders are those it's nested in, at any depth.
 It parses non-strictly and decodes legacy charsets, since older readers' exports are sloppy.
@@ -247,7 +247,7 @@ Unsubscribing cascades to the subscription's tags; the tags themselves stay.
 
 ## Timelines
 
-**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): the user's tabs in order, Home wherever they put it, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); the row starts scrolled so the current tab shows (CSS, before the first render), `app.js` keeps it where the reader scrolled it when they move to another tab, and between two tabs the current tab's underline slides and stretches from the old tab to the new one (a view transition, #521).
+**Flow.** Home and each custom timeline are headed by a tab row (from `TimelineRepository.List`): the user's tabs in order, Home wherever they put it, then an Edit pill, outside the part that scrolls, to `/timelines` (at the current timeline's row, `#timeline-{id}`); the row starts scrolled so the current tab shows (CSS, before the first render), `timeline-tabs.ts` keeps it where the reader scrolled it when they move to another tab, and between two tabs the current tab's underline slides and stretches from the old tab to the new one (a view transition, #521).
 Under the tabs, a row shows only for the timeline's description or an older page's "Back to newest".
 A timeline is a name, an optional description and an `rss.TimelineFilter` over the user's subscriptions:
 
@@ -267,11 +267,11 @@ Each row says what the timeline is made of (`timelineSummary`, from `TimelineRep
 Home, labelled "All feeds" (`homeName`), is one of the tabs: `TimelineRepository.List` returns it as the zero `rss.Timeline` at `users.home_position`, in the same numbering as `timelines.position` (Home first on a tie), and it moves like the others but can't be edited, shared or deleted.
 It has its own address, `/timelines/all` (`homeTabID` stands for it in URLs, fragments and the tab cookie), since `/` may show another tab.
 `TimelineRepository.Move` locks the user's row and timelines and renumbers every tab 0…n, Home included, with the tab swapped with its neighbour, which also repairs ties and gaps from deletes.
-With JavaScript, `app.js` shows each row's drag handle (rendered hidden) and makes the move buttons move rows in place; after a drop or a press it announces the new position and posts the whole order to `POST /timelines/order` (`timelineOrderHandler`, a 204), where `TimelineRepository.Reorder` checks it's exactly the user's tabs (else `rss.ErrOrderChanged`: a flash and `/timelines`) and renumbers through the same code as `Move`.
-Rows glide to their new places on springs (`spring` and `glide` in `app.js`, animating the real rows), and a moved row is kept in view; a dragged row follows the pointer while the others slide aside, the order changes only on the drop, and holding a row near the top or bottom edge scrolls the page.
+With JavaScript, `reorder.ts` shows each row's drag handle (rendered hidden) and makes the move buttons move rows in place; after a drop or a press it announces the new position and posts the whole order to `POST /timelines/order` (`timelineOrderHandler`, a 204), where `TimelineRepository.Reorder` checks it's exactly the user's tabs (else `rss.ErrOrderChanged`: a flash and `/timelines`) and renumbers through the same code as `Move`.
+Rows glide to their new places on springs (`spring` and `glide` in `reorder.ts`, animating the real rows), and a moved row is kept in view; a dragged row follows the pointer while the others slide aside, the order changes only on the drop, and holding a row near the top or bottom edge scrolls the page.
 Without JavaScript the move buttons post to `/timelines/{id}/move` as before.
 New timeline and Edit render one form, `timeline_form.html`: a summary box, then Name, Feeds (All my feeds or Only some, then Leave out) and Articles (a checkbox per condition), then Save.
-The summary is a sentence saying what the timeline shows and how many of the user's feeds it draws from (`timelineSentence`, `timelineFeedCount`); the server renders it from the form's values, and `app.js` rebuilds it as fields change from the feeds' and tags' `data-*` attributes, with the same rules and words.
+The summary is a sentence saying what the timeline shows and how many of the user's feeds it draws from (`timelineSentence`, `timelineFeedCount`); the server renders it from the form's values, and `timeline-form.ts` rebuilds it as fields change from the feeds' and tags' `data-*` attributes, with the same rules and words.
 A condition's setting, and Only some's tags and feeds, are revealed with CSS `:has()`; hidden fields still post, so `timelineForm` decides by the `quiet`, `mentions` and `not_mentions` checkboxes and stores nothing for an unticked condition.
 Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `www create-user` both get them.
 New timeline (`timelineNewHandler`) opens on a list of starting points (`timeline_new.html`), each a link back with a `?preset=` from `timelinePresets` that fills in the form; a tag's page links to it with `?tag={id}`, and an unknown preset or a tag that isn't the user's shows the list.
@@ -318,7 +318,7 @@ Copies of one article (same `canonical_url`) collapse into the earliest: an entr
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
-Times are rendered in UTC for `app.js` to localize (the `local-time` and `local-date` partials).
+Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials).
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) before the source link.
@@ -343,13 +343,13 @@ Shared news is never below its feed's floor, so a follower whose `seen_up_to` is
 **Article page.** `articleHandler` records the read and loads the user's subscription to the feed, if any, for its name.
 The "Read on" button (`readOnLabel`) names the article's domain when it's on another site, else the feed.
 The body is the content, else the summary, through `sanitize.HTML` (relative URLs resolved against the article's URL); with neither, the page's description as plain text.
-`sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`app.js` swaps in the sandboxed player; without JavaScript the link opens the video), and turns any other iframe into a link, and makes `http:` images load over `https:`.
+`sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`video-embeds.ts` swaps in the sandboxed player; without JavaScript the link opens the video), and turns any other iframe into a link, and makes `http:` images load over `https:`.
 The card image shows above the text unless `sanitize.ShowsImage` finds the content already shows it.
 
-**Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `app.js` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
+**Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `read-pings.ts` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
 
-**"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and the timeline in `data-timeline`, and `app.js` sends both to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
+**"You were here."** A timeline's first page (not starred-only) carries its first row's position, the newest on it, in `.article-list[data-seen-up-to]`, and the timeline in `data-timeline`, and `seen-beacon.ts` sends both to `POST /timeline/seen` with a beacon when the page is first shown (at load, its first time visible, or restored from the back-forward cache) and each time it's hidden: the reader's positions for what arrives next are set against the latest report, so an article arriving while the page is open already counts what's on it.
 While the page is visible and used (a scroll, a key, a tap or a click since the last time), it also reports every 10 minutes, so a long read of one page stays one visit; a page left on screen unused doesn't.
 `MarkSeen` keeps the newest position reported on any timeline (never later than now) and when, in the user's mark, and the newest reported on this timeline in its own line (`timeline_lines`; a timeline that isn't the user's records the mark only); a report after `rss.VisitGap` without one starts a new visit, whose divider becomes where the previous visit ended (`divider_at`), the mark's and every timeline line's, before this report's position is recorded.
 So a timeline not opened in the previous visit keeps the line from the last visit it was opened in.
@@ -359,7 +359,7 @@ At render, `TimelineLine` reads the timeline's own line with the user's `seen_at
 So above the line is everything that arrived since you last looked at that timeline, by the reader's positions, including articles published before it but fetched after.
 A store error renders the page without the line.
 
-**Infinite scroll.** `app.js` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
+**Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
 Without JavaScript the link just works.
 
@@ -369,7 +369,7 @@ Without JavaScript the link just works.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
-5. `partials/article_row.html` and `web/app/app.js`.
+5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts` and `read-pings.ts` in `web/app/features`.
 
 **Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
@@ -378,7 +378,7 @@ Without JavaScript the link just works.
 ## Saved articles
 
 **Flow.** Every article row and the article page has a Save button (the `save-button` partial): a form posting to `/articles/{id}/save`, or `/unsave`, with a `return_to` of the page.
-The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `app.js` posts the form with `fetch`, which the handlers tell apart by its `Sec-Fetch-Mode` header and answer with a `204`, and flips the button in place (`aria-pressed` carries the state); on anything but a `204`, such as the redirect to Login when the session has ended, it submits the form normally.
+The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `save-star.ts` posts the form with `fetch`, which the handlers tell apart by its `Sec-Fetch-Mode` header and answer with a `204`, and flips the button in place (`aria-pressed` carries the state); on anything but a `204`, such as the redirect to Login when the session has ended, it submits the form normally.
 Saving is quiet: no flash, and it doesn't mark the article read.
 While the request runs the button stays focusable (`aria-disabled`) and ignores presses; once a `204` turns Save or Star on, the bookmark drops into place and the star pops with a burst of dots (only under `prefers-reduced-motion: no-preference`; the burst is off in forced colors).
 
@@ -389,9 +389,9 @@ The Star button sits next to Save and works the same way (`toggleAction`); `Star
 Stars are private, with no counts; starred-only timelines list them (see "Timelines").
 
 **Share.** Between Star and Save, an icon-only Share button (the `share-button` partial) carries the article's `CanonicalURL` and `DisplayTitle`; an article without a canonical URL has none.
-It's rendered `hidden` and "Share buttons" in `app.js` shows it, so it never appears without JavaScript.
+It's rendered `hidden` and `share.ts` shows it, so it never appears without JavaScript.
 A click opens the system share sheet (`navigator.share`) where there is one, else copies the link and announces "Link copied" in a polite live region.
-When it copies, `showCopied` in `app.js` also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
+When it copies, `showCopied` in `share.ts` also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
 Only the latest copy's label shows, and a copy repeated while it shows replays its entrance (`data-copy-round` restarts the CSS animations).
 The label is `aria-hidden`, so it isn't read on top of the announcement.
 A browser that can neither share nor copy never shows the button.
@@ -406,7 +406,7 @@ There's no count anywhere.
 
 1. `internal/server/articles.go` (`toggleAction` and the save and star handlers) and `saved.go`.
 2. `internal/psql/saves.go` and `stars.go`.
-3. `partials/save_button.html`, and "Save and Star buttons" and "Share buttons" in `app.js`.
+3. `partials/save_button.html`, and `save-star.ts` and `share.ts` in `web/app/features`.
 
 **Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `internal/psql/saves_test.go`, `stars_test.go`.
 

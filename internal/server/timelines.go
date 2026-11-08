@@ -263,7 +263,7 @@ func countPhrase(n int, one, many string) string {
 
 // timelineFormSummary is the box at the top of the timeline form: what the
 // timeline shows, in a sentence, and which of the user's feeds it draws
-// from. app.js rebuilds it as the form changes, with the same rules and
+// from. timeline-form.ts rebuilds it as the form changes, with the same rules and
 // words as timelineSentence and timelineFeedCount.
 type timelineFormSummary struct {
 	Sentence string
@@ -322,7 +322,7 @@ func subscriptionName(sub rss.Subscription) string {
 // shows, such as "Articles mentioning “AI” from feeds tagged Tech, except
 // The Verge." It spells out the form's rules (Leave out always wins; every
 // ticked condition must hold). Tags come in tags' order (by name) and feeds
-// in subs' order. app.js builds the same sentence; change both together.
+// in subs' order. timeline-form.ts builds the same sentence; change both together.
 func timelineSentence(f timelineForm, tags []rss.Tag, subs []rss.Subscription) string {
 	feedNames := func(ids []string) []string {
 		var names []string
@@ -740,16 +740,16 @@ func (s *Server) timelineDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/timelines", http.StatusSeeOther)
 }
 
-// timelineOrderForm is the whole tab order, which app.js posts after a
+// timelineOrderForm is the whole tab order, which reorder.ts posts after a
 // drag or a move button press on /timelines.
 type timelineOrderForm struct {
 	Order []string `form:"order"` // tab IDs in order, "all" for Home
 }
 
-// timelineOrderHandler sets the user's tab order. Only app.js posts here, so
+// timelineOrderHandler sets the user's tab order. Only reorder.ts posts here, so
 // success is a 204. An order that isn't exactly the user's tabs (one made
 // or deleted in another window) flashes why and goes back to /timelines,
-// where app.js sends the reader.
+// where reorder.ts sends the reader.
 func (s *Server) timelineOrderHandler(w http.ResponseWriter, r *http.Request) {
 	var form timelineOrderForm
 	if err := s.decodePostForm(w, r, &form); err != nil {

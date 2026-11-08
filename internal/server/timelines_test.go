@@ -133,7 +133,7 @@ func TestTimelinesHandler(t *testing.T) {
 			`<form class="timeline-row-move" action="/timelines/all/move" method="post" data-move>`,
 			`<span class="row-icon-slot" aria-hidden="true"></span>`,
 			`<ul class="timeline-list" role="list" data-reorder>`,
-			// Rendered hidden: app.js shows it, since dragging needs JavaScript.
+			// Rendered hidden: reorder.ts shows it, since dragging needs JavaScript.
 			`<span class="reorder-handle" aria-hidden="true" hidden>`,
 			`<li class="timeline-row" id="timeline-`+testTimelineID+`" data-id="`+testTimelineID+`" data-name="AI">`,
 			`<a class="timeline-row-name" href="/timelines/`+testTimelineID+`">AI</a>`,

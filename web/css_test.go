@@ -1,7 +1,9 @@
 package web
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -16,7 +18,7 @@ func cssBlock(t *testing.T, css, selector string) []string {
 	t.Helper()
 	i := strings.Index(css, selector+" {")
 	if i < 0 {
-		t.Fatalf("main.css has no %s rule", selector)
+		t.Fatalf("no %s rule", selector)
 	}
 	body := css[i+len(selector)+2:]
 	body = body[:strings.Index(body, "}")]
@@ -44,11 +46,11 @@ func colorTokens(decls []string) []string {
 	return names
 }
 
-// The dark theme's values are written twice in main.css, for the system
+// The dark theme's values are written twice in tokens.css, for the system
 // setting and for the user's choice, so they must stay the same; and every
 // color token needs a dark value.
 func TestDarkThemeTokens(t *testing.T) {
-	b, err := os.ReadFile("app/styles/main.css")
+	b, err := os.ReadFile("shared/styles/tokens.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,12 +149,14 @@ func motionOutsideOptIn(css string) []string {
 // something, is written inside @media (prefers-reduced-motion: no-preference).
 // See "Motion and feedback" in docs/decisions.md.
 func TestMotionIsOptIn(t *testing.T) {
-	b, err := os.ReadFile("app/styles/main.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if found := motionOutsideOptIn(string(b)); len(found) > 0 {
-		t.Errorf("main.css has motion outside @media (prefers-reduced-motion: no-preference):\n%s", strings.Join(found, "\n"))
+	for _, name := range stylesheets(t) {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found := motionOutsideOptIn(string(b)); len(found) > 0 {
+			t.Errorf("%s has motion outside @media (prefers-reduced-motion: no-preference):\n%s", name, strings.Join(found, "\n"))
+		}
 	}
 
 	tests := []struct {
@@ -186,4 +190,26 @@ func TestMotionIsOptIn(t *testing.T) {
 			}
 		})
 	}
+}
+
+// stylesheets returns the paths of the source stylesheets: every .css file
+// under shared and app.
+func stylesheets(t *testing.T) []string {
+	t.Helper()
+	var names []string
+	for _, dir := range []string{"shared", "app"} {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && filepath.Ext(path) == ".css" {
+				names = append(names, path)
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("found no stylesheets under shared or app")
+	}
+	return names
 }

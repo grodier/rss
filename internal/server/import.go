@@ -172,7 +172,7 @@ func importFilename(name string) string {
 
 // importRow is one feed on an import's results page.
 type importRow struct {
-	Position int // the feed's place in the file; app.js keys rows by it
+	Position int // the feed's place in the file; import-status.ts keys rows by it
 	Title    string
 	URL      string
 	FeedID   string
@@ -200,7 +200,7 @@ var importReasons = map[rss.ImportFailure]string{
 }
 
 // importHandler shows an import's progress and then its results. While any
-// feed is pending or running, app.js fetches the page every 2 s and inserts
+// feed is pending or running, import-status.ts fetches the page every 2 s and inserts
 // the new rows in place; without JavaScript a meta refresh reloads it.
 // It makes no writes, so polling it is harmless.
 func (s *Server) importHandler(w http.ResponseWriter, r *http.Request) {

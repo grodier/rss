@@ -162,7 +162,7 @@ func readOnLabel(article rss.Article, site rss.Site, name string) string {
 
 // articleReadHandler records that the user clicked through to the original
 // article from a row: the row's source link pings it (<a ping>, or a beacon
-// sent by app.js). The request body is ignored. CrossOriginProtection rejects
+// sent by read-pings.ts). The request body is ignored. CrossOriginProtection rejects
 // cross-site POSTs; pings and beacons from our own pages are same-origin.
 func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -211,7 +211,7 @@ func (s *Server) articleUnstarHandler(w http.ResponseWriter, r *http.Request) {
 // toggleAction runs what the save, unsave, star and unstar handlers share:
 // it calls do with the user and the article named in the URL, then sends the
 // user back to the row they posted from (return_to, anchored on
-// #article-{id}). app.js posts the same form with fetch and gets a 204
+// #article-{id}). save-star.ts posts the same form with fetch and gets a 204
 // instead, so it can tell success from a redirect to the login page.
 func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ctx context.Context, userID, articleID string) error) {
 	id := chi.URLParam(r, "id")
@@ -236,7 +236,7 @@ func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ct
 		return
 	}
 
-	// app.js posts the form with fetch and only needs to know it worked;
+	// save-star.ts posts the form with fetch and only needs to know it worked;
 	// a form submission goes back to the row it came from.
 	if m := r.Header.Get("Sec-Fetch-Mode"); m == "cors" || m == "same-origin" {
 		w.WriteHeader(http.StatusNoContent)

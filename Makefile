@@ -18,10 +18,15 @@ run: assets
 build: assets
 	go build -o bin/www ./cmd/www
 
-## test: run tests (database tests are skipped unless RSS_TEST_DB_DSN is set)
+## test: run tests, the frontend's too (database tests are skipped unless RSS_TEST_DB_DSN is set)
 .PHONY: test
-test: assets
+test: assets test/web
 	go test ./...
+
+## test/web: run the frontend tests
+.PHONY: test/web
+test/web: web/node_modules/.package-lock.json
+	npm --prefix web test
 
 ## test/db: run all tests, including database tests, against the local database
 .PHONY: test/db

@@ -76,7 +76,7 @@ jobs:
       - name: test
         run: go test -race -count=1 ./...
 
-  # The frontend's own checks: types, formatting and the build.
+  # The frontend's own checks: types, formatting, tests and the build.
   web:
     name: web # a required status check; don't rename casually
     runs-on: ubuntu-latest
@@ -100,6 +100,9 @@ jobs:
 
       - name: format
         run: npm run format:check
+
+      - name: test
+        run: npm test
 
       - name: build
         run: npm run build

@@ -91,7 +91,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 5. Email: `internal/server/email.go` (`sendEmail`), then `internal/mail` (`Queue`, `Runner`, `ParseTemplates`).
 6. `internal/password/password.go`, `internal/token/token.go`, and `cmd/www/create_user.go`.
 
-**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `internal/psql/users_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go` and `create_user_test.go`.
+**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go` and `create_user_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 
@@ -129,7 +129,7 @@ The command logs the sites it retried and those that failed too recently to retr
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`).
 
-**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 
@@ -302,7 +302,7 @@ It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 30
 3. `internal/psql/timelines.go`, then `timelineWhere`, `ListTimeline` and `ListShared` in `articles.go`, and `ListStarred` in `stars.go`.
 4. `internal/server/shared.go`.
 
-**Tests:** `internal/server/timelines_test.go`, `shared_test.go`, `home_test.go`, `policy_test.go`; `internal/psql/timelines_test.go`, `articles_test.go`, `stars_test.go`; `internal/token`.
+**Tests:** `internal/server/timelines_test.go` (including `TestTimelineSummaryFixture`), `shared_test.go`, `home_test.go`, `policy_test.go`; `timeline-form.test.ts`, `timeline-tabs.test.ts` and `reorder.test.ts` in `web/app/features`; `internal/psql/timelines_test.go`, `articles_test.go`, `stars_test.go`; `internal/token`.
 
 **Why:** "Timelines" and "Sharing" under "Filtering and timelines" in decisions.md.
 
@@ -371,7 +371,7 @@ Without JavaScript the link just works.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts` and `read-pings.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 
@@ -408,7 +408,7 @@ There's no count anywhere.
 2. `internal/psql/saves.go` and `stars.go`.
 3. `partials/save_button.html`, and `save-star.ts` and `share.ts` in `web/app/features`.
 
-**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `internal/psql/saves_test.go`, `stars_test.go`.
+**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `save-star.test.ts` and `share.test.ts` in `web/app/features`; `internal/psql/saves_test.go`, `stars_test.go`.
 
 **Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and timelines" in decisions.md.
 

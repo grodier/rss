@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,11 +93,10 @@ func TestInfiniteScrollMarkup(t *testing.T) {
 
 // TestYouWereHereMarkup checks the markup the "You were here" beacon
 // (seen-beacon.ts) and infinite scroll rely on: a timeline's first page puts
-// data-seen-up-to and data-timeline on .article-list itself, the beacon sends
-// them as up_to and timeline (and nothing else) when the page is shown and
-// when it's hidden, and the divider is a .timeline-divider directly inside
-// .article-list, so appending a later page's children in order keeps it in
-// place.
+// data-seen-up-to and data-timeline on .article-list itself, which the
+// beacon sends as up_to and timeline, and the divider is a .timeline-divider
+// directly inside .article-list, so appending a later page's children in
+// order keeps it in place.
 func TestYouWereHereMarkup(t *testing.T) {
 	items := timelineItems(3)
 	s := newTestServerWith(t, Services{
@@ -138,39 +138,28 @@ func TestYouWereHereMarkup(t *testing.T) {
 		}
 	}
 
-	// The beacon reports the timeline and the position, under the names
-	// timelineSeenHandler reads, and nothing else.
+	// What the beacon sends and when is tested in seen-beacon.test.ts. It
+	// reports every HEARTBEAT while the reader is using the page, which must
+	// be shorter than rss.VisitGap so a long read of one page stays one
+	// visit.
 	js, err := os.ReadFile("../../web/app/features/seen-beacon.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	beacon := regexp.MustCompile(`(?s)sendBeacon\(\s*"/timeline/seen",\s*new URLSearchParams\(\{(.*?)\}\)`).FindSubmatch(js)
-	if beacon == nil {
-		t.Fatal("seen-beacon.ts doesn't send the beacon to /timeline/seen")
+	m := regexp.MustCompile(`export const HEARTBEAT = ([\d *]+);`).FindSubmatch(js)
+	if m == nil {
+		t.Fatal("seen-beacon.ts has no HEARTBEAT = <ms>;")
 	}
-	if got, want := strings.Join(strings.Fields(string(beacon[1])), " "), "timeline: seen.dataset.timeline, up_to: seen.dataset.seenUpTo,"; got != want {
-		t.Errorf("seen-beacon.ts's beacon sends %q, want %q only", got, want)
-	}
-	// It reports when the page is shown (positions of what arrives next are
-	// set against the latest report) as well as when it's hidden.
-	for _, when := range []string{`"visible"`, `"pageshow"`, `"hidden"`} {
-		if !strings.Contains(string(js), when) {
-			t.Errorf("seen-beacon.ts doesn't report on %s", when)
+	ms := 1
+	for f := range strings.SplitSeq(string(m[1]), "*") {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil {
+			t.Fatalf("HEARTBEAT = %s: %v", m[1], err)
 		}
+		ms *= n
 	}
-	// And every ten minutes while the reader is using the page, so a long
-	// read of one page stays one visit (rss.VisitGap is 30 minutes).
-	heartbeat := regexp.MustCompile(`(?s)setInterval\(\s*\(\) => \{\s*if \(used && document\.visibilityState === "visible"\) \{.*?report\(\);.*?\},\s*10 \* 60 \* 1000,?\s*\)`)
-	if !heartbeat.Match(js) {
-		t.Error("seen-beacon.ts doesn't report every ten minutes while the page is used and visible")
-	}
-	for _, use := range []string{`"scroll"`, `"keydown"`, `"pointerdown"`} {
-		if !strings.Contains(string(js), use) {
-			t.Errorf("seen-beacon.ts doesn't count %s as using the page", use)
-		}
-	}
-	if 10*time.Minute >= rss.VisitGap {
-		t.Errorf("the ten-minute report doesn't keep a visit going: rss.VisitGap is %v", rss.VisitGap)
+	if heartbeat := time.Duration(ms) * time.Millisecond; heartbeat <= 0 || heartbeat >= rss.VisitGap {
+		t.Errorf("seen-beacon.ts's HEARTBEAT is %v, so it doesn't keep a visit going: rss.VisitGap is %v", heartbeat, rss.VisitGap)
 	}
 }
 

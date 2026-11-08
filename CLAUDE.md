@@ -32,6 +32,7 @@ go mod tidy -diff                # must print nothing
 go vet ./...
 go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
+make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
@@ -44,8 +45,8 @@ docker build -t rss .                    # build the container image (or: make d
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck and format check.
-CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
+Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck, the format check and the frontend tests.
+CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check, the frontend tests and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
 `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
 
 ## Layout
@@ -71,7 +72,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates, emails and the web app manifest
 - `internal/validator`: form validation
-- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/app.ts`, which sets up the enhancements in `features/`; `styles/main.css`, which imports the partials; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts)
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/app.ts`, which sets up the enhancements in `features/`; `styles/main.css`, which imports the partials; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -172,7 +173,11 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   When code is removed, delete its tests; don't add tests asserting that a removed route, handler or function is gone (e.g. "`GET /old` returns 404").
   They only re-test the router's or compiler's defaults and become dead weight.
   The same goes for issues and plans that ask for such tests; question them.
-- Standard library only for tests (no testify).
+- Standard library only for Go tests (no testify).
+- Frontend tests use Vitest with happy-dom (`npm --prefix web test`), in a `*.test.ts` next to their module (`share.ts`, `share.test.ts`).
+  Test through the markup hooks the server renders (`form[data-toggle]`, `button[data-share-url]`…), import the module in each test after `isolate()` (`web/shared/test/setup.ts`), and test pure functions directly.
+  Where a module mirrors Go, Go stays the spec: a Go test writes a fixture (`-update`) that both sides check, like `TestTimelineSummaryFixture`.
+  A changed module comes with tests.
 
 ## Git and PR workflow
 

@@ -322,7 +322,9 @@ func subscriptionName(sub rss.Subscription) string {
 // shows, such as "Articles mentioning “AI” from feeds tagged Tech, except
 // The Verge." It spells out the form's rules (Leave out always wins; every
 // ticked condition must hold). Tags come in tags' order (by name) and feeds
-// in subs' order. timeline-form.ts builds the same sentence; change both together.
+// in subs' order. timeline-form.ts builds the same sentence; change both
+// together (TestTimelineSummaryFixture writes what timeline-form.test.ts
+// checks it against).
 func timelineSentence(f timelineForm, tags []rss.Tag, subs []rss.Subscription) string {
 	feedNames := func(ids []string) []string {
 		var names []string

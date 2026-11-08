@@ -1,0 +1,1622 @@
+[
+  {
+    "name": "sentence: all feeds",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: the Quiet posters default",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "2"
+    },
+    "summary": {
+      "sentence": "Articles from feeds that post at most 2 times a week.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "sentence: once a week",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "1"
+    },
+    "summary": {
+      "sentence": "Articles from feeds that post at most once a week.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "sentence: an unticked rate is ignored",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": "2"
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "sentence: the Starred default",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": true,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles you’ve starred from all your feeds. Newest star first.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: audio or video",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": true,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles with audio or video from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: mentioning",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": true,
+      "includeWords": "AI, LLM, ai",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles mentioning “AI” or “LLM” from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: not mentioning alone",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": true,
+      "excludeWords": "crypto",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles not mentioning “crypto” from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: mentioning but not",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": true,
+      "includeWords": "AI",
+      "notMentions": true,
+      "excludeWords": "crypto, NFT, web3",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles mentioning “AI” but not “crypto”, “NFT” or “web3” from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: unticked words are ignored",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "AI",
+      "notMentions": false,
+      "excludeWords": "crypto",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: some, tags",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        },
+        {
+          "id": "a1",
+          "name": "News"
+        }
+      ],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI or News.",
+      "count": "None of your feeds match yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: some, feeds, by the user's names",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [
+        "77777777-7777-4777-8777-777777777777",
+        "88888888-8888-4888-8888-888888888888"
+      ],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from Feed One and My Two.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: some, tags and a feed",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [],
+      "includeFeeds": [
+        "77777777-7777-4777-8777-777777777777"
+      ],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI and Feed One.",
+      "count": "From 1 of your 2 feeds",
+      "feeds": [
+        "Feed One"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: some, tags with a rate",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "3"
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI that post at most 3 times a week.",
+      "count": "None of your feeds match yet",
+      "feeds": [],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "sentence: some, a feed with a rate",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [
+        "77777777-7777-4777-8777-777777777777"
+      ],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "3"
+    },
+    "summary": {
+      "sentence": "Articles from Feed One, if they post at most 3 times a week.",
+      "count": "From 1 of your 2 feeds",
+      "feeds": [
+        "Feed One"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "sentence: some, nothing chosen",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [],
+      "excludeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Choose at least one tag or feed, or show all your feeds.",
+      "count": "No feeds yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: leave out tags",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        },
+        {
+          "id": "a1",
+          "name": "News"
+        }
+      ],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds, except feeds tagged AI or News.",
+      "count": "From 2 of your 2 feeds",
+      "feeds": [
+        "Feed One",
+        "My Two"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: leave out tags and feeds",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [
+        {
+          "id": "a1",
+          "name": "News"
+        }
+      ],
+      "includeFeeds": [],
+      "excludeFeeds": [
+        "77777777-7777-4777-8777-777777777777",
+        "88888888-8888-4888-8888-888888888888"
+      ],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds, except feeds tagged News, Feed One and My Two.",
+      "count": "None of your feeds match yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "sentence: a tag with words and a left-out feed",
+    "feeds": [
+      {
+        "id": "77777777-7777-4777-8777-777777777777",
+        "name": "Feed One",
+        "tags": [],
+        "rate": 0
+      },
+      {
+        "id": "88888888-8888-4888-8888-888888888888",
+        "name": "My Two",
+        "tags": [],
+        "rate": 0
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [
+        "77777777-7777-4777-8777-777777777777"
+      ],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": true,
+      "includeWords": "AI, LLM",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles mentioning “AI” or “LLM” from feeds tagged AI, except Feed One.",
+      "count": "None of your feeds match yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: all",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: some by tag",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI.",
+      "count": "From 2 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: some by feed",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [
+        "f3"
+      ],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from Untagged.",
+      "count": "From 1 of your 3 feeds",
+      "feeds": [
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: leave out a tag wins over a shown tag",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [
+        {
+          "id": "t2",
+          "name": "News"
+        }
+      ],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI, except feeds tagged News.",
+      "count": "From 1 of your 3 feeds",
+      "feeds": [
+        "Quiet"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: leave out a feed",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [
+        "f2"
+      ],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds, except Busy.",
+      "count": "From 2 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "feed count: a rate, equal counts",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "2"
+    },
+    "summary": {
+      "sentence": "Articles from feeds that post at most 2 times a week.",
+      "count": "From 2 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Untagged"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "feed count: an unticked rate",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": "2"
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  },
+  {
+    "name": "feed count: articles conditions don't count",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": true,
+      "mediaOnly": true,
+      "mentions": true,
+      "includeWords": "x",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles you’ve starred with audio or video mentioning “x” from all your feeds. Newest star first.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: none of the feeds match",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from feeds tagged AI, except feeds tagged AI.",
+      "count": "None of your feeds match yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: the only feed",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From your only feed",
+      "feeds": [
+        "Quiet"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: nothing chosen",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": ""
+    },
+    "summary": {
+      "sentence": "Choose at least one tag or feed, or show all your feeds.",
+      "count": "No feeds yet",
+      "feeds": [],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: a rate hint for one feed",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": "1"
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": "1 of your feeds posts this little right now."
+    }
+  },
+  {
+    "name": "summary: no rate hint for an invalid number",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": false,
+      "maxPostsPerWeek": "zero"
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: a ticked rate that's too high",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "all",
+      "includeTags": [],
+      "excludeTags": [],
+      "includeFeeds": [],
+      "excludeFeeds": [],
+      "starredOnly": false,
+      "mediaOnly": false,
+      "mentions": false,
+      "includeWords": "",
+      "notMentions": false,
+      "excludeWords": "",
+      "quiet": true,
+      "maxPostsPerWeek": "101"
+    },
+    "summary": {
+      "sentence": "Articles from all your feeds.",
+      "count": "From 3 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Busy",
+        "Untagged"
+      ],
+      "rateHint": ""
+    }
+  },
+  {
+    "name": "summary: everything at once",
+    "feeds": [
+      {
+        "id": "f1",
+        "name": "Quiet",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "rate": 2
+      },
+      {
+        "id": "f2",
+        "name": "Busy",
+        "tags": [
+          "33333333-3333-4333-8333-333333333333",
+          "t2"
+        ],
+        "rate": 40
+      },
+      {
+        "id": "f3",
+        "name": "Untagged",
+        "tags": [],
+        "rate": 0.5
+      }
+    ],
+    "fields": {
+      "show": "some",
+      "includeTags": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "AI"
+        }
+      ],
+      "excludeTags": [
+        {
+          "id": "t2",
+          "name": "News"
+        }
+      ],
+      "includeFeeds": [
+        "f3"
+      ],
+      "excludeFeeds": [],
+      "starredOnly": true,
+      "mediaOnly": true,
+      "mentions": true,
+      "includeWords": " AI ,  big   data, ai,,",
+      "notMentions": true,
+      "excludeWords": "crypto",
+      "quiet": true,
+      "maxPostsPerWeek": "2"
+    },
+    "summary": {
+      "sentence": "Articles you’ve starred with audio or video mentioning “AI” or “big data” but not “crypto” from feeds tagged AI and Untagged, if they post at most 2 times a week, except feeds tagged News. Newest star first.",
+      "count": "From 2 of your 3 feeds",
+      "feeds": [
+        "Quiet",
+        "Untagged"
+      ],
+      "rateHint": "2 of your feeds post this little right now."
+    }
+  }
+]

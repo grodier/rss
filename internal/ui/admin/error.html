@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{.Title}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>{{.Title}}</h1>
+      </header>
+      <section class="admin-section">
+        <p>{{.Message}}</p>
+        <p><a href="/">Go to the overview</a></p>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

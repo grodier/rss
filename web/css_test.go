@@ -193,11 +193,11 @@ func TestMotionIsOptIn(t *testing.T) {
 }
 
 // stylesheets returns the paths of the source stylesheets: every .css file
-// under shared and app.
+// under shared, app and admin.
 func stylesheets(t *testing.T) []string {
 	t.Helper()
 	var names []string
-	for _, dir := range []string{"shared", "app"} {
+	for _, dir := range []string{"shared", "app", "admin"} {
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && filepath.Ext(path) == ".css" {
 				names = append(names, path)
@@ -209,7 +209,7 @@ func stylesheets(t *testing.T) []string {
 		}
 	}
 	if len(names) == 0 {
-		t.Fatal("found no stylesheets under shared or app")
+		t.Fatal("found no stylesheets under shared, app or admin")
 	}
 	return names
 }

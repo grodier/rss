@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/psql"
 	"github.com/grodier/rss/internal/seed"
 )
@@ -26,7 +27,7 @@ func runSeed(args []string, getenv func(string) string, stdout, stderr io.Writer
 	fs.StringVar(&env, "env", env, "Environment (development|production)")
 	fs.StringVar(&dsn, "db-dsn", dsn, "PostgreSQL DSN")
 
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
+	if err := cli.SetFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
@@ -50,7 +51,7 @@ func runSeed(args []string, getenv func(string) string, stdout, stderr io.Writer
 		return 2
 	}
 
-	logger := newLogger(stdout, env)
+	logger := cli.NewLogger(stdout, env)
 	cfg := defaultConfig().db
 	db, err := psql.OpenDB(dsn, cfg.maxOpenConns, cfg.maxIdleConns, cfg.maxIdleTime)
 	if err != nil {

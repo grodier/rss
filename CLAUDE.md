@@ -22,10 +22,10 @@ Once backwards compatibility is actually needed (after we're in production and p
 
 `make` targets need a `.env` file (`include .env`, exported) defining `RSS_DB_DSN`.
 Package `web` embeds the built frontend, so Go doesn't compile without it: on a fresh clone, run `make assets` before `go build`, `go vet`, `go test` or gopls work (the `make` targets that compile `cmd/www` run it first).
-Every `cmd/www` flag can also be set by an `RSS_` environment variable (`-db-dsn` → `RSS_DB_DSN`); a flag on the command line wins.
+Every `cmd/www` and `cmd/admin` flag can also be set by an `RSS_` environment variable (`-db-dsn` → `RSS_DB_DSN`); a flag on the command line wins.
 
 ```sh
-make assets                      # build the frontend into web/dist (npm ci, then vite build; instant when nothing changed)
+make assets                      # build the frontend into web/dist, the reader's and the admin's (npm ci, then npm run build; instant when nothing changed)
 make assets/watch                # rebuild the frontend on every change (restart go run to pick it up)
 npm --prefix web run typecheck   # tsc --noEmit over the TypeScript modules
 npm --prefix web run format:check  # must pass (npm --prefix web run format fixes it); Prettier, for web/
@@ -37,6 +37,7 @@ go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
+go run ./cmd/admin               # run the admin site, locally only, on :4001 (or: make run/admin)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
 go run ./cmd/www seed            # queue lookups of the seed list's sites (or: make db/seed-sites); production runs it on every deploy
 go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
@@ -54,12 +55,17 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 ## Layout
 
 - `cmd/www`: config flags and wiring
+- `cmd/admin`: the admin site's binary (its own service): config flags, wiring and its subcommands
+- `internal/admin`: the admin site's server (router, middleware, handlers, rendering), shared by its pages and `cmd/admin`'s subcommands
+- `internal/cli`: what the commands share (`SetFlagsFromEnv`, `NewLogger`)
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/rss`: domain types (Feed, User, …) and sentinel errors
 - `internal/psql`: repositories (feeds, users, sites, lookups, search, discovery)
 - `internal/discovery`: finds the feeds a website publishes
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
+- `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, for both servers
+- `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/seed`: the seed list (`sites.txt`, embedded) of sites to look up before anyone searches for them; `www seed` queues their lookups
@@ -72,9 +78,9 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
-- `internal/ui`: embedded templates, emails and the web app manifest
+- `internal/ui`: embedded templates (the reader's in `templates/`, the admin's in `admin/`), emails and the web app manifest
 - `internal/validator`: form validation
-- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the build (`web.App`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the builds (`web.App`, `web.Admin`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `admin/` the admin site's, built apart (`vite.admin.config.ts`, into `dist/admin`) with the same layout, `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -134,6 +140,8 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page.
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `search`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.
+- The admin (`internal/admin`, `internal/ui/admin`, `web/admin`) follows these conventions with its own files: routes in `internal/admin/router.go`, pages in its layout with `{{template "admin-nav" .Nav}}` and `Nav: s.nav(r, "<section>")`, partials in `internal/ui/admin/partials`, and its stylesheet partials' order in `web/admin/styles/base.css`.
+  Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`), shared styles in `web/shared`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
   Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so themes can be added later.
   Rules go in the partial for their area (`web/app/styles/partials`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block.
@@ -141,7 +149,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
   Motion uses the motion tokens in `tokens.css` and is written inside `@media (prefers-reduced-motion: no-preference)`; see "Motion and feedback" in `docs/decisions.md`.
   No inline `style` attributes (the CSP blocks them).
-- Only `cmd/www` handles OS signals.
+- Only the commands (`cmd/www`, `cmd/admin`) handle OS signals.
   Long-running components (the HTTP server, background workers) take a `context.Context` and shut down gracefully when it is canceled; they never call `signal.Notify`.
 - JavaScript is progressive enhancement: every page must work without it.
   TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entries of the page groups whose pages use it import and call in order (and `entries.test.ts` lists); nothing runs on import.

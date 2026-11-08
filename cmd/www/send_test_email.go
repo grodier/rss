@@ -8,6 +8,7 @@ import (
 	"io"
 	netmail "net/mail"
 
+	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/ui"
 )
@@ -30,7 +31,7 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 	fs.StringVar(&to, "to", to, "Where to send the test email")
 	registerMailFlags(fs, &cfg)
 
-	if err := setFlagsFromEnv(fs, getenv); err != nil {
+	if err := cli.SetFlagsFromEnv(fs, getenv); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
@@ -68,7 +69,7 @@ func runSendTestEmail(args []string, getenv func(string) string, stdout, stderr 
 	}
 	msg.To = to
 
-	sender := newMailSender(cfg, newLogger(stdout, "development"))
+	sender := newMailSender(cfg, cli.NewLogger(stdout, "development"))
 	if err := sender.Send(context.Background(), msg); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

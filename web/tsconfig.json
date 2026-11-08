@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["app", "shared"]
+  "include": ["app", "admin", "shared"]
 }

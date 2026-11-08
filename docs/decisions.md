@@ -115,8 +115,14 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
   A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.
   Seeing what someone reads has no clear use, and isn't what readers or the privacy policy expect; a later need names its use case and updates the policy first.
-- **The admin has one design checkpoint, in its skeleton (#562)**: later admin pages reuse its layout without their own, since only the owner uses them.
+- **The admin's skeleton (#562) set its layout, and later admin pages reuse it; a large feature that changes how the admin looks or works still gets its own design checkpoint** (the owner, at #562's checkpoint; planning had the skeleton as the admin's only one).
+  A page built from the approved parts (tables, forms, stat rows) needs none.
   What the admin changes for readers (the waitlist form) keeps its checkpoint.
+- **The admin's layout** (#562, approved at its design checkpoint): a sidebar of the sections on wide screens, and on phones a top bar whose Menu opens the same list, a `<details>`, so it needs no script.
+  Rejected: top tabs on every width, which ten sections would make wrap or scroll, and the reader's `.shell`, a reading column too narrow for tables.
+- **It looks like the reader, marked as the admin** (#562): the reader's tokens and fonts, a tinted sidebar, and an "Admin" mark beside the logo, so it's never mistaken for the reader; it follows the system's theme, as it has no settings.
+- **Dense tables** (#562): smaller type and tighter rows than the reader's lists, since it's a working tool; on a phone a wide table scrolls in its own frame, not the page.
+  Figures are stat rows separated by dividers, not cards, as in the reader ("Design").
 - **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
@@ -870,6 +876,9 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 - **A build step** (#543; this reverses #50's and #163's "one plain file, no build step" under "Overall"): bundling and minifying halves the JavaScript and CSS (with Brotli, `app.js` from 16.8 to about 8.3 KB and `main.css` from 15.8 to about 9.2 KB), and lets the code become tested TypeScript modules that a second site can share.
   - **One npm project in `web/`** for every site (the reader now, an admin site later), with what they share in `web/shared`: not at the repository root, which is the Go module's, and not inside one site's Go package.
     Its output is embedded by a Go package in `web/` that each site's server imports.
+  - **The admin is a second build, from a second config** (#562): each server reads its own manifest (`internal/assets`), and a Vite build writes one, so `web/vite.admin.config.ts` builds `web/admin` into `web/dist/admin`, both configs made by one function in `vite.config.ts`, and `npm run build` runs both.
+    Not one build with both sites' entries: its one manifest would mix the sites' files, and each binary would embed the other's.
+    The admin build copies the reader's public files, for the logo and favicons, rather than keeping copies of them.
   - **Vite, as a build tool only**: its manifest tells Go which files, stylesheets and chunks each entry needs, and Vitest shares its config.
     Not its dev server: Go renders every page, and the dev client would need CSP exceptions and a development-only template path.
     Not esbuild on its own (a second tool next to Vitest, and no manifest of that kind), and no PostCSS (Vite bundles and minifies CSS without it).

@@ -213,3 +213,71 @@ func stylesheets(t *testing.T) []string {
 	}
 	return names
 }
+
+// The web fonts swap in when they arrive (font-display: swap), so each stack
+// names its size-matched fallback face right after the web font, and the face
+// sets the overrides that make it match (see shared/styles/fonts.css).
+func TestFontStacksHaveFallbacks(t *testing.T) {
+	tokens, err := os.ReadFile("shared/styles/tokens.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fonts, err := os.ReadFile("shared/styles/fonts.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	faces := fontFaces(string(fonts))
+
+	for _, tt := range []struct{ token, font string }{
+		{"--font-display", "Bricolage Grotesque"},
+		{"--font-reading", "Newsreader"},
+	} {
+		t.Run(tt.token, func(t *testing.T) {
+			fallback := tt.font + " Fallback"
+			var stack []string
+			for _, d := range cssBlock(t, string(tokens), ":root") {
+				if name, value, ok := strings.Cut(d, ":"); ok && strings.TrimSpace(name) == tt.token {
+					for f := range strings.SplitSeq(value, ",") {
+						stack = append(stack, strings.Trim(strings.TrimSpace(f), `"`))
+					}
+				}
+			}
+			if len(stack) < 2 || stack[0] != tt.font || stack[1] != fallback {
+				t.Errorf("%s = %q, want %q then %q first", tt.token, stack, tt.font, fallback)
+			}
+
+			face, ok := faces[fallback]
+			if !ok {
+				t.Fatalf("fonts.css has no @font-face for %q", fallback)
+			}
+			for _, want := range []string{"src", "size-adjust", "ascent-override", "descent-override", "line-gap-override"} {
+				if face[want] == "" {
+					t.Errorf("%q's @font-face doesn't set %s", fallback, want)
+				}
+			}
+			if !strings.HasPrefix(face["src"], "local(") {
+				t.Errorf("%q's src = %q, want local fonts", fallback, face["src"])
+			}
+		})
+	}
+}
+
+// fontFaces returns the descriptors of each @font-face in css, by family name.
+func fontFaces(css string) map[string]map[string]string {
+	css = cssComment.ReplaceAllString(css, "")
+	faces := map[string]map[string]string{}
+	for _, rest := range strings.Split(css, "@font-face")[1:] {
+		open, end := strings.Index(rest, "{"), strings.Index(rest, "}")
+		if open < 0 || end < open {
+			continue
+		}
+		descs := map[string]string{}
+		for d := range strings.SplitSeq(rest[open+1:end], ";") {
+			if name, value, ok := strings.Cut(d, ":"); ok {
+				descs[strings.TrimSpace(name)] = strings.TrimSpace(value)
+			}
+		}
+		faces[strings.Trim(descs["font-family"], `"`)] = descs
+	}
+	return faces
+}

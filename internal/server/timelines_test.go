@@ -1,13 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -1429,21 +1433,19 @@ func TestTimelineSharingHandlers(t *testing.T) {
 	}
 }
 
-func TestTimelineSentence(t *testing.T) {
+// timelineSentenceCases are TestTimelineSentence's cases, for its tags and
+// subs. TestTimelineSummaryFixture writes them for timeline-form.ts too.
+func timelineSentenceCases() (tags []rss.Tag, subs []rss.Subscription, tests []timelineSentenceCase) {
 	const newsTagID = "a1"
-	tags := []rss.Tag{{ID: testTagID, Name: "AI"}, {ID: newsTagID, Name: "News"}}
-	subs := []rss.Subscription{
+	tags = []rss.Tag{{ID: testTagID, Name: "AI"}, {ID: newsTagID, Name: "News"}}
+	subs = []rss.Subscription{
 		{Feed: rss.Feed{ID: timelineFeedID, Title: "Feed One"}},
 		{Feed: rss.Feed{ID: timelineFeed2ID, Title: "Feed Two"}, Title: "My Two"},
 	}
 	all := timelineForm{Show: "all"}
 	with := func(f timelineForm, change func(*timelineForm)) timelineForm { change(&f); return f }
 
-	tests := []struct {
-		name string
-		form timelineForm
-		want string
-	}{
+	return tags, subs, []timelineSentenceCase{
 		{"all feeds", all, "Articles from all your feeds."},
 		{"the Quiet posters default", with(all, func(f *timelineForm) { f.Quiet, f.MaxPostsPerWeek = true, "2" }), "Articles from feeds that post at most 2 times a week."},
 		{"once a week", with(all, func(f *timelineForm) { f.Quiet, f.MaxPostsPerWeek = true, "1" }), "Articles from feeds that post at most once a week."},
@@ -1470,6 +1472,16 @@ func TestTimelineSentence(t *testing.T) {
 		{"a tag with words and a left-out feed", timelineForm{Show: "some", IncludeTags: []string{testTagID}, Mentions: true, IncludeWords: "AI, LLM", ExcludeFeeds: []string{timelineFeedID}},
 			"Articles mentioning “AI” or “LLM” from feeds tagged AI, except Feed One."},
 	}
+}
+
+type timelineSentenceCase struct {
+	name string
+	form timelineForm
+	want string
+}
+
+func TestTimelineSentence(t *testing.T) {
+	tags, subs, tests := timelineSentenceCases()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := timelineSentence(tt.form, tags, subs); got != tt.want {
@@ -1479,19 +1491,18 @@ func TestTimelineSentence(t *testing.T) {
 	}
 }
 
-func TestTimelineFeedCount(t *testing.T) {
+// timelineFeedCountCases are TestTimelineFeedCount's cases, for its tags
+// and subs. TestTimelineSummaryFixture writes them for timeline-form.ts too.
+func timelineFeedCountCases() (tags []rss.Tag, subs []rss.Subscription, tests []timelineFeedCountCase) {
 	const quietID, busyID, untaggedID = "f1", "f2", "f3"
 	ai, news := rss.Tag{ID: testTagID, Name: "AI"}, rss.Tag{ID: "t2", Name: "News"}
-	subs := []rss.Subscription{
+	tags = []rss.Tag{ai, news}
+	subs = []rss.Subscription{
 		{Feed: rss.Feed{ID: quietID, Title: "Quiet", PostsPerWeek: 2}, Tags: []rss.Tag{ai}},
 		{Feed: rss.Feed{ID: busyID, Title: "Busy", PostsPerWeek: 40}, Tags: []rss.Tag{ai, news}},
 		{Feed: rss.Feed{ID: untaggedID, Title: "Untagged", PostsPerWeek: 0.5}},
 	}
-	tests := []struct {
-		name string
-		form timelineForm
-		want []string
-	}{
+	return tags, subs, []timelineFeedCountCase{
 		{"all", timelineForm{Show: "all"}, []string{quietID, busyID, untaggedID}},
 		{"some by tag", timelineForm{Show: "some", IncludeTags: []string{testTagID}}, []string{quietID, busyID}},
 		{"some by feed", timelineForm{Show: "some", IncludeFeeds: []string{untaggedID}}, []string{untaggedID}},
@@ -1501,6 +1512,16 @@ func TestTimelineFeedCount(t *testing.T) {
 		{"an unticked rate", timelineForm{Show: "all", MaxPostsPerWeek: "2"}, []string{quietID, busyID, untaggedID}},
 		{"articles conditions don't count", timelineForm{Show: "all", StarredOnly: true, MediaOnly: true, Mentions: true, IncludeWords: "x"}, []string{quietID, busyID, untaggedID}},
 	}
+}
+
+type timelineFeedCountCase struct {
+	name string
+	form timelineForm
+	want []string
+}
+
+func TestTimelineFeedCount(t *testing.T) {
+	_, subs, tests := timelineFeedCountCases()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []string
@@ -1535,6 +1556,171 @@ func TestTimelineFeedCount(t *testing.T) {
 			t.Errorf("RateHint for an invalid number = %q, want none", got)
 		}
 	})
+}
+
+// updateFixtures makes TestTimelineSummaryFixture write its fixture instead
+// of checking it.
+var updateFixtures = flag.Bool("update", false, "write web/app/features/testdata/timeline-summary.json (TestTimelineSummaryFixture) instead of checking it")
+
+// timelineSummaryFixture is where TestTimelineSummaryFixture writes the
+// summaries timelineForm.summary builds, for timeline-form.test.ts to check
+// that timeline-form.ts builds the same: Go is the spec.
+const timelineSummaryFixture = "../../web/app/features/testdata/timeline-summary.json"
+
+// summaryFixtureCase is one entry of the fixture, its inputs in the shape
+// timeline-form.ts's summary takes: the feeds and the form's fields as the
+// page has them (ticked tags with their names, in the tags' order; ticked
+// feeds' IDs, in the subscriptions' order).
+type summaryFixtureCase struct {
+	Name    string               `json:"name"`
+	Feeds   []summaryFixtureFeed `json:"feeds"`
+	Fields  summaryFixtureFields `json:"fields"`
+	Summary summaryFixtureWant   `json:"summary"`
+}
+
+type summaryFixtureFeed struct {
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+	Rate float64  `json:"rate"`
+}
+
+type summaryFixtureTag struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type summaryFixtureFields struct {
+	Show            string              `json:"show"`
+	IncludeTags     []summaryFixtureTag `json:"includeTags"`
+	ExcludeTags     []summaryFixtureTag `json:"excludeTags"`
+	IncludeFeeds    []string            `json:"includeFeeds"`
+	ExcludeFeeds    []string            `json:"excludeFeeds"`
+	StarredOnly     bool                `json:"starredOnly"`
+	MediaOnly       bool                `json:"mediaOnly"`
+	Mentions        bool                `json:"mentions"`
+	IncludeWords    string              `json:"includeWords"`
+	NotMentions     bool                `json:"notMentions"`
+	ExcludeWords    string              `json:"excludeWords"`
+	Quiet           bool                `json:"quiet"`
+	MaxPostsPerWeek string              `json:"maxPostsPerWeek"`
+}
+
+type summaryFixtureWant struct {
+	Sentence string   `json:"sentence"`
+	Count    string   `json:"count"`
+	Feeds    []string `json:"feeds"`
+	RateHint string   `json:"rateHint"`
+}
+
+// summaryFixture returns the fixture's entry for f, given the user's tags
+// and subs.
+func summaryFixture(name string, f timelineForm, tags []rss.Tag, subs []rss.Subscription) summaryFixtureCase {
+	ticked := func(ids []string) []summaryFixtureTag {
+		out := []summaryFixtureTag{}
+		for _, tag := range tags {
+			if slices.Contains(ids, tag.ID) {
+				out = append(out, summaryFixtureTag{tag.ID, tag.Name})
+			}
+		}
+		return out
+	}
+	tickedFeeds := func(ids []string) []string {
+		out := []string{}
+		for _, sub := range subs {
+			if slices.Contains(ids, sub.Feed.ID) {
+				out = append(out, sub.Feed.ID)
+			}
+		}
+		return out
+	}
+	c := summaryFixtureCase{
+		Name:  name,
+		Feeds: []summaryFixtureFeed{},
+		Fields: summaryFixtureFields{
+			Show:            f.Show,
+			IncludeTags:     ticked(f.IncludeTags),
+			ExcludeTags:     ticked(f.ExcludeTags),
+			IncludeFeeds:    tickedFeeds(f.IncludeFeeds),
+			ExcludeFeeds:    tickedFeeds(f.ExcludeFeeds),
+			StarredOnly:     f.StarredOnly,
+			MediaOnly:       f.MediaOnly,
+			Mentions:        f.Mentions,
+			IncludeWords:    f.IncludeWords,
+			NotMentions:     f.NotMentions,
+			ExcludeWords:    f.ExcludeWords,
+			Quiet:           f.Quiet,
+			MaxPostsPerWeek: f.MaxPostsPerWeek,
+		},
+	}
+	for _, sub := range subs {
+		feed := summaryFixtureFeed{ID: sub.Feed.ID, Name: subscriptionName(sub), Tags: []string{}, Rate: sub.Feed.PostsPerWeek}
+		for _, tag := range sub.Tags {
+			feed.Tags = append(feed.Tags, tag.ID)
+		}
+		c.Feeds = append(c.Feeds, feed)
+	}
+	sum := f.summary(tags, subs)
+	c.Summary = summaryFixtureWant{Sentence: sum.Sentence, Count: sum.Count, Feeds: []string{}, RateHint: sum.RateHint}
+	c.Summary.Feeds = append(c.Summary.Feeds, sum.Feeds...)
+	return c
+}
+
+// TestTimelineSummaryFixture builds the timeline form's summary for
+// TestTimelineSentence's and TestTimelineFeedCount's cases and a few more,
+// and checks web/app/features/testdata/timeline-summary.json holds the
+// same; timeline-form.test.ts checks timeline-form.ts against that file.
+// With -update it writes the file instead.
+func TestTimelineSummaryFixture(t *testing.T) {
+	var cases []summaryFixtureCase
+	tags, subs, sentences := timelineSentenceCases()
+	for _, tt := range sentences {
+		cases = append(cases, summaryFixture("sentence: "+tt.name, tt.form, tags, subs))
+	}
+	tags, subs, counts := timelineFeedCountCases()
+	for _, tt := range counts {
+		cases = append(cases, summaryFixture("feed count: "+tt.name, tt.form, tags, subs))
+	}
+	for _, tt := range []struct {
+		name string
+		form timelineForm
+		subs []rss.Subscription
+	}{
+		{"none of the feeds match", timelineForm{Show: "some", IncludeTags: []string{testTagID}, ExcludeTags: []string{testTagID}}, subs},
+		{"the only feed", timelineForm{Show: "all"}, subs[:1]},
+		{"nothing chosen", timelineForm{Show: "some"}, subs},
+		{"a rate hint for one feed", timelineForm{Show: "all", MaxPostsPerWeek: "1"}, subs},
+		{"no rate hint for an invalid number", timelineForm{Show: "all", MaxPostsPerWeek: "zero"}, subs},
+		{"a ticked rate that's too high", timelineForm{Show: "all", Quiet: true, MaxPostsPerWeek: "101"}, subs},
+		{"everything at once", timelineForm{
+			Show: "some", IncludeTags: []string{testTagID}, IncludeFeeds: []string{"f3"}, ExcludeTags: []string{"t2"},
+			StarredOnly: true, MediaOnly: true, Mentions: true, IncludeWords: " AI ,  big   data, ai,,", NotMentions: true, ExcludeWords: "crypto",
+			Quiet: true, MaxPostsPerWeek: "2",
+		}, subs},
+	} {
+		cases = append(cases, summaryFixture("summary: "+tt.name, tt.form, tags, tt.subs))
+	}
+
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(cases); err != nil {
+		t.Fatal(err)
+	}
+	if *updateFixtures {
+		if err := os.WriteFile(timelineSummaryFixture, b.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(timelineSummaryFixture)
+	if err != nil {
+		t.Fatalf("%v; run: go test ./internal/server -run TestTimelineSummaryFixture -update", err)
+	}
+	if !bytes.Equal(got, b.Bytes()) {
+		t.Errorf("%s doesn't match timelineForm.summary; run: go test ./internal/server -run TestTimelineSummaryFixture -update", timelineSummaryFixture)
+	}
 }
 
 func TestTimelineOrderHandler(t *testing.T) {

@@ -1,9 +1,10 @@
+/// <reference types="vitest/config" />
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 // Vite only builds here (vite build, vite build --watch): Go renders every
 // page and serves dist/app under /static, using .vite/manifest.json to link
-// each entry's hashed file.
+// each entry's hashed file. Vitest reads it too, for the tests (npm test).
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   base: "/static/",
@@ -19,5 +20,9 @@ export default defineConfig({
     rolldownOptions: {
       input: ["app/entries/app.ts", "app/styles/main.css"],
     },
+  },
+  test: {
+    // The tests sit next to their modules (share.ts, share.test.ts).
+    environment: "happy-dom",
   },
 });

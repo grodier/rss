@@ -658,6 +658,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   It was picked over Literata on a warm paper background (drifts from the logo's cool palette) and an all-sans option with Instrument Sans and ink outlines on every card (busier).
   Self-hosted like Bricolage, subset to Latin and weights 400–700 (93 KB; the italic, 103 KB, loads only on pages that use it).
   Nav, buttons and forms stay in the system font, so the interface feels native.
+- **While the fonts load, text shows in size-matched fallbacks, with `font-display: swap`** (#546, approved at its design checkpoint): adjusted Arial for Bricolage and adjusted Georgia for Newsreader, sized from the fonts' metrics so the swap barely rewraps anything.
+  `swap` rather than `optional`, which would sometimes show a first visit without the headline font, or `fallback`, which hides text for a moment for little gain over a matched fallback; with the fonts cached for a year, the swap happens once per device.
+  The first frame on Apple devices is adjusted Arial and Georgia rather than system-ui and Charter: closer to the final shape, which the recordings favoured.
+  Each fallback face is tuned for its first `local()` font, so Noto Serif (Linux without Georgia) matches less closely.
+- **Fonts are preloaded only where a page shows them** (#546): Bricolage on every page, upright Newsreader on pages with reading text on their first screen, never the italic, which only some articles use.
 - **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the option or options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Every option comes with a justification (what it fixes, why this way, and what it trades away), so the pick rests on reasons that can be recorded here rather than on taste alone.
   One option is enough when it's clearly right, but it's still shown and justified.
@@ -819,7 +824,7 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 - **No lazy-loaded or inlined CSS**: both need inline code the CSP blocks, lazy CSS flashes unstyled content, and inlining defeats caching; a small, cached stylesheet that blocks rendering is the better trade.
 - **No prefetching of assets, on load or on intent**: the article page shares the reading pages' bundle, so nothing article-specific is left to fetch, and other pages' bundles are small; prefetching the next page itself belongs to "Instant navigation" in backlog.md.
 - **The first card image on a list's first page isn't lazy** (#542) and gets `fetchpriority="high"`: it's usually the largest thing on a phone's first screen, and a lazy image only starts after layout; the rest stay lazy.
-- **Font preloads use the build's URLs** (#546), or the font downloads twice; how text looks while the fonts load is decided at #546's design checkpoint.
+- **Font preloads use the build's URLs** (#546), or the font downloads twice; how text looks while the fonts load is under "Design".
 - **Not now**, each for its reason:
   - A service worker: the HTTP cache with hashed, immutable URLs already does its caching, and offline reading is its own backlog item.
   - 103 Early Hints: they only help first visits to slow pages, and Render's support is unconfirmed.

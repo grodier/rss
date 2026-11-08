@@ -29,10 +29,12 @@ type HousekeepingStore interface {
 	DeleteBefore(ctx context.Context, minutes, hours, runtime time.Time) error
 }
 
-// Housekeeper rolls up and deletes old metrics once an hour. Every instance
-// runs one; the work is idempotent, so they don't need to coordinate.
+// Housekeeper rolls up and deletes old metrics, and deletes all but the
+// newest ErrorsKept server errors, once an hour. Every instance runs one; the
+// work is idempotent, so they don't need to coordinate.
 type Housekeeper struct {
 	Store  HousekeepingStore
+	Errors ErrorTrimmer
 	Logger *slog.Logger
 }
 
@@ -50,10 +52,14 @@ func (h *Housekeeper) Run(ctx context.Context) error {
 	}
 }
 
-// Tidy rolls up and deletes the metrics that are old at now.
+// Tidy rolls up and deletes the metrics that are old at now, and trims the
+// server errors.
 func (h *Housekeeper) Tidy(ctx context.Context, now time.Time) {
 	ctx, cancel := context.WithTimeout(ctx, housekeepingTimeout)
 	defer cancel()
+	if err := h.Errors.Trim(ctx, ErrorsKept); err != nil && ctx.Err() == nil {
+		logger(h.Logger).Error("metrics: trim server errors", "error", err)
+	}
 	if err := h.Store.RollUp(ctx, now.Add(-RollUpAfter)); err != nil {
 		if ctx.Err() == nil {
 			logger(h.Logger).Error("metrics: roll up request metrics", "error", err)

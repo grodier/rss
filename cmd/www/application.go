@@ -132,7 +132,7 @@ func (app *Application) Run() error {
 		app.logger.Info("mail runner off (-mail-workers 0): emails are queued but not sent by this instance")
 	}
 
-	// Request and runtime metrics, for the admin (see "Observability" in
+	// Request and runtime metrics and recent server errors, for the admin (see "Observability" in
 	// docs/decisions.md). Rows name their instance by host name.
 	instance, err := os.Hostname()
 	if err != nil {
@@ -141,9 +141,12 @@ func (app *Application) Run() error {
 	metricsRepo := psql.NewMetricsRepository(db)
 	requestMetrics := &metrics.Requests{Store: metricsRepo, Instance: instance, Logger: app.logger}
 	runtimeMetrics := &metrics.Runtime{Store: metricsRepo, DB: db, Instance: instance, Logger: app.logger}
-	housekeeper := &metrics.Housekeeper{Store: metricsRepo, Logger: app.logger}
+	serverErrors := psql.NewServerErrorRepository(db)
+	errorLog := metrics.NewErrorLog(serverErrors, instance, app.logger)
+	housekeeper := &metrics.Housekeeper{Store: metricsRepo, Errors: serverErrors, Logger: app.logger}
 	background = append(background,
 		named("runtime metrics", runtimeMetrics.Run),
+		named("server error log", errorLog.Run),
 		named("metrics housekeeper", housekeeper.Run))
 
 	services := server.Services{
@@ -169,6 +172,7 @@ func (app *Application) Run() error {
 		Fetcher:             fetcher,
 		Discoverer:          discoverer,
 		Metrics:             requestMetrics,
+		ErrorLog:            errorLog,
 	}
 
 	srvConfig := server.Config{

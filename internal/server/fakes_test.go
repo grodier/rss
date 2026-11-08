@@ -699,3 +699,21 @@ func (f *fakeRecorder) observations() []observation {
 	defer f.mu.Unlock()
 	return append([]observation(nil), f.seen...)
 }
+
+// fakeErrorLog keeps the server errors it's given.
+type fakeErrorLog struct {
+	mu   sync.Mutex
+	errs []rss.ServerError
+}
+
+func (f *fakeErrorLog) Record(e rss.ServerError) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.errs = append(f.errs, e)
+}
+
+func (f *fakeErrorLog) recorded() []rss.ServerError {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]rss.ServerError(nil), f.errs...)
+}

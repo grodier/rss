@@ -1,5 +1,5 @@
-// Package metrics records www's request and runtime metrics in Postgres, for
-// the admin to chart, and rolls up and deletes old rows. See "Observability"
+// Package metrics records www's request and runtime metrics and its recent
+// server errors in Postgres, for the admin, and rolls up and deletes old rows. See "Observability"
 // in docs/decisions.md.
 package metrics
 
@@ -71,7 +71,7 @@ func (r *Requests) Observe(route, method string, status int, d time.Duration, by
 	k := requestKey{
 		period:      now.Truncate(time.Minute),
 		route:       route,
-		method:      normalizeMethod(method),
+		method:      NormalizeMethod(method),
 		statusClass: StatusClass(status),
 	}
 	ms := float64(d) / float64(time.Millisecond)
@@ -178,9 +178,9 @@ func StatusClass(status int) int {
 	return min(max(status/100, 1), 5)
 }
 
-// normalizeMethod keeps the standard methods and folds the rest into
+// NormalizeMethod keeps the standard methods and folds the rest into
 // OTHER, so a client can't add rows by inventing methods.
-func normalizeMethod(m string) string {
+func NormalizeMethod(m string) string {
 	switch m {
 	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
 		http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace:

@@ -534,3 +534,15 @@ type Session struct {
 	User       User
 	LastSeenAt time.Time
 }
+
+// ServerError is one of www's recent 500s or panics (a server_errors row),
+// kept for the admin. Message is internal detail, never shown to users.
+type ServerError struct {
+	ID         int64
+	OccurredAt time.Time
+	Instance   string // os.Hostname() of the process
+	Route      string // chi route pattern, never the URL
+	Method     string
+	Message    string
+	Panic      bool
+}

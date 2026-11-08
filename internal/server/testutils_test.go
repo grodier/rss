@@ -63,6 +63,10 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.Metrics == nil {
 		svc.Metrics = &fakeRecorder{}
 	}
+	// Every 500 is kept; a test that doesn't care drops them.
+	if svc.ErrorLog == nil {
+		svc.ErrorLog = &fakeErrorLog{}
+	}
 	s, err := NewServer(logger, cfg, svc, scs.New())
 	if err != nil {
 		t.Fatal(err)

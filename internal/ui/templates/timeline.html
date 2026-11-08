@@ -7,6 +7,7 @@
   <title>Paper Round - {{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</title>
   <link rel="stylesheet" href="{{asset "app/styles/main.css"}}" />
   {{template "app-head" .Nav}}
+  {{template "reading-font"}}
   <script type="module" src="{{asset "app/entries/app.ts"}}"></script>
 </head>
 

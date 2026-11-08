@@ -17,10 +17,21 @@ var templateFuncs = template.FuncMap{
 	"assetTags": static.Tags,
 }
 
-// pageData is what every admin page's template gets: Section is its section
-// in the nav (admin-links in partials/nav.html), or "".
-type pageData struct {
+// navData is what the admin-nav partial shows: the current section
+// ("overview", or "" on pages outside the sections). Every page's data
+// carries it as Nav, like the reader's pages (#567 adds the admin).
+type navData struct {
 	Section string
+}
+
+// nav returns the navData for an admin page in section.
+func (s *Server) nav(r *http.Request, section string) navData {
+	return navData{Section: section}
+}
+
+// homePage is the Overview's data.
+type homePage struct {
+	Nav navData
 }
 
 // parseTemplates parses the admin's page templates once per process: they're

@@ -1,9 +1,7 @@
-{{/* admin-head is the start of every admin page's head; the page adds its
-     title and {{template "assets" "<group>"}}. The admin follows the
-     system's theme: it has no settings. It's never indexed. */}}
-{{define "admin-head"}}<meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="robots" content="noindex, nofollow" />
+{{/* admin-head is what every admin page's head ends with, like the reader's
+     app-head: the font preload, icons and theme-color. The admin follows
+     the system's theme: it has no settings. It's never indexed. */}}
+{{define "admin-head"}}<meta name="robots" content="noindex, nofollow" />
   <link rel="preload" href="{{asset "shared/fonts/bricolage-grotesque.woff2"}}" as="font" type="font/woff2" crossorigin />
   <link rel="icon" href="{{asset "img/favicon.svg"}}" type="image/svg+xml" />
   <link rel="icon" href="{{asset "img/favicon-32.png"}}" sizes="32x32" type="image/png" />

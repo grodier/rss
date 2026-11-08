@@ -19,8 +19,9 @@ COPY . .
 COPY --from=web /web/dist ./web/dist
 
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/www ./cmd/www
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/admin ./cmd/admin
+# Both binaries in one image, so the reader and the admin always run the same
+# commit; -o into a directory names each after its package (/out/www, /out/admin).
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/ ./cmd/www ./cmd/admin
 
 # Final stage: distroless static includes the CA certificates feed fetching needs
 # and runs as a non-root user. Configuration arrives at runtime, never at build time.

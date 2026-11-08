@@ -3,14 +3,15 @@
 {{define "admin-brand"}}<a class="brand" href="/"><img class="brand-mark" src="{{asset "img/logo.svg"}}" alt=""><span class="brand-name">Paper Round</span><span class="admin-mark">Admin</span></a>{{end}}
 
 {{/* admin-links are the admin's sections, with aria-current on the current
-     one (dot: its name, as the page's data passes it, or ""). A section is
+     one (dot: the page's navData). A section is
      added here, in this order, with its route: Overview, Waitlist, Users,
      Feeds, Queues, Email, Service, Endpoints, Web performance, Audit log. */}}
 {{define "admin-links"}}<ul class="admin-links" role="list">
-      <li><a href="/"{{if eq . "overview"}} aria-current="page"{{end}}>Overview</a></li>
+      <li><a href="/"{{if eq .Section "overview"}} aria-current="page"{{end}}>Overview</a></li>
     </ul>{{end}}
 
-{{/* admin-nav is every admin page's navigation (dot: the current section):
+{{/* admin-nav is every admin page's navigation (dot: the page's .Nav, a
+     navData):
      a sidebar on wide screens; on phones a top bar with the brand and a
      Menu that opens the same links, a <details>, so it needs no script.
      Only one of the two lists shows at any width (shell.css). */}}

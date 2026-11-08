@@ -24,10 +24,16 @@ func (p pinger) PingContext(context.Context) error { return p.err }
 // newTestServer returns a development Server whose database answers.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return newTestServerWith(t, Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}, Services{Database: pinger{}})
+	return newTestServerWith(t, Services{Database: pinger{}})
 }
 
-func newTestServerWith(t *testing.T, cfg Config, services Services) *Server {
+// newTestServerWith returns a development Server with services.
+func newTestServerWith(t *testing.T, services Services) *Server {
+	t.Helper()
+	return newTestServerConfig(t, Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}, services)
+}
+
+func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	t.Helper()
 	s, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, services)
 	if err != nil {
@@ -121,7 +127,7 @@ func TestHeaders(t *testing.T) {
 	}
 	for _, env := range []string{"development", "production"} {
 		t.Run(env, func(t *testing.T) {
-			s := newTestServerWith(t, Config{Port: 4001, Env: env, BaseURL: "https://admin.example.com"}, Services{Database: pinger{}})
+			s := newTestServerConfig(t, Config{Port: 4001, Env: env, BaseURL: "https://admin.example.com"}, Services{Database: pinger{}})
 			for _, path := range []string{"/", "/nope"} {
 				rr := get(t, s, path)
 				for name, value := range want {
@@ -177,7 +183,7 @@ func TestHealthcheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newTestServerWith(t, Config{Port: 4001, Env: "development", Version: "abc123"}, Services{Database: pinger{tt.ping}})
+			s := newTestServerConfig(t, Config{Port: 4001, Env: "development", Version: "abc123"}, Services{Database: pinger{tt.ping}})
 			rr := get(t, s, "/healthcheck")
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)

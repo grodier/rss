@@ -10,14 +10,17 @@ import (
 // allowCandidates are the methods probed, in order, to build the Allow header.
 var allowCandidates = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
 
+// errorPageData is the error page's: like the reader's, plus the nav, with
+// no section current.
 type errorPageData struct {
+	Nav     navData
 	Status  int
 	Title   string
 	Message string
 }
 
 func (s *Server) errorHTML(w http.ResponseWriter, r *http.Request, status int, title, message string) {
-	data := errorPageData{Status: status, Title: title, Message: message}
+	data := errorPageData{Nav: s.nav(r, ""), Status: status, Title: title, Message: message}
 	if err := s.renderHTML(w, status, "error.html", data); err != nil {
 		s.logError(r, err)
 		http.Error(w, http.StatusText(status), status)

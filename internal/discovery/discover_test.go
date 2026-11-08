@@ -628,3 +628,74 @@ func TestDiscoverCheckedDeadline(t *testing.T) {
 		"https://example.com/c.xml page: not fetched (deadline)",
 	)
 }
+
+func TestDiscoverAppLink(t *testing.T) {
+	shared := htmlResp(`<title>Picks</title><link rel="alternate" type="application/atom+xml" href="/shared/abc/feed.atom">`)
+
+	t.Run("address on the app", func(t *testing.T) {
+		for _, addr := range []string{"https://paperround.app/shared/abc", "https://www.PaperRound.app/shared/abc"} {
+			f := &fakeFetcher{responses: map[string]*fetch.Response{addr: shared}}
+			d := &Discoverer{Fetcher: f, AppSiteKey: "paperround.app"}
+			_, err := d.Discover(context.Background(), mustURL(t, addr))
+			if !errors.Is(err, ErrAppLink) {
+				t.Errorf("%s: err = %v, want ErrAppLink", addr, err)
+			}
+			if len(f.gets) != 0 {
+				t.Errorf("%s: gets = %v, want none", addr, f.gets)
+			}
+		}
+	})
+
+	t.Run("redirect to the app", func(t *testing.T) {
+		// One server answers as both hosts: "localhost" redirects to
+		// "127.0.0.1", which stands in for the app.
+		mux := http.NewServeMux()
+		var srvURL *url.URL
+		mux.HandleFunc("/short", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "http://127.0.0.1:"+srvURL.Port()+"/shared/abc", http.StatusFound)
+		})
+		mux.HandleFunc("/shared/abc", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<title>Picks</title><link rel="alternate" type="application/atom+xml" href="/shared/abc/feed.atom">`)
+		})
+		mux.HandleFunc("/shared/abc/feed.atom", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/atom+xml")
+			fmt.Fprint(w, `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Picks</title></feed>`)
+		})
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		srvURL = mustURL(t, srv.URL)
+
+		d := &Discoverer{Fetcher: fetch.New(fetch.Options{AllowPrivate: true}), AppSiteKey: "127.0.0.1"}
+		res, err := d.Discover(context.Background(), mustURL(t, "http://localhost:"+srvURL.Port()+"/short"))
+		if !errors.Is(err, ErrAppLink) {
+			t.Errorf("err = %v (site %+v), want ErrAppLink", err, res.Site)
+		}
+	})
+
+	t.Run("check off", func(t *testing.T) {
+		addr := "https://paperround.app/shared/abc"
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			addr: shared,
+			"https://paperround.app/shared/abc/feed.atom": rssResp("Picks", "https://paperround.app/shared/abc"),
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, addr))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertURLs(t, res.Feeds, "https://paperround.app/shared/abc/feed.atom")
+	})
+
+	t.Run("another site", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://example.com/":         htmlResp(`<link rel="alternate" type="application/rss+xml" href="/feed.xml">`),
+			"https://example.com/feed.xml": rssResp("Example", "https://example.com/"),
+		}}
+		d := &Discoverer{Fetcher: f, AppSiteKey: "paperround.app"}
+		res, err := d.Discover(context.Background(), mustURL(t, "https://example.com/"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertURLs(t, res.Feeds, "https://example.com/feed.xml")
+	})
+}

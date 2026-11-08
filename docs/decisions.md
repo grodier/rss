@@ -193,6 +193,10 @@ Planned in #50 (issues #51–#67).
   With JavaScript it fetches its own URL every 2 s, as live search fetches its own, so it needs no new route, and moves on when the answer changes; the 2 s interval was kept, and polling stops while the page is hidden, so the server sees no more requests than the meta refresh made.
   It doesn't reload itself, which restarted the spinner, sent focus back to the top and had screen readers read the page again every 2 s (WCAG failure F41); without JavaScript it falls back to `<meta http-equiv="refresh">` inside `<noscript>`.
   A redirect to the site page replaces the lookup page in the history, so Back skips the finished lookup.
+- **A link to the app itself is refused, not hidden** (#471; why it never becomes a feed is under "Sharing" in "Filtering and timelines"): discovery refuses an address on the app's own site key before fetching it, and a result on it (a redirect, such as a URL shortener's), so lookups, imports and "Check for new feeds" all refuse it in one place.
+  Search says so in place of Look up, the lookup form with a field error, and an import records it as its own failure, each pointing to another feed reader; the redirect case is rare and fails like any failed lookup, with no copy of its own.
+  Saving such feeds but leaving the app's site out of search and site pages was rejected: a special case in two read paths, the feed still fetched from ourselves over the internet, and its link, token included, still in `feeds`.
+  A feed on another site that names a shared link as its site is refused too; one that only advertises a shared link with `<link rel="alternate">` is saved under its own site, since its publisher made the link public.
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.
   A feed belongs to the first site it was discovered from.
@@ -616,7 +620,7 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **Shared timelines aren't listed in Search** for now: their names and descriptions would be the first user-written text shown to strangers, which brings spam, impersonation and reporting.
   A backlog item.
 - **A link to the app itself never becomes a feed in the catalog** (#471): a shared link looked up or imported in Paper Round would be saved under the app's own site, whose feeds search and the site page list to every account, so one follower would publish an unlisted timeline to everyone.
-  How it's refused is decided in #471.
+  How it's refused is under "Feed discovery".
   Until following picks inside Paper Round is planned ("Your friends' picks" in backlog.md), a shared link is followed in another feed reader.
 - **The privacy policy says what's kept and what sharing publishes**, in the same PR (#381).
 

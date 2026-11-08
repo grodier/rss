@@ -23,6 +23,11 @@ var _ Fetcher = (*fetch.Client)(nil)
 // a non-2xx status.
 var ErrUnreachable = errors.New("discovery: site returned an error status")
 
+// ErrAppLink is returned by Discover for an address, or a result, on the
+// app's own site (Discoverer.AppSiteKey): a link to the app, such as a shared
+// timeline's, never becomes a feed in the catalog.
+var ErrAppLink = errors.New("discovery: link to the app itself")
+
 const (
 	defaultMaxCandidates = 15
 	defaultMaxFeeds      = 10
@@ -82,13 +87,18 @@ const (
 // Discoverer finds the feeds of a site. Zero limits use the defaults.
 type Discoverer struct {
 	Fetcher       Fetcher
-	MaxCandidates int // candidates fetched at most; default 15
-	MaxFeeds      int // feeds returned at most; default 10
-	Concurrency   int // parallel candidate fetches; default 4
+	MaxCandidates int    // candidates fetched at most; default 15
+	MaxFeeds      int    // feeds returned at most; default 10
+	Concurrency   int    // parallel candidate fetches; default 4
+	AppSiteKey    string // the app's own site key; addresses and results on it are refused ("" turns the check off)
 }
 
 // Discover fetches u (from ParseInput) and finds its feeds. The caller sets
 // the overall deadline on ctx.
+//
+// An address on AppSiteKey is refused with ErrAppLink before it is fetched,
+// and so is a result on it (u redirected there, or a feed declares it as its
+// site).
 //
 // Failing to fetch u, or a non-2xx status, is an error. An HTML page is never
 // an error, however malformed or truncated: Discover uses whatever title,
@@ -100,6 +110,23 @@ type Discoverer struct {
 // the error; the lookup and import runners return on any error without
 // reading the result.
 func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
+	if d.isAppSite(SiteKey(u)) {
+		return Result{}, fmt.Errorf("%w: %s", ErrAppLink, u)
+	}
+	res, err := d.discover(ctx, u)
+	if err == nil && d.isAppSite(res.Site.Key) {
+		return Result{}, fmt.Errorf("%w: %s led to %s", ErrAppLink, u, res.Site.URL)
+	}
+	return res, err
+}
+
+// isAppSite reports whether key is the app's own site key.
+func (d *Discoverer) isAppSite(key string) bool {
+	return d.AppSiteKey != "" && key == d.AppSiteKey
+}
+
+// discover is Discover without the AppSiteKey checks.
+func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 	resp, err := d.Fetcher.Get(ctx, u.String(), nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("discovery: fetching %s: %w", u, err)

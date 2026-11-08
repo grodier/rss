@@ -411,4 +411,7 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
   Values that change outside Terraform (the images, the invite code, the SMTP password, `RSS_ALLOW_RESET_TO`) are in `ignore_changes`.
 - **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `reset-db.yml` allows a pre-alpha schema reset, then deploys; `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.
+- **Edge** (#541): Render's Cloudflare edge terminates TLS and serves HTTP/2 and HTTP/3 (`h3` seen in DevTools), compresses responses (Brotli, when the client accepts it), and caches `/static` files ("Common static files", set in Render's dashboard), purging them on every successful deploy.
+  Pages and `/sites/{id}/icon` aren't cached there.
+  Checks and the setting: "Edge caching" in [`infra/README.md`](../infra/README.md).
 - **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Go modules, the frontend's npm packages (Vite and Vitest in one PR), GitHub Actions, the base images and the Terraform providers.

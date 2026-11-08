@@ -798,7 +798,7 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 - **Render's edge cache, not a CDN of our own** (#541): Render already puts Cloudflare in front of the service and caches "Common static files" at no extra charge.
   Proxying our own Cloudflare records would add an `X-Forwarded-For` hop ("Client IP" under "Deployment"), and a separate assets host would cost every first visit a DNS lookup and a TLS handshake that the page's own HTTP/2 connection doesn't.
   Not "All files": logged-out pages send no `Cache-Control`, so the edge would keep them for 2 hours.
-- **HTTP/2, HTTP/3 and compression are the edge's job**: the app doesn't compress responses or speak HTTP/2 itself, and nothing is precompressed; #541 records what production serves.
+- **HTTP/2, HTTP/3 and compression are the edge's job**: the app doesn't compress responses or speak HTTP/2 itself, and nothing is precompressed; production serves HTTP/3 as well as HTTP/2 (#541).
 - **A build step** (#543; this reverses #50's and #163's "one plain file, no build step" under "Overall"): bundling and minifying halves the JavaScript and CSS (with Brotli, `app.js` from 16.8 to about 8.3 KB and `main.css` from 15.8 to about 9.2 KB), and lets the code become tested TypeScript modules that a second site can share.
   - **One npm project in `web/`** for every site (the reader now, an admin site later), with what they share in `web/shared`: not at the repository root, which is the Go module's, and not inside one site's Go package.
     Its output is embedded by a Go package in `web/` that each site's server imports.

@@ -4,10 +4,9 @@ Terraform for production on Render: one Postgres 17 database (`rss-db`), one web
 State lives in the R2 bucket `rss-tfstate`.
 Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own six things that change outside it, and ignores them:
+Terraform doesn't own five things that change outside it, and ignores them:
 
 - **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
-- **`RSS_ALLOW_RESET_TO`**, set by the "Reset production database" workflow.
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
 - **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
@@ -117,21 +116,8 @@ A failed deploy shows up as a failed `deploy` job in CI, and Render emails you.
 
 Run **Actions → Deploy → Run workflow** with an earlier commit's full SHA.
 Its image is still in GHCR.
-Rolling back doesn't undo migrations: the older code runs against the newer schema.
-While pre-alpha, `migrate` refuses the rollback if the migrations differ; going back past a schema change is a reset to the older commit.
-
-### Resetting the database
-
-While pre-alpha, a commit that changes `migrations/*.sql` doesn't deploy: `migrate` refuses to wipe the database, the deploy fails with *"If migrate refused because the migrations changed, run the Reset production database workflow."*, and the old version keeps serving.
-To deploy it:
-
-1. Run **Actions → Reset production database → Run workflow** with the commit's full SHA and `confirm` = `wipe production`.
-2. It sets `RSS_ALLOW_RESET_TO` on the service to that commit's migrations' fingerprint, then deploys the commit; its `migrate` wipes the database and rebuilds it.
-   The variable stays set: it only allows a reset to the schema that has just been reached.
-
-A reset deletes every account, yours included, and testers have to sign up again.
-Getting back in is signing up with the invite link; see "Signing up".
-Nothing seeds an account after a reset.
+Rolling back doesn't undo migrations: the older image runs against the newer schema, and its `migrate` has nothing to apply.
+Every migration works with the version before it (see "Prototype stage" in [`CLAUDE.md`](../CLAUDE.md)), so rolling back one deploy is safe; going further back past a migration that dropped something the older code uses is not.
 
 ### Approving infrastructure applies
 

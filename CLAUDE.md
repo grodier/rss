@@ -10,9 +10,11 @@ Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Rea
 
 ## Prototype stage
 
-The app is pre-alpha and not in production: there are no users or data to preserve.
-That includes pre-alpha testers' data: schema changes still edit the initial migration and wipe the database until this is explicitly changed.
+The app is pre-alpha, but its production data is kept: schema changes are new migrations, never a reset (see "Pre-alpha testing" in `docs/decisions.md`).
+In every other way it's still pre-alpha.
 When new work replaces existing behavior, change or remove the old code instead of keeping it working alongside the new: no compatibility shims, fallbacks, or special cases for rows or flows the old code produced.
+Data is kept, old code isn't: a schema change migrates the existing rows in its own migration, so code never handles rows the old code produced.
+A migration must work with the version still running during a deploy, which overlaps the new one for a few seconds: add a column or table before the code uses it, and drop it only after the code has stopped using it.
 This applies to issues and plans too; if one asks for legacy support, question it.
 Once backwards compatibility is actually needed (after we're in production and past alpha), every compatibility path needs a plan for when and how it gets removed.
 
@@ -35,12 +37,12 @@ go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
-go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up); refuses if they changed since
+go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
 go run ./cmd/www seed            # queue lookups of the seed list's sites (or: make db/seed-sites); production runs it on every deploy
 go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
-make db/reset                            # rebuild the local DB after editing 00001_init.sql
+make db/reset                            # rebuild the local DB from scratch
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
-make db/migrations/new name=<name>       # new migration (only once in production)
+make db/migrations/new name=<name>       # new migration
 docker build -t rss .                    # build the container image (or: make docker/build)
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
@@ -124,9 +126,11 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders.
   Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`).
   Handlers check them with `errors.Is`.
-- Schema changes: while pre-alpha (see "Prototype stage"), edit `migrations/00001_init.sql` directly instead of adding a migration, and rebuild your local database with `make db/reset` afterwards (CI starts from an empty database).
-  `www migrate` refuses to run on a database migrated from different `migrations/*.sql`, so it never wipes data by accident; `make db/reset` is how to get past that locally.
-  Once we're in production, schema changes only go through a **new** goose migration, and migrations already on `main` are never edited.
+- Schema changes: every change is a **new** goose migration (`make db/migrations/new name=<name>`), applied locally with `go run ./cmd/www migrate`.
+  Migrations already on `main` are never edited, renamed or deleted (CI fails a PR that does); fix a mistake with another migration.
+  Each must work with the version still running during a deploy (see "Prototype stage"), and migrates the existing rows it affects.
+  If two branches add the same migration number, the one that merges `main` second renumbers its file (goose refuses duplicate versions).
+  `make db/reset` only rebuilds a local database from scratch.
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page.
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `search`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.

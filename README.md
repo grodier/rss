@@ -86,18 +86,14 @@ Locally, `make db/seed` makes your account without signing up (see [`www create-
 ### `www migrate`
 
 `www migrate [flags]` applies the migrations embedded in the binary and exits; hosts run it before new code goes live.
-While pre-alpha, it refuses to run if `migrations/*.sql` have changed since the database was migrated, instead of wiping it: locally, rebuild the database with `make db/reset`.
+It applies only the migrations the database doesn't have yet, and keeps its data.
 It takes its own flags, also settable by environment variables:
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
-| `-allow-reset-to` | `RSS_ALLOW_RESET_TO` | _(empty)_ | If the migrations have changed, wipe the database and migrate from scratch, but only if this is the new migrations' fingerprint |
-| `-print-fingerprint` | `RSS_PRINT_FINGERPRINT` | `false` | Print the migrations' fingerprint and exit, without opening the database |
 | `-seed` | `RSS_SEED` | `false` | After migrating, queue the seed list's lookups, as [`www seed`](#www-seed) does |
-
-To wipe and rebuild a database other than the local one: `go run ./cmd/www migrate -allow-reset-to "$(go run ./cmd/www migrate -print-fingerprint)"`.
 
 ### `www seed`
 

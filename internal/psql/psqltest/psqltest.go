@@ -4,11 +4,13 @@ package psqltest
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"net/url"
 	"os"
 	"testing"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // DSN returns RSS_TEST_DB_DSN, for tests that need to open their own
@@ -47,4 +49,35 @@ func NewDB(t *testing.T) *sql.DB {
 		t.Fatalf("connect to test database: %v", err)
 	}
 	return db
+}
+
+// NewSchemaDSN creates a new, empty schema in the test database, dropped when
+// the test ends, and returns a DSN whose search_path puts it first, for tests
+// that run migrations without touching public. public stays on the
+// search_path for citext.
+func NewSchemaDSN(t *testing.T) string {
+	t.Helper()
+	admin := NewDB(t)
+	schema := fmt.Sprintf("schema_test_%d", time.Now().UnixNano())
+	name := pq.QuoteIdentifier(schema)
+	if _, err := admin.Exec(`CREATE SCHEMA ` + name); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := admin.Exec(`DROP SCHEMA IF EXISTS ` + name + ` CASCADE`); err != nil {
+			t.Errorf("drop schema: %v", err)
+		}
+	})
+	return withSearchPath(DSN(t), schema+",public")
+}
+
+// withSearchPath adds search_path to dsn, in either of lib/pq's DSN forms.
+func withSearchPath(dsn, path string) string {
+	if u, err := url.Parse(dsn); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		q := u.Query()
+		q.Set("search_path", path)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+	return dsn + " search_path=" + path
 }

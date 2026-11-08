@@ -18,7 +18,7 @@ type RuntimeRow struct {
 	HeapBytes    int64
 	TotalBytes   int64 // memory the Go runtime holds from the OS
 	Goroutines   int
-	GCPauseP99Ms float64 // over the time since the previous sample
+	GCPauseP99Ms float64 // over the minute, since the previous sample
 	DBOpen       int
 	DBInUse      int
 	DBWaitCount  int64 // cumulative, as sql.DBStats reports it
@@ -54,12 +54,14 @@ type Runtime struct {
 	lastPauses []uint64 // the cumulative GC pause counts at the previous sample
 }
 
-// Run writes a sample at the start of every minute until ctx is canceled.
+// Run writes a sample at the end of every minute until ctx is canceled. A
+// sample is stamped with the minute it ends, as request rows are with the
+// minute their requests finished in.
 func (r *Runtime) Run(ctx context.Context) error {
 	if r.Interval <= 0 {
 		r.Interval = defaultInterval
 	}
-	r.Sample(time.Now()) // so the first written sample's GC pauses cover one interval
+	r.Sample(time.Now()) // so the first written sample's GC pauses cover one minute
 	for {
 		t := time.NewTimer(untilNext(time.Now(), r.Interval))
 		select {
@@ -67,7 +69,10 @@ func (r *Runtime) Run(ctx context.Context) error {
 			t.Stop()
 			return nil
 		case now := <-t.C:
-			row := r.Sample(now)
+			// Halfway back through the interval it covers, so the stamp is
+			// the minute just ended even if the timer fires a little early
+			// or late by the wall clock.
+			row := r.Sample(now.Add(-r.Interval / 2))
 			sctx, cancel := context.WithTimeout(ctx, flushTimeout)
 			if err := r.Store.SaveRuntime(sctx, row); err != nil && ctx.Err() == nil {
 				logger(r.Logger).Error("metrics: save runtime metrics", "error", err)
@@ -77,15 +82,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}
 }
 
-// Sample reads the runtime and pool statistics at now, in the minute now is in.
-func (r *Runtime) Sample(now time.Time) RuntimeRow {
+// Sample reads the runtime and pool statistics now, stamped with the minute
+// that at is in.
+func (r *Runtime) Sample(at time.Time) RuntimeRow {
 	if r.samples == nil {
 		r.samples = []rtmetrics.Sample{{Name: metricHeap}, {Name: metricTotal}, {Name: metricGCPauses}}
 	}
 	rtmetrics.Read(r.samples)
 
 	row := RuntimeRow{
-		PeriodStart: now.Truncate(time.Minute),
+		PeriodStart: at.Truncate(time.Minute),
 		Instance:    r.Instance,
 		HeapBytes:   int64(r.samples[0].Value.Uint64()),
 		TotalBytes:  int64(r.samples[1].Value.Uint64()),

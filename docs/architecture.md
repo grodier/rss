@@ -129,7 +129,7 @@ The frontend's npm devDependencies (`web/package.json`) are Vite, which builds t
 **Middleware**, outermost first (`internal/server/router.go`):
 
 1. `logRequest`: one log line per request with status, size and duration.
-2. `recordRequest`: counts the request in the request metrics (`Services.Metrics`) by its chi route pattern, `(unmatched)` when no route matched (404s and 405s), after the handlers return.
+2. `recordRequest`: counts the request in the request metrics (`Services.Metrics`) by its chi route pattern, after the handlers return; a request that never reached a route is `(unmatched)`: 404s, 405s, and the responses of the middleware before routing (`CrossOriginProtection`'s 403s, canonical-host redirects).
 3. `serverTiming`: when an HTML response's headers are written, adds `Server-Timing: app;dur=<ms>`, the server's time so far.
 4. `recoverPanic`: a panic becomes the 500 page.
 5. `redirectToCanonicalHost`: in production, a request for any host but `-base-url`'s gets a 308 to the same path and query there, except `/healthcheck`, which Render calls on the service's internal address.
@@ -289,7 +289,7 @@ Every hour the mail runner deletes sent and failed emails older than 7 days (`De
 
 The metrics components (`internal/metrics`) claim nothing: every instance runs them.
 `metrics.Requests` writes at the start of each minute the counts of the minutes that have ended, keyed by the minute each request finished in, and once more on shutdown, after the server has drained its requests; a failed write is logged and its counts dropped.
-`metrics.Runtime` writes one sample at the start of each minute; its GC pause p99 covers the time since the previous sample.
+`metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
 `metrics.Housekeeper` runs at startup and then hourly: it rolls minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes nothing.
 
 ## Outbound HTTP

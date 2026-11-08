@@ -51,6 +51,24 @@ func TestRecordRequest(t *testing.T) {
 		// chi matches no pattern when the method is wrong.
 		{"wrong method", http.MethodPut, "/privacy", "(unmatched)", http.StatusMethodNotAllowed},
 	}
+	// CrossOriginProtection answers before routing, so its 403s are counted
+	// with no pattern.
+	t.Run("cross-origin 403", func(t *testing.T) {
+		rec := &fakeRecorder{}
+		s := newTestServerWith(t, Services{Metrics: rec})
+		req := httptest.NewRequest(http.MethodPost, "/login", nil)
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", rr.Code)
+		}
+		seen := rec.observations()
+		if len(seen) != 1 || seen[0].route != "(unmatched)" || seen[0].status != http.StatusForbidden {
+			t.Errorf("observed %+v, want one (unmatched) 403", seen)
+		}
+	})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := &fakeRecorder{}

@@ -565,7 +565,11 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
    The Overview (`homeHandler`) is an empty state until #575.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`); `admin/entries/admin.ts` sets up busy forms.
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`); `admin/entries/admin.ts` sets up busy forms.
+5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
+   The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
+   Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
+   Colors are classes (`chart-series-1` to `-3`) set from the tokens, and every text from data is escaped; each `<svg>` has `role="img"`, a `<title>` and a `<desc>` that says what it shows (latest values and ranges, or a histogram's median and 95th percentile, from `Percentile`).
 
 **Start at:**
 
@@ -573,8 +577,9 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. `internal/admin/router.go` and `middleware.go`.
 3. `internal/ui/admin/partials/nav.html` and `home.html`.
 4. `web/admin/styles/base.css`.
+5. `internal/admin/chart/chart.go` (`LineChart.SVG`, `Histogram.SVG`) and `web/admin/styles/partials/chart.css`.
 
-**Tests:** `internal/admin/server_test.go`; `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
+**Tests:** `internal/admin/server_test.go`; `internal/admin/html_test.go`; `internal/admin/chart/chart_test.go` (with golden SVGs in `testdata`, `-update`); `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
 
 ### Login
 

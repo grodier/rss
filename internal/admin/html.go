@@ -9,12 +9,15 @@ import (
 	"path"
 	"sync"
 
+	"github.com/grodier/rss/internal/admin/chart"
 	"github.com/grodier/rss/internal/ui"
 )
 
 var templateFuncs = template.FuncMap{
 	"asset":     static.URL,
 	"assetTags": static.Tags,
+	// chart draws a chart.LineChart or chart.Histogram: {{chart .Latency}}.
+	"chart": func(c chart.Chart) template.HTML { return c.SVG() },
 }
 
 // navData is what the admin-nav partial shows: the current section

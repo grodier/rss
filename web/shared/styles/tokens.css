@@ -37,6 +37,8 @@
     --tone-5-bg: #fbe2e7;
     --tone-6: #22666a;
     --tone-6-bg: #def3f3;
+    /* A chart's third series, after --accent and --brand-strong. */
+    --series-3: #2e7d4f;
     --avatar-icon-bg: #fff;
     --debug-bg: #fffbea;
     --debug-border: #c99a06;
@@ -128,6 +130,7 @@
       --tone-5-bg: #7f384b;
       --tone-6: #d8faf9;
       --tone-6-bg: #006060;
+      --series-3: #6fcf8f;
       --avatar-icon-bg: #e8edf5;
       --debug-bg: #473506;
       --debug-border: #e1b75c;
@@ -171,6 +174,7 @@
     --tone-5-bg: #7f384b;
     --tone-6: #d8faf9;
     --tone-6-bg: #006060;
+    --series-3: #6fcf8f;
     --avatar-icon-bg: #e8edf5;
     --debug-bg: #473506;
     --debug-border: #e1b75c;

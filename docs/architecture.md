@@ -77,7 +77,8 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling | `assets`, `clientip`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling | `assets`, `chart`, `clientip`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function), and percentiles from histogram buckets | — |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |

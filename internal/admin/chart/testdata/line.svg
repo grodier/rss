@@ -1,0 +1,48 @@
+<div class="chart chart-line">
+<ul class="chart-legend" role="list" aria-hidden="true">
+<li class="chart-series-1">
+<span class="chart-key">
+</span>p50</li>
+<li class="chart-series-2">
+<span class="chart-key">
+</span>p95</li>
+</ul>
+<svg class="chart-svg" role="img" height="200">
+<title>Response time</title>
+<desc>Latest, p50 is 33 ms, ranging from 30 ms to 41 ms; p95 is 125 ms, ranging from 110 ms to 180 ms. From Nov 9 12:00 to Nov 9 12:07 UTC. Thresholds: Slow at 160 ms. Marked: Deploy 4f2a1c9 at Nov 9 12:05.</desc>
+<g class="chart-grid">
+<line x1="0" x2="100%" y1="178" y2="178"/>
+<line x1="0" x2="100%" y1="138" y2="138"/>
+<line x1="0" x2="100%" y1="98" y2="98"/>
+<line x1="0" x2="100%" y1="58" y2="58"/>
+<line x1="0" x2="100%" y1="18" y2="18"/>
+</g>
+<line class="chart-threshold" x1="0" x2="100%" y1="50" y2="50"/>
+<line class="chart-marker" x1="71.43%" x2="71.43%" y1="14" y2="178"/>
+<svg class="chart-plot" x="0" y="0" width="100%" height="200" viewBox="0 0 1000 200" preserveAspectRatio="none">
+<path class="chart-series-1" d="M0 152.4L142.86 145.2L285.71 147.6 M714.29 150L857.14 154L1000 151.6"/>
+<path class="chart-series-2" d="M0 82L142.86 34L285.71 66 M714.29 58L857.14 90L1000 78"/>
+</svg>
+<g class="chart-labels">
+<text x="0" y="174">0</text>
+<text x="0" y="134">50</text>
+<text x="0" y="94">100</text>
+<text x="0" y="54">150</text>
+<text x="0" y="14">200 ms</text>
+<text x="0%" y="194" text-anchor="start">12:00</text>
+<text x="28.57%" y="194" text-anchor="middle">12:02</text>
+<text x="57.14%" y="194" text-anchor="middle">12:04</text>
+<text x="85.71%" y="194" text-anchor="middle">12:06</text>
+<text class="chart-marker" x="71.43%" y="10" text-anchor="middle">Deploy 4f2a1c9</text>
+</g>
+<text class="chart-threshold" x="100%" y="50" dx="7" dy="0.35em">Slow</text>
+<g class="chart-end chart-series-2">
+<circle cx="100%" cy="78" r="3"/>
+<text x="100%" y="78" dx="7" dy="0.35em">125 ms</text>
+</g>
+<g class="chart-end chart-series-1">
+<circle cx="100%" cy="151.6" r="3"/>
+<text x="100%" y="151.6" dx="7" dy="0.35em">33 ms</text>
+</g>
+</svg>
+</div>

@@ -1,0 +1,131 @@
+/* The admin's charts, drawn on the server (internal/admin/chart): line
+   charts and histograms. A chart stretches to its container at a fixed
+   height and its text stays 11px or larger; each is its own container, so
+   the time axis and a histogram's bucket labels draw fewer labels when it's
+   narrow. Colors come from the tokens through classes, so dark mode
+   follows. */
+@layer components {
+  .chart {
+    container-type: inline-size;
+    color: var(--text-2);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The series' colors, set on each series' line, end and legend key. */
+  .chart-series-1 {
+    --series: var(--accent);
+  }
+
+  .chart-series-2 {
+    --series: var(--brand-strong);
+  }
+
+  .chart-series-3 {
+    --series: var(--series-3);
+  }
+
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-block-end: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .chart-legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .chart-key {
+    inline-size: 0.875rem;
+    block-size: 2px;
+    border-radius: 1px;
+    background: var(--series);
+  }
+
+  /* A line chart leaves room at its right for each line's latest value and
+     each threshold's label, drawn past the drawing's edge. */
+  .chart-svg {
+    display: block;
+    inline-size: 100%;
+    overflow: visible;
+  }
+
+  .chart-line .chart-svg {
+    inline-size: calc(100% - 3.5rem);
+  }
+
+  .chart-svg text {
+    fill: var(--text-2);
+    font-size: 0.6875rem;
+  }
+
+  /* Labels stay readable where a line crosses them. */
+  .chart-labels text {
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+  }
+
+  .chart-grid line {
+    stroke: var(--border);
+    stroke-width: 1px;
+  }
+
+  .chart-plot {
+    overflow: visible;
+  }
+
+  .chart-plot path {
+    fill: none;
+    stroke: var(--series);
+    stroke-width: 1.75px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .chart-end circle {
+    fill: var(--series);
+  }
+
+  .chart-svg .chart-end text {
+    fill: var(--series);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  line.chart-threshold,
+  line.chart-marker {
+    stroke: var(--text-3);
+    stroke-width: 1px;
+    stroke-dasharray: 4 3;
+  }
+
+  .chart-svg text.chart-marker {
+    fill: var(--text);
+    font-weight: 600;
+  }
+
+  .chart-bars rect {
+    fill: var(--series);
+  }
+
+  /* Fewer axis labels on narrower charts; the widths match those the
+     server thins the labels for (widths in chart.go). */
+  @container (width < 40rem) {
+    .chart-min-lg {
+      display: none;
+    }
+  }
+
+  @container (width < 26rem) {
+    .chart-min-md {
+      display: none;
+    }
+  }
+}

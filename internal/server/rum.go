@@ -80,7 +80,7 @@ func (s *Server) rumHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.decodePostForm(w, r, &form); err != nil {
 		return
 	}
-	view, ok := s.rumView(form, r.UserAgent())
+	view, ok := s.rumView(r, form)
 	if !ok {
 		return
 	}
@@ -89,10 +89,11 @@ func (s *Server) rumHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// rumView returns the view f describes, or false if it can't be stored: its
-// path is no page's, or its navigation type or width isn't valid.
-func (s *Server) rumView(f rumForm, userAgent string) (rss.RUMView, bool) {
-	route, ok := s.rumRoute(f.Path)
+// rumView returns the view f, posted in r, describes, or false if it can't
+// be stored: its path is no page's, or its navigation type or width isn't
+// valid.
+func (s *Server) rumView(r *http.Request, f rumForm) (rss.RUMView, bool) {
+	route, ok := rumRoute(r, f.Path)
 	if !ok || !slices.Contains(rumNavTypes, f.Nav) {
 		return rss.RUMView{}, false
 	}
@@ -100,7 +101,7 @@ func (s *Server) rumView(f rumForm, userAgent string) (rss.RUMView, bool) {
 	if err != nil || width <= 0 {
 		return rss.RUMView{}, false
 	}
-	browser, major := parseBrowser(userAgent)
+	browser, major := parseBrowser(r.UserAgent())
 	return rss.RUMView{
 		Route:         route,
 		NavType:       f.Nav,
@@ -126,13 +127,13 @@ func (s *Server) rumView(f rumForm, userAgent string) (rss.RUMView, bool) {
 }
 
 // rumRoute returns the route pattern of the page at path, such as
-// /feeds/{id}, or false if no page is there. The path itself is never kept:
-// it can hold IDs and tokens.
-func (s *Server) rumRoute(path string) (string, bool) {
+// /feeds/{id}, or false if no page is there, looked up in the router that
+// is serving r. The path itself is never kept: it can hold IDs and tokens.
+func rumRoute(r *http.Request, path string) (string, bool) {
 	if !strings.HasPrefix(path, "/") || strings.Contains(path, "?") {
 		return "", false
 	}
-	route := s.mux.Find(chi.NewRouteContext(), http.MethodGet, path)
+	route := chi.RouteContext(r.Context()).Routes.Find(chi.NewRouteContext(), http.MethodGet, path)
 	return route, route != ""
 }
 

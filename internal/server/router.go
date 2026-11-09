@@ -9,7 +9,6 @@ import (
 
 func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
-	s.mux = router
 
 	// Outermost, so every response is logged, including those from recoverPanic
 	// and CrossOriginProtection.

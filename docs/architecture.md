@@ -387,7 +387,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   If that entry isn't a public address, each server logs a warning once per process.
 - **Internal errors** (the internal columns, Go errors) go to the logs, never to pages, except debug panels.
   `serverErrorHTML` and `serverErrorJSON` also store the errors behind 500s and panics in `server_errors`, by route pattern, never the URL, so no IDs or tokens are kept; only the admin shows them.
-- **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (`Mux.Find`), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.
+- **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (the router's `Find`, through the request's route context), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.
   Every other field is a number, cut to its range (outside it, NULL), or one of a fixed set, a host name or a tag or `data-*` name, else empty, so a beacon can't carry free text; `CrossOriginProtection` lets only same-origin pages post it.
   It's capped per client IP (`rumLimiter`), for every client together (`rumTotalLimiter`), and in rows by the housekeeper (`Trim`); why under "Observability" in decisions.md.
 - **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the default, turns it off for everyone), and both checks run on every request.

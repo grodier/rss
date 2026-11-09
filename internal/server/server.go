@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
@@ -379,10 +378,6 @@ type Server struct {
 
 	sessionManager *scs.SessionManager
 	services       Services
-
-	// mux is the router the server serves (set by router), which rumHandler
-	// resolves beacons' paths to route patterns with.
-	mux *chi.Mux
 
 	// lookupWait is how long POST /lookups waits for a lookup to finish
 	// before redirecting to its status page. Keep it well under WriteTimeout.

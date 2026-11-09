@@ -545,10 +545,10 @@ Pages read them only through the card-value accessors (see "Card values" under "
 
 ## Admin
 
-**Flow.** The admin site is a second binary, `admin`, with its own server on its own origin (production's, `admin.paperround.app`, is #573), for the owner only; this is its skeleton (#562), and later admin issues add its sections.
-It has no login until #567, so `admin serve -env production` refuses to start: it only runs locally (`make run/admin`, http://localhost:4001).
+**Flow.** The admin site is a second binary, `admin`, with its own server on its own origin (production's, `admin.paperround.app`, is #573), for the owner only; this is its skeleton (#562) and login (#567), and later admin issues add its sections.
+Locally it runs with `make run/admin` (http://localhost:4001).
 
-1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`; an unknown subcommand prints the usage and exits 2.
+1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`, and `admin enroll` (below); an unknown subcommand prints the usage and exits 2.
    `parseConfig` reads the flags, each also settable by its `RSS_` variable (`internal/cli`), and `serve` opens a pool of at most `-db-max-open-conns` (3) connections on the reader's database and runs `admin.Server` until a signal.
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
@@ -565,6 +565,29 @@ It has no login until #567, so `admin serve -env production` refuses to start: i
 4. `web/admin/styles/base.css`.
 
 **Tests:** `internal/admin/server_test.go`; `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
+
+### Login
+
+Admins are their own accounts (`admins`), apart from readers, and every admin page but the login's needs one logged in with a password and a second factor (see "The admin's login" in architecture.md).
+
+1. **Enrolling.** `admin enroll -email <email>` (`runEnroll`) reads the password from stdin's first line and checks it like a new reader's (`CheckNewPassword`), refuses an email that's already an admin's, then starts an `admin.Enrollment`: a new TOTP secret, shown as its provisioning URI and as a QR code (`cmd/admin/qr.go`, drawn with half blocks, black on white).
+   It reads codes from the next lines until one matches (3 tries); only then does `Enrollment.Finish` store the admin, with the secret sealed under `-secret-key`, the code's step as the last one used, and 10 new recovery codes' hashes, which it prints once.
+   With `-reset` it replaces an existing admin's password, secret and recovery codes instead (`AdminRepository.Reset`).
+2. **Password.** `POST /login` (`loginFormHandler`) counts the attempt against `loginLimiter`, checks the form, then `AdminRepository.Authenticate`; on success it renews the session token and stores the admin as pending, with the time, and redirects to `/login/code`.
+3. **Code.** `POST /login/code` (`loginCodeFormHandler`) takes the pending admin (5 minutes at most, else back to Log in), counts the attempt against `loginLimiter` and `codeFailureLimiter` (refunded when the code works), and `checkCode`: a recovery code (`normalizeRecoveryCode` accepts any case, spaces or dash) is deleted as it's used; a 6-digit code is checked with `Verify` against the opened secret and its step recorded with `AcceptTOTPStep`, which refuses a step already used, even by a concurrent request.
+   Then it renews the token, stores the admin and when the code was entered, and returns to the page `requireAuthentication` remembered, or the Overview.
+4. **Each request.** `authenticate` loads the session's admin (a deleted admin's session is logged out) for `requireAuthentication` and the nav, which shows the sections, the admin's email and Log out only when someone is logged in.
+5. **Confirming.** `requireRecentCode`, on a destructive action's page and its form at the same path, sends the admin to `/login/code?next=<path>` ("Confirm it's you") when their last code is over 10 minutes old, and the code returns them there.
+6. **Logging out.** `POST /logout` renews the token, removes the admin from the session and shows Log in with a flash.
+
+**Start at:**
+
+1. `cmd/admin/enroll.go` and `internal/admin/enroll.go`.
+2. `internal/admin/login.go`, `sessions.go` and `middleware.go` (`authenticate`, `requireAuthentication`, `requireRecentCode`).
+3. `internal/psql/admins.go`.
+4. `internal/ui/admin/login.html` and `login_code.html`.
+
+**Tests:** `internal/admin/login_test.go`, `enroll_test.go`, `totp_test.go` and `seal_test.go`; `cmd/admin/enroll_test.go` and `qr_test.go`; `internal/psql/admins_test.go`; `internal/ratelimit/ratelimit_test.go`.
 
 ### Observability
 

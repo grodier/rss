@@ -1,13 +1,17 @@
 package admin
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func (s *Server) recoverPanic(next http.Handler) http.Handler {
@@ -73,4 +77,75 @@ func (s *Server) clientIP(r *http.Request) string {
 		})
 	}
 	return ip
+}
+
+type contextKey string
+
+const authenticatedAdminContextKey = contextKey("authenticatedAdmin")
+
+// authenticate loads the logged-in admin, if any, into the request's
+// context. A session whose admin no longer exists is logged out.
+func (s *Server) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := s.sessionManager.GetString(r.Context(), sessionAdminID)
+		if id == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		admin, err := s.services.Admins.Get(r.Context(), id)
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.sessionManager.Remove(r.Context(), sessionAdminID)
+			next.ServeHTTP(w, r)
+			return
+		}
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		ctx := context.WithValue(r.Context(), authenticatedAdminContextKey, admin)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// authenticatedAdmin returns the logged-in admin, set by authenticate. ok is
+// false for anonymous requests.
+func (s *Server) authenticatedAdmin(r *http.Request) (rss.Admin, bool) {
+	admin, ok := r.Context().Value(authenticatedAdminContextKey).(rss.Admin)
+	return admin, ok
+}
+
+// requireAuthentication sends anonymous requests to /login, which brings a
+// GET back to its page once the admin has logged in.
+func (s *Server) requireAuthentication(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := s.authenticatedAdmin(r); !ok {
+			if r.Method == http.MethodGet {
+				s.sessionManager.Put(r.Context(), sessionReturnTo, r.URL.RequestURI())
+			}
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireRecentCode guards a destructive action: when the admin's last code
+// is older than recentCodeWindow, it asks for one again at /login/code,
+// which then returns to the request's path. Put it, inside
+// requireAuthentication, on both the action's page (GET) and its form
+// (POST) at the same path, so the admin returns to the page and submits
+// again.
+func (s *Server) requireRecentCode(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		at := time.Unix(s.sessionManager.GetInt64(r.Context(), sessionCodeAt), 0)
+		if s.now().Sub(at) > recentCodeWindow {
+			back := r.URL.Path
+			if r.Method == http.MethodGet {
+				back = r.URL.RequestURI()
+			}
+			http.Redirect(w, r, "/login/code?next="+url.QueryEscape(back), http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

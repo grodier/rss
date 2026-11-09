@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,15 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/alexedwards/scs/postgresstore"
 
 	"github.com/grodier/rss/internal/admin"
 	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/psql"
 )
-
-// errNoLogin is why the admin refuses to run in production: anyone who
-// reached it could use it. #567 adds the login, and removes the check.
-var errNoLogin = errors.New("admin has no login yet (#567); it only runs locally")
 
 // runServe runs "admin serve [flags]": the admin site, until SIGINT or
 // SIGTERM. It returns the exit code.
@@ -33,10 +33,6 @@ func runServe(args []string, getenv func(string) string, stdout, stderr io.Write
 	if cfg.version {
 		fmt.Fprintln(stdout, version)
 		return 0
-	}
-	if cfg.env == "production" {
-		fmt.Fprintln(stderr, errNoLogin)
-		return 2
 	}
 
 	logger := cli.NewLogger(stdout, cfg.env)
@@ -56,13 +52,23 @@ func serve(cfg config, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
+	key, err := secretKey(cfg, logger)
+	if err != nil {
+		return err
+	}
+
+	store := postgresstore.NewWithConfig(db, postgresstore.Config{TableName: "admin_sessions", CleanUpInterval: 5 * time.Minute})
+	defer store.StopCleanup()
+	sessions := admin.NewSessionManager(store, cfg.env)
+
 	srv, err := admin.New(logger, admin.Config{
 		Port:      cfg.port,
 		Env:       cfg.env,
 		Version:   version,
 		BaseURL:   cfg.baseURL,
 		ProxyHops: cfg.proxyHops,
-	}, admin.Services{Database: db})
+		SecretKey: key,
+	}, admin.Services{Database: db, Admins: psql.NewAdminRepository(db)}, sessions)
 	if err != nil {
 		return err
 	}
@@ -74,4 +80,19 @@ func serve(cfg config, logger *slog.Logger) error {
 	context.AfterFunc(ctx, stop)
 
 	return srv.Serve(ctx)
+}
+
+// secretKey returns -secret-key's key or, in development without one, a new
+// key for this run, with a warning: admins enrolled with another key can't
+// log in (Validate refuses production without one).
+func secretKey(cfg config, logger *slog.Logger) ([]byte, error) {
+	if cfg.secretKey != "" {
+		return parseSecretKey(cfg.secretKey)
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	logger.Warn("no -secret-key (RSS_SECRET_KEY): using a new key for this run, so admins enrolled with another key can't log in; set RSS_SECRET_KEY in .env (openssl rand -hex 32), then admin enroll")
+	return key, nil
 }

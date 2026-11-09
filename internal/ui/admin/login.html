@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Log in - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Log in</h1>
+      </header>
+      <section class="admin-section">
+        {{with .Flash}}
+        <div class="flash">{{.}}</div>
+        {{end}}
+
+        {{$focus := .Form.FirstError "email" "password"}}
+        <form class="admin-form" action="/login" method="post" data-busy>
+          {{range .Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" value="{{.Form.Email}}"
+              autocomplete="username" autocapitalize="none" spellcheck="false"
+              {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+              {{if eq $focus "email"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" autocomplete="current-password"
+              {{with .Form.FieldErrors.password}}aria-invalid="true" aria-describedby="password-error"{{end}}
+              {{if eq $focus "password"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.password}}<p class="error" id="password-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit" data-busy-label="Logging in…"><span data-busy-text>Continue</span></button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

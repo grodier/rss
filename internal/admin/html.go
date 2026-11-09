@@ -18,15 +18,21 @@ var templateFuncs = template.FuncMap{
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", or "" on pages outside the sections). Every page's data
-// carries it as Nav, like the reader's pages (#567 adds the admin).
+// ("overview", or "" on pages outside the sections) and the logged-in
+// admin's email, "" when no one is logged in, which hides the sections and
+// Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {
 	Section string
+	Email   string
 }
 
 // nav returns the navData for an admin page in section.
 func (s *Server) nav(r *http.Request, section string) navData {
-	return navData{Section: section}
+	nav := navData{Section: section}
+	if admin, ok := s.authenticatedAdmin(r); ok {
+		nav.Email = admin.Email
+	}
+	return nav
 }
 
 // homePage is the Overview's data.

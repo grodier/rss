@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -49,9 +51,9 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retryAfter := s.signupLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+	if ok, retryAfter := s.signupLimiter.AllowWithRetry(clientip.RateLimitKey(s.clientIP(r))); !ok {
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderSignup(w, r, http.StatusTooManyRequests, signupPage{Form: form})
 		return
 	}
@@ -129,9 +131,9 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retryAfter := s.loginLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+	if ok, retryAfter := s.loginLimiter.AllowWithRetry(clientip.RateLimitKey(s.clientIP(r))); !ok {
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderLogin(w, r, http.StatusTooManyRequests, loginPage{Form: form, RateLimited: true})
 		return
 	}
@@ -152,8 +154,8 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 	// refunded below unless the password was wrong.
 	emailKey := strings.ToLower(form.Email)
 	if ok, retryAfter := s.loginFailureLimiter.AllowWithRetry(emailKey); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderLogin(w, r, http.StatusTooManyRequests, loginPage{Form: form, RateLimited: true})
 		return
 	}

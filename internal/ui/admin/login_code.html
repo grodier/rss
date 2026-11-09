@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{if .Confirming}}Confirm it's you{{else}}Log in{{end}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>{{if .Confirming}}Confirm it's you{{else}}Log in{{end}}</h1>
+        {{if .Confirming}}<p>This action asks for a new code.</p>{{end}}
+      </header>
+      <section class="admin-section">
+        <form class="admin-form" action="/login/code" method="post" data-busy>
+          {{range .Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          {{with .Form.Next}}<input type="hidden" name="next" value="{{.}}" />{{end}}
+          <div class="field">
+            <label for="code">Code</label>
+            <input type="text" id="code" name="code" autocomplete="one-time-code"
+              autocapitalize="none" spellcheck="false" autofocus
+              aria-describedby="code-hint{{if .Form.FieldErrors.code}} code-error{{end}}"
+              {{with .Form.FieldErrors.code}}aria-invalid="true"{{end}} />
+            {{with .Form.FieldErrors.code}}<p class="error" id="code-error">{{.}}</p>{{end}}
+            <p class="hint" id="code-hint">The 6-digit code from your authenticator app, or one of your recovery codes.</p>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit" data-busy-label="Checking…"><span data-busy-text>{{if .Confirming}}Confirm{{else}}Log in{{end}}</span></button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

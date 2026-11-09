@@ -1,4 +1,4 @@
-package server
+package ratelimit
 
 import (
 	"fmt"
@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func testLimiter(limit int, window time.Duration) (*rateLimiter, *time.Time) {
+func testLimiter(limit int, window time.Duration) (*Limiter, *time.Time) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	l := newRateLimiter(limit, window)
+	l := New(limit, window)
 	l.now = func() time.Time { return now }
 	return l, &now
 }
@@ -54,7 +54,7 @@ func TestRateLimiterWindowResets(t *testing.T) {
 }
 
 func TestRateLimiterConcurrent(t *testing.T) {
-	l := newRateLimiter(100, time.Hour)
+	l := New(100, time.Hour)
 	var mu sync.Mutex
 	allowed := 0
 	var wg sync.WaitGroup
@@ -78,11 +78,11 @@ func TestRateLimiterConcurrent(t *testing.T) {
 func TestRateLimiterSweepsExpiredKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		hit  func(l *rateLimiter, key string)
+		hit  func(l *Limiter, key string)
 		want int
 	}{
-		{"Allow", func(l *rateLimiter, key string) { l.Allow(key) }, 1},
-		{"Refund", func(l *rateLimiter, key string) { l.Refund(key) }, 0},
+		{"Allow", func(l *Limiter, key string) { l.Allow(key) }, 1},
+		{"Refund", func(l *Limiter, key string) { l.Refund(key) }, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestRateLimiterSweepsExpiredKeys(t *testing.T) {
 
 func TestRateLimiterRefund(t *testing.T) {
 	// allowed counts how many hits key gets before it is denied.
-	allowed := func(l *rateLimiter, key string) int {
+	allowed := func(l *Limiter, key string) int {
 		n := 0
 		for n < 10 {
 			if ok, _ := l.AllowWithRetry(key); !ok {
@@ -163,8 +163,8 @@ func TestTooManyAttemptsMessage(t *testing.T) {
 		{10 * time.Minute, "Too many attempts. Try again in 10 minutes."},
 	}
 	for _, tt := range tests {
-		if got := tooManyAttemptsMessage(tt.retryAfter); got != tt.want {
-			t.Errorf("tooManyAttemptsMessage(%v) = %q, want %q", tt.retryAfter, got, tt.want)
+		if got := TooManyAttemptsMessage(tt.retryAfter); got != tt.want {
+			t.Errorf("TooManyAttemptsMessage(%v) = %q, want %q", tt.retryAfter, got, tt.want)
 		}
 	}
 }

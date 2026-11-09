@@ -20,6 +20,7 @@ import (
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 )
@@ -400,58 +401,58 @@ type Server struct {
 	lookupWait time.Duration
 
 	// lookupLimiter caps distinct lookups per user (keyed by user ID).
-	lookupLimiter *rateLimiter
+	lookupLimiter *ratelimit.Limiter
 
 	// importLimiter caps OPML imports per user (keyed by user ID).
-	importLimiter *rateLimiter
+	importLimiter *ratelimit.Limiter
 
 	// refreshLimiter caps feed refreshes per user (keyed by user ID).
-	refreshLimiter *rateLimiter
+	refreshLimiter *ratelimit.Limiter
 
-	// loginLimiter caps login attempts per client IP (keyed by ipRateLimitKey).
-	loginLimiter *rateLimiter
+	// loginLimiter caps login attempts per client IP (keyed by clientip.RateLimitKey).
+	loginLimiter *ratelimit.Limiter
 
 	// loginFailureLimiter caps failed logins per submitted email (lowercased).
-	loginFailureLimiter *rateLimiter
+	loginFailureLimiter *ratelimit.Limiter
 
-	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
-	signupLimiter *rateLimiter
+	// signupLimiter caps signup attempts per client IP (keyed by clientip.RateLimitKey).
+	signupLimiter *ratelimit.Limiter
 
 	// waitlistLimiter caps waitlist joins per client IP (keyed by
-	// ipRateLimitKey).
-	waitlistLimiter *rateLimiter
+	// clientip.RateLimitKey).
+	waitlistLimiter *ratelimit.Limiter
 
 	// passwordChangeLimiter caps password change attempts per user (keyed by
 	// user ID).
-	passwordChangeLimiter *rateLimiter
+	passwordChangeLimiter *ratelimit.Limiter
 
 	// confirmResendLimiter caps confirmation emails sent with Resend per user
 	// (keyed by user ID).
-	confirmResendLimiter *rateLimiter
+	confirmResendLimiter *ratelimit.Limiter
 
 	// resetIPLimiter caps password reset requests per client IP (keyed by
-	// ipRateLimitKey).
-	resetIPLimiter *rateLimiter
+	// clientip.RateLimitKey).
+	resetIPLimiter *ratelimit.Limiter
 
 	// resetEmailLimiter caps password reset requests per submitted email
 	// (lowercased).
-	resetEmailLimiter *rateLimiter
+	resetEmailLimiter *ratelimit.Limiter
 
 	// deleteAccountLimiter caps account deletion attempts per user (keyed by
 	// user ID).
-	deleteAccountLimiter *rateLimiter
+	deleteAccountLimiter *ratelimit.Limiter
 
 	// emailChangeLimiter caps email change requests per user (keyed by user
 	// ID).
-	emailChangeLimiter *rateLimiter
+	emailChangeLimiter *ratelimit.Limiter
 
 	// rumLimiter caps real-user beacons per client IP (keyed by
-	// ipRateLimitKey).
-	rumLimiter *rateLimiter
+	// clientip.RateLimitKey).
+	rumLimiter *ratelimit.Limiter
 
 	// rumTotalLimiter caps every client's real-user beacons together (one
 	// key, ""), which rumLimiter can't: a client can rotate addresses.
-	rumTotalLimiter *rateLimiter
+	rumTotalLimiter *ratelimit.Limiter
 
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
@@ -486,21 +487,21 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		services:              services,
 		sessionManager:        sessionManager,
 		lookupWait:            3 * time.Second,
-		lookupLimiter:         newRateLimiter(10, 10*time.Minute),
-		importLimiter:         newRateLimiter(5, time.Hour),
-		refreshLimiter:        newRateLimiter(10, 10*time.Minute),
-		loginLimiter:          newRateLimiter(20, 10*time.Minute),
-		loginFailureLimiter:   newRateLimiter(10, 15*time.Minute),
-		signupLimiter:         newRateLimiter(10, time.Hour),
-		waitlistLimiter:       newRateLimiter(10, time.Hour),
-		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
-		confirmResendLimiter:  newRateLimiter(3, time.Hour),
-		resetIPLimiter:        newRateLimiter(10, time.Hour),
-		resetEmailLimiter:     newRateLimiter(3, time.Hour),
-		deleteAccountLimiter:  newRateLimiter(10, 10*time.Minute),
-		emailChangeLimiter:    newRateLimiter(5, time.Hour),
-		rumLimiter:            newRateLimiter(120, 10*time.Minute),
-		rumTotalLimiter:       newRateLimiter(600, time.Minute),
+		lookupLimiter:         ratelimit.New(10, 10*time.Minute),
+		importLimiter:         ratelimit.New(5, time.Hour),
+		refreshLimiter:        ratelimit.New(10, 10*time.Minute),
+		loginLimiter:          ratelimit.New(20, 10*time.Minute),
+		loginFailureLimiter:   ratelimit.New(10, 15*time.Minute),
+		signupLimiter:         ratelimit.New(10, time.Hour),
+		waitlistLimiter:       ratelimit.New(10, time.Hour),
+		passwordChangeLimiter: ratelimit.New(10, 10*time.Minute),
+		confirmResendLimiter:  ratelimit.New(3, time.Hour),
+		resetIPLimiter:        ratelimit.New(10, time.Hour),
+		resetEmailLimiter:     ratelimit.New(3, time.Hour),
+		deleteAccountLimiter:  ratelimit.New(10, 10*time.Minute),
+		emailChangeLimiter:    ratelimit.New(5, time.Hour),
+		rumLimiter:            ratelimit.New(120, 10*time.Minute),
+		rumTotalLimiter:       ratelimit.New(600, time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

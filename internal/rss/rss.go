@@ -547,6 +547,29 @@ type Session struct {
 	LastSeenAt time.Time
 }
 
+// Admin is an admin account (an admins row), apart from readers' users: a
+// reader's password never opens the admin.
+type Admin struct {
+	ID    string
+	Email string
+	// TOTPSecret is the sealed TOTP secret (admin.Seal), opened only with
+	// the admin service's key.
+	TOTPSecret []byte
+	// TOTPLastStep is the last 30-second step a code was accepted for; codes
+	// for it and earlier steps are refused, so each works once.
+	TOTPLastStep int64
+	CreatedAt    time.Time
+}
+
+// AdminCredentials are what enrolling an admin sets, and resetting it
+// replaces: the password's hash, the sealed TOTP secret and the recovery
+// codes' hashes.
+type AdminCredentials struct {
+	HashedPassword     []byte
+	SealedTOTPSecret   []byte
+	RecoveryCodeHashes [][]byte
+}
+
 // ServerError is one of www's recent 500s or panics (a server_errors row),
 // kept for the admin. Message is internal detail, never shown to users.
 type ServerError struct {

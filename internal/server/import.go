@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/opml"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -114,7 +115,7 @@ func (s *Server) settingsImportFormHandler(w http.ResponseWriter, r *http.Reques
 
 	userID, _ := s.authenticatedUserID(r)
 	if ok, retryAfter := s.importLimiter.AllowWithRetry(userID); !ok {
-		setRetryAfter(w, retryAfter)
+		ratelimit.SetRetryAfter(w, retryAfter)
 		fail(http.StatusTooManyRequests, "You've started several imports in the last hour. Try again later.")
 		return
 	}

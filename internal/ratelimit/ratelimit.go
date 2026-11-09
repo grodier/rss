@@ -1,4 +1,6 @@
-package server
+// Package ratelimit counts hits per key in fixed windows, for both servers'
+// rate limits, and words the response to a denied request.
+package ratelimit
 
 import (
 	"fmt"
@@ -18,10 +20,10 @@ type windowCount struct {
 	start time.Time
 }
 
-// rateLimiter is an in-memory fixed-window limiter: each key may make limit
+// Limiter is an in-memory fixed-window limiter: each key may make limit
 // hits per window. State is per process; it resets on restart and isn't shared
 // between instances.
-type rateLimiter struct {
+type Limiter struct {
 	mu     sync.Mutex
 	limit  int
 	window time.Duration
@@ -29,8 +31,8 @@ type rateLimiter struct {
 	hits   map[string]*windowCount
 }
 
-func newRateLimiter(limit int, window time.Duration) *rateLimiter {
-	return &rateLimiter{
+func New(limit int, window time.Duration) *Limiter {
+	return &Limiter{
 		limit:  limit,
 		window: window,
 		now:    time.Now,
@@ -39,14 +41,14 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 }
 
 // Allow records a hit for key and reports whether it is within the limit.
-func (l *rateLimiter) Allow(key string) bool {
+func (l *Limiter) Allow(key string) bool {
 	ok, _ := l.AllowWithRetry(key)
 	return ok
 }
 
 // AllowWithRetry is like Allow and also returns how long until key's window
 // ends, which is how long a denied caller should wait.
-func (l *rateLimiter) AllowWithRetry(key string) (ok bool, retryAfter time.Duration) {
+func (l *Limiter) AllowWithRetry(key string) (ok bool, retryAfter time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -62,7 +64,7 @@ func (l *rateLimiter) AllowWithRetry(key string) (ok bool, retryAfter time.Durat
 
 // Refund removes a hit recorded for key, for an attempt that turned out not
 // to count. It does nothing if key has no current window or no hits in it.
-func (l *rateLimiter) Refund(key string) {
+func (l *Limiter) Refund(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -74,7 +76,7 @@ func (l *rateLimiter) Refund(key string) {
 // current returns key's window if it hasn't ended, or nil. It first sweeps
 // expired entries when the map is over maxRateLimitKeys. The caller must hold
 // l.mu.
-func (l *rateLimiter) current(key string, now time.Time) *windowCount {
+func (l *Limiter) current(key string, now time.Time) *windowCount {
 	if len(l.hits) > maxRateLimitKeys {
 		l.sweep(now)
 	}
@@ -87,7 +89,7 @@ func (l *rateLimiter) current(key string, now time.Time) *windowCount {
 
 // currentOrStart is like current, but starts a new window for key when it has
 // none or its window has ended. The caller must hold l.mu.
-func (l *rateLimiter) currentOrStart(key string, now time.Time) *windowCount {
+func (l *Limiter) currentOrStart(key string, now time.Time) *windowCount {
 	c := l.current(key, now)
 	if c == nil {
 		c = &windowCount{start: now}
@@ -97,7 +99,7 @@ func (l *rateLimiter) currentOrStart(key string, now time.Time) *windowCount {
 }
 
 // sweep drops entries whose window has passed. The caller must hold l.mu.
-func (l *rateLimiter) sweep(now time.Time) {
+func (l *Limiter) sweep(now time.Time) {
 	for k, c := range l.hits {
 		if !now.Before(c.start.Add(l.window)) {
 			delete(l.hits, k)
@@ -105,14 +107,14 @@ func (l *rateLimiter) sweep(now time.Time) {
 	}
 }
 
-// setRetryAfter sets the Retry-After header to d in whole seconds, rounded up.
-func setRetryAfter(w http.ResponseWriter, d time.Duration) {
+// SetRetryAfter sets the Retry-After header to d in whole seconds, rounded up.
+func SetRetryAfter(w http.ResponseWriter, d time.Duration) {
 	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.Seconds()))))
 }
 
-// tooManyAttemptsMessage tells a rate-limited user how long to wait,
+// TooManyAttemptsMessage tells a rate-limited user how long to wait,
 // in whole minutes rounded up (at least 1).
-func tooManyAttemptsMessage(retryAfter time.Duration) string {
+func TooManyAttemptsMessage(retryAfter time.Duration) string {
 	minutes := max(int(math.Ceil(retryAfter.Minutes())), 1)
 	if minutes == 1 {
 		return "Too many attempts. Try again in 1 minute."

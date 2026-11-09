@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
@@ -102,9 +104,9 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, retryAfter := s.waitlistLimiter.AllowWithRetry(ipRateLimitKey(s.clientIP(r))); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+	if ok, retryAfter := s.waitlistLimiter.AllowWithRetry(clientip.RateLimitKey(s.clientIP(r))); !ok {
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderWaitlistHost(w, r, http.StatusTooManyRequests, newWaitlistFormData(form))
 		return
 	}

@@ -51,3 +51,18 @@ func FromRequest(r *http.Request, proxyHops int) (ip string, notPublic bool) {
 	addr = addr.Unmap()
 	return addr.String(), !addr.IsGlobalUnicast() || addr.IsPrivate()
 }
+
+// RateLimitKey returns the rate-limit key for ip: the address itself for
+// IPv4 (including IPv4-mapped IPv6), and its /64 prefix for IPv6. An
+// unparsable ip is returned unchanged.
+func RateLimitKey(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	return netip.PrefixFrom(addr, 64).Masked().String()
+}

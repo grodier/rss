@@ -2,12 +2,14 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -35,20 +37,34 @@ func rumBeacon(path string, extra ...string) url.Values {
 	return form
 }
 
-// postRUM sends form to POST /rum as rum.ts does, from a same-origin page
-// with User-Agent ua, and checks the answer is a 204.
-func postRUM(t *testing.T, h http.Handler, form url.Values, ua string) *httptest.ResponseRecorder {
+// rumRequest returns body posted to /rum as rum.ts sends it, from a
+// same-origin page in Chrome.
+func rumRequest(t *testing.T, body string) *http.Request {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req.Header.Set("User-Agent", ua)
+	req.Header.Set("User-Agent", testChromeUA)
+	return req
+}
+
+// serveRUM serves req and checks the answer is a 204, as every beacon's is.
+func serveRUM(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Errorf("POST /rum = %d, want %d", rr.Code, http.StatusNoContent)
 	}
 	return rr
+}
+
+// postRUM sends form as rum.ts does, with User-Agent ua.
+func postRUM(t *testing.T, h http.Handler, form url.Values, ua string) {
+	t.Helper()
+	req := rumRequest(t, form.Encode())
+	req.Header.Set("User-Agent", ua)
+	serveRUM(t, h, req)
 }
 
 // onlyView returns the one view store has, failing the test if it hasn't
@@ -103,24 +119,34 @@ func TestRUMStoresView(t *testing.T) {
 		"inp_target", "data-share-url",
 	), testChromeUA)
 
-	v := onlyView(t, store)
-	f := func(p *float64) string {
-		if p == nil {
-			return "nil"
-		}
-		return fmt.Sprint(*p)
+	// ReceivedAt is left zero, for the database's now().
+	want := rss.RUMView{
+		Route:         "/feeds/{id}",
+		NavType:       "reload",
+		Device:        "phone",
+		Browser:       "chrome",
+		BrowserMajor:  141,
+		Installed:     true,
+		Connection:    "4g",
+		Protocol:      "h2",
+		ReferrerHost:  "news.example.com",
+		TTFBMs:        new(120.5),
+		FCPMs:         new(300.0),
+		LCPMs:         new(610.3),
+		INPMs:         new(96.0),
+		CLS:           new(0.05),
+		DCLMs:         new(420.3),
+		LoadMs:        new(980.0),
+		ServerMs:      new(12.3),
+		TransferBytes: new(int64(12345)),
+		LCPElement:    "img",
+		INPTarget:     "data-share-url",
 	}
-	got := fmt.Sprint(v.Route, v.NavType, v.Device, v.Browser, v.BrowserMajor, v.Installed, v.Connection, v.Protocol,
-		v.ReferrerHost, f(v.TTFBMs), f(v.FCPMs), f(v.LCPMs), f(v.INPMs), f(v.CLS), f(v.DCLMs), f(v.LoadMs),
-		f(v.ServerMs), *v.TransferBytes, v.LCPElement, v.INPTarget)
-	want := fmt.Sprint("/feeds/{id}", "reload", "phone", "chrome", 141, true, "4g", "h2",
-		"news.example.com", "120.5", "300", "610.3", "96", "0.05", "420.3", "980",
-		"12.3", 12345, "img", "data-share-url")
-	if got != want {
-		t.Errorf("view = %s,\nwant   %s", got, want)
-	}
-	if !v.ReceivedAt.IsZero() {
-		t.Errorf("ReceivedAt = %v, want zero (the database's now)", v.ReceivedAt)
+	if got := onlyView(t, store); !reflect.DeepEqual(got, want) {
+		// JSON shows the metrics' values rather than their addresses.
+		g, _ := json.Marshal(got)
+		w, _ := json.Marshal(want)
+		t.Errorf("view =\n%s\nwant\n%s", g, w)
 	}
 }
 
@@ -151,13 +177,7 @@ func TestRUMDropsUnknownPath(t *testing.T) {
 
 func TestRUMDropsUnreadableBeacon(t *testing.T) {
 	_, h, store := newRUMTestServer(t)
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader("path=%zz"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusNoContent {
-		t.Errorf("POST /rum = %d, want %d", rr.Code, http.StatusNoContent)
-	}
+	serveRUM(t, h, rumRequest(t, "path=%zz"))
 	if views := store.recorded(); len(views) != 0 {
 		t.Errorf("stored %+v, want nothing", views)
 	}
@@ -314,14 +334,9 @@ func TestRUMRateLimit(t *testing.T) {
 	}
 
 	// Another address has its own limit.
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(rumBeacon("/").Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := rumRequest(t, rumBeacon("/").Encode())
 	req.RemoteAddr = "198.51.100.7:1234"
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusNoContent {
-		t.Errorf("POST /rum from another address = %d, want %d", rr.Code, http.StatusNoContent)
-	}
+	serveRUM(t, h, req)
 	if n := len(store.recorded()); n != 121 {
 		t.Errorf("stored %d beacons, want 121 with the other address's", n)
 	}
@@ -332,14 +347,9 @@ func TestRUMTotalRateLimit(t *testing.T) {
 	// One beacon from each of 601 addresses, as from a client rotating
 	// them: each is within its own limit, and the total is capped.
 	for i := range 601 {
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(rumBeacon("/").Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req := rumRequest(t, rumBeacon("/").Encode())
 		req.RemoteAddr = fmt.Sprintf("[2001:db8:%x::1]:1234", i)
-		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, req)
-		if rr.Code != http.StatusNoContent {
-			t.Fatalf("POST /rum %d = %d, want %d", i, rr.Code, http.StatusNoContent)
-		}
+		serveRUM(t, h, req)
 	}
 	if n := len(store.recorded()); n != 600 {
 		t.Errorf("stored %d of 601 beacons from as many addresses, want 600", n)
@@ -348,14 +358,9 @@ func TestRUMTotalRateLimit(t *testing.T) {
 
 func TestRUMNoSession(t *testing.T) {
 	_, h, store := newRUMTestServer(t)
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rum", strings.NewReader(rumBeacon("/").Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := rumRequest(t, rumBeacon("/").Encode())
 	req.AddCookie(&http.Cookie{Name: "session", Value: "abc"})
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusNoContent {
-		t.Errorf("POST /rum = %d, want %d", rr.Code, http.StatusNoContent)
-	}
+	rr := serveRUM(t, h, req)
 	if c := rr.Header().Values("Set-Cookie"); len(c) != 0 {
 		t.Errorf("Set-Cookie = %q, want none", c)
 	}

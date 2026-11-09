@@ -15,7 +15,7 @@ var rumCLSBounds = []float64{0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.4, 0.6, 1}
 // buckets in rum_daily, by its metric; a last bucket counts everything above
 // the last bound, and a value on a bound is in that bound's bucket, as in
 // Bucket. The server's time is mostly under 50 ms, so it has the request
-// metrics' DurationBounds, which also lets the admin set it beside them.
+// metrics' DurationBounds.
 var RUMBounds = map[string][]float64{
 	"ttfb":   rumTimeBounds,
 	"fcp":    rumTimeBounds,

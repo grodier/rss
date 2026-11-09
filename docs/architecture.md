@@ -389,7 +389,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   `serverErrorHTML` and `serverErrorJSON` also store the errors behind 500s and panics in `server_errors`, by route pattern, never the URL, so no IDs or tokens are kept; only the admin shows them.
 - **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (`Mux.Find`), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.
   Every other field is a number, cut to its range (outside it, NULL), or one of a fixed set, a host name or a tag or `data-*` name, else empty, so a beacon can't carry free text; `CrossOriginProtection` lets only same-origin pages post it.
-  It's the one route that writes a row per request without a login, so it's capped three ways: per client IP (`rumLimiter`), for every client together (`rumTotalLimiter`), against a client rotating addresses, and by the housekeeper's cap on `rum_views`.
+  It's capped per client IP (`rumLimiter`), for every client together (`rumTotalLimiter`), and in rows by the housekeeper (`Trim`); why under "Observability" in decisions.md.
 - **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the default, turns it off for everyone), and both checks run on every request.
   Its panels show internal details to those accounts only, as escaped text, and only read.
 

@@ -52,9 +52,8 @@ type RUMHousekeepingStore interface {
 
 // Housekeeper rolls up and deletes old metrics and real-user views, and
 // deletes all but the newest ErrorsKept server errors and RUMViewsKept
-// views, once an hour. Every
-// instance runs one; the work is idempotent, so they don't need to
-// coordinate.
+// views, once an hour. Every instance runs one; the work is idempotent, so
+// they don't need to coordinate.
 type Housekeeper struct {
 	Store  HousekeepingStore
 	RUM    RUMHousekeepingStore

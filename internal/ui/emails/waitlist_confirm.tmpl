@@ -1,0 +1,26 @@
+{{define "subject"}}Confirm your place on the Paper Round waitlist{{end}}
+
+{{define "text" -}}
+Hi {{.Name}},
+
+Thanks for joining the Paper Round waitlist. Confirm your place by opening this link:
+
+{{.ConfirmURL}}
+
+We'll email you an invite when there's a place for you.
+
+Didn't ask for this? Leave the waitlist: {{.LeaveURL}}
+
+{{template "text-footer"}}
+{{- end}}
+
+{{define "html" -}}
+{{template "html-start"}}
+<p>Hi {{.Name}},</p>
+<p>Thanks for joining the Paper Round waitlist. Confirm your place by opening this link:</p>
+<p style="margin:24px 0"><a href="{{.ConfirmURL}}" style="display:inline-block;padding:10px 20px;border-radius:999px;background:#111318;color:#ffffff;font-weight:600;text-decoration:none">Confirm your place</a></p>
+<p style="color:#59636e;font-size:14px;word-break:break-all">Or paste this link into your browser: {{.ConfirmURL}}</p>
+<p>We'll email you an invite when there's a place for you.</p>
+<p style="color:#59636e;font-size:14px">Didn't ask for this? <a href="{{.LeaveURL}}" style="color:#59636e">Leave the waitlist</a>: {{.LeaveURL}}</p>
+{{template "html-end"}}
+{{- end}}

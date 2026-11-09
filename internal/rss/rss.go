@@ -528,6 +528,18 @@ const (
 	TokenChangeEmail   = "change_email"
 )
 
+// WaitlistEntry is someone waiting for an invite (a waitlist row). It
+// counts once its address is confirmed.
+type WaitlistEntry struct {
+	ID          string
+	Email       string
+	Name        string
+	Sites       string    // sites they'd like to follow, as typed, at most 500 characters; "" if not answered
+	Source      string    // the ?ref= of the page they joined from; "" if none
+	ConfirmedAt time.Time // zero until the address is confirmed
+	CreatedAt   time.Time
+}
+
 // Session is one logged-in device (a user_sessions row) with its user.
 type Session struct {
 	ID         string

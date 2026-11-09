@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - confirm your place</title>
+  {{template "assets" "solo"}}
+  {{template "app-head"}}
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel">
+      {{template "brand"}}
+      <h1>Confirm your place</h1>
+
+      <form action="/waitlist/confirm" method="post">
+        <p class="solo-text">Confirm {{.Email}} on the Paper Round waitlist.</p>
+        <input type="hidden" name="token" value="{{.Token}}" />
+        <div>
+          <button class="btn-primary btn-block" type="submit">Confirm</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</body>
+
+</html>

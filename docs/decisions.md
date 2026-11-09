@@ -1066,12 +1066,30 @@ In these flows, trade-offs favor the user's experience.
 Planned in #583.
 
 - **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
-- **Joining asks for an email, a name and up to two optional onboarding questions** (#566), whose wording is settled at its design checkpoint.
+- **Joining asks for an email, a name and one optional question, "A few sites you'd like to follow"** (#566, approved at its design checkpoint; #583 had planned up to two questions).
+  Its answers are used: the sites go on the seed list, so their lookups have run before the person arrives, and checking that discovery finds their feeds before their wave is invited catches failures before a new reader's first search.
+  Rejected: "Which feed reader do you use now?", whose answer wouldn't change anything we do; "What do you mostly read?", too vague to act on; and "How many feeds do you follow now?", useful only for planning waves by load, which one more field on the form doesn't justify yet.
   Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
   Every waitlist email has a link to leave the list.
 - **Joining twice says so**: "already on the waitlist" for a confirmed address, a new confirmation email for an unconfirmed one, and "there's already an account" with a link to log in, as signup does ("Helpful errors" above).
 - **Bots meet a honeypot field and a per-IP limit**, not Turnstile yet, which needs a script and a CSP change (backlog, under "Security").
 - **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.
+- **The form sits under the tagline in the landing page's panel** (#566, approved at its design checkpoint), after a divider, with Log in kept as a secondary link above the policy links.
+  Rejected: a "Join the waitlist" button opening a separate page, an extra step for the main thing the page asks.
+  Its intro only says what happens ("Leave your email and we'll send you an invite when there's a place for you."); #566's opening "Paper Round is opening in waves." was cut at the checkpoint.
+- **The tagline is "The sites you follow, in timelines you shape."** (#566, approved at its design checkpoint), replacing "One quiet timeline for the sites you follow.", which several timelines contradict.
+  It names the two things the app does that most readers don't: following sites, and timelines you make yourself.
+  Rejected: "Follow the sites you love, at your own pace." (calm, but says nothing that sets the app apart) and "A calm reader for the sites you follow." (safe, generic).
+- **`/` stays one address for two pages** (#566): the landing page with the form when logged out, the timeline when logged in, as #394 already had it.
+  Rejected: a separate `/waitlist` page, which puts a page between a visitor and joining when `/?ref=` already gives each place a link; moving the app to `/app` so `/` is always the landing page, which reverses opening the app in one request and the installed app's `start_url`; and a landing site of its own, a second deploy whose form posts back to the app anyway.
+  Login-only pages still send a logged-out visitor to Log in, not the waitlist: someone opening `/saved` without a session is almost always a member whose session ended, and Log in brings them back.
+  Log out still goes to Log in too.
+- **`/` is never cached** (`Cache-Control: no-store`, #566): the same address is a public page or someone's timeline depending on the session, which a cache can't see.
+  It had sent no `Cache-Control` at all, unlike the other logged-in pages, which `requireAuthentication` covers.
+- **The form's errors re-render the page that hosts it**, through one function (`renderWaitlistHost`, #566), so the landing page can take the form without changing the join handler.
+- **Log in links to the waitlist** (#566): a visitor who reaches Log in without an account would otherwise have no way on.
+  Signup itself stays unlinked while it needs a code ("A shared invite code replaces `-signup`" under "Security").
+- **One link token per entry, for both its links, that doesn't expire** (#566): the leave link must keep working in later emails (the invite, #574), and joining again while unconfirmed replaces it, so only the newest confirmation link works.
 - **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
   An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
   Invites expire and can be revoked; the token is stored hashed, like email links.

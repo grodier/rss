@@ -491,6 +491,10 @@ Admin and observability:
   `www` opens up to 10 connections; the admin adds its own pool on the same small Postgres plan.
   *Signal:* connection errors, or the waits in #563's runtime metrics rising.
   *Fix:* cap the admin at 3 connections (from the start), or a bigger database plan.
+- [ ] **Unconfirmed waitlist entries are never deleted** (#566).
+  An entry nobody confirms (a typo, or a bot past the honeypot and the per-IP limit) stays in `waitlist` for good, and each join queues an email.
+  *Signal:* unconfirmed rows outnumber confirmed ones several times over, or waitlist emails show up in the outbox's per-day counts against the email limit.
+  *Fix:* delete entries left unconfirmed for 30 days in the housekeeper, and add the bot challenge under "Security".
 
 Background refresh:
 

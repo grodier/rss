@@ -121,6 +121,23 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E23 Account deleted | Delete with the right password | Logged-out landing page, flash | "Your account was deleted. Thanks for trying rss." | n/a | needs work: says "rss", not "Paper Round" (#419) |
 | E24 Log out other devices, none | Settings → Account → Other devices → "Log them out" with one session | Account, flash | "There were no other devices to log out." | n/a | ok |
 
+## Waitlist
+
+The join form is on the logged-out landing page (`/`) and follows the "Forms" conventions; its errors re-render the landing page.
+
+| State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| W1 Join: email missing or invalid | Join with email blank, or `ann` | Landing page, 422, under Email | "Email is required"; "Email must be a valid email address" | Yes | new (#566), not yet reviewed |
+| W2 Join: name blank or too long | Name blank, or 101 characters | Landing page, 422, under Name | "Name is required"; "Name must not be more than 100 characters long" | Yes | new (#566), not yet reviewed |
+| W3 Join: sites too long | 501 characters in "A few sites you'd like to follow" | Landing page, 422, under the field | "Keep this under 500 characters" | Yes | new (#566), not yet reviewed |
+| W4 Join: already on the waitlist | Join with an address whose entry is confirmed | Landing page, 422, under Email | "You're already on the waitlist." | n/a | new (#566), not yet reviewed |
+| W5 Join: unconfirmed address joins again | Join twice without confirming | "Check your email" page | "We sent a link to {email}. Open it to confirm your place on the waitlist." | Yes: only the newest email's link works | new (#566), not yet reviewed |
+| W6 Join: address has an account | Join with A's email | Landing page, 422, under Email, with a "Log in" link | "There's already an account with this email." | Yes | new (#566), not yet reviewed (says so on purpose, as F7) |
+| W7 Join: rate limited | 11 join posts from one IP in an hour | Landing page, 429 with `Retry-After`, alert above the form | "Too many attempts. Try again in 60 minutes." | After the wait; fields kept | new (#566), not yet reviewed |
+| W8 Join: honeypot filled | `curl` a join post with `website=x` (with an `Origin` matching the app) | 303 to "Check your email" | As W5 | n/a: only bots get here; nothing is stored or sent | new (#566), not yet reviewed |
+| W9 Waitlist link unknown, replaced or after leaving | `/waitlist/confirm?token=garbage`; an older confirmation email's link after joining again; either link after leaving | Link-expired page, 410 | "This link has expired" / "Only the link in the newest waitlist email works, and none work once you've left the list." + "Join the waitlist" | Yes | new (#566), not yet reviewed |
+| W10 Confirmed, or left | Confirm or leave from the email | Landing page, flash | "You're on the waitlist. We'll email you when there's a place for you."; "You've left the waitlist. We won't email you again." | n/a | new (#566), not yet reviewed |
+
 ## HTTP errors
 
 Every error page is the same `.solo` panel with a heading, a sentence and "Go to the home page"; logged-in users lose the nav, and the tab title is "Paper Round - error" whatever the status.

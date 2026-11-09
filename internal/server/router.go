@@ -153,6 +153,15 @@ func (s *Server) router() http.Handler {
 			r.Get("/email-change", s.emailChangeHandler)
 			r.Post("/email-change", s.emailChangeFormHandler)
 
+			// The waitlist, for people without an account. Its email links
+			// work in any browser, like the others.
+			r.Post("/waitlist", s.waitlistJoinHandler)
+			r.Get("/waitlist/joined", s.waitlistJoinedHandler)
+			r.Get("/waitlist/confirm", s.waitlistConfirmHandler)
+			r.Post("/waitlist/confirm", s.waitlistConfirmFormHandler)
+			r.Get("/waitlist/leave", s.waitlistLeaveHandler)
+			r.Post("/waitlist/leave", s.waitlistLeaveFormHandler)
+
 			r.Get("/password/forgot", s.forgotPasswordHandler)
 			r.Post("/password/forgot", s.forgotPasswordFormHandler)
 			r.Get("/password/forgot/sent", s.forgotPasswordSentHandler)

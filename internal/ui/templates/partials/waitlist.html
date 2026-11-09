@@ -1,0 +1,52 @@
+{{/* waitlist-form is the form to join the waitlist (POST /waitlist). Its
+     data is the hosting page's, which embeds a waitlistFormData: today the
+     logged-out home page. */}}
+{{define "waitlist-form"}}
+<section class="waitlist" aria-labelledby="waitlist-heading">
+  <h2 id="waitlist-heading">Join the waitlist</h2>
+  <p class="waitlist-intro">Leave your email and we'll send you an invite when there's a place for you.</p>
+
+  {{$focus := .Form.FirstError "email" "name" "sites"}}
+  <form action="/waitlist" method="post" data-busy>
+    {{range .Form.NonFieldErrors}}
+    <div class="error" role="alert">{{.}}</div>
+    {{end}}
+    {{with .Form.Source}}<input type="hidden" name="source" value="{{.}}" />{{end}}
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" value="{{.Form.Email}}"
+        autocomplete="email" autocapitalize="none" spellcheck="false"
+        {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+        {{if eq $focus "email"}}autofocus{{end}} />
+      {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+      {{if .AccountExists}}<p class="hint"><a href="/login">Log in</a></p>{{end}}
+    </div>
+    <div class="field">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" value="{{.Form.Name}}"
+        autocomplete="name" autocapitalize="words"
+        {{with .Form.FieldErrors.name}}aria-invalid="true" aria-describedby="name-error"{{end}}
+        {{if eq $focus "name"}}autofocus{{end}} />
+      {{with .Form.FieldErrors.name}}<p class="error" id="name-error">{{.}}</p>{{end}}
+    </div>
+    <div class="field">
+      <label for="sites">A few sites you'd like to follow (optional)</label>
+      <textarea id="sites" name="sites" rows="2"
+        aria-describedby="sites-hint{{if .Form.FieldErrors.sites}} sites-error{{end}}"
+        {{with .Form.FieldErrors.sites}}aria-invalid="true"{{end}}
+        {{if eq $focus "sites"}}autofocus{{end}}>{{.Form.Sites}}</textarea>
+      <p class="hint" id="sites-hint">Names or addresses, a few is plenty.</p>
+      {{with .Form.FieldErrors.sites}}<p class="error" id="sites-error">{{.}}</p>{{end}}
+    </div>
+    {{/* The honeypot: hidden from people and skipped by the keyboard, so
+         only bots fill it in. */}}
+    <div class="visually-hidden" aria-hidden="true">
+      <label for="website">Website</label>
+      <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" />
+    </div>
+    <div>
+      <button class="btn-primary btn-block" type="submit" data-busy-label="Joining…"><span data-busy-text>Join the waitlist</span></button>
+    </div>
+  </form>
+</section>
+{{end}}

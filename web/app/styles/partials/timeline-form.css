@@ -286,23 +286,6 @@
     padding: 0.5rem 1rem 1.25rem;
   }
 
-  textarea {
-    display: block;
-    inline-size: 100%;
-    padding: 0.6875rem 0.875rem;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--bg);
-    color: var(--text);
-    resize: vertical;
-  }
-
-  textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-
   .choice {
     display: flex;
     align-items: center;

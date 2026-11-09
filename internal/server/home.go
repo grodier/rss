@@ -26,17 +26,20 @@ const homeTabID = "all"
 // for a visit (rss.VisitGap): homeTabID or a custom timeline's ID.
 const tabCookie = "tab"
 
-// homeHandler shows the landing page, or, when logged in, the start tab:
-// the one the tab cookie names, if it's still one of the user's tabs, else
-// the first. It's rendered in place, without a redirect, so opening the app
-// costs one request; its own address stays its tab's (see renderTimeline).
+// homeHandler shows the landing page, with the waitlist form, or, when
+// logged in, the start tab: the one the tab cookie names, if it's still one
+// of the user's tabs, else the first. It's rendered in place, without a
+// redirect, so opening the app costs one request; its own address stays its
+// tab's (see renderTimeline).
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
+	// One address, two pages that depend on the session (and the landing
+	// page can carry a flash): no cache may keep either.
+	w.Header().Set("Cache-Control", "no-store")
+
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
-		data := struct{ Flash string }{Flash: s.sessionManager.PopString(r.Context(), "flash")}
-		if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
-			s.serverErrorHTML(w, r, err)
-		}
+		form := waitlistForm{Source: waitlistSource(r.URL.Query().Get("ref"))}
+		s.renderWaitlistHost(w, r, http.StatusOK, newWaitlistFormData(form))
 		return
 	}
 

@@ -1076,6 +1076,7 @@ Planned in #583.
 - **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.
 - **The form sits under the tagline in the landing page's panel** (#566, approved at its design checkpoint), after a divider, with Log in kept as a secondary link above the policy links.
   Rejected: a "Join the waitlist" button opening a separate page, an extra step for the main thing the page asks.
+  Its intro only says what happens ("Leave your email and we'll send you an invite when there's a place for you."); #566's opening "Paper Round is opening in waves." was cut at the checkpoint.
 - **The tagline is "The sites you follow, in timelines you shape."** (#566, approved at its design checkpoint), replacing "One quiet timeline for the sites you follow.", which several timelines contradict.
   It names the two things the app does that most readers don't: following sites, and timelines you make yourself.
   Rejected: "Follow the sites you love, at your own pace." (calm, but says nothing that sets the app apart) and "A calm reader for the sites you follow." (safe, generic).

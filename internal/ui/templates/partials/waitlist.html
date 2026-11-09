@@ -4,7 +4,7 @@
 {{define "waitlist-form"}}
 <section class="waitlist" aria-labelledby="waitlist-heading">
   <h2 id="waitlist-heading">Join the waitlist</h2>
-  <p class="waitlist-intro">Paper Round is opening in waves. Leave your email and we'll send you an invite when there's a place for you.</p>
+  <p class="waitlist-intro">Leave your email and we'll send you an invite when there's a place for you.</p>
 
   {{$focus := .Form.FirstError "email" "name" "sites"}}
   <form action="/waitlist" method="post" data-busy>

@@ -140,6 +140,7 @@ func TestWaitlistJoin(t *testing.T) {
 			"<h2 id=\"waitlist-heading\">Join the waitlist</h2>",
 			`<p class="alt">Already have an account? <a href="/login">Log in</a></p>`,
 			"<p>The sites you follow, in timelines you shape.</p>",
+			`<p class="waitlist-intro">Leave your email and we'll send you an invite when there's a place for you.</p>`,
 			`<label for="sites">A few sites you'd like to follow (optional)</label>`,
 		)
 		if body := getHome(t, s, "/?ref=Bad%20Ref", false).Body.String(); strings.Contains(body, `name="source"`) {

@@ -42,7 +42,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 - The **request metrics** (`metrics.Requests`) count the requests the server reports in memory and write them to `request_metrics` once a minute.
 - The **runtime sampler** (`metrics.Runtime`) writes the process's memory, goroutines, GC pauses and connection pool to `runtime_metrics` once a minute.
 - The **server error log** (`metrics.ErrorLog`) writes the 500s and panics the server reports to `server_errors`, one at a time, from a buffer.
-- The **metrics housekeeper** (`metrics.Housekeeper`) rolls up and deletes old metrics, and deletes all but the newest 1,000 server errors, every hour.
+- The **metrics housekeeper** (`metrics.Housekeeper`) rolls up and deletes old metrics and real-user views, and deletes all but the newest 1,000 server errors, every hour.
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
 
@@ -90,7 +90,7 @@ Until it has a login (#567), `admin serve -env production` refuses to start.
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
-| `internal/metrics` | Count requests and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics | `rss` |
+| `internal/metrics` | Count requests and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
@@ -123,7 +123,8 @@ Third-party modules and what they're for (CLAUDE.md asks for a justification bef
 | `golang.org/x/text/unicode/norm` | NFKC-normalizing passwords |
 | `honnef.co/go/tools` | `staticcheck`, as a `go tool` |
 
-The frontend's npm devDependencies (`web/package.json`) are Vite, which builds the JavaScript and CSS, TypeScript, which checks the modules' types (`tsc --noEmit`; Vite strips the types when it builds), Prettier, which formats the sources, and Vitest with happy-dom, which tests the modules; they run only at build time and in CI, and nothing from npm reaches the browser but our own code.
+The frontend's npm devDependencies (`web/package.json`) are Vite, which builds the JavaScript and CSS, TypeScript, which checks the modules' types (`tsc --noEmit`; Vite strips the types when it builds), Prettier, which formats the sources, and Vitest with happy-dom, which tests the modules; they run only at build time and in CI.
+Its one dependency, pinned to an exact version, is the only npm code that reaches the browser: `web-vitals`, which measures the real-user metrics' Core Web Vitals (`rum.ts`, below; why under "Observability" in decisions.md).
 
 ## HTTP
 
@@ -142,7 +143,7 @@ The frontend's npm devDependencies (`web/package.json`) are Vite, which builds t
 The admin's middleware (`internal/admin/router.go`) is the same chain without `recordRequest`, `serverTiming` and `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); it has no sessions yet (#567), and its routes are `/static/*`, `/healthcheck` and `/`.
 
 Then the reader's routes are split into groups.
-`/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/privacy`, `/terms` and the shared timeline routes have no session.
+`/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/rum`, `/privacy`, `/terms` and the shared timeline routes have no session.
 All other routes load the session (`sessionManager.LoadAndSave`) and `authenticate` (see "Accounts and sessions" in features.md).
 Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set `Cache-Control: no-store`.
 Routes under `/debug/` are a group inside it with `requireDebug`, which answers 404 unless debug mode is on (see "Debug mode" in features.md).
@@ -152,6 +153,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | Route | Login | What it does |
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
+| `POST /rum` | no | The real-user beacon from `rum.ts`: one page view's metrics, stored in `rum_views` under its path's route pattern; always 204 |
 | `GET /static/*` | no | The built frontend (`web.App`): hashed files under `assets/` and public files with their current `?v=` are cached for a year, others revalidated; an outdated entry's hashed name gets the current file |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
@@ -234,7 +236,7 @@ users ──< user_tokens
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
-request_metrics, runtime_metrics, server_errors (written by each www instance, read by the admin; no foreign keys)
+request_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").
@@ -258,6 +260,8 @@ request_metrics, runtime_metrics, server_errors (written by each www instance, r
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
 - **Metrics:** each instance writes its own `request_metrics` minute rows (named by host name) and `runtime_metrics` rows; the hourly rollup sums every instance's minute rows of an hour into one row per route, method and status class, with `instance` `''`.
   The rollup starts after the newest hourly row and inserts with `ON CONFLICT DO NOTHING`, so every instance runs it and an hour is rolled up once; it only takes whole hours, since an hour that has rows is never rolled up again.
+- **Real-user metrics:** `rum_views` gets a row per beacon, with no user, IP address or URL; the daily rollup counts each whole UTC day's views into one `rum_daily` row per route, device, browser and metric, with its views in the metric's `metrics.RUMBounds` buckets, so the 30 days of views and 13 months of days answer the same percentiles.
+  Like the hourly rollup, it starts after the newest day rolled up, inserts with `ON CONFLICT DO NOTHING` and takes whole days only; a view counts for each metric it reported.
 - **`server_errors`** is capped by count, not age: every instance's housekeeper keeps the newest 1,000 (`Trim`), so a quiet month keeps its errors and a burst can't grow the table past an hour's worth.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
@@ -294,6 +298,8 @@ The metrics components (`internal/metrics`) claim nothing: every instance runs t
 `metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
 `metrics.ErrorLog.Record` never blocks a response: it queues the error in a buffer of 100, dropping it with a warning when the buffer is full, and `Run` writes each with a 2-second timeout, logging and dropping one that fails (the database may be why the request failed).
 `metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
+It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
+Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 
 ## Outbound HTTP
 
@@ -370,6 +376,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | `resetEmailLimiter` | submitted email | 3 password reset requests per hour |
   | `deleteAccountLimiter` | user | 10 per 10 min |
   | `emailChangeLimiter` | user | 5 email change requests per hour |
+  | `rumLimiter` | client IP (IPv6 by /64) | 120 real-user beacons per 10 min; the rest are dropped, still with a 204 |
+  | `rumTotalLimiter` | every client together | 600 real-user beacons per minute, checked after `rumLimiter`; the rest are dropped, still with a 204 |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue` queues about 20 to one address (ignoring case) per hour and returns `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
   It counts, then inserts, so simultaneous requests can slightly exceed 20.
@@ -379,6 +387,9 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   If that entry isn't a public address, each server logs a warning once per process.
 - **Internal errors** (the internal columns, Go errors) go to the logs, never to pages, except debug panels.
   `serverErrorHTML` and `serverErrorJSON` also store the errors behind 500s and panics in `server_errors`, by route pattern, never the URL, so no IDs or tokens are kept; only the admin shows them.
+- **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (the router's `Find`, through the request's route context), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.
+  Every other field is a number, cut to its range (outside it, NULL), or one of a fixed set, a host name or a tag or `data-*` name, else empty, so a beacon can't carry free text; `CrossOriginProtection` lets only same-origin pages post it.
+  It's capped per client IP (`rumLimiter`), for every client together (`rumTotalLimiter`), and in rows by the housekeeper (`Trim`); why under "Observability" in decisions.md.
 - **Debug mode:** only accounts listed in `-debug-emails` can turn it on (empty, the default, turns it off for everyone), and both checks run on every request.
   Its panels show internal details to those accounts only, as escaped text, and only read.
 
@@ -404,7 +415,8 @@ Beyond those:
   The manifest and the `theme-color` metas repeat `--bg`, as they can't read CSS custom properties: the manifest the light one, and `app-head` the user's theme's on logged-in pages (they pass it their navData), else a light and dark pair with `prefers-color-scheme` media queries.
 - **Page groups** (#547): each page loads only the CSS and JavaScript of its group, named once in its head, `{{template "assets" "<group>"}}` (`partials/head.html`).
   A group is a sheet, `web/app/styles/<group>.css`, an entry, `web/app/entries/<group>.ts`, or both; an entry imports the modules its pages use and sets them up, and can import another group's sheet, which Vite lists as its CSS.
-  The groups: `reading` (timelines, Saved, feeds, sites, articles, the debug inspectors), `search` (Search, a lookup), `settings` (no script: the Settings pages without one, My feeds, tags, a subscription's edit page, New timeline and a timeline's share page), `timelines` (the Timelines page and the timeline form, with `settings.css`), `account` (the Settings pages with password fields, Import and an import's progress, with `settings.css`), `solo` (no script: logged-out pages, errors, the policies, a shared timeline) and `login` (Log in, Sign up and Reset password, with `solo.css`).
+  The groups: `reading` (timelines, Saved, feeds, sites, articles, the debug inspectors), `search` (Search, a lookup), `settings` (the Settings pages with no enhancement of their own, My feeds, tags, a subscription's edit page, New timeline and a timeline's share page), `timelines` (the Timelines page and the timeline form, with `settings.css`), `account` (the Settings pages with password fields, Import and an import's progress, with `settings.css`), `solo` (logged-out pages, errors, the policies, a shared timeline) and `login` (Log in, Sign up and Reset password, with `solo.css`).
+  Every group has an entry, since every page sends the real-user beacon: `settings` and `solo` only set up `rum.ts`, and every entry sets it up first.
   `assetTags` (`internal/server/static.go`, through `Assets.Tags` in `internal/assets`), built once per group at startup from the manifest, writes the head's tags in this order: stylesheets (`base.css`, the group's sheet, then the CSS the entry and its chunks list), a `<link rel="modulepreload">` for each chunk the entry imports, recursively (so they download alongside it rather than after it), then the entry's `<script type="module">`, each file once.
   Everything loads at once from the head: nothing is imported when a feature's markup is found, as an enhancement would then arrive a round trip late.
   An unknown group is an error, which fails the page's template; `TestPagesNameOneGroup` checks every page names one.
@@ -438,7 +450,7 @@ Beyond those:
   `timeline-tabs.ts` puts the row back where the reader left it on the previous tab page (its `scrollLeft`, saved to `sessionStorage` in `pageswap` for the URL being opened), but only before the row is first seen (in `pagereveal` during a transition, else when nothing has been painted), and scrolls the current tab into view where `scroll-initial-target` isn't supported; on the page being left it unnames an underline scrolled out of the row (`data-unnamed`), whose unclipped snapshot would slide in from outside it.
 - **The enhancements** are TypeScript modules, one per enhancement, set up in order by the entries of the page groups whose pages use them (`web/app/entries`, above); those another site could reuse are in `web/shared/lib`, the reader's in `web/app/features`.
   Each exports a setup function (`init`, or one that takes a root, like `localizeTimes`, for rows added later) and runs nothing on import.
-  There are fifteen, each hooked onto server-rendered markup or page events: local times (`local-times.ts`, `<time data-local>`), read pings (`read-pings.ts`, `<a ping>` → `navigator.sendBeacon`), Back and Forward without a view transition (`back-forward.ts`; the page being left skips it in `pageswap` when `activation.navigationType` is `traverse`, which runs whenever the script has loaded, so it needn't block rendering; where there's no activation, a page restored from the back/forward cache skips it in `pagereveal`), Save and Star buttons (`save-star.ts`, `form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally; `aria-disabled` while the request runs, dimmed by `data-busy` only after `--delay-busy`, and `data-just-toggled` on a button just turned on, which `rows.css` animates), Share buttons (`share.ts`, `button[data-share-url]`, rendered hidden and shown by the script; the share sheet, else the clipboard), busy forms (`busy-forms.ts`, `form[data-busy]`: the slow forms post normally, and their button is `aria-disabled` at once, takes its `data-busy-label` and ignores further submits, then shows a spinner and announces the label after `--delay-busy`; restored on `pageshow` from the back/forward cache), video embeds (`video-embeds.ts`, `figure.embed[data-embed]`), the "You were here" beacon (`seen-beacon.ts`, `.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is first shown and each time it's hidden), infinite scroll (`infinite-scroll.ts`, `.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`live-search.ts`, `form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), lookup and import status (`lookup-status.ts` and `import-status.ts`, `[data-lookup-poll]` and `[data-import-poll]`, sharing `pollSelf` from `poll-self.ts`: the page fetches itself every 2 s while visible, with the meta refresh in `<noscript>`; the lookup page follows a redirect to the site page with `location.replace`, and swaps in and announces a failure or "No feeds"; the import page inserts new rows and groups by `data-position` without replacing any, updates its progress line silently, and announces only the finish), the tab row (`timeline-tabs.ts`: its scroll, and the underline's move between tabs, above), the timeline form's live summary and feed filter boxes (`timeline-form.ts`, `form[data-timeline-form]`), reordering on `/timelines` (`reorder.ts`, `ul[data-reorder]`: drag handles and in-place move buttons, posting the order to `/timelines/order`; rows glide into place on springs with the Web Animations API, not a view transition, and a drag scrolls the page near its edges), and a show/hide toggle on every password input (`password-toggle.ts`).
+  There are sixteen, each hooked onto server-rendered markup or page events: the real-user metrics (`rum.ts`, `setupRUM`, on every page: `web-vitals` reports every change to LCP, INP, CLS, FCP and TTFB, and the first time the page is hidden it sends them with the navigation entry's timings and coarse context to `POST /rum` with `navigator.sendBeacon`, once per view, a page restored from the back/forward cache being a new one; see "Observability" in features.md), local times (`local-times.ts`, `<time data-local>`), read pings (`read-pings.ts`, `<a ping>` → `navigator.sendBeacon`), Back and Forward without a view transition (`back-forward.ts`; the page being left skips it in `pageswap` when `activation.navigationType` is `traverse`, which runs whenever the script has loaded, so it needn't block rendering; where there's no activation, a page restored from the back/forward cache skips it in `pagereveal`), Save and Star buttons (`save-star.ts`, `form[data-toggle]`, posted with `fetch`; success is a `204`, and on any failure the form submits normally; `aria-disabled` while the request runs, dimmed by `data-busy` only after `--delay-busy`, and `data-just-toggled` on a button just turned on, which `rows.css` animates), Share buttons (`share.ts`, `button[data-share-url]`, rendered hidden and shown by the script; the share sheet, else the clipboard), busy forms (`busy-forms.ts`, `form[data-busy]`: the slow forms post normally, and their button is `aria-disabled` at once, takes its `data-busy-label` and ignores further submits, then shows a spinner and announces the label after `--delay-busy`; restored on `pageshow` from the back/forward cache), video embeds (`video-embeds.ts`, `figure.embed[data-embed]`), the "You were here" beacon (`seen-beacon.ts`, `.article-list[data-seen-up-to]` → `navigator.sendBeacon` when the page is first shown and each time it's hidden), infinite scroll (`infinite-scroll.ts`, `.pager a[rel=next]`, appending rows and the `.timeline-divider`), live search (`live-search.ts`, `form[data-live-search]`: as the reader types, it fetches `/search?q=…` and swaps in its `[data-search-results]`), lookup and import status (`lookup-status.ts` and `import-status.ts`, `[data-lookup-poll]` and `[data-import-poll]`, sharing `pollSelf` from `poll-self.ts`: the page fetches itself every 2 s while visible, with the meta refresh in `<noscript>`; the lookup page follows a redirect to the site page with `location.replace`, and swaps in and announces a failure or "No feeds"; the import page inserts new rows and groups by `data-position` without replacing any, updates its progress line silently, and announces only the finish), the tab row (`timeline-tabs.ts`: its scroll, and the underline's move between tabs, above), the timeline form's live summary and feed filter boxes (`timeline-form.ts`, `form[data-timeline-form]`), reordering on `/timelines` (`reorder.ts`, `ul[data-reorder]`: drag handles and in-place move buttons, posting the order to `/timelines/order`; rows glide into place on springs with the Web Animations API, not a view transition, and a drag scrolls the page near its edges), and a show/hide toggle on every password input (`password-toggle.ts`).
   The polite live region they announce in is `announce.ts`'s, and `--delay-busy` is read once by `busy-delay.ts`.
   Each module's behavior is tested in its `*.test.ts` (see Testing); `internal/server/scroll_test.go` pins the markup the modules rely on, and `search_test.go` (`TestLiveSearchMarkup`) live search's.
 

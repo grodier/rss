@@ -106,15 +106,14 @@ func TestAssetTags(t *testing.T) {
 	tests := []struct {
 		group  string
 		sheets []string // in order
-		script bool
 	}{
-		{"reading", []string{sheet("base"), sheet("reading")}, true},
+		{"reading", []string{sheet("base"), sheet("reading")}},
 		// An entry that imports another group's sheet links it.
-		{"timelines", []string{sheet("base"), sheet("settings")}, true},
-		{"login", []string{sheet("base"), sheet("solo")}, true},
-		// A group without an entry: stylesheets only.
-		{"settings", []string{sheet("base"), sheet("settings")}, false},
-		{"solo", []string{sheet("base"), sheet("solo")}, false},
+		{"timelines", []string{sheet("base"), sheet("settings")}},
+		{"login", []string{sheet("base"), sheet("solo")}},
+		// A group with a sheet and an entry of its own links both.
+		{"settings", []string{sheet("base"), sheet("settings")}},
+		{"solo", []string{sheet("base"), sheet("solo")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.group, func(t *testing.T) {
@@ -144,12 +143,6 @@ func TestAssetTags(t *testing.T) {
 			}
 			if !slices.Equal(sheets, tt.sheets) {
 				t.Errorf("stylesheets = %q, want %q", sheets, tt.sheets)
-			}
-			if !tt.script {
-				if len(preloads)+len(scripts) > 0 {
-					t.Errorf("a group without an entry has preloads %q and scripts %q", preloads, scripts)
-				}
-				return
 			}
 			if !slices.Equal(scripts, []string{entryJS(tt.group)}) {
 				t.Errorf("scripts = %q, want only %q", scripts, entryJS(tt.group))

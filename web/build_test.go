@@ -134,11 +134,13 @@ type manifestEntry struct {
 
 // The reading pages' budgets, gzipped: their JavaScript (the reading entry
 // and the chunks it imports) and their CSS (base.css, reading.css and the
-// entry's CSS). Each is what #547 measured plus 10%. The reading pages are
-// where readers spend their time, so growing them is a decision: raise a
-// budget only in a PR that says why in its description.
+// entry's CSS). Each is what was last measured plus 10%: the CSS by #547,
+// the JavaScript by #565, which added the real-user metrics (web-vitals and
+// rum.ts, 3,971 bytes of it). The reading pages are where readers spend
+// their time, so growing them is a decision: raise a budget only in a PR
+// that says why in its description.
 const (
-	readingJSBudget  = 5970  // 5427 measured
+	readingJSBudget  = 10360 // 9418 measured
 	readingCSSBudget = 10210 // 9284 measured
 )
 

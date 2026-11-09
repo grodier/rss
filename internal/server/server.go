@@ -297,6 +297,11 @@ type ErrorRecorder interface {
 	Record(e rss.ServerError)
 }
 
+// RUMStore stores the real-user beacons; satisfied by *psql.RUMRepository.
+type RUMStore interface {
+	Record(ctx context.Context, v rss.RUMView) error
+}
+
 var (
 	_ ArticleStore      = (*psql.ArticleRepository)(nil)
 	_ FeedRefresher     = (*ingest.Refresher)(nil)
@@ -320,6 +325,7 @@ var (
 	_ SiteDiscoverer    = (*discovery.Discoverer)(nil)
 	_ RequestRecorder   = (*metrics.Requests)(nil)
 	_ ErrorRecorder     = (*metrics.ErrorLog)(nil)
+	_ RUMStore          = (*psql.RUMRepository)(nil)
 )
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -351,6 +357,7 @@ type Services struct {
 	Database            DatabasePinger
 	Metrics             RequestRecorder
 	ErrorLog            ErrorRecorder
+	RUMService          RUMStore
 }
 
 type Server struct {
@@ -418,6 +425,14 @@ type Server struct {
 	// ID).
 	emailChangeLimiter *rateLimiter
 
+	// rumLimiter caps real-user beacons per client IP (keyed by
+	// ipRateLimitKey).
+	rumLimiter *rateLimiter
+
+	// rumTotalLimiter caps every client's real-user beacons together (one
+	// key, ""), which rumLimiter can't: a client can rotate addresses.
+	rumTotalLimiter *rateLimiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
@@ -463,6 +478,8 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		resetEmailLimiter:     newRateLimiter(3, time.Hour),
 		deleteAccountLimiter:  newRateLimiter(10, 10*time.Minute),
 		emailChangeLimiter:    newRateLimiter(5, time.Hour),
+		rumLimiter:            newRateLimiter(120, 10*time.Minute),
+		rumTotalLimiter:       newRateLimiter(600, time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

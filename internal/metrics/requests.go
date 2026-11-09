@@ -1,6 +1,7 @@
 // Package metrics records www's request and runtime metrics and its recent
-// server errors in Postgres, for the admin, and rolls up and deletes old rows. See "Observability"
-// in docs/decisions.md.
+// server errors in Postgres, for the admin, and rolls up and deletes old rows,
+// the real-user views' included (see RUMBounds). See "Observability" in
+// docs/decisions.md.
 package metrics
 
 import (

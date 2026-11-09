@@ -137,13 +137,23 @@ Planned in #583 with the admin, which is where it's read.
   Requests that never reach a route (404s, 405s, and middleware's responses before routing, such as cross-origin 403s) share one route, `(unmatched)`, and methods outside the standard ones share `OTHER`, so clients can't add rows (#563).
 - **A `Server-Timing` header gives the browser the server's time** (#563), so real-user TTFB splits into server and network; it carries durations only.
 - **Real-user metrics: one beacon per page view** (#565), sent when the page is hidden, with Core Web Vitals (LCP, INP, CLS), loading timings and coarse context (device class, installed or not, browser family).
-  Measured with Google's `web-vitals` package (about 2 KB), the frontend's first runtime library: its INP and CLS rules (session windows, back/forward cache, background tabs, prerendering) are easy to get subtly wrong, and it matches what Chrome reports.
+  Measured with Google's `web-vitals` package (planning had it at about 2 KB; version 6, which #565 pins, is 3.3 KB with Brotli, and 4 KB gzipped with `rum.ts`, on every page and cached), the frontend's first runtime library: its INP and CLS rules (session windows, back/forward cache, background tabs, prerendering) are easy to get subtly wrong, and it matches what Chrome reports.
   Rejected: Cloudflare Web Analytics, a third-party script and processor that also needs a proxied DNS record.
 - **Beacons carry no identifiers**: no cookie, user ID, IP address or URL.
   The server resolves the page's path to its route pattern and drops the path; another site's referrer is kept as a host only.
   So there are page views, not visitors or sessions.
   The beacon stores nothing in the browser either, so "no cookie banner" (under "Accounts") stands; the privacy policy says what's measured.
-- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days and daily rollups for 13 months (#563, #565).
+- **Every browser on iOS and iPadOS counts as Safari** (#565): they all use Safari's engine, so Chrome or Firefox there measures what Safari does (no LCP or INP before 26.2), and counting them under their own names would mix WebKit's gaps into Chrome's and Firefox's numbers.
+  Only Safari's own User-Agent gives the engine's version, so the others' major version is 0 (unknown).
+  Other browsers built on Chromium count as Chrome, by its version, except Edge and Samsung Internet, which have families of their own.
+- **Real-user histograms bound the Core Web Vitals' thresholds** (#565): times are roughly log-spaced from 50 ms to 20 s with each metric's "good" and "poor" limits among the bounds, and CLS from 0.01 to 1 with 0.1 and 0.25, so the share of good and poor views is exact rather than interpolated.
+  The server's time has the request metrics' bounds (5 ms to 10 s), since it's mostly under 50 ms.
+  A day is rolled up an hour after it ends (UTC), so the day's last beacons are in.
+- **The beacon is capped three ways** (#565), as it's the one route that writes a row per request without a login: 120 beacons per client IP per 10 minutes, 600 a minute per instance from every client together, and the newest 500,000 raw views kept, whatever the rollup does.
+  The per-IP limit alone can be got round by rotating addresses (an IPv6 /48 holds 65,536 /64s), and a full disk would take the whole app down, not just its metrics; beacons past a cap are dropped, real ones too, which only loses measurements.
+  The total also bounds a day's views, at 864,000 per instance, whose rollup took about 6 s on a local database, inside the housekeeping's minute.
+  Not prevented, as nothing identifies a beacon's sender: plausible made-up values, which can outweigh real ones on a quiet route.
+- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days (at most 500,000) and daily rollups for 13 months (#563, #565).
 - **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
 - **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
 - **Availability is checked from both sides** (#576): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
@@ -895,6 +905,7 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 - **Bundles by page group, not by feature** (#547): a few entries (reading pages, Search, Timelines, account forms), each template naming its group once, with stylesheets, `modulepreload`s and the module script written into the head from Vite's manifest.
   Not `import()` when a feature's markup turns up: enhancements would arrive a round trip late, buttons revealed by script would shift the layout, and the deferred `pagereveal` listener (#521) would miss more often.
   - **A group is a sheet, an entry or both, by name, and an entry can import another group's sheet** (#547): a page that loads no script stays without one while sharing the stylesheet of pages that do (Settings pages without password fields, `settings`; those with them, `account`), and Vite links the imported sheet as the same file, so it's cached once.
+    Since #565 every page loads a script, as every page sends the real-user beacon ("Observability"): `settings` and `solo` have entries that set up only that, and the groups stay as they were.
   - **One sheet for Settings, My feeds, tags and Timelines** (#547; planning had `settings.css` and `timelines.css`): their pages share most partials (the timeline form's choices are Settings > Reading's too, and its tag checklist a tag page's), so two sheets would be nearly the same file.
     The reading pages, where readers spend their time, keep a sheet of their own.
   - **The partials keep one order, and every sheet imports them in it, with `press.css` last** (#547): `base.css` followed by any one sheet is then the cascade one stylesheet of every partial would be, for the rules that match the page, so splitting the CSS can't change how a page looks.

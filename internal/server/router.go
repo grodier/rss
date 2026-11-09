@@ -47,6 +47,11 @@ func (s *Server) router() http.Handler {
 
 	router.Get("/healthcheck", s.healthcheckHandler)
 
+	// The real-user beacon needs no session, so a beacon never loads or saves
+	// one: it carries no identifiers (see "Observability" in
+	// docs/decisions.md).
+	router.Post("/rum", s.rumHandler)
+
 	// The policy pages need no session: they're the same for everyone.
 	router.Get("/privacy", s.privacyHandler)
 	router.Get("/terms", s.termsHandler)

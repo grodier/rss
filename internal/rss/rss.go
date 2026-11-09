@@ -546,3 +546,30 @@ type ServerError struct {
 	Message    string
 	Panic      bool
 }
+
+// RUMView is one page view's real-user metrics, from the beacon a page sends
+// when it's hidden (a rum_views row). It carries no identifiers: no user, IP
+// address or URL. A nil metric wasn't reported.
+type RUMView struct {
+	ReceivedAt    time.Time // zero for now
+	Route         string    // chi route pattern of the page's path, never the path
+	NavType       string    // navigate, reload, back_forward, prerender or restore (from the back/forward cache)
+	Device        string    // phone, tablet or desktop, by viewport width
+	Browser       string    // edge, chrome, firefox, safari, samsung or other
+	BrowserMajor  int       // 0 when unknown
+	Installed     bool      // opened as an installed app
+	Connection    string    // effective connection type (4g, 3g, …), where reported
+	Protocol      string    // h2, h3, http/1.1
+	ReferrerHost  string    // another site's host; "" for none or our own
+	TTFBMs        *float64
+	FCPMs         *float64
+	LCPMs         *float64
+	INPMs         *float64
+	CLS           *float64
+	DCLMs         *float64 // DOMContentLoaded's end
+	LoadMs        *float64 // load's end
+	ServerMs      *float64 // Server-Timing's app duration
+	TransferBytes *int64
+	LCPElement    string // tag name of the LCP element
+	INPTarget     string // data-* hook or tag name of the slowest interaction's target
+}

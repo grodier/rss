@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Each page group's entry sets up the modules its pages use, in an order
 // that matters where two listen for the same event: save-star before
-// busy-forms, back-forward before timeline-tabs. A dropped import or a
-// reordered setup fails here.
+// busy-forms, back-forward before timeline-tabs. Every entry sets up rum
+// first. A dropped import or a reordered setup fails here.
 
 // Every module an entry can set up, by its path from here, and the setup
 // functions it exports.
@@ -18,6 +18,7 @@ const modules: Record<string, string[]> = {
   "../features/lookup-status": ["init"],
   "../features/read-pings": ["enhancePings"],
   "../features/reorder": ["init"],
+  "../features/rum": ["setupRUM"],
   "../features/save-star": ["init"],
   "../features/seen-beacon": ["init"],
   "../features/share": ["init"],
@@ -29,6 +30,7 @@ const modules: Record<string, string[]> = {
 // The setups each entry runs, in order, named by module.
 const entries: Record<string, string[]> = {
   reading: [
+    "rum",
     "local-times",
     "read-pings",
     "back-forward",
@@ -40,10 +42,12 @@ const entries: Record<string, string[]> = {
     "seen-beacon",
     "infinite-scroll",
   ],
-  search: ["back-forward", "busy-forms", "live-search", "lookup-status"],
-  timelines: ["back-forward", "timeline-form", "reorder"],
-  account: ["local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
-  login: ["back-forward", "busy-forms", "password-toggle"],
+  search: ["rum", "back-forward", "busy-forms", "live-search", "lookup-status"],
+  timelines: ["rum", "back-forward", "timeline-form", "reorder"],
+  account: ["rum", "local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
+  login: ["rum", "back-forward", "busy-forms", "password-toggle"],
+  settings: ["rum"],
+  solo: ["rum"],
 };
 
 // The entries, loaded on demand, so each test can import one afresh.

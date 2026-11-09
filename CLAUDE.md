@@ -67,7 +67,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
-- `internal/metrics`: counts `www`'s requests and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics in the background
+- `internal/metrics`: counts `www`'s requests and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/seed`: the seed list (`sites.txt`, embedded) of sites to look up before anyone searches for them; `www seed` queues their lookups
 - `internal/opml`: reads the feeds listed in OPML files
@@ -81,7 +81,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates (the reader's in `templates/`, the admin's in `admin/`), emails and the web app manifest
 - `internal/validator`: form validation
-- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the builds (`web.App`, `web.Admin`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `admin/` the admin site's, built apart (`vite.admin.config.ts`, into `dist/admin`) with the same layout, `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, and the fonts) and `test/`, the frontend tests' helpers
+- `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the builds (`web.App`, `web.Admin`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; and `public/` for files that need a fixed URL), `admin/` the admin site's, built apart (`vite.admin.config.ts`, into `dist/admin`) with the same layout, `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, the fonts, and `types/`, the declarations of browser APIs TypeScript lacks) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
 - `infra`: Terraform for production (Render); its README is the runbook
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
@@ -155,9 +155,9 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - JavaScript is progressive enhancement: every page must work without it.
   TypeScript (`strict`), one module per enhancement in `web/app/features` (those another site could reuse in `web/shared/lib`), each exporting a setup function that the entries of the page groups whose pages use it import and call in order (and `entries.test.ts` lists); nothing runs on import.
   Each page names its page group once in its head, `{{template "assets" "<group>"}}`, which links the group's stylesheets and scripts from Vite's manifest (`assetTags`): its sheet, `web/app/styles/<group>.css`, its entry, `web/app/entries/<group>.ts`, or both, and an entry can import another group's sheet.
-  A new page names an existing group, or a new one; a page that needs no script names a group without an entry.
-  No inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one.
-  An API TypeScript's DOM types lack gets a minimal declaration in `web/shared/types/dom.d.ts` (there's none yet), never `any`.
+  A new page names an existing group, or a new one, whose entry sets up `rum.ts` first, as every page sends the real-user beacon.
+  No inline scripts or handlers (the CSP blocks them), and no runtime libraries unless a PR justifies one: the only one is `web-vitals` (see "Observability" in `docs/decisions.md`), pinned to an exact version under `dependencies`.
+  An API TypeScript's DOM types lack gets a minimal declaration in `web/shared/types/dom.d.ts`, never `any`.
   A new npm devDependency gets a one-line justification in its PR, like a Go dependency.
   Enhancements hook onto server-rendered markup (`data-*` attributes, `rel` links).
 - Article HTML (summary, content) is only ever rendered through `sanitize.HTML`; never convert it to `template.HTML` yourself.

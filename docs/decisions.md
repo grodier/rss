@@ -129,6 +129,12 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Dense tables** (#562): smaller type and tighter rows than the reader's lists, since it's a working tool; on a phone a wide table scrolls in its own frame, not the page.
   Figures are stat rows separated by dividers, not cards, as in the reader ("Design").
 - **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
+- **The charts' look** (#571, approved at its design checkpoint): thin lines in up to three series colors (`--accent`, `--brand-strong`, then `--series-3`), gridlines only at the value ticks, markers such as deploys as dashed vertical lines labelled at the top, thresholds as dashed horizontal lines, and a legend above the chart only when it has more than one series.
+  Rejected: thresholds as tinted bands (good, needs improvement, poor), which say a threshold is good or bad when a later one may not be (a queue's limit) and drown the line in dark mode; and a legend below the chart, read only after the lines.
+- **Chart labels sit where they're read** (#571): value ticks above their gridlines inside the plot, the top one with the unit, so a phone loses no width to a left margin; each line's latest value and each threshold's label in a gutter at the right, moved apart so none overlap; and a histogram's bucket upper bounds in short form ("1.5k"), with the unit written once.
+- **A chart stretches to its column, but its text doesn't scale** (#571): positions across are percentages and positions down are pixels, so labels stay 11px or larger at every width, and a narrow chart draws fewer axis labels.
+  This replaces the planned `viewBox` scaling, which can't keep labels at 11px on a 320px phone without making them over 30px on a desktop.
+  Rejected: on phones, a fixed-width chart that scrolls sideways like the tables, which starts with the latest value off-screen.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability

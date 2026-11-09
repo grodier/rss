@@ -11,7 +11,7 @@ import (
 
 // CheckNewPassword records field's error for a new password: 8 to 256
 // characters, not a common password, and not the account's email. Signup,
-// "www create-user", password reset and password change use it.
+// "admin create-user", password reset and password change use it.
 func (v *Validator) CheckNewPassword(field, password, email string) {
 	v.CheckField(NotBlank(password), field, "Password is required")
 	v.CheckField(MinChars(password, 8), field, "Password must be at least 8 characters long")

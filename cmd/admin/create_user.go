@@ -17,17 +17,18 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
-// runCreateUser runs "www create-user -name <name> -email <email> [flags]": it
-// creates an account with the password on the first line of stdin, and
-// returns the exit code. It checks the account with the same rules as signup.
-// Like runMigrate, it writes flag errors and the -help output to stderr.
+// runCreateUser runs "admin create-user -name <name> -email <email> [flags]":
+// it creates a reader's account with the password on the first line of stdin,
+// and returns the exit code. It checks the account with the same rules as
+// signup. Like runEnroll, it writes flag errors and the -help output to
+// stderr.
 func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var dsn, name, email string
 
-	fs := flag.NewFlagSet("rss-www create-user", flag.ContinueOnError)
+	fs := flag.NewFlagSet("admin create-user", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: www create-user -name <name> -email <email> [-db-dsn <dsn>]")
+		fmt.Fprintln(stderr, "Usage: admin create-user -name <name> -email <email> [-db-dsn <dsn>]")
 		fmt.Fprintln(stderr, "The password is read from the first line of stdin.")
 		fs.PrintDefaults()
 	}
@@ -47,7 +48,7 @@ func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, s
 		return 2
 	}
 
-	password, err := readPassword(stdin)
+	password, err := readLine(bufio.NewReader(stdin))
 	if err != nil {
 		fmt.Fprintf(stderr, "read password: %v\n", err)
 		return 1
@@ -88,18 +89,4 @@ func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, s
 
 	fmt.Fprintf(stdout, "created account for %s\n", email)
 	return 0
-}
-
-// readPassword returns the first line of r, without its "\n" or "\r\n". It
-// keeps other whitespace, which is valid in passwords. A nil r reads as empty.
-func readPassword(r io.Reader) (string, error) {
-	if r == nil {
-		return "", nil
-	}
-	line, err := bufio.NewReader(r).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	line = strings.TrimSuffix(line, "\n")
-	return strings.TrimSuffix(line, "\r"), nil
 }

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/grodier/rss/internal/cli"
 )
 
 func TestConfigValidate(t *testing.T) {
@@ -57,7 +59,7 @@ func TestConfigValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := defaultConfig()
 			c.db.dsn = "postgres://u:p@localhost/db"
-			c.mail.baseURL = "http://localhost:8080"
+			c.mail.BaseURL = "http://localhost:8080"
 			tt.mutate(&c)
 
 			err := c.Validate()
@@ -207,7 +209,7 @@ func TestParseConfigMail(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseConfig() error = %v", err)
 		}
-		want := mailConfig{baseURL: "http://localhost:8080", smtpPort: 587, from: "rss <hello@localhost>"}
+		want := cli.Mail{BaseURL: "http://localhost:8080", SMTPPort: 587, From: "rss <hello@localhost>"}
 		if cfg.mail != want {
 			t.Errorf("mail = %+v, want %+v", cfg.mail, want)
 		}
@@ -218,8 +220,8 @@ func TestParseConfigMail(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseConfig() error = %v", err)
 		}
-		if want := "http://localhost:9000"; cfg.mail.baseURL != want {
-			t.Errorf("baseURL = %q, want %q", cfg.mail.baseURL, want)
+		if want := "http://localhost:9000"; cfg.mail.BaseURL != want {
+			t.Errorf("baseURL = %q, want %q", cfg.mail.BaseURL, want)
 		}
 	})
 
@@ -228,8 +230,8 @@ func TestParseConfigMail(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseConfig() error = %v", err)
 		}
-		if want := "https://rss.example.com"; cfg.mail.baseURL != want {
-			t.Errorf("baseURL = %q, want %q", cfg.mail.baseURL, want)
+		if want := "https://rss.example.com"; cfg.mail.BaseURL != want {
+			t.Errorf("baseURL = %q, want %q", cfg.mail.BaseURL, want)
 		}
 	})
 
@@ -238,12 +240,12 @@ func TestParseConfigMail(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseConfig() error = %v", err)
 		}
-		want := mailConfig{
-			baseURL:      "https://rss.example.com",
-			supportEmail: "help@example.com",
-			smtpHost:     "smtp.example.com",
-			smtpPort:     587,
-			from:         "rss <hello@rss.example.com>",
+		want := cli.Mail{
+			BaseURL:      "https://rss.example.com",
+			SupportEmail: "help@example.com",
+			SMTPHost:     "smtp.example.com",
+			SMTPPort:     587,
+			From:         "rss <hello@rss.example.com>",
 		}
 		if cfg.mail != want {
 			t.Errorf("mail = %+v, want %+v", cfg.mail, want)

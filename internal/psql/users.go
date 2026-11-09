@@ -21,7 +21,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 }
 
 // Create makes an account with rss.DefaultTimelines, in one transaction, so
-// both signup and www create-user give every account its default
+// both signup and admin create-user give every account its default
 // timelines. rss.ErrDuplicateEmail if the email is taken.
 func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (string, time.Time, error) {
 	hashedPassword, err := password.Hash(pw)

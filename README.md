@@ -81,7 +81,7 @@ In production (`-env production`) the app refuses to start without `-base-url`, 
 
 Signup is off by default.
 To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`.
-Locally, `make db/seed` makes your account without signing up (see [`www create-user`](#www-create-user)).
+Locally, `make db/seed` makes your account without signing up (see [`admin create-user`](#admin-create-user)).
 
 ### `www migrate`
 
@@ -101,45 +101,6 @@ It takes its own flags, also settable by environment variables:
 It logs the sites whose lookups failed, and retries those that failed over an hour ago.
 Production runs it on every deploy as `www migrate -seed`; locally, `make db/reset` doesn't, so run `make db/seed-sites` when you want the list looked up.
 
-### `www create-user`
-
-`www create-user -name <name> -email <email> [-db-dsn <dsn>]` creates an account and exits.
-The password is the first line of stdin (a trailing `\n` or `\r\n` is dropped; other whitespace is kept); it is never a flag, so it stays out of shell history and process listings:
-
-```sh
-printf '%s\n' "$PASSWORD" | go run ./cmd/www create-user -name You -email you@example.com
-```
-
-The name, email and password must pass signup's rules.
-It's for local development: in production, accounts come from signing up with the invite code.
-Its flags, also settable by environment variables:
-
-| Flag | Variable | Default | Description |
-| --- | --- | --- | --- |
-| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
-| `-name` | `RSS_NAME` | _(none, required)_ | The account's name |
-| `-email` | `RSS_EMAIL` | _(none, required)_ | The account's email |
-
-It exits 0 when the account is created, 1 when it can't be (including when an account with that email already exists), and 2 for an empty DSN or invalid input, before opening the database.
-
-### `www send-test-email`
-
-`www send-test-email -to <address> [flags]` renders the test email and sends it with the mail settings, to check them; with no SMTP host, it logs the email instead.
-It doesn't open the database:
-
-```sh
-go run ./cmd/www send-test-email -to you@example.com
-```
-
-Locally, with Mailpit's settings from `.env.example`, the email shows up at http://localhost:8025.
-Its flags are `-to` and the mail flags of `www` (above), with the same environment variables: `-base-url`, `-support-email`, `-smtp-host`, `-smtp-port`, `-smtp-username`, `-smtp-password` and `-mail-from`.
-
-| Flag | Variable | Default | Description |
-| --- | --- | --- | --- |
-| `-to` | `RSS_TO` | _(none, required)_ | Where to send the test email |
-
-It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 after logging it, with no SMTP host), exits 1 when sending fails, and exits 2 for a missing or invalid `-to` or invalid mail flags.
-
 ## The admin site
 
 `cmd/admin` is the admin site, the owner's tools, a second binary built into the same image (see "Admin" in [docs/features.md](docs/features.md)).
@@ -156,7 +117,7 @@ To log in locally, give `.env` a key for admins' TOTP secrets, which both `admin
 echo "RSS_SECRET_KEY=$(openssl rand -hex 32)" >> .env
 ```
 
-Then enroll yourself, typing the password on the first line (it's read from stdin, like `www create-user`):
+Then enroll yourself, typing the password on the first line (it's read from stdin, like [`admin create-user`](#admin-create-user)):
 
 ```sh
 go run ./cmd/admin enroll -email you@example.com
@@ -180,6 +141,46 @@ It prints a QR code and the `otpauth://` URI it holds; add it to an authenticato
 
 Since the variables are shared, `RSS_PORT` or `RSS_BASE_URL` in `.env` apply to both binaries; set the admin's on its command line instead (`go run ./cmd/admin -port 4002`).
 
+### `admin create-user`
+
+`admin create-user -name <name> -email <email> [-db-dsn <dsn>]` creates an account and exits.
+The password is the first line of stdin (a trailing `\n` or `\r\n` is dropped; other whitespace is kept); it is never a flag, so it stays out of shell history and process listings:
+
+```sh
+printf '%s\n' "$PASSWORD" | go run ./cmd/admin create-user -name You -email you@example.com
+```
+
+The name, email and password must pass signup's rules.
+It makes a reader's account, not an admin: it's for local development, and in production accounts come from signing up with the invite code.
+Its flags, also settable by environment variables:
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
+| `-name` | `RSS_NAME` | _(none, required)_ | The account's name |
+| `-email` | `RSS_EMAIL` | _(none, required)_ | The account's email |
+
+It exits 0 when the account is created, 1 when it can't be (including when an account with that email already exists), and 2 for an empty DSN or invalid input, before opening the database.
+
+### `admin send-test-email`
+
+`admin send-test-email -to <address> [flags]` renders the test email and sends it with the mail settings, to check them; with no SMTP host, it logs the email instead.
+It doesn't open the database:
+
+```sh
+go run ./cmd/admin send-test-email -to you@example.com
+```
+
+Locally, with Mailpit's settings from `.env.example`, the email shows up at http://localhost:8025.
+Its `-base-url` is the app's URL, which the email links to, as for `www`: on the admin's service, whose `RSS_BASE_URL` is the admin's own URL, pass the app's on the command line (`-base-url https://paperround.app`).
+Its flags are `-to` and the mail flags of `www` (see [Command-line flags and environment variables](#command-line-flags-and-environment-variables)), with the same environment variables: `-base-url`, `-support-email`, `-smtp-host`, `-smtp-port`, `-smtp-username`, `-smtp-password` and `-mail-from`.
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-to` | `RSS_TO` | _(none, required)_ | Where to send the test email |
+
+It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 after logging it, with no SMTP host), exits 1 when sending fails, and exits 2 for a missing or invalid `-to` or invalid mail flags.
+
 ## Make targets
 
 Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports).
@@ -190,7 +191,7 @@ Among them: `make run` (the app), `make run/admin` (the admin site, locally), `m
 `make assets/watch` rebuilds on every change; restart `go run` to pick up a build, since it's embedded.
 In `web/`, `npm run typecheck` checks the TypeScript (`tsc --noEmit`) and `npm run format:check` the formatting ([Prettier](https://prettier.io); `npm run format` fixes it); CI's `web` job runs both and the tests, then the build.
 
-`make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with `www create-user`.
+`make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with [`admin create-user`](#admin-create-user).
 `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
 `make db/seed-sites` queues lookups of the seed list's sites with [`www seed`](#www-seed); `make db/reset` doesn't, so a reset doesn't look up the whole list.
 

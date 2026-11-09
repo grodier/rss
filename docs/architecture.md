@@ -40,6 +40,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 - The **enrich runner** (`internal/enrich`) fetches the web pages of new articles missing an image, title or excerpt, and stores their Open Graph values in the article's `page_*` columns.
 - The **mail runner** (`internal/mail`, `mail.Runner`) sends the emails the server queues in the `emails` outbox.
 - The **request metrics** (`metrics.Requests`) count the requests the server reports in memory and write them to `request_metrics` once a minute.
+- The **job metrics** (`metrics.Jobs`) count the jobs the runners above report, by runner and outcome, in memory and write them to `job_metrics` once a minute.
 - The **runtime sampler** (`metrics.Runtime`) writes the process's memory, goroutines, GC pauses and connection pool to `runtime_metrics` once a minute.
 - The **server error log** (`metrics.ErrorLog`) writes the 500s and panics the server reports to `server_errors`, one at a time, from a buffer.
 - The **metrics housekeeper** (`metrics.Housekeeper`) rolls up and deletes old metrics and real-user views, and deletes all but the newest 1,000 server errors, every hour.
@@ -92,7 +93,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
-| `internal/metrics` | Count requests and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`) | `rss` |
+| `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
@@ -246,7 +247,7 @@ admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
-request_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
+request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").
@@ -268,7 +269,7 @@ request_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written b
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.
 - **Caps** checked in the repositories: 100 tags (`MaxTags`) and 20 timelines (`MaxTimelines`) per user.
-- **Metrics:** each instance writes its own `request_metrics` minute rows (named by host name) and `runtime_metrics` rows; the hourly rollup sums every instance's minute rows of an hour into one row per route, method and status class, with `instance` `''`.
+- **Metrics:** each instance writes its own `request_metrics` and `job_metrics` minute rows (named by host name) and `runtime_metrics` rows; the hourly rollup sums every instance's minute rows of an hour into one row per route, method and status class, or per runner and outcome, with `instance` `''`.
   The rollup starts after the newest hourly row and inserts with `ON CONFLICT DO NOTHING`, so every instance runs it and an hour is rolled up once; it only takes whole hours, since an hour that has rows is never rolled up again.
 - **Real-user metrics:** `rum_views` gets a row per beacon, with no user, IP address or URL; the daily rollup counts each whole UTC day's views into one `rum_daily` row per route, device, browser and metric, with its views in the metric's `metrics.RUMBounds` buckets, so the 30 days of views and 13 months of days answer the same percentiles.
   Like the hourly rollup, it starts after the newest day rolled up, inserts with `ON CONFLICT DO NOTHING` and takes whole days only; a view counts for each metric it reported.
@@ -303,17 +304,22 @@ With `-mail-workers 0` the process queues emails without sending them (and logs 
 | Job timeout | 30 s | 30 s | 30 s | 30 s | 20 s | 30 s (SMTP: 10 s, `SMTPSender.Timeout`) |
 | Crashed job | `ResetStale` every minute: running for over 2 min → pending, failed after 3 attempts | `ResetStale` every minute: running for over 2 min → pending, failed (`unreachable`) after 3 attempts | The lease runs out and the feed is due again | The lease runs out and the site is due again | The lease runs out and the job is due again | The lease runs out and the email is due again |
 | Work | `discovery.Discoverer`, then `DiscoveryRepository.Save` | `FeedRepository.GetByURL`, else (or if gone) discovery and `DiscoveryRepository.Save`; then `SubscriptionRepository.Subscribe` | `ingest.Refresher.Refresh` | `Runner.check`: home page, `discovery.ParsePage` icons, downloads; then `SaveIcon`, `KeepIcon` or `RemoveIcon` | `Runner.attempt`: the article's page, `discovery.ParsePage`; then `SavePage`, `Retry` or `GiveUp` | `Sender.Send` |
+| Metrics (`runner`: outcomes) | `lookup`: `found`, `none` (no feeds), `failed` | `import`: `subscribed`, `already_subscribed`, `failed` (the row's status) | `refresh`: `saved`, `not_modified` (304), `gone` (410), `failed` (a panic too) | `icon`: `saved`, `kept`, `removed`, `failed` (a panic, or an outcome that couldn't be recorded, too) | `enrich`: `saved`, `retry`, `gave_up`; a panic or an outcome that couldn't be recorded is a `retry`, as the lease retries it | `mail`: `sent`, `retry`, `gave_up` |
 
 Retry schedules for feeds, icons and enrichment are in their sections of [features.md](features.md).
 A failed email is retried after 1, 2, 4, … minutes (`retryDelay`, capped at an hour) and marked `failed` after 8 attempts.
 Delivery is at least once: a crash between sending and recording the result sends the email again.
 Every hour the mail runner deletes sent and failed emails older than 7 days (`DeleteFinished`).
 
+Each runner reports every job it finishes to its `Metrics` (a `JobObserver`, `metrics.Jobs` in `www`; nil reports nothing) with its outcome, in the Metrics row above, and how long it took.
+A job interrupted by shutdown isn't reported, as it's retried; the Refresh button's fetch isn't either: it's a request, counted with the others.
+
 The metrics components (`internal/metrics`) claim nothing: every instance runs them.
-`metrics.Requests` writes at the start of each minute the counts of the minutes that have ended, keyed by the minute each request finished in, and once more on shutdown, after the server has drained its requests; a failed write is logged and its counts dropped.
+`metrics.Requests` writes at the start of each minute the counts of the minutes that have ended, keyed by the minute each request finished in, and once more on shutdown, after the server has drained its requests and the runners have stopped; a failed write is logged and its counts dropped.
+`metrics.Jobs` does the same with the runners' jobs, keyed by the minute each finished in, runner and outcome.
 `metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
 `metrics.ErrorLog.Record` never blocks a response: it queues the error in a buffer of 100, dropping it with a warning when the buffer is full, and `Run` writes each with a 2-second timeout, logging and dropping one that fails (the database may be why the request failed).
-`metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
+`metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls request and job minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
 It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
 Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 

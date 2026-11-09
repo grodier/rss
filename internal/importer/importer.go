@@ -71,6 +71,11 @@ type Discoverer interface {
 	Discover(ctx context.Context, u *url.URL) (discovery.Result, error)
 }
 
+// JobObserver counts the runner's jobs; satisfied by *metrics.Jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // Runner processes queued import feeds with a pool of workers. Zero values
 // use the defaults.
 type Runner struct {
@@ -81,6 +86,7 @@ type Runner struct {
 	Saver         Saver
 	Discoverer    Discoverer
 	Logger        *slog.Logger
+	Metrics       JobObserver   // counts jobs by outcome, the feed's status: subscribed, already_subscribed or failed; nil counts nothing
 	Workers       int           // default 6
 	PollInterval  time.Duration // default 1s
 	JobTimeout    time.Duration // default 30s
@@ -214,12 +220,20 @@ func (r *Runner) process(ctx context.Context, f rss.ImportFeed) {
 		r.Logger.Error("importer: record result", "import_id", f.ImportID, "position", f.Position, "error", err)
 	}
 
+	r.observe(string(f.Status), start)
 	r.Logger.Info("import feed finished",
 		"import_id", f.ImportID,
 		"position", f.Position,
 		"status", f.Status,
 		"duration", time.Since(start),
 	)
+}
+
+// observe counts a job that started at start and ended with outcome.
+func (r *Runner) observe(outcome string, start time.Time) {
+	if r.Metrics != nil {
+		r.Metrics.Observe("import", outcome, time.Since(start))
+	}
 }
 
 // run finds or discovers f's feed, subscribes f's user to it, names a new

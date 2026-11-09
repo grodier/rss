@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -445,5 +446,42 @@ func TestRetryDelay(t *testing.T) {
 		if got := retryDelay(tt.attempts); got != tt.want {
 			t.Errorf("retryDelay(%d) = %s, want %s", tt.attempts, got, tt.want)
 		}
+	}
+}
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestSendMetrics(t *testing.T) {
+	tests := []struct {
+		name     string
+		sendErr  error
+		attempts int
+		want     string
+	}{
+		{name: "sent", attempts: 1, want: "mail sent"},
+		{name: "retry", sendErr: errors.New("connection refused"), attempts: 1, want: "mail retry"},
+		{name: "gave up", sendErr: errors.New("connection refused"), attempts: defaultMaxAttempts, want: "mail gave_up"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obs := &fakeObserver{}
+			r := &Runner{
+				Store:   newFakeStore(),
+				Sender:  &fakeSender{send: func(ctx context.Context, m Message) error { return tt.sendErr }},
+				Metrics: obs,
+			}
+			r.setDefaults()
+			r.send(context.Background(), Queued{ID: "email-1", Attempts: tt.attempts})
+			if want := []string{tt.want}; !slices.Equal(obs.jobs, want) {
+				t.Errorf("observed %q, want %q", obs.jobs, want)
+			}
+		})
 	}
 }

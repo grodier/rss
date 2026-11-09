@@ -63,6 +63,11 @@ type Fetcher interface {
 	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
+// JobObserver counts the runner's jobs; satisfied by *metrics.Jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // Runner checks due sites' icons with a pool of workers. Zero values use the
 // defaults.
 type Runner struct {
@@ -70,6 +75,7 @@ type Runner struct {
 	Fetcher      Fetcher // fetches home pages
 	IconFetcher  Fetcher // downloads icons; its responses are capped at MaxBytes
 	Logger       *slog.Logger
+	Metrics      JobObserver   // counts checks by outcome: saved, kept, removed or failed; nil counts nothing
 	Workers      int           // default 1
 	PollInterval time.Duration // default 5s; wait after finding nothing due
 	JobTimeout   time.Duration // default 30s
@@ -143,12 +149,12 @@ func (r *Runner) wait(ctx context.Context) bool {
 	}
 }
 
-// Outcomes of a check, as logged.
+// Outcomes of a check, as logged and counted.
 const (
-	outcomeSaved     = "saved"
-	outcomeUnchanged = "unchanged"
-	outcomeRemoved   = "removed"
-	outcomeFailed    = "failed"
+	outcomeSaved   = "saved"
+	outcomeKept    = "kept"
+	outcomeRemoved = "removed"
+	outcomeFailed  = "failed"
 )
 
 // result is what a check found.
@@ -158,18 +164,24 @@ type result struct {
 	err     error        // why it failed
 }
 
-// check finds site's icon, records the outcome and logs it. current is the
-// site's stored icon (zero if none). Nothing is recorded if ctx is canceled:
-// the lease retries the site. A panic is logged and swallowed, and the lease
-// retries the site too.
+// check finds site's icon, records the outcome, logs it and counts it.
+// current is the site's stored icon (zero if none). Nothing is recorded or
+// counted if ctx is canceled: the lease retries the site. A panic is logged,
+// counted as a failure and swallowed, and the lease retries the site too; so
+// does an outcome that can't be recorded, also counted as a failure.
 func (r *Runner) check(ctx context.Context, site rss.Site, current rss.SiteIcon) {
+	start := time.Now()
+	counted := "" // nothing to count on shutdown
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.Logger.Error("site icon: panic", "site_id", site.ID, "panic", rec)
+			counted = outcomeFailed
+		}
+		if counted != "" {
+			r.observe(counted, start)
 		}
 	}()
 
-	start := time.Now()
 	jobCtx, cancel := context.WithTimeout(ctx, r.JobTimeout)
 	res := r.find(jobCtx, site, current)
 	cancel()
@@ -183,7 +195,7 @@ func (r *Runner) check(ctx context.Context, site rss.Site, current rss.SiteIcon)
 	case outcomeSaved:
 		res.icon.SiteID = site.ID
 		err = r.Store.SaveIcon(ctx, res.icon, nextCheck(now))
-	case outcomeUnchanged:
+	case outcomeKept:
 		err = r.Store.KeepIcon(ctx, site.ID, true, nextCheck(now))
 	case outcomeRemoved:
 		err = r.Store.RemoveIcon(ctx, site.ID, nextCheck(now))
@@ -193,9 +205,11 @@ func (r *Runner) check(ctx context.Context, site rss.Site, current rss.SiteIcon)
 	if err != nil {
 		if ctx.Err() == nil {
 			r.Logger.Error("site icon: record check", "site_id", site.ID, "host", site.Host, "error", err)
+			counted = outcomeFailed
 		}
 		return
 	}
+	counted = res.outcome
 
 	attrs := []any{"site_id", site.ID, "host", site.Host, "outcome", res.outcome}
 	if res.outcome == outcomeSaved {
@@ -206,6 +220,13 @@ func (r *Runner) check(ctx context.Context, site rss.Site, current rss.SiteIcon)
 	}
 	attrs = append(attrs, "duration", time.Since(start))
 	r.Logger.Info("site icon checked", attrs...)
+}
+
+// observe counts a job that started at start and ended with outcome.
+func (r *Runner) observe(outcome string, start time.Time) {
+	if r.Metrics != nil {
+		r.Metrics.Observe("icon", outcome, time.Since(start))
+	}
 }
 
 // find fetches site's home page and downloads the icons it declares, in
@@ -239,7 +260,7 @@ func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) 
 			continue
 		}
 		if header != nil && resp.StatusCode == http.StatusNotModified {
-			return result{outcome: outcomeUnchanged}
+			return result{outcome: outcomeKept}
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			unsure = unsure || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500

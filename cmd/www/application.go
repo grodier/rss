@@ -62,6 +62,16 @@ func (app *Application) Run() error {
 	}
 	discoverer := &discovery.Discoverer{Fetcher: fetcher, AppSiteKey: discovery.SiteKey(baseURL)}
 
+	// Request, background job and runtime metrics, recent server errors and real-user beacons,
+	// for the admin (see "Observability" in docs/decisions.md). Metric rows name their instance
+	// by host name.
+	instance, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("host name for metrics: %w", err)
+	}
+	metricsRepo := psql.NewMetricsRepository(db)
+	jobMetrics := &metrics.Jobs{Store: metricsRepo, Instance: instance, Logger: app.logger}
+
 	// Background components run alongside the server until ctx is canceled.
 	var background []func(context.Context) error
 	if app.config.lookup.workers > 0 {
@@ -70,6 +80,7 @@ func (app *Application) Run() error {
 			Saver:      psql.NewDiscoveryRepository(db),
 			Discoverer: discoverer,
 			Logger:     app.logger,
+			Metrics:    jobMetrics,
 			Workers:    app.config.lookup.workers,
 		}
 		background = append(background, named("lookup runner", runner.Run))
@@ -83,6 +94,7 @@ func (app *Application) Run() error {
 			Saver:         psql.NewDiscoveryRepository(db),
 			Discoverer:    discoverer,
 			Logger:        app.logger,
+			Metrics:       jobMetrics,
 			Workers:       app.config.importer.workers,
 		}
 		background = append(background, named("import runner", runner.Run))
@@ -92,6 +104,7 @@ func (app *Application) Run() error {
 			Store:     psql.NewFeedRepository(db),
 			Refresher: refresher,
 			Logger:    app.logger,
+			Metrics:   jobMetrics,
 			Workers:   app.config.refresh.workers,
 		}
 		background = append(background, named("refresh runner", runner.Run))
@@ -103,6 +116,7 @@ func (app *Application) Run() error {
 			// Its own client, so icon downloads are capped at siteicon.MaxBytes.
 			IconFetcher: fetch.New(fetch.Options{MaxBodyBytes: siteicon.MaxBytes}),
 			Logger:      app.logger,
+			Metrics:     jobMetrics,
 			Workers:     app.config.icons.workers,
 		}
 		background = append(background, named("site icon runner", runner.Run))
@@ -112,6 +126,7 @@ func (app *Application) Run() error {
 			Store:   psql.NewEnrichRepository(db),
 			Fetcher: fetcher,
 			Logger:  app.logger,
+			Metrics: jobMetrics,
 			Workers: app.config.enrich.workers,
 		}
 		background = append(background, named("enrich runner", runner.Run))
@@ -125,6 +140,7 @@ func (app *Application) Run() error {
 			Store:   emails,
 			Sender:  app.config.mail.Sender(app.logger),
 			Logger:  app.logger,
+			Metrics: jobMetrics,
 			Workers: app.config.mailRunner.workers,
 		}
 		background = append(background, named("mail runner", mailRunner.Run))
@@ -132,13 +148,6 @@ func (app *Application) Run() error {
 		app.logger.Info("mail runner off (-mail-workers 0): emails are queued but not sent by this instance")
 	}
 
-	// Request and runtime metrics, recent server errors and real-user beacons, for the admin (see
-	// "Observability" in docs/decisions.md). Metric rows name their instance by host name.
-	instance, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("host name for metrics: %w", err)
-	}
-	metricsRepo := psql.NewMetricsRepository(db)
 	requestMetrics := &metrics.Requests{Store: metricsRepo, Instance: instance, Logger: app.logger}
 	runtimeMetrics := &metrics.Runtime{Store: metricsRepo, DB: db, Instance: instance, Logger: app.logger}
 	serverErrors := psql.NewServerErrorRepository(db)
@@ -219,23 +228,22 @@ func (app *Application) Run() error {
 		}()
 	}
 
-	// The request metrics run until the server has drained its requests, so
-	// their last write counts every one.
+	// The request and job metrics run until the server has drained its
+	// requests and the runners have stopped, so their last write counts every
+	// request and job.
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
-	metricsDone := make(chan struct{})
-	go func() {
-		defer close(metricsDone)
-		requestMetrics.Run(metricsCtx)
-	}()
+	var metricsWG sync.WaitGroup
+	metricsWG.Go(func() { requestMetrics.Run(metricsCtx) })
+	metricsWG.Go(func() { jobMetrics.Run(metricsCtx) })
 
 	err = srv.Serve(ctx)
 
 	// Stop the background components (if Serve returned on its own) and
-	// wait for them before the deferred db.Close runs.
+	// wait for them, then the metrics, before the deferred db.Close runs.
 	cancel()
-	stopMetrics()
 	wg.Wait()
-	<-metricsDone
+	stopMetrics()
+	metricsWG.Wait()
 
 	return errors.Join(append([]error{err}, errs...)...)
 }

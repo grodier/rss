@@ -3,10 +3,13 @@ package refresh
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -268,6 +271,91 @@ func TestRunRejectsLeaseNotExceedingJobTimeout(t *testing.T) {
 			}
 			if err := r.Run(context.Background()); err == nil {
 				t.Fatal("Run() error = nil, want an error")
+			}
+		})
+	}
+}
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestRefreshMetrics(t *testing.T) {
+	tests := []struct {
+		name     string
+		refresh  func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
+		canceled bool
+		want     []string
+	}{
+		{
+			name: "saved",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{New: 2}, nil
+			},
+			want: []string{"refresh saved"},
+		},
+		{
+			name: "304",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{NotModified: true}, nil
+			},
+			want: []string{"refresh not_modified"},
+		},
+		{
+			name: "410",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{}, fmt.Errorf("status 410: %w", ingest.ErrGone)
+			},
+			want: []string{"refresh gone"},
+		},
+		{
+			name: "500",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{}, fmt.Errorf("status 500: %w", ingest.ErrUnreachable)
+			},
+			want: []string{"refresh failed"},
+		},
+		{
+			name: "store error",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{}, errors.New("database down")
+			},
+			want: []string{"refresh failed"},
+		},
+		{
+			name: "panic",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				panic("boom")
+			},
+			want: []string{"refresh failed"},
+		},
+		{
+			name: "shutdown",
+			refresh: func(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+				return rss.FetchResult{}, ctx.Err()
+			},
+			canceled: true,
+			want:     nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obs := &fakeObserver{}
+			r := &Runner{Refresher: &fakeRefresher{refresh: tt.refresh}, Metrics: obs}
+			r.setDefaults()
+			ctx, cancel := context.WithCancel(context.Background())
+			if tt.canceled {
+				cancel()
+			}
+			defer cancel()
+			r.refresh(ctx, rss.Feed{ID: "a"})
+			if !slices.Equal(obs.jobs, tt.want) {
+				t.Errorf("observed %q, want %q", obs.jobs, tt.want)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"image"
 	"image/color/palette"
 	"image/gif"
@@ -11,6 +12,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +33,7 @@ type call struct {
 type fakeStore struct {
 	mu    sync.Mutex
 	calls []call
+	err   error // returned by every write
 	claim func(ctx context.Context, lease time.Duration) (rss.Site, rss.SiteIcon, error)
 }
 
@@ -42,7 +45,7 @@ func (s *fakeStore) record(c call) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, c)
-	return nil
+	return s.err
 }
 
 func (s *fakeStore) SaveIcon(ctx context.Context, icon rss.SiteIcon, next time.Time) error {
@@ -528,5 +531,97 @@ func TestRunLeaseMustExceedJobTimeout(t *testing.T) {
 	r := &Runner{Store: &fakeStore{}, JobTimeout: time.Minute, Lease: time.Minute}
 	if err := r.Run(t.Context()); err == nil {
 		t.Error("Run() error = nil; want an error")
+	}
+}
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestCheckMetrics(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(srv *site) rss.SiteIcon // returns the current icon
+		storeErr error
+		canceled bool
+		want     []string
+	}{
+		{
+			name: "saved",
+			setup: func(srv *site) rss.SiteIcon {
+				srv.serve("/touch.png", "image/png", encodePNG(t, 180, 180))
+				return rss.SiteIcon{}
+			},
+			want: []string{"icon saved"},
+		},
+		{
+			name: "kept",
+			setup: func(srv *site) rss.SiteIcon {
+				srv.status("/touch.png", http.StatusNotModified)
+				return rss.SiteIcon{SourceURL: srv.URL + "/touch.png", ETag: `"v1"`}
+			},
+			want: []string{"icon kept"},
+		},
+		{
+			name: "removed",
+			setup: func(srv *site) rss.SiteIcon {
+				for _, p := range []string{"/touch.png", "/apple-touch-icon.png", "/favicon.ico"} {
+					srv.status(p, http.StatusNotFound)
+				}
+				return rss.SiteIcon{}
+			},
+			want: []string{"icon removed"},
+		},
+		{
+			name: "failed",
+			setup: func(srv *site) rss.SiteIcon {
+				srv.status("/touch.png", http.StatusServiceUnavailable)
+				srv.status("/apple-touch-icon.png", http.StatusNotFound)
+				srv.status("/favicon.ico", http.StatusNotFound)
+				return rss.SiteIcon{}
+			},
+			want: []string{"icon failed"},
+		},
+		{
+			name: "not recorded",
+			setup: func(srv *site) rss.SiteIcon {
+				srv.serve("/touch.png", "image/png", encodePNG(t, 180, 180))
+				return rss.SiteIcon{}
+			},
+			storeErr: errors.New("database down"),
+			want:     []string{"icon failed"},
+		},
+		{
+			name: "shutdown",
+			setup: func(srv *site) rss.SiteIcon {
+				srv.serve("/touch.png", "image/png", encodePNG(t, 180, 180))
+				return rss.SiteIcon{}
+			},
+			canceled: true,
+			want:     nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newSite(t, `<link rel="apple-touch-icon" href="/touch.png">`)
+			current := tt.setup(srv)
+			obs := &fakeObserver{}
+			r := newRunner(&fakeStore{err: tt.storeErr})
+			r.Metrics = obs
+			ctx, cancel := context.WithCancel(t.Context())
+			if tt.canceled {
+				cancel()
+			}
+			defer cancel()
+			r.check(ctx, rss.Site{ID: "site-1", URL: srv.URL + "/"}, current)
+			if !slices.Equal(obs.jobs, tt.want) {
+				t.Errorf("observed %q, want %q", obs.jobs, tt.want)
+			}
+		})
 	}
 }

@@ -12,4 +12,7 @@ var (
 	ErrTooManyTags      = errors.New("too many tags")
 	ErrTooManyTimelines = errors.New("too many timelines")
 	ErrOrderChanged     = errors.New("rss: the timelines changed since the page was loaded")
+	// ErrInviteUnusable is a signup invite that's unknown, expired, revoked
+	// or already used, or a bound invite used with another address.
+	ErrInviteUnusable = errors.New("invite can't be used")
 )

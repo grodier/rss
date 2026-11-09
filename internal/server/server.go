@@ -28,8 +28,6 @@ import (
 type Config struct {
 	Port int
 	Env  string
-	// InviteCode, when set, turns on GET and POST /signup for people who have it.
-	InviteCode string
 	// Version identifies the build (the commit SHA in the container image);
 	// /healthcheck reports it.
 	Version string
@@ -65,7 +63,9 @@ type SiteStore interface {
 
 // UserStore is the user persistence the server depends on.
 type UserStore interface {
-	Create(ctx context.Context, name, email, password string) (string, time.Time, error)
+	// CreateFromInvite makes an account with the invite whose token hashes
+	// to tokenHash, and redeems it; see psql.UserRepository.CreateFromInvite.
+	CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (string, error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
 	GetByEmail(ctx context.Context, email string) (rss.User, error)
 	UpdateName(ctx context.Context, id, name string) error
@@ -97,6 +97,14 @@ type WaitlistStore interface {
 	GetByToken(ctx context.Context, tokenHash []byte) (rss.WaitlistEntry, error)
 	Confirm(ctx context.Context, tokenHash []byte) error
 	Leave(ctx context.Context, tokenHash []byte) error
+}
+
+// InviteStore reads signup invites (invites rows); satisfied by
+// *psql.InviteRepository.
+type InviteStore interface {
+	// GetByToken returns the invite whose token hashes to tokenHash, whatever
+	// its status, or rss.ErrNoRecord.
+	GetByToken(ctx context.Context, tokenHash []byte) (rss.Invite, error)
 }
 
 // SessionStore stores logged-in devices (user_sessions rows).
@@ -325,6 +333,7 @@ var (
 	_ SessionStore      = (*psql.UserSessionRepository)(nil)
 	_ TokenStore        = (*psql.TokenRepository)(nil)
 	_ WaitlistStore     = (*psql.WaitlistRepository)(nil)
+	_ InviteStore       = (*psql.InviteRepository)(nil)
 	_ SearchStore       = (*psql.SearchRepository)(nil)
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
@@ -355,6 +364,7 @@ type Services struct {
 	SessionService      SessionStore
 	TokenService        TokenStore
 	WaitlistService     WaitlistStore
+	InviteService       InviteStore
 	SearchService       SearchStore
 	SiteService         SiteStore
 	LookupService       LookupStore

@@ -56,7 +56,6 @@ A flag on the command line wins over its variable, which wins over the default; 
 | --- | --- | --- | --- |
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-port` | `RSS_PORT` | `8080` | Server port |
-| `-invite-code` | `RSS_INVITE_CODE` | _(empty: signup off)_ | Open signup to people with this code (at least 16 characters) |
 | `-debug-emails` | `RSS_DEBUG_EMAILS` | _(empty: debug mode off)_ | Accounts that may turn on debug mode, comma-separated (case doesn't matter); see "Debug mode" in [docs/features.md](docs/features.md) |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the app that append to `X-Forwarded-For` (0–3; 0 ignores the header). The client IP is the entry this many places from the right. Only safe when those proxies are the only way to reach the app |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
@@ -79,8 +78,7 @@ A flag on the command line wins over its variable, which wins over the default; 
 
 In production (`-env production`) the app refuses to start without `-base-url`, `-support-email`, `-smtp-host` and `-mail-from`: emails carry one-time links, which must never end up in the logs there.
 
-Signup is off by default.
-To open it, run with `-invite-code $(openssl rand -hex 16)` and sign up at `/signup?invite=<code>`; no page links to `/signup`.
+Signup needs a single-use invite: make one with [`admin invite create`](#admin-invite) and sign up at the link it prints; no page links to `/signup`.
 Locally, `make db/seed` makes your account without signing up (see [`admin create-user`](#admin-create-user)).
 
 ### `www migrate`
@@ -151,7 +149,7 @@ printf '%s\n' "$PASSWORD" | go run ./cmd/admin create-user -name You -email you@
 ```
 
 The name, email and password must pass signup's rules.
-It makes a reader's account, not an admin: it's for local development, and in production accounts come from signing up with the invite code.
+It makes a reader's account, not an admin: it's for local development, and in production accounts come from signing up with an invite.
 Its flags, also settable by environment variables:
 
 | Flag | Variable | Default | Description |
@@ -161,6 +159,31 @@ Its flags, also settable by environment variables:
 | `-email` | `RSS_EMAIL` | _(none, required)_ | The account's email |
 
 It exits 0 when the account is created, 1 when it can't be (including when an account with that email already exists), and 2 for an empty DSN or invalid input, before opening the database.
+
+### `admin invite`
+
+`admin invite create [-email <email>] [-note <text>] [-expires 336h]` makes a single-use signup invite and prints its link, `<app-url>/signup?invite=<token>`.
+With `-email`, the invite is bound to that address's waitlist entry, which must be confirmed: signup fills in the entry's name and the address, locks the address, and the account starts confirmed.
+Without it, the invite is open: the person types their email and confirms it afterwards, and `-note` says who it's for.
+To sign up locally, join the waitlist on `/` and confirm (the link is in Mailpit, or the app's log), then:
+
+```sh
+go run ./cmd/admin invite create -email you@example.com
+```
+
+`admin invite list` prints every invite, newest first, with its ID, when it was made, its email or note, its status (pending, redeemed, expired or revoked) and when it expires, in UTC.
+`admin invite revoke <id>` stops an unused invite working.
+Their flags, also settable by environment variables:
+
+| Flag | Variable | Default | Description |
+| --- | --- | --- | --- |
+| `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN (all three) |
+| `-app-url` | `RSS_APP_URL` | `http://localhost:8080` | `create`: the reader's public URL, for the link (`http` or `https`, no path; a trailing `/` is dropped). The admin's own `-base-url` is its own host |
+| `-email` | `RSS_EMAIL` | _(empty: an open invite)_ | `create`: bind the invite to this confirmed waitlist entry |
+| `-note` | `RSS_NOTE` | _(empty)_ | `create`: who the invite is for, shown only in the admin |
+| `-expires` | `RSS_EXPIRES` | `336h` | `create`: how long the invite works |
+
+Each exits 0 on success, 1 when it fails (including `-email` without a confirmed waitlist entry, an unknown invite, or revoking one already used), and 2 for an empty DSN or invalid input, before opening the database.
 
 ### `admin send-test-email`
 

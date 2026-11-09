@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/grodier/rss/internal/rss"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,118 +15,245 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/token"
 )
 
-// testInviteCode is the invite code signup tests run the server with.
-const testInviteCode = "test-invite-code-0123"
+// testInviteToken is the token of the open invite newTestInviteStore has.
+const testInviteToken = "test-invite-token-0123"
 
-// newSignupTestServer is newTestServerWith with signup open to testInviteCode.
-// Signup sends a confirmation email, so a nil TokenService or EmailQueue gets
-// a fake.
+// newTestInviteStore returns a fake invite store with one usable open
+// invite, testInviteToken.
+func newTestInviteStore() *fakeInviteStore {
+	return &fakeInviteStore{invites: map[string]rss.Invite{
+		string(token.Hash(testInviteToken)): {ID: "invite-1", ExpiresAt: time.Now().Add(14 * 24 * time.Hour)},
+	}}
+}
+
+// newSignupTestServer is newTestServerWith with the invites of
+// newTestInviteStore when svc has none. Signup sends a confirmation email,
+// so a nil TokenService or EmailQueue gets a fake.
 func newSignupTestServer(t *testing.T, svc Services) *Server {
 	t.Helper()
+	if svc.InviteService == nil {
+		svc.InviteService = newTestInviteStore()
+	}
 	if svc.TokenService == nil {
 		svc.TokenService = &fakeTokenStore{}
 	}
 	if svc.EmailQueue == nil {
 		svc.EmailQueue = &fakeEmailQueue{}
 	}
-	return newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: testInviteCode}, svc)
+	return newTestServerConfig(t, Config{Port: 4000, Env: "development"}, svc)
 }
 
-func TestSignupHandlerInvitePrefill(t *testing.T) {
-	tests := []struct {
-		query string
-		want  string
-	}{
-		{"?invite=abc", `name="invite" value="abc"`},
-		{"?invite=%3Cscript%3E", `name="invite" value="&lt;script&gt;"`},
-		{"", `name="invite" value=""`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.query, func(t *testing.T) {
-			s := newSignupTestServer(t, Services{})
-			rr := httptest.NewRecorder()
-			s.router().ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/signup"+tt.query, nil))
-
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
-			}
-			body := rr.Body.String()
-			if !strings.Contains(body, tt.want) {
-				t.Errorf("body does not contain %q", tt.want)
-			}
-			if strings.Contains(body, "<script>") {
-				t.Error("body contains an unescaped <script>")
-			}
-		})
-	}
+// getSignup sends GET target to s's router.
+func getSignup(t *testing.T, s *Server, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	rr := httptest.NewRecorder()
+	s.router().ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil))
+	return rr
 }
 
-func TestSignupFormHandlerInviteCode(t *testing.T) {
+func TestSignupNoInvite(t *testing.T) {
+	s := newSignupTestServer(t, Services{})
+	rr := getSignup(t, s, "/signup")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body, "Paper Round is invite-only for now", `<a class="btn" href="/">Join the waitlist</a>`)
+	if strings.Contains(body, "<form") {
+		t.Error("body has a form")
+	}
+
+	t.Run("POST", func(t *testing.T) {
+		s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+				t.Error("CreateFromInvite must not be called")
+				return "", nil
+			},
+		}})
+		form := url.Values{"name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
+		rr := postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP, "/signup", "192.0.2.1:1234", form)
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+		assertBodyContains(t, rr.Body.String(), "Paper Round is invite-only for now")
+	})
+}
+
+func TestSignupInviteStates(t *testing.T) {
+	now := time.Now()
+	future := now.Add(time.Hour)
 	tests := []struct {
-		name       string
-		invite     string
-		wantStatus int
-		wantError  string
+		name   string
+		invite *rss.Invite // nil: no invite has the token
+		want   []string
 	}{
-		{"right code", testInviteCode, http.StatusSeeOther, ""},
-		{"wrong code", "wrong-invite-code-0123", http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
-		{"blank code", "", http.StatusUnprocessableEntity, "Invite code is required"},
-		{"prefix of the code", testInviteCode[:len(testInviteCode)-1], http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
-		{"code plus one character", testInviteCode + "x", http.StatusUnprocessableEntity, "This invite code isn&#39;t valid"},
+		{"expired", &rss.Invite{ExpiresAt: now.Add(-time.Minute)},
+			[]string{"This invite has expired", "Ask whoever invited you for a new one."}},
+		{"used", &rss.Invite{ExpiresAt: future, RedeemedAt: now},
+			[]string{"This invite has already been used", `<a class="btn" href="/login">Log in</a>`}},
+		{"used and since expired", &rss.Invite{ExpiresAt: now.Add(-time.Minute), RedeemedAt: now.Add(-time.Hour)},
+			[]string{"This invite has already been used"}},
+		{"revoked", &rss.Invite{ExpiresAt: future, RevokedAt: now},
+			[]string{"This invite is no longer valid"}},
+		{"unknown", nil, []string{"This invite is no longer valid"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var calls int
-			s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-				createFn: func(context.Context, string, string, string) (string, time.Time, error) {
-					calls++
-					return "user-1", time.Now(), nil
-				},
-			}, SessionService: &fakeSessionStore{
-				createFn: func(context.Context, string, time.Time) (string, error) {
-					return testSessionID, nil
+			invites := &fakeInviteStore{invites: map[string]rss.Invite{}}
+			if tt.invite != nil {
+				invites.invites[string(token.Hash(testInviteToken))] = *tt.invite
+			}
+			s := newSignupTestServer(t, Services{InviteService: invites, UserService: &fakeUserStore{
+				createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+					t.Error("CreateFromInvite must not be called")
+					return "", nil
 				},
 			}})
-			h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
-			form := url.Values{
-				"invite":   {tt.invite},
-				"name":     {"Test User"},
-				"email":    {"user@example.com"},
-				"password": {"correct-horse-battery"},
+
+			rr := getSignup(t, s, "/signup?invite="+testInviteToken)
+			if rr.Code != http.StatusGone {
+				t.Fatalf("GET status = %d, want %d", rr.Code, http.StatusGone)
+			}
+			assertNoReferrerNoStore(t, rr)
+			assertBodyContains(t, rr.Body.String(), tt.want...)
+			if strings.Contains(rr.Body.String(), "<form") {
+				t.Error("GET body has a form")
 			}
 
-			rr := postForm(t, h, "/signup", "192.0.2.1:1234", form)
-
-			if rr.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+			form := url.Values{"invite": {testInviteToken}, "name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
+			rr = postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP, "/signup", "192.0.2.1:1234", form)
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("POST status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 			}
-			if tt.wantStatus == http.StatusSeeOther {
-				if loc := rr.Header().Get("Location"); loc != "/" {
-					t.Errorf("Location = %q, want /", loc)
-				}
-				if calls != 1 {
-					t.Errorf("Create called %d times, want 1", calls)
-				}
-				return
-			}
-			if !strings.Contains(rr.Body.String(), tt.wantError) {
-				t.Errorf("body does not contain %q", tt.wantError)
-			}
-			if calls != 0 {
-				t.Errorf("Create called %d times, want 0", calls)
-			}
+			assertBodyContains(t, rr.Body.String(), tt.want...)
 		})
+	}
+}
+
+func TestSignupOpenInvite(t *testing.T) {
+	var gotHash []byte
+	var gotEmail string
+	queue := &fakeEmailQueue{}
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFromInviteFn: func(_ context.Context, tokenHash []byte, _, email, _ string) (string, error) {
+			gotHash, gotEmail = tokenHash, email
+			return "user-1", nil
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
+	}, EmailQueue: queue})
+
+	rr := getSignup(t, s, "/signup?invite="+testInviteToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	assertNoReferrerNoStore(t, rr)
+	body := rr.Body.String()
+	assertBodyContains(t, body, `<input type="hidden" name="invite" value="`+testInviteToken+`" />`, `name="email" value=""`)
+	if strings.Contains(body, "readonly") || strings.Contains(body, "This invite is for this address.") {
+		t.Error("an open invite's email field is locked")
+	}
+
+	form := url.Values{"invite": {testInviteToken}, "name": {"Test User"}, "email": {"typed@example.com"}, "password": {"correct-horse-battery"}}
+	rr = postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP, "/signup", "192.0.2.1:1234", form)
+	assertRedirect(t, rr, "/")
+	assertNoReferrerNoStore(t, rr)
+	if string(gotHash) != string(token.Hash(testInviteToken)) {
+		t.Error("CreateFromInvite didn't get the invite's token hash")
+	}
+	if gotEmail != "typed@example.com" {
+		t.Errorf("CreateFromInvite got email %q, want typed@example.com", gotEmail)
+	}
+	if msgs := queue.messages(); len(msgs) != 1 || msgs[0].To != "typed@example.com" {
+		t.Errorf("queued %+v, want one confirmation to typed@example.com", msgs)
+	}
+}
+
+func TestSignupBoundInvite(t *testing.T) {
+	const bound = "invite-bound-token-0123"
+	invites := &fakeInviteStore{invites: map[string]rss.Invite{
+		string(token.Hash(bound)): {ID: "invite-2", Email: "ada@example.com", Name: "Ada", WaitlistID: "entry-1", ExpiresAt: time.Now().Add(time.Hour)},
+	}}
+	var gotEmail string
+	queue := &fakeEmailQueue{}
+	s := newSignupTestServer(t, Services{InviteService: invites, UserService: &fakeUserStore{
+		createFromInviteFn: func(_ context.Context, _ []byte, _, email, _ string) (string, error) {
+			gotEmail = email
+			return "user-1", nil
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
+	}, EmailQueue: queue})
+
+	rr := getSignup(t, s, "/signup?invite="+bound)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	assertBodyContains(t, rr.Body.String(),
+		`name="name" value="Ada"`,
+		`name="email" value="ada@example.com"`,
+		`readonly aria-describedby="email-hint"`,
+		`<p class="hint" id="email-hint">This invite is for this address.</p>`,
+	)
+
+	// The submitted email is ignored for the invite's.
+	form := url.Values{"invite": {bound}, "name": {"Ada"}, "email": {"other@example.com"}, "password": {"correct-horse-battery"}}
+	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
+	rr = postForm(t, h, "/signup", "192.0.2.1:1234", form)
+	assertRedirect(t, rr, "/")
+	if gotEmail != "ada@example.com" {
+		t.Errorf("CreateFromInvite got email %q, want ada@example.com", gotEmail)
+	}
+	if msgs := queue.messages(); len(msgs) != 0 {
+		t.Errorf("queued %d emails, want none: the account starts confirmed", len(msgs))
+	}
+
+	t.Run("invalid form keeps the email locked", func(t *testing.T) {
+		form := url.Values{"invite": {bound}, "name": {""}, "email": {"other@example.com"}, "password": {"correct-horse-battery"}}
+		rr := postForm(t, h, "/signup", "192.0.2.3:1234", form)
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+		assertBodyContains(t, rr.Body.String(), `name="email" value="ada@example.com"`, `This invite is for this address.`)
+	})
+}
+
+func TestSignupInviteRace(t *testing.T) {
+	var creates int
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+			return "", rss.ErrInviteUnusable
+		},
+	}, SessionService: &fakeSessionStore{
+		createFn: func(context.Context, string, time.Time) (string, error) {
+			creates++
+			return testSessionID, nil
+		},
+	}})
+
+	rr := postSignup(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)))
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+	assertBodyContains(t, rr.Body.String(), "This invite has already been used")
+	if creates != 0 {
+		t.Errorf("session Create called %d times, want 0", creates)
 	}
 }
 
 func TestSignupFormHandlerTrimsName(t *testing.T) {
 	var gotName string
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(ctx context.Context, name, email, password string) (string, time.Time, error) {
+		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
 			gotName = name
-			return "user-1", time.Now(), nil
+			return "user-1", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) {
@@ -136,7 +262,7 @@ func TestSignupFormHandlerTrimsName(t *testing.T) {
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
 	form := url.Values{
-		"invite":   {testInviteCode},
+		"invite":   {testInviteToken},
 		"name":     {"  Ann  "},
 		"email":    {"user@example.com"},
 		"password": {"correct-horse-battery"},
@@ -148,7 +274,7 @@ func TestSignupFormHandlerTrimsName(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
 	}
 	if gotName != "Ann" {
-		t.Errorf("Create got name %q, want %q", gotName, "Ann")
+		t.Errorf("CreateFromInvite got name %q, want %q", gotName, "Ann")
 	}
 }
 
@@ -156,7 +282,7 @@ func TestSignupFormHandlerPasswordTooLong(t *testing.T) {
 	s := newSignupTestServer(t, Services{})
 
 	form := url.Values{
-		"invite":   {testInviteCode},
+		"invite":   {testInviteToken},
 		"name":     {"a"},
 		"email":    {"a@b.co"},
 		"password": {strings.Repeat("a", 257)},
@@ -202,9 +328,9 @@ const testSessionID = "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d"
 func TestSignupFormHandlerLogsIn(t *testing.T) {
 	var calls []string
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
 			calls = append(calls, "user Create")
-			return "user-1", time.Now(), nil
+			return "user-1", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
@@ -517,15 +643,15 @@ func TestLoginFormHandlerFailureLimitConcurrent(t *testing.T) {
 
 func TestSignupFormHandlerRateLimited(t *testing.T) {
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(ctx context.Context, name, email, password string) (string, time.Time, error) {
-			t.Error("Create must not be called")
-			return "", time.Time{}, nil
+		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
+			t.Error("CreateFromInvite must not be called")
+			return "", nil
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
-	// A wrong invite code fails validation, so no attempt reaches the store,
-	// and the limit counts guesses at the code.
-	form := url.Values{"invite": {"wrong-invite-code-0123"}, "name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
+	// An unknown invite token is refused before the account is made, and the
+	// limit counts guesses at tokens.
+	form := url.Values{"invite": {"wrong-invite-token-0123"}, "name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
 
 	for i := 1; i <= 10; i++ {
 		if rr := postForm(t, h, "/signup", "192.0.2.1:1234", form); rr.Code != http.StatusUnprocessableEntity {
@@ -535,8 +661,8 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 
 	rr := postForm(t, h, "/signup", "192.0.2.1:1234", form)
 	assertRateLimitedForm(t, rr, "user@example.com")
-	if strings.Contains(rr.Body.String(), "invite code isn") {
-		t.Error("the rate-limited response checked the invite code")
+	if strings.Contains(rr.Body.String(), "This invite is no longer valid") {
+		t.Error("the rate-limited response looked up the invite")
 	}
 
 	if rr := postForm(t, h, "/signup", "192.0.2.2:1234", form); rr.Code != http.StatusUnprocessableEntity {
@@ -547,8 +673,8 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 	var creates int
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
-			return "", time.Time{}, rss.ErrDuplicateEmail
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+			return "", rss.ErrDuplicateEmail
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) {
@@ -583,8 +709,8 @@ func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 
 func TestSignupFormHandlerCreateError(t *testing.T) {
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
-			return "", time.Time{}, io.ErrUnexpectedEOF
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+			return "", io.ErrUnexpectedEOF
 		},
 	}})
 
@@ -598,7 +724,7 @@ func TestSignupFormHandlerCreateError(t *testing.T) {
 func postSignup(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{
-		"invite":   {testInviteCode},
+		"invite":   {testInviteToken},
 		"name":     {"Test User"},
 		"email":    {"dup@example.com"},
 		"password": {"correct-horse-battery"},
@@ -691,8 +817,8 @@ func TestLogoutDeletesSession(t *testing.T) {
 func TestReturnTo(t *testing.T) {
 	const feedPath = "/feeds/" + testFeedID
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFn: func(context.Context, string, string, string) (string, time.Time, error) {
-			return "user-1", time.Now(), nil
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+			return "user-1", nil
 		},
 		authenticateFn: func(context.Context, string, string) (string, error) {
 			return "user-1", nil
@@ -769,7 +895,7 @@ func TestReturnTo(t *testing.T) {
 		c := newClient(t)
 		do(t, c, http.MethodGet, feedPath, nil)
 		signup := url.Values{
-			"invite":   {testInviteCode},
+			"invite":   {testInviteToken},
 			"name":     {"Test User"},
 			"email":    {"new@example.com"},
 			"password": {"correct-horse-battery"},
@@ -836,5 +962,5 @@ func TestLoginPageSaysLogIn(t *testing.T) {
 		t.Error("GET /login contains >Login<")
 	}
 	assertBodyContains(t, get("/"), `href="/login">Log in</a>`)
-	assertBodyContains(t, get("/signup?invite="+testInviteCode), `<a href="/login">Log in</a>`)
+	assertBodyContains(t, get("/signup?invite="+testInviteToken), `<a href="/login">Log in</a>`)
 }

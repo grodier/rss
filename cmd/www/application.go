@@ -157,6 +157,7 @@ func (app *Application) Run() error {
 		SessionService:      psql.NewUserSessionRepository(db),
 		TokenService:        psql.NewTokenRepository(db),
 		WaitlistService:     psql.NewWaitlistRepository(db),
+		InviteService:       psql.NewInviteRepository(db),
 		SearchService:       psql.NewSearchRepository(db),
 		SiteService:         psql.NewSiteRepository(db),
 		LookupService:       psql.NewLookupRepository(db),
@@ -181,7 +182,6 @@ func (app *Application) Run() error {
 	srvConfig := server.Config{
 		Port:         app.config.server.port,
 		Env:          app.config.env,
-		InviteCode:   app.config.server.inviteCode,
 		Version:      version,
 		ProxyHops:    app.config.server.proxyHops,
 		BaseURL:      app.config.mail.BaseURL,

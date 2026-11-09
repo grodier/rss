@@ -67,6 +67,7 @@ On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the d
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
 `admin create-user` (`cmd/admin/create_user.go`) creates a reader's account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
+`admin invite create`, `list` and `revoke` (`cmd/admin/invite.go`) make, list and revoke signup invites; `create` prints the link, built from `-app-url`, the reader's URL (the admin's own `-base-url` is its own host).
 `admin send-test-email` (`cmd/admin/send_test_email.go`) renders the `test` email and sends it with `www`'s mail flags (`cli.Mail`, shared with `www`'s configuration), without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
 ## Packages
@@ -163,7 +164,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /shared/{token}` | no | A shared timeline's landing page |
 | `GET /shared/{token}/feed.atom` | no | A shared timeline's Atom feed |
 | `GET /` | no | Landing page, with the waitlist form; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row; never cached (`no-store`) |
-| `GET, POST /signup` | no | Only registered with `-invite-code` |
+| `GET, POST /signup` | no | Sign up with an invite (`?invite=<token>`); without a usable one, a page saying why |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
 | `GET /confirm-email/done` | no | Static "email address confirmed" page for anyone but the confirmed account |
@@ -238,6 +239,7 @@ users ──< imports ──< import_feeds (feed_id, once known)
 users ──< user_sessions
 users ──< user_tokens
 waitlist (no foreign keys: an entry is an address, not an account)
+waitlist ──< invites >── users   (both nullable: the entry it was sent to, the account made with it)
 
 admins ──< admin_recovery_codes   (apart from users: an admin is never a reader)
 admin_sessions (the admin's scs sessions, apart from the reader's sessions)
@@ -273,7 +275,10 @@ request_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written b
 - **`server_errors`** is capped by count, not age: every instance's housekeeper keeps the newest 1,000 (`Trim`), so a quiet month keeps its errors and a burst can't grow the table past an hour's worth.
 - **`waitlist`:** one row per address (`citext`), with one link token's hash that both confirms the entry and leaves the list; joining again while unconfirmed replaces the row's details and hash in the same `INSERT … ON CONFLICT`, and a confirmed row is left alone.
   An entry counts once `confirmed_at` is set; leaving deletes the row.
-  Nothing joins it to `users` yet: the join handler checks for an account by address before inserting.
+  Nothing joins it to `users`: the join handler checks for an account by address before inserting, and signing up deletes the account's entry.
+- **`invites`:** one row per invite, with its token's hash; `email` is set for a bound invite and must be the signup's address.
+  Redeeming is one `UPDATE … WHERE` the invite is unredeemed, unrevoked and unexpired, in the same transaction as the user's insert, so an invite makes at most one account and a failed signup leaves it usable.
+  Deleting its waitlist entry or its account clears `waitlist_id` or `user_id` and keeps the row, for the admin's history.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
 Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
@@ -370,6 +375,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   A token works once, until it expires, and (except `change_email`) only while the account's email is still the address it was sent to.
   Opening a link shows a page with a button and only the POST uses the token, so mail scanners that open links can't use it.
   The link's page is served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in its URL.
+  Signup invites (`invites.token_hash`) are stored the same way, work once and expire, and their page (`/signup?invite=`) sends the same headers; the form posts the token back in a hidden field.
   Waitlist links follow the same pattern with one difference: the entry's token (`waitlist.token_hash`) doesn't expire and isn't used up, since the leave link must work in every later email; joining again while unconfirmed replaces it.
 - **Waitlist bots:** the form has a honeypot field, hidden from people and the keyboard; a request that fills it gets the "check your email" page and nothing is stored or sent, and the rest are capped per IP (`waitlistLimiter`) and by the outbox's per-address cap.
 - **Shared timelines:** their routes are public (no session, no login) and reachable only by the share token: 32 random bytes from `token.Random`, stored as is, so the owner's settings can show the link again.
@@ -497,7 +503,7 @@ What runs where, and how to operate it, is in [`infra/README.md`](../infra/READM
   `deploy/backup` is the nightly backup's image: `pg_dump` streamed to the R2 bucket `rss-backups`.
   CI's `image` job builds both on every event, and on `main` pushes them to GHCR (`:sha-<sha>` and `:main`) with build provenance; PRs never push.
 - **Infrastructure** (`infra/`, one Terraform root module, state in the R2 bucket `rss-tfstate`): a Postgres 17 database reachable only from Render's private network, the `rss` web service (pre-deploy `/www migrate -seed`, health check `/healthcheck`: Render reads its status code, which is always 200, and the uptime monitor reads its `status`), the `rss-backup` cron job, the backup bucket's lifecycle rules, and the app's DNS records in Cloudflare.
-  Values that change outside Terraform (the images, the invite code, the SMTP password) are in `ignore_changes`.
+  Values that change outside Terraform (the images, the debug accounts, the SMTP password) are in `ignore_changes`.
 - **Workflows** (`.github/workflows`): `ci.yml` (checks, images, then `deploy.yml` on `main`); `deploy.yml` deploys an image by digest and checks `/healthcheck` reports its SHA, then deploys the backup image to the `rss-backup` cron job by digest (also run by hand to roll back); `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
   All Render, R2 and Cloudflare values are repository secrets, read only on `main`, by hand, or on PRs from branches in this repository; none uses `pull_request_target`.
 - **Edge** (#541): Render's Cloudflare edge terminates TLS and serves HTTP/2 and HTTP/3 (`h3` seen in DevTools), compresses responses (Brotli, when the client accepts it), and caches `/static` files ("Common static files", set in Render's dashboard), purging them on every successful deploy.

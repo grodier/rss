@@ -8,9 +8,14 @@ User-facing strings, CSS classes and every helper's name live in the code and te
 
 ## Accounts and sessions
 
-**Signup and login.** Signup exists only when the app runs with `-invite-code`, and no page links to it: people arrive through `/signup?invite=<code>`, which pre-fills the code.
-`signupFormHandler` checks the per-IP limit, then the code (compared in constant time), then the name, email and password with `validator.CheckNewAccount`, and creates the user with an Argon2id hash.
-A taken email gets an error on the email field with links to log in or reset the password.
+**Signup and login.** Signup needs a single-use invite (an `invites` row), and no page links to it: people arrive through `/signup?invite=<token>`, the link `admin invite create` prints.
+`signupHandler` looks the invite up by the token's hash (`signupInvite`) and, if it's usable, shows the form with the token in a hidden field; a bound invite (one with an email, sent to a confirmed waitlist entry) fills in the entry's name and its email, locked (`readonly`).
+Without a token the page says the app is invite-only and links to the waitlist; an expired, used, revoked or unknown invite gets a page that says which, with no form (410; `renderInviteUnusable`).
+The page with a token, and the POST, send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, like the email links.
+`signupFormHandler` checks the per-IP limit, then the invite again, takes a bound invite's email whatever was submitted, checks the name, email and password with `validator.CheckNewAccount`, and calls `UserRepository.CreateFromInvite`.
+That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, and deletes the account's waitlist entry.
+A taken email rolls it all back, so the invite stays usable, and gets an error on the email field with links to log in or reset the password.
+A bound invite's account starts confirmed, so only an open invite's signup sends the confirmation email.
 Login checks the per-IP limit, then counts the attempt against the submitted email *before* checking the password (refunded unless the password was wrong), so parallel guesses can't slip past the limit.
 `Authenticate` tells an unknown email (`rss.ErrNoAccount`) from a wrong password (`rss.ErrWrongPassword`), and each gets its own field error; the login page links to password reset, with the typed address.
 
@@ -27,6 +32,10 @@ A login lasts at most a year (scs's `Lifetime`).
 Both forms follow the field pattern in CLAUDE.md, and signup shows the name and password hints all the time.
 With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]`, `busy-forms.ts`)).
 The other way to make an account is `admin create-user` (`runCreateUser` in `cmd/admin`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
+
+**Invites.** Until the admin's pages send them (#574), invites are made from the command line: `admin invite create` (`runInviteCreate` in `cmd/admin/invite.go`) stores one with a new token (`token.New`; only its SHA-256 is stored) and prints its link, built from `-app-url`, the reader's URL.
+With `-email` it's bound to that address's waitlist entry, which must be confirmed; without, it's open, with `-note` saying who it's for.
+It expires after `-expires` (14 days by default); `admin invite list` shows each invite's status (`rss.Invite.Status`), and `admin invite revoke <id>` stops an unused one working.
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
 Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
@@ -85,13 +94,13 @@ Links sent to the old address stop working by themselves, since tokens are only 
 **Start at:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`) and `internal/validator/account.go` (`CheckNewAccount`).
+2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`), `internal/validator/account.go` (`CheckNewAccount`), and for invites `internal/psql/invites.go`, `UserRepository.CreateFromInvite` and `cmd/admin/invite.go`.
 3. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and `internal/psql/user_sessions.go`.
 4. `internal/server/settings.go`, then `confirm.go`, `password_reset.go` and `email_change.go`, with `internal/psql/users.go` and `tokens.go`.
 5. Email: `internal/server/email.go` (`sendEmail`), then `internal/mail` (`Queue`, `Runner`, `ParseTemplates`).
 6. `internal/password/password.go`, `internal/token/token.go`, and `cmd/www/create_user.go`.
 
-**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go`; `cmd/admin/create_user_test.go`.
+**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `invites_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go`; `cmd/admin/create_user_test.go` and `invite_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 
@@ -112,6 +121,7 @@ It doesn't expire, since the leave link must keep working in later emails (the i
 `GET /waitlist/confirm` and `GET /waitlist/leave` send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, look the entry up and show a page whose button posts the token back, so a mail scanner that opens a link changes nothing.
 The POSTs confirm (keeping the first `confirmed_at`) or delete the entry and redirect to `/` with a flash.
 An unknown token gets the expired-link page (410).
+Signing up with an invite deletes the entry (see "Signup and login" under "Accounts and sessions"); leaving the list first keeps a bound invite's email but unlinks it from the entry.
 
 **Start at:**
 

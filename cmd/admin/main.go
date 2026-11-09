@@ -24,6 +24,8 @@ const usage = `Usage:
   admin enroll -email <email>    enroll an admin, or with -reset replace their password and second factor
   admin create-user -name <name> -email <email>
                                  create a reader's account, for local development
+  admin invite create|list|revoke
+                                 create, list and revoke signup invites (admin invite help)
   admin send-test-email -to <address>
                                  send the test email, to check the mail settings
 `
@@ -43,6 +45,8 @@ func run(args []string, getenv func(string) string, stdin io.Reader, stdout, std
 		return runEnroll(args[1:], getenv, stdin, stdout, stderr)
 	case "create-user":
 		return runCreateUser(args[1:], getenv, stdin, stdout, stderr)
+	case "invite":
+		return runInvite(args[1:], getenv, stdout, stderr)
 	case "send-test-email":
 		return runSendTestEmail(args[1:], getenv, stdout, stderr)
 	case "help":

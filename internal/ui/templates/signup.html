@@ -15,19 +15,12 @@
       {{template "brand"}}
       <h1>Sign Up</h1>
 
-      {{$focus := .Form.FirstError "invite" "name" "email" "password"}}
+      {{$focus := .Form.FirstError "name" "email" "password"}}
       <form action="/signup" method="post" data-busy>
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
-        <div class="field">
-          <label for="invite">Invite code</label>
-          <input type="text" id="invite" name="invite" value="{{.Form.Invite}}" autocomplete="off"
-            autocapitalize="none" spellcheck="false"
-            {{with .Form.FieldErrors.invite}}aria-invalid="true" aria-describedby="invite-error"{{end}}
-            {{if eq $focus "invite"}}autofocus{{end}} />
-          {{with .Form.FieldErrors.invite}}<p class="error" id="invite-error">{{.}}</p>{{end}}
-        </div>
+        <input type="hidden" name="invite" value="{{.Form.Invite}}" />
         <div class="field">
           <label for="name">Name</label>
           <input type="text" id="name" name="name" value="{{.Form.Name}}"
@@ -42,8 +35,10 @@
           <label for="email">Email</label>
           <input type="email" id="email" name="email" value="{{.Form.Email}}"
             autocomplete="email" autocapitalize="none" spellcheck="false"
-            {{with .Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{end}}
+            {{if .BoundEmail}}readonly aria-describedby="email-hint{{if .Form.FieldErrors.email}} email-error{{end}}"{{else}}{{with .Form.FieldErrors.email}}aria-describedby="email-error"{{end}}{{end}}
+            {{with .Form.FieldErrors.email}}aria-invalid="true"{{end}}
             {{if eq $focus "email"}}autofocus{{end}} />
+          {{if .BoundEmail}}<p class="hint" id="email-hint">This invite is for this address.</p>{{end}}
           {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
           {{if .DuplicateEmail}}<p class="hint"><a href="/login">Log in instead</a>, or <a href="/password/forgot?email={{.Form.Email}}">reset your password</a>.</p>{{end}}
         </div>

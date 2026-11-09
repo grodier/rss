@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - check your email</title>
+  {{template "assets" "solo"}}
+  {{template "app-head"}}
+</head>
+
+<body>
+  <main class="solo">
+    <div class="solo-panel">
+      {{template "brand"}}
+      <h1>Check your email</h1>
+
+      <p class="solo-text">We sent a link to {{.Email}}. Open it to confirm your place on the waitlist.</p>
+
+      {{template "policy-links"}}
+    </div>
+  </main>
+</body>
+
+</html>

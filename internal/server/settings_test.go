@@ -1204,7 +1204,7 @@ func TestDeleteAccountLogsOut(t *testing.T) {
 		t.Fatalf("GET /: status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	assertBodyContains(t, string(b),
-		`<a class="btn btn-primary" href="/login">Log in</a>`,
+		`Already have an account? <a href="/login">Log in</a>`,
 		`<div class="flash">Your account was deleted. Thanks for trying Paper Round.</div>`,
 	)
 }

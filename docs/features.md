@@ -95,6 +95,33 @@ Links sent to the old address stop working by themselves, since tokens are only 
 
 **Why:** "Security" and "Accounts" in decisions.md.
 
+## Waitlist
+
+**Joining.** The logged-out home page (`/`, `homeHandler`) is the landing page, and it hosts the waitlist form, a partial (`waitlist-form`) so the owner's landing page can take it later.
+`/` stays one address for two pages: the timeline when logged in, the landing page when not; both are sent with `Cache-Control: no-store`, since a cache can't tell them apart.
+A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field and stored as the entry's source.
+`POST /waitlist` (`waitlistJoinHandler`) sends a logged-in user home, then answers a filled honeypot field as if it worked (storing and sending nothing), then checks the per-IP limit, the fields and whether the address has an account.
+Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
+`WaitlistRepository.Join` inserts the entry unconfirmed in one statement: an unconfirmed entry with the same address is refreshed with the new details and token, so only the newest link works, and a confirmed one is `rss.ErrDuplicateEmail`.
+The handler then queues `waitlist_confirm`, keeps the address in the session as `waitlistJoinedTo` and redirects to `/waitlist/joined`.
+Log in links to the form for people who arrive there without an account.
+
+**Confirming and leaving.** Each entry has one link token (`token.New`; only its SHA-256 is stored), carried by both of the email's links.
+It doesn't expire, since the leave link must keep working in later emails (the invite, #574), and it's replaced only by joining again while unconfirmed.
+`GET /waitlist/confirm` and `GET /waitlist/leave` send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, look the entry up and show a page whose button posts the token back, so a mail scanner that opens a link changes nothing.
+The POSTs confirm (keeping the first `confirmed_at`) or delete the entry and redirect to `/` with a flash.
+An unknown token gets the expired-link page (410).
+
+**Start at:**
+
+1. `internal/server/home.go` (`homeHandler`) and `internal/server/waitlist.go` (`waitlistJoinHandler`, `renderWaitlistHost`, `waitlistActionHandler`).
+2. `internal/psql/waitlist.go` (`Join`).
+3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
+
+**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go`.
+
+**Why:** "Waitlist and invites" in decisions.md.
+
 ## Search, site lookups and discovery
 
 **Flow.** `GET /search?q=…` only searches the database: sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.

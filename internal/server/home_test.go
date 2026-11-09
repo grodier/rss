@@ -48,6 +48,21 @@ func getHome(t *testing.T, s *Server, target string, loggedIn bool) *httptest.Re
 	return rr
 }
 
+// TestHomeHandlerNoStore checks that / is never cached: it's a different
+// page logged in and out.
+func TestHomeHandlerNoStore(t *testing.T) {
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}})
+	for _, loggedIn := range []bool{false, true} {
+		rr := getHome(t, s, "/", loggedIn)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("logged in %v: status = %d", loggedIn, rr.Code)
+		}
+		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("logged in %v: Cache-Control = %q, want no-store", loggedIn, got)
+		}
+	}
+}
+
 func TestHomeHandlerTimeline(t *testing.T) {
 	var gotUser string
 	var gotBefore rss.ArticleCursor

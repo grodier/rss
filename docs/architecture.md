@@ -160,12 +160,14 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
 | `GET /shared/{token}/feed.atom` | no | A shared timeline's Atom feed |
-| `GET /` | no | Landing page; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row |
+| `GET /` | no | Landing page, with the waitlist form; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row; never cached (`no-store`) |
 | `GET, POST /signup` | no | Only registered with `-invite-code` |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
 | `GET /confirm-email/done` | no | Static "email address confirmed" page for anyone but the confirmed account |
 | `GET, POST /email-change` | no | A change-email link's page, and changing |
+| `POST /waitlist`, `GET /waitlist/joined` | no | Join the waitlist (a logged-in user is sent to `/`), and "check your email" |
+| `GET, POST /waitlist/confirm`, `GET, POST /waitlist/leave` | no | A waitlist link's page, and confirming or leaving |
 | `GET, POST /password/forgot`, `GET /password/forgot/sent` | no | Ask for a reset link |
 | `GET, POST /password/reset` | no | A reset link's page, and setting the password |
 | `GET /.well-known/change-password` | no | 302 to `/settings/password`, for password managers |
@@ -233,6 +235,7 @@ users ──< timelines ──< timeline_tags (>── tags) / timeline_feeds (>
 users ──< imports ──< import_feeds (feed_id, once known)
 users ──< user_sessions
 users ──< user_tokens
+waitlist (no foreign keys: an entry is an address, not an account)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
@@ -263,6 +266,9 @@ request_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written b
 - **Real-user metrics:** `rum_views` gets a row per beacon, with no user, IP address or URL; the daily rollup counts each whole UTC day's views into one `rum_daily` row per route, device, browser and metric, with its views in the metric's `metrics.RUMBounds` buckets, so the 30 days of views and 13 months of days answer the same percentiles.
   Like the hourly rollup, it starts after the newest day rolled up, inserts with `ON CONFLICT DO NOTHING` and takes whole days only; a view counts for each metric it reported.
 - **`server_errors`** is capped by count, not age: every instance's housekeeper keeps the newest 1,000 (`Trim`), so a quiet month keeps its errors and a burst can't grow the table past an hour's worth.
+- **`waitlist`:** one row per address (`citext`), with one link token's hash that both confirms the entry and leaves the list; joining again while unconfirmed replaces the row's details and hash in the same `INSERT … ON CONFLICT`, and a confirmed row is left alone.
+  An entry counts once `confirmed_at` is set; leaving deletes the row.
+  Nothing joins it to `users` yet: the join handler checks for an account by address before inserting.
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
 Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
@@ -351,6 +357,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   A token works once, until it expires, and (except `change_email`) only while the account's email is still the address it was sent to.
   Opening a link shows a page with a button and only the POST uses the token, so mail scanners that open links can't use it.
   The link's page is served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in its URL.
+  Waitlist links follow the same pattern with one difference: the entry's token (`waitlist.token_hash`) doesn't expire and isn't used up, since the leave link must work in every later email; joining again while unconfirmed replaces it.
+- **Waitlist bots:** the form has a honeypot field, hidden from people and the keyboard; a request that fills it gets the "check your email" page and nothing is stored or sent, and the rest are capped per IP (`waitlistLimiter`) and by the outbox's per-address cap.
 - **Shared timelines:** their routes are public (no session, no login) and reachable only by the share token: 32 random bytes from `token.Random`, stored as is, so the owner's settings can show the link again.
   A malformed token is a 404 before any query.
   The page and feed send `X-Robots-Tag: noindex` (the page also has a robots meta tag) and name no owner; feed entries carry only titles, links, dates, excerpts and each feed's own title.
@@ -367,6 +375,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | `loginLimiter` | client IP (IPv6 by /64) | 20 per 10 min |
   | `loginFailureLimiter` | submitted email | 10 failed logins per 15 min |
   | `signupLimiter` | client IP (IPv6 by /64) | 10 per hour |
+  | `waitlistLimiter` | client IP (IPv6 by /64) | 10 waitlist joins per hour |
   | `lookupLimiter` | user | 10 per 10 min |
   | `refreshLimiter` | user | 10 per 10 min |
   | `importLimiter` | user | 5 OPML imports per hour |

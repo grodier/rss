@@ -84,6 +84,20 @@ type TokenStore interface {
 	Get(ctx context.Context, hash []byte, purpose string) (rss.Token, error)
 }
 
+// WaitlistStore stores the people waiting for an invite (waitlist rows);
+// satisfied by *psql.WaitlistRepository.
+type WaitlistStore interface {
+	// Join adds e, unconfirmed, with the link token tokenHash, or refreshes
+	// an unconfirmed entry with its address. rss.ErrDuplicateEmail if the
+	// address is already confirmed.
+	Join(ctx context.Context, e rss.WaitlistEntry, tokenHash []byte) (rss.WaitlistEntry, error)
+	// GetByToken, Confirm and Leave return rss.ErrNoRecord for an unknown
+	// token.
+	GetByToken(ctx context.Context, tokenHash []byte) (rss.WaitlistEntry, error)
+	Confirm(ctx context.Context, tokenHash []byte) error
+	Leave(ctx context.Context, tokenHash []byte) error
+}
+
 // SessionStore stores logged-in devices (user_sessions rows).
 type SessionStore interface {
 	Create(ctx context.Context, userID string, idleBefore time.Time) (string, error)
@@ -309,6 +323,7 @@ var (
 	_ UserStore         = (*psql.UserRepository)(nil)
 	_ SessionStore      = (*psql.UserSessionRepository)(nil)
 	_ TokenStore        = (*psql.TokenRepository)(nil)
+	_ WaitlistStore     = (*psql.WaitlistRepository)(nil)
 	_ SearchStore       = (*psql.SearchRepository)(nil)
 	_ SiteStore         = (*psql.SiteRepository)(nil)
 	_ LookupStore       = (*psql.LookupRepository)(nil)
@@ -338,6 +353,7 @@ type Services struct {
 	UserService         UserStore
 	SessionService      SessionStore
 	TokenService        TokenStore
+	WaitlistService     WaitlistStore
 	SearchService       SearchStore
 	SiteService         SiteStore
 	LookupService       LookupStore
@@ -400,6 +416,10 @@ type Server struct {
 
 	// signupLimiter caps signup attempts per client IP (keyed by ipRateLimitKey).
 	signupLimiter *rateLimiter
+
+	// waitlistLimiter caps waitlist joins per client IP (keyed by
+	// ipRateLimitKey).
+	waitlistLimiter *rateLimiter
 
 	// passwordChangeLimiter caps password change attempts per user (keyed by
 	// user ID).
@@ -472,6 +492,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		loginLimiter:          newRateLimiter(20, 10*time.Minute),
 		loginFailureLimiter:   newRateLimiter(10, 15*time.Minute),
 		signupLimiter:         newRateLimiter(10, time.Hour),
+		waitlistLimiter:       newRateLimiter(10, time.Hour),
 		passwordChangeLimiter: newRateLimiter(10, 10*time.Minute),
 		confirmResendLimiter:  newRateLimiter(3, time.Hour),
 		resetIPLimiter:        newRateLimiter(10, time.Hour),

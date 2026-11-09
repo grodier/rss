@@ -172,7 +172,7 @@
     letter-spacing: -0.045em;
   }
 
-  .hero p {
+  .hero > p {
     color: var(--text-2);
     font-size: 1.0625rem;
   }
@@ -182,6 +182,30 @@
     justify-content: center;
     gap: 0.625rem;
     margin-block-start: 1.75rem;
+  }
+
+  /* The waitlist form (partials/waitlist.html), on the landing page: a
+     section of its own under the tagline, its fields aligned to the start. */
+  .waitlist {
+    margin-block-start: 2rem;
+    padding-block-start: 1.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .waitlist h2 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .waitlist-intro {
+    margin-block: 0.5rem 1.5rem;
+    color: var(--text-2);
+  }
+
+  .waitlist form {
+    text-align: start;
   }
 
   /* The sunrise (#523), on the inline logo of the landing page and Log in

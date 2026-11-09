@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Paper Round</title>
-  {{template "assets" "solo"}}
+  {{template "assets" "login"}}
   {{template "app-head"}}
 </head>
 
@@ -18,9 +18,8 @@
       {{template "logo-mark"}}
       <h1>Paper Round</h1>
       <p>One quiet timeline for the sites you follow.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="/login">Log in</a>
-      </div>
+      {{template "waitlist-form" .}}
+      <p class="alt">Already have an account? <a href="/login">Log in</a></p>
       {{template "policy-links"}}
     </div>
   </main>

@@ -1072,6 +1072,16 @@ Planned in #583.
 - **Joining twice says so**: "already on the waitlist" for a confirmed address, a new confirmation email for an unconfirmed one, and "there's already an account" with a link to log in, as signup does ("Helpful errors" above).
 - **Bots meet a honeypot field and a per-IP limit**, not Turnstile yet, which needs a script and a CSP change (backlog, under "Security").
 - **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.
+- **`/` stays one address for two pages** (#566): the landing page with the form when logged out, the timeline when logged in, as #394 already had it.
+  Rejected: a separate `/waitlist` page, which puts a page between a visitor and joining when `/?ref=` already gives each place a link; moving the app to `/app` so `/` is always the landing page, which reverses opening the app in one request and the installed app's `start_url`; and a landing site of its own, a second deploy whose form posts back to the app anyway.
+  Login-only pages still send a logged-out visitor to Log in, not the waitlist: someone opening `/saved` without a session is almost always a member whose session ended, and Log in brings them back.
+  Log out still goes to Log in too.
+- **`/` is never cached** (`Cache-Control: no-store`, #566): the same address is a public page or someone's timeline depending on the session, which a cache can't see.
+  It had sent no `Cache-Control` at all, unlike the other logged-in pages, which `requireAuthentication` covers.
+- **The form's errors re-render the page that hosts it**, through one function (`renderWaitlistHost`, #566), so the landing page can take the form without changing the join handler.
+- **Log in links to the waitlist** (#566): a visitor who reaches Log in without an account would otherwise have no way on.
+  Signup itself stays unlinked while it needs a code ("A shared invite code replaces `-signup`" under "Security").
+- **One link token per entry, for both its links, that doesn't expire** (#566): the leave link must keep working in later emails (the invite, #574), and joining again while unconfirmed replaces it, so only the newest confirmation link works.
 - **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
   An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
   Invites expire and can be revoked; the token is stored hashed, like email links.

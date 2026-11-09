@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +135,66 @@ func (f *fakeTokenStore) Create(ctx context.Context, t rss.Token) error {
 
 func (f *fakeTokenStore) Get(ctx context.Context, hash []byte, purpose string) (rss.Token, error) {
 	return f.getFn(ctx, hash, purpose)
+}
+
+// fakeWaitlistStore keeps entries in memory by token hash, as the
+// repository does: Join refreshes an unconfirmed entry with the same email
+// and refuses a confirmed one.
+type fakeWaitlistStore struct {
+	joinErr error // returned by Join instead, when set
+
+	entries map[string]rss.WaitlistEntry // by string(tokenHash)
+}
+
+func (f *fakeWaitlistStore) Join(ctx context.Context, e rss.WaitlistEntry, tokenHash []byte) (rss.WaitlistEntry, error) {
+	if f.joinErr != nil {
+		return rss.WaitlistEntry{}, f.joinErr
+	}
+	if f.entries == nil {
+		f.entries = map[string]rss.WaitlistEntry{}
+	}
+	for h, old := range f.entries {
+		if strings.EqualFold(old.Email, e.Email) {
+			if !old.ConfirmedAt.IsZero() {
+				return rss.WaitlistEntry{}, rss.ErrDuplicateEmail
+			}
+			e.ID, e.CreatedAt = old.ID, old.CreatedAt
+			delete(f.entries, h)
+		}
+	}
+	if e.ID == "" {
+		e.ID, e.CreatedAt = fmt.Sprintf("entry-%d", len(f.entries)+1), time.Now()
+	}
+	f.entries[string(tokenHash)] = e
+	return e, nil
+}
+
+func (f *fakeWaitlistStore) GetByToken(ctx context.Context, tokenHash []byte) (rss.WaitlistEntry, error) {
+	e, ok := f.entries[string(tokenHash)]
+	if !ok {
+		return rss.WaitlistEntry{}, rss.ErrNoRecord
+	}
+	return e, nil
+}
+
+func (f *fakeWaitlistStore) Confirm(ctx context.Context, tokenHash []byte) error {
+	e, ok := f.entries[string(tokenHash)]
+	if !ok {
+		return rss.ErrNoRecord
+	}
+	if e.ConfirmedAt.IsZero() {
+		e.ConfirmedAt = time.Now()
+	}
+	f.entries[string(tokenHash)] = e
+	return nil
+}
+
+func (f *fakeWaitlistStore) Leave(ctx context.Context, tokenHash []byte) error {
+	if _, ok := f.entries[string(tokenHash)]; !ok {
+		return rss.ErrNoRecord
+	}
+	delete(f.entries, string(tokenHash))
+	return nil
 }
 
 type fakeSessionStore struct {

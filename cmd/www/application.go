@@ -156,6 +156,7 @@ func (app *Application) Run() error {
 		UserService:         psql.NewUserRepository(db),
 		SessionService:      psql.NewUserSessionRepository(db),
 		TokenService:        psql.NewTokenRepository(db),
+		WaitlistService:     psql.NewWaitlistRepository(db),
 		SearchService:       psql.NewSearchRepository(db),
 		SiteService:         psql.NewSiteRepository(db),
 		LookupService:       psql.NewLookupRepository(db),

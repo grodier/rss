@@ -156,8 +156,9 @@ Once #573 deploys the admin service (with `RSS_SECRET_KEY`, 32 random bytes hex-
 ```
 
 It reads `RSS_DB_DSN` and `RSS_SECRET_KEY` from the service's environment.
+Render's Shell needs a shell in the image, and the image (`gcr.io/distroless/static-debian12`) has none, so #573 has to provide one before this works (for example the admin's service on the `:debug-nonroot` variant, which adds busybox's `sh`).
 Type the password on the first line (the shell shows it, so clear the screen afterwards), scan the QR code (or add the `otpauth://` URI) with an authenticator app, type the code the app shows, and store the 10 recovery codes it prints in the password manager: they're shown once.
-For a lost phone or password, run the same with `-reset`, which replaces the admin's password, secret and recovery codes (sessions already logged in last until they time out, at most 12 hours).
+For a lost phone or password, run the same with `-reset`, which replaces the admin's password, secret and recovery codes and logs every admin out, so a session on a lost device ends too.
 Rotating `RSS_SECRET_KEY` makes every admin's secret unreadable, so each must enroll again with `-reset`.
 
 ## Backups and restore

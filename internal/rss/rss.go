@@ -562,11 +562,13 @@ type Admin struct {
 }
 
 // AdminCredentials are what enrolling an admin sets, and resetting it
-// replaces: the password's hash, the sealed TOTP secret and the recovery
+// replaces: the password's hash, the sealed TOTP secret, the step of the
+// code that confirmed it (so that code can't also log in) and the recovery
 // codes' hashes.
 type AdminCredentials struct {
 	HashedPassword     []byte
 	SealedTOTPSecret   []byte
+	TOTPLastStep       int64
 	RecoveryCodeHashes [][]byte
 }
 

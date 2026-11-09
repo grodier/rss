@@ -349,6 +349,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   The password step renews the session token and marks the admin pending for 5 minutes; the code step renews it again and logs in.
   Recovery codes (10, `xxxx-xxxx` from 40 random bits each) are stored as SHA-256 hashes and deleted when used.
   `admin_sessions` holds the admin's scs sessions, which end after 30 minutes idle and 12 hours at most; the cookie is `__Host-admin_session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`) in production and `admin_session` without `Secure` locally.
+  `admin enroll -reset` deletes every admin session, so one on a lost device ends.
   `requireRecentCode` asks for a code again before a destructive action when the session's last one is over 10 minutes old.
 - **The admin's second factor** (`internal/admin`): TOTP (RFC 6238, standard library only) in `totp.go`, whose `Verify` accepts one step of drift either way, compares in constant time and never accepts a step at or before the last one used, so each code works once.
   TOTP secrets are stored sealed (`seal.go`: AES-256-GCM, a random nonce prepended to each ciphertext) under a 32-byte key that only the admin service's environment holds, so a database leak alone gives no working secrets.

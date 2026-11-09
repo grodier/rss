@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -80,10 +79,12 @@ func (e *Enrollment) URI() string {
 }
 
 // Finish checks code, the first one the app shows, and if it matches stores
-// the admin: a new one, or with reset, an existing one whose password, secret
-// and recovery codes it replaces. It returns the new recovery codes, to show
-// once. ErrWrongCode if code doesn't match; rss.ErrDuplicateEmail (new) or
-// rss.ErrNoRecord (reset) if the admin exists, or doesn't.
+// the admin, in one write: a new one, or with reset, an existing one whose
+// password, secret and recovery codes it replaces (which logs every admin
+// out). The code's step is stored as the last one used, so it can't also log
+// in. It returns the new recovery codes, to show once. ErrWrongCode if code
+// doesn't match; rss.ErrDuplicateEmail (new) or rss.ErrNoRecord (reset) if
+// the admin exists, or doesn't.
 func (e *Enrollment) Finish(ctx context.Context, admins AdminStore, key []byte, code string, reset bool, now time.Time) ([]string, error) {
 	step, ok := Verify(e.secret, strings.TrimSpace(code), now, 0)
 	if !ok {
@@ -102,27 +103,20 @@ func (e *Enrollment) Finish(ctx context.Context, admins AdminStore, key []byte, 
 	if err != nil {
 		return nil, err
 	}
-	creds := rss.AdminCredentials{HashedPassword: []byte(hashedPassword), SealedTOTPSecret: sealed, RecoveryCodeHashes: hashes}
-
-	var id string
-	if reset {
-		if err := admins.Reset(ctx, e.email, creds); err != nil {
-			return nil, err
-		}
-		a, err := admins.GetByEmail(ctx, e.email)
-		if err != nil {
-			return nil, err
-		}
-		id = a.ID
-	} else {
-		id, err = admins.Create(ctx, e.email, creds)
-		if err != nil {
-			return nil, err
-		}
+	creds := rss.AdminCredentials{
+		HashedPassword:     []byte(hashedPassword),
+		SealedTOTPSecret:   sealed,
+		TOTPLastStep:       step,
+		RecoveryCodeHashes: hashes,
 	}
-	// The code that confirmed the secret has been used: it can't also log in.
-	if _, err := admins.AcceptTOTPStep(ctx, id, step); err != nil {
-		return nil, fmt.Errorf("record the first code's step: %w", err)
+
+	if reset {
+		err = admins.Reset(ctx, e.email, creds)
+	} else {
+		_, err = admins.Create(ctx, e.email, creds)
+	}
+	if err != nil {
+		return nil, err
 	}
 	return codes, nil
 }

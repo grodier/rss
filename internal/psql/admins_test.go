@@ -19,7 +19,7 @@ func newAdminCredentials(t *testing.T, pw, secret string, codeHashes ...string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := rss.AdminCredentials{HashedPassword: []byte(hash), SealedTOTPSecret: []byte(secret)}
+	c := rss.AdminCredentials{HashedPassword: []byte(hash), SealedTOTPSecret: []byte(secret), TOTPLastStep: 50}
 	for _, h := range codeHashes {
 		c.RecoveryCodeHashes = append(c.RecoveryCodeHashes, []byte(h))
 	}
@@ -54,7 +54,7 @@ func TestAdminRepository(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Get: %v", err)
 		}
-		if a.ID != id || a.Email != email || string(a.TOTPSecret) != "secret-1" || a.TOTPLastStep != 0 || a.CreatedAt.IsZero() {
+		if a.ID != id || a.Email != email || string(a.TOTPSecret) != "secret-1" || a.TOTPLastStep != 50 || a.CreatedAt.IsZero() {
 			t.Errorf("Get = %+v", a)
 		}
 		// email is citext.
@@ -107,16 +107,35 @@ func TestAdminRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("Reset replaces the credentials", func(t *testing.T) {
-		if err := repo.Reset(t.Context(), email, newAdminCredentials(t, "second password", "secret-2", "code-c")); err != nil {
+	t.Run("Reset replaces the credentials and ends admin sessions", func(t *testing.T) {
+		token := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM admin_sessions WHERE token = $1`, token); err != nil {
+				t.Errorf("cleanup session: %v", err)
+			}
+		})
+		if _, err := db.Exec(`INSERT INTO admin_sessions (token, data, expiry) VALUES ($1, '', now() + interval '1 hour')`, token); err != nil {
+			t.Fatal(err)
+		}
+
+		c := newAdminCredentials(t, "second password", "secret-2", "code-c")
+		c.TOTPLastStep = 70
+		if err := repo.Reset(t.Context(), email, c); err != nil {
 			t.Fatalf("Reset: %v", err)
 		}
 		a, err := repo.Authenticate(t.Context(), email, "second password")
 		if err != nil {
 			t.Fatalf("Authenticate with the new password: %v", err)
 		}
-		if a.ID != id || string(a.TOTPSecret) != "secret-2" || a.TOTPLastStep != 0 {
-			t.Errorf("after Reset = %+v; want the same id, the new secret and step 0", a)
+		if a.ID != id || string(a.TOTPSecret) != "secret-2" || a.TOTPLastStep != 70 {
+			t.Errorf("after Reset = %+v; want the same id, the new secret and its step", a)
+		}
+		var sessions int
+		if err := db.QueryRow(`SELECT count(*) FROM admin_sessions WHERE token = $1`, token).Scan(&sessions); err != nil {
+			t.Fatal(err)
+		}
+		if sessions != 0 {
+			t.Error("an admin session survived Reset")
 		}
 		if _, err := repo.Authenticate(t.Context(), email, "first password"); !errors.Is(err, rss.ErrWrongPassword) {
 			t.Errorf("old password error = %v, want rss.ErrWrongPassword", err)

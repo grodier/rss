@@ -43,12 +43,12 @@ func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminC
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	stmt := `INSERT INTO admins (email, hashed_password, totp_secret)
-		VALUES ($1, $2, $3)
+	stmt := `INSERT INTO admins (email, hashed_password, totp_secret, totp_last_step)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRowContext(ctx, stmt, email, c.HashedPassword, c.SealedTOTPSecret).Scan(&id)
+	err = tx.QueryRowContext(ctx, stmt, email, c.HashedPassword, c.SealedTOTPSecret, c.TOTPLastStep).Scan(&id)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -64,8 +64,9 @@ func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminC
 
 // Reset replaces the password, TOTP secret and recovery codes of the admin
 // with email, in one transaction, for an admin who lost their phone or
-// password. Codes for the old secret no longer work, so the last accepted
-// step starts over. rss.ErrNoRecord if there is no such admin.
+// password. It also deletes every admin session: a session can't be told
+// apart by admin (scs stores its data encoded), and one on a lost or stolen
+// device must end. rss.ErrNoRecord if there is no such admin.
 func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCredentials) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -74,12 +75,12 @@ func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCr
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	stmt := `UPDATE admins SET hashed_password = $2, totp_secret = $3, totp_last_step = 0
+	stmt := `UPDATE admins SET hashed_password = $2, totp_secret = $3, totp_last_step = $4
 		WHERE email = $1
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRowContext(ctx, stmt, email, c.HashedPassword, c.SealedTOTPSecret).Scan(&id)
+	err = tx.QueryRowContext(ctx, stmt, email, c.HashedPassword, c.SealedTOTPSecret, c.TOTPLastStep).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.ErrNoRecord
 	}
@@ -91,6 +92,9 @@ func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCr
 	}
 	if err := insertRecoveryCodes(ctx, tx, id, c.RecoveryCodeHashes); err != nil {
 		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM admin_sessions`); err != nil {
+		return fmt.Errorf("end admin sessions: %w", err)
 	}
 	return tx.Commit()
 }

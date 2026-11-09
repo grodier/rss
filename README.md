@@ -163,7 +163,7 @@ go run ./cmd/admin enroll -email you@example.com
 ```
 
 It prints a QR code and the `otpauth://` URI it holds; add it to an authenticator app, type the code the app shows, and keep the 10 recovery codes it prints, each of which works once instead of a code, and which aren't shown again.
-`admin enroll -email you@example.com -reset` replaces an admin's password, secret and recovery codes after the same steps, for a lost phone; there's no other way to make or change an admin.
+`admin enroll -email you@example.com -reset` replaces an admin's password, secret and recovery codes after the same steps, for a lost phone, and logs every admin out; there's no other way to make or change an admin.
 
 `admin` and `admin serve` run the site; `admin -help` lists its flags, each also settable by its environment variable, as for `www`, so it reads `RSS_DB_DSN` from `.env` too:
 

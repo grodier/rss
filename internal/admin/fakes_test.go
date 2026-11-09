@@ -110,7 +110,7 @@ func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentia
 func (a *fakeAdmin) set(c rss.AdminCredentials) {
 	a.hashedPassword = string(c.HashedPassword)
 	a.TOTPSecret = c.SealedTOTPSecret
-	a.TOTPLastStep = 0
+	a.TOTPLastStep = c.TOTPLastStep
 	a.codes = map[string]bool{}
 	for _, h := range c.RecoveryCodeHashes {
 		a.codes[string(h)] = true

@@ -103,6 +103,7 @@ A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field 
 `POST /waitlist` (`waitlistJoinHandler`) sends a logged-in user home, then answers a filled honeypot field as if it worked (storing and sending nothing), then checks the per-IP limit, the fields and whether the address has an account.
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
 `WaitlistRepository.Join` inserts the entry unconfirmed in one statement: an unconfirmed entry with the same address is refreshed with the new details and token, so only the newest link works, and a confirmed one is `rss.ErrDuplicateEmail`.
+The optional sites answer is kept as typed, for the owner to add to the seed list and to check discovery against before inviting; nothing reads it automatically.
 The handler then queues `waitlist_confirm`, keeps the address in the session as `waitlistJoinedTo` and redirects to `/waitlist/joined`.
 Log in links to the form for people who arrive there without an account.
 

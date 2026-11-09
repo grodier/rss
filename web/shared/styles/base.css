@@ -89,8 +89,7 @@
   }
 
   input:not([type="hidden"]),
-  textarea,
-  select {
+  textarea {
     display: block;
     inline-size: 100%;
     padding: 0.6875rem 0.875rem;
@@ -110,8 +109,7 @@
   }
 
   input:not([type="hidden"]):focus,
-  textarea:focus,
-  select:focus {
+  textarea:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);

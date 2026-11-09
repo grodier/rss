@@ -43,10 +43,9 @@ func newWaitlistTestServer(t *testing.T) (*Server, *fakeWaitlistStore, *fakeEmai
 // fields replaced.
 func waitlistValues(email string, replace ...string) url.Values {
 	v := url.Values{
-		"email":             {email},
-		"name":              {"Ada Lovelace"},
-		"current_reader":    {"feedly"},
-		"reading_interests": {"Engines, mostly"},
+		"email": {email},
+		"name":  {"Ada Lovelace"},
+		"sites": {"Daring Fireball, kottke.org"},
 	}
 	for i := 0; i+1 < len(replace); i += 2 {
 		v.Set(replace[i], replace[i+1])
@@ -74,8 +73,8 @@ func TestWaitlistJoin(t *testing.T) {
 		var e rss.WaitlistEntry
 		for hash, e = range store.entries {
 		}
-		want := rss.WaitlistEntry{Email: "ada@example.com", Name: "Ada Lovelace", CurrentReader: "feedly", ReadingInterests: "Engines, mostly", Source: "spring-launch"}
-		if e.Email != want.Email || e.Name != want.Name || e.CurrentReader != want.CurrentReader || e.ReadingInterests != want.ReadingInterests || e.Source != want.Source {
+		want := rss.WaitlistEntry{Email: "ada@example.com", Name: "Ada Lovelace", Sites: "Daring Fireball, kottke.org", Source: "spring-launch"}
+		if e.Email != want.Email || e.Name != want.Name || e.Sites != want.Sites || e.Source != want.Source {
 			t.Errorf("entry = %+v, want %+v", e, want)
 		}
 
@@ -115,19 +114,18 @@ func TestWaitlistJoin(t *testing.T) {
 			"We sent a link to ada@example.com. Open it to confirm your place on the waitlist.")
 	})
 
-	t.Run("source and reader are kept only when valid", func(t *testing.T) {
-		tests := []struct{ source, reader, wantSource, wantReader string }{
-			{"newsletter-2", "none", "newsletter-2", "none"},
-			{"Bad Ref!", "netnewswire", "", "netnewswire"},
-			{strings.Repeat("a", 65), "", "", ""},
-			{"", "something-else", "", ""},
+	t.Run("the source is kept only when valid, the sites trimmed", func(t *testing.T) {
+		tests := []struct{ source, sites, wantSource, wantSites string }{
+			{"newsletter-2", "  kottke.org  ", "newsletter-2", "kottke.org"},
+			{"Bad Ref!", "", "", ""},
+			{strings.Repeat("a", 65), "   ", "", ""},
 		}
 		for _, tt := range tests {
 			s, store, _ := newWaitlistTestServer(t)
-			assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com", "source", tt.source, "current_reader", tt.reader)), "/waitlist/joined")
+			assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com", "source", tt.source, "sites", tt.sites)), "/waitlist/joined")
 			for _, e := range store.entries {
-				if e.Source != tt.wantSource || e.CurrentReader != tt.wantReader {
-					t.Errorf("source %q, reader %q: stored %q, %q; want %q, %q", tt.source, tt.reader, e.Source, e.CurrentReader, tt.wantSource, tt.wantReader)
+				if e.Source != tt.wantSource || e.Sites != tt.wantSites {
+					t.Errorf("source %q, sites %q: stored %q, %q; want %q, %q", tt.source, tt.sites, e.Source, e.Sites, tt.wantSource, tt.wantSites)
 				}
 			}
 		}
@@ -141,6 +139,8 @@ func TestWaitlistJoin(t *testing.T) {
 			`<input type="hidden" name="source" value="spring-launch" />`,
 			"<h2 id=\"waitlist-heading\">Join the waitlist</h2>",
 			`<p class="alt">Already have an account? <a href="/login">Log in</a></p>`,
+			"<p>The sites you follow, in timelines you shape.</p>",
+			`<label for="sites">A few sites you'd like to follow (optional)</label>`,
 		)
 		if body := getHome(t, s, "/?ref=Bad%20Ref", false).Body.String(); strings.Contains(body, `name="source"`) {
 			t.Errorf("an invalid ref is carried: %s", body)
@@ -175,7 +175,7 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 		{"bad email", "email", "not-an-email", "Email must be a valid email address"},
 		{"no name", "name", "   ", "Name is required"},
 		{"long name", "name", strings.Repeat("a", 101), "Name must not be more than 100 characters long"},
-		{"long interests", "reading_interests", strings.Repeat("é", 501), "Keep this under 500 characters"},
+		{"long sites", "sites", strings.Repeat("é", 501), "Keep this under 500 characters"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -188,8 +188,11 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 				fmt.Sprintf(`<p class="error" id="%s-error">%s</p>`, tt.field, tt.wantError),
 				`aria-invalid="true"`,
 				"autofocus",
-				`<option value="feedly" selected>Feedly</option>`,
 			)
+			// What was typed is kept.
+			if tt.field != "sites" {
+				assertBodyContains(t, rr.Body.String(), `Daring Fireball, kottke.org</textarea>`)
+			}
 			if len(store.entries) != 0 || len(queue.messages()) != 0 {
 				t.Errorf("stored %d entries and queued %d emails, want none", len(store.entries), len(queue.messages()))
 			}
@@ -198,7 +201,7 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 
 	t.Run("500 characters is fine", func(t *testing.T) {
 		s, _, _ := newWaitlistTestServer(t)
-		assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com", "reading_interests", strings.Repeat("é", 500))), "/waitlist/joined")
+		assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com", "sites", strings.Repeat("é", 500))), "/waitlist/joined")
 	})
 }
 

@@ -5,9 +5,7 @@ CREATE TABLE waitlist (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email citext NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    current_reader TEXT NOT NULL DEFAULT ''
-        CHECK (current_reader IN ('', 'none', 'feedly', 'inoreader', 'netnewswire', 'other')), -- '' if not answered
-    reading_interests TEXT NOT NULL DEFAULT '', -- free text, at most 500 characters; '' if not answered
+    sites TEXT NOT NULL DEFAULT '' CHECK (char_length(sites) <= 500), -- free text: sites they'd like to follow; '' if not answered
     source TEXT NOT NULL DEFAULT '', -- the page's ?ref=: at most 64 of [a-z0-9-], else ''
     token_hash BYTEA NOT NULL UNIQUE, -- sha256 of the entry's link token: confirms it, and leaves the list
     confirmed_at TIMESTAMPTZ,

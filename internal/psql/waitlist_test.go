@@ -52,7 +52,7 @@ func TestWaitlistRepository(t *testing.T) {
 
 	t.Run("Join stores an unconfirmed entry", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
-		e := rss.WaitlistEntry{Email: email, Name: "Ada", CurrentReader: "feedly", ReadingInterests: "Engines", Source: "spring"}
+		e := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring"}
 		hash := newWaitlistHash(t)
 		got, err := repo.Join(ctx, e, hash)
 		if err != nil {
@@ -73,19 +73,19 @@ func TestWaitlistRepository(t *testing.T) {
 
 	t.Run("Join again while unconfirmed replaces the entry's details and token", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
-		first := rss.WaitlistEntry{Email: email, Name: "Ada", CurrentReader: "feedly", Source: "spring"}
+		first := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring"}
 		oldHash := join(t, first)
 		before, _ := repo.GetByToken(ctx, oldHash)
 
 		newHash := newWaitlistHash(t)
-		got, err := repo.Join(ctx, rss.WaitlistEntry{Email: strings.ToUpper(email), Name: "Ada King", ReadingInterests: "Poems"}, newHash)
+		got, err := repo.Join(ctx, rss.WaitlistEntry{Email: strings.ToUpper(email), Name: "Ada King"}, newHash)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got.ID != before.ID || !got.CreatedAt.Equal(before.CreatedAt) {
 			t.Errorf("Join made a new entry: %+v, was %+v", got, before)
 		}
-		if got.Name != "Ada King" || got.CurrentReader != "" || got.ReadingInterests != "Poems" || got.Source != "" {
+		if got.Name != "Ada King" || got.Sites != "" || got.Source != "" {
 			t.Errorf("Join = %+v, want the new details", got)
 		}
 		if _, err := repo.GetByToken(ctx, oldHash); !errors.Is(err, rss.ErrNoRecord) {
@@ -156,9 +156,12 @@ func TestWaitlistRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("CHECK on current_reader", func(t *testing.T) {
+	t.Run("CHECK on the length of sites", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
-		_, err := repo.Join(ctx, rss.WaitlistEntry{Email: email, Name: "Ada", CurrentReader: "something-else"}, newWaitlistHash(t))
+		if _, err := repo.Join(ctx, rss.WaitlistEntry{Email: email, Name: "Ada", Sites: strings.Repeat("é", 500)}, newWaitlistHash(t)); err != nil {
+			t.Fatalf("Join with 500 characters: %v", err)
+		}
+		_, err := repo.Join(ctx, rss.WaitlistEntry{Email: email, Name: "Ada", Sites: strings.Repeat("é", 501)}, newWaitlistHash(t))
 		var pqErr *pq.Error
 		if !errors.As(err, &pqErr) || pqErr.Code != "23514" {
 			t.Errorf("Join error = %v, want a check violation", err)

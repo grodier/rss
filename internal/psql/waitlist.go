@@ -19,33 +19,32 @@ func NewWaitlistRepository(db *sql.DB) *WaitlistRepository {
 	return &WaitlistRepository{DB: db}
 }
 
-const waitlistColumns = `id, email, name, current_reader, reading_interests, source, confirmed_at, created_at`
+const waitlistColumns = `id, email, name, sites, source, confirmed_at, created_at`
 
 func scanWaitlistEntry(row interface{ Scan(...any) error }) (rss.WaitlistEntry, error) {
 	var e rss.WaitlistEntry
 	var confirmedAt sql.NullTime
-	err := row.Scan(&e.ID, &e.Email, &e.Name, &e.CurrentReader, &e.ReadingInterests, &e.Source, &confirmedAt, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.Email, &e.Name, &e.Sites, &e.Source, &confirmedAt, &e.CreatedAt)
 	e.ConfirmedAt = confirmedAt.Time
 	return e, err
 }
 
 // Join adds e to the waitlist, unconfirmed, with the link token tokenHash.
-// An unconfirmed entry with the same address gets e's name, answers and
+// An unconfirmed entry with the same address gets e's name, sites and
 // source and the new hash, so only the newest link works; it keeps its
 // created_at. rss.ErrDuplicateEmail if the address is already confirmed.
 func (r *WaitlistRepository) Join(ctx context.Context, e rss.WaitlistEntry, tokenHash []byte) (rss.WaitlistEntry, error) {
-	stmt := `INSERT INTO waitlist (email, name, current_reader, reading_interests, source, token_hash)
-		VALUES ($1, $2, $3, $4, $5, $6)
+	stmt := `INSERT INTO waitlist (email, name, sites, source, token_hash)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (email) DO UPDATE SET
 			name = EXCLUDED.name,
-			current_reader = EXCLUDED.current_reader,
-			reading_interests = EXCLUDED.reading_interests,
+			sites = EXCLUDED.sites,
 			source = EXCLUDED.source,
 			token_hash = EXCLUDED.token_hash
 		WHERE waitlist.confirmed_at IS NULL
 		RETURNING ` + waitlistColumns
 
-	row := r.DB.QueryRowContext(ctx, stmt, e.Email, e.Name, e.CurrentReader, e.ReadingInterests, e.Source, tokenHash)
+	row := r.DB.QueryRowContext(ctx, stmt, e.Email, e.Name, e.Sites, e.Source, tokenHash)
 	got, err := scanWaitlistEntry(row)
 	if err != nil {
 		// The conflict's WHERE skipped the update: the address is confirmed.

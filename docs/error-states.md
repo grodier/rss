@@ -129,7 +129,7 @@ The join form is on the logged-out landing page (`/`) and follows the "Forms" co
 | --- | --- | --- | --- | --- | --- |
 | W1 Join: email missing or invalid | Join with email blank, or `ann` | Landing page, 422, under Email | "Email is required"; "Email must be a valid email address" | Yes | new (#566), not yet reviewed |
 | W2 Join: name blank or too long | Name blank, or 101 characters | Landing page, 422, under Name | "Name is required"; "Name must not be more than 100 characters long" | Yes | new (#566), not yet reviewed |
-| W3 Join: reading interests too long | 501 characters in "What do you mostly read?" | Landing page, 422, under the field | "Keep this under 500 characters" | Yes | new (#566), not yet reviewed |
+| W3 Join: sites too long | 501 characters in "A few sites you'd like to follow" | Landing page, 422, under the field | "Keep this under 500 characters" | Yes | new (#566), not yet reviewed |
 | W4 Join: already on the waitlist | Join with an address whose entry is confirmed | Landing page, 422, under Email | "You're already on the waitlist." | n/a | new (#566), not yet reviewed |
 | W5 Join: unconfirmed address joins again | Join twice without confirming | "Check your email" page | "We sent a link to {email}. Open it to confirm your place on the waitlist." | Yes: only the newest email's link works | new (#566), not yet reviewed |
 | W6 Join: address has an account | Join with A's email | Landing page, 422, under Email, with a "Log in" link | "There's already an account with this email." | Yes | new (#566), not yet reviewed (says so on purpose, as F7) |

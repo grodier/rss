@@ -12,16 +12,6 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
-// waitlistReaders are the answers to "Which feed reader do you use now?",
-// in the form's order. Their values are waitlist.current_reader's CHECK.
-var waitlistReaders = []struct{ Value, Label string }{
-	{"none", "None yet"},
-	{"feedly", "Feedly"},
-	{"inoreader", "Inoreader"},
-	{"netnewswire", "NetNewsWire"},
-	{"other", "Another one"},
-}
-
 // waitlistSourceRX is what a ?ref= must be to be kept as an entry's source.
 var waitlistSourceRX = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
@@ -33,22 +23,13 @@ func waitlistSource(ref string) string {
 	return ""
 }
 
-// waitlistReader returns v if it's one of waitlistReaders' values, else ""
-// (not answered). Only a tampered form sends another.
-func waitlistReader(v string) string {
-	for _, r := range waitlistReaders {
-		if r.Value == v {
-			return v
-		}
-	}
-	return ""
-}
-
 type waitlistForm struct {
-	Email            string `form:"email"`
-	Name             string `form:"name"`
-	CurrentReader    string `form:"current_reader"`
-	ReadingInterests string `form:"reading_interests"`
+	Email string `form:"email"`
+	Name  string `form:"name"`
+	// Sites are the sites they'd like to follow, as typed: names or
+	// addresses, for the seed list and to check discovery finds their feeds
+	// before their wave is invited.
+	Sites string `form:"sites"`
 	// Source is the hosting page's ?ref=, carried in a hidden field.
 	Source string `form:"source"`
 	// Website is the honeypot: hidden from people, so only bots fill it in.
@@ -59,14 +40,13 @@ type waitlistForm struct {
 // waitlistFormData is what the waitlist-form partial shows. The page that
 // hosts the partial embeds it in its own data.
 type waitlistFormData struct {
-	Form    waitlistForm
-	Readers []struct{ Value, Label string }
+	Form waitlistForm
 	// AccountExists adds a link to /login under the email field's error.
 	AccountExists bool
 }
 
 func newWaitlistFormData(form waitlistForm) waitlistFormData {
-	return waitlistFormData{Form: form, Readers: waitlistReaders}
+	return waitlistFormData{Form: form}
 }
 
 // homePage is the logged-out home page's data. It hosts the waitlist form.
@@ -130,13 +110,12 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form.Name = strings.TrimSpace(form.Name)
-	form.ReadingInterests = strings.TrimSpace(form.ReadingInterests)
-	form.CurrentReader = waitlistReader(form.CurrentReader)
+	form.Sites = strings.TrimSpace(form.Sites)
 	form.Source = waitlistSource(form.Source)
 	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
 	form.CheckName(form.Name)
-	form.CheckField(validator.MaxChars(form.ReadingInterests, 500), "reading_interests", "Keep this under 500 characters")
+	form.CheckField(validator.MaxChars(form.Sites, 500), "sites", "Keep this under 500 characters")
 	if !form.Valid() {
 		s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, newWaitlistFormData(form))
 		return
@@ -161,11 +140,10 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, err := s.services.WaitlistService.Join(r.Context(), rss.WaitlistEntry{
-		Email:            form.Email,
-		Name:             form.Name,
-		CurrentReader:    form.CurrentReader,
-		ReadingInterests: form.ReadingInterests,
-		Source:           form.Source,
+		Email:  form.Email,
+		Name:   form.Name,
+		Sites:  form.Sites,
+		Source: form.Source,
 	}, hash)
 	if err != nil {
 		if errors.Is(err, rss.ErrDuplicateEmail) {

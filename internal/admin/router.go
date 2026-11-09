@@ -52,7 +52,6 @@ func (s *Server) router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuthentication)
 			r.Get("/", s.homeHandler)
-			r.Get("/sample/charts", s.sampleChartsHandler) // #571's checkpoint only
 		})
 	})
 

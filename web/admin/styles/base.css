@@ -1,9 +1,9 @@
 /* Every admin page's stylesheet: the shared partials (the reader's layers,
    reset, fonts, tokens and base styles), then the admin's own, in this
    order: shell (the sidebar and the phone menu), page (heads, sections,
-   empty states, filters, stat rows) and table. Vite inlines each @import
-   when it builds, so it's one file. A later admin page group's sheet imports
-   the partials its pages need in the same order. */
+   empty states, filters, stat rows), table and chart. Vite inlines each
+   @import when it builds, so it's one file. A later admin page group's sheet
+   imports the partials its pages need in the same order. */
 @import "../../shared/styles/layers.css";
 @import "../../shared/styles/reset.css";
 @import "../../shared/styles/fonts.css";
@@ -12,3 +12,4 @@
 @import "./partials/shell.css";
 @import "./partials/page.css";
 @import "./partials/table.css";
+@import "./partials/chart.css";

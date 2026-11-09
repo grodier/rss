@@ -58,6 +58,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `cmd/www`: config flags and wiring
 - `cmd/admin`: the admin site's binary (its own service): config flags, wiring and its subcommands
 - `internal/admin`: the admin site's server (router, middleware, handlers, rendering, its login and enrolling), shared by its pages and `cmd/admin`'s subcommands
+- `internal/admin/chart`: the admin's charts (line charts, histograms), drawn as SVG on the server, and percentiles from histogram buckets
 - `internal/cli`: what the commands share (`SetFlagsFromEnv`, `NewLogger`)
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/rss`: domain types (Feed, User, …) and sentinel errors

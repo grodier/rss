@@ -2,8 +2,10 @@ package enrich
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +29,7 @@ type call struct {
 type fakeStore struct {
 	mu    sync.Mutex
 	calls []call
+	err   error // returned by every write
 }
 
 func (s *fakeStore) ClaimNext(ctx context.Context, lease time.Duration) (rss.EnrichJob, error) {
@@ -37,7 +40,7 @@ func (s *fakeStore) record(c call) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, c)
-	return nil
+	return s.err
 }
 
 func (s *fakeStore) SavePage(ctx context.Context, articleID string, p rss.ArticlePage) error {
@@ -285,5 +288,49 @@ func TestRunRejectsLeaseNotAboveJobTimeout(t *testing.T) {
 	r := &Runner{Store: &fakeStore{}, JobTimeout: time.Minute, Lease: time.Minute}
 	if err := r.Run(t.Context()); err == nil {
 		t.Error("Run() error = nil; want an error")
+	}
+}
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestProcessMetrics(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		attempts int
+		storeErr error
+		canceled bool
+		want     []string
+	}{
+		{name: "saved", status: http.StatusOK, attempts: 1, want: []string{"enrich saved"}},
+		{name: "retry", status: http.StatusServiceUnavailable, attempts: 1, want: []string{"enrich retry"}},
+		{name: "gave up", status: http.StatusNotFound, attempts: 1, want: []string{"enrich gave_up"}},
+		{name: "gave up after the last attempt", status: http.StatusServiceUnavailable, attempts: MaxAttempts, want: []string{"enrich gave_up"}},
+		{name: "not recorded", status: http.StatusOK, attempts: 1, storeErr: errors.New("database down"), want: []string{"enrich retry"}},
+		{name: "shutdown", status: http.StatusOK, attempts: 1, canceled: true, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pageURL := serve(t, tt.status, "text/html", "<title>x</title>", nil)
+			obs := &fakeObserver{}
+			r := newRunner(&fakeStore{err: tt.storeErr})
+			r.Metrics = obs
+			ctx, cancel := context.WithCancel(t.Context())
+			if tt.canceled {
+				cancel()
+			}
+			defer cancel()
+			r.process(ctx, rss.EnrichJob{ArticleID: "article-1", URL: pageURL, Attempts: tt.attempts})
+			if !slices.Equal(obs.jobs, tt.want) {
+				t.Errorf("observed %q, want %q", obs.jobs, tt.want)
+			}
+		})
 	}
 }

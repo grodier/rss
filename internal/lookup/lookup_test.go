@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -460,5 +461,66 @@ func TestToSave(t *testing.T) {
 	}
 	if arts := feeds[0].Articles; len(arts) != 2 || arts[0].ExternalID != "a" || arts[1].ExternalID != "b" {
 		t.Errorf("articles = %+v, want ExternalIDs a, b", arts)
+	}
+}
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	mu   sync.Mutex
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestRunMetrics(t *testing.T) {
+	tests := []struct {
+		name string
+		disc func(ctx context.Context, u *url.URL) (discovery.Result, error)
+		want string
+	}{
+		{
+			name: "feeds found",
+			disc: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+				return discovery.Result{
+					Site:  discovery.SiteInfo{Key: "a.example.com"},
+					Feeds: []discovery.FeedInfo{{URL: "https://a.example.com/feed.xml"}},
+				}, nil
+			},
+			want: "lookup found",
+		},
+		{
+			name: "no feeds",
+			disc: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+				return discovery.Result{Site: discovery.SiteInfo{Key: "a.example.com"}}, nil
+			},
+			want: "lookup none",
+		},
+		{
+			name: "discover error",
+			disc: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+				return discovery.Result{}, errors.New("connection refused")
+			},
+			want: "lookup failed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obs := &fakeObserver{}
+			r := &Runner{
+				Store:      newFakeStore(),
+				Saver:      &fakeSaver{siteID: "site-1"},
+				Discoverer: &fakeDiscoverer{DiscoverFn: tt.disc},
+				Metrics:    obs,
+			}
+			r.setDefaults()
+			r.process(context.Background(), job("a"))
+			if want := []string{tt.want}; !slices.Equal(obs.jobs, want) {
+				t.Errorf("observed %q, want %q", obs.jobs, want)
+			}
+		})
 	}
 }

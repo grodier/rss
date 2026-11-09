@@ -44,6 +44,11 @@ type Store interface {
 	DeleteFinished(ctx context.Context, before time.Time) (int64, error)
 }
 
+// JobObserver counts the runner's jobs; satisfied by *metrics.Jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // Runner sends the emails queued in the outbox with a pool of workers,
 // retrying failures, and deletes finished emails. Zero values use the
 // defaults.
@@ -51,6 +56,7 @@ type Runner struct {
 	Store         Store
 	Sender        Sender
 	Logger        *slog.Logger
+	Metrics       JobObserver   // counts sends by outcome: sent, retry or gave_up; nil counts nothing
 	Workers       int           // default 1
 	PollInterval  time.Duration // default 10s; wait after finding nothing due, unless woken
 	SendTimeout   time.Duration // default 30s
@@ -200,8 +206,9 @@ func (r *Runner) wait(ctx context.Context) bool {
 // send sends one email and records the outcome: sent, failed with a retry
 // time, or given up on after MaxAttempts. Shutting down (ctx canceled) doesn't
 // interrupt it: aborting a send can deliver the email anyway, and then again
-// on the retry.
+// on the retry. The outcome is counted, whether or not it's recorded.
 func (r *Runner) send(ctx context.Context, q Queued) {
+	start := time.Now()
 	err := r.deliver(context.WithoutCancel(ctx), q.Message)
 
 	recCtx, cancel := context.WithTimeout(context.Background(), recordTimeout)
@@ -209,21 +216,31 @@ func (r *Runner) send(ctx context.Context, q Queued) {
 
 	switch {
 	case err == nil:
+		r.observe("sent", start)
 		r.Logger.Info("email sent", "id", q.ID, "attempts", q.Attempts)
 		if rerr := r.Store.MarkSent(recCtx, q.ID); rerr != nil {
 			r.Logger.Error("mail: record sent email", "id", q.ID, "error", rerr)
 		}
 	case q.Attempts >= r.MaxAttempts:
+		r.observe("gave_up", start)
 		r.Logger.Error("email failed", "id", q.ID, "attempts", q.Attempts, "error", err, "gave_up", true)
 		if rerr := r.Store.GiveUp(recCtx, q.ID, err.Error()); rerr != nil {
 			r.Logger.Error("mail: record failed email", "id", q.ID, "error", rerr)
 		}
 	default:
+		r.observe("retry", start)
 		retryAt := time.Now().Add(retryDelay(q.Attempts))
 		r.Logger.Warn("email failed", "id", q.ID, "attempts", q.Attempts, "error", err, "retry_at", retryAt)
 		if rerr := r.Store.MarkFailed(recCtx, q.ID, err.Error(), retryAt); rerr != nil {
 			r.Logger.Error("mail: record failed email", "id", q.ID, "error", rerr)
 		}
+	}
+}
+
+// observe counts a job that started at start and ended with outcome.
+func (r *Runner) observe(outcome string, start time.Time) {
+	if r.Metrics != nil {
+		r.Metrics.Observe("mail", outcome, time.Since(start))
 	}
 }
 

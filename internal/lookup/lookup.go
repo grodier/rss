@@ -47,6 +47,11 @@ type Discoverer interface {
 	Discover(ctx context.Context, u *url.URL) (discovery.Result, error)
 }
 
+// JobObserver counts the runner's jobs; satisfied by *metrics.Jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // Runner processes queued lookups with a pool of workers. Zero values use
 // the defaults.
 type Runner struct {
@@ -54,6 +59,7 @@ type Runner struct {
 	Saver         Saver
 	Discoverer    Discoverer
 	Logger        *slog.Logger
+	Metrics       JobObserver   // counts jobs by outcome: found, none (no feeds) or failed; nil counts nothing
 	Workers       int           // default 2
 	PollInterval  time.Duration // default 500ms
 	JobTimeout    time.Duration // default 30s
@@ -187,8 +193,13 @@ func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 	defer cancel()
 
 	status := rss.LookupDone
+	outcome := "found"
+	if siteID == "" {
+		outcome = "none"
+	}
 	if err != nil {
 		status = rss.LookupFailed
+		outcome = "failed"
 		r.Logger.Info("lookup failed", "site_key", job.SiteKey, "error", err)
 		if ferr := r.Store.Fail(recCtx, job.ID, err.Error()); ferr != nil {
 			r.Logger.Error("lookup: record failure", "site_key", job.SiteKey, "error", ferr)
@@ -197,6 +208,7 @@ func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 		r.Logger.Error("lookup: record result", "site_key", job.SiteKey, "error", ferr)
 	}
 
+	r.observe(outcome, start)
 	r.Logger.Info("lookup finished",
 		"site_key", job.SiteKey,
 		"status", status,
@@ -204,6 +216,13 @@ func (r *Runner) process(ctx context.Context, job rss.Lookup) {
 		"articles", articles,
 		"duration", time.Since(start),
 	)
+}
+
+// observe counts a job that started at start and ended with outcome.
+func (r *Runner) observe(outcome string, start time.Time) {
+	if r.Metrics != nil {
+		r.Metrics.Observe("lookup", outcome, time.Since(start))
+	}
 }
 
 // run discovers the job's feeds and saves them. It returns the saved site's

@@ -29,8 +29,9 @@ const (
 // HousekeepingStore rolls up and deletes old metrics; satisfied by
 // *psql.MetricsRepository.
 type HousekeepingStore interface {
-	// RollUp sums the minute rows of the whole hours before before into
-	// hourly rows, leaving hours that already have them alone.
+	// RollUp sums the request and job metrics' minute rows of the whole
+	// hours before before into hourly rows, leaving hours that already have
+	// them alone.
 	RollUp(ctx context.Context, before time.Time) error
 	// DeleteBefore deletes minute rows older than minutes, hourly rows older
 	// than hours, and runtime rows older than runtime.
@@ -90,7 +91,7 @@ func (h *Housekeeper) Tidy(ctx context.Context, now time.Time) {
 func (h *Housekeeper) tidyRequests(ctx context.Context, now time.Time) {
 	if err := h.Store.RollUp(ctx, now.Add(-RollUpAfter)); err != nil {
 		if ctx.Err() == nil {
-			logger(h.Logger).Error("metrics: roll up request metrics", "error", err)
+			logger(h.Logger).Error("metrics: roll up metrics", "error", err)
 		}
 		// Deleting minute rows that weren't rolled up would lose them.
 		return

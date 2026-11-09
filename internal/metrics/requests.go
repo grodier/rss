@@ -1,7 +1,7 @@
-// Package metrics records www's request and runtime metrics and its recent
-// server errors in Postgres, for the admin, and rolls up and deletes old rows,
-// the real-user views' included (see RUMBounds). See "Observability" in
-// docs/decisions.md.
+// Package metrics records www's request, background job and runtime metrics
+// and its recent server errors in Postgres, for the admin, and rolls up and
+// deletes old rows, the real-user views' included (see RUMBounds). See
+// "Observability" in docs/decisions.md.
 package metrics
 
 import (
@@ -104,15 +104,21 @@ func (r *Requests) Observe(route, method string, status int, d time.Duration, by
 // default, until ctx is canceled, then writes them once more and returns.
 func (r *Requests) Run(ctx context.Context) error {
 	r.setDefaults()
+	return flushEvery(ctx, r.Interval, r.now, r.Flush)
+}
+
+// flushEvery calls flush at each multiple of interval until ctx is canceled,
+// then once more with a context that isn't, and returns nil.
+func flushEvery(ctx context.Context, interval time.Duration, now func() time.Time, flush func(context.Context)) error {
 	for {
-		t := time.NewTimer(untilNext(r.now(), r.Interval))
+		t := time.NewTimer(untilNext(now(), interval))
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			r.Flush(context.WithoutCancel(ctx))
+			flush(context.WithoutCancel(ctx))
 			return nil
 		case <-t.C:
-			r.Flush(ctx)
+			flush(ctx)
 		}
 	}
 }

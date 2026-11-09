@@ -605,3 +605,55 @@ func TestRunRejectsStaleAfterNotAboveJobTimeout(t *testing.T) {
 		t.Error("Run = nil; want an error")
 	}
 }
+
+// fakeObserver records the jobs it's told about, as "runner outcome".
+type fakeObserver struct {
+	jobs []string
+}
+
+func (o *fakeObserver) Observe(runner, outcome string, d time.Duration) {
+	o.jobs = append(o.jobs, runner+" "+outcome)
+}
+
+func TestProcessMetrics(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(tr *testRunner)
+		url   string
+		want  string
+	}{
+		{
+			name:  "subscribed",
+			setup: func(tr *testRunner) { tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"}) },
+			url:   "https://example.com/feed",
+			want:  "import subscribed",
+		},
+		{
+			name: "already subscribed",
+			setup: func(tr *testRunner) {
+				tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
+				tr.subs.Subscribe(t.Context(), "user-1", "feed-1")
+			},
+			url:  "https://example.com/feed",
+			want: "import already_subscribed",
+		},
+		{
+			name:  "failed",
+			setup: func(tr *testRunner) {},
+			url:   "ftp://example.com/feed",
+			want:  "import failed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := newTestRunner()
+			obs := &fakeObserver{}
+			tr.Metrics = obs
+			tt.setup(tr)
+			tr.importOne(t, t.Context(), tt.url)
+			if want := []string{tt.want}; !reflect.DeepEqual(obs.jobs, want) {
+				t.Errorf("observed %q, want %q", obs.jobs, want)
+			}
+		})
+	}
+}

@@ -48,12 +48,18 @@ type Fetcher interface {
 	Get(ctx context.Context, rawURL string, header http.Header) (*fetch.Response, error)
 }
 
+// JobObserver counts the runner's jobs; satisfied by *metrics.Jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // Runner fetches due articles' web pages with a pool of workers. Zero values
 // use the defaults.
 type Runner struct {
 	Store        Store
 	Fetcher      Fetcher
 	Logger       *slog.Logger
+	Metrics      JobObserver   // counts jobs by outcome: saved, retry or gave_up; nil counts nothing
 	Workers      int           // default 1
 	PollInterval time.Duration // default 5s; wait after finding nothing due
 	JobTimeout   time.Duration // default 20s
@@ -127,11 +133,11 @@ func (r *Runner) wait(ctx context.Context) bool {
 	}
 }
 
-// Outcomes of a job, as logged.
+// Outcomes of a job, as logged and counted.
 const (
 	outcomeSaved  = "saved"
 	outcomeRetry  = "retry"
-	outcomeGaveUp = "gave up"
+	outcomeGaveUp = "gave_up"
 )
 
 // result is what an attempt at a job found.
@@ -142,17 +148,23 @@ type result struct {
 	err     error           // why it was retried or given up
 }
 
-// process fetches job's page, records the outcome and logs it. Nothing is
-// recorded if ctx is canceled: the lease retries the job. A panic is logged
-// and swallowed, and the lease retries the job too.
+// process fetches job's page, records the outcome, logs it and counts it.
+// Nothing is recorded or counted if ctx is canceled: the lease retries the
+// job. A panic is logged and swallowed, and the lease retries the job too, as
+// it does an outcome that can't be recorded: both count as a retry.
 func (r *Runner) process(ctx context.Context, job rss.EnrichJob) {
+	start := time.Now()
+	counted := "" // nothing to count on shutdown
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.Logger.Error("enrich: panic", "article_id", job.ArticleID, "panic", rec)
+			counted = outcomeRetry
+		}
+		if counted != "" {
+			r.observe(counted, start)
 		}
 	}()
 
-	start := time.Now()
 	jobCtx, cancel := context.WithTimeout(ctx, r.JobTimeout)
 	res := r.attempt(jobCtx, job)
 	cancel()
@@ -174,8 +186,10 @@ func (r *Runner) process(ctx context.Context, job rss.EnrichJob) {
 	host := urlHost(job.URL)
 	if err != nil {
 		r.Logger.Error("enrich: record outcome", "article_id", job.ArticleID, "host", host, "error", err)
+		counted = outcomeRetry
 		return
 	}
+	counted = res.outcome
 
 	attrs := []any{"article_id", job.ArticleID, "host", host, "outcome", res.outcome, "attempts", job.Attempts}
 	if res.err != nil {
@@ -183,6 +197,13 @@ func (r *Runner) process(ctx context.Context, job rss.EnrichJob) {
 	}
 	attrs = append(attrs, "duration", time.Since(start))
 	r.Logger.Info("article enriched", attrs...)
+}
+
+// observe counts a job that started at start and ended with outcome.
+func (r *Runner) observe(outcome string, start time.Time) {
+	if r.Metrics != nil {
+		r.Metrics.Observe("enrich", outcome, time.Since(start))
+	}
 }
 
 // attempt fetches job.URL and reads the page's metadata. A network error,

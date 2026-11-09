@@ -9,15 +9,14 @@ import (
 const testSupportEmail = "help@example.com"
 
 // newPolicyTestServer is newTestServerConfig with a support address and
-// signup open to testInviteCode.
+// the invite testInviteToken.
 func newPolicyTestServer(t *testing.T) *Server {
 	t.Helper()
 	return newTestServerConfig(t, Config{
 		Port:         4000,
 		Env:          "development",
-		InviteCode:   testInviteCode,
 		SupportEmail: testSupportEmail,
-	}, Services{})
+	}, Services{InviteService: newTestInviteStore()})
 }
 
 func TestPolicyPages(t *testing.T) {
@@ -52,7 +51,7 @@ func TestPolicyLinks(t *testing.T) {
 	s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHelpHandler)).ServeHTTP(settings, requestWithSession(settingsSession))
 
 	pages := map[string]*httptest.ResponseRecorder{
-		"GET /signup":        get("/signup"),
+		"GET /signup":        get("/signup?invite=" + testInviteToken),
 		"GET /login":         get("/login"),
 		"GET /":              get("/"),
 		"GET /settings/help": settings,

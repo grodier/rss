@@ -56,8 +56,8 @@ func postFormRequest(target string, form url.Values) *http.Request {
 func TestSignupSendsConfirmation(t *testing.T) {
 	newServer := func(tokens *fakeTokenStore, queue *fakeEmailQueue) *Server {
 		return newSignupTestServer(t, Services{UserService: &fakeUserStore{
-			createFn: func(context.Context, string, string, string) (string, time.Time, error) {
-				return "user-1", time.Now(), nil
+			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+				return "user-1", nil
 			},
 		}, SessionService: &fakeSessionStore{
 			createFn: func(context.Context, string, time.Time) (string, error) {

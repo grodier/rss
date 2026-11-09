@@ -3,8 +3,6 @@ package server
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -335,46 +333,6 @@ func TestMethodNotAllowedSetsAllow(t *testing.T) {
 	}
 }
 
-func TestSignupRoutes(t *testing.T) {
-	for _, code := range []string{"", testInviteCode} {
-		t.Run(fmt.Sprintf("code=%q", code), func(t *testing.T) {
-			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: code}, Services{})
-			h := s.router()
-
-			do := func(method, target string) *httptest.ResponseRecorder {
-				var body io.Reader
-				if method == http.MethodPost {
-					body = strings.NewReader("")
-				}
-				req := httptest.NewRequestWithContext(t.Context(), method, target, body)
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				rr := httptest.NewRecorder()
-				h.ServeHTTP(rr, req)
-				return rr
-			}
-
-			get, post := do(http.MethodGet, "/signup"), do(http.MethodPost, "/signup")
-			if code != "" {
-				if get.Code != http.StatusOK {
-					t.Errorf("GET /signup = %d, want 200", get.Code)
-				}
-				if post.Code != http.StatusUnprocessableEntity {
-					t.Errorf("POST /signup = %d, want 422", post.Code)
-				}
-			} else {
-				for name, rr := range map[string]*httptest.ResponseRecorder{"GET": get, "POST": post} {
-					if rr.Code != http.StatusNotFound {
-						t.Errorf("%s /signup = %d, want 404", name, rr.Code)
-					}
-					if !strings.Contains(rr.Body.String(), "<html") {
-						t.Errorf("%s /signup body is not the HTML 404 page", name)
-					}
-				}
-			}
-		})
-	}
-}
-
 // entryJS returns the URL of a page group's entry script (TestAssetTags
 // checks the pages' heads link it).
 func entryJS(group string) string {
@@ -413,7 +371,7 @@ func TestRoutesRequireAuthentication(t *testing.T) {
 		"/":                            true,
 	}
 
-	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", InviteCode: testInviteCode, DebugEmails: debugConfig.DebugEmails}, Services{})
+	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", DebugEmails: debugConfig.DebugEmails}, Services{})
 	h := s.router()
 	var private int
 	err := chi.Walk(h.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {

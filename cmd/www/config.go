@@ -27,8 +27,6 @@ type config struct {
 
 type serverConfig struct {
 	port int
-	// inviteCode, when set, opens signup to people who have it.
-	inviteCode string
 	// proxyHops is how many reverse proxies in front of the app append to
 	// X-Forwarded-For; 0 ignores the header.
 	proxyHops int
@@ -115,9 +113,6 @@ func (c config) Validate() error {
 	if c.server.proxyHops < 0 || c.server.proxyHops > 3 {
 		errs = append(errs, errors.New("proxy hops must be between 0 and 3"))
 	}
-	if c.server.inviteCode != "" && len(c.server.inviteCode) < 16 {
-		errs = append(errs, errors.New("invite code must be at least 16 characters"))
-	}
 	for _, e := range c.server.debugEmails {
 		if addr, err := netmail.ParseAddress(e); err != nil || addr.Name != "" || addr.Address != e {
 			errs = append(errs, fmt.Errorf("debug-emails: %q is not an email address", e))
@@ -160,7 +155,6 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 
 	fs.StringVar(&cfg.env, "env", cfg.env, "Environment (development|production)")
 	fs.IntVar(&cfg.server.port, "port", cfg.server.port, "Server port")
-	fs.StringVar(&cfg.server.inviteCode, "invite-code", cfg.server.inviteCode, "Open signup to people with this code (at least 16 characters; default: signup off)")
 
 	var debugEmails string
 	fs.StringVar(&debugEmails, "debug-emails", "", "Accounts that may turn on debug mode, comma-separated (default: debug mode off)")

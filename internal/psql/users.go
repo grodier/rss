@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/grodier/rss/internal/rss"
+	"strings"
 	"time"
+
+	"github.com/grodier/rss/internal/rss"
 
 	"github.com/grodier/rss/internal/password"
 	"github.com/lib/pq"
@@ -36,13 +38,84 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	stmt := `INSERT INTO users (name, email, hashed_password)
-		VALUES ($1, $2, $3)
+	id, createdAt, err := insertUser(ctx, tx, name, email, hashedPassword, false)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", time.Time{}, err
+	}
+	return id, createdAt, nil
+}
+
+// CreateFromInvite makes an account, like Create, with the invite whose token
+// hashes to tokenHash, and redeems it, in one transaction. A bound invite's
+// account starts confirmed, since its address was confirmed joining the
+// waitlist, and email must be the invite's. The account's waitlist entry, by
+// the invite's waitlist_id or the account's address, is deleted.
+// rss.ErrInviteUnusable if the invite is unknown, expired, revoked or used,
+// or email isn't a bound invite's; rss.ErrDuplicateEmail if the email is
+// taken. On either, nothing changes, and the invite stays usable.
+func (r *UserRepository) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, pw string) (id string, err error) {
+	// Hashed before the transaction starts, since Argon2 is slow.
+	hashedPassword, err := password.Hash(pw)
+	if err != nil {
+		return "", err
+	}
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	// The row lock this takes makes a concurrent redemption wait, then find
+	// redeemed_at set (or the invite usable again, if this one rolls back).
+	var inviteID string
+	var inviteEmail, waitlistID sql.NullString
+	stmt := `UPDATE invites SET redeemed_at = now()
+		WHERE token_hash = $1 AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+		RETURNING id, email, waitlist_id`
+	err = tx.QueryRowContext(ctx, stmt, tokenHash).Scan(&inviteID, &inviteEmail, &waitlistID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", rss.ErrInviteUnusable
+	}
+	if err != nil {
+		return "", err
+	}
+	bound := inviteEmail.Valid
+	if bound && !strings.EqualFold(inviteEmail.String, email) {
+		return "", rss.ErrInviteUnusable
+	}
+
+	id, _, err = insertUser(ctx, tx, name, email, hashedPassword, bound)
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE invites SET user_id = $2 WHERE id = $1`, inviteID, id); err != nil {
+		return "", err
+	}
+	// Whoever has an account no longer waits, as the privacy policy says.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM waitlist WHERE id = $1 OR email = $2`, waitlistID, email); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// insertUser inserts an account with rss.DefaultTimelines in tx, confirmed
+// if confirmed. rss.ErrDuplicateEmail if the email is taken.
+func insertUser(ctx context.Context, tx *sql.Tx, name, email, hashedPassword string, confirmed bool) (string, time.Time, error) {
+	stmt := `INSERT INTO users (name, email, hashed_password, email_confirmed_at)
+		VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END)
 		RETURNING id, created_at`
 
 	var id string
 	var createdAt time.Time
-	err = tx.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword)).Scan(&id, &createdAt)
+	err := tx.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword), confirmed).Scan(&id, &createdAt)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -55,9 +128,6 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 		if _, err := createTimeline(ctx, tx, id, t); err != nil {
 			return "", time.Time{}, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return "", time.Time{}, err
 	}
 	return id, createdAt, nil
 }

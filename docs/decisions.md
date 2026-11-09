@@ -940,8 +940,8 @@ Planned in #187 (issues #182–#186).
   Unknown emails were counted too, so that a 429 didn't reveal which emails have accounts; "Accounts" dropped that goal, and from #262 only wrong passwords count.
 - **Signup, login and reset say which emails have accounts** (see "Accounts"). #185 had made a duplicate signup look exactly like a successful one, and login verify a dummy hash for unknown emails; #262 removes both.
 - **Hashing beyond the cap waits in line rather than failing** (see "Queued password hashing" in the Performance watchlist).
-- **Signup is off unless an invite code is set.** (#186 started with a `-signup` flag, turned on briefly to make accounts; #226 replaced it with the code below.)
-- **A shared invite code replaces `-signup`** (#226).
+- **Signup needs an invite.** (#186 started with a `-signup` flag, turned on briefly to make accounts; #226 replaced it with the shared code below, and #569 replaced the code with single-use invites; see "Waitlist and invites" under "Accounts".)
+- **A shared invite code replaced `-signup`** (#226; itself replaced by single-use invites in #569, so `-invite-code` is gone).
   Signup is open exactly when `-invite-code` is set; the bool flag goes rather than staying alongside it.
   - The code arrives pre-filled from `/signup?invite=…` into a visible field, so it can also be typed.
     While signup needs an invite code, no page links to `/signup`: without a code it's useless, and advertising it only invites guessing, which the per-IP signup limit (#182) bounds.
@@ -1093,11 +1093,15 @@ Planned in #583.
   It had sent no `Cache-Control` at all, unlike the other logged-in pages, which `requireAuthentication` covers.
 - **The form's errors re-render the page that hosts it**, through one function (`renderWaitlistHost`, #566), so the landing page can take the form without changing the join handler.
 - **Log in links to the waitlist** (#566): a visitor who reaches Log in without an account would otherwise have no way on.
-  Signup itself stays unlinked while it needs a code ("A shared invite code replaces `-signup`" under "Security").
+  Signup itself stays unlinked while it needs an invite ("A shared invite code replaced `-signup`" under "Security").
 - **One link token per entry, for both its links, that doesn't expire** (#566): the leave link must keep working in later emails (the invite, #574), and joining again while unconfirmed replaces it, so only the newest confirmation link works.
 - **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
   An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
   Invites expire and can be revoked; the token is stored hashed, like email links.
+- **Only a confirmed waitlist entry gets a bound invite** (#569): a bound invite's account starts confirmed, so `admin invite create -email` refuses an address that isn't confirmed on the waitlist; anyone else gets an open invite, with a note.
+- **Signing up deletes the account's waitlist entry**, by the invite's entry and by the account's address (#569): someone with an account no longer waits, and joining already refuses addresses with accounts.
+- **An unusable invite says why, with no form** (#569): expired, used ("Log in"), or no longer valid (revoked or unknown), as 410 Gone like the expired email links; `/signup` with no invite says the app is invite-only and links to the waitlist.
+  Redemption is one conditional `UPDATE`, so two signups racing on one invite can't both succeed; the loser sees "already been used".
 - **Invites go out in waves from the admin** (#574): pick people (checkboxes, or "the oldest N"), review, send.
   No open or click tracking.
 - **The email limit is checked before a wave is sent** (#574): emails queued in the last 24 hours and still pending, against the daily and monthly limits (Resend's free tier: 100 a day, 3,000 a month), less a reserve for account emails, so a wave can't use up the day and block a password reset.

@@ -60,21 +60,21 @@ func (f *fakeSiteStore) IconHashes(ctx context.Context, siteIDs []string) (map[s
 }
 
 type fakeUserStore struct {
-	createFn         func(ctx context.Context, name, email, password string) (string, time.Time, error)
-	authenticateFn   func(ctx context.Context, email, password string) (string, error)
-	getByEmailFn     func(ctx context.Context, email string) (rss.User, error)
-	updateNameFn     func(ctx context.Context, id, name string) error
-	updateThemeFn    func(ctx context.Context, id, theme string) error
-	changePasswordFn func(ctx context.Context, userID, keepSessionID, current, next string) error
-	confirmEmailFn   func(ctx context.Context, hash []byte) (string, error)
-	resetPasswordFn  func(ctx context.Context, hash []byte, newPassword string) (rss.User, error)
-	deleteFn         func(ctx context.Context, userID, password string) (rss.User, error)
-	checkPasswordFn  func(ctx context.Context, userID, password string) error
-	changeEmailFn    func(ctx context.Context, hash []byte) (rss.User, string, error)
+	createFromInviteFn func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error)
+	authenticateFn     func(ctx context.Context, email, password string) (string, error)
+	getByEmailFn       func(ctx context.Context, email string) (rss.User, error)
+	updateNameFn       func(ctx context.Context, id, name string) error
+	updateThemeFn      func(ctx context.Context, id, theme string) error
+	changePasswordFn   func(ctx context.Context, userID, keepSessionID, current, next string) error
+	confirmEmailFn     func(ctx context.Context, hash []byte) (string, error)
+	resetPasswordFn    func(ctx context.Context, hash []byte, newPassword string) (rss.User, error)
+	deleteFn           func(ctx context.Context, userID, password string) (rss.User, error)
+	checkPasswordFn    func(ctx context.Context, userID, password string) error
+	changeEmailFn      func(ctx context.Context, hash []byte) (rss.User, string, error)
 }
 
-func (f *fakeUserStore) Create(ctx context.Context, name, email, password string) (string, time.Time, error) {
-	return f.createFn(ctx, name, email, password)
+func (f *fakeUserStore) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
+	return f.createFromInviteFn(ctx, tokenHash, name, email, password)
 }
 
 func (f *fakeUserStore) Authenticate(ctx context.Context, email, password string) (string, error) {
@@ -135,6 +135,19 @@ func (f *fakeTokenStore) Create(ctx context.Context, t rss.Token) error {
 
 func (f *fakeTokenStore) Get(ctx context.Context, hash []byte, purpose string) (rss.Token, error) {
 	return f.getFn(ctx, hash, purpose)
+}
+
+// fakeInviteStore keeps invites in memory by token hash.
+type fakeInviteStore struct {
+	invites map[string]rss.Invite // by string(tokenHash)
+}
+
+func (f *fakeInviteStore) GetByToken(ctx context.Context, tokenHash []byte) (rss.Invite, error) {
+	inv, ok := f.invites[string(tokenHash)]
+	if !ok {
+		return rss.Invite{}, rss.ErrNoRecord
+	}
+	return inv, nil
 }
 
 // fakeWaitlistStore keeps entries in memory by token hash, as the

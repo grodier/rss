@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,10 +9,13 @@ import (
 	"github.com/grodier/rss/internal/clientip"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
 )
 
 type signupForm struct {
+	// Invite is the invite's token, from /signup?invite=, carried in a
+	// hidden field.
 	Invite              string `form:"invite"`
 	Name                string `form:"name"`
 	Email               string `form:"email"`
@@ -26,11 +28,27 @@ func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	s.renderSignup(w, r, http.StatusOK, signupPage{Form: signupForm{Invite: r.URL.Query().Get("invite")}})
+	plain := r.URL.Query().Get("invite")
+	if plain == "" {
+		s.renderInviteUnusable(w, r, http.StatusOK, inviteMissing)
+		return
+	}
+	noReferrerNoStore(w)
+	inv, ok := s.signupInvite(w, r, plain, http.StatusGone)
+	if !ok {
+		return
+	}
+	data := signupPage{Form: signupForm{Invite: plain}}
+	if inv.Email != "" {
+		data.Form.Name, data.Form.Email, data.BoundEmail = inv.Name, inv.Email, true
+	}
+	s.renderSignup(w, r, http.StatusOK, data)
 }
 
 type signupPage struct {
 	Form signupForm
+	// BoundEmail locks the email field: the invite is for Form.Email only.
+	BoundEmail bool
 	// DuplicateEmail adds links to /login and to reset the password under
 	// the email field's error.
 	DuplicateEmail bool
@@ -43,7 +61,58 @@ func (s *Server) renderSignup(w http.ResponseWriter, r *http.Request, status int
 	}
 }
 
+// inviteMissing is renderInviteUnusable's reason for a signup with no
+// invite; the others are rss.Invite.Status's, or "" for an unknown token.
+const inviteMissing = "missing"
+
+// renderInviteUnusable renders the page that says why signup can't go on,
+// with no form: reason is inviteMissing, an rss.Invite status other than
+// rss.InvitePending, or "" for a token that isn't an invite's.
+func (s *Server) renderInviteUnusable(w http.ResponseWriter, r *http.Request, status int, reason string) {
+	var data linkExpiredPage
+	switch reason {
+	case inviteMissing:
+		data = linkExpiredPage{
+			Title: "Paper Round is invite-only for now",
+			Link:  &linkExpiredAction{URL: "/", Label: "Join the waitlist"},
+		}
+	case rss.InviteExpired:
+		data = linkExpiredPage{Title: "This invite has expired", Text: "Ask whoever invited you for a new one."}
+	case rss.InviteRedeemed:
+		data = linkExpiredPage{
+			Title: "This invite has already been used",
+			Link:  &linkExpiredAction{URL: "/login", Label: "Log in"},
+		}
+	default:
+		data = linkExpiredPage{Title: "This invite is no longer valid"}
+	}
+	if err := s.renderHTML(w, status, "link_expired.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// signupInvite returns the invite with the token plain if it can be used.
+// When it can't, or on an error, it has rendered why, with status, and
+// returns false.
+func (s *Server) signupInvite(w http.ResponseWriter, r *http.Request, plain string, status int) (rss.Invite, bool) {
+	inv, err := s.services.InviteService.GetByToken(r.Context(), token.Hash(plain))
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.renderInviteUnusable(w, r, status, "")
+			return rss.Invite{}, false
+		}
+		s.serverErrorHTML(w, r, err)
+		return rss.Invite{}, false
+	}
+	if st := inv.Status(time.Now()); st != rss.InvitePending {
+		s.renderInviteUnusable(w, r, status, st)
+		return rss.Invite{}, false
+	}
+	return inv, true
+}
+
 func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
+	noReferrerNoStore(w)
 	var form signupForm
 	err := s.decodePostForm(w, r, &form)
 	if err != nil {
@@ -58,22 +127,38 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if form.Invite == "" {
+		s.renderInviteUnusable(w, r, http.StatusUnprocessableEntity, inviteMissing)
+		return
+	}
+	inv, ok := s.signupInvite(w, r, form.Invite, http.StatusUnprocessableEntity)
+	if !ok {
+		return
+	}
+	// A bound invite is for its address only, whatever was submitted.
+	bound := inv.Email != ""
+	if bound {
+		form.Email = inv.Email
+	}
+
 	form.Name = strings.TrimSpace(form.Name)
-	form.CheckField(validator.NotBlank(form.Invite), "invite", "Invite code is required")
-	form.CheckField(subtle.ConstantTimeCompare([]byte(form.Invite), []byte(s.config.InviteCode)) == 1, "invite", "This invite code isn't valid")
 	form.CheckNewAccount(form.Name, form.Email, form.Password)
 
 	if !form.Valid() {
-		s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form})
+		s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form, BoundEmail: bound})
 		return
 	}
 
-	id, _, err := s.services.UserService.Create(r.Context(), form.Name, form.Email, form.Password)
+	id, err := s.services.UserService.CreateFromInvite(r.Context(), token.Hash(form.Invite), form.Name, form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, rss.ErrDuplicateEmail):
 			form.AddFieldError("email", "There's already an account with this email.")
-			s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form, DuplicateEmail: true})
+			s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form, BoundEmail: bound, DuplicateEmail: true})
+		case errors.Is(err, rss.ErrInviteUnusable):
+			// It was usable a moment ago: most likely someone else signed
+			// up with it in between.
+			s.renderInviteUnusable(w, r, http.StatusUnprocessableEntity, rss.InviteRedeemed)
 		default:
 			s.serverErrorHTML(w, r, err)
 		}
@@ -85,10 +170,14 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The account works without a confirmed address, and the notice offers
-	// Resend, so a failure here doesn't fail signup.
-	if err := s.sendConfirmation(r.Context(), rss.User{ID: id, Name: form.Name, Email: form.Email}); err != nil {
-		s.logError(r, err)
+	// A bound invite's account starts confirmed: its address was confirmed
+	// joining the waitlist. Otherwise the account works without a confirmed
+	// address, and the notice offers Resend, so a failure here doesn't fail
+	// signup.
+	if !bound {
+		if err := s.sendConfirmation(r.Context(), rss.User{ID: id, Name: form.Name, Email: form.Email}); err != nil {
+			s.logError(r, err)
+		}
 	}
 
 	http.Redirect(w, r, s.popReturnTo(r), http.StatusSeeOther)

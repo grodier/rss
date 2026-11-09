@@ -12,9 +12,9 @@ A pass repeats every row and moves the date above; the fixes it finds become iss
 
 ## Running a pass
 
-- Start from an empty database (`make db/reset`, which also starts Mailpit) and run the app with an invite code: `go run ./cmd/www -invite-code $(openssl rand -hex 16)`.
+- Start from an empty database (`make db/reset`, which also starts Mailpit) and run the app: `go run ./cmd/www`.
   With the README's `RSS_SMTP_` settings, emails and their links show up in Mailpit (http://localhost:8025); without an SMTP host, they're written to the app's log.
-- Make two accounts at `/signup?invite=<code>`: **A**, the one you review with, and **B**, to open A's pages as someone else.
+- Make two accounts with open invites from `go run ./cmd/admin invite create` (one per account; each prints a `/signup?invite=<token>` link): **A**, the one you review with, and **B**, to open A's pages as someone else.
   A new account is unconfirmed, which the confirmation rows need; confirm A when you get to E4.
 - Rate limits are in memory and per process, so hitting one locks you out of that flow until the window ends; do those rows last, or restart the app (which resets them) between them.
 - Feed states need rows the refresh workers won't touch.
@@ -65,9 +65,12 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | F3 Signup: common password | Password `password123` | Signup, 422, under Password | "This password is too common. Try a longer one, or a few unrelated words." | Yes | ok |
 | F4 Signup: email as password | Password the same as the email | Signup, 422, under Password | "Your password can't be your email address." | Yes | ok |
 | F5 Signup: name blank or too long | Name blank, or 101 characters | Signup, 422, under Name | "Name is required"; "Name must not be more than 100 characters long" | Yes | ok |
-| F6 Signup: missing or wrong invite code | `/signup` without `?invite=`, or `?invite=wrong` | Signup, 422, under Invite code | "Invite code is required"; "This invite code isn't valid" | Only with the right code; nothing says who to ask | needs work: point to the support address for a code |
+| F6 Signup: no invite | `/signup` without `?invite=` | Message page, 200, with a "Join the waitlist" button, no form | "Paper Round is invite-only for now" | Yes, by joining the waitlist | new (#569), not yet reviewed |
 | F7 Signup: email already has an account | A's email | Signup, 422, under Email, with links to log in and reset the password | "There's already an account with this email." | Yes | ok (says so on purpose; "Accounts" in decisions.md) |
-| F8 Signup: turned off | Run without `-invite-code`, open an invite link | 404 error page | "Page not found" / "The page you're looking for doesn't exist." | No: an invite link from before looks broken | needs work: say signup is closed (discuss: no page links to `/signup` on purpose) |
+| F8 Signup: invite expired | `go run ./cmd/admin invite create -expires 1s`, wait, open the link | Message page, 410, no form | "This invite has expired" / "Ask whoever invited you for a new one." | Only with a new invite | new (#569), not yet reviewed |
+| F10 Signup: invite already used | Open the link of an invite someone signed up with | Message page, 410, with a "Log in" button, no form | "This invite has already been used" | Yes, if it was theirs: by logging in | new (#569), not yet reviewed |
+| F11 Signup: invite revoked or unknown | `go run ./cmd/admin invite revoke <id>`, open its link; or `?invite=wrong` | Message page, 410, no form | "This invite is no longer valid" | Only with a new invite | new (#569), not yet reviewed |
+| F12 Signup: invite used up while the form was open | Open one invite's link in two tabs, sign up in one, then submit the other | Message page, 422, with a "Log in" button, no form | "This invite has already been used" | As F10 | new (#569), not yet reviewed |
 | F9 Signup: rate limited | 11 signup posts from one IP in an hour, valid or not | Signup, 429 with `Retry-After`, alert above the form | "Too many attempts. Try again in 60 minutes." | Yes, after the wait; fields kept, alert announced | ok |
 | F10 Login: unknown email | Log in as `nobody@example.com` | Login, 422, under Email | "There's no account with this email." | Yes | ok |
 | F11 Login: wrong password | A's email, wrong password | Login, 422, under Password | "That password isn't right." | Yes; "Forgot password?" is on the form | ok |
@@ -88,7 +91,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | 303 to Login (`save-star.ts` gets the login page instead of a 204, so it submits the form normally) | None | Yes: nothing is saved and the button never turned on; after login they land on Home (as S2) and can Save again | ok (saying they were logged out is S2's) |
 | S5 Older articles after the session ended (JavaScript) | Code read: infinite scroll gets a redirect | The timeline stops loading more; "Older articles" stays | None | Yes: clicking it goes to Login | ok |
 | S6 Log out | Settings → Log out | Login, flash | "You've been logged out successfully!" | n/a | ok (flash not announced; see N1) |
-| S7 Logged in, opens Login or Signup | `/login` or `/signup?invite=<code>` | 303 to Home | None | n/a | ok |
+| S7 Logged in, opens Login or Signup | `/login` or `/signup?invite=<token>` | 303 to Home | None | n/a | ok |
 
 ## Account emails and settings
 

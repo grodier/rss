@@ -1,14 +1,15 @@
 package psql
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/grodier/rss/internal/rss"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func TestUserRepository(t *testing.T) {
@@ -403,4 +404,128 @@ func TestDeleteUser(t *testing.T) {
 			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
 		}
 	})
+}
+
+func TestCreateFromInvite(t *testing.T) {
+	db := psqltest.NewDB(t)
+	users := NewUserRepository(db)
+	const password = "correct-horse-battery"
+
+	// newUserEmail returns a unique address whose account is deleted when the
+	// test ends.
+	newUserEmail := func(t *testing.T) string {
+		t.Helper()
+		email := fmt.Sprintf("test-invite-%d@example.com", time.Now().UnixNano())
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+				t.Errorf("cleanup user: %v", err)
+			}
+		})
+		return email
+	}
+	confirmedAt := func(t *testing.T, id string) sql.NullTime {
+		t.Helper()
+		var at sql.NullTime
+		if err := db.QueryRow(`SELECT email_confirmed_at FROM users WHERE id = $1`, id).Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		return at
+	}
+
+	t.Run("open invite redeems once", func(t *testing.T) {
+		inv, hash := newInvite(t, db, rss.Invite{Note: "for Grace"})
+		email := newUserEmail(t)
+
+		id, err := users.CreateFromInvite(t.Context(), hash, "Grace", email, password)
+		if err != nil {
+			t.Fatalf("CreateFromInvite: %v", err)
+		}
+		if confirmedAt(t, id).Valid {
+			t.Error("an open invite's account starts confirmed")
+		}
+		got, err := NewInviteRepository(db).GetByToken(t.Context(), hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status(time.Now()) != rss.InviteRedeemed || got.UserID != id {
+			t.Errorf("invite = %+v, want redeemed by %s", got, id)
+		}
+		if _, err := users.CreateFromInvite(t.Context(), hash, "Grace", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
+			t.Errorf("second CreateFromInvite error = %v, want ErrInviteUnusable", err)
+		}
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID); !errors.Is(err, rss.ErrInviteUnusable) {
+			t.Errorf("Revoke(redeemed) error = %v, want ErrInviteUnusable", err)
+		}
+	})
+
+	t.Run("bound invite confirms and deletes the waitlist entry", func(t *testing.T) {
+		email := newWaitlistEmail(t, db)
+		t.Cleanup(func() { db.Exec(`DELETE FROM users WHERE email = $1`, email) })
+		entry, err := NewWaitlistRepository(db).Join(t.Context(), rss.WaitlistEntry{Email: email, Name: "Ada"}, newWaitlistHash(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, hash := newInvite(t, db, rss.Invite{Email: email, WaitlistID: entry.ID})
+
+		if _, err := users.CreateFromInvite(t.Context(), hash, "Ada", "other-"+email, password); !errors.Is(err, rss.ErrInviteUnusable) {
+			t.Errorf("CreateFromInvite(another email) error = %v, want ErrInviteUnusable", err)
+		}
+
+		id, err := users.CreateFromInvite(t.Context(), hash, "Ada", strings.ToUpper(email), password)
+		if err != nil {
+			t.Fatalf("CreateFromInvite: %v", err)
+		}
+		if !confirmedAt(t, id).Valid {
+			t.Error("a bound invite's account isn't confirmed")
+		}
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM waitlist WHERE id = $1`, entry.ID).Scan(&n); err != nil || n != 0 {
+			t.Errorf("waitlist entries left = %d (err %v), want 0", n, err)
+		}
+		if n := len(mustListTimelines(t, db, id)); n != len(rss.DefaultTimelines())+1 {
+			t.Errorf("got %d tabs, want Home and the defaults", n)
+		}
+	})
+
+	t.Run("duplicate email rolls back", func(t *testing.T) {
+		email := newUserEmail(t)
+		if _, _, err := users.Create(t.Context(), "Taken", email, password); err != nil {
+			t.Fatal(err)
+		}
+		_, hash := newInvite(t, db, rss.Invite{})
+
+		if _, err := users.CreateFromInvite(t.Context(), hash, "Again", email, password); !errors.Is(err, rss.ErrDuplicateEmail) {
+			t.Fatalf("CreateFromInvite error = %v, want ErrDuplicateEmail", err)
+		}
+		got, err := NewInviteRepository(db).GetByToken(t.Context(), hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st := got.Status(time.Now()); st != rss.InvitePending {
+			t.Errorf("Status = %q, want pending: the invite stays usable", st)
+		}
+	})
+
+	t.Run("expired and revoked invites", func(t *testing.T) {
+		_, expired := newInvite(t, db, rss.Invite{ExpiresAt: time.Now().Add(-time.Minute)})
+		inv, revoked := newInvite(t, db, rss.Invite{})
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID); err != nil {
+			t.Fatal(err)
+		}
+		for name, hash := range map[string][]byte{"expired": expired, "revoked": revoked, "unknown": newWaitlistHash(t)} {
+			if _, err := users.CreateFromInvite(t.Context(), hash, "Nobody", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
+				t.Errorf("%s: error = %v, want ErrInviteUnusable", name, err)
+			}
+		}
+	})
+}
+
+// mustListTimelines returns the user's tabs.
+func mustListTimelines(t *testing.T, db *sql.DB, userID string) []rss.Timeline {
+	t.Helper()
+	tabs, err := NewTimelineRepository(db).List(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	return tabs
 }

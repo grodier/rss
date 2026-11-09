@@ -67,8 +67,6 @@ resource "render_web_service" "rss" {
       runtime_source.image,
       # Set in Render's dashboard: the accounts allowed debug mode.
       env_vars["RSS_DEBUG_EMAILS"],
-      # Set in Render's dashboard; see "Signing up" in infra/README.md.
-      env_vars["RSS_INVITE_CODE"],
       # Set in Render's dashboard, so it never lands in the state; see "Domain
       # and email" in infra/README.md.
       env_vars["RSS_SMTP_PASSWORD"],

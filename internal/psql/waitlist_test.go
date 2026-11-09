@@ -69,6 +69,13 @@ func TestWaitlistRepository(t *testing.T) {
 		if err != nil || byToken != got {
 			t.Errorf("GetByToken = %+v, %v; want %+v", byToken, err, got)
 		}
+		byEmail, err := repo.GetByEmail(ctx, strings.ToUpper(email))
+		if err != nil || byEmail != got {
+			t.Errorf("GetByEmail = %+v, %v; want %+v", byEmail, err, got)
+		}
+		if _, err := repo.GetByEmail(ctx, "nobody-"+email); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("GetByEmail(unknown) error = %v, want ErrNoRecord", err)
+		}
 	})
 
 	t.Run("Join again while unconfirmed replaces the entry's details and token", func(t *testing.T) {

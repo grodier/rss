@@ -540,6 +540,46 @@ type WaitlistEntry struct {
 	CreatedAt   time.Time
 }
 
+// Invite is a single-use signup invite (an invites row). A bound invite has
+// an Email, and only that address can sign up with it; an open one has none.
+type Invite struct {
+	ID         string
+	Email      string // "" for an open invite
+	WaitlistID string // the waitlist entry it was sent to; "" if none, or once the entry is gone
+	// Name is the name its waitlist entry gave, to fill in signup's form; ""
+	// without an entry. Read only.
+	Name       string
+	Note       string // who it's for, for open invites; shown only in the admin
+	Wave       string // the label of the wave it went out in; "" if none
+	ExpiresAt  time.Time
+	RedeemedAt time.Time // zero until someone signs up with it
+	UserID     string    // the account made with it; "" until then, or once it's deleted
+	RevokedAt  time.Time // zero unless revoked
+	CreatedAt  time.Time
+}
+
+// Invite statuses, from Invite.Status.
+const (
+	InvitePending  = "pending"
+	InviteRedeemed = "redeemed"
+	InviteExpired  = "expired"
+	InviteRevoked  = "revoked"
+)
+
+// Status says whether i can still be used at now: InvitePending if it can,
+// else why not. A redeemed invite stays redeemed once it would have expired.
+func (i Invite) Status(now time.Time) string {
+	switch {
+	case !i.RedeemedAt.IsZero():
+		return InviteRedeemed
+	case !i.RevokedAt.IsZero():
+		return InviteRevoked
+	case !now.Before(i.ExpiresAt):
+		return InviteExpired
+	}
+	return InvitePending
+}
+
 // Session is one logged-in device (a user_sessions row) with its user.
 type Session struct {
 	ID         string

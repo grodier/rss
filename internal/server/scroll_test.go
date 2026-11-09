@@ -421,7 +421,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 			return func(t *testing.T) string { return get(t, newTestServer(t), "/login") }
 		case "signup":
 			return func(t *testing.T) string {
-				return get(t, newSignupTestServer(t, Services{}), "/signup?invite="+testInviteCode)
+				return get(t, newSignupTestServer(t, Services{}), "/signup?invite="+testInviteToken)
 			}
 		}
 		panic("unknown page " + name)

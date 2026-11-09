@@ -4,11 +4,10 @@ Terraform for production on Render: one Postgres 17 database (`rss-db`), one web
 State lives in the R2 bucket `rss-tfstate`.
 Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own five things that change outside it, and ignores them:
+Terraform doesn't own four things that change outside it, and ignores them:
 
 - **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
-- **`RSS_INVITE_CODE`**, set in Render's dashboard (see "Signing up").
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
 - **Edge caching**, set in Render's dashboard (see "Edge caching").
 
@@ -226,20 +225,26 @@ A dump restores cleanly only into a database with the same migrations, so check 
 
 ## Signing up
 
-Signup is open only to people with the shared invite code, and only while `RSS_INVITE_CODE` is set; without it, `/signup` returns 404.
-No page links to `/signup`, so share the link itself.
-Terraform ignores the variable, so none of this needs a PR or an apply:
+Signup needs a single-use invite; no page links to `/signup`, so each person gets their own link.
+Until the admin's pages send invites (#574), make them from the admin service's **Shell** in Render's dashboard, once #573 deploys it (with `RSS_APP_URL=https://paperround.app` in its environment, for the links):
 
-1. Generate a code (at least 16 characters): `openssl rand -hex 16`.
-2. On the `rss` service's **Environment** page in Render's dashboard, set `RSS_INVITE_CODE` to it and save (Render restarts the service).
-3. Share `<url>/signup?invite=<code>`.
-   It opens the signup page with the code filled in; the code can also be typed into the "Invite code" field.
-   Each person chooses their own password.
+```sh
+/admin invite create -email someone@example.com   # bound to their confirmed waitlist entry
+/admin invite create -note "Grace, by hand"       # open: they type their own email
+/admin invite list
+/admin invite revoke <id>
+```
+
+`create` prints `https://paperround.app/signup?invite=<token>`; send it to the person yourself.
+A bound invite fills in their name and address, and their account starts confirmed; an open one works for any address, which they confirm afterwards.
+Each works once and expires after 14 days (`-expires` changes that); the README's "`admin invite`" has the details.
+Each person chooses their own password.
 
 Someone who forgets their password resets it themselves with "Forgot password?" on the login page, which emails them a link; nothing needs changing in the database.
 
-To rotate the code, edit the variable; to turn signup off, delete it.
-The code may appear in the request logs, which log the URI.
+Invite tokens are in the signup page's URL, so they may appear in the request logs, which log the URI; a used, expired or revoked one opens nothing.
+
+**Owner step after #569 deploys:** delete `RSS_INVITE_CODE` from the `rss` service's **Environment** page in Render's dashboard; nothing reads it anymore.
 
 ## Domain and email
 

@@ -14,7 +14,7 @@
     <div class="solo-panel hero">
       {{template "brand"}}
       <h1>{{.Title}}</h1>
-      <p>{{.Text}}</p>
+      {{with .Text}}<p>{{.}}</p>{{end}}
       {{with .Note}}<p>{{.}}</p>{{end}}
       <div class="hero-actions">
         {{with .Form}}

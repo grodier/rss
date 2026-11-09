@@ -24,8 +24,6 @@ func TestConfigValidate(t *testing.T) {
 		{"port zero", func(c *config) { c.server.port = 0 }, true},
 		{"port too high", func(c *config) { c.server.port = 70000 }, true},
 		{"empty dsn", func(c *config) { c.db.dsn = "" }, true},
-		{"invite code 15 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 15) }, true},
-		{"invite code 16 characters", func(c *config) { c.server.inviteCode = strings.Repeat("a", 16) }, false},
 		{"proxy hops max", func(c *config) { c.server.proxyHops = 3 }, false},
 		{"proxy hops negative", func(c *config) { c.server.proxyHops = -1 }, true},
 		{"proxy hops too high", func(c *config) { c.server.proxyHops = 4 }, true},

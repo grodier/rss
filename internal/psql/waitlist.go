@@ -70,6 +70,20 @@ func (r *WaitlistRepository) GetByToken(ctx context.Context, tokenHash []byte) (
 	return e, nil
 }
 
+// GetByEmail returns the entry with email, confirmed or not, or
+// rss.ErrNoRecord.
+func (r *WaitlistRepository) GetByEmail(ctx context.Context, email string) (rss.WaitlistEntry, error) {
+	stmt := `SELECT ` + waitlistColumns + ` FROM waitlist WHERE email = $1`
+	e, err := scanWaitlistEntry(r.DB.QueryRowContext(ctx, stmt, email))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.WaitlistEntry{}, rss.ErrNoRecord
+		}
+		return rss.WaitlistEntry{}, err
+	}
+	return e, nil
+}
+
 // Confirm confirms the entry whose link token hashes to tokenHash. An entry
 // already confirmed keeps its first confirmed_at. rss.ErrNoRecord if there's
 // no such entry.

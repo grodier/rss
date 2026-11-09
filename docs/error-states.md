@@ -299,7 +299,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 ## Admin
 
-The admin site (`make run/admin`, http://localhost:4001) is the owner's alone; its error page is the admin layout (the sidebar, no section current) with a heading, a sentence and "Go to the overview".
+The admin site (`make run/admin`, http://localhost:4001) is the owner's alone; its error page is the admin layout (the sidebar, no section current; just the brand when no one is logged in) with a heading, a sentence and "Go to the overview".
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
@@ -309,4 +309,13 @@ The admin site (`make run/admin`, http://localhost:4001) is the owner's alone; i
 | A4 403: a post from another origin, the reader's included | `curl -X POST -H 'Sec-Fetch-Site: same-site' localhost:4001/` | 403 error page | "Request blocked" / "This form was submitted from another site, so it was rejected." | As A2 | new in #562, not reviewed |
 | A5 500 | Code read: a template or handler error | 500 error page | "Something went wrong" / "The server encountered a problem and could not process your request." | As A2 | new in #562, not reviewed |
 | A6 Database down: health check | Stop Postgres, `curl localhost:4001/healthcheck` | 200 | `{"status":"degraded","database":"unreachable",…}`, as H11 | n/a | new in #562, not reviewed |
-| A7 Started in production | `go run ./cmd/admin -env production` | Exits 2 | "admin has no login yet (#567); it only runs locally" | Run it locally | new in #562, until #567 |
+| A7 Started in production without a key | `go run ./cmd/admin -env production -base-url https://admin.example.com` | Exits 2 | "-secret-key (RSS_SECRET_KEY) must be set in production" | Set the key | new in #567, not reviewed |
+| A8 Anonymous request | Open `/` in a private window | 303 to Log in | None | Yes: after both steps it returns to the page (GETs only) | new in #567, not reviewed |
+| A9 Wrong email or password | Log in with an unknown email, or a wrong password | Log in, 422 | "That email and password don't match an admin." | Yes | new in #567, not reviewed |
+| A10 Wrong or reused code | On the code step, type `000000`, or a code or recovery code already used | Log in (code), 422 | "That code didn't work." | Yes, with the next code or a recovery code | new in #567, not reviewed |
+| A11 Too many attempts | 11 login attempts from one IP in 15 minutes, or 6 wrong codes for one admin | Log in, 429 with `Retry-After` | "Too many attempts. Try again in N minutes." | Yes, after the wait | new in #567, not reviewed |
+| A12 Code step too late | Wait over 5 minutes between the password and the code | 303 to Log in, flash | "That took too long. Log in again." | Yes | new in #567, not reviewed |
+| A13 Session ended | 30 minutes idle, or 12 hours after logging in | 303 to Log in | None | Yes, as A8 | new in #567, not reviewed |
+| A14 Log out | Log out, under the email in the nav | Log in, flash | "You've logged out." | n/a | new in #567, not reviewed |
+| A15 Destructive action with an old code | Code read: `requireRecentCode`, over 10 minutes after the last code (no route uses it yet) | 303 to "Confirm it's you" | "This action asks for a new code." | Yes: the code returns to the action's page | new in #567, not reviewed |
+| A16 Enroll problems | `admin enroll` with an existing email (no `-reset`), `-reset` for no admin, no `RSS_SECRET_KEY`, or three wrong first codes | Exits 1 or 2 | Says which, and that nothing was saved | Yes | new in #567, not reviewed |

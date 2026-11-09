@@ -62,19 +62,20 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 `www create-user` (`cmd/www/create_user.go`) creates an account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
 `www send-test-email` (`cmd/www/send_test_email.go`) renders the `test` email and sends it with the configured sender, without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
-`admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and later its command-line tools; an unknown subcommand prints the usage and exits 2.
+`admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
 Inside it runs one component, the HTTP server (`internal/admin`), on port 4001; it runs none of `www`'s workers.
 On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the database is closed.
-Until it has a login (#567), `admin serve -env production` refuses to start.
+It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
+`admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
 
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
-| `cmd/admin` | The admin's flags, wiring and signal handling, and its `serve` command | `admin`, `cli`, `psql` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates | `assets`, `clientip`, `ui`, `web` |
+| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve` and `enroll` commands, and the QR code `enroll` draws | `admin`, `cli`, `psql`, `rss`, `validator` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling | `assets`, `clientip`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger | — |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |
@@ -97,7 +98,8 @@ Until it has a login (#567), `admin serve -env production` refuses to start.
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |
 | `internal/assets` | Read a frontend build's Vite manifest: page groups' tags, files' URLs, serving `/static` | — |
-| `internal/clientip` | The client's address behind `-proxy-hops` reverse proxies | — |
+| `internal/clientip` | The client's address behind `-proxy-hops` reverse proxies, and its rate-limit key | — |
+| `internal/ratelimit` | Both servers' in-memory fixed-window rate limiters, and the response to a denied request | — |
 | `internal/validator` | Form validation helpers and the rules for new passwords | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
 | `web` | The frontend's npm project; its Go package embeds the builds (`App`, what the reader's `/static` serves, and `Admin`, the admin's) | — |
@@ -140,7 +142,7 @@ Its one dependency, pinned to an exact version, is the only npm code that reache
 7. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
 8. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
-The admin's middleware (`internal/admin/router.go`) is the same chain without `recordRequest`, `serverTiming` and `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); it has no sessions yet (#567), and its routes are `/static/*`, `/healthcheck` and `/`.
+The admin's middleware (`internal/admin/router.go`) is the same chain without `recordRequest`, `serverTiming` and `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); `/static/*` and `/healthcheck` need no session; every other route loads it (scs's `LoadAndSave`, then `authenticate`), and all but the login's (`/login`, `/login/code`, `/logout`) need a logged-in admin (`requireAuthentication`), as do destructive actions' recent code (`requireRecentCode`).
 
 Then the reader's routes are split into groups.
 `/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/rum`, `/privacy`, `/terms` and the shared timeline routes have no session.
@@ -236,6 +238,9 @@ users ──< imports ──< import_feeds (feed_id, once known)
 users ──< user_sessions
 users ──< user_tokens
 waitlist (no foreign keys: an entry is an address, not an account)
+
+admins ──< admin_recovery_codes   (apart from users: an admin is never a reader)
+admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
@@ -339,13 +344,19 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Every other iframe becomes a link.
 - **The admin** (`internal/admin`, `commonHeaders`) sends its own headers on every response: `Content-Security-Policy: default-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (static files set their own), `nosniff`, `X-Frame-Options: deny`, and HSTS in production.
   It's on its own origin (`admin.paperround.app`, #573), so `CrossOriginProtection` refuses form posts from the reader's pages, which are same-site but not same-origin.
-  It runs only locally until it has a login (#567).
-- **The admin's second factor** (`internal/admin`, for #567's login): TOTP (RFC 6238, standard library only) in `totp.go`, whose `Verify` accepts one step of drift either way, compares in constant time and never accepts a step at or before the last one used, so each code works once.
+- **The admin's login** (`internal/admin/login.go`): admins are their own accounts (`admins`), never readers, enrolled only from the command line (`admin enroll`), and log in with a password, then a second factor.
+  Both steps give one generic error each ("That email and password don't match an admin.", "That code didn't work."), and the password is verified against a dummy hash for an unknown email, so neither the page nor its timing says which emails are admins'.
+  The password step renews the session token and marks the admin pending for 5 minutes; the code step renews it again and logs in.
+  Recovery codes (10, `xxxx-xxxx` from 40 random bits each) are stored as SHA-256 hashes and deleted when used.
+  `admin_sessions` holds the admin's scs sessions, which end after 30 minutes idle and 12 hours at most; the cookie is `__Host-admin_session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`) in production and `admin_session` without `Secure` locally.
+  `admin enroll -reset` deletes every admin session, so one on a lost device ends.
+  `requireRecentCode` asks for a code again before a destructive action when the session's last one is over 10 minutes old.
+- **The admin's second factor** (`internal/admin`): TOTP (RFC 6238, standard library only) in `totp.go`, whose `Verify` accepts one step of drift either way, compares in constant time and never accepts a step at or before the last one used, so each code works once.
   TOTP secrets are stored sealed (`seal.go`: AES-256-GCM, a random nonce prepended to each ciphertext) under a 32-byte key that only the admin service's environment holds, so a database leak alone gives no working secrets.
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.
   Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO) are served, with their stored `Content-Type`, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
-- **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; cookies are `SameSite=Lax`, and `Secure` with `-env production`.
+- **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; the reader's cookies are `SameSite=Lax`, and `Secure` with `-env production` (the admin's are above).
 - **The `tab` cookie** remembers the tab a reader was on for a visit (`rss.VisitGap`), so `/` can return to it; it's a cookie rather than a session value because sessions are stored in Postgres and it's set on every timeline page. It's `HttpOnly`, `SameSite=Lax`, `Secure` like the session cookie, and checked against the reader's tabs on every use.
   Each login is a `user_sessions` row: it ends after 90 days unused (`sessionIdleTimeout`) and at most a year after login (scs's `Lifetime`), and logging out deletes it.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most `GOMAXPROCS` hashes run at once and the rest wait.
@@ -370,7 +381,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form.
   A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.
-- **Rate limits** (`internal/server/ratelimit.go`): in-memory fixed windows, per process.
+- **Rate limits** (`internal/ratelimit`, with `clientip.RateLimitKey` for IPs): in-memory fixed windows, per process.
 
   | Limiter | Key | Limit |
   | --- | --- | --- |
@@ -389,6 +400,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | `emailChangeLimiter` | user | 5 email change requests per hour |
   | `rumLimiter` | client IP (IPv6 by /64) | 120 real-user beacons per 10 min; the rest are dropped, still with a 204 |
   | `rumTotalLimiter` | every client together | 600 real-user beacons per minute, checked after `rumLimiter`; the rest are dropped, still with a 204 |
+  | admin `loginLimiter` | client IP (IPv6 by /64) | 10 admin login attempts per 15 min, both steps together |
+  | admin `codeFailureLimiter` | admin | 5 wrong codes per 15 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue` queues about 20 to one address (ignoring case) per hour and returns `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
   It counts, then inserts, so simultaneous requests can slightly exceed 20.

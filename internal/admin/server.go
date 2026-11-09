@@ -14,6 +14,11 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/alexedwards/scs/v2"
+	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/ratelimit"
+	"github.com/grodier/rss/internal/rss"
 )
 
 type Config struct {
@@ -27,6 +32,9 @@ type Config struct {
 	// ProxyHops is how many reverse proxies in front of the admin append to
 	// X-Forwarded-For. 0 ignores the header.
 	ProxyHops int
+	// SecretKey is the 32-byte key admins' TOTP secrets are sealed with
+	// (Seal), held only in the admin service's environment.
+	SecretKey []byte
 }
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -34,8 +42,21 @@ type DatabasePinger interface {
 	PingContext(ctx context.Context) error
 }
 
+// AdminStore is the admin accounts' repository; *psql.AdminRepository is
+// one.
+type AdminStore interface {
+	Authenticate(ctx context.Context, email, password string) (rss.Admin, error)
+	Get(ctx context.Context, id string) (rss.Admin, error)
+	GetByEmail(ctx context.Context, email string) (rss.Admin, error)
+	Create(ctx context.Context, email string, c rss.AdminCredentials) (string, error)
+	Reset(ctx context.Context, email string, c rss.AdminCredentials) error
+	AcceptTOTPStep(ctx context.Context, id string, step int64) (bool, error)
+	UseRecoveryCode(ctx context.Context, id string, hash []byte) (bool, error)
+}
+
 type Services struct {
 	Database DatabasePinger
+	Admins   AdminStore
 }
 
 type Server struct {
@@ -45,12 +66,23 @@ type Server struct {
 	templates map[string]*template.Template
 	services  Services
 
+	sessionManager *scs.SessionManager
+	formDecoder    *form.Decoder
+	// now is time.Now, except in tests.
+	now func() time.Time
+
+	// loginLimiter counts both login steps' attempts per client IP;
+	// codeFailureLimiter counts wrong codes per admin.
+	loginLimiter       *ratelimit.Limiter
+	codeFailureLimiter *ratelimit.Limiter
+
 	// proxyHopsWarning logs, once, that clientIP took a non-public address
 	// from X-Forwarded-For.
 	proxyHopsWarning sync.Once
 }
 
-func New(logger *slog.Logger, cfg Config, services Services) (*Server, error) {
+// New returns the admin's server. sessionManager is NewSessionManager's.
+func New(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
 	templates, err := parseTemplates()
 	if err != nil {
 		return nil, err
@@ -60,6 +92,12 @@ func New(logger *slog.Logger, cfg Config, services Services) (*Server, error) {
 		config:    cfg,
 		templates: templates,
 		services:  services,
+
+		sessionManager:     sessionManager,
+		formDecoder:        form.NewDecoder(),
+		now:                time.Now,
+		loginLimiter:       ratelimit.New(10, 15*time.Minute),
+		codeFailureLimiter: ratelimit.New(5, 15*time.Minute),
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),

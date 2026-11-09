@@ -15,25 +15,28 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
 
 // usage lists the subcommands.
 const usage = `Usage:
-  admin [serve] [flags]  run the admin site (admin serve -help lists its flags)
+  admin [serve] [flags]          run the admin site (admin serve -help lists its flags)
+  admin enroll -email <email>    enroll an admin, or with -reset replace their password and second factor
 `
 
 // run runs the command in args and returns the process's exit code: 0 on
 // success or -help, 1 when the command fails, 2 for invalid configuration or
 // an unknown subcommand. "admin [flags]" and "admin serve [flags]" serve the
-// admin site; later issues add subcommands.
-func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+// admin site.
+func run(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return runServe(args, getenv, stdout, stderr)
 	}
 	switch args[0] {
 	case "serve":
 		return runServe(args[1:], getenv, stdout, stderr)
+	case "enroll":
+		return runEnroll(args[1:], getenv, stdin, stdout, stderr)
 	case "help":
 		fmt.Fprint(stdout, usage)
 		return 0

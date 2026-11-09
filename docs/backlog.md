@@ -87,7 +87,7 @@ The decisions are under "Accounts" in decisions.md.
   Before signup opens beyond invites, add a challenge (e.g. Cloudflare Turnstile, which needs a script and a CSP change) or another bot check.
   The waitlist form (#566) starts with a honeypot field and a per-IP limit; add the challenge there too if bots get through.
 - [ ] **Rate limiter approach.**
-  Evaluate whether the in-memory rate limiter (`internal/server/ratelimit.go`) is right long term.
+  Evaluate whether the in-memory rate limiter (`internal/ratelimit`) is right long term.
   It resets on restart and isn't shared across instances.
   Before running more than one instance, or if limits need to survive restarts, compare options (e.g. Postgres-backed counters, a reverse-proxy/edge limit, Redis) and decide.
   No decision yet.

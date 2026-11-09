@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -54,7 +55,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := s.authenticatedUserID(r)
 	if ok, retryAfter := s.lookupLimiter.AllowWithRetry(userID); !ok {
-		setRetryAfter(w, retryAfter)
+		ratelimit.SetRetryAfter(w, retryAfter)
 		s.tooManyLookupsResponse(w, r)
 		return
 	}

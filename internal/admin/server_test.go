@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexedwards/scs/v2/memstore"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -33,9 +34,19 @@ func newTestServerWith(t *testing.T, services Services) *Server {
 	return newTestServerConfig(t, Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}, services)
 }
 
+// newTestServerConfig returns a Server with cfg and services, sessions in
+// memory, testKey as its secret key unless cfg has one, and an empty
+// fakeAdmins unless services has an AdminStore.
 func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	t.Helper()
-	s, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, services)
+	if cfg.SecretKey == nil {
+		cfg.SecretKey = testKey
+	}
+	if services.Admins == nil {
+		services.Admins = newFakeAdmins()
+	}
+	sessions := NewSessionManager(memstore.NewWithCleanupInterval(0), cfg.Env)
+	s, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, services, sessions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +61,9 @@ func get(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
 }
 
 func TestHome(t *testing.T) {
-	rr := get(t, newTestServer(t), "/")
+	s, _ := newTestServerWithAdmin(t)
+	b := loggedIn(t, s)
+	rr := b.get(t, "/")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
@@ -64,6 +77,7 @@ func TestHome(t *testing.T) {
 		`<a href="/" aria-current="page">Overview</a>`,
 		`<h1>Overview</h1>`,
 		`<p class="empty">Nothing here yet.</p>`,
+		`<p>admin@example.com</p>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET / lacks %s:\n%s", want, body)

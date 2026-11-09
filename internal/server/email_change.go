@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
@@ -50,8 +51,8 @@ func (s *Server) settingsEmailFormHandler(w http.ResponseWriter, r *http.Request
 	user := sess.User
 
 	if ok, retryAfter := s.emailChangeLimiter.AllowWithRetry(user.ID); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderSettingsEmail(w, r, http.StatusTooManyRequests, form)
 		return
 	}

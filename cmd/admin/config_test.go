@@ -78,6 +78,15 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "production",
+			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com", "RSS_SECRET_KEY": strings.Repeat("ab", 32)},
+			check: func(t *testing.T, cfg config) {
+				if cfg.env != "production" || cfg.secretKey != strings.Repeat("ab", 32) {
+					t.Errorf("env, secret key = %q, %q; want production and the key", cfg.env, cfg.secretKey)
+				}
+			},
+		},
+		{
 			name: "version",
 			args: []string{"-version"},
 			check: func(t *testing.T, cfg config) {
@@ -95,6 +104,8 @@ func TestParseConfig(t *testing.T) {
 		{name: "relative base URL", args: []string{"-base-url", "admin.example.com"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be an absolute http or https URL"},
 		{name: "base URL with a path", args: []string{"-base-url", "https://example.com/admin"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must not have a path"},
 		{name: "http base URL in production", args: []string{"-env", "production"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be set to an https URL in production"},
+		{name: "secret key not hex", args: []string{"-secret-key", "nope"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid -secret-key (RSS_SECRET_KEY)"},
+		{name: "secret key too short", args: []string{"-secret-key", "abcd"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be 32 bytes, hex-encoded"},
 		{name: "extra argument", args: []string{"-db-dsn", dsn, "now"}, wantErr: `unexpected argument "now"`},
 	}
 	for _, tt := range tests {
@@ -121,7 +132,7 @@ func TestParseConfigUsageNamesEnv(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("parseConfig(-help) error = %v, want flag.ErrHelp", err)
 	}
-	for _, name := range []string{"RSS_DB_DSN", "RSS_PORT", "RSS_BASE_URL", "RSS_PROXY_HOPS", "RSS_DB_MAX_OPEN_CONNS"} {
+	for _, name := range []string{"RSS_DB_DSN", "RSS_PORT", "RSS_BASE_URL", "RSS_PROXY_HOPS", "RSS_DB_MAX_OPEN_CONNS", "RSS_SECRET_KEY"} {
 		if !strings.Contains(out.String(), name) {
 			t.Errorf("-help output doesn't mention %s:\n%s", name, out.String())
 		}
@@ -145,25 +156,19 @@ func TestRun(t *testing.T) {
 		{name: "flags without serve", args: []string{"-help"}, wantCode: 0, wantStderr: "-db-dsn"},
 		{name: "version", args: []string{"serve", "-version"}, wantCode: 0, wantStdout: "dev\n"},
 		{name: "invalid configuration", args: []string{"serve"}, wantCode: 2, wantStderr: "database DSN must not be empty"},
-		// The admin has no login until #567, so it never runs in production.
+		{name: "enroll -help", args: []string{"enroll", "-help"}, wantCode: 0, wantStderr: "Usage: admin enroll -email <email>"},
 		{
-			name:       "serve refuses production",
+			name:       "production needs a secret key",
 			args:       []string{"serve", "-env", "production", "-base-url", "https://admin.example.com"},
 			env:        map[string]string{"RSS_DB_DSN": dsn},
 			wantCode:   2,
-			wantStderr: "admin has no login yet (#567); it only runs locally",
-		},
-		{
-			name:       "serve refuses production from the environment",
-			env:        map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com"},
-			wantCode:   2,
-			wantStderr: "admin has no login yet (#567); it only runs locally",
+			wantStderr: "-secret-key (RSS_SECRET_KEY) must be set in production",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := run(tt.args, envFrom(tt.env), &stdout, &stderr)
+			code := run(tt.args, envFrom(tt.env), nil, &stdout, &stderr)
 			if code != tt.wantCode {
 				t.Errorf("exit code = %d, want %d; stderr:\n%s", code, tt.wantCode, stderr.String())
 			}

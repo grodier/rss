@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,9 @@ type config struct {
 	port      int
 	baseURL   string
 	proxyHops int
+	// secretKey is the hex-encoded 32-byte key admins' TOTP secrets are
+	// sealed with; "" in development makes serve generate one per run.
+	secretKey string
 	db        dbConfig
 	// version, with -version, prints the build's version instead of serving.
 	version bool
@@ -62,6 +66,14 @@ func (c config) Validate() error {
 	if c.db.maxOpenConns < 1 || c.db.maxOpenConns > 10 {
 		errs = append(errs, fmt.Errorf("invalid database max open connections %d: must be 1-10", c.db.maxOpenConns))
 	}
+	switch {
+	case c.secretKey != "":
+		if _, err := parseSecretKey(c.secretKey); err != nil {
+			errs = append(errs, err)
+		}
+	case c.env == "production":
+		errs = append(errs, errors.New("-secret-key (RSS_SECRET_KEY) must be set in production"))
+	}
 	u, err := url.Parse(c.baseURL)
 	switch {
 	case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "":
@@ -89,6 +101,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.StringVar(&cfg.baseURL, "base-url", "", "The admin's own URL (default http://localhost:<port>)")
 	fs.IntVar(&cfg.proxyHops, "proxy-hops", cfg.proxyHops, "Reverse proxies in front of the admin that append to X-Forwarded-For (0-3; 0 ignores the header)")
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
+	fs.StringVar(&cfg.secretKey, "secret-key", "", secretKeyUsage)
 	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections (1-10)")
 	fs.BoolVar(&cfg.version, "version", false, "Print the build's version and exit")
 
@@ -119,4 +132,16 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 		return config{}, err
 	}
 	return cfg, nil
+}
+
+// secretKeyUsage is -secret-key's help, for both serve and enroll.
+const secretKeyUsage = "Key that seals admins' TOTP secrets: 32 bytes, hex-encoded (openssl rand -hex 32)"
+
+// parseSecretKey decodes a hex-encoded 32-byte -secret-key.
+func parseSecretKey(s string) ([]byte, error) {
+	key, err := hex.DecodeString(s)
+	if err != nil || len(key) != 32 {
+		return nil, errors.New("invalid -secret-key (RSS_SECRET_KEY): must be 32 bytes, hex-encoded (64 characters)")
+	}
+	return key, nil
 }

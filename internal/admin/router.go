@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// router has the reader's middleware order (internal/server/router.go),
-// without what the admin doesn't have yet: sessions and logins (#567).
+// router has the reader's middleware order (internal/server/router.go).
+// Every page but the login's needs a logged-in admin.
 func (s *Server) router() http.Handler {
 	router := chi.NewRouter()
 
@@ -30,13 +30,36 @@ func (s *Server) router() http.Handler {
 	// Serves HEAD with the GET handler.
 	router.Use(middleware.GetHead)
 
-	router.NotFound(s.notFoundResponse)
-	router.MethodNotAllowed(s.methodNotAllowedResponse)
+	// Error pages load the session, so their nav shows a logged-in admin's
+	// sections.
+	router.NotFound(s.withSession(http.HandlerFunc(s.notFoundResponse)).ServeHTTP)
+	router.MethodNotAllowed(s.withSession(http.HandlerFunc(s.methodNotAllowedResponse)).ServeHTTP)
 
+	// Static files and the healthcheck need no session.
 	router.Handle("/static/*", http.HandlerFunc(s.staticHandler))
 	router.Get("/healthcheck", s.healthcheckHandler)
 
-	router.Get("/", s.homeHandler)
+	router.Group(func(r chi.Router) {
+		r.Use(s.sessionManager.LoadAndSave)
+		r.Use(s.authenticate)
+
+		r.Get("/login", s.loginHandler)
+		r.Post("/login", s.loginFormHandler)
+		r.Get("/login/code", s.loginCodeHandler)
+		r.Post("/login/code", s.loginCodeFormHandler)
+		r.Post("/logout", s.logoutHandler)
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuthentication)
+			r.Get("/", s.homeHandler)
+		})
+	})
 
 	return router
+}
+
+// withSession loads the session and the logged-in admin for next, for
+// handlers outside the router's session group.
+func (s *Server) withSession(next http.Handler) http.Handler {
+	return s.sessionManager.LoadAndSave(s.authenticate(next))
 }

@@ -37,7 +37,8 @@ go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
-go run ./cmd/admin               # run the admin site, locally only, on :4001 (or: make run/admin)
+go run ./cmd/admin               # run the admin site on :4001 (or: make run/admin)
+go run ./cmd/admin enroll -email you@example.com  # enroll an admin (password on stdin; needs RSS_SECRET_KEY, see README)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
 go run ./cmd/www seed            # queue lookups of the seed list's sites (or: make db/seed-sites); production runs it on every deploy
 go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
@@ -56,7 +57,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 
 - `cmd/www`: config flags and wiring
 - `cmd/admin`: the admin site's binary (its own service): config flags, wiring and its subcommands
-- `internal/admin`: the admin site's server (router, middleware, handlers, rendering), shared by its pages and `cmd/admin`'s subcommands
+- `internal/admin`: the admin site's server (router, middleware, handlers, rendering, its login and enrolling), shared by its pages and `cmd/admin`'s subcommands
 - `internal/cli`: what the commands share (`SetFlagsFromEnv`, `NewLogger`)
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/rss`: domain types (Feed, User, …) and sentinel errors
@@ -64,7 +65,8 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/discovery`: finds the feeds a website publishes
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
-- `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, for both servers
+- `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, and its rate-limit key, for both servers
+- `internal/ratelimit`: in-memory fixed-window rate limiters, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/metrics`: counts `www`'s requests and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background
@@ -205,6 +207,10 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Before opening a PR, merge the latest `main` into your branch and re-run the checks.
 - Keep PRs scoped to their issue.
   Note unrelated problems in the PR description (or add them to `docs/backlog.md`); don't fix them in the same PR.
+- Keep PRs small enough to review in one sitting (see "Planning and docs" in `docs/decisions.md`).
+  If, before or while building an issue, it looks like it will make a large PR, stop and suggest splitting the issue into smaller issues and PRs, saying where the seams are, before building further.
+  Typical seams: a refactor the work needs first, a self-contained helper, a second flow, or an optional extra the issue allows leaving out.
+  Suggest a split only if it makes sense: each part merges on its own, with its tests and docs, and leaves `main` working; don't cut one change into pieces that can't be reviewed apart.
 - Update the docs the change affects in the same PR (see "Docs").
 - A PR that changes how the app looks shows its option or options first, each with a justification, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
@@ -225,6 +231,7 @@ Before working on a feature, read its section in `docs/features.md` (the flow an
 
 Issues are written for an implementer with no context from the planning conversation.
 
+- Size each issue for one PR that can be reviewed in one sitting; plan a bigger change as several issues, in order, each of which stands on its own.
 - Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
   An issue that changes how the app looks adds "Design checkpoint": the starting options, the preferred one, and the pages and states the screenshots must show; or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.

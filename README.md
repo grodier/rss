@@ -143,23 +143,39 @@ It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 aft
 ## The admin site
 
 `cmd/admin` is the admin site, the owner's tools, a second binary built into the same image (see "Admin" in [docs/features.md](docs/features.md)).
-It has no login yet (#567), so it only runs locally: `-env production` refuses to start.
 Run it next to the app, against the same database:
 
 ```sh
 make run/admin           # http://localhost:4001 (or: go run ./cmd/admin)
 ```
 
+Every page needs a logged-in admin: a password, then a code from an authenticator app (or a recovery code).
+To log in locally, give `.env` a key for admins' TOTP secrets, which both `admin enroll` and the site need (without one, the site makes a new key on every run, and no enrolled admin can log in):
+
+```sh
+echo "RSS_SECRET_KEY=$(openssl rand -hex 32)" >> .env
+```
+
+Then enroll yourself, typing the password on the first line (it's read from stdin, like `www create-user`):
+
+```sh
+go run ./cmd/admin enroll -email you@example.com
+```
+
+It prints a QR code and the `otpauth://` URI it holds; add it to an authenticator app, type the code the app shows, and keep the 10 recovery codes it prints, each of which works once instead of a code, and which aren't shown again.
+`admin enroll -email you@example.com -reset` replaces an admin's password, secret and recovery codes after the same steps, for a lost phone, and logs every admin out; there's no other way to make or change an admin.
+
 `admin` and `admin serve` run the site; `admin -help` lists its flags, each also settable by its environment variable, as for `www`, so it reads `RSS_DB_DSN` from `.env` too:
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
-| `-env` | `RSS_ENV` | `development` | Environment (`development`; `production` refuses to start until the admin has a login) |
+| `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`) |
 | `-port` | `RSS_PORT` | `4001` | Server port |
 | `-base-url` | `RSS_BASE_URL` | `http://localhost:<port>` | The admin's own URL: `http` or `https`, no path, query or fragment |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the admin that append to `X-Forwarded-For` (0–3), as for `www` |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `3` | PostgreSQL max open connections (1–10): the admin shares the database with `www` |
+| `-secret-key` | `RSS_SECRET_KEY` | _(none; required in production)_ | Key that seals admins' TOTP secrets: 32 bytes, hex-encoded (`openssl rand -hex 32`); in development, a new one each run when unset |
 | `-version` | `RSS_VERSION` | `false` | Print the build's version and exit |
 
 Since the variables are shared, `RSS_PORT` or `RSS_BASE_URL` in `.env` apply to both binaries; set the admin's on its command line instead (`go run ./cmd/admin -port 4002`).

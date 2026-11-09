@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/clientip"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -73,7 +74,7 @@ func (s *Server) rumHandler(w http.ResponseWriter, r *http.Request) {
 
 	// The address's limit first, so one client over it can't use up
 	// everyone's.
-	if !s.rumLimiter.Allow(ipRateLimitKey(s.clientIP(r))) || !s.rumTotalLimiter.Allow("") {
+	if !s.rumLimiter.Allow(clientip.RateLimitKey(s.clientIP(r))) || !s.rumTotalLimiter.Allow("") {
 		return
 	}
 	var form rumForm

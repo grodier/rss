@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
@@ -86,15 +88,15 @@ func (s *Server) forgotPasswordFormHandler(w http.ResponseWriter, r *http.Reques
 
 	// Per email lowercased, because users.email is citext.
 	for _, l := range []struct {
-		limiter *rateLimiter
+		limiter *ratelimit.Limiter
 		key     string
 	}{
-		{s.resetIPLimiter, ipRateLimitKey(s.clientIP(r))},
+		{s.resetIPLimiter, clientip.RateLimitKey(s.clientIP(r))},
 		{s.resetEmailLimiter, strings.ToLower(form.Email)},
 	} {
 		if ok, retryAfter := l.limiter.AllowWithRetry(l.key); !ok {
-			setRetryAfter(w, retryAfter)
-			form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+			ratelimit.SetRetryAfter(w, retryAfter)
+			form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 			s.renderForgotPassword(w, r, http.StatusTooManyRequests, form)
 			return
 		}

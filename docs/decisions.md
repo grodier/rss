@@ -110,6 +110,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   TOTP is a few lines of the standard library (RFC 6238); passkeys are a later upgrade (backlog).
   The first admin is created with `admin enroll` in the service's shell; nothing seeds one.
 - **Short sessions**: 30 minutes idle and 12 hours at most, and a destructive action asks for a TOTP code again when the last one is over 10 minutes old.
+- **The `__Host-` cookie is production's only** (#567): locally, over `http://localhost`, the cookie is `admin_session` without `Secure`, like the reader's, since `__Host-` requires `Secure` and some browsers (Safari) refuse `Secure` cookies over plain `http`.
+- **`admin enroll` always needs `-secret-key`** (#567): it runs as its own process, so a key made for one run would seal a secret the site can't open; locally the key lives in `.env`, and `admin serve` without one makes a key per run, with a warning, rather than refusing to start.
+- **`admin enroll` draws the QR code itself** (#567, `cmd/admin/qr.go`: byte mode, level L, versions 1 to 10), rather than adding a QR library for one terminal picture; it also prints the URI, for an app that takes one pasted.
+- **`admin enroll -reset` logs every admin out** (#567): it's for a lost phone or a leaked password, so a session on that device must end, and scs stores a session's data encoded, so sessions can't be picked out by admin; with one owner, ending all of them costs nothing.
+- **Both login steps share generic errors, and a wrong code counts against the admin, not just the IP** (#567): "That email and password don't match an admin." whether or not the email is an admin's (with a dummy hash checked for timing), and 5 wrong codes per admin per 15 minutes on top of 10 attempts per IP.
 - **Every write is recorded in an audit log** (who, what, which record, before and after, when), and so are logins and failed logins; destructive actions also need a typed confirmation.
 - **No impersonation.** Support uses read-only views: logging in as a reader would show their private reading.
 - **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
@@ -925,7 +930,7 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
 
 Planned in #187 (issues #182–#186).
 
-- **In-memory rate limits** (`internal/server/ratelimit.go`) are enough for one instance; they reset on restart.
+- **In-memory rate limits** (`internal/ratelimit`) are enough for one instance; they reset on restart.
   Whether to keep them long term is a backlog item.
 - **IPv6 clients are keyed by their /64**, since one client usually controls a whole /64.
 - **A limited login or signup re-renders its form with 429** and `Retry-After`, keeping the email filled in.
@@ -1181,6 +1186,8 @@ The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md
 - **Docs say what the code can't**: reasons, flows across packages, and invariants that aren't obvious.
   `features.md` names a feature's entry points and test files, not every symbol and test, and none of the docs repeat user-facing strings, CSS classes, column lists or Terraform values.
   Before this, every name the docs mentioned still existed, but 3,700 lines of them were a cost on every PR and every read.
+- **PRs stay small enough to review in one sitting** (#567): #567's login came to about 3,300 lines across 55 files, including a refactor it needed first and an optional terminal QR code, which together could have been two smaller PRs.
+  Splitting is suggested before building, and only along seams where each part stands on its own; a change that only makes sense whole stays one PR.
 - **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
 - **The admin and its observability have their own roadmap**, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560), at the owner's request, so the reader's roadmap stays readable; it works like #385, and neither edits the other's waves.
   (#583)

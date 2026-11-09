@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -25,6 +26,16 @@ func (s *Server) errorHTML(w http.ResponseWriter, r *http.Request, status int, t
 		s.logError(r, err)
 		http.Error(w, http.StatusText(status), status)
 	}
+}
+
+// formErrorResponse answers a form decodePostForm couldn't read: 413 when
+// it was too large, else 400.
+func (s *Server) formErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		s.errorHTML(w, r, http.StatusRequestEntityTooLarge, "Request too large", "That form submission was too large.")
+		return
+	}
+	s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That form submission couldn't be read.")
 }
 
 func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {

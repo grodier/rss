@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -234,8 +235,8 @@ func (s *Server) settingsPasswordFormHandler(w http.ResponseWriter, r *http.Requ
 	user := sess.User
 
 	if ok, retryAfter := s.passwordChangeLimiter.AllowWithRetry(user.ID); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderSettingsPassword(w, r, http.StatusTooManyRequests, form)
 		return
 	}
@@ -320,8 +321,8 @@ func (s *Server) settingsDeleteFormHandler(w http.ResponseWriter, r *http.Reques
 	userID, _ := s.authenticatedUserID(r)
 
 	if ok, retryAfter := s.deleteAccountLimiter.AllowWithRetry(userID); !ok {
-		setRetryAfter(w, retryAfter)
-		form.AddNonFieldError(tooManyAttemptsMessage(retryAfter))
+		ratelimit.SetRetryAfter(w, retryAfter)
+		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
 		s.renderSettingsDelete(w, r, http.StatusTooManyRequests, form)
 		return
 	}

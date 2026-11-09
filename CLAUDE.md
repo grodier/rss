@@ -41,7 +41,7 @@ go run ./cmd/admin               # run the admin site on :4001 (or: make run/adm
 go run ./cmd/admin enroll -email you@example.com  # enroll an admin (password on stdin; needs RSS_SECRET_KEY, see README)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
 go run ./cmd/www seed            # queue lookups of the seed list's sites (or: make db/seed-sites); production runs it on every deploy
-go run ./cmd/www send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
+go run ./cmd/admin send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB from scratch
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
 make db/migrations/new name=<name>       # new migration

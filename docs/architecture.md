@@ -46,7 +46,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
 
-`cmd/www/main.go` (`run`) hands `www migrate`, `www seed`, `www create-user` and `www send-test-email` to their own functions (below).
+`cmd/www/main.go` (`run`) hands `www migrate` and `www seed` to their own functions (below).
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
@@ -59,8 +59,6 @@ It runs before new code goes live, never at startup.
 `www seed` (`cmd/www/seed.go`) queues lookups of the seed list's sites (`internal/seed/sites.txt`, embedded) that haven't been found, behind readers', and exits; the app's lookup runner fetches them.
 It only writes `lookups` rows, so it's cheap to run on every deploy: production runs it as `www migrate -seed`, its pre-deploy command, and locally it runs only by hand (`make db/seed-sites`), never on `make db/reset`.
 
-`www create-user` (`cmd/www/create_user.go`) creates an account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
-`www send-test-email` (`cmd/www/send_test_email.go`) renders the `test` email and sends it with the configured sender, without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
 `admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
@@ -68,15 +66,17 @@ Inside it runs one component, the HTTP server (`internal/admin`), on port 4001; 
 On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the database is closed.
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
+`admin create-user` (`cmd/admin/create_user.go`) creates a reader's account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
+`admin send-test-email` (`cmd/admin/send_test_email.go`) renders the `test` email and sends it with `www`'s mail flags (`cli.Mail`, shared with `www`'s configuration), without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
 ## Packages
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate`, `seed`, `create-user` and `send-test-email` commands | everything below |
-| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve` and `enroll` commands, and the QR code `enroll` draws | `admin`, `cli`, `psql`, `rss`, `validator` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
+| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
 | `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling | `assets`, `clientip`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
-| `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger | — |
+| `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |

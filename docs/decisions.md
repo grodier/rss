@@ -949,7 +949,7 @@ Planned in #187 (issues #182–#186).
   - At least 16 characters, compared in constant time.
   - In production it's set in Render's dashboard and ignored by Terraform, like `RSS_SMTP_PASSWORD`: a Terraform variable would keep it in plain text in the state and need a PR and an approved apply to rotate.
   - It may appear in request logs (they log the URI); only the owner reads them, and the owner sets it.
-- **`www create-user` makes accounts locally** (#225), and `make db/reset` uses it to put your account back.
+- **`www create-user` makes accounts locally** (#225; now `admin create-user`, #568), and `make db/reset` uses it to put your account back.
   Not seeding in `www migrate`: that manages the schema and runs before every deploy.
   The password comes from stdin, never a flag (shell history, process listings), and there's no hidden prompt, which would need a new dependency.
   It can't run in production (distroless image, no external database access); production accounts come from the invite code.
@@ -1123,7 +1123,7 @@ Planned in #218; issues #208–#217.
 - **Wiping the database is never automatic.** `migrate` only applies new migrations; nothing in the app or its workflows drops the schema, and only `make db/reset` rebuilds a local database.
   - Until #561, while production was reset on schema changes, `migrate` refused to run when `migrations/*.sql` had changed since they were applied, and wiped only when given the new migrations' fingerprint (a `schema_fingerprint` table, #211); production resets went through a workflow with a typed confirmation.
   - #561 ended production resets (see "Pre-alpha testing"): the fingerprint check, `-allow-reset-to` and the reset workflow went, migration `00002` drops `schema_fingerprint`, and a CI step fails a PR that edits, renames or deletes a migration already on `main`, which replaces the check.
-- **No account is seeded after a production reset.** It would need a credential (or its hash) stored in Render, Terraform state or GitHub, and a one-off job to run `www create-user` in.
+- **No account is seeded after a production reset.** It would need a credential (or its hash) stored in Render, Terraform state or GitHub, and a one-off job to run `admin create-user` in.
   Signing up again with the invite link (#226) is the way back in, so production isn't reset before that's live.
   (#214, #215)
 - **Images are public on GHCR**, like the source.

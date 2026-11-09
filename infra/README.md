@@ -259,7 +259,7 @@ What lives where:
 - **DMARC**: the `p=none` record on `_dmarc.paperround.app`, which Cloudflare's **DMARC Management** (**`paperround.app` → Email → DMARC Management**) created outside Terraform, and whose reports it shows.
 
 Resend's free tier allows 100 emails a day and 3,000 a month.
-`www send-test-email` (#259) checks deliverability.
+`admin send-test-email` (#259, moved to `admin` in #568) checks deliverability, from the admin service's shell once #573 deploys it, with the app's URL as `-base-url` (see the README).
 
 ### Setting up
 

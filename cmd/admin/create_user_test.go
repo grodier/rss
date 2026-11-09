@@ -1,15 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"strings"
 	"testing"
 )
-
-// unreachableDSN can't connect, so a 2 from runCreateUser shows validation
-// ran before it opened the database.
-const unreachableDSN = "postgres://localhost:1/x?connect_timeout=1"
 
 func TestRunCreateUserRequiresDSN(t *testing.T) {
 	var stderr bytes.Buffer
@@ -49,7 +46,7 @@ func TestRunCreateUserInvalidInput(t *testing.T) {
 	}
 }
 
-func TestRunCreateUserReadsOneLine(t *testing.T) {
+func TestReadLine(t *testing.T) {
 	tests := []struct {
 		in, want string
 	}{
@@ -60,12 +57,12 @@ func TestRunCreateUserReadsOneLine(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got, err := readPassword(strings.NewReader(tt.in))
+		got, err := readLine(bufio.NewReader(strings.NewReader(tt.in)))
 		if err != nil {
-			t.Fatalf("readPassword(%q) error = %v", tt.in, err)
+			t.Fatalf("readLine(%q) error = %v", tt.in, err)
 		}
 		if got != tt.want {
-			t.Errorf("readPassword(%q) = %q, want %q", tt.in, got, tt.want)
+			t.Errorf("readLine(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

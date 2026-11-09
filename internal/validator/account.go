@@ -1,7 +1,7 @@
 package validator
 
 // CheckNewAccount records the field errors for a new account's name, email
-// and password. Signup and "www create-user" both use it.
+// and password. Signup and "admin create-user" both use it.
 func (v *Validator) CheckNewAccount(name, email, password string) {
 	v.CheckName(name)
 	v.CheckField(NotBlank(email), "email", "Email is required")

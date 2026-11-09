@@ -56,7 +56,7 @@ func (app *Application) Run() error {
 	refresher := &ingest.Refresher{Fetcher: fetcher, Store: psql.NewFeedRepository(db)}
 	// Links to the app itself, like shared timelines', never become feeds in
 	// the catalog. config.validate has checked that the base URL parses.
-	baseURL, err := url.Parse(app.config.mail.baseURL)
+	baseURL, err := url.Parse(app.config.mail.BaseURL)
 	if err != nil {
 		return fmt.Errorf("parse base URL: %w", err)
 	}
@@ -123,7 +123,7 @@ func (app *Application) Run() error {
 	if app.config.mailRunner.workers > 0 {
 		mailRunner = &mail.Runner{
 			Store:   emails,
-			Sender:  newMailSender(app.config.mail, app.logger),
+			Sender:  app.config.mail.Sender(app.logger),
 			Logger:  app.logger,
 			Workers: app.config.mailRunner.workers,
 		}
@@ -184,8 +184,8 @@ func (app *Application) Run() error {
 		InviteCode:   app.config.server.inviteCode,
 		Version:      version,
 		ProxyHops:    app.config.server.proxyHops,
-		BaseURL:      app.config.mail.baseURL,
-		SupportEmail: app.config.mail.supportEmail,
+		BaseURL:      app.config.mail.BaseURL,
+		SupportEmail: app.config.mail.SupportEmail,
 		DebugEmails:  app.config.server.debugEmails,
 	}
 

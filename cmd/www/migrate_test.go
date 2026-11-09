@@ -11,7 +11,7 @@ import (
 
 func TestRunMigrateRequiresDSN(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := run([]string{"migrate"}, noEnv, nil, io.Discard, &stderr); code != 2 {
+	if code := run([]string{"migrate"}, noEnv, io.Discard, &stderr); code != 2 {
 		t.Fatalf("run() = %d, want 2", code)
 	}
 	if want := "database DSN must not be empty"; !strings.Contains(stderr.String(), want) {
@@ -23,7 +23,7 @@ func TestRunMigrateSeed(t *testing.T) {
 	dsn := psqltest.NewSchemaDSN(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"migrate", "-seed", "-db-dsn", dsn}, noEnv, nil, &stdout, &stderr); code != 0 {
+	if code := run([]string{"migrate", "-seed", "-db-dsn", dsn}, noEnv, &stdout, &stderr); code != 0 {
 		t.Fatalf("run() = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 

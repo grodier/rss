@@ -26,7 +26,7 @@ A login lasts at most a year (scs's `Lifetime`).
 
 Both forms follow the field pattern in CLAUDE.md, and signup shows the name and password hints all the time.
 With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]`, `busy-forms.ts`)).
-The other way to make an account is `www create-user` (`runCreateUser`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
+The other way to make an account is `admin create-user` (`runCreateUser` in `cmd/admin`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
 Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
@@ -91,7 +91,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 5. Email: `internal/server/email.go` (`sendEmail`), then `internal/mail` (`Queue`, `Runner`, `ParseTemplates`).
 6. `internal/password/password.go`, `internal/token/token.go`, and `cmd/www/create_user.go`.
 
-**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go` and `create_user_test.go`.
+**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go`; `cmd/admin/create_user_test.go`.
 
 **Why:** "Security" and "Accounts" in decisions.md.
 
@@ -303,7 +303,7 @@ Without JavaScript the move buttons post to `/timelines/{id}/move` as before.
 New timeline and Edit render one form, `timeline_form.html`: a summary box, then Name, Feeds (All my feeds or Only some, then Leave out) and Articles (a checkbox per condition), then Save.
 The summary is a sentence saying what the timeline shows and how many of the user's feeds it draws from (`timelineSentence`, `timelineFeedCount`); the server renders it from the form's values, and `timeline-form.ts` rebuilds it as fields change from the feeds' and tags' `data-*` attributes, with the same rules and words.
 A condition's setting, and Only some's tags and feeds, are revealed with CSS `:has()`; hidden fields still post, so `timelineForm` decides by the `quiet`, `mentions` and `not_mentions` checkboxes and stores nothing for an unticked condition.
-Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `www create-user` both get them.
+Every new account starts with two ordinary timelines, Quiet posters (at most 2 posts a week) and Starred: `UserRepository.Create` adds `rss.DefaultTimelines` in the account's transaction, through the same insert as `TimelineRepository.Create`, so signup and `admin create-user` both get them.
 New timeline (`timelineNewHandler`) opens on a list of starting points (`timeline_new.html`), each a link back with a `?preset=` from `timelinePresets` that fills in the form; a tag's page links to it with `?tag={id}`, and an unknown preset or a tag that isn't the user's shows the list.
 `timelineForm.check` keeps only the user's own tags and feeds and validates the fields (limits are in the code and its tests); words are split on commas by `splitTerms`.
 `ErrTooManyTimelines` (20) is a form error; another user's timeline is a 404 (`timelineFromURL`).

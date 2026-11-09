@@ -22,6 +22,10 @@ func main() {
 const usage = `Usage:
   admin [serve] [flags]          run the admin site (admin serve -help lists its flags)
   admin enroll -email <email>    enroll an admin, or with -reset replace their password and second factor
+  admin create-user -name <name> -email <email>
+                                 create a reader's account, for local development
+  admin send-test-email -to <address>
+                                 send the test email, to check the mail settings
 `
 
 // run runs the command in args and returns the process's exit code: 0 on
@@ -37,6 +41,10 @@ func run(args []string, getenv func(string) string, stdin io.Reader, stdout, std
 		return runServe(args[1:], getenv, stdout, stderr)
 	case "enroll":
 		return runEnroll(args[1:], getenv, stdin, stdout, stderr)
+	case "create-user":
+		return runCreateUser(args[1:], getenv, stdin, stdout, stderr)
+	case "send-test-email":
+		return runSendTestEmail(args[1:], getenv, stdout, stderr)
 	case "help":
 		fmt.Fprint(stdout, usage)
 		return 0

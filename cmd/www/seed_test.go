@@ -59,7 +59,7 @@ func TestSeedSites(t *testing.T) {
 
 func TestRunSeedRequiresDSN(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := run([]string{"seed"}, noEnv, nil, io.Discard, &stderr); code != 2 {
+	if code := run([]string{"seed"}, noEnv, io.Discard, &stderr); code != 2 {
 		t.Fatalf("run() = %d, want 2", code)
 	}
 	if want := "database DSN must not be empty"; !strings.Contains(stderr.String(), want) {

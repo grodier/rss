@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Charts (sample) - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page sample-charts{{if .Variant}} sample-{{.Variant}}{{end}}">
+      <header class="page-head">
+        <h1>Charts</h1>
+        <p>A sample for #571's design checkpoint{{if .Variant}} (alternative: {{.Variant}}){{end}}; not merged.</p>
+      </header>
+      <section class="admin-section">
+        <h2>Response time</h2>
+        <div class="sample-frame">{{chart .Latency}}</div>
+      </section>
+      <section class="admin-section">
+        <h2>Largest Contentful Paint, 75th percentile</h2>
+        <div class="sample-frame">{{chart .LCP}}</div>
+      </section>
+      <section class="admin-section">
+        <h2>Largest Contentful Paint, last 7 days</h2>
+        <div class="sample-frame">{{chart .Histogram}}</div>
+      </section>
+      <section class="admin-section">
+        <h2>Memory</h2>
+        <div class="sample-frame">{{chart .Memory}}</div>
+      </section>
+      <section class="admin-section">
+        <h2>In a third of the column</h2>
+        <div class="sample-thirds">
+          <div class="sample-frame">{{chart .Latency}}</div>
+          <div class="sample-frame">{{chart .LCP}}</div>
+          <div class="sample-frame">{{chart .Histogram}}</div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

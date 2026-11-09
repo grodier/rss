@@ -60,6 +60,7 @@ type LineChart struct {
 	Height     int     // in pixels, 200 by default; the width is the container's
 	YMin       float64 // 0 by default
 	Thresholds []Threshold
+	Bands      bool // #571's checkpoint only: thresholds as tinted bands
 }
 
 // Histogram draws bucket counts as bars, with each bucket's upper bound under
@@ -163,6 +164,18 @@ func (c LineChart) SVG() template.HTML {
 	}
 	fmt.Fprintf(&b, `<svg class="chart-svg" role="img" height="%d">`, height)
 	fmt.Fprintf(&b, `<title>%s</title><desc>%s</desc>`, esc(c.Title), esc(c.describe(series, tMin, tMax)))
+
+	if c.Bands && len(c.Thresholds) > 0 {
+		edges := []float64{yLo}
+		for _, th := range c.Thresholds {
+			edges = append(edges, min(max(th.Value, yLo), yHi))
+		}
+		edges = append(edges, yHi)
+		for i := 1; i < len(edges); i++ {
+			fmt.Fprintf(&b, `<rect class="chart-band chart-band-%d" x="0" y="%s" width="100%%" height="%s"/>`,
+				i, num(yPx(edges[i])), num(yPx(edges[i-1])-yPx(edges[i])))
+		}
+	}
 
 	// Gridlines at the value ticks, thresholds and markers, under the
 	// lines.

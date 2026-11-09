@@ -340,6 +340,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **The admin** (`internal/admin`, `commonHeaders`) sends its own headers on every response: `Content-Security-Policy: default-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (static files set their own), `nosniff`, `X-Frame-Options: deny`, and HSTS in production.
   It's on its own origin (`admin.paperround.app`, #573), so `CrossOriginProtection` refuses form posts from the reader's pages, which are same-site but not same-origin.
   It runs only locally until it has a login (#567).
+- **The admin's second factor** (`internal/admin`, for #567's login): TOTP (RFC 6238, standard library only) in `totp.go`, whose `Verify` accepts one step of drift either way, compares in constant time and never accepts a step at or before the last one used, so each code works once.
+  TOTP secrets are stored sealed (`seal.go`: AES-256-GCM, a random nonce prepended to each ciphertext) under a 32-byte key that only the admin service's environment holds, so a database leak alone gives no working secrets.
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.
   Only the raster types the icon runner stores (PNG, JPEG, GIF, ICO) are served, with their stored `Content-Type`, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` in place of the page CSP.
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).

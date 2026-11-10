@@ -18,11 +18,22 @@ func auditTestServer(t *testing.T) (*browser, *fakeAudit) {
 	return b, s.services.Audit.(*fakeAudit)
 }
 
+var cli = rss.AuditActor{Via: rss.AuditViaCLI}
+
+// record adds e to audit.
+func record(t *testing.T, audit *fakeAudit, e rss.AuditEntry) {
+	t.Helper()
+	if err := audit.Record(t.Context(), e); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAuditPage(t *testing.T) {
 	b, audit := auditTestServer(t)
-	audit.Record(t.Context(), rss.AuditEntry{Via: "cli", Action: "invite.create", TargetType: "invite", TargetID: "inv-1",
+	record(t, audit, rss.AuditEntry{AuditActor: cli, Action: "invite.create", TargetType: "invite", TargetID: "inv-1",
 		After: map[string]any{"note": "for Grace"}})
-	audit.Record(t.Context(), rss.AuditEntry{AdminEmail: testEmail, Via: "web", IP: "203.0.113.9", Action: "user.update", TargetType: "user", TargetID: "u-1",
+	record(t, audit, rss.AuditEntry{AuditActor: rss.AuditActor{AdminEmail: testEmail, Via: "web", IP: "203.0.113.9"},
+		Action: "user.update", TargetType: "user", TargetID: "u-1",
 		Before: map[string]any{"name": `<script>alert("x")</script>`}, After: map[string]any{"name": "Ada", "admin": true}})
 
 	rr := b.get(t, "/audit")
@@ -32,7 +43,7 @@ func TestAuditPage(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<a href="/audit" aria-current="page">Audit log</a>`,
-		"invite.create", "Command line", "user.update", "203.0.113.9", "login",
+		"<td>invite.create</td>", "Command line", "<td>user.update</td>", "203.0.113.9", "<td>login</td>",
 		`href="/audit?target_id=u-1&amp;target_type=user">History</a>`,
 		// Before and after values are JSON, escaped.
 		`<dt>name</dt>`,
@@ -58,17 +69,17 @@ func TestAuditPage(t *testing.T) {
 
 func TestAuditPageFilters(t *testing.T) {
 	b, audit := auditTestServer(t)
-	audit.Record(t.Context(), rss.AuditEntry{Via: "cli", Action: "invite.create", TargetType: "invite", TargetID: "inv-1"})
-	audit.Record(t.Context(), rss.AuditEntry{Via: "cli", Action: "invite.revoke", TargetType: "invite", TargetID: "inv-1"})
-	audit.Record(t.Context(), rss.AuditEntry{Via: "cli", Action: "invite.create", TargetType: "invite", TargetID: "inv-2"})
+	record(t, audit, rss.AuditEntry{AuditActor: cli, Action: "invite.create", TargetType: "invite", TargetID: "inv-1"})
+	record(t, audit, rss.AuditEntry{AuditActor: cli, Action: "invite.revoke", TargetType: "invite", TargetID: "inv-1"})
+	record(t, audit, rss.AuditEntry{AuditActor: cli, Action: "invite.create", TargetType: "invite", TargetID: "inv-2"})
 
 	for _, tt := range []struct {
 		query         string
 		want, notWant []string
 	}{
-		{"?action=invite.create", []string{"inv-1", "inv-2"}, []string{"invite.revoke", ">login<"}},
-		{"?target_type=invite&target_id=inv-1", []string{"invite.create", "invite.revoke"}, []string{"inv-2", ">login<"}},
-		{"?target_type=invite", []string{"inv-1", "inv-2"}, []string{">login<"}},
+		{"?action=invite.create", []string{"inv-1", "inv-2"}, []string{"invite.revoke", "<td>login</td>"}},
+		{"?target_type=invite&target_id=inv-1", []string{"invite.create", "invite.revoke"}, []string{"inv-2", "<td>login</td>"}},
+		{"?target_type=invite", []string{"inv-1", "inv-2"}, []string{"<td>login</td>"}},
 		{"?action=user.delete", []string{"Nothing matches these filters.", `href="/audit">Clear</a>`}, []string{"<table"}},
 	} {
 		rr := b.get(t, "/audit"+tt.query)
@@ -93,7 +104,7 @@ func TestAuditPagePagination(t *testing.T) {
 	b, audit := auditTestServer(t)
 	// The login is entry 1; these are 2 to auditPageSize+11.
 	for i := range auditPageSize + 10 {
-		audit.Record(t.Context(), rss.AuditEntry{Via: "cli", Action: "invite.create", TargetType: "invite", TargetID: fmt.Sprintf("inv-%d", i)})
+		record(t, audit, rss.AuditEntry{AuditActor: cli, Action: "invite.create", TargetType: "invite", TargetID: fmt.Sprintf("inv-%d", i)})
 	}
 
 	rr := b.get(t, "/audit?action=invite.create")

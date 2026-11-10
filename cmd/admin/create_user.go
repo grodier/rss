@@ -75,9 +75,7 @@ func runCreateUser(args []string, getenv func(string) string, stdin io.Reader, s
 	}
 	defer db.Close()
 
-	audit := &rss.AuditEntry{Via: rss.AuditViaCLI, Action: "user.create", TargetType: "user",
-		After: map[string]any{"name": name, "email": email}}
-	_, _, err = psql.NewUserRepository(db).Create(context.Background(), name, email, password, audit)
+	_, _, err = psql.NewUserRepository(db).Create(context.Background(), name, email, password, &cliActor)
 	// Unlike signup, this may say the email is taken: only someone with access
 	// to the database can run it.
 	if errors.Is(err, rss.ErrDuplicateEmail) {

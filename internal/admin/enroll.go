@@ -111,12 +111,11 @@ func (e *Enrollment) Finish(ctx context.Context, admins AdminStore, key []byte, 
 	}
 
 	// Enrolling is only done from the command line.
-	audit := rss.AuditEntry{Via: rss.AuditViaCLI, Action: "admin.create", TargetType: "admin", After: map[string]any{"email": e.email}}
+	by := rss.AuditActor{Via: rss.AuditViaCLI}
 	if reset {
-		audit.Action, audit.After = "admin.reset", nil
-		err = admins.Reset(ctx, e.email, creds, audit)
+		err = admins.Reset(ctx, e.email, creds, by)
 	} else {
-		_, err = admins.Create(ctx, e.email, creds, audit)
+		_, err = admins.Create(ctx, e.email, creds, by)
 	}
 	if err != nil {
 		return nil, err

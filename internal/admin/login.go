@@ -76,7 +76,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	admin, err := s.services.Admins.Authenticate(r.Context(), form.Email, form.Password)
 	if errors.Is(err, rss.ErrNoAccount) || errors.Is(err, rss.ErrWrongPassword) {
-		s.auditLoginFailed(r, rss.AuditEntry{AdminEmail: form.Email})
+		s.auditLoginFailed(r, "", form.Email)
 		form.AddNonFieldError(loginErrorMessage)
 		s.renderLogin(w, r, http.StatusUnprocessableEntity, loginPage{Form: form})
 		return
@@ -191,7 +191,7 @@ func (s *Server) loginCodeFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		s.auditLoginFailed(r, rss.AuditEntry{AdminID: adminID})
+		s.auditLoginFailed(r, adminID, "")
 		page.Form.AddFieldError("code", codeErrorMessage)
 		s.renderCode(w, r, http.StatusUnprocessableEntity, page)
 		return
@@ -201,12 +201,13 @@ func (s *Server) loginCodeFormHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	next := form.Next
 	if !confirming {
-		// Recorded first: an admin isn't logged in without its record.
-		if err := s.audit(r, rss.AuditEntry{AdminID: adminID, Action: "login"}); err != nil {
+		if err := s.sessionManager.RenewToken(ctx); err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		if err := s.sessionManager.RenewToken(ctx); err != nil {
+		// Recorded before the session holds the admin: an admin isn't
+		// logged in without its record.
+		if err := s.audit(r, "login", adminID, ""); err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
@@ -252,12 +253,11 @@ func (s *Server) checkCode(r *http.Request, adminID, code string) (bool, error) 
 	return s.services.Admins.AcceptTOTPStep(r.Context(), adminID, step)
 }
 
-// auditLoginFailed records a wrong password (e names the submitted email)
-// or a wrong code (e names the admin). An error is logged, not shown: the
-// attempt changed nothing, and its answer stays the same.
-func (s *Server) auditLoginFailed(r *http.Request, e rss.AuditEntry) {
-	e.Action = "login_failed"
-	if err := s.audit(r, e); err != nil {
+// auditLoginFailed records a wrong password, with the submitted email, or a
+// wrong code, with the admin. An error is logged, not shown: the attempt
+// changed nothing, and its answer stays the same.
+func (s *Server) auditLoginFailed(r *http.Request, adminID, email string) {
+	if err := s.audit(r, "login_failed", adminID, email); err != nil {
 		s.logError(r, err)
 	}
 }
@@ -267,7 +267,7 @@ func (s *Server) auditLoginFailed(r *http.Request, e rss.AuditEntry) {
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if _, ok := s.authenticatedAdmin(r); ok {
-		if err := s.audit(r, rss.AuditEntry{Action: "logout"}); err != nil {
+		if err := s.audit(r, "logout", "", ""); err != nil {
 			s.logError(r, err)
 		}
 	}

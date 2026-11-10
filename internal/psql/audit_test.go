@@ -12,9 +12,9 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// testAuditEntry returns a CLI entry for action whose admin_email is unique
-// to it; its rows are deleted when the test ends.
-func testAuditEntry(t *testing.T, db *sql.DB, action string) rss.AuditEntry {
+// testActor returns a command-line actor whose admin_email is unique to it;
+// the rows it's recorded in are deleted when the test ends.
+func testActor(t *testing.T, db *sql.DB) rss.AuditActor {
 	t.Helper()
 	email := fmt.Sprintf("audit-%d@example.com", time.Now().UnixNano())
 	t.Cleanup(func() {
@@ -22,23 +22,36 @@ func testAuditEntry(t *testing.T, db *sql.DB, action string) rss.AuditEntry {
 			t.Errorf("cleanup audit: %v", err)
 		}
 	})
-	return rss.AuditEntry{AdminEmail: email, Via: rss.AuditViaCLI, Action: action}
+	return rss.AuditActor{AdminEmail: email, Via: rss.AuditViaCLI}
 }
 
-// auditRows returns the audit rows of the entry testAuditEntry returned.
-func auditRows(t *testing.T, db *sql.DB, e rss.AuditEntry) []rss.AuditEvent {
+// brokenActor returns an actor whose rows break admin_audit's CHECK on via,
+// so recording by it fails.
+func brokenActor(t *testing.T, db *sql.DB) rss.AuditActor {
 	t.Helper()
-	all, err := NewAuditRepository(db).List(t.Context(), rss.AuditFilter{Action: e.Action, Limit: 1000})
+	by := testActor(t, db)
+	by.Via = "bogus"
+	return by
+}
+
+// auditBy returns the audit log's entries by, newest first.
+func auditBy(t *testing.T, db *sql.DB, by rss.AuditActor) []rss.AuditEvent {
+	t.Helper()
+	all, err := NewAuditRepository(db).List(t.Context(), rss.AuditFilter{}, 10_000)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	var mine []rss.AuditEvent
-	for _, ev := range all {
-		if ev.AdminEmail == e.AdminEmail {
-			mine = append(mine, ev)
+	return slices.DeleteFunc(all, func(e rss.AuditEvent) bool { return e.AdminEmail != by.AdminEmail })
+}
+
+// cleanupExec runs stmt with args when the test ends.
+func cleanupExec(t *testing.T, db *sql.DB, stmt string, args ...any) {
+	t.Helper()
+	t.Cleanup(func() {
+		if _, err := db.Exec(stmt, args...); err != nil {
+			t.Errorf("cleanup %q: %v", stmt, err)
 		}
-	}
-	return mine
+	})
 }
 
 func TestAuditRepository(t *testing.T) {
@@ -47,26 +60,20 @@ func TestAuditRepository(t *testing.T) {
 	action := fmt.Sprintf("test.%d", time.Now().UnixNano())
 	target := fmt.Sprintf("target-%d", time.Now().UnixNano())
 
-	first := testAuditEntry(t, db, action)
+	first := rss.AuditEntry{AuditActor: testActor(t, db), Action: action, TargetType: "user", TargetID: target,
+		Before: map[string]any{"name": "<b>Ada</b>", "admin": false},
+		After:  map[string]any{"name": "Grace", "admin": true}}
 	first.Via, first.IP = rss.AuditViaWeb, "203.0.113.7"
-	first.TargetType, first.TargetID = "user", target
-	first.Before = map[string]any{"name": "<b>Ada</b>", "admin": false}
-	first.After = map[string]any{"name": "Grace", "admin": true}
-	if err := repo.Record(t.Context(), first); err != nil {
-		t.Fatalf("Record: %v", err)
-	}
-	second := testAuditEntry(t, db, action)
-	if err := repo.Record(t.Context(), second); err != nil {
-		t.Fatalf("Record: %v", err)
-	}
-	third := testAuditEntry(t, db, action)
-	third.TargetType, third.TargetID = "user", target
-	if err := repo.Record(t.Context(), third); err != nil {
-		t.Fatalf("Record: %v", err)
+	second := rss.AuditEntry{AuditActor: testActor(t, db), Action: action}
+	third := rss.AuditEntry{AuditActor: testActor(t, db), Action: action, TargetType: "user", TargetID: target}
+	for _, e := range []rss.AuditEntry{first, second, third} {
+		if err := repo.Record(t.Context(), e); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
 	}
 
 	t.Run("List is newest first and keeps the fields", func(t *testing.T) {
-		got, err := repo.List(t.Context(), rss.AuditFilter{Action: action, Limit: 10})
+		got, err := repo.List(t.Context(), rss.AuditFilter{Action: action}, 10)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
@@ -89,19 +96,19 @@ func TestAuditRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("List filters by target and pages with Before", func(t *testing.T) {
-		got, err := repo.List(t.Context(), rss.AuditFilter{TargetType: "user", TargetID: target, Limit: 10})
+	t.Run("List filters by target and pages with BeforeID", func(t *testing.T) {
+		got, err := repo.List(t.Context(), rss.AuditFilter{TargetType: "user", TargetID: target}, 10)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
 		if len(got) != 2 || got[0].AdminEmail != third.AdminEmail || got[1].AdminEmail != first.AdminEmail {
 			t.Fatalf("List by target = %+v, want third and first", got)
 		}
-		page, err := repo.List(t.Context(), rss.AuditFilter{Action: action, Limit: 1})
+		page, err := repo.List(t.Context(), rss.AuditFilter{Action: action}, 1)
 		if err != nil || len(page) != 1 {
 			t.Fatalf("List one = %v, %v", page, err)
 		}
-		next, err := repo.List(t.Context(), rss.AuditFilter{Action: action, Before: page[0].ID, Limit: 10})
+		next, err := repo.List(t.Context(), rss.AuditFilter{Action: action, BeforeID: page[0].ID}, 10)
 		if err != nil {
 			t.Fatalf("List before: %v", err)
 		}
@@ -112,23 +119,17 @@ func TestAuditRepository(t *testing.T) {
 
 	t.Run("Record fills the admin's email from its ID", func(t *testing.T) {
 		email := fmt.Sprintf("admin-%d@example.com", time.Now().UnixNano())
-		t.Cleanup(func() {
-			if _, err := db.Exec(`DELETE FROM admin_audit WHERE admin_email = $1`, email); err != nil {
-				t.Errorf("cleanup audit: %v", err)
-			}
-			if _, err := db.Exec(`DELETE FROM admins WHERE email = $1`, email); err != nil {
-				t.Errorf("cleanup admin: %v", err)
-			}
-		})
-		id, err := NewAdminRepository(db).Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), testAuditEntry(t, db, "admin.create"))
+		cleanupExec(t, db, `DELETE FROM admins WHERE email = $1`, email)
+		cleanupExec(t, db, `DELETE FROM admin_audit WHERE admin_email = $1`, email)
+		id, err := NewAdminRepository(db).Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), testActor(t, db))
 		if err != nil {
 			t.Fatalf("Create admin: %v", err)
 		}
-		loginAction := action + ".login"
-		if err := repo.Record(t.Context(), rss.AuditEntry{AdminID: id, Via: rss.AuditViaWeb, Action: loginAction}); err != nil {
+		login := action + ".login"
+		if err := repo.Record(t.Context(), rss.AuditEntry{AuditActor: rss.AuditActor{AdminID: id, Via: rss.AuditViaWeb}, Action: login}); err != nil {
 			t.Fatalf("Record: %v", err)
 		}
-		got, err := repo.List(t.Context(), rss.AuditFilter{Action: loginAction, Limit: 10})
+		got, err := repo.List(t.Context(), rss.AuditFilter{Action: login}, 10)
 		if err != nil || len(got) != 1 {
 			t.Fatalf("List = %v, %v", got, err)
 		}
@@ -138,34 +139,46 @@ func TestAuditRepository(t *testing.T) {
 	})
 }
 
-// TestAuditInTransaction checks that an action's change and its audit row
-// commit together, and that neither does when recording fails: an entry
-// with an invalid Via breaks the table's CHECK.
+// TestAuditInTransaction checks that each method that makes an admin's
+// change records it, by its actor, and that the change and its row commit
+// together: neither does when recording fails.
 func TestAuditInTransaction(t *testing.T) {
 	db := psqltest.NewDB(t)
 
-	t.Run("InviteRepository.Create", func(t *testing.T) {
-		bad := testAuditEntry(t, db, "invite.create")
-		bad.Via = "bogus"
-		hash := newWaitlistHash(t)
-		if _, err := NewInviteRepository(db).Create(t.Context(), rss.Invite{Note: "never stored", ExpiresAt: time.Now().Add(time.Hour)}, hash, bad); err == nil {
-			t.Fatal("Create with a broken audit entry succeeded")
+	// recorded checks that by has exactly one entry: want, but for the
+	// fields only the database knows.
+	recorded := func(t *testing.T, by rss.AuditActor, want rss.AuditEntry) rss.AuditEvent {
+		t.Helper()
+		got := auditBy(t, db, by)
+		if len(got) != 1 {
+			t.Fatalf("entries by the actor = %+v, want one", got)
 		}
-		if _, err := NewInviteRepository(db).GetByToken(t.Context(), hash); !errors.Is(err, rss.ErrNoRecord) {
+		e := got[0]
+		if e.AuditActor != by || e.Action != want.Action || e.TargetType != want.TargetType || e.TargetID != want.TargetID {
+			t.Errorf("entry = %+v, want %+v", e.AuditEntry, want)
+		}
+		return e
+	}
+
+	t.Run("InviteRepository.Create", func(t *testing.T) {
+		repo := NewInviteRepository(db)
+		hash := newWaitlistHash(t)
+		if _, err := repo.Create(t.Context(), rss.Invite{Note: "never stored", ExpiresAt: time.Now().Add(time.Hour)}, hash, brokenActor(t, db)); err == nil {
+			t.Fatal("Create by a broken actor succeeded")
+		}
+		if _, err := repo.GetByToken(t.Context(), hash); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("the invite was stored without its record (GetByToken error = %v)", err)
 		}
 
-		e := testAuditEntry(t, db, "invite.create")
-		e.TargetType = "invite"
-		hash = newWaitlistHash(t)
-		got, err := NewInviteRepository(db).Create(t.Context(), rss.Invite{Note: "stored", ExpiresAt: time.Now().Add(time.Hour)}, hash, e)
+		by := testActor(t, db)
+		got, err := repo.Create(t.Context(), rss.Invite{Note: "stored", ExpiresAt: time.Now().Add(time.Hour)}, newWaitlistHash(t), by)
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		t.Cleanup(func() { db.Exec(`DELETE FROM invites WHERE id = $1`, got.ID) })
-		rows := auditRows(t, db, e)
-		if len(rows) != 1 || rows[0].TargetType != "invite" || rows[0].TargetID != got.ID || rows[0].Via != "cli" {
-			t.Errorf("audit rows = %+v, want one for invite %s", rows, got.ID)
+		cleanupExec(t, db, `DELETE FROM invites WHERE id = $1`, got.ID)
+		e := recorded(t, by, rss.AuditEntry{Action: "invite.create", TargetType: "invite", TargetID: got.ID})
+		if _, hasEmail := e.After["email"]; e.Before != nil || e.After["note"] != "stored" || e.After["expires_at"] == nil || hasEmail {
+			t.Errorf("before, after = %v, %v; want the note and expiry, no email for an open invite", e.Before, e.After)
 		}
 	})
 
@@ -173,85 +186,85 @@ func TestAuditInTransaction(t *testing.T) {
 		inv, hash := newInvite(t, db, rss.Invite{Note: "to revoke"})
 		repo := NewInviteRepository(db)
 
-		bad := testAuditEntry(t, db, "invite.revoke")
-		bad.Via = "bogus"
-		if err := repo.Revoke(t.Context(), inv.ID, bad); err == nil {
-			t.Fatal("Revoke with a broken audit entry succeeded")
+		if err := repo.Revoke(t.Context(), inv.ID, brokenActor(t, db)); err == nil {
+			t.Fatal("Revoke by a broken actor succeeded")
 		}
 		if got, _ := repo.GetByToken(t.Context(), hash); got.Status(time.Now()) != rss.InvitePending {
 			t.Errorf("the invite was revoked without its record: %q", got.Status(time.Now()))
 		}
 
-		e := testAuditEntry(t, db, "invite.revoke")
-		e.TargetType = "invite"
-		if err := repo.Revoke(t.Context(), inv.ID, e); err != nil {
+		by := testActor(t, db)
+		if err := repo.Revoke(t.Context(), inv.ID, by); err != nil {
 			t.Fatalf("Revoke: %v", err)
 		}
 		// Revoking again changes, and records, nothing.
-		if err := repo.Revoke(t.Context(), inv.ID, e); err != nil {
+		if err := repo.Revoke(t.Context(), inv.ID, by); err != nil {
 			t.Fatalf("Revoke again: %v", err)
 		}
-		rows := auditRows(t, db, e)
-		if len(rows) != 1 {
-			t.Fatalf("audit rows = %+v, want one", rows)
+		e := recorded(t, by, rss.AuditEntry{Action: "invite.revoke", TargetType: "invite", TargetID: inv.ID})
+		if v, ok := e.Before["revoked_at"]; !ok || v != nil {
+			t.Errorf("before = %v, want revoked_at null", e.Before)
 		}
-		r := rows[0]
-		if r.TargetType != "invite" || r.TargetID != inv.ID {
-			t.Errorf("target = %s %s, want invite %s", r.TargetType, r.TargetID, inv.ID)
-		}
-		if v, ok := r.Before["revoked_at"]; !ok || v != nil {
-			t.Errorf("before = %v, want revoked_at null", r.Before)
-		}
-		if v, _ := r.After["revoked_at"].(string); v == "" {
-			t.Errorf("after = %v, want revoked_at's time", r.After)
+		if v, _ := e.After["revoked_at"].(string); v == "" {
+			t.Errorf("after = %v, want revoked_at's time", e.After)
 		}
 	})
 
-	t.Run("AdminRepository.Create", func(t *testing.T) {
+	t.Run("AdminRepository.Create and Reset", func(t *testing.T) {
 		email := fmt.Sprintf("admin-%d@example.com", time.Now().UnixNano())
-		t.Cleanup(func() { db.Exec(`DELETE FROM admins WHERE email = $1`, email) })
+		cleanupExec(t, db, `DELETE FROM admins WHERE email = $1`, email)
 		repo := NewAdminRepository(db)
 
-		bad := testAuditEntry(t, db, "admin.create")
-		bad.Via = "bogus"
-		if _, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), bad); err == nil {
-			t.Fatal("Create with a broken audit entry succeeded")
+		if _, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), brokenActor(t, db)); err == nil {
+			t.Fatal("Create by a broken actor succeeded")
 		}
 		if _, err := repo.GetByEmail(t.Context(), email); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("the admin was stored without its record (GetByEmail error = %v)", err)
 		}
 
-		e := testAuditEntry(t, db, "admin.create")
-		id, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), e)
+		by := testActor(t, db)
+		id, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), by)
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		if rows := auditRows(t, db, e); len(rows) != 1 || rows[0].TargetID != id {
-			t.Errorf("audit rows = %+v, want one for admin %s", rows, id)
+		if e := recorded(t, by, rss.AuditEntry{Action: "admin.create", TargetType: "admin", TargetID: id}); e.After["email"] != email {
+			t.Errorf("after = %v, want the email", e.After)
 		}
+
+		if err := repo.Reset(t.Context(), email, newAdminCredentials(t, "new pw", "s2"), brokenActor(t, db)); err == nil {
+			t.Fatal("Reset by a broken actor succeeded")
+		}
+		if _, err := repo.Authenticate(t.Context(), email, "pw"); err != nil {
+			t.Errorf("the admin was reset without its record (Authenticate with the old password: %v)", err)
+		}
+		by = testActor(t, db)
+		if err := repo.Reset(t.Context(), email, newAdminCredentials(t, "new pw", "s2"), by); err != nil {
+			t.Fatalf("Reset: %v", err)
+		}
+		recorded(t, by, rss.AuditEntry{Action: "admin.reset", TargetType: "admin", TargetID: id})
 	})
 
 	t.Run("UserRepository.Create", func(t *testing.T) {
 		email := fmt.Sprintf("user-%d@example.com", time.Now().UnixNano())
-		t.Cleanup(func() { db.Exec(`DELETE FROM users WHERE email = $1`, email) })
+		cleanupExec(t, db, `DELETE FROM users WHERE email = $1`, email)
 		repo := NewUserRepository(db)
 
-		bad := testAuditEntry(t, db, "user.create")
-		bad.Via = "bogus"
+		bad := brokenActor(t, db)
 		if _, _, err := repo.Create(t.Context(), "Audited", email, "correct-horse-battery", &bad); err == nil {
-			t.Fatal("Create with a broken audit entry succeeded")
+			t.Fatal("Create by a broken actor succeeded")
 		}
 		if _, err := repo.GetByEmail(t.Context(), email); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("the user was stored without its record (GetByEmail error = %v)", err)
 		}
 
-		e := testAuditEntry(t, db, "user.create")
-		id, _, err := repo.Create(t.Context(), "Audited", email, "correct-horse-battery", &e)
+		by := testActor(t, db)
+		id, _, err := repo.Create(t.Context(), "Audited", email, "correct-horse-battery", &by)
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		if rows := auditRows(t, db, e); len(rows) != 1 || rows[0].TargetID != id {
-			t.Errorf("audit rows = %+v, want one for user %s", rows, id)
+		e := recorded(t, by, rss.AuditEntry{Action: "user.create", TargetType: "user", TargetID: id})
+		if e.After["name"] != "Audited" || e.After["email"] != email {
+			t.Errorf("after = %v, want the name and email", e.After)
 		}
 	})
 }

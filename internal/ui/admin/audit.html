@@ -51,7 +51,7 @@
             <tbody>
               {{range .Rows}}
               <tr>
-                <td><time datetime="{{.OccurredAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time}}</time></td>
+                <td><time datetime="{{.OccurredAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.OccurredAt.UTC.Format "2006-01-02 15:04:05"}} UTC</time></td>
                 <td class="wrap">{{if .AdminEmail}}{{.AdminEmail}}{{else}}—{{end}}</td>
                 <td>{{.Action}}</td>
                 <td class="wrap">{{if .TargetType}}{{.TargetType}} {{.TargetID}} <a href="{{.History}}">History</a>{{else}}—{{end}}</td>

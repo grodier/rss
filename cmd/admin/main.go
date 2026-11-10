@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/grodier/rss/internal/rss"
 )
 
 // version identifies the build; the container image sets it to the commit SHA
@@ -17,6 +19,10 @@ var version = "dev"
 func main() {
 	os.Exit(run(os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
+
+// cliActor is who the audit log records the commands that write as: no
+// admin (anyone with the database can run them), from the command line.
+var cliActor = rss.AuditActor{Via: rss.AuditViaCLI}
 
 // usage lists the subcommands.
 const usage = `Usage:

@@ -453,7 +453,7 @@ func TestCreateFromInvite(t *testing.T) {
 		if _, err := users.CreateFromInvite(t.Context(), hash, "Grace", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("second CreateFromInvite error = %v, want ErrInviteUnusable", err)
 		}
-		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testAuditEntry(t, db, "invite.revoke")); !errors.Is(err, rss.ErrInviteUnusable) {
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testActor(t, db)); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("Revoke(redeemed) error = %v, want ErrInviteUnusable", err)
 		}
 	})
@@ -509,7 +509,7 @@ func TestCreateFromInvite(t *testing.T) {
 	t.Run("expired and revoked invites", func(t *testing.T) {
 		_, expired := newInvite(t, db, rss.Invite{ExpiresAt: time.Now().Add(-time.Minute)})
 		inv, revoked := newInvite(t, db, rss.Invite{})
-		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testAuditEntry(t, db, "invite.revoke")); err != nil {
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testActor(t, db)); err != nil {
 			t.Fatal(err)
 		}
 		for name, hash := range map[string][]byte{"expired": expired, "revoked": revoked, "unknown": newWaitlistHash(t)} {

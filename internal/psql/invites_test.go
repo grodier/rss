@@ -19,7 +19,7 @@ func newInvite(t *testing.T, db *sql.DB, inv rss.Invite) (rss.Invite, []byte) {
 	if inv.ExpiresAt.IsZero() {
 		inv.ExpiresAt = time.Now().Add(14 * 24 * time.Hour)
 	}
-	got, err := NewInviteRepository(db).Create(t.Context(), inv, hash, testAuditEntry(t, db, "invite.create"))
+	got, err := NewInviteRepository(db).Create(t.Context(), inv, hash, testActor(t, db))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestInviteRepository(t *testing.T) {
 	})
 
 	t.Run("Revoke", func(t *testing.T) {
-		if err := repo.Revoke(t.Context(), open.ID, testAuditEntry(t, db, "invite.revoke")); err != nil {
+		if err := repo.Revoke(t.Context(), open.ID, testActor(t, db)); err != nil {
 			t.Fatalf("Revoke: %v", err)
 		}
 		got, err := repo.GetByToken(t.Context(), openHash)
@@ -98,10 +98,10 @@ func TestInviteRepository(t *testing.T) {
 			t.Errorf("Status = %q, want revoked", st)
 		}
 		// Revoking again keeps it revoked.
-		if err := repo.Revoke(t.Context(), open.ID, testAuditEntry(t, db, "invite.revoke")); err != nil {
+		if err := repo.Revoke(t.Context(), open.ID, testActor(t, db)); err != nil {
 			t.Errorf("Revoke again: %v", err)
 		}
-		if err := repo.Revoke(t.Context(), "00000000-0000-0000-0000-000000000000", testAuditEntry(t, db, "invite.revoke")); !errors.Is(err, rss.ErrNoRecord) {
+		if err := repo.Revoke(t.Context(), "00000000-0000-0000-0000-000000000000", testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("Revoke(unknown) error = %v, want ErrNoRecord", err)
 		}
 	})

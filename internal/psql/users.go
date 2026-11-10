@@ -24,11 +24,11 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // Create makes an account with rss.DefaultTimelines, in one transaction, so
 // both signup and admin create-user give every account its default
-// timelines. When an admin makes the account, audit is the entry recording
-// it, recorded in the same transaction with its TargetID set to the new ID;
-// it's nil otherwise (tools/loadseed). rss.ErrDuplicateEmail if the email is
-// taken.
-func (r *UserRepository) Create(ctx context.Context, name, email, pw string, audit *rss.AuditEntry) (string, time.Time, error) {
+// timelines. When an admin makes the account (admin create-user), by is
+// who, and its user.create entry in the audit log is recorded in the same
+// transaction; by is nil otherwise (tools/loadseed's accounts).
+// rss.ErrDuplicateEmail if the email is taken.
+func (r *UserRepository) Create(ctx context.Context, name, email, pw string, by *rss.AuditActor) (string, time.Time, error) {
 	hashedPassword, err := password.Hash(pw)
 	if err != nil {
 		return "", time.Time{}, err
@@ -45,10 +45,10 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string, aud
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	if audit != nil {
-		e := *audit
-		e.TargetID = id
-		if err := recordAudit(ctx, tx, e); err != nil {
+	if by != nil {
+		err := recordAudit(ctx, tx, rss.AuditEntry{AuditActor: *by, Action: "user.create", TargetType: "user", TargetID: id,
+			After: map[string]any{"name": name, "email": email}})
+		if err != nil {
 			return "", time.Time{}, err
 		}
 	}

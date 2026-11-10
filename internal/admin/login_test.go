@@ -425,12 +425,15 @@ func TestLoginIsAudited(t *testing.T) {
 	// An anonymous logout records nothing.
 	newBrowser(s).post(t, "/logout", nil)
 
+	web := func(id, email, action string) rss.AuditEntry {
+		return rss.AuditEntry{AuditActor: rss.AuditActor{AdminID: id, AdminEmail: email, Via: "web", IP: "192.0.2.1"}, Action: action}
+	}
 	want := []rss.AuditEntry{
-		{AdminEmail: "nobody@example.com", Via: "web", IP: "192.0.2.1", Action: "login_failed"},
-		{AdminEmail: testEmail, Via: "web", IP: "192.0.2.1", Action: "login_failed"},
-		{AdminID: adminID, Via: "web", IP: "192.0.2.1", Action: "login_failed"},
-		{AdminID: adminID, Via: "web", IP: "192.0.2.1", Action: "login"},
-		{AdminID: adminID, AdminEmail: testEmail, Via: "web", IP: "192.0.2.1", Action: "logout"},
+		web("", "nobody@example.com", "login_failed"),
+		web("", testEmail, "login_failed"),
+		web(adminID, "", "login_failed"),
+		web(adminID, "", "login"),
+		web(adminID, testEmail, "logout"),
 	}
 	var got []rss.AuditEntry
 	for _, e := range audit.events {

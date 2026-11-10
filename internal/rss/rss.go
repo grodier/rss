@@ -612,22 +612,29 @@ type AdminCredentials struct {
 	RecoveryCodeHashes [][]byte
 }
 
-// Where an admin action came from (AuditEntry.Via).
+// Where an admin action came from (AuditActor.Via).
 const (
 	AuditViaWeb = "web"
 	AuditViaCLI = "cli"
 )
 
-// AuditEntry is one admin action or login, as recorded in the audit log (an
-// admin_audit row): who (the admin, or none for a failed password or a CLI
-// command), where from, what, to which record, and the fields it changed.
-type AuditEntry struct {
+// AuditActor is who did an admin action, and from where: what the caller
+// of an action knows. The repository method that makes the change records
+// what it did (AuditEntry's other fields), since it's the one that knows.
+type AuditActor struct {
+	// AdminID is "" for a failed password or a command.
 	AdminID string
 	// AdminEmail is kept when the admin is deleted; for a failed password,
 	// it's the submitted email. Recording fills it from AdminID when empty.
 	AdminEmail string
 	Via        string // AuditViaWeb or AuditViaCLI
 	IP         string // the admin's client IP, for web actions
+}
+
+// AuditEntry is one admin action or login in the audit log (an admin_audit
+// row): who, what, to which record, and the fields it changed.
+type AuditEntry struct {
+	AuditActor
 	Action     string // e.g. "login", "invite.create"
 	TargetType string // e.g. "invite"; "" for none
 	TargetID   string
@@ -644,14 +651,13 @@ type AuditEvent struct {
 }
 
 // AuditFilter narrows the audit log: to one action, to one type of target
-// and to one target, and to the entries before the one with ID Before (a
-// page's cursor). Zero values don't filter. Limit caps the entries.
+// and to one target, and to the entries older than the one with BeforeID (a
+// page's cursor). Zero values don't filter.
 type AuditFilter struct {
 	Action     string
 	TargetType string
 	TargetID   string
-	Before     int64
-	Limit      int
+	BeforeID   int64
 }
 
 // ServerError is one of www's recent 500s or panics (a server_errors row),

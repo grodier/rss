@@ -38,10 +38,9 @@ func scanInvite(row interface{ Scan(...any) error }) (rss.Invite, error) {
 }
 
 // Create stores inv (its Email, WaitlistID, Note, Wave and ExpiresAt) with
-// the token tokenHash, and returns it as stored. audit, the entry recording
-// it, is recorded in the same transaction, with its TargetID set to the new
-// invite's ID.
-func (r *InviteRepository) Create(ctx context.Context, inv rss.Invite, tokenHash []byte, audit rss.AuditEntry) (rss.Invite, error) {
+// the token tokenHash, and returns it as stored. Its invite.create entry in
+// the audit log, by by, is recorded in the same transaction.
+func (r *InviteRepository) Create(ctx context.Context, inv rss.Invite, tokenHash []byte, by rss.AuditActor) (rss.Invite, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return rss.Invite{}, err
@@ -59,8 +58,15 @@ func (r *InviteRepository) Create(ctx context.Context, inv rss.Invite, tokenHash
 	if err != nil {
 		return rss.Invite{}, err
 	}
-	audit.TargetID = got.ID
-	if err := recordAudit(ctx, tx, audit); err != nil {
+	after := map[string]any{"note": got.Note, "expires_at": got.ExpiresAt}
+	if got.Email != "" {
+		after["email"] = got.Email
+	}
+	if got.Wave != "" {
+		after["wave"] = got.Wave
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "invite.create", TargetType: "invite", TargetID: got.ID, After: after})
+	if err != nil {
 		return rss.Invite{}, err
 	}
 	return got, tx.Commit()
@@ -99,11 +105,11 @@ func (r *InviteRepository) List(ctx context.Context) ([]rss.Invite, error) {
 }
 
 // Revoke revokes the invite id (a UUID), so its link stops working, and
-// records audit, the entry recording it, in the same transaction, with its
-// TargetID and the revoked_at it changed. Revoking an invite already revoked
-// changes and records nothing. rss.ErrNoRecord if there's no such invite;
-// rss.ErrInviteUnusable if it was already used.
-func (r *InviteRepository) Revoke(ctx context.Context, id string, audit rss.AuditEntry) error {
+// records its invite.revoke entry in the audit log, by by, in the same
+// transaction. Revoking an invite already revoked changes and records
+// nothing. rss.ErrNoRecord if there's no such invite; rss.ErrInviteUnusable
+// if it was already used.
+func (r *InviteRepository) Revoke(ctx context.Context, id string, by rss.AuditActor) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -125,14 +131,13 @@ func (r *InviteRepository) Revoke(ctx context.Context, id string, audit rss.Audi
 		return nil
 	}
 
-	var now time.Time
-	if err := tx.QueryRowContext(ctx, `UPDATE invites SET revoked_at = now() WHERE id = $1 RETURNING revoked_at`, id).Scan(&now); err != nil {
+	var revoked time.Time
+	if err := tx.QueryRowContext(ctx, `UPDATE invites SET revoked_at = now() WHERE id = $1 RETURNING revoked_at`, id).Scan(&revoked); err != nil {
 		return err
 	}
-	audit.TargetID = id
-	audit.Before = map[string]any{"revoked_at": nil}
-	audit.After = map[string]any{"revoked_at": now}
-	if err := recordAudit(ctx, tx, audit); err != nil {
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "invite.revoke", TargetType: "invite", TargetID: id,
+		Before: map[string]any{"revoked_at": nil}, After: map[string]any{"revoked_at": revoked}})
+	if err != nil {
 		return err
 	}
 	return tx.Commit()

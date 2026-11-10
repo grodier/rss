@@ -24,8 +24,8 @@ type fakeAdmins struct {
 	mu     sync.Mutex
 	admins map[string]*fakeAdmin // by ID
 	nextID int
-	// audit holds the entries Create and Reset recorded, with their changes.
-	audit []rss.AuditEntry
+	// actors holds who Create and Reset were called by, in order.
+	actors []rss.AuditActor
 }
 
 type fakeAdmin struct {
@@ -84,7 +84,7 @@ func (f *fakeAdmins) GetByEmail(_ context.Context, email string) (rss.Admin, err
 	return a.Admin, nil
 }
 
-func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) (string, error) {
+func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredentials, by rss.AuditActor) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.byEmail(email) != nil {
@@ -95,12 +95,11 @@ func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredenti
 	a := &fakeAdmin{Admin: rss.Admin{ID: id, Email: email, CreatedAt: time.Now()}}
 	a.set(c)
 	f.admins[id] = a
-	audit.TargetID = id
-	f.audit = append(f.audit, audit)
+	f.actors = append(f.actors, by)
 	return id, nil
 }
 
-func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) error {
+func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentials, by rss.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	a := f.byEmail(email)
@@ -108,8 +107,7 @@ func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentia
 		return rss.ErrNoRecord
 	}
 	a.set(c)
-	audit.TargetID = a.ID
-	f.audit = append(f.audit, audit)
+	f.actors = append(f.actors, by)
 	return nil
 }
 
@@ -163,16 +161,16 @@ func (f *fakeAudit) Record(_ context.Context, e rss.AuditEntry) error {
 	return nil
 }
 
-func (f *fakeAudit) List(_ context.Context, filter rss.AuditFilter) ([]rss.AuditEvent, error) {
+func (f *fakeAudit) List(_ context.Context, filter rss.AuditFilter, limit int) ([]rss.AuditEvent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []rss.AuditEvent
-	for i := len(f.events) - 1; i >= 0 && len(out) < filter.Limit; i-- {
+	for i := len(f.events) - 1; i >= 0 && len(out) < limit; i-- {
 		e := f.events[i]
 		if (filter.Action != "" && e.Action != filter.Action) ||
 			(filter.TargetType != "" && e.TargetType != filter.TargetType) ||
 			(filter.TargetID != "" && e.TargetID != filter.TargetID) ||
-			(filter.Before > 0 && e.ID >= filter.Before) {
+			(filter.BeforeID > 0 && e.ID >= filter.BeforeID) {
 			continue
 		}
 		out = append(out, e)
@@ -221,7 +219,7 @@ func newTestServerWithAdmin(t *testing.T) (*Server, *time.Time) {
 		HashedPassword:     []byte(testPasswordHash()),
 		SealedTOTPSecret:   sealed,
 		RecoveryCodeHashes: [][]byte{token.Hash(testRecovery)},
-	}, rss.AuditEntry{}); err != nil {
+	}, rss.AuditActor{}); err != nil {
 		t.Fatal(err)
 	}
 	s := newTestServerWith(t, Services{Database: pinger{}, Admins: admins})

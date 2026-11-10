@@ -37,13 +37,13 @@ func TestAdminRepository(t *testing.T) {
 		}
 	})
 
-	id, err := repo.Create(t.Context(), email, newAdminCredentials(t, "first password", "secret-1", "code-a", "code-b"), testAuditEntry(t, db, "admin.create"))
+	id, err := repo.Create(t.Context(), email, newAdminCredentials(t, "first password", "secret-1", "code-a", "code-b"), testActor(t, db))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	t.Run("Create refuses a duplicate email", func(t *testing.T) {
-		_, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), testAuditEntry(t, db, "admin.create"))
+		_, err := repo.Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), testActor(t, db))
 		if !errors.Is(err, rss.ErrDuplicateEmail) {
 			t.Errorf("Create duplicate error = %v, want rss.ErrDuplicateEmail", err)
 		}
@@ -120,7 +120,7 @@ func TestAdminRepository(t *testing.T) {
 
 		c := newAdminCredentials(t, "second password", "secret-2", "code-c")
 		c.TOTPLastStep = 70
-		if err := repo.Reset(t.Context(), email, c, testAuditEntry(t, db, "admin.reset")); err != nil {
+		if err := repo.Reset(t.Context(), email, c, testActor(t, db)); err != nil {
 			t.Fatalf("Reset: %v", err)
 		}
 		a, err := repo.Authenticate(t.Context(), email, "second password")
@@ -146,7 +146,7 @@ func TestAdminRepository(t *testing.T) {
 		if ok, _ := repo.UseRecoveryCode(t.Context(), id, []byte("code-c")); !ok {
 			t.Error("the new recovery code doesn't work")
 		}
-		if err := repo.Reset(t.Context(), "nobody-"+email, newAdminCredentials(t, "pw", "s"), testAuditEntry(t, db, "admin.reset")); !errors.Is(err, rss.ErrNoRecord) {
+		if err := repo.Reset(t.Context(), "nobody-"+email, newAdminCredentials(t, "pw", "s"), testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("Reset unknown error = %v, want rss.ErrNoRecord", err)
 		}
 	})

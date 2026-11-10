@@ -9,30 +9,38 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
 
 // The audit log records every admin action and login (see "Admin" in
-// docs/decisions.md). An action that changes something passes its
-// rss.AuditEntry to the repository method that makes the change, which
-// records it in the same transaction, so a change is never made without its
-// record; audit records those that change nothing, the logins.
+// docs/decisions.md). An action that changes something passes who did it
+// (actor) to the repository method that makes the change, which records the
+// change in the same transaction, so it's never made without its record;
+// audit records what changes nothing, the logins.
 
 // auditPageSize is how many entries the audit log's page shows at once.
 const auditPageSize = 100
 
-// audit records e, from the web: its admin is the logged-in one unless e
-// names one, and its IP the client's.
-func (s *Server) audit(r *http.Request, e rss.AuditEntry) error {
-	if a, ok := s.authenticatedAdmin(r); ok && e.AdminID == "" {
-		e.AdminID, e.AdminEmail = a.ID, a.Email
+// actor is who sent r, for the audit log: the logged-in admin, if any, from
+// the web, with the client's IP.
+func (s *Server) actor(r *http.Request) rss.AuditActor {
+	by := rss.AuditActor{Via: rss.AuditViaWeb, IP: s.clientIP(r)}
+	if a, ok := s.authenticatedAdmin(r); ok {
+		by.AdminID, by.AdminEmail = a.ID, a.Email
 	}
-	e.Via = rss.AuditViaWeb
-	e.IP = s.clientIP(r)
-	return s.services.Audit.Record(r.Context(), e)
+	return by
+}
+
+// audit records action by r's actor, or, before anyone is logged in, by the
+// admin with adminID or the submitted email.
+func (s *Server) audit(r *http.Request, action, adminID, email string) error {
+	by := s.actor(r)
+	if by.AdminID == "" {
+		by.AdminID, by.AdminEmail = adminID, email
+	}
+	return s.services.Audit.Record(r.Context(), rss.AuditEntry{AuditActor: by, Action: action})
 }
 
 // confirmDestructive checks, before a destructive action, that the admin
@@ -80,7 +88,6 @@ func (q auditQuery) values() url.Values {
 // auditRow is one entry as the page shows it.
 type auditRow struct {
 	rss.AuditEvent
-	Time    string
 	Changes []auditChange
 	// History is the URL of its target's entries, "" with no target.
 	History string
@@ -118,10 +125,8 @@ func (s *Server) auditHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// One more than a page, to know whether there's another.
-	events, err := s.services.Audit.List(r.Context(), rss.AuditFilter{
-		Action: query.Action, TargetType: query.TargetType, TargetID: query.TargetID,
-		Before: before, Limit: auditPageSize + 1,
-	})
+	filter := rss.AuditFilter{Action: query.Action, TargetType: query.TargetType, TargetID: query.TargetID, BeforeID: before}
+	events, err := s.services.Audit.List(r.Context(), filter, auditPageSize+1)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
@@ -135,7 +140,7 @@ func (s *Server) auditHandler(w http.ResponseWriter, r *http.Request) {
 		page.Next = "/audit?" + next.Encode()
 	}
 	for _, e := range events {
-		row := auditRow{AuditEvent: e, Time: e.OccurredAt.UTC().Format(time.DateTime + " UTC")}
+		row := auditRow{AuditEvent: e}
 		row.Changes, err = auditChanges(e.Before, e.After)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
@@ -155,7 +160,7 @@ func (s *Server) auditHandler(w http.ResponseWriter, r *http.Request) {
 // auditChanges lists the fields in before or after, by name, with their
 // values as JSON. The template escapes them like any text.
 func auditChanges(before, after map[string]any) ([]auditChange, error) {
-	fields := slices.Sorted(maps.Keys(before))
+	fields := slices.Collect(maps.Keys(before))
 	for k := range after {
 		if _, ok := before[k]; !ok {
 			fields = append(fields, k)

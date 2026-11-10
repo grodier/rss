@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -14,7 +15,7 @@ import (
 // together, or neither does) are the repositories': see
 // TestAuditInTransaction in internal/psql.
 
-func TestAudit(t *testing.T) {
+func TestActorAndAudit(t *testing.T) {
 	s, _ := newTestServerWithAdmin(t)
 	audit := s.services.Audit.(*fakeAudit)
 	admin, err := s.services.Admins.GetByEmail(t.Context(), testEmail)
@@ -22,24 +23,40 @@ func TestAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/", nil)
-	r.RemoteAddr = "203.0.113.9:1234"
-	if err := s.audit(r, rss.AuditEntry{Action: "login_failed", AdminEmail: "typed@example.com", Via: "cli", IP: "spoofed"}); err != nil {
-		t.Fatal(err)
+	anon := httptest.NewRequest("POST", "/", nil)
+	anon.RemoteAddr = "203.0.113.9:1234"
+	loggedIn := anon.WithContext(context.WithValue(anon.Context(), authenticatedAdminContextKey, admin))
+
+	if got, want := s.actor(anon), (rss.AuditActor{Via: "web", IP: "203.0.113.9"}); got != want {
+		t.Errorf("actor(anonymous) = %+v, want %+v", got, want)
 	}
-	// The logged-in admin, unless the entry names one.
-	r = r.WithContext(context.WithValue(r.Context(), authenticatedAdminContextKey, admin))
-	if err := s.audit(r, rss.AuditEntry{Action: "invite.create", TargetType: "invite", TargetID: "i1"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.audit(r, rss.AuditEntry{Action: "login_failed", AdminID: "other"}); err != nil {
-		t.Fatal(err)
+	if got, want := s.actor(loggedIn), (rss.AuditActor{AdminID: admin.ID, AdminEmail: testEmail, Via: "web", IP: "203.0.113.9"}); got != want {
+		t.Errorf("actor(logged in) = %+v, want %+v", got, want)
 	}
 
+	// Before anyone is logged in, the admin or email given; after, the
+	// logged-in admin.
+	for _, call := range []struct {
+		r              *http.Request
+		action, id, em string
+	}{
+		{anon, "login_failed", "", "typed@example.com"},
+		{anon, "login", "pending-id", ""},
+		{loggedIn, "logout", "", ""},
+		{loggedIn, "login_failed", "other", "ignored@example.com"},
+	} {
+		if err := s.audit(call.r, call.action, call.id, call.em); err != nil {
+			t.Fatal(err)
+		}
+	}
+	web := func(id, email, action string) rss.AuditEntry {
+		return rss.AuditEntry{AuditActor: rss.AuditActor{AdminID: id, AdminEmail: email, Via: "web", IP: "203.0.113.9"}, Action: action}
+	}
 	want := []rss.AuditEntry{
-		{AdminEmail: "typed@example.com", Via: "web", IP: "203.0.113.9", Action: "login_failed"},
-		{AdminID: admin.ID, AdminEmail: testEmail, Via: "web", IP: "203.0.113.9", Action: "invite.create", TargetType: "invite", TargetID: "i1"},
-		{AdminID: "other", Via: "web", IP: "203.0.113.9", Action: "login_failed"},
+		web("", "typed@example.com", "login_failed"),
+		web("pending-id", "", "login"),
+		web(admin.ID, testEmail, "logout"),
+		web(admin.ID, testEmail, "login_failed"),
 	}
 	var got []rss.AuditEntry
 	for _, e := range audit.events {
@@ -50,7 +67,7 @@ func TestAudit(t *testing.T) {
 	}
 }
 
-func TestEnrollmentIsAudited(t *testing.T) {
+func TestEnrollmentIsByTheCommandLine(t *testing.T) {
 	admins := newFakeAdmins()
 	step := testNow.Unix() / totpStepSeconds
 	e, err := NewEnrollment("new@example.com", "a long password")
@@ -60,18 +77,13 @@ func TestEnrollmentIsAudited(t *testing.T) {
 	if _, err := e.Finish(t.Context(), admins, testKey, Code(e.secret, step), false, testNow); err != nil {
 		t.Fatalf("Finish: %v", err)
 	}
-	id := admins.byEmail("new@example.com").ID
 	e2, _ := NewEnrollment("new@example.com", "another long password")
 	if _, err := e2.Finish(t.Context(), admins, testKey, Code(e2.secret, step), true, testNow); err != nil {
 		t.Fatalf("Finish with reset: %v", err)
 	}
-
-	want := []rss.AuditEntry{
-		{Via: "cli", Action: "admin.create", TargetType: "admin", TargetID: id, After: map[string]any{"email": "new@example.com"}},
-		{Via: "cli", Action: "admin.reset", TargetType: "admin", TargetID: id},
-	}
-	if !reflect.DeepEqual(admins.audit, want) {
-		t.Errorf("recorded:\n got %+v\nwant %+v", admins.audit, want)
+	cli := rss.AuditActor{Via: "cli"}
+	if want := []rss.AuditActor{cli, cli}; !reflect.DeepEqual(admins.actors, want) {
+		t.Errorf("Create and Reset by %+v, want %+v", admins.actors, want)
 	}
 }
 

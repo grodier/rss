@@ -5,6 +5,7 @@
 import * as busyForms from "../../shared/lib/busy-forms";
 import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
+import * as dividerDraw from "../features/divider-draw";
 import * as infiniteScroll from "../features/infinite-scroll";
 import { enhancePings } from "../features/read-pings";
 import { setupRUM } from "../features/rum";
@@ -24,4 +25,5 @@ busyForms.init(); // after saveStar: it skips the submits saveStar takes over
 videoEmbeds.init();
 timelineTabs.init(); // after backForward, as both listen for pageswap and pagereveal
 seenBeacon.init();
+dividerDraw.init(); // before infiniteScroll, which draws the dividers it appends
 infiniteScroll.init();

@@ -158,6 +158,36 @@
     border-block-start: 1px solid color-mix(in srgb, var(--brand-strong) 45%, transparent);
   }
 
+  /* The first time it's half in view, the rules grow outward from the label
+     (divider-draw.ts sets data-draw: pending until then, then play); the
+     label stays put. Only with motion and outside forced colors: otherwise,
+     as without the script, the rules are simply there. */
+  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+    .timeline-divider::before {
+      transform-origin: right;
+    }
+
+    .timeline-divider::after {
+      transform-origin: left;
+    }
+
+    .timeline-divider[data-draw="pending"]::before,
+    .timeline-divider[data-draw="pending"]::after {
+      scale: 0 1;
+    }
+
+    .timeline-divider[data-draw="play"]::before,
+    .timeline-divider[data-draw="play"]::after {
+      animation: divider-draw var(--duration-flourish) var(--ease-out);
+    }
+  }
+
+  @keyframes divider-draw {
+    from {
+      scale: 0 1;
+    }
+  }
+
   /* Read rows: a tinted card, quieter text and image. Still a timeline, not an
      inbox. The tint is darker than the page in both themes, so read cards
      always recede. */

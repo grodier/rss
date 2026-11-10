@@ -116,6 +116,10 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **`admin enroll -reset` logs every admin out** (#567): it's for a lost phone or a leaked password, so a session on that device must end, and scs stores a session's data encoded, so sessions can't be picked out by admin; with one owner, ending all of them costs nothing.
 - **Both login steps share generic errors, and a wrong code counts against the admin, not just the IP** (#567): "That email and password don't match an admin." whether or not the email is an admin's (with a dummy hash checked for timing), and 5 wrong codes per admin per 15 minutes on top of 10 attempts per IP.
 - **Every write is recorded in an audit log** (who, what, which record, before and after, when), and so are logins and failed logins; destructive actions also need a typed confirmation.
+- **An action's repository method takes its audit entry and records it in its own transaction** (#572), rather than repositories running on a transaction handed to them (an `Exec(ctx, func(tx *sql.Tx) error)` helper).
+  The repositories already open their own transactions (an admin with its recovery codes, a reset with the sessions it ends), so this keeps transactions inside `internal/psql` and callers, the handlers and commands, never hold a `*sql.Tx`; the entry type is `rss.AuditEntry`, since `internal/psql` can't import `internal/admin`.
+- **The admin's own IP is kept in the audit log** (#572): it's the owner's, and it's what tells a stolen session from a real one.
+  A failed code is recorded as `login_failed` with the admin, so a leaked password shows up even when the second factor holds.
 - **No impersonation.** Support uses read-only views: logging in as a reader would show their private reading.
 - **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
   A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.

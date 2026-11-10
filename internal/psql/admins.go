@@ -33,9 +33,10 @@ func scanAdmin(row interface{ Scan(...any) error }) (rss.Admin, error) {
 	return a, err
 }
 
-// Create adds an admin with c, in one transaction with its recovery codes.
+// Create adds an admin with c, in one transaction with its recovery codes
+// and audit, the entry recording it, whose TargetID it sets to the new ID.
 // rss.ErrDuplicateEmail if the email is already an admin's.
-func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminCredentials) (string, error) {
+func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) (string, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -59,6 +60,10 @@ func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminC
 	if err := insertRecoveryCodes(ctx, tx, id, c.RecoveryCodeHashes); err != nil {
 		return "", err
 	}
+	audit.TargetID = id
+	if err := recordAudit(ctx, tx, audit); err != nil {
+		return "", err
+	}
 	return id, tx.Commit()
 }
 
@@ -66,8 +71,10 @@ func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminC
 // with email, in one transaction, for an admin who lost their phone or
 // password. It also deletes every admin session: a session can't be told
 // apart by admin (scs stores its data encoded), and one on a lost or stolen
-// device must end. rss.ErrNoRecord if there is no such admin.
-func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCredentials) error {
+// device must end. audit, the entry recording it, is recorded in the same
+// transaction, with its TargetID set to the admin's ID. rss.ErrNoRecord if
+// there is no such admin.
+func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -95,6 +102,10 @@ func (r *AdminRepository) Reset(ctx context.Context, email string, c rss.AdminCr
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM admin_sessions`); err != nil {
 		return fmt.Errorf("end admin sessions: %w", err)
+	}
+	audit.TargetID = id
+	if err := recordAudit(ctx, tx, audit); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

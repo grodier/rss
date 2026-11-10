@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Audit log - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Audit log</h1>
+        <p>Every admin action and login, newest first. Times are UTC.</p>
+      </header>
+      <section class="admin-section">
+        <form class="filters" action="/audit" method="get" role="search" aria-label="Filter the audit log">
+          <div>
+            <label for="action">Action</label>
+            <input type="text" id="action" name="action" value="{{.Filter.Action}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <div>
+            <label for="target_type">Target type</label>
+            <input type="text" id="target_type" name="target_type" value="{{.Filter.TargetType}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <div>
+            <label for="target_id">Target ID</label>
+            <input type="text" id="target_id" name="target_id" value="{{.Filter.TargetID}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <button class="btn btn-sm" type="submit">Filter</button>
+          {{if .Filter.IsSet}}<a class="btn btn-sm" href="/audit">Clear</a>{{end}}
+        </form>
+
+        {{if .Rows}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Admin</th>
+                <th scope="col">Action</th>
+                <th scope="col">Target</th>
+                <th scope="col">Changes</th>
+                <th scope="col">From</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Rows}}
+              <tr>
+                <td><time datetime="{{.OccurredAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time}}</time></td>
+                <td class="wrap">{{if .AdminEmail}}{{.AdminEmail}}{{else}}—{{end}}</td>
+                <td>{{.Action}}</td>
+                <td class="wrap">{{if .TargetType}}{{.TargetType}} {{.TargetID}} <a href="{{.History}}">History</a>{{else}}—{{end}}</td>
+                <td class="wrap">{{if .Changes}}
+                  <dl class="changes">
+                    {{range .Changes}}
+                    <div>
+                      <dt>{{.Field}}</dt>
+                      <dd><code>{{if .Before}}{{.Before}}{{else}}—{{end}}</code> → <code>{{if .After}}{{.After}}{{else}}—{{end}}</code></dd>
+                    </div>
+                    {{end}}
+                  </dl>
+                {{else}}—{{end}}</td>
+                <td>{{if eq .Via "cli"}}Command line{{else}}{{.IP}}{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Older</a>
+        </div>
+        {{end}}
+        {{else}}
+        <p class="empty">{{if .Filter.IsSet}}Nothing matches these filters.{{else}}Nothing recorded yet.{{end}}</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

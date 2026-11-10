@@ -162,7 +162,12 @@ func runInviteCreate(args []string, getenv func(string) string, stdout, stderr i
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if _, err := psql.NewInviteRepository(db).Create(ctx, inv, hash); err != nil {
+	audit := rss.AuditEntry{Via: rss.AuditViaCLI, Action: "invite.create", TargetType: "invite",
+		After: map[string]any{"note": inv.Note, "expires_at": inv.ExpiresAt.UTC()}}
+	if inv.Email != "" {
+		audit.After["email"] = inv.Email
+	}
+	if _, err := psql.NewInviteRepository(db).Create(ctx, inv, hash, audit); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
@@ -254,7 +259,8 @@ func runInviteRevoke(args []string, getenv func(string) string, stdout, stderr i
 	}
 	defer db.Close()
 
-	err = psql.NewInviteRepository(db).Revoke(context.Background(), id)
+	audit := rss.AuditEntry{Via: rss.AuditViaCLI, Action: "invite.revoke", TargetType: "invite"}
+	err = psql.NewInviteRepository(db).Revoke(context.Background(), id, audit)
 	switch {
 	case errors.Is(err, rss.ErrNoRecord):
 		fmt.Fprintf(stderr, "no invite with ID %s\n", id)

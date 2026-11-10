@@ -1,14 +1,17 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ratelimit"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func TestLogin(t *testing.T) {
@@ -402,5 +405,62 @@ func TestRoutesRequireAuthentication(t *testing.T) {
 	}
 	if n == 0 {
 		t.Error("found no routes that need a login")
+	}
+}
+
+func TestLoginIsAudited(t *testing.T) {
+	s, _ := newTestServerWithAdmin(t)
+	audit := s.services.Audit.(*fakeAudit)
+	adminID := s.services.Admins.(*fakeAdmins).byEmail(testEmail).ID
+
+	b := newBrowser(s)
+	b.post(t, "/login", url.Values{"email": {"nobody@example.com"}, "password": {testPassword}})
+	b.post(t, "/login", url.Values{"email": {testEmail}, "password": {"wrong password"}})
+	b = passwordStep(t, s)
+	b.post(t, "/login/code", url.Values{"code": {"000000"}})
+	if rr := b.post(t, "/login/code", url.Values{"code": {currentCode(s)}}); rr.Code != http.StatusSeeOther {
+		t.Fatalf("POST /login/code = %d, want 303", rr.Code)
+	}
+	b.post(t, "/logout", nil)
+	// An anonymous logout records nothing.
+	newBrowser(s).post(t, "/logout", nil)
+
+	want := []rss.AuditEntry{
+		{AdminEmail: "nobody@example.com", Via: "web", IP: "192.0.2.1", Action: "login_failed"},
+		{AdminEmail: testEmail, Via: "web", IP: "192.0.2.1", Action: "login_failed"},
+		{AdminID: adminID, Via: "web", IP: "192.0.2.1", Action: "login_failed"},
+		{AdminID: adminID, Via: "web", IP: "192.0.2.1", Action: "login"},
+		{AdminID: adminID, AdminEmail: testEmail, Via: "web", IP: "192.0.2.1", Action: "logout"},
+	}
+	var got []rss.AuditEntry
+	for _, e := range audit.events {
+		got = append(got, e.AuditEntry)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("audit log:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func TestLoginNeedsItsRecord(t *testing.T) {
+	s, _ := newTestServerWithAdmin(t)
+	s.services.Audit.(*fakeAudit).err = errors.New("audit log down")
+	b := passwordStep(t, s)
+	if rr := b.post(t, "/login/code", url.Values{"code": {currentCode(s)}}); rr.Code != http.StatusInternalServerError {
+		t.Fatalf("POST /login/code when it can't be recorded = %d, want 500", rr.Code)
+	}
+	if rr := b.get(t, "/"); rr.Code != http.StatusSeeOther {
+		t.Errorf("GET / after an unrecorded login = %d, want 303 to /login", rr.Code)
+	}
+}
+
+func TestLogoutWithoutItsRecord(t *testing.T) {
+	s, _ := newTestServerWithAdmin(t)
+	b := loggedIn(t, s)
+	s.services.Audit.(*fakeAudit).err = errors.New("audit log down")
+	if rr := b.post(t, "/logout", nil); rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("POST /logout when it can't be recorded = %d to %q, want 303 to /login", rr.Code, rr.Header().Get("Location"))
+	}
+	if rr := b.get(t, "/"); rr.Code != http.StatusSeeOther {
+		t.Errorf("GET / after logging out = %d, want 303", rr.Code)
 	}
 }

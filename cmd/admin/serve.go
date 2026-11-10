@@ -68,7 +68,7 @@ func serve(cfg config, logger *slog.Logger) error {
 		BaseURL:   cfg.baseURL,
 		ProxyHops: cfg.proxyHops,
 		SecretKey: key,
-	}, admin.Services{Database: db, Admins: psql.NewAdminRepository(db)}, sessions)
+	}, admin.Services{Database: db, Admins: psql.NewAdminRepository(db), Audit: psql.NewAuditRepository(db)}, sessions)
 	if err != nil {
 		return err
 	}

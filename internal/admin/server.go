@@ -48,15 +48,22 @@ type AdminStore interface {
 	Authenticate(ctx context.Context, email, password string) (rss.Admin, error)
 	Get(ctx context.Context, id string) (rss.Admin, error)
 	GetByEmail(ctx context.Context, email string) (rss.Admin, error)
-	Create(ctx context.Context, email string, c rss.AdminCredentials) (string, error)
-	Reset(ctx context.Context, email string, c rss.AdminCredentials) error
+	Create(ctx context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) (string, error)
+	Reset(ctx context.Context, email string, c rss.AdminCredentials, audit rss.AuditEntry) error
 	AcceptTOTPStep(ctx context.Context, id string, step int64) (bool, error)
 	UseRecoveryCode(ctx context.Context, id string, hash []byte) (bool, error)
+}
+
+// AuditStore is the audit log's repository; *psql.AuditRepository is one.
+type AuditStore interface {
+	Record(ctx context.Context, e rss.AuditEntry) error
+	List(ctx context.Context, f rss.AuditFilter) ([]rss.AuditEvent, error)
 }
 
 type Services struct {
 	Database DatabasePinger
 	Admins   AdminStore
+	Audit    AuditStore
 }
 
 type Server struct {

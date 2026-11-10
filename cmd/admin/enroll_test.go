@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,9 @@ func TestEnroll(t *testing.T) {
 	if first.TOTPLastStep == 0 {
 		t.Error("totp_last_step = 0, want the first code's step")
 	}
+	if got := cliAudit(t, db, "admin", first.ID); !slices.Equal(got, []string{"admin.create"}) {
+		t.Errorf("audit log = %v, want admin.create from the command line", got)
+	}
 
 	t.Run("refuses a duplicate", func(t *testing.T) {
 		code, _, stderr := runEnrollTest(t, "another long password", false, "-email", email)
@@ -125,6 +129,9 @@ func TestEnroll(t *testing.T) {
 		}
 		if second.ID != first.ID || bytes.Equal(second.TOTPSecret, first.TOTPSecret) {
 			t.Error("-reset didn't keep the admin and replace its secret")
+		}
+		if got := cliAudit(t, db, "admin", first.ID); !slices.Equal(got, []string{"admin.create", "admin.reset"}) {
+			t.Errorf("audit log = %v, want admin.create and admin.reset", got)
 		}
 		if _, err := admins.Authenticate(t.Context(), email, "first long password"); !errors.Is(err, rss.ErrWrongPassword) {
 			t.Errorf("old password error = %v, want rss.ErrWrongPassword", err)

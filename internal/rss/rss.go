@@ -612,6 +612,48 @@ type AdminCredentials struct {
 	RecoveryCodeHashes [][]byte
 }
 
+// Where an admin action came from (AuditEntry.Via).
+const (
+	AuditViaWeb = "web"
+	AuditViaCLI = "cli"
+)
+
+// AuditEntry is one admin action or login, as recorded in the audit log (an
+// admin_audit row): who (the admin, or none for a failed password or a CLI
+// command), where from, what, to which record, and the fields it changed.
+type AuditEntry struct {
+	AdminID string
+	// AdminEmail is kept when the admin is deleted; for a failed password,
+	// it's the submitted email. Recording fills it from AdminID when empty.
+	AdminEmail string
+	Via        string // AuditViaWeb or AuditViaCLI
+	IP         string // the admin's client IP, for web actions
+	Action     string // e.g. "login", "invite.create"
+	TargetType string // e.g. "invite"; "" for none
+	TargetID   string
+	// Before and After are the fields the action changed, as they were and
+	// as they became; nil for none. Their values are encoded as JSON.
+	Before, After map[string]any
+}
+
+// AuditEvent is a recorded AuditEntry.
+type AuditEvent struct {
+	ID         int64
+	OccurredAt time.Time
+	AuditEntry
+}
+
+// AuditFilter narrows the audit log: to one action, to one type of target
+// and to one target, and to the entries before the one with ID Before (a
+// page's cursor). Zero values don't filter. Limit caps the entries.
+type AuditFilter struct {
+	Action     string
+	TargetType string
+	TargetID   string
+	Before     int64
+	Limit      int
+}
+
 // ServerError is one of www's recent 500s or panics (a server_errors row),
 // kept for the admin. Message is internal detail, never shown to users.
 type ServerError struct {

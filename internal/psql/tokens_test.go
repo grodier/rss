@@ -22,7 +22,7 @@ func newTokenUser(t *testing.T, users *UserRepository) (string, string) {
 			t.Errorf("cleanup user: %v", err)
 		}
 	})
-	id, _, err := users.Create(t.Context(), "Token User", email, "correct-horse-battery")
+	id, _, err := users.Create(t.Context(), "Token User", email, "correct-horse-battery", nil)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}

@@ -25,7 +25,7 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
-	id, createdAt, err := repo.Create(t.Context(), "Test User", email, password)
+	id, createdAt, err := repo.Create(t.Context(), "Test User", email, password, nil)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestUserRepository(t *testing.T) {
 	})
 
 	t.Run("Create with duplicate email in different case", func(t *testing.T) {
-		_, _, err := repo.Create(t.Context(), "Other User", strings.ToUpper(email), password)
+		_, _, err := repo.Create(t.Context(), "Other User", strings.ToUpper(email), password, nil)
 		if !errors.Is(err, rss.ErrDuplicateEmail) {
 			t.Errorf("err = %v; want %v", err, rss.ErrDuplicateEmail)
 		}
@@ -209,7 +209,7 @@ func TestUserRepositoryChangePassword(t *testing.T) {
 				t.Errorf("cleanup user: %v", err)
 			}
 		})
-		userID, _, err := repo.Create(t.Context(), "Password User", email, oldPassword)
+		userID, _, err := repo.Create(t.Context(), "Password User", email, oldPassword, nil)
 		if err != nil {
 			t.Fatalf("create user: %v", err)
 		}
@@ -321,7 +321,7 @@ func TestDeleteUser(t *testing.T) {
 				t.Errorf("cleanup user: %v", err)
 			}
 		})
-		userID, _, err := repo.Create(t.Context(), "Delete User", email, password)
+		userID, _, err := repo.Create(t.Context(), "Delete User", email, password, nil)
 		if err != nil {
 			t.Fatalf("create user: %v", err)
 		}
@@ -453,7 +453,7 @@ func TestCreateFromInvite(t *testing.T) {
 		if _, err := users.CreateFromInvite(t.Context(), hash, "Grace", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("second CreateFromInvite error = %v, want ErrInviteUnusable", err)
 		}
-		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID); !errors.Is(err, rss.ErrInviteUnusable) {
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testAuditEntry(t, db, "invite.revoke")); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("Revoke(redeemed) error = %v, want ErrInviteUnusable", err)
 		}
 	})
@@ -489,7 +489,7 @@ func TestCreateFromInvite(t *testing.T) {
 
 	t.Run("duplicate email rolls back", func(t *testing.T) {
 		email := newUserEmail(t)
-		if _, _, err := users.Create(t.Context(), "Taken", email, password); err != nil {
+		if _, _, err := users.Create(t.Context(), "Taken", email, password, nil); err != nil {
 			t.Fatal(err)
 		}
 		_, hash := newInvite(t, db, rss.Invite{})
@@ -509,7 +509,7 @@ func TestCreateFromInvite(t *testing.T) {
 	t.Run("expired and revoked invites", func(t *testing.T) {
 		_, expired := newInvite(t, db, rss.Invite{ExpiresAt: time.Now().Add(-time.Minute)})
 		inv, revoked := newInvite(t, db, rss.Invite{})
-		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID); err != nil {
+		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testAuditEntry(t, db, "invite.revoke")); err != nil {
 			t.Fatal(err)
 		}
 		for name, hash := range map[string][]byte{"expired": expired, "revoked": revoked, "unknown": newWaitlistHash(t)} {

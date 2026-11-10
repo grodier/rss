@@ -244,6 +244,7 @@ waitlist (no foreign keys: an entry is an address, not an account)
 waitlist ──< invites >── users   (both nullable: the entry it was sent to, the account made with it)
 
 admins ──< admin_recovery_codes   (apart from users: an admin is never a reader)
+admins ──< admin_audit   (admin_id nullable: none for a failed password or a command, and kept, with the email, when the admin is deleted)
 admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
@@ -363,6 +364,10 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   `admin_sessions` holds the admin's scs sessions, which end after 30 minutes idle and 12 hours at most; the cookie is `__Host-admin_session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`) in production and `admin_session` without `Secure` locally.
   `admin enroll -reset` deletes every admin session, so one on a lost device ends.
   `requireRecentCode` asks for a code again before a destructive action when the session's last one is over 10 minutes old.
+- **The admin's audit log** (`admin_audit`; `internal/admin/audit.go`, `internal/psql/audit.go`): every admin action that changes something, from the web or the command line, and every login, failed login and logout, with the admin, the client IP (web), the target and the fields it changed before and after.
+  A change and its row are written in one transaction, inside the repository method that makes the change, which takes the action's `rss.AuditEntry`, so a change is never made without its record; a login isn't completed without its row either.
+  The app only inserts rows, and the page shows their values as escaped text.
+  A destructive action also needs the target's name typed (`confirmDestructive`), on top of `requireRecentCode`.
 - **The admin's second factor** (`internal/admin`): TOTP (RFC 6238, standard library only) in `totp.go`, whose `Verify` accepts one step of drift either way, compares in constant time and never accepts a step at or before the last one used, so each code works once.
   TOTP secrets are stored sealed (`seal.go`: AES-256-GCM, a random nonce prepended to each ciphertext) under a 32-byte key that only the admin service's environment holds, so a database leak alone gives no working secrets.
 - **Site icons:** served from our own domain (`siteIconHandler`), so pages never load them from the site.

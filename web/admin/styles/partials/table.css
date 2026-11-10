@@ -63,4 +63,19 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
+  /* The fields an action changed, one per line: the name over its values
+     before and after. */
+  .changes > div + div {
+    margin-block-start: 0.25rem;
+  }
+
+  .changes dt {
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .changes code {
+    overflow-wrap: anywhere;
+  }
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
 )
@@ -37,15 +38,32 @@ func scanInvite(row interface{ Scan(...any) error }) (rss.Invite, error) {
 }
 
 // Create stores inv (its Email, WaitlistID, Note, Wave and ExpiresAt) with
-// the token tokenHash, and returns it as stored.
-func (r *InviteRepository) Create(ctx context.Context, inv rss.Invite, tokenHash []byte) (rss.Invite, error) {
+// the token tokenHash, and returns it as stored. audit, the entry recording
+// it, is recorded in the same transaction, with its TargetID set to the new
+// invite's ID.
+func (r *InviteRepository) Create(ctx context.Context, inv rss.Invite, tokenHash []byte, audit rss.AuditEntry) (rss.Invite, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.Invite{}, err
+	}
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
 	stmt := `WITH i AS (
 			INSERT INTO invites (token_hash, email, waitlist_id, note, wave, expires_at)
 			VALUES ($1, nullif($2, '')::citext, nullif($3, '')::uuid, $4, $5, $6)
 			RETURNING *
 		)
 		SELECT ` + inviteColumns + ` FROM i LEFT JOIN waitlist w ON w.id = i.waitlist_id`
-	return scanInvite(r.DB.QueryRowContext(ctx, stmt, tokenHash, inv.Email, inv.WaitlistID, inv.Note, inv.Wave, inv.ExpiresAt))
+	got, err := scanInvite(tx.QueryRowContext(ctx, stmt, tokenHash, inv.Email, inv.WaitlistID, inv.Note, inv.Wave, inv.ExpiresAt))
+	if err != nil {
+		return rss.Invite{}, err
+	}
+	audit.TargetID = got.ID
+	if err := recordAudit(ctx, tx, audit); err != nil {
+		return rss.Invite{}, err
+	}
+	return got, tx.Commit()
 }
 
 // GetByToken returns the invite whose token hashes to tokenHash, whatever
@@ -80,29 +98,42 @@ func (r *InviteRepository) List(ctx context.Context) ([]rss.Invite, error) {
 	return invites, rows.Err()
 }
 
-// Revoke revokes the invite id (a UUID), so its link stops working; an
-// invite already revoked keeps its first revoked_at. rss.ErrNoRecord if
-// there's no such invite; rss.ErrInviteUnusable if it was already used.
-func (r *InviteRepository) Revoke(ctx context.Context, id string) error {
-	stmt := `UPDATE invites SET revoked_at = coalesce(revoked_at, now())
-		WHERE id = $1 AND redeemed_at IS NULL`
-	res, err := r.DB.ExecContext(ctx, stmt, id)
+// Revoke revokes the invite id (a UUID), so its link stops working, and
+// records audit, the entry recording it, in the same transaction, with its
+// TargetID and the revoked_at it changed. Revoking an invite already revoked
+// changes and records nothing. rss.ErrNoRecord if there's no such invite;
+// rss.ErrInviteUnusable if it was already used.
+func (r *InviteRepository) Revoke(ctx context.Context, id string, audit rss.AuditEntry) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
+	// The error after a successful Commit is expected and ignored.
+	defer tx.Rollback()
+
+	// The row lock makes a concurrent redemption wait for this to commit.
+	var redeemedAt, revokedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `SELECT redeemed_at, revoked_at FROM invites WHERE id = $1 FOR UPDATE`, id).Scan(&redeemedAt, &revokedAt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return rss.ErrNoRecord
+	case err != nil:
 		return err
-	}
-	if n > 0 {
+	case redeemedAt.Valid:
+		return rss.ErrInviteUnusable
+	case revokedAt.Valid:
 		return nil
 	}
-	var exists bool
-	if err := r.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM invites WHERE id = $1)`, id).Scan(&exists); err != nil {
+
+	var now time.Time
+	if err := tx.QueryRowContext(ctx, `UPDATE invites SET revoked_at = now() WHERE id = $1 RETURNING revoked_at`, id).Scan(&now); err != nil {
 		return err
 	}
-	if exists {
-		return rss.ErrInviteUnusable
+	audit.TargetID = id
+	audit.Before = map[string]any{"revoked_at": nil}
+	audit.After = map[string]any{"revoked_at": now}
+	if err := recordAudit(ctx, tx, audit); err != nil {
+		return err
 	}
-	return rss.ErrNoRecord
+	return tx.Commit()
 }

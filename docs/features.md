@@ -36,6 +36,7 @@ The other way to make an account is `admin create-user` (`runCreateUser` in `cmd
 **Invites.** Until the admin's pages send them (#574), invites are made from the command line: `admin invite create` (`runInviteCreate` in `cmd/admin/invite.go`) stores one with a new token (`token.New`; only its SHA-256 is stored) and prints its link, built from `-app-url`, the reader's URL.
 With `-email` it's bound to that address's waitlist entry, which must be confirmed; without, it's open, with `-note` saying who it's for.
 It expires after `-expires` (14 days by default); `admin invite list` shows each invite's status (`rss.Invite.Status`), and `admin invite revoke <id>` stops an unused one working.
+Creating and revoking are recorded in the admin's audit log (see "Audit log" under Admin).
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
 Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
@@ -563,7 +564,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview (`homeHandler`) is an empty state until #575.
+   The Overview (`homeHandler`) is an empty state until #575; the Audit log is below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
    `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`); `admin/entries/admin.ts` sets up busy forms.
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
@@ -603,6 +604,27 @@ Admins are their own accounts (`admins`), apart from readers, and every admin pa
 4. `internal/ui/admin/login.html` and `login_code.html`.
 
 **Tests:** `internal/admin/login_test.go`, `enroll_test.go`, `totp_test.go` and `seal_test.go`; `cmd/admin/enroll_test.go` and `qr_test.go`; `internal/psql/admins_test.go`; `internal/ratelimit/ratelimit_test.go`.
+
+### Audit log
+
+Every admin action and login is recorded in `admin_audit` (see "The admin's audit log" in architecture.md), and `/audit` shows them.
+
+1. **Logins.** `loginFormHandler` records a wrong email or password as `login_failed` with the submitted email, and `loginCodeFormHandler` a wrong code as `login_failed` with the admin; both through `s.audit`, which fills in the logged-in admin (unless the entry names one), `via = 'web'` and the client IP, and a failure to record is logged, not shown.
+   A correct code records `login` before the session holds the admin, so a login that can't be recorded fails (500); `logoutHandler` records `logout`, and logs out even when that can't be recorded.
+2. **Actions.** An action that changes something builds an `rss.AuditEntry` (its action, target type and the fields it changes) and passes it to the repository method that makes the change, which records it in the same transaction, with the target's ID and, where the method knows them, its before and after (`InviteRepository.Revoke`'s `revoked_at`).
+   The commands that write record with `via = 'cli'` and no admin: `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`).
+   A web action will take its entry's admin and IP from the request, as `s.audit` does.
+3. **Typed confirmation.** A destructive action's form has a field where the admin types the target's name, and `confirmDestructive` checks it (ignoring case and the spaces around it) before acting, with "Type {name} to confirm."; no action uses it yet.
+4. **The page.** `GET /audit` (`auditHandler`) lists entries newest first, 100 at a time, with an Older link whose cursor (`?before=`) is the last entry's ID (`AuditRepository.List`, keyed on `occurred_at` and `id`), filtered by `?action=`, `?target_type=` and `?target_id=`.
+   Each row shows the time (UTC), the admin, the action, the target with a History link (`auditHistoryURL`, which a record's admin page links to once one exists) and each changed field's values before and after as JSON, and the client IP or "Command line".
+
+**Start at:**
+
+1. `internal/admin/audit.go` (`audit`, `confirmDestructive`, `auditHandler`).
+2. `internal/psql/audit.go` (`recordAudit`, `List`) and the repository methods that call `recordAudit`.
+3. `internal/ui/admin/audit.html`.
+
+**Tests:** `internal/admin/audit_test.go`, `audit_page_test.go` and `login_test.go` (`TestLoginIsAudited`); `internal/psql/audit_test.go` (`TestAuditInTransaction`); `cmd/admin/enroll_test.go`, `invite_test.go` and `create_user_test.go`.
 
 ### Observability
 

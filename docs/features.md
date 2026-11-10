@@ -398,6 +398,7 @@ A new visit also trims the reader's positions, in the same transaction: it keeps
 Since the page reports when it's shown, this runs right after a visit's first page renders, before any older page loads; a deleted row's article goes back to its shared position, which differs only if the row was raised, and is never higher.
 At render, `TimelineLine` reads the timeline's own line with the user's `seen_at`, `TimelineMark.Divider` gives the line, the newest position the timeline had on screen in the last visit it was opened in (none for a timeline never seen), and `fillDivider` puts it above the first row at or below it, only when something is above it: an earlier row, or a cursor positioned above it.
 So above the line is everything that arrived since you last looked at that timeline, by the reader's positions, including articles published before it but fetched after.
+With motion, `divider-draw.ts` draws the line in the first time at least half of it is in view on a page load (on dividers infinite scroll appends too), once, by marking it `data-draw` for `rows.css`; without the script or under reduced motion it's simply there.
 A store error renders the page without the line.
 
 **Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.

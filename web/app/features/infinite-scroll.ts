@@ -1,4 +1,5 @@
 import { localizeTimes } from "../../shared/lib/local-times";
+import { enhanceDivider } from "./divider-draw";
 import { enhancePings } from "./read-pings";
 import { enhanceShare } from "./share";
 
@@ -73,7 +74,10 @@ export function init(): void {
         ".article-list > .article-row, .article-list > .timeline-divider",
       )) {
         list.append(el);
-        if (!el.matches(".article-row")) continue;
+        if (!el.matches(".article-row")) {
+          enhanceDivider(el);
+          continue;
+        }
         el.dataset.pageUrl = pageUrl;
         localizeTimes(el);
         enhancePings(el);

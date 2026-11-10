@@ -184,7 +184,7 @@ func TestTimelineCreate(t *testing.T) {
 
 	t.Run("the limit counts a new account's default timelines", func(t *testing.T) {
 		email := fmt.Sprintf("defaults-%d@example.com", time.Now().UnixNano())
-		user, _, err := NewUserRepository(db).Create(ctx, "Defaults", email, "correct-horse-battery")
+		user, _, err := NewUserRepository(db).Create(ctx, "Defaults", email, "correct-horse-battery", nil)
 		if err != nil {
 			t.Fatalf("Create user: %v", err)
 		}

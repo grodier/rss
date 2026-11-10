@@ -3,10 +3,40 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/psql/psqltest"
 )
+
+func TestRunCreateUser(t *testing.T) {
+	db := psqltest.NewDB(t)
+	email := fmt.Sprintf("create-user-%d@example.com", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
+			t.Errorf("cleanup user: %v", err)
+		}
+	})
+
+	var stdout, stderr bytes.Buffer
+	env := envFrom(map[string]string{"RSS_DB_DSN": psqltest.DSN(t)})
+	args := []string{"create-user", "-name", "Ada", "-email", email}
+	if code := run(args, env, strings.NewReader("correct horse battery\n"), &stdout, &stderr); code != 0 {
+		t.Fatalf("run() = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	user, err := psql.NewUserRepository(db).GetByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatalf("GetByEmail: %v", err)
+	}
+	if got := cliAudit(t, db, "user", user.ID); !slices.Equal(got, []string{"user.create"}) {
+		t.Errorf("audit log = %v, want user.create from the command line", got)
+	}
+}
 
 func TestRunCreateUserRequiresDSN(t *testing.T) {
 	var stderr bytes.Buffer

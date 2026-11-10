@@ -36,7 +36,8 @@ func newTestServerWith(t *testing.T, services Services) *Server {
 
 // newTestServerConfig returns a Server with cfg and services, sessions in
 // memory, testKey as its secret key unless cfg has one, and an empty
-// fakeAdmins unless services has an AdminStore.
+// fakeAdmins and fakeAudit unless services has an AdminStore and an
+// AuditStore.
 func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	t.Helper()
 	if cfg.SecretKey == nil {
@@ -44,6 +45,9 @@ func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	}
 	if services.Admins == nil {
 		services.Admins = newFakeAdmins()
+	}
+	if services.Audit == nil {
+		services.Audit = &fakeAudit{}
 	}
 	sessions := NewSessionManager(memstore.NewWithCleanupInterval(0), cfg.Env)
 	s, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, services, sessions)

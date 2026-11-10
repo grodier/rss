@@ -612,6 +612,54 @@ type AdminCredentials struct {
 	RecoveryCodeHashes [][]byte
 }
 
+// Where an admin action came from (AuditActor.Via).
+const (
+	AuditViaWeb = "web"
+	AuditViaCLI = "cli"
+)
+
+// AuditActor is who did an admin action, and from where: what the caller
+// of an action knows. The repository method that makes the change records
+// what it did (AuditEntry's other fields), since it's the one that knows.
+type AuditActor struct {
+	// AdminID is "" for a failed password or a command.
+	AdminID string
+	// AdminEmail is kept when the admin is deleted; for a failed password,
+	// it's the submitted email. Recording fills it from AdminID when empty.
+	AdminEmail string
+	Via        string // AuditViaWeb or AuditViaCLI
+	IP         string // the admin's client IP, for web actions
+}
+
+// AuditEntry is one admin action or login in the audit log (an admin_audit
+// row): who, what, to which record, and the fields it changed.
+type AuditEntry struct {
+	AuditActor
+	Action     string // e.g. "login", "invite.create"
+	TargetType string // e.g. "invite"; "" for none
+	TargetID   string
+	// Before and After are the fields the action changed, as they were and
+	// as they became; nil for none. Their values are encoded as JSON.
+	Before, After map[string]any
+}
+
+// AuditEvent is a recorded AuditEntry.
+type AuditEvent struct {
+	ID         int64
+	OccurredAt time.Time
+	AuditEntry
+}
+
+// AuditFilter narrows the audit log: to one action, to one type of target
+// and to one target, and to the entries older than the one with BeforeID (a
+// page's cursor). Zero values don't filter.
+type AuditFilter struct {
+	Action     string
+	TargetType string
+	TargetID   string
+	BeforeID   int64
+}
+
 // ServerError is one of www's recent 500s or panics (a server_errors row),
 // kept for the admin. Message is internal detail, never shown to users.
 type ServerError struct {

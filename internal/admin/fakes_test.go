@@ -24,6 +24,8 @@ type fakeAdmins struct {
 	mu     sync.Mutex
 	admins map[string]*fakeAdmin // by ID
 	nextID int
+	// actors holds who Create and Reset were called by, in order.
+	actors []rss.AuditActor
 }
 
 type fakeAdmin struct {
@@ -82,7 +84,7 @@ func (f *fakeAdmins) GetByEmail(_ context.Context, email string) (rss.Admin, err
 	return a.Admin, nil
 }
 
-func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredentials) (string, error) {
+func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredentials, by rss.AuditActor) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.byEmail(email) != nil {
@@ -93,10 +95,11 @@ func (f *fakeAdmins) Create(_ context.Context, email string, c rss.AdminCredenti
 	a := &fakeAdmin{Admin: rss.Admin{ID: id, Email: email, CreatedAt: time.Now()}}
 	a.set(c)
 	f.admins[id] = a
+	f.actors = append(f.actors, by)
 	return id, nil
 }
 
-func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentials) error {
+func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentials, by rss.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	a := f.byEmail(email)
@@ -104,6 +107,7 @@ func (f *fakeAdmins) Reset(_ context.Context, email string, c rss.AdminCredentia
 		return rss.ErrNoRecord
 	}
 	a.set(c)
+	f.actors = append(f.actors, by)
 	return nil
 }
 
@@ -137,6 +141,41 @@ func (f *fakeAdmins) UseRecoveryCode(_ context.Context, id string, hash []byte) 
 	}
 	delete(a.codes, string(hash))
 	return true, nil
+}
+
+// fakeAudit is an in-memory AuditStore with the repository's behavior,
+// whose Record returns err when it's set.
+type fakeAudit struct {
+	mu     sync.Mutex
+	events []rss.AuditEvent
+	err    error
+}
+
+func (f *fakeAudit) Record(_ context.Context, e rss.AuditEntry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.events = append(f.events, rss.AuditEvent{ID: int64(len(f.events) + 1), OccurredAt: time.Now(), AuditEntry: e})
+	return nil
+}
+
+func (f *fakeAudit) List(_ context.Context, filter rss.AuditFilter, limit int) ([]rss.AuditEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []rss.AuditEvent
+	for i := len(f.events) - 1; i >= 0 && len(out) < limit; i-- {
+		e := f.events[i]
+		if (filter.Action != "" && e.Action != filter.Action) ||
+			(filter.TargetType != "" && e.TargetType != filter.TargetType) ||
+			(filter.TargetID != "" && e.TargetID != filter.TargetID) ||
+			(filter.BeforeID > 0 && e.ID >= filter.BeforeID) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 func (f *fakeAdmins) delete(id string) {
@@ -180,7 +219,7 @@ func newTestServerWithAdmin(t *testing.T) (*Server, *time.Time) {
 		HashedPassword:     []byte(testPasswordHash()),
 		SealedTOTPSecret:   sealed,
 		RecoveryCodeHashes: [][]byte{token.Hash(testRecovery)},
-	}); err != nil {
+	}, rss.AuditActor{}); err != nil {
 		t.Fatal(err)
 	}
 	s := newTestServerWith(t, Services{Database: pinger{}, Admins: admins})

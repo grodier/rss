@@ -79,10 +79,10 @@ func (e *Enrollment) URI() string {
 }
 
 // Finish checks code, the first one the app shows, and if it matches stores
-// the admin, in one write: a new one, or with reset, an existing one whose
-// password, secret and recovery codes it replaces (which logs every admin
-// out). The code's step is stored as the last one used, so it can't also log
-// in. It returns the new recovery codes, to show once. ErrWrongCode if code
+// the admin, in one write with its entry in the audit log: a new one, or
+// with reset, an existing one whose password, secret and recovery codes it
+// replaces (which logs every admin out). The code's step is stored as the
+// last one used, so it can't also log in. It returns the new recovery codes, to show once. ErrWrongCode if code
 // doesn't match; rss.ErrDuplicateEmail (new) or rss.ErrNoRecord (reset) if
 // the admin exists, or doesn't.
 func (e *Enrollment) Finish(ctx context.Context, admins AdminStore, key []byte, code string, reset bool, now time.Time) ([]string, error) {
@@ -110,10 +110,12 @@ func (e *Enrollment) Finish(ctx context.Context, admins AdminStore, key []byte, 
 		RecoveryCodeHashes: hashes,
 	}
 
+	// Enrolling is only done from the command line.
+	by := rss.AuditActor{Via: rss.AuditViaCLI}
 	if reset {
-		err = admins.Reset(ctx, e.email, creds)
+		err = admins.Reset(ctx, e.email, creds, by)
 	} else {
-		_, err = admins.Create(ctx, e.email, creds)
+		_, err = admins.Create(ctx, e.email, creds, by)
 	}
 	if err != nil {
 		return nil, err

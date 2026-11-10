@@ -24,8 +24,11 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // Create makes an account with rss.DefaultTimelines, in one transaction, so
 // both signup and admin create-user give every account its default
-// timelines. rss.ErrDuplicateEmail if the email is taken.
-func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (string, time.Time, error) {
+// timelines. When an admin makes the account (admin create-user), by is
+// who, and its user.create entry in the audit log is recorded in the same
+// transaction; by is nil otherwise (tools/loadseed's accounts).
+// rss.ErrDuplicateEmail if the email is taken.
+func (r *UserRepository) Create(ctx context.Context, name, email, pw string, by *rss.AuditActor) (string, time.Time, error) {
 	hashedPassword, err := password.Hash(pw)
 	if err != nil {
 		return "", time.Time{}, err
@@ -41,6 +44,13 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string) (st
 	id, createdAt, err := insertUser(ctx, tx, name, email, hashedPassword, false)
 	if err != nil {
 		return "", time.Time{}, err
+	}
+	if by != nil {
+		err := recordAudit(ctx, tx, rss.AuditEntry{AuditActor: *by, Action: "user.create", TargetType: "user", TargetID: id,
+			After: map[string]any{"name": name, "email": email}})
+		if err != nil {
+			return "", time.Time{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return "", time.Time{}, err

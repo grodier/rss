@@ -162,7 +162,7 @@ func runInviteCreate(args []string, getenv func(string) string, stdout, stderr i
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if _, err := psql.NewInviteRepository(db).Create(ctx, inv, hash); err != nil {
+	if _, err := psql.NewInviteRepository(db).Create(ctx, inv, hash, cliActor); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
@@ -254,7 +254,7 @@ func runInviteRevoke(args []string, getenv func(string) string, stdout, stderr i
 	}
 	defer db.Close()
 
-	err = psql.NewInviteRepository(db).Revoke(context.Background(), id)
+	err = psql.NewInviteRepository(db).Revoke(context.Background(), id, cliActor)
 	switch {
 	case errors.Is(err, rss.ErrNoRecord):
 		fmt.Fprintf(stderr, "no invite with ID %s\n", id)

@@ -9,6 +9,7 @@
      Feeds, Queues, Email, Service, Endpoints, Web performance, Audit log. */}}
 {{define "admin-links"}}<ul class="admin-links" role="list">
       <li><a href="/"{{if eq .Section "overview"}} aria-current="page"{{end}}>Overview</a></li>
+      <li><a href="/audit"{{if eq .Section "audit"}} aria-current="page"{{end}}>Audit log</a></li>
     </ul>
     <form class="admin-account" action="/logout" method="post">
       <p>{{.Email}}</p>

@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,9 @@ func TestInvite(t *testing.T) {
 				t.Errorf("cleanup invite: %v", err)
 			}
 		})
+		if got := cliAudit(t, db, "invite", inv.ID); !slices.Equal(got, []string{"invite.create"}) {
+			t.Errorf("audit log = %v, want invite.create from the command line", got)
+		}
 		return inv
 	}
 
@@ -121,12 +126,44 @@ func TestInvite(t *testing.T) {
 		if line := lineWith(stdout, open.ID); !strings.Contains(line, "revoked") {
 			t.Errorf("line %q, want revoked", line)
 		}
+		if got := cliAudit(t, db, "invite", open.ID); !slices.Equal(got, []string{"invite.create", "invite.revoke"}) {
+			t.Errorf("audit log = %v, want invite.create and invite.revoke from the command line", got)
+		}
 
 		code, _, stderr = runInviteTest(t, "revoke", "00000000-0000-0000-0000-000000000000")
 		if code != 1 || !strings.Contains(stderr, "no invite with ID") {
 			t.Errorf("revoke(unknown) = %d, stderr %q; want 1 and no invite", code, stderr)
 		}
 	})
+}
+
+// cliAudit returns the actions the audit log recorded from the command line
+// for the target, oldest first, and deletes their rows when the test ends.
+func cliAudit(t *testing.T, db *sql.DB, targetType, targetID string) []string {
+	t.Helper()
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM admin_audit WHERE target_type = $1 AND target_id = $2`, targetType, targetID); err != nil {
+			t.Errorf("cleanup audit: %v", err)
+		}
+	})
+	rows, err := db.QueryContext(t.Context(), `SELECT action FROM admin_audit
+		WHERE target_type = $1 AND target_id = $2 AND via = 'cli' ORDER BY id`, targetType, targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			t.Fatal(err)
+		}
+		actions = append(actions, a)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return actions
 }
 
 // lineWith returns the line of s that contains sub, or "".

@@ -375,7 +375,7 @@ func seedUsers(ctx context.Context, db *sql.DB, cfg seedConfig, feeds []feedPlan
 
 // createUser creates a user with seedPassword and a confirmed email.
 func createUser(ctx context.Context, db *sql.DB, users *psql.UserRepository, name, email string) (string, error) {
-	id, _, err := users.Create(ctx, name, email, seedPassword)
+	id, _, err := users.Create(ctx, name, email, seedPassword, nil)
 	if err != nil {
 		return "", fmt.Errorf("create user %s: %w", email, err)
 	}

@@ -23,7 +23,7 @@ func TestUserSessionRepository(t *testing.T) {
 				t.Errorf("cleanup user: %v", err)
 			}
 		})
-		id, _, err := users.Create(t.Context(), "Session User", email, "correct-horse-battery")
+		id, _, err := users.Create(t.Context(), "Session User", email, "correct-horse-battery", nil)
 		if err != nil {
 			t.Fatalf("create user: %v", err)
 		}

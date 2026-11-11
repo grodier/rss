@@ -1,7 +1,8 @@
 # Cloudflare Access in front of the admin (admin.paperround.app): only the
-# owner's email, with a one-time PIN, reaches the admin's own login. It applies
-# to proxied DNS records only (domain.tf). See "Deploying the admin" in
-# README.md.
+# owner's Cloudflare account, signed in with its password and second factor
+# (the Cloudflare identity provider, limited to the account's members), reaches
+# the admin's own login. It applies to proxied DNS records only (domain.tf).
+# See "The admin" in README.md.
 
 resource "cloudflare_zero_trust_access_policy" "admin_owner" {
   account_id = var.cloudflare_account_id

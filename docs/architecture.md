@@ -357,7 +357,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Every other iframe becomes a link.
 - **The admin** (`internal/admin`, `commonHeaders`) sends its own headers on every response: `Content-Security-Policy: default-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (static files set their own), `nosniff`, `X-Frame-Options: deny`, and HSTS in production.
   It's on its own origin (`admin.paperround.app`), so `CrossOriginProtection` refuses form posts from the reader's pages, which are same-site but not same-origin.
-- **Admin access** (#573, `infra/access.tf`): Cloudflare Access in front of `admin.paperround.app` lets only the owner's email in, with a one-time PIN, for 24 hours, before any request reaches the admin; only `/healthcheck` is let through.
+- **Admin access** (#573, `infra/access.tf`): Cloudflare Access in front of `admin.paperround.app` lets only the owner's Cloudflare account in (its login and second factor), for 24 hours, before any request reaches the admin; only `/healthcheck` is let through.
   The service's `onrender.com` subdomain is disabled, so Access can't be bypassed, and the admin's own login is still the real gate.
   Admin commands run from the service's Shell in Render's dashboard, behind Render's own login.
 - **The admin's login** (`internal/admin/login.go`): admins are their own accounts (`admins`), never readers, enrolled only from the command line (`admin enroll`), and log in with a password, then a second factor.

@@ -117,9 +117,11 @@ resource "render_web_service" "admin" {
     # It shares the database's connections with rss: see "A second service on
     # the database's connections" in docs/backlog.md.
     RSS_DB_MAX_OPEN_CONNS = { value = "3" }
-    # Requests come through Render's Cloudflare, then Render's proxy, while
-    # its DNS record is DNS-only; see "Checking the client IP" in README.md.
-    RSS_PROXY_HOPS = { value = "2" }
+    # Requests come through the paperround.app zone's Cloudflare (its record
+    # is proxied, for Access), Render's Cloudflare, then Render's proxy, and
+    # each appends one X-Forwarded-For entry; see "Checking the client IP" in
+    # README.md.
+    RSS_PROXY_HOPS = { value = "3" }
     RSS_PORT       = { value = "8080" }
     PORT           = { value = "8080" }
     RSS_BASE_URL   = { value = "https://admin.paperround.app" }

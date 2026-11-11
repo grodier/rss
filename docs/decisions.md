@@ -1168,6 +1168,7 @@ Planned in #218; issues #208–#217.
 - **Client IP:** `X-Forwarded-For`, taking the entry `-proxy-hops` places from the right; the default 0 ignores the header.
   Render's proxy keeps whatever `X-Forwarded-For` the client sent and appends to it, so the leftmost entry can be forged.
   Production sets 2: `onrender.com` traffic passes through Cloudflare and then Render's proxy, and each appends one entry, so the app doesn't need to know either's address.
+  The admin sets 3 (#573): its record is proxied, for Access, which adds the `paperround.app` zone's Cloudflare in front.
   This relies on every request going through Cloudflare; one that reached Render's proxy directly could forge its address.
   The first production check (#214) found the second hop: with 1 the app saw Cloudflare's address.
   This replaces trusting a measured proxy range (#212): Render doesn't publish that range and can change it without notice, and a stale range silently made every visitor share one login limit.

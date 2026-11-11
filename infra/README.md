@@ -158,7 +158,7 @@ The admin site (`cmd/admin`) runs as its own web service, `rss-admin`, at `https
 
 - **Cloudflare Access** (`access.tf`), on the Zero Trust Free plan (team `bold-frog-19d2` in 1Password): only `ADMIN_ACCESS_EMAIL` gets in, with a one-time PIN emailed to it, for 24 hours.
   `/healthcheck` is its own Access application that lets everyone through, so the deploy workflow can check the version; it reports what `paperround.app/healthcheck` does.
-  Access applies only to a proxied DNS record.
+  Access applies only to a proxied DNS record, so the admin's is the zone's only proxied one, and the zone's SSL/TLS mode is **Full (strict)** (with **Flexible**, Cloudflare would call Render over HTTP and Render's redirect to HTTPS would loop).
 - **No `onrender.com` URL**: the service's Render subdomain is disabled, so the only way in is through Access.
   Terraform's provider has no attribute for it, so it's set in Render's dashboard.
 - **The admin's own login**, a password and a TOTP code, which is the real gate.
@@ -190,8 +190,8 @@ After merging, in order:
    Render asks for DNS-only records until then.
 5. **Disable the Render subdomain:** on the same page, set **Render Subdomain** to **Disabled**.
 6. **Add `RENDER_ADMIN_SERVICE_ID`** as a repository secret (`terraform output -raw admin_service_id`, or the `srv-…` ID in the service's URL in the dashboard), and rerun the failed `deploy` job.
-7. **Proxy the record:** a follow-up PR sets `proxied = true` on `cloudflare_dns_record.admin` and `RSS_PROXY_HOPS` to `3`.
-   Before approving its apply, check the `paperround.app` zone's **SSL/TLS → Overview** shows **Full (strict)** (or **Full**): with **Flexible**, Cloudflare would call Render over HTTP and Render's redirect to HTTPS would loop.
+7. **Proxy the record:** a follow-up PR (#573's second) sets `proxied = true` on `cloudflare_dns_record.admin` and `RSS_PROXY_HOPS` to `3`.
+   Before approving its apply, set the `paperround.app` zone's **SSL/TLS → Overview** to **Full (strict)**, and follow "Changing the web service or the backup job" for `rss-admin` (the apply changes its environment).
 8. **Check Access** (below), then open `rss-admin`'s **Shell** and run `/admin -version`, which should print the deployed SHA; then enroll (below), then check the client IP ("Checking the client IP").
 
 **Checking that Access can't be bypassed:**
@@ -318,7 +318,7 @@ The app is served at `https://paperround.app` and sends its email from it, throu
 Why: "Accounts" in [`docs/decisions.md`](../docs/decisions.md).
 What lives where:
 
-- **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, DNS-only, the admin's on `admin` (proxied, for Access, once Render has issued its certificate; see "The admin"), and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
+- **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, DNS-only, the admin's on `admin` (proxied, for Access; see "The admin"), and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
   The service's `custom_domains` makes Render verify the domain and issue its certificates; Render adds `www` with the apex and redirects it.
 - **The old host** `rss.georgerodier.com`: its CNAME stays in `domain.tf`, in the `georgerodier.com` zone, and it stays a custom domain on the service, so old links and bookmarks keep working.
   The app redirects it, and the service's `onrender.com` URL, to `https://paperround.app` with a 308 (`redirectToCanonicalHost`), except `/healthcheck`.

@@ -4,7 +4,7 @@
 #
 # DNS-only: Render already puts Cloudflare in front of the services, and a
 # proxied record adds a third X-Forwarded-For hop (RSS_PROXY_HOPS). The one
-# exception will be admin.paperround.app: Cloudflare Access (access.tf) only
+# exception is admin.paperround.app: Cloudflare Access (access.tf) only
 # applies to proxied records.
 
 # A CNAME at the apex, which Cloudflare flattens.
@@ -27,15 +27,17 @@ resource "cloudflare_dns_record" "app_www" {
   ttl     = 1
 }
 
-# The admin. DNS-only until Render has verified the domain and issued its
-# certificate, as Render asks for a proxied record; then proxied, so Access
-# applies (see "Deploying the admin" in README.md).
+# The admin, proxied so Access applies. Render asks for a DNS-only record
+# until it has verified the domain and issued its certificate, so a new
+# custom domain starts DNS-only (see "Deploying the admin" in README.md). The
+# zone's SSL/TLS mode is Full (strict): Flexible would call Render over HTTP,
+# and Render's redirect to HTTPS would loop.
 resource "cloudflare_dns_record" "admin" {
   zone_id = var.cloudflare_app_zone_id
   name    = "admin.paperround.app"
   type    = "CNAME"
   content = trimprefix(render_web_service.admin.url, "https://")
-  proxied = false
+  proxied = true
   ttl     = 1
 }
 

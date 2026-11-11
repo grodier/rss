@@ -811,3 +811,29 @@ type QueueStatus struct {
 func (q QueueStatus) Behind(now time.Time) bool {
 	return q.Jobs > 0 && now.Sub(q.Oldest) > QueueBehindAfter
 }
+
+// JobOutcomes are one runner's finished jobs in a window, by outcome, as
+// job_metrics counts them (see "Background work" in docs/architecture.md):
+// Runner is lookup, import, refresh, icon, enrich or mail, and Total the
+// sum of its Outcomes.
+type JobOutcomes struct {
+	Runner   string
+	Total    int
+	Outcomes []JobOutcome
+}
+
+// JobOutcome is how many of a runner's jobs ended with one outcome.
+type JobOutcome struct {
+	Name string
+	Jobs int
+}
+
+// Jobs returns how many jobs it finished with outcome name, 0 if none.
+func (o JobOutcomes) Jobs(name string) int {
+	for _, out := range o.Outcomes {
+		if out.Name == name {
+			return out.Jobs
+		}
+	}
+	return 0
+}

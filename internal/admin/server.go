@@ -102,6 +102,7 @@ type EmailStore interface {
 type OverviewStore interface {
 	Overview(ctx context.Context, now time.Time) (rss.AdminOverview, error)
 	Queues(ctx context.Context) ([]rss.QueueStatus, error)
+	Jobs(ctx context.Context, since time.Time) (outcomes []rss.JobOutcomes, recorded bool, err error)
 }
 
 type Services struct {

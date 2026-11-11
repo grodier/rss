@@ -100,4 +100,94 @@
     background: var(--danger-bg);
     color: var(--on-danger-bg);
   }
+
+  /* A runner's failures, when it had any. */
+  .job-failed {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  /* Design checkpoint (#611): options b and c. The unpicked ones go before
+     the PR is ready. */
+  .job-total {
+    margin-inline-start: 0.25rem;
+    color: var(--text-2);
+  }
+
+  .data tr.job-cont td {
+    border-block-start: 0;
+  }
+
+  .job-bars > li {
+    padding-block: 0.625rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .job-bars > li:first-child {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .job-bar-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.875rem;
+  }
+
+  .job-bar-head span {
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .job-bar {
+    display: block;
+    inline-size: 100%;
+    block-size: 0.5rem;
+    margin-block: 0.375rem;
+    border-radius: 999px;
+  }
+
+  .job-bar-track {
+    fill: var(--surface);
+  }
+
+  .job-bar .job-ok {
+    fill: var(--tone-2);
+  }
+
+  .job-bar .job-other {
+    fill: var(--tone-3);
+  }
+
+  .job-bar .job-failure {
+    fill: var(--danger);
+  }
+
+  .job-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .job-key .swatch {
+    display: inline-block;
+    inline-size: 0.625rem;
+    block-size: 0.625rem;
+    margin-inline-end: 0.25rem;
+    border-radius: 2px;
+  }
+
+  .job-key .swatch.job-ok {
+    background: var(--tone-2);
+  }
+
+  .job-key .swatch.job-other {
+    background: var(--tone-3);
+  }
+
+  .job-key .swatch.job-failure {
+    background: var(--danger);
+  }
 }

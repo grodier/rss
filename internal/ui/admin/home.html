@@ -53,6 +53,83 @@
           </table>
         </div>
       </section>
+
+      <section class="admin-section" aria-labelledby="jobs">
+        <h2 id="jobs">Jobs, last 24 hours</h2>
+        {{if not .JobsRecorded}}
+        <p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>
+        {{else if eq .Option "b"}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col">Outcome</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col" class="num">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}{{$runner := .}}
+              {{if .Total}}
+              {{range $i, $s := .Shares}}
+              <tr{{if $i}} class="job-cont"{{end}}>
+                <td>{{if not $i}}{{$runner.Label}} <span class="job-total">{{count $runner.Total}}</span>{{end}}</td>
+                <td>{{$s.Label}}</td>
+                <td class="num">{{count $s.Jobs}}</td>
+                <td class="num{{if $s.Failure}} job-failed{{end}}">{{$s.Percent}}</td>
+              </tr>
+              {{end}}
+              {{else}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td colspan="3">No jobs</td>
+              </tr>
+              {{end}}
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else if eq .Option "c"}}
+        <ul class="job-bars" role="list">
+          {{range .Jobs}}
+          <li>
+            <p class="job-bar-head"><strong>{{.Label}}</strong> <span>{{if .Total}}{{count .Total}} jobs{{else}}No jobs{{end}}</span></p>
+            {{if .Total}}
+            <svg class="job-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+              <rect class="job-bar-track" x="0" y="0" width="100" height="8" />
+              {{range .Shares}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}
+            </svg>
+            <ul class="job-key" role="list">
+              {{range .Shares}}<li{{if .Failure}} class="job-failed"{{end}}><span class="swatch job-{{.Kind}}"></span>{{.Label}} {{.Percent}}</li>{{end}}
+            </ul>
+            {{end}}
+          </li>
+          {{end}}
+        </ul>
+        {{else}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col">Outcomes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Total}}</td>
+                <td>{{if .Total}}{{range $i, $s := .Shares}}{{if $i}} · {{end}}<span{{if $s.Failure}} class="job-failed"{{end}}>{{$s.Label}} {{$s.Percent}}</span>{{end}}{{else}}No jobs{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{end}}
+      </section>
     </main>
   </div>
 </body>

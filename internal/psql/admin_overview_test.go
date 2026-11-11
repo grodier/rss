@@ -229,3 +229,67 @@ func TestAdminOverviewRepositoryQueues(t *testing.T) {
 		}
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB. Other tests' runners
+// share the database, so it writes outcomes of its own, named for it, and
+// checks only those.
+func TestAdminOverviewRepositoryJobs(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminOverviewRepository(db)
+	since := time.Date(2001, 1, 1, 12, 0, 0, 0, time.UTC)
+	tag := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	saved, failed := tag+"-saved", tag+"-failed"
+
+	insert := func(resolution string, at time.Time, outcome string, jobs int) {
+		t.Helper()
+		_, err := db.Exec(`INSERT INTO job_metrics (period_start, resolution, instance, runner, outcome, jobs, duration_ms_sum, buckets)
+			VALUES ($1, $2, $3, 'refresh', $4, $5, 0, '{}')`, at, resolution, tag, outcome, jobs)
+		if err != nil {
+			t.Fatalf("insert job_metrics: %v", err)
+		}
+	}
+	cleanupExec(t, db, `DELETE FROM job_metrics WHERE outcome IN ($1, $2)`, saved, failed)
+
+	insert("minute", since, saved, 5)                     // the window's first minute
+	insert("minute", since.Add(30*time.Minute), saved, 3) // inside
+	insert("minute", since.Add(-time.Minute), saved, 100) // before it
+	insert("minute", since.Add(2*time.Minute), failed, 2) // inside
+	insert("hour", since.Add(time.Hour), saved, 1000)     // a rollup of minutes: not counted twice
+	insert("hour", since.Add(-time.Hour), failed, 1000)   // and not before either
+
+	outcomes, recorded, err := repo.Jobs(t.Context(), since)
+	if err != nil {
+		t.Fatalf("Jobs: %v", err)
+	}
+	if !recorded {
+		t.Error("recorded = false, want true")
+	}
+	var refresh rss.JobOutcomes
+	for _, o := range outcomes {
+		if o.Runner == "refresh" {
+			refresh = o
+		}
+	}
+	if got := refresh.Jobs(saved); got != 8 {
+		t.Errorf("refresh %s = %d, want 8 (5 + 3, from minute rows in the window)", saved, got)
+	}
+	if got := refresh.Jobs(failed); got != 2 {
+		t.Errorf("refresh %s = %d, want 2", failed, got)
+	}
+	sum := 0
+	for _, o := range refresh.Outcomes {
+		sum += o.Jobs
+	}
+	if refresh.Total != sum {
+		t.Errorf("refresh total = %d, want the sum of its outcomes, %d", refresh.Total, sum)
+	}
+
+	// Nothing after the window: no outcomes, but metrics were recorded.
+	outcomes, recorded, err = repo.Jobs(t.Context(), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("Jobs: %v", err)
+	}
+	if len(outcomes) != 0 || !recorded {
+		t.Errorf("Jobs after every row = %d runners, recorded %v; want none, true", len(outcomes), recorded)
+	}
+}

@@ -11,13 +11,16 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// fakeOverview is an OverviewStore returning o and queues, or err, and
-// remembering the time the Overview was asked for.
+// fakeOverview is an OverviewStore returning its fields, or err, and
+// remembering the times it was asked for.
 type fakeOverview struct {
-	o      rss.AdminOverview
-	queues []rss.QueueStatus
-	err    error
-	now    time.Time
+	o        rss.AdminOverview
+	queues   []rss.QueueStatus
+	jobs     []rss.JobOutcomes
+	recorded bool
+	err      error
+	now      time.Time
+	since    time.Time
 }
 
 func (f *fakeOverview) Overview(_ context.Context, now time.Time) (rss.AdminOverview, error) {
@@ -27,6 +30,11 @@ func (f *fakeOverview) Overview(_ context.Context, now time.Time) (rss.AdminOver
 
 func (f *fakeOverview) Queues(context.Context) ([]rss.QueueStatus, error) {
 	return f.queues, f.err
+}
+
+func (f *fakeOverview) Jobs(_ context.Context, since time.Time) ([]rss.JobOutcomes, bool, error) {
+	f.since = since
+	return f.jobs, f.recorded, f.err
 }
 
 // overviewServer returns a logged-in browser to a server whose Overview is
@@ -189,6 +197,79 @@ func TestWait(t *testing.T) {
 	} {
 		if got := wait(d); got != want {
 			t.Errorf("wait(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+// testJobs are a day's outcomes: refresh with every outcome, lookups with
+// none, enrichment with retries and a few given up, and email all sent.
+func testJobs() []rss.JobOutcomes {
+	return []rss.JobOutcomes{
+		{Runner: "enrich", Total: 1000, Outcomes: []rss.JobOutcome{{Name: "gave_up", Jobs: 4}, {Name: "retry", Jobs: 96}, {Name: "saved", Jobs: 900}}},
+		{Runner: "mail", Total: 12, Outcomes: []rss.JobOutcome{{Name: "sent", Jobs: 12}}},
+		{Runner: "refresh", Total: 2000, Outcomes: []rss.JobOutcome{{Name: "failed", Jobs: 40}, {Name: "gone", Jobs: 2}, {Name: "not_modified", Jobs: 1158}, {Name: "saved", Jobs: 800}}},
+		{Runner: "icon", Total: 5, Outcomes: []rss.JobOutcome{{Name: "saved", Jobs: 5}}},
+	}
+}
+
+func TestOverviewJobs(t *testing.T) {
+	ov := &fakeOverview{jobs: testJobs(), recorded: true}
+	b := overviewServer(t, ov)
+
+	body := b.get(t, "/").Body.String()
+	if want := testNow.Add(-24 * time.Hour); !ov.since.Equal(want) {
+		t.Errorf("Jobs asked since %v, want %v", ov.since, want)
+	}
+	for _, want := range []string{
+		`<h2 id="jobs">Jobs, last 24 hours</h2>`,
+		`<td>Refresh</td>`,
+		`<td class="num">2,000</td>`,
+		`<span>saved 40%</span> · <span>304 58%</span> · <span class="job-failed">failed 2%</span> · <span>gone &lt;1%</span>`,
+		`<td>Lookups</td>`,
+		`<td>No jobs</td>`,
+		`<span>saved 90%</span> · <span class="job-failed">gave up &lt;1%</span>`,
+		`<span>sent 100%</span> · <span>gave up 0%</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %s", want)
+		}
+	}
+	// Icons and imports aren't shown.
+	if strings.Contains(body, "<td>Icons</td>\n                <td class=\"num\">5</td>") {
+		t.Error("GET / shows the icon runner's jobs")
+	}
+}
+
+func TestOverviewJobsNotRecorded(t *testing.T) {
+	body := overviewServer(t, &fakeOverview{}).get(t, "/").Body.String()
+	if !strings.Contains(body, `<p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>`) {
+		t.Error("GET / lacks the empty state for no job metrics")
+	}
+}
+
+// The design checkpoint's options; this goes with the switch once one is
+// picked.
+func TestOverviewJobOptions(t *testing.T) {
+	b := overviewServer(t, &fakeOverview{jobs: testJobs(), recorded: true})
+	for path, want := range map[string]string{
+		"/?option=b": `<td class="num job-failed">2%</td>`,
+		"/?option=c": `<rect class="job-failure" x="97.9" y="0" width="2" height="8" />`,
+	} {
+		if body := b.get(t, path).Body.String(); !strings.Contains(body, want) {
+			t.Errorf("GET %s lacks %s", path, want)
+		}
+	}
+}
+
+func TestShare(t *testing.T) {
+	for _, tt := range []struct {
+		part, whole int
+		want        string
+	}{
+		{0, 0, ""}, {0, 10, "0%"}, {1, 1000, "<1%"}, {5, 1000, "1%"}, {1, 3, "33%"}, {2, 3, "67%"}, {10, 10, "100%"},
+	} {
+		if got := share(tt.part, tt.whole); got != tt.want {
+			t.Errorf("share(%d, %d) = %q, want %q", tt.part, tt.whole, got, tt.want)
 		}
 	}
 }

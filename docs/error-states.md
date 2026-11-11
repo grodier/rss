@@ -306,8 +306,10 @@ The admin site (`make run/admin`, http://localhost:4001) is the owner's alone; i
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| A1 Overview: an empty database | Open `/` on a database with no accounts, feeds or queued work | 200, the Overview | Every figure 0 (second lines "of 0", "0 in 30 days"), every queue 0 with "—" for its longest wait | n/a | changed in #575 and #610 (was #562's "Nothing here yet."), not reviewed |
+| A1 Overview: an empty database | Open `/` on a database with no accounts, feeds or queued work | 200, the Overview | Every figure 0 (second lines "of 0", "0 in 30 days"), every queue 0 with "—" for its longest wait, and A1b for the jobs | n/a | changed in #575 and #610 (was #562's "Nothing here yet."), not reviewed |
 | A1a Overview: a queue behind | A queue's oldest due job waited over 15 minutes, e.g. `UPDATE emails SET next_attempt_at = now() - interval '20 minutes' WHERE status = 'pending'` | 200, the Overview | "Behind" on the queue | n/a: says the runner isn't keeping up | new in #610, not reviewed |
+| A1b Overview: no job metrics yet | Open `/` on a database whose `job_metrics` is empty (a new database, or `www` never ran a job) | 200, the Overview | "No job metrics yet. `www` writes them once a minute." | n/a: fills in once `www` runs | new in #611, not reviewed |
+| A1c Overview: a runner with no jobs | A runner finished no jobs in the last 24 hours | 200, the Overview | "No jobs" on its row | n/a | new in #611, not reviewed |
 | A2 404 | `/nope`, or a missing file under `/static/` | 404 error page | "Page not found" / "There's no admin page here." | The sidebar, "Go to the overview" | new in #562, not reviewed |
 | A3 405 | `curl -X POST -H 'Sec-Fetch-Site: same-origin' localhost:4001/` | 405 with `Allow: GET, HEAD` | "Method not allowed" / "That action isn't supported for this page." | As A2 | new in #562, not reviewed |
 | A4 403: a post from another origin, the reader's included | `curl -X POST -H 'Sec-Fetch-Site: same-site' localhost:4001/` | 403 error page | "Request blocked" / "This form was submitted from another site, so it was rejected." | As A2 | new in #562, not reviewed |

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,6 +29,14 @@ type homePage struct {
 	People  []statTile
 	Content []statTile
 	Queues  []queueRow
+	// Jobs are the runners' outcomes in the last 24 hours; JobsRecorded is
+	// false until www has written any job metrics.
+	Jobs         []jobRow
+	JobsRecorded bool
+	// Option is the design checkpoint's option for the Jobs section, a
+	// (default), b or c; the picked one replaces the switch before the PR
+	// is ready.
+	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
@@ -46,13 +55,25 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	jobs, recorded, err := s.services.Overview.Jobs(r.Context(), now.Add(-jobsWindow))
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	data := homePage{
-		Nav:        s.nav(r, "overview"),
-		People:     peopleTiles(o.People),
-		Content:    contentTiles(o.Content),
-		Queues:     queueRows(queues, now),
-		Version:    s.config.Version,
-		RenderedAt: now,
+		Nav:          s.nav(r, "overview"),
+		People:       peopleTiles(o.People),
+		Content:      contentTiles(o.Content),
+		Queues:       queueRows(queues, now),
+		Jobs:         jobRows(jobs),
+		JobsRecorded: recorded,
+		Option:       "a",
+		Version:      s.config.Version,
+		RenderedAt:   now,
+	}
+	switch opt := r.URL.Query().Get("option"); opt {
+	case "b", "c":
+		data.Option = opt
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -135,6 +156,95 @@ func wait(d time.Duration) string {
 		return strconv.Itoa(int(d/time.Hour)) + " h"
 	}
 	return strconv.Itoa(int(d/(24*time.Hour))) + " d"
+}
+
+// jobsWindow is how far back the Jobs section looks.
+const jobsWindow = 24 * time.Hour
+
+// jobOutcome is an outcome the Jobs section shows: its job_metrics name,
+// its label, and whether it's a failure, shown in the danger color when
+// any job had it.
+type jobOutcome struct {
+	name, label string
+	failure     bool
+}
+
+// jobRunners are the runners the Jobs section shows, in order, with the
+// outcomes it shows for each. An outcome left out (enrichment's and
+// email's retry) counts in the runner's total only.
+var jobRunners = []struct {
+	name, label string
+	outcomes    []jobOutcome
+}{
+	{"refresh", "Refresh", []jobOutcome{{"saved", "saved", false}, {"not_modified", "304", false}, {"failed", "failed", true}, {"gone", "gone", false}}},
+	{"lookup", "Lookups", []jobOutcome{{"found", "found", false}, {"none", "no feeds", false}, {"failed", "failed", true}}},
+	{"enrich", "Enrichment", []jobOutcome{{"saved", "saved", false}, {"gave_up", "gave up", true}}},
+	{"mail", "Email", []jobOutcome{{"sent", "sent", false}, {"gave_up", "gave up", true}}},
+}
+
+// jobRow is one runner in the Jobs section: its jobs in the window and
+// each shown outcome's share of them.
+type jobRow struct {
+	Label  string
+	Total  int
+	Shares []jobShare
+}
+
+// jobShare is one outcome's share of a runner's jobs. Percent is rounded
+// ("<1%" for a few jobs of many); Start and Width place it on option c's
+// bar, in percent.
+type jobShare struct {
+	Label        string
+	Jobs         int
+	Percent      string
+	Failure      bool
+	Start, Width float64
+	// Kind colors option c's segment: ok (the runner's success), failure,
+	// or other.
+	Kind string
+}
+
+// jobRows are the Jobs section's rows, from the runners' outcomes.
+func jobRows(outcomes []rss.JobOutcomes) []jobRow {
+	byRunner := map[string]rss.JobOutcomes{}
+	for _, o := range outcomes {
+		byRunner[o.Runner] = o
+	}
+	rows := make([]jobRow, len(jobRunners))
+	for i, jr := range jobRunners {
+		o := byRunner[jr.name]
+		rows[i] = jobRow{Label: jr.label, Total: o.Total}
+		start := 0.0
+		for _, out := range jr.outcomes {
+			n := o.Jobs(out.name)
+			sh := jobShare{Label: out.label, Jobs: n, Percent: share(n, o.Total), Failure: out.failure && n > 0, Start: start, Kind: "other"}
+			switch {
+			case out.failure:
+				sh.Kind = "failure"
+			case out.name == jr.outcomes[0].name:
+				sh.Kind = "ok"
+			}
+			if o.Total > 0 {
+				sh.Width = float64(n) * 100 / float64(o.Total)
+			}
+			start += sh.Width
+			rows[i].Shares = append(rows[i].Shares, sh)
+		}
+	}
+	return rows
+}
+
+// share is part of whole as a rounded percentage, "<1%" when part is a few
+// of many, and "" when whole is 0.
+func share(part, whole int) string {
+	if whole == 0 {
+		return ""
+	}
+	p := int(math.Round(float64(part) * 100 / float64(whole)))
+	if p == 0 && part > 0 {
+		return "<1%"
+	}
+	return strconv.Itoa(p) + "%"
 }
 
 // count formats n with commas between thousands: 1,284.

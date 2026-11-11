@@ -14,6 +14,7 @@ resource "cloudflare_zero_trust_access_application" "admin" {
   account_id       = var.cloudflare_account_id
   name             = "rss-admin"
   type             = "self_hosted"
+  domain           = "admin.paperround.app"
   destinations     = [{ type = "public", uri = "admin.paperround.app" }]
   session_duration = "24h"
   policies         = [{ id = cloudflare_zero_trust_access_policy.admin_owner.id, precedence = 1 }]
@@ -34,6 +35,7 @@ resource "cloudflare_zero_trust_access_application" "admin_healthcheck" {
   account_id   = var.cloudflare_account_id
   name         = "rss-admin healthcheck"
   type         = "self_hosted"
+  domain       = "admin.paperround.app/healthcheck"
   destinations = [{ type = "public", uri = "admin.paperround.app/healthcheck" }]
   policies     = [{ id = cloudflare_zero_trust_access_policy.admin_healthcheck.id, precedence = 1 }]
 }

@@ -123,6 +123,7 @@ Run **Actions → Deploy → Run workflow** with an earlier commit's full SHA.
 Its image is still in GHCR.
 Rolling back doesn't undo migrations: the older image runs against the newer schema, and its `migrate` has nothing to apply.
 Every migration works with the version before it (see "Prototype stage" in [`CLAUDE.md`](../CLAUDE.md)), so rolling back one deploy is safe; going further back past a migration that dropped something the older code uses is not.
+Commits from before #573 have no `rss-admin` image, so rolling back to one fails at the last step, after `rss` and the backup job have been rolled back; the admin keeps running its newer image.
 
 ### Approving infrastructure applies
 
@@ -191,7 +192,7 @@ After merging, in order:
 6. **Add `RENDER_ADMIN_SERVICE_ID`** as a repository secret (`terraform output -raw admin_service_id`, or the `srv-…` ID in the service's URL in the dashboard), and rerun the failed `deploy` job.
 7. **Proxy the record:** a follow-up PR sets `proxied = true` on `cloudflare_dns_record.admin` and `RSS_PROXY_HOPS` to `3`.
    Before approving its apply, check the `paperround.app` zone's **SSL/TLS → Overview** shows **Full (strict)** (or **Full**): with **Flexible**, Cloudflare would call Render over HTTP and Render's redirect to HTTPS would loop.
-8. **Check Access**, then enroll (below), then check the client IP ("Checking the client IP").
+8. **Check Access** (below), then open `rss-admin`'s **Shell** and run `/admin -version`, which should print the deployed SHA; then enroll (below), then check the client IP ("Checking the client IP").
 
 **Checking that Access can't be bypassed:**
 
@@ -220,7 +221,7 @@ For a lost phone or password, run the same with `-reset`, which replaces the adm
 
 The key seals every admin's TOTP secret, so a new key makes every secret unreadable and every admin enrolls again.
 
-1. Generate a new key into 1Password (as in "Deploying the admin", replacing the item's `secret-key`).
+1. Replace the key in 1Password: `op item edit rss-admin --vault rss "secret-key[password]=$(openssl rand -hex 32)"`.
 2. Set it as `RSS_SECRET_KEY` on `rss-admin`'s **Environment** page (saving redeploys).
 3. From the service's **Shell**, run `/admin enroll -email <admin> -reset` for each admin.
 

@@ -46,6 +46,11 @@ test/db: assets db/check
 docker/build:
 	docker build --build-arg VERSION=$$(git rev-parse HEAD) -t rss .
 
+## docker/build/admin: build the admin's container image, tagged rss-admin, with the current commit as its version
+.PHONY: docker/build/admin
+docker/build/admin:
+	docker build --build-arg VERSION=$$(git rev-parse HEAD) --target admin -t rss-admin .
+
 .PHONY: clean
 clean:
 	rm -rf bin web/dist

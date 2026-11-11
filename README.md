@@ -206,7 +206,7 @@ It prints `sent to <address>` and exits 0 when the email is sent (or exits 0 aft
 
 ## Make targets
 
-Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports).
+Run `make help` for the documented targets, among them `make docker/build`, which builds the container image (tagged `rss`, with the current commit as the version `/healthcheck` reports), and `make docker/build/admin`, which builds the admin's (tagged `rss-admin`).
 Among them: `make run` (the app), `make run/admin` (the admin site, locally), `make build` (outputs `bin/www` and `bin/admin`); also `make clean` (also removes `web/dist`).
 
 `make assets` builds the frontend (`web/`) into `web/dist`, which package `web` embeds: it runs `npm ci` when `web/package-lock.json` changes and `npm run build` (the reader's build into `web/dist/app`, then the admin's into `web/dist/admin`) when a file under `web/app`, `web/admin` or `web/shared` (or a Vite config) does, so it's instant when nothing changed.

@@ -139,6 +139,18 @@ While an apply waits for approval, later applies wait behind it, and GitHub keep
 Re-run it if it was an apply you still want.
 Plans don't wait behind applies; each pull request gets one plan at a time, and Terraform's state lock makes a plan wait (up to 5 minutes) while an apply is running.
 
+### A stale state lock
+
+A plan or apply that fails with `Error acquiring the state lock` while nothing else is running is blocked by a lock a killed run left behind: Terraform releases its lock when it stops, but not when its job is killed.
+The workflows interrupt Terraform before their jobs' time limits (`timeout --signal=INT`), so it can stop cleanly; a lock can still be left by a run cancelled by hand or a runner that died.
+
+1. Check no plan or apply is running or waiting (Actions → Infrastructure).
+2. Copy the lock's `ID` from the failed run's "Lock Info".
+3. **Actions → Unlock Terraform state → Run workflow**, paste the ID, then approve it in the `infrastructure` environment (**Review deployments → Approve**); this works from the GitHub app or a phone's browser.
+4. Re-run the failed plan or apply.
+
+With the state's credentials locally, `terraform -chdir=infra force-unlock <ID>` does the same.
+
 ### Changing the web service or the backup job
 
 Until the provider is upgraded (a backlog item), an apply that changes `render_web_service.rss` (or `render_web_service.admin`) fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).

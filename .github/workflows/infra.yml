@@ -39,7 +39,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     # One plan per pull request at a time, never cancelled midway (a cancelled
     # run can leave the state lock behind). Plans don't wait behind an apply
     # waiting for approval; the state lock keeps them from running during one.
@@ -59,10 +59,15 @@ jobs:
         run: terraform -chdir=infra init
 
       - name: terraform plan
+        # Terraform is stopped before the job's limit: interrupted, it cancels
+        # its calls and releases the state lock, which a killed job leaves
+        # behind (see "A stale state lock" in infra/README.md). Its output
+        # streams to the log, so a hang shows where it hangs.
         run: |
+          set -o pipefail
           status=0
-          terraform -chdir=infra plan -lock-timeout=5m -no-color > "$RUNNER_TEMP/plan.txt" 2>&1 || status=$?
-          cat "$RUNNER_TEMP/plan.txt"
+          timeout --signal=INT --kill-after=2m 10m \
+            terraform -chdir=infra plan -lock-timeout=5m -no-color 2>&1 | tee "$RUNNER_TEMP/plan.txt" || status=$?
           {
             echo '## terraform plan'
             echo
@@ -94,5 +99,9 @@ jobs:
       - name: terraform init
         run: terraform -chdir=infra init
 
+      # Stopped before the job's limit, like the plan: interrupted, Terraform
+      # finishes the changes under way, saves the state and releases the lock.
       - name: terraform apply
-        run: terraform -chdir=infra apply -auto-approve -lock-timeout=10m -no-color
+        run: |
+          timeout --signal=INT --kill-after=3m 25m \
+            terraform -chdir=infra apply -auto-approve -lock-timeout=10m -no-color

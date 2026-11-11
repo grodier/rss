@@ -1160,6 +1160,10 @@ Planned in #218; issues #208–#217.
   Don't add host-specific code paths.
 - **Terraform**, with the official Render provider and the Cloudflare provider (for R2).
   State lives in an R2 bucket.
+- **Terraform is interrupted before its job's time limit, and a stale lock is released from Actions** (after a plan that hung on the Cloudflare provider was killed at the 10-minute limit and left the state locked, during #606).
+  A killed job can't release the lock, but an interrupted Terraform does, so plans stop at 10 minutes (the job at 15) and applies at 25 (the job at 30).
+  The unlock workflow needs the owner's approval in the `infrastructure` environment and only the state's credentials, so a lock can be cleared away from a computer.
+  Rejected: plans with `-lock=false`, which would let a plan read the state while an apply writes it.
   After the first apply (by hand, during setup), applies run only from GitHub Actions, one at a time.
 - **The domain is Cloudflare DNS plus a Render custom domain, both in Terraform** (#218, #254).
   Which domain is under "Accounts".

@@ -191,13 +191,33 @@ func runInviteList(args []string, getenv func(string) string, stdout, stderr io.
 	}
 	defer db.Close()
 
-	invites, err := psql.NewInviteRepository(db).List(context.Background())
+	invites, err := allInvites(context.Background(), psql.NewInviteRepository(db))
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	writeInvites(stdout, invites, time.Now())
 	return 0
+}
+
+// invitePage is how many invites allInvites reads at a time.
+const invitePage = 500
+
+// allInvites reads every invite, newest first, a page at a time.
+func allInvites(ctx context.Context, repo *psql.InviteRepository) ([]rss.Invite, error) {
+	var all []rss.Invite
+	before := ""
+	for {
+		page, err := repo.List(ctx, before, invitePage)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < invitePage {
+			return all, nil
+		}
+		before = page[len(page)-1].ID
+	}
 }
 
 // writeInvites writes invites as a table: ID, created, who it's for (the

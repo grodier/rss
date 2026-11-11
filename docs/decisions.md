@@ -1146,6 +1146,8 @@ Planned in #583.
   Rejected: the counts as a row of figures that are the tabs, with the actions in the page head, which crowds the head on phones and scrolls the button away.
 - **The review shows the day's limit as a bar** (#574, approved at its design checkpoint): what's used, this wave, the reserve at its end and the 80% mark, over the issue's sentence, which carries the same numbers for screen readers; people who don't fit today are dimmed and marked "Waits".
   Rejected: the numbers as a row of figures, which leaves the sums to the reader.
+- **An invite made by hand with an email needs a confirmed waitlist entry with no pending invite** (#607), as `admin invite create -email` needs a confirmed one: its account starts confirmed, and a second pending invite would only duplicate the first, which can be resent instead.
+- **Resending replaces the invite's token and expiry, 14 days from then** (#607), rather than making a new invite, so the wave's summary still counts it once; it's checked against the limits like a wave.
 - **The invites page and invites by hand are their own issue** (#607, split from #574 at its design checkpoint to keep the PR reviewable): the waitlist, the review, sending a wave and the invite email came first.
   The invites page's agreed look, a Waves table (sent, signed up, active after 7 days) above one list of every invite, newest first, goes with it; rejected there: one list grouped under each wave's summary.
 

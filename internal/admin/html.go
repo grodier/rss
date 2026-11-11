@@ -21,6 +21,16 @@ var templateFuncs = template.FuncMap{
 	"chart": func(c chart.Chart) template.HTML { return c.SVG() },
 	// waitlistStatus says where a waitlist row stands, at now.
 	"waitlistStatus": waitlistStatus,
+	// inviteStatus is an invite's status at now, as the invites page says
+	// it.
+	"inviteStatus": inviteStatus,
+	// percent is part as a share of whole, like "40%", or "" when whole is 0.
+	"percent": func(part, whole int) string {
+		if whole == 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d%%", part*100/whole)
+	},
 	// subf subtracts b from a, to place an SVG shape from its end.
 	"subf": func(a, b float64) float64 { return a - b },
 	// date formats t as a UTC date.

@@ -501,6 +501,10 @@ Admin and observability:
   `WaitlistRepository.Counts` scans the whole table with a subquery on `invites` per row, and `List` skips pages with `OFFSET`, on every view of `/waitlist`.
   *Signal:* the waitlist passes about 50,000 entries, or `/waitlist` takes over 200ms.
   *Fix:* page by the last row's `(created_at, id)`, like the audit log, and count the tabs from a partial index on confirmed entries.
+- [ ] **The invites page sums every wave on each view** (#607).
+  `InviteRepository.Waves` groups every invite with a wave and checks each signed-up one's sessions, on every view of `/invites`.
+  *Signal:* invites pass about 50,000, or `/invites` takes over 200ms.
+  *Fix:* keep each wave's counts in a table, updated when an invite is sent or redeemed, or cache the summary for a few minutes.
 
 Background refresh:
 

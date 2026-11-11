@@ -284,6 +284,7 @@ request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_dai
 - **`invites`:** one row per invite, with its token's hash; `email` is set for a bound invite and must be the signup's address.
   Redeeming is one `UPDATE … WHERE` the invite is unredeemed, unrevoked and unexpired, in the same transaction as the user's insert, so an invite makes at most one account and a failed signup leaves it usable.
   Deleting its waitlist entry or its account clears `waitlist_id` or `user_id` and keeps the row, for the admin's history.
+  Resending a bound invite replaces its `token_hash` and `expires_at` in place, so it keeps its wave and history and the old link stops working.
   A waitlist entry is waiting while it has no pending invite (unredeemed, unrevoked, unexpired), so one whose invite expired or was revoked can be invited again; the admin's tabs are conditions on that (`waitlistTabs` in `internal/psql/waitlist.go`), not a column.
 - **`email_daily_counts`:** one row per UTC day with how many emails were queued, because the outbox deletes finished emails after 7 days and a month can't be counted from `emails`; `enqueue` inserts the email and increments its day in one statement, so the two never disagree.
   `EmailRepository.Usage` counts the last 24 hours from `emails` (plus anything still pending) and the month from this table; rows are never deleted (one a day).

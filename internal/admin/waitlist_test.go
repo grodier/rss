@@ -326,7 +326,7 @@ func TestWaitlistInviteChanged(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inv := &fakeInvites{err: tt.err}
+			inv := &fakeInvites{sendErr: tt.err}
 			b := waitlistServer(t, testWaitlist(), inv, &fakeEmails{usage: rss.EmailUsage{Last24h: 85, ThisMonth: 85}})
 			rr := b.post(t, "/waitlist/invite", url.Values{"id": tt.ids, "wave": {"My wave"}, "days": {"10"}})
 			body := rr.Body.String()

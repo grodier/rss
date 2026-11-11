@@ -130,14 +130,20 @@ The review lists who's still waiting among them, a label ("Wave {date}") and an 
 `POST /waitlist/invite` (`waitlistInviteHandler`) makes each invite's token and the entry's new link token, renders the `invite` email with both (`newWave`), and `InviteRepository.SendWave` stores the invites, replaces the entries' tokens, queues the emails and records one `invite.wave` audit entry in one transaction, after checking the limits again under an advisory lock and that every entry is still waiting.
 If either check fails, nothing is sent and the review comes back (409) with the numbers as they are now; otherwise it redirects to the Invited tab with a flash, and `www`'s mail runner sends the emails.
 
+**Invites in the admin.** `GET /invites` (`invitesHandler`) shows each wave's summary (`InviteRepository.Waves`: sent, signed up, and accounts with a session seen 7 or more days after signing up), then every invite, newest first, 100 a page by the last invite's ID (`List`).
+Each row offers what its status allows, posting to `POST /invites/{id}/resend` (a bound invite, pending or expired) or `POST /invites/{id}/revoke` (a pending one), which redirect back with a flash.
+Resending (`inviteResendHandler`) renders a new email with a new token, expiring 14 days from now, through the same `newInviteEmail` as a wave, and `InviteRepository.Resend` replaces the invite's token and expiry, gives its entry a new link token if it still has one, and queues the email, checked against the limits under the same lock; the old link stops working.
+`GET, POST /invites/new` (`newInviteFormHandler`) invites someone by hand: with an email, it must be a confirmed waitlist entry with no pending invite, and `SendInvite` sends it like a wave of one; without, `Create` makes an open invite.
+Either way the page then shows the link once, since only its hash is stored.
+
 **Start at:**
 
 1. `internal/server/home.go` (`homeHandler`) and `internal/server/waitlist.go` (`waitlistJoinHandler`, `renderWaitlistHost`, `waitlistActionHandler`).
 2. `internal/psql/waitlist.go` (`Join`, and the admin's `Counts`, `List`, `ListWaiting` and `Oldest`).
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
-4. The admin's side: `internal/admin/waitlist.go` and `limits.go`, `internal/psql/invites.go` (`SendWave`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html` and `waitlist_review.html`, and `internal/ui/emails/invite.tmpl`.
+4. The admin's side: `internal/admin/waitlist.go`, `invites.go` and `limits.go`, `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `invites_test.go` (`TestSendWave`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
+**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 

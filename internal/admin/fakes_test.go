@@ -363,6 +363,17 @@ func (f *fakeWaitlist) ListWaiting(_ context.Context, ids []string) ([]rss.Waitl
 	return out, nil
 }
 
+func (f *fakeWaitlist) GetByEmail(_ context.Context, email string) (rss.WaitlistEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if strings.EqualFold(r.Email, email) {
+			return r.WaitlistEntry, nil
+		}
+	}
+	return rss.WaitlistEntry{}, rss.ErrNoRecord
+}
+
 func (f *fakeWaitlist) Oldest(_ context.Context, n int) ([]rss.WaitlistEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -375,26 +386,109 @@ func (f *fakeWaitlist) Oldest(_ context.Context, n int) ([]rss.WaitlistEntry, er
 	return out, nil
 }
 
-// fakeInvites is an InviteStore that records the waves sent, and returns
-// err instead when it's set.
+// fakeInvites is an in-memory InviteStore: invites, newest first, and the
+// waves' summaries, with what each write was given. sendErr, resendErr and
+// revokeErr, when set, are what SendWave and SendInvite, Resend and Revoke
+// return instead of writing.
 type fakeInvites struct {
-	mu     sync.Mutex
-	waves  []rss.Wave
-	actors []rss.AuditActor
-	// available is what SendWave's available returned, for the last wave.
+	mu      sync.Mutex
+	invites []rss.Invite
+	waveSum []rss.InviteWave
+
+	waves   []rss.Wave       // sent by SendWave
+	sent    []rss.WaveInvite // sent by SendInvite
+	created []rss.Invite     // made by Create
+	resent  []string         // IDs given to Resend
+	revoked []string         // IDs revoked
+	actors  []rss.AuditActor // by each write, in order
+	// available is what the last send's available returned.
 	available int
 	usage     rss.EmailUsage
-	err       error
+
+	sendErr, resendErr, revokeErr error
 }
 
 func (f *fakeInvites) SendWave(_ context.Context, w rss.Wave, available func(rss.EmailUsage) int, by rss.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.available = available(f.usage)
-	if f.err != nil {
-		return f.err
+	if f.sendErr != nil {
+		return f.sendErr
 	}
 	f.waves = append(f.waves, w)
+	f.actors = append(f.actors, by)
+	return nil
+}
+
+func (f *fakeInvites) SendInvite(_ context.Context, inv rss.WaveInvite, note string, expiresAt time.Time, available func(rss.EmailUsage) int, by rss.AuditActor) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.available = available(f.usage)
+	if f.sendErr != nil {
+		return "", f.sendErr
+	}
+	f.sent = append(f.sent, inv)
+	f.created = append(f.created, rss.Invite{Email: inv.Email, WaitlistID: inv.WaitlistID, Note: note, ExpiresAt: expiresAt})
+	f.actors = append(f.actors, by)
+	return "sent-invite", nil
+}
+
+func (f *fakeInvites) Create(_ context.Context, inv rss.Invite, _ []byte, by rss.AuditActor) (rss.Invite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	inv.ID = fmt.Sprintf("created-%d", len(f.created)+1)
+	f.created = append(f.created, inv)
+	f.actors = append(f.actors, by)
+	return inv, nil
+}
+
+func (f *fakeInvites) Get(_ context.Context, id string) (rss.Invite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, inv := range f.invites {
+		if inv.ID == id {
+			return inv, nil
+		}
+	}
+	return rss.Invite{}, rss.ErrNoRecord
+}
+
+func (f *fakeInvites) List(_ context.Context, before string, limit int) ([]rss.Invite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	start := 0
+	if before != "" {
+		start = slices.IndexFunc(f.invites, func(i rss.Invite) bool { return i.ID == before }) + 1
+		if start == 0 {
+			return nil, nil
+		}
+	}
+	out := f.invites[start:]
+	return out[:min(limit, len(out))], nil
+}
+
+func (f *fakeInvites) Waves(context.Context) ([]rss.InviteWave, error) { return f.waveSum, nil }
+
+func (f *fakeInvites) Revoke(_ context.Context, id string, by rss.AuditActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
+	f.revoked = append(f.revoked, id)
+	f.actors = append(f.actors, by)
+	return nil
+}
+
+func (f *fakeInvites) Resend(_ context.Context, id string, inv rss.WaveInvite, _ time.Time, available func(rss.EmailUsage) int, by rss.AuditActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.available = available(f.usage)
+	if f.resendErr != nil {
+		return f.resendErr
+	}
+	f.resent = append(f.resent, id)
+	f.sent = append(f.sent, inv)
 	f.actors = append(f.actors, by)
 	return nil
 }

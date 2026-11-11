@@ -3,6 +3,7 @@ package psql
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -75,15 +76,36 @@ func TestInviteRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("List has both, newest first", func(t *testing.T) {
-		all, err := repo.List(t.Context())
+	t.Run("List has both, newest first, a page at a time", func(t *testing.T) {
+		all, err := repo.List(t.Context(), "", 1_000_000)
 		if err != nil {
 			t.Fatalf("List: %v", err)
 		}
 		ib := slices.IndexFunc(all, func(i rss.Invite) bool { return i.ID == bound.ID })
 		io := slices.IndexFunc(all, func(i rss.Invite) bool { return i.ID == open.ID })
 		if ib < 0 || io < 0 || io > ib {
-			t.Errorf("List: bound at %d, open at %d; want both, open first", ib, io)
+			t.Fatalf("List: bound at %d, open at %d; want both, open first", ib, io)
+		}
+		// The page after the open invite starts where the full list goes on.
+		after, err := repo.List(t.Context(), open.ID, 1)
+		if err != nil {
+			t.Fatalf("List(before): %v", err)
+		}
+		if io+1 < len(all) && (len(after) != 1 || after[0].ID != all[io+1].ID) {
+			t.Errorf("List(before open, 1) = %v, want %s", after, all[io+1].ID)
+		}
+		if none, err := repo.List(t.Context(), "00000000-0000-4000-8000-000000000000", 10); err != nil || len(none) != 0 {
+			t.Errorf("List(unknown before) = %v, %v; want none", none, err)
+		}
+	})
+
+	t.Run("Get", func(t *testing.T) {
+		got, err := repo.Get(t.Context(), bound.ID)
+		if err != nil || got.ID != bound.ID || got.Name != "Ada" || got.Email != email {
+			t.Errorf("Get = %+v, %v; want %+v", got, err, bound)
+		}
+		if _, err := repo.Get(t.Context(), "00000000-0000-4000-8000-000000000000"); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("Get(unknown) error = %v, want ErrNoRecord", err)
 		}
 	})
 
@@ -142,7 +164,7 @@ func fits(n int) func(rss.EmailUsage) int { return func(rss.EmailUsage) int { re
 // invitesTo returns the invites to email.
 func invitesTo(t *testing.T, repo *InviteRepository, email string) []rss.Invite {
 	t.Helper()
-	all, err := repo.List(t.Context())
+	all, err := repo.List(t.Context(), "", 1_000_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +285,193 @@ func TestSendWave(t *testing.T) {
 		}
 		if _, err := waitlist.GetByToken(ctx, w.Invites[0].WaitlistTokenHash); !errors.Is(err, rss.ErrNoRecord) {
 			t.Error("Ada's entry got its new token")
+		}
+	})
+}
+
+// signUpWith makes an account with the invite whose token hashes to hash,
+// deleted when the test ends, and returns its ID.
+func signUpWith(t *testing.T, db *sql.DB, hash []byte, email string) string {
+	t.Helper()
+	id, err := NewUserRepository(db).CreateFromInvite(t.Context(), hash, "Signed Up", email, "a long enough password 123")
+	if err != nil {
+		t.Fatalf("CreateFromInvite: %v", err)
+	}
+	cleanupExec(t, db, `DELETE FROM users WHERE id = $1`, id)
+	return id
+}
+
+func TestInviteWaves(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewInviteRepository(db)
+	joined := time.Now().Add(-time.Hour)
+	label := fmt.Sprintf("Wave test %d", time.Now().UnixNano())
+
+	ada, grace, hedy := confirmedEntry(t, db, "Ada", joined), confirmedEntry(t, db, "Grace", joined), confirmedEntry(t, db, "Hedy", joined)
+	w := testWave(t, label, ada, grace, hedy)
+	if err := repo.SendWave(t.Context(), w, fits(10), testActor(t, db)); err != nil {
+		t.Fatal(err)
+	}
+	// Ada and Grace sign up; Ada's session was seen 7 days after, Grace's 6.
+	for i, days := range []int{7, 6} {
+		e := []rss.WaitlistEntry{ada, grace}[i]
+		user := signUpWith(t, db, w.Invites[i].InviteTokenHash, e.Email)
+		_, err := db.Exec(`INSERT INTO user_sessions (user_id, last_seen_at)
+			SELECT id, created_at + make_interval(days => $2) FROM users WHERE id = $1`, user, days)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	waves, err := repo.Waves(t.Context())
+	if err != nil {
+		t.Fatalf("Waves: %v", err)
+	}
+	i := slices.IndexFunc(waves, func(w rss.InviteWave) bool { return w.Label == label })
+	if i < 0 {
+		t.Fatalf("Waves lacks %q", label)
+	}
+	if got := waves[i]; got.Sent != 3 || got.SignedUp != 2 || got.Active != 1 || got.SentAt.IsZero() {
+		t.Errorf("wave = %+v, want 3 sent, 2 signed up, 1 active", got)
+	}
+	for _, w := range waves {
+		if w.Label == "" {
+			t.Error("Waves has invites with no wave")
+		}
+	}
+}
+
+func TestResend(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewInviteRepository(db)
+	waitlist := NewWaitlistRepository(db)
+	ctx := t.Context()
+	joined := time.Now().Add(-time.Hour)
+	later := time.Now().Add(30 * 24 * time.Hour).Truncate(time.Microsecond)
+
+	// resendOf is a new token and email for an invite to e.
+	resendOf := func(e rss.WaitlistEntry) rss.WaveInvite { return testWave(t, "", e).Invites[0] }
+
+	t.Run("a new token, expiry and email", func(t *testing.T) {
+		ada := confirmedEntry(t, db, "Ada", joined)
+		w := testWave(t, "W", ada)
+		if err := repo.SendWave(ctx, w, fits(10), testActor(t, db)); err != nil {
+			t.Fatal(err)
+		}
+		inv := invitesTo(t, repo, ada.Email)[0]
+		by := testActor(t, db)
+		again := resendOf(ada)
+		if err := repo.Resend(ctx, inv.ID, again, later, fits(1), by); err != nil {
+			t.Fatalf("Resend: %v", err)
+		}
+		if _, err := repo.GetByToken(ctx, w.Invites[0].InviteTokenHash); !errors.Is(err, rss.ErrNoRecord) {
+			t.Error("the old token still finds the invite")
+		}
+		got, err := repo.GetByToken(ctx, again.InviteTokenHash)
+		if err != nil || got.ID != inv.ID || !got.ExpiresAt.Equal(later) || got.Wave != "W" {
+			t.Errorf("GetByToken(new) = %+v, %v; want the invite, expiring later, in its wave", got, err)
+		}
+		if e, err := waitlist.GetByToken(ctx, again.WaitlistTokenHash); err != nil || e.ID != ada.ID {
+			t.Errorf("the entry lacks its new link token: %v", err)
+		}
+		if n := emailsTo(t, db, ada.Email); n != 2 {
+			t.Errorf("%d emails to Ada, want 2", n)
+		}
+		if events := auditBy(t, db, by); len(events) != 1 || events[0].Action != "invite.resend" || events[0].TargetID != inv.ID {
+			t.Errorf("audit = %+v, want one invite.resend", events)
+		}
+	})
+
+	t.Run("an expired invite can be resent", func(t *testing.T) {
+		ada := confirmedEntry(t, db, "Ada", joined)
+		inv, _ := newInvite(t, db, rss.Invite{Email: ada.Email, WaitlistID: ada.ID, ExpiresAt: time.Now().Add(-time.Hour)})
+		if err := repo.Resend(ctx, inv.ID, resendOf(ada), later, fits(1), testActor(t, db)); err != nil {
+			t.Fatalf("Resend: %v", err)
+		}
+		if got, _ := repo.Get(ctx, inv.ID); got.Status(time.Now()) != rss.InvitePending {
+			t.Errorf("status = %q, want pending again", got.Status(time.Now()))
+		}
+	})
+
+	t.Run("refused", func(t *testing.T) {
+		ada := confirmedEntry(t, db, "Ada", joined)
+		open, _ := newInvite(t, db, rss.Invite{Note: "open"})
+		revoked, _ := newInvite(t, db, rss.Invite{Email: ada.Email, WaitlistID: ada.ID})
+		if err := repo.Revoke(ctx, revoked.ID, testActor(t, db)); err != nil {
+			t.Fatal(err)
+		}
+		grace := confirmedEntry(t, db, "Grace", joined)
+		used, usedHash := newInvite(t, db, rss.Invite{Email: grace.Email, WaitlistID: grace.ID})
+		signUpWith(t, db, usedHash, grace.Email)
+		hedy := confirmedEntry(t, db, "Hedy", joined)
+		pending, _ := newInvite(t, db, rss.Invite{Email: hedy.Email, WaitlistID: hedy.ID})
+
+		tests := []struct {
+			name string
+			id   string
+			fit  int
+			want error
+		}{
+			{"open", open.ID, 1, rss.ErrInviteUnusable},
+			{"revoked", revoked.ID, 1, rss.ErrInviteUnusable},
+			{"used", used.ID, 1, rss.ErrInviteUnusable},
+			{"unknown", "00000000-0000-4000-8000-000000000000", 1, rss.ErrNoRecord},
+			{"over the limits", pending.ID, 0, rss.ErrOverLimit},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if err := repo.Resend(ctx, tt.id, resendOf(hedy), later, fits(tt.fit), testActor(t, db)); !errors.Is(err, tt.want) {
+					t.Errorf("Resend error = %v, want %v", err, tt.want)
+				}
+			})
+		}
+		if n := emailsTo(t, db, hedy.Email); n != 0 {
+			t.Errorf("%d emails to Hedy, want none", n)
+		}
+		if got, _ := repo.Get(ctx, pending.ID); !got.ExpiresAt.Equal(pending.ExpiresAt) {
+			t.Error("the invite over the limits changed")
+		}
+	})
+}
+
+func TestSendInvite(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewInviteRepository(db)
+	ctx := t.Context()
+	joined := time.Now().Add(-time.Hour)
+	expires := time.Now().Add(7 * 24 * time.Hour).Truncate(time.Microsecond)
+
+	t.Run("stores, queues and records it", func(t *testing.T) {
+		ada := confirmedEntry(t, db, "Ada", joined)
+		inv := testWave(t, "", ada).Invites[0]
+		by := testActor(t, db)
+		id, err := repo.SendInvite(ctx, inv, "a friend", expires, fits(1), by)
+		if err != nil {
+			t.Fatalf("SendInvite: %v", err)
+		}
+		got, err := repo.Get(ctx, id)
+		if err != nil || got.Email != ada.Email || got.WaitlistID != ada.ID || got.Note != "a friend" || got.Wave != "" || !got.ExpiresAt.Equal(expires) {
+			t.Errorf("Get = %+v, %v", got, err)
+		}
+		if n := emailsTo(t, db, ada.Email); n != 1 {
+			t.Errorf("%d emails to Ada, want 1", n)
+		}
+		if events := auditBy(t, db, by); len(events) != 1 || events[0].Action != "invite.create" || events[0].TargetID != id {
+			t.Errorf("audit = %+v, want one invite.create", events)
+		}
+		// Now invited, Ada can't get another.
+		if _, err := repo.SendInvite(ctx, testWave(t, "", ada).Invites[0], "", expires, fits(1), by); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("SendInvite again error = %v, want ErrNoRecord", err)
+		}
+	})
+
+	t.Run("over the limits sends nothing", func(t *testing.T) {
+		ada := confirmedEntry(t, db, "Ada", joined)
+		if _, err := repo.SendInvite(ctx, testWave(t, "", ada).Invites[0], "", expires, fits(0), testActor(t, db)); !errors.Is(err, rss.ErrOverLimit) {
+			t.Fatalf("SendInvite error = %v, want ErrOverLimit", err)
+		}
+		if len(invitesTo(t, repo, ada.Email)) != 0 || emailsTo(t, db, ada.Email) != 0 {
+			t.Error("something was sent")
 		}
 	})
 }

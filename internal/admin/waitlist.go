@@ -311,37 +311,53 @@ func (s *Server) waitlistInviteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, waitlistURL(rss.WaitlistInvited, 1), http.StatusSeeOther)
 }
 
-// newWave makes the wave of invites to entries: each its invite's token and
-// its entry's new link token, and the email with both.
+// newWave makes the wave of invites to entries, each with its email.
 func (s *Server) newWave(entries []rss.WaitlistEntry, label string, expiresAt time.Time) (rss.Wave, error) {
 	wave := rss.Wave{Label: label, ExpiresAt: expiresAt}
 	for _, e := range entries {
-		invite, inviteHash, err := token.New()
+		inv, _, err := s.newInviteEmail(e.ID, e.Email, e.Name, expiresAt)
 		if err != nil {
 			return rss.Wave{}, err
 		}
-		leave, leaveHash, err := token.New()
-		if err != nil {
-			return rss.Wave{}, err
-		}
-		m, err := s.emails.Render("invite", inviteEmail{
-			Name:      e.Name,
-			SignupURL: s.config.AppURL + "/signup?invite=" + invite,
-			ExpiresOn: expiresAt.UTC().Format("2 January 2006"),
-			LeaveURL:  s.config.AppURL + "/waitlist/leave?token=" + leave,
-		})
-		if err != nil {
-			return rss.Wave{}, err
-		}
-		wave.Invites = append(wave.Invites, rss.WaveInvite{
-			WaitlistID: e.ID, Email: e.Email, InviteTokenHash: inviteHash, WaitlistTokenHash: leaveHash,
-			Subject: m.Subject, Text: m.Text, HTML: m.HTML,
-		})
+		wave.Invites = append(wave.Invites, inv)
 	}
 	return wave, nil
 }
 
-// inviteEmail is the invite email's data (internal/ui/emails/invite.tmpl).
+// newInviteEmail makes an invite's token and renders its email to email,
+// greeting name, expiring at expiresAt. With a waitlist entry (waitlistID),
+// it also makes the entry's new link token, for the email's leave link. It
+// returns the invite with both tokens' hashes and the email, and its signup
+// link.
+func (s *Server) newInviteEmail(waitlistID, email, name string, expiresAt time.Time) (rss.WaveInvite, string, error) {
+	invite, inviteHash, err := token.New()
+	if err != nil {
+		return rss.WaveInvite{}, "", err
+	}
+	data := inviteEmail{
+		Name:      name,
+		SignupURL: s.config.AppURL + "/signup?invite=" + invite,
+		ExpiresOn: expiresAt.UTC().Format("2 January 2006"),
+	}
+	inv := rss.WaveInvite{WaitlistID: waitlistID, Email: email, InviteTokenHash: inviteHash}
+	if waitlistID != "" {
+		leave, leaveHash, err := token.New()
+		if err != nil {
+			return rss.WaveInvite{}, "", err
+		}
+		data.LeaveURL = s.config.AppURL + "/waitlist/leave?token=" + leave
+		inv.WaitlistTokenHash = leaveHash
+	}
+	m, err := s.emails.Render("invite", data)
+	if err != nil {
+		return rss.WaveInvite{}, "", err
+	}
+	inv.Subject, inv.Text, inv.HTML = m.Subject, m.Text, m.HTML
+	return inv, data.SignupURL, nil
+}
+
+// inviteEmail is the invite email's data (internal/ui/emails/invite.tmpl):
+// Name and LeaveURL are "" for an invite with no waitlist entry.
 type inviteEmail struct {
 	Name, SignupURL, ExpiresOn, LeaveURL string
 }
@@ -373,4 +389,17 @@ func waitlistStatus(row rss.WaitlistRow, now time.Time) string {
 		return "Invite revoked"
 	}
 	return "Waiting"
+}
+
+// inviteStatus is inv's status at now, in words.
+func inviteStatus(inv rss.Invite, now time.Time) string {
+	switch inv.Status(now) {
+	case rss.InviteRedeemed:
+		return "Signed up"
+	case rss.InviteExpired:
+		return "Expired"
+	case rss.InviteRevoked:
+		return "Revoked"
+	}
+	return "Pending"
 }

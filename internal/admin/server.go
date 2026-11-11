@@ -77,11 +77,19 @@ type WaitlistStore interface {
 	List(ctx context.Context, tab string, limit, offset int) ([]rss.WaitlistRow, error)
 	ListWaiting(ctx context.Context, ids []string) ([]rss.WaitlistEntry, error)
 	Oldest(ctx context.Context, n int) ([]rss.WaitlistEntry, error)
+	GetByEmail(ctx context.Context, email string) (rss.WaitlistEntry, error)
 }
 
 // InviteStore is the invites' repository; *psql.InviteRepository is one.
 type InviteStore interface {
 	SendWave(ctx context.Context, w rss.Wave, available func(rss.EmailUsage) int, by rss.AuditActor) error
+	SendInvite(ctx context.Context, inv rss.WaveInvite, note string, expiresAt time.Time, available func(rss.EmailUsage) int, by rss.AuditActor) (string, error)
+	Create(ctx context.Context, inv rss.Invite, tokenHash []byte, by rss.AuditActor) (rss.Invite, error)
+	Get(ctx context.Context, id string) (rss.Invite, error)
+	List(ctx context.Context, before string, limit int) ([]rss.Invite, error)
+	Waves(ctx context.Context) ([]rss.InviteWave, error)
+	Revoke(ctx context.Context, id string, by rss.AuditActor) error
+	Resend(ctx context.Context, id string, inv rss.WaveInvite, expiresAt time.Time, available func(rss.EmailUsage) int, by rss.AuditActor) error
 }
 
 // EmailStore is the outbox's repository; *psql.EmailRepository is one.

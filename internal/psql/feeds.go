@@ -209,6 +209,13 @@ func (r *FeedRepository) MarkGone(ctx context.Context, id string) error {
 	return execOne(ctx, r.DB, stmt, id)
 }
 
+// feedDue is true for a feed ClaimDue may claim: due, not gone, and
+// subscribed or requested. The admin's Overview counts the refresh queue
+// with it (AdminOverviewRepository.Queues).
+const feedDue = `next_fetch_at <= now() AND gone_at IS NULL
+	AND (refresh_requested_at IS NOT NULL
+	     OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id))`
+
 // ClaimDue claims a due feed (next_fetch_at <= now()) that has a subscriber
 // or a pending refresh request (see RequestRefresh), by moving its
 // next_fetch_at to now() + lease, and returns it. Requested feeds come first,
@@ -220,9 +227,7 @@ func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss
 	stmt := `UPDATE feeds SET next_fetch_at = now() + make_interval(secs => $1)
 		WHERE id = (
 			SELECT id FROM feeds
-			WHERE next_fetch_at <= now() AND gone_at IS NULL
-			  AND (refresh_requested_at IS NOT NULL
-			       OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id))
+			WHERE ` + feedDue + `
 			ORDER BY refresh_requested_at IS NULL, next_fetch_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1

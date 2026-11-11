@@ -2,10 +2,12 @@ package psql
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
+	"github.com/grodier/rss/internal/rss"
 )
 
 // Requires a migrated database; see psqltest.NewDB. Other tests share the
@@ -126,6 +128,104 @@ func newOverviewInvite(t *testing.T, db *sql.DB, waitlistID string, expires time
 	if ended != "" {
 		if _, err := db.Exec(`UPDATE invites SET `+ended+` = now() WHERE id = $1`, id); err != nil {
 			t.Fatalf("set %s: %v", ended, err)
+		}
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB. Other tests share the
+// database, so it checks how much each queue grows by the rows it creates,
+// and makes its due rows older than any other test's so they're the oldest.
+func TestAdminOverviewRepositoryQueues(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminOverviewRepository(db)
+	now := dbNow(t, db)
+	longAgo := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
+	later := now.Add(time.Hour)
+
+	exec := func(stmt string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(stmt, args...); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+
+	before, err := repo.Queues(t.Context())
+	if err != nil {
+		t.Fatalf("Queues: %v", err)
+	}
+
+	user := newTestUser(t, db)
+
+	// Lookups: one pending, one running.
+	key := fmt.Sprintf("queues-test-%d.example.com", time.Now().UnixNano())
+	exec(`INSERT INTO lookups (site_key, url, requested_at) VALUES ($1, 'https://x/', $2), ($1 || '/running', 'https://x/', $2)`, key, longAgo)
+	exec(`UPDATE lookups SET status = 'running' WHERE site_key = $1 || '/running'`, key)
+	cleanupExec(t, db, `DELETE FROM lookups WHERE site_key IN ($1, $1 || '/running')`, key)
+
+	// Imports: one feed pending, one done.
+	importID := newTestImport(t, NewImportRepository(db), user, "https://a.example/feed", "https://b.example/feed")
+	exec(`UPDATE imports SET created_at = $2 WHERE id = $1`, importID, longAgo)
+	exec(`UPDATE import_feeds SET status = 'subscribed' WHERE import_id = $1 AND position = 1`, importID)
+
+	// Feeds: subscribed, gone (subscribed), unsubscribed, and requested;
+	// their articles' enrichment jobs first, since saving a fetch sets
+	// next_fetch_at.
+	subscribed := newSubscribedFeed(t, db, user)
+	gone := newSubscribedFeed(t, db, user)
+	unsubscribed := newTestFeed(t, db)
+	requested := newTestFeed(t, db)
+	newEnrichJob(t, db, subscribed, "queues-due", 0, longAgo)
+	newEnrichJob(t, db, subscribed, "queues-later", 0, later)
+	newEnrichJob(t, db, unsubscribed, "queues-unsubscribed", 0, longAgo)
+
+	for _, f := range []rss.Feed{subscribed, gone, unsubscribed} {
+		setNextFetch(t, db, f.ID, longAgo)
+	}
+	exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, gone.ID)
+	setNextFetch(t, db, requested.ID, longAgo.Add(time.Minute))
+	setRefreshRequested(t, db, requested.ID)
+
+	// Sites' icons: checked and subscribed (due), checked and unsubscribed
+	// (not due), never checked (due), and not yet due.
+	setIcon := func(siteID string, checked bool, next time.Time) {
+		t.Helper()
+		exec(`UPDATE sites SET icon_checked_at = CASE WHEN $2 THEN now() END, icon_next_check_at = $3 WHERE id = $1`, siteID, checked, next)
+	}
+	setIcon(subscribed.SiteID, true, longAgo)
+	setIcon(unsubscribed.SiteID, true, longAgo)
+	setIcon(requested.SiteID, false, longAgo.Add(time.Minute))
+	setIcon(gone.SiteID, false, later)
+
+	// Emails: pending and due, pending later, and sent.
+	addr := fmt.Sprintf("queues-test-%d@example.com", time.Now().UnixNano())
+	exec(`INSERT INTO emails (to_address, subject, text_body, html_body, status, next_attempt_at)
+		VALUES ($1, 's', '', '', 'pending', $2), ($1, 's', '', '', 'pending', $3), ($1, 's', '', '', 'sent', $2)`, addr, longAgo, later)
+	cleanupExec(t, db, `DELETE FROM emails WHERE to_address = $1`, addr)
+
+	after, err := repo.Queues(t.Context())
+	if err != nil {
+		t.Fatalf("Queues: %v", err)
+	}
+
+	want := []struct {
+		name string
+		grew int
+	}{
+		{"lookup", 1}, {"import", 1}, {"refresh", 2}, {"icon", 2}, {"enrich", 1}, {"mail", 1},
+	}
+	if len(before) != len(want) || len(after) != len(want) {
+		t.Fatalf("Queues returned %d then %d queues, want %d", len(before), len(after), len(want))
+	}
+	for i, w := range want {
+		if after[i].Name != w.name {
+			t.Errorf("queue %d = %q, want %q", i, after[i].Name, w.name)
+			continue
+		}
+		if got := after[i].Jobs - before[i].Jobs; got != w.grew {
+			t.Errorf("%s grew by %d, want %d", w.name, got, w.grew)
+		}
+		if !after[i].Oldest.Equal(longAgo) {
+			t.Errorf("%s's oldest = %v, want %v", w.name, after[i].Oldest, longAgo)
 		}
 	}
 }

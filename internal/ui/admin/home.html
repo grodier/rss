@@ -27,6 +27,32 @@
         <h2 id="content">Content</h2>
         {{template "stat-row" .Content}}
       </section>
+
+      <section class="admin-section" aria-labelledby="queues">
+        <h2 id="queues">Queues</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Queue</th>
+                <th scope="col" class="num">Due</th>
+                <th scope="col">Longest wait</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Queues}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Jobs}}</td>
+                <td>{{.Wait}}</td>
+                <td>{{if .Behind}}<span class="status status-behind">Behind</span>{{else}}<span class="status">OK</span>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   </div>
 </body>

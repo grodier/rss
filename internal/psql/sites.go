@@ -119,6 +119,14 @@ func (r *SiteRepository) IconHashes(ctx context.Context, siteIDs []string) (map[
 	return hashes, nil
 }
 
+// siteIconDue is true for a site ClaimIconCheck may claim: its check is
+// due, and it's never been checked or has a subscribed feed. The admin's
+// Overview counts the icon queue with it (AdminOverviewRepository.Queues).
+const siteIconDue = `icon_next_check_at <= now()
+	AND (icon_checked_at IS NULL
+	     OR EXISTS (SELECT 1 FROM feeds f JOIN subscriptions s ON s.feed_id = f.id
+	                WHERE f.site_id = sites.id))`
+
 // ClaimIconCheck claims a site whose icon check is due (icon_next_check_at
 // <= now()) and that has never been checked or has a subscribed feed, by
 // moving its icon_next_check_at to now() + lease. It returns the site and its
@@ -130,10 +138,7 @@ func (r *SiteRepository) ClaimIconCheck(ctx context.Context, lease time.Duration
 			UPDATE sites SET icon_next_check_at = now() + make_interval(secs => $1)
 			WHERE id = (
 				SELECT id FROM sites
-				WHERE icon_next_check_at <= now()
-				  AND (icon_checked_at IS NULL
-				       OR EXISTS (SELECT 1 FROM feeds f JOIN subscriptions s ON s.feed_id = f.id
-				                  WHERE f.site_id = sites.id))
+				WHERE ` + siteIconDue + `
 				ORDER BY icon_next_check_at
 				FOR UPDATE SKIP LOCKED
 				LIMIT 1

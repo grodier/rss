@@ -69,6 +69,10 @@ func (r *LookupRepository) GetBySiteKey(ctx context.Context, siteKey string) (rs
 	return scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey))
 }
 
+// lookupPending is true for a lookup ClaimNext may claim. The admin's
+// Overview counts the lookup queue with it (AdminOverviewRepository.Queues).
+const lookupPending = `status = 'pending'`
+
 // ClaimNext marks the pending lookup with the lowest priority, oldest first,
 // running and returns it, so readers' lookups (0) go before the seed
 // list's (1).
@@ -76,7 +80,7 @@ func (r *LookupRepository) GetBySiteKey(ctx context.Context, siteKey string) (rs
 func (r *LookupRepository) ClaimNext(ctx context.Context) (rss.Lookup, error) {
 	stmt := `UPDATE lookups SET status = 'running', started_at = now(), attempts = attempts + 1
 		WHERE id = (
-			SELECT id FROM lookups WHERE status = 'pending'
+			SELECT id FROM lookups WHERE ` + lookupPending + `
 			ORDER BY priority, requested_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1

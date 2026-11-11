@@ -101,6 +101,7 @@ type EmailStore interface {
 // is one.
 type OverviewStore interface {
 	Overview(ctx context.Context, now time.Time) (rss.AdminOverview, error)
+	Queues(ctx context.Context) ([]rss.QueueStatus, error)
 }
 
 type Services struct {

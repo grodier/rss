@@ -11,17 +11,22 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// fakeOverview is an OverviewStore returning o, or err, and remembering the
-// time it was asked for.
+// fakeOverview is an OverviewStore returning o and queues, or err, and
+// remembering the time the Overview was asked for.
 type fakeOverview struct {
-	o   rss.AdminOverview
-	err error
-	now time.Time
+	o      rss.AdminOverview
+	queues []rss.QueueStatus
+	err    error
+	now    time.Time
 }
 
 func (f *fakeOverview) Overview(_ context.Context, now time.Time) (rss.AdminOverview, error) {
 	f.now = now
 	return f.o, f.err
+}
+
+func (f *fakeOverview) Queues(context.Context) ([]rss.QueueStatus, error) {
+	return f.queues, f.err
 }
 
 // overviewServer returns a logged-in browser to a server whose Overview is
@@ -113,6 +118,77 @@ func TestCount(t *testing.T) {
 	} {
 		if got := count(n); got != want {
 			t.Errorf("count(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+// testQueues are the six queues at testNow: refresh 15 minutes and a second
+// overdue and enrichment 5 hours (behind), email exactly 15 minutes (not),
+// and the rest under that.
+func testQueues() []rss.QueueStatus {
+	return []rss.QueueStatus{
+		{Name: "lookup", Jobs: 2, Oldest: testNow.Add(-30 * time.Second)},
+		{Name: "import", Jobs: 0},
+		{Name: "refresh", Jobs: 1284, Oldest: testNow.Add(-rss.QueueBehindAfter - time.Second)},
+		{Name: "icon", Jobs: 7, Oldest: testNow.Add(-3 * time.Minute)},
+		{Name: "enrich", Jobs: 40, Oldest: testNow.Add(-5 * time.Hour)},
+		{Name: "mail", Jobs: 1, Oldest: testNow.Add(-rss.QueueBehindAfter)},
+	}
+}
+
+func TestOverviewQueues(t *testing.T) {
+	b := overviewServer(t, &fakeOverview{queues: testQueues()})
+
+	rr := b.get(t, "/")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`<h2 id="queues">Queues</h2>`,
+		"<td>Lookups</td>\n                <td class=\"num\">2</td>\n                <td>under 1 min</td>",
+		"<td>Imports</td>\n                <td class=\"num\">0</td>\n                <td>—</td>",
+		"<td>Refresh</td>\n                <td class=\"num\">1,284</td>\n                <td>15 min</td>\n                <td><span class=\"status status-behind\">Behind</span></td>",
+		"<td>Icons</td>\n                <td class=\"num\">7</td>\n                <td>3 min</td>",
+		"<td>Enrichment</td>\n                <td class=\"num\">40</td>\n                <td>5 h</td>\n                <td><span class=\"status status-behind\">Behind</span></td>",
+		"<td>Email</td>\n                <td class=\"num\">1</td>\n                <td>15 min</td>\n                <td><span class=\"status\">OK</span></td>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %q", want)
+		}
+	}
+	if n := strings.Count(body, "status-behind"); n != 2 {
+		t.Errorf("GET / marks %d queues behind, want 2 (Refresh and Enrichment)", n)
+	}
+}
+
+func TestOverviewQueuesEmpty(t *testing.T) {
+	queues := testQueues()
+	for i := range queues {
+		queues[i].Jobs, queues[i].Oldest = 0, time.Time{}
+	}
+	body := overviewServer(t, &fakeOverview{queues: queues}).get(t, "/").Body.String()
+	if n := strings.Count(body, "<td>—</td>"); n != 6 {
+		t.Errorf("GET / shows %d queues with no wait, want 6", n)
+	}
+	if strings.Contains(body, "status-behind") {
+		t.Error("GET / marks an empty queue behind")
+	}
+}
+
+func TestWait(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		-time.Minute:     "under 1 min",
+		59 * time.Second: "under 1 min",
+		time.Minute:      "1 min",
+		59 * time.Minute: "59 min",
+		time.Hour:        "1 h",
+		47 * time.Hour:   "47 h",
+		48 * time.Hour:   "2 d",
+		100 * time.Hour:  "4 d",
+	} {
+		if got := wait(d); got != want {
+			t.Errorf("wait(%v) = %q, want %q", d, got, want)
 		}
 	}
 }

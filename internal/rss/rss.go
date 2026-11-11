@@ -791,3 +791,23 @@ type OverviewContent struct {
 	// Estimated.
 	Articles, Reads, TimelineEntries int
 }
+
+// QueueBehindAfter is how overdue a queue's oldest job can be before the
+// admin's Overview marks the queue behind.
+const QueueBehindAfter = 15 * time.Minute
+
+// QueueStatus is one background queue on the admin's Overview: how many of
+// its jobs are due and when the oldest of them was due (zero when none are).
+// Name is its runner, as job_metrics names it: lookup, import, refresh,
+// icon, enrich or mail.
+type QueueStatus struct {
+	Name   string
+	Jobs   int
+	Oldest time.Time
+}
+
+// Behind is whether the queue's oldest job is over QueueBehindAfter
+// overdue at now.
+func (q QueueStatus) Behind(now time.Time) bool {
+	return q.Jobs > 0 && now.Sub(q.Oldest) > QueueBehindAfter
+}

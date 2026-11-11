@@ -156,7 +156,8 @@ The next deploy pins the digest again.
 
 The admin site (`cmd/admin`) runs as its own web service, `rss-admin`, at `https://admin.paperround.app`, with three layers in front of it (why: "Admin" in [`docs/decisions.md`](../docs/decisions.md)):
 
-- **Cloudflare Access** (`access.tf`), on the Zero Trust Free plan (team `bold-frog-19d2` in 1Password): only `ADMIN_ACCESS_EMAIL` gets in, with a one-time PIN emailed to it, for 24 hours.
+- **Cloudflare Access** (`access.tf`), on the Zero Trust Free plan (team `bold-frog-19d2` in 1Password): only `ADMIN_ACCESS_EMAIL`, the owner's Cloudflare login, gets in, by signing in to Cloudflare (**Sign in with Cloudflare**, with the account's second factor), for 24 hours.
+  That's the Cloudflare identity provider, the only login method, which new Zero Trust organizations get by default, limited to the account's members; no one-time PIN is set up.
   `/healthcheck` is its own Access application that lets everyone through, so the deploy workflow can check the version; it reports what `paperround.app/healthcheck` does.
   Access applies only to a proxied DNS record, so the admin's is the zone's only proxied one, and the zone's SSL/TLS mode is **Full (strict)** (with **Flexible**, Cloudflare would call Render over HTTP and Render's redirect to HTTPS would loop).
 - **No `onrender.com` URL**: the service's Render subdomain is disabled, so the only way in is through Access.
@@ -202,7 +203,7 @@ curl -s https://admin.paperround.app/healthcheck            # the JSON, with the
 curl -sI <the service's onrender.com URL> | head -1          # 404 (the URL is on the service's dashboard page)
 ```
 
-In a browser, `https://admin.paperround.app` asks for your email first, then a PIN from your inbox, then the admin's own login.
+In a browser, `https://admin.paperround.app` shows Access's page with **Sign in with Cloudflare**; after your Cloudflare login and second factor, it shows the admin's own login.
 
 ### Enrolling an admin
 

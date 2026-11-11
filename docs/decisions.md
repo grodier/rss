@@ -111,7 +111,8 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   Rejected: a separate domain, which hides nothing (certificate transparency logs list every hostname) and is one more domain to keep.
 - **Three layers in front of it**: Cloudflare Access on the hostname, whose DNS record is the only proxied one; the service's `onrender.com` subdomain turned off, so Access can't be bypassed; and the admin's own login, which is the real gate.
   Access is defense in depth and needs no code.
-  It's on the Zero Trust Free plan, with a one-time PIN to the owner's email (#573): nothing to set up, and the admin's login is the strong factor.
+  It's on the Zero Trust Free plan, signed in with the owner's Cloudflare account (#573): the Cloudflare identity provider, new organizations' default, limited to the account's members.
+  Chosen over a one-time PIN by email: it needs the account's password and second factor rather than an inbox, and adds nothing new to protect, since whoever holds the Cloudflare account can already change Access and the DNS.
   Its `/healthcheck` is let through Access, so the deploy workflow checks the deployed version as it does for `www`; it reports nothing `paperround.app/healthcheck` doesn't.
   The record starts DNS-only and is proxied once Render has issued the certificate, as Render asks.
 - **Admins are their own accounts, not readers** (an `admins` table), so a leaked reader password never opens the admin.

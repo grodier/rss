@@ -118,19 +118,26 @@ The handler then queues `waitlist_confirm`, keeps the address in the session as 
 Log in links to the form for people who arrive there without an account.
 
 **Confirming and leaving.** Each entry has one link token (`token.New`; only its SHA-256 is stored), carried by both of the email's links.
-It doesn't expire, since the leave link must keep working in later emails (the invite, #574), and it's replaced only by joining again while unconfirmed.
+It doesn't expire, since the leave link must keep working in later emails (the invite), and it's replaced only by joining again while unconfirmed, or by an invite, whose email carries a new one.
 `GET /waitlist/confirm` and `GET /waitlist/leave` send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, look the entry up and show a page whose button posts the token back, so a mail scanner that opens a link changes nothing.
 The POSTs confirm (keeping the first `confirmed_at`) or delete the entry and redirect to `/` with a flash.
 An unknown token gets the expired-link page (410).
 Signing up with an invite deletes the entry (see "Signup and login" under "Accounts and sessions"); leaving the list first keeps a bound invite's email but unlinks it from the entry.
 
+**Inviting from the admin.** Invites go out in waves from the admin's Waitlist (`/waitlist`, `waitlistHandler`): confirmed entries, oldest first, 100 a page, on three tabs, Waiting (no pending invite, so an expired or revoked one counts as waiting again), Invited and Unconfirmed.
+On Waiting you tick people, with `select.ts` adding select-all and shift-click ranges and the bar at the foot saying how many, or ask for "the oldest N", and either posts to `POST /waitlist/review` (`waitlistReviewHandler`), which acts on nothing.
+The review lists who's still waiting among them, a label ("Wave {date}") and an expiry (14 days), and checks the wave against the email limits (`newSendCheck`, `MailLimits.Available`): within them it offers "Send {n} invites"; past 80% of the day it warns how many emails the day keeps for account emails; over what fits it says how many fit and offers only "Send the oldest {k}", whose IDs are the only ones the form carries.
+`POST /waitlist/invite` (`waitlistInviteHandler`) makes each invite's token and the entry's new link token, renders the `invite` email with both (`newWave`), and `InviteRepository.SendWave` stores the invites, replaces the entries' tokens, queues the emails and records one `invite.wave` audit entry in one transaction, after checking the limits again under an advisory lock and that every entry is still waiting.
+If either check fails, nothing is sent and the review comes back (409) with the numbers as they are now; otherwise it redirects to the Invited tab with a flash, and `www`'s mail runner sends the emails.
+
 **Start at:**
 
 1. `internal/server/home.go` (`homeHandler`) and `internal/server/waitlist.go` (`waitlistJoinHandler`, `renderWaitlistHost`, `waitlistActionHandler`).
-2. `internal/psql/waitlist.go` (`Join`).
+2. `internal/psql/waitlist.go` (`Join`, and the admin's `Counts`, `List`, `ListWaiting` and `Oldest`).
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
+4. The admin's side: `internal/admin/waitlist.go` and `limits.go`, `internal/psql/invites.go` (`SendWave`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html` and `waitlist_review.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go`.
+**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `invites_test.go` (`TestSendWave`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 
@@ -565,9 +572,9 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview (`homeHandler`) is an empty state until #575; the Audit log is below.
+   The Overview (`homeHandler`) is an empty state until #575; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`); `admin/entries/admin.ts` sets up busy forms.
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
    The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
    Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
@@ -613,7 +620,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 1. **Logins.** `loginFormHandler` records a wrong email or password as `login_failed` with the submitted email, and `loginCodeFormHandler` a wrong code as `login_failed` with the admin; both through `s.audit`, which records them by the request's actor (`s.actor`: the logged-in admin, `via = 'web'` and the client IP) or, before anyone is logged in, by the admin or email given, and a failure to record is logged, not shown.
    A correct code records `login` before the session holds the admin, so a login that can't be recorded fails (500); `logoutHandler` records `logout`, and logs out even when that can't be recorded.
 2. **Actions.** An action that changes something passes who did it, an `rss.AuditActor`, to the repository method that makes the change, which records what it did (the action, the target, and the fields it changed before and after) in the same transaction, so the same change is recorded the same way from the web or the command line.
-   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`); a web action will pass `s.actor(r)`.
+   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`); web actions pass `s.actor(r)`, like sending a wave of invites (`invite.wave`, with its label, count and entries).
 3. **Typed confirmation.** A destructive action's form has a field where the admin types the target's name, and `confirmDestructive` checks it (ignoring case and the spaces around it) before acting, with "Type {name} to confirm."; no action uses it yet.
 4. **The page.** `GET /audit` (`auditHandler`) lists entries newest first, 100 at a time, with an Older link whose cursor (`?before=`) is the last entry's ID (`AuditRepository.List`, keyed on `occurred_at` and `id`), filtered by `?action=`, `?target_type=` and `?target_id=`.
    Each row shows the time (UTC), the admin, the action, the target with a History link (`auditHistoryURL`, which a record's admin page links to once one exists) and each changed field's values before and after as JSON, and the client IP or "Command line".

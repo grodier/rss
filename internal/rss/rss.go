@@ -601,15 +601,24 @@ func (i Invite) Status(now time.Time) string {
 	return InvitePending
 }
 
-// InviteWave sums up the invites sent in one wave: how many went out, how
-// many were used to sign up, and how many of those accounts still had a
-// session seen 7 or more days after signing up.
-type InviteWave struct {
-	Label    string
-	SentAt   time.Time // its first invite's
-	Sent     int
-	SignedUp int
-	Active   int
+// Wave is a wave of invites to send from the admin: one per waiting
+// waitlist entry, each bound to it, under one label.
+type Wave struct {
+	Label     string
+	ExpiresAt time.Time
+	Invites   []WaveInvite
+}
+
+// WaveInvite is one invite of a Wave, with its email: the invite's token and
+// the entry's new link token (its leave link) are in the email, so both are
+// made, and the email rendered, before the wave is sent.
+type WaveInvite struct {
+	WaitlistID        string
+	Email             string
+	InviteTokenHash   []byte
+	WaitlistTokenHash []byte
+	// Subject, Text and HTML are the invite's email.
+	Subject, Text, HTML string
 }
 
 // EmailUsage is how many emails were queued against the email provider's

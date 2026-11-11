@@ -1,0 +1,26 @@
+{{define "subject"}}Your invite to Paper Round{{end}}
+
+{{define "text" -}}
+Hi {{.Name}},
+
+There's a place for you on Paper Round. Make your account by opening this link:
+
+{{.SignupURL}}
+
+The link works once, until {{.ExpiresOn}}.
+
+Not interested any more? Leave the waitlist: {{.LeaveURL}}
+
+{{template "text-footer"}}
+{{- end}}
+
+{{define "html" -}}
+{{template "html-start"}}
+<p>Hi {{.Name}},</p>
+<p>There's a place for you on Paper Round. Make your account by opening this link:</p>
+<p style="margin:24px 0"><a href="{{.SignupURL}}" style="display:inline-block;padding:10px 20px;border-radius:999px;background:#111318;color:#ffffff;font-weight:600;text-decoration:none">Make your account</a></p>
+<p style="color:#59636e;font-size:14px;word-break:break-all">Or paste this link into your browser: {{.SignupURL}}</p>
+<p>The link works once, until {{.ExpiresOn}}.</p>
+<p style="color:#59636e;font-size:14px">Not interested any more? <a href="{{.LeaveURL}}" style="color:#59636e">Leave the waitlist</a>: {{.LeaveURL}}</p>
+{{template "html-end"}}
+{{- end}}

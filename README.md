@@ -135,9 +135,15 @@ It prints a QR code and the `otpauth://` URI it holds; add it to an authenticato
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `3` | PostgreSQL max open connections (1–10): the admin shares the database with `www` |
 | `-secret-key` | `RSS_SECRET_KEY` | _(none; required in production)_ | Key that seals admins' TOTP secrets: 32 bytes, hex-encoded (`openssl rand -hex 32`); in development, a new one each run when unset |
+| `-app-url` | `RSS_APP_URL` | `http://localhost:8080` | The reader's public URL, for the links in invites (`https` in production) |
+| `-support-email` | `RSS_SUPPORT_EMAIL` | _(none)_ | Where people can get help, shown in invites' footers, as for `www` |
+| `-mail-daily-limit` | `RSS_MAIL_DAILY_LIMIT` | `100` | The email provider's daily sending limit, which waves of invites are checked against |
+| `-mail-monthly-limit` | `RSS_MAIL_MONTHLY_LIMIT` | `3000` | The email provider's monthly sending limit |
+| `-mail-reserve` | `RSS_MAIL_RESERVE` | `10` | Emails a day and a month that invites leave for account emails, like password resets (less than the daily limit) |
 | `-version` | `RSS_VERSION` | `false` | Print the build's version and exit |
 
 Since the variables are shared, `RSS_PORT` or `RSS_BASE_URL` in `.env` apply to both binaries; set the admin's on its command line instead (`go run ./cmd/admin -port 4002`).
+Invites the admin sends are queued in the outbox, and `www`'s mail runner sends them, so run `www` too (with Mailpit, they arrive at http://localhost:8025); to see the limits' warnings, start the admin with a small limit, like `-mail-daily-limit 5 -mail-reserve 1`.
 
 ### `admin create-user`
 

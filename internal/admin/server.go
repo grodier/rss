@@ -17,8 +17,10 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/ui"
 )
 
 type Config struct {
@@ -38,6 +40,8 @@ type Config struct {
 	// AppURL is the reader's public URL, without a trailing slash: invites'
 	// links point there.
 	AppURL string
+	// SupportEmail is where people can get help, shown in emails' footers.
+	SupportEmail string
 	// MailLimits are the email provider's sending limits, which invites are
 	// checked against.
 	MailLimits MailLimits
@@ -77,8 +81,7 @@ type WaitlistStore interface {
 
 // InviteStore is the invites' repository; *psql.InviteRepository is one.
 type InviteStore interface {
-	List(ctx context.Context) ([]rss.Invite, error)
-	Waves(ctx context.Context) ([]rss.InviteWave, error)
+	SendWave(ctx context.Context, w rss.Wave, available func(rss.EmailUsage) int, by rss.AuditActor) error
 }
 
 // EmailStore is the outbox's repository; *psql.EmailRepository is one.
@@ -100,7 +103,10 @@ type Server struct {
 	server    *http.Server
 	logger    *slog.Logger
 	templates map[string]*template.Template
-	services  Services
+	// emails renders the emails the admin queues (invites), whose links
+	// point at the reader, AppURL.
+	emails   *mail.Templates
+	services Services
 
 	sessionManager *scs.SessionManager
 	formDecoder    *form.Decoder
@@ -123,10 +129,15 @@ func New(logger *slog.Logger, cfg Config, services Services, sessionManager *scs
 	if err != nil {
 		return nil, err
 	}
+	emails, err := mail.ParseTemplates(ui.Emails, mail.App{URL: cfg.AppURL, SupportEmail: cfg.SupportEmail})
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		logger:    logger,
 		config:    cfg,
 		templates: templates,
+		emails:    emails,
 		services:  services,
 
 		sessionManager:     sessionManager,

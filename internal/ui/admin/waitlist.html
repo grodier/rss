@@ -15,13 +15,12 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Waitlist</h1>
-        <div class="head-actions">
-          <a class="btn btn-sm" href="/invites">Invites</a>
-          <a class="btn btn-sm" href="/invites/new">Invite someone</a>
-        </div>
         <p>Everyone who joined, oldest first. Dates are UTC.</p>
       </header>
 
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
       <nav class="tabs" aria-label="Waitlist">
         <ul role="list">
           {{range .Tabs}}

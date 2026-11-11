@@ -64,6 +64,7 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 `admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
 Inside it runs one component, the HTTP server (`internal/admin`), on port 4001; it runs none of `www`'s workers.
+The invites it sends are queued in the shared `emails` outbox, with links to `-app-url` (the reader), and `www`'s mail runner sends them; `-mail-daily-limit`, `-mail-monthly-limit` and `-mail-reserve` are the email provider's limits it checks them against.
 On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the database is closed.
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
@@ -77,7 +78,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling | `assets`, `chart`, `clientip`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, and the waitlist's waves of invites | `assets`, `chart`, `clientip`, `mail`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function), and percentiles from histogram buckets | — |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
@@ -249,6 +250,7 @@ admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
+email_daily_counts   (emails queued per UTC day, for the admin's sending limits)
 request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
 ```
 
@@ -282,6 +284,9 @@ request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_dai
 - **`invites`:** one row per invite, with its token's hash; `email` is set for a bound invite and must be the signup's address.
   Redeeming is one `UPDATE … WHERE` the invite is unredeemed, unrevoked and unexpired, in the same transaction as the user's insert, so an invite makes at most one account and a failed signup leaves it usable.
   Deleting its waitlist entry or its account clears `waitlist_id` or `user_id` and keeps the row, for the admin's history.
+  A waitlist entry is waiting while it has no pending invite (unredeemed, unrevoked, unexpired), so one whose invite expired or was revoked can be invited again; the admin's tabs are conditions on that (`waitlistTabs` in `internal/psql/waitlist.go`), not a column.
+- **`email_daily_counts`:** one row per UTC day with how many emails were queued, because the outbox deletes finished emails after 7 days and a month can't be counted from `emails`; `enqueue` inserts the email and increments its day in one statement, so the two never disagree.
+  `EmailRepository.Usage` counts the last 24 hours from `emails` (plus anything still pending) and the month from this table; rows are never deleted (one a day).
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
 Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
@@ -391,7 +396,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Opening a link shows a page with a button and only the POST uses the token, so mail scanners that open links can't use it.
   The link's page is served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in its URL.
   Signup invites (`invites.token_hash`) are stored the same way, work once and expire, and their page (`/signup?invite=`) sends the same headers; the form posts the token back in a hidden field.
-  Waitlist links follow the same pattern with one difference: the entry's token (`waitlist.token_hash`) doesn't expire and isn't used up, since the leave link must work in every later email; joining again while unconfirmed replaces it.
+  Waitlist links follow the same pattern with one difference: the entry's token (`waitlist.token_hash`) doesn't expire and isn't used up, since the leave link must work in every later email; joining again while unconfirmed replaces it, and so does sending the entry an invite, whose email carries the new leave link (the entry is confirmed, so its old link only left the list).
 - **Waitlist bots:** the form has a honeypot field, hidden from people and the keyboard; a request that fills it gets the "check your email" page and nothing is stored or sent, and the rest are capped per IP (`waitlistLimiter`) and by the outbox's per-address cap.
 - **Shared timelines:** their routes are public (no session, no login) and reachable only by the share token: 32 random bytes from `token.Random`, stored as is, so the owner's settings can show the link again.
   A malformed token is a 404 before any query.
@@ -425,6 +430,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | admin `codeFailureLimiter` | admin | 5 wrong codes per 15 min |
 
   The outbox also caps emails per address, across processes: `EmailRepository.Enqueue` queues about 20 to one address (ignoring case) per hour and returns `rss.ErrTooManyEmails` past that, which `sendEmail` logs as a warning.
+  The admin's waves of invites are checked against the email provider's limits, less a reserve for account emails (`MailLimits.Available`), inside the transaction that sends them, which takes an advisory lock so two waves can't both fit in the same room (`InviteRepository.SendWave`).
   It counts, then inserts, so simultaneous requests can slightly exceed 20.
 
 - **Client IP:** `clientip.FromRequest` (`internal/clientip`), which both servers' `clientIP` call, is the only code that reads `RemoteAddr`.

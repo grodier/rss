@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -18,6 +20,9 @@ import (
 
 // waitlistPageSize is how many entries the waitlist's page shows at once.
 const waitlistPageSize = 100
+
+// maxWaitlistPages is the most pages the waitlist's page can show.
+const maxWaitlistPages = 100_000
 
 // maxWave is the most people one wave can invite: a page of the waitlist.
 const maxWave = waitlistPageSize
@@ -34,10 +39,11 @@ type waitlistTab struct {
 
 // waitlistPage is the waitlist's data.
 type waitlistPage struct {
-	Nav  navData
-	Tab  string
-	Tabs []waitlistTab
-	Rows []rss.WaitlistRow
+	Nav   navData
+	Flash string
+	Tab   string
+	Tabs  []waitlistTab
+	Rows  []rss.WaitlistRow
 	// Page is the page number, from 1; Prev and Next are the URLs of the
 	// pages before and after it, "" for none.
 	Page       int
@@ -64,7 +70,8 @@ func (s *Server) waitlistHandler(w http.ResponseWriter, r *http.Request) {
 	page := 1
 	if p := q.Get("page"); p != "" {
 		var err error
-		if page, err = strconv.Atoi(p); err != nil || page < 1 {
+		// The cap keeps the offset from overflowing; no waitlist is that long.
+		if page, err = strconv.Atoi(p); err != nil || page < 1 || page > maxWaitlistPages {
 			s.notFoundResponse(w, r)
 			return
 		}
@@ -87,9 +94,10 @@ func (s *Server) waitlistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := waitlistPage{
-		Nav:  s.nav(r, "waitlist"),
-		Tab:  tab,
-		Page: page,
+		Nav:   s.nav(r, "waitlist"),
+		Flash: s.sessionManager.PopString(r.Context(), sessionFlash),
+		Tab:   tab,
+		Page:  page,
 		Tabs: []waitlistTab{
 			{Key: rss.WaitlistWaiting, Label: "Waiting", Count: counts.Waiting},
 			{Key: rss.WaitlistInvited, Label: "Invited", Count: counts.Invited},
@@ -136,7 +144,14 @@ func waitlistURL(tab string, page int) string {
 type reviewForm struct {
 	IDs    []string `form:"id"`
 	Oldest string   `form:"oldest"`
-	validator.Validator
+}
+
+// waveForm is the review's form, which sends the wave.
+type waveForm struct {
+	IDs                 []string `form:"id"`
+	Wave                string   `form:"wave"`
+	Days                string   `form:"days"`
+	validator.Validator `form:"-"`
 }
 
 // reviewPage is a wave's review: who it invites, its label and expiry, and
@@ -147,9 +162,11 @@ type reviewPage struct {
 	// FitIDs are the IDs of the entries that fit under the limits, the
 	// oldest first.
 	FitIDs []string
-	Wave   string
-	Days   int
+	Form   waveForm
 	Check  sendCheck
+	// Notice says why the review is shown again instead of the wave being
+	// sent, "" the first time.
+	Notice string
 }
 
 // waitlistReviewHandler shows the review of a wave: the entries posted as
@@ -163,8 +180,7 @@ func (s *Server) waitlistReviewHandler(w http.ResponseWriter, r *http.Request) {
 
 	var entries []rss.WaitlistEntry
 	var err error
-	switch {
-	case form.Oldest != "":
+	if form.Oldest != "" {
 		n, convErr := strconv.Atoi(strings.TrimSpace(form.Oldest))
 		if convErr != nil || n < 1 || n > maxWave {
 			s.errorHTML(w, r, http.StatusUnprocessableEntity, "Can't review that",
@@ -172,101 +188,170 @@ func (s *Server) waitlistReviewHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		entries, err = s.services.Waitlist.Oldest(r.Context(), n)
-	case len(form.IDs) > 0 && len(form.IDs) <= maxWave:
-		for _, id := range form.IDs {
-			if !validator.Matches(id, validator.UUIDRX) {
-				s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That selection isn't valid.")
-				return
-			}
+	} else {
+		if !s.checkWaveIDs(w, r, form.IDs) {
+			return
 		}
 		entries, err = s.services.Waitlist.ListWaiting(r.Context(), form.IDs)
-	default:
-		s.errorHTML(w, r, http.StatusUnprocessableEntity, "Can't review that",
-			fmt.Sprintf("Select between 1 and %d people to invite.", maxWave))
-		return
 	}
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	wave := waveForm{Wave: "Wave " + s.now().UTC().Format("2006-01-02"), Days: strconv.Itoa(defaultInviteDays)}
+	s.renderReview(w, r, http.StatusOK, entries, wave, "")
+}
+
+// checkWaveIDs checks the IDs a wave's form posted: between 1 and maxWave
+// UUIDs. When they aren't, it responds and returns false.
+func (s *Server) checkWaveIDs(w http.ResponseWriter, r *http.Request, ids []string) bool {
+	if len(ids) == 0 || len(ids) > maxWave {
+		s.errorHTML(w, r, http.StatusUnprocessableEntity, "Can't review that",
+			fmt.Sprintf("Select between 1 and %d people to invite.", maxWave))
+		return false
+	}
+	for _, id := range ids {
+		if !validator.Matches(id, validator.UUIDRX) {
+			s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That selection isn't valid.")
+			return false
+		}
+	}
+	return true
+}
+
+// renderReview renders the review of a wave of entries, with the email
+// limits as they are now, and form's label and expiry.
+func (s *Server) renderReview(w http.ResponseWriter, r *http.Request, status int, entries []rss.WaitlistEntry, form waveForm, notice string) {
 	if len(entries) == 0 {
 		s.errorHTML(w, r, http.StatusUnprocessableEntity, "No one to invite",
 			"Everyone selected has been invited or has left the waitlist.")
 		return
 	}
-
 	usage, err := s.services.Emails.Usage(r.Context(), s.now())
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 	check := newSendCheck(s.config.MailLimits, usage, len(entries))
-	data := reviewPage{
-		Nav:     s.nav(r, "waitlist"),
-		Entries: entries,
-		Wave:    "Wave " + s.now().UTC().Format("2006-01-02"),
-		Days:    defaultInviteDays,
-		Check:   check,
-	}
+	data := reviewPage{Nav: s.nav(r, "waitlist"), Entries: entries, Form: form, Check: check, Notice: notice}
 	for _, e := range entries[:check.Fit()] {
 		data.FitIDs = append(data.FitIDs, e.ID)
 	}
-	if err := s.renderHTML(w, http.StatusOK, "waitlist_review.html", data); err != nil {
+	if err := s.renderHTML(w, status, "waitlist_review.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
 
-// invitesPage lists every invite, with a summary of each wave.
-type invitesPage struct {
-	Nav     navData
-	Waves   []rss.InviteWave
-	Invites []rss.Invite
-	Now     time.Time
-}
+// maxWaveLabel is the most characters a wave's label can have.
+const maxWaveLabel = 100
 
-// invitesHandler shows every invite, newest first, and each wave's summary.
-func (s *Server) invitesHandler(w http.ResponseWriter, r *http.Request) {
-	waves, err := s.services.Invites.Waves(r.Context())
+// maxInviteDays is the longest an invite can work.
+const maxInviteDays = 90
+
+// waitlistInviteHandler sends the wave the review posts: an invite and its
+// email to each entry, if they're all still waiting and their emails fit
+// under the limits; otherwise it shows the review again, as things are now.
+func (s *Server) waitlistInviteHandler(w http.ResponseWriter, r *http.Request) {
+	var form waveForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	if !s.checkWaveIDs(w, r, form.IDs) {
+		return
+	}
+	form.Wave = strings.TrimSpace(form.Wave)
+	form.CheckField(validator.NotBlank(form.Wave), "wave", "Give the wave a label.")
+	form.CheckField(validator.MaxChars(form.Wave, maxWaveLabel), "wave", fmt.Sprintf("Keep the label to %d characters.", maxWaveLabel))
+	days, err := strconv.Atoi(strings.TrimSpace(form.Days))
+	form.CheckField(err == nil && days >= 1 && days <= maxInviteDays, "days", fmt.Sprintf("Choose between 1 and %d days.", maxInviteDays))
+
+	entries, err := s.services.Waitlist.ListWaiting(r.Context(), form.IDs)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	invites, err := s.services.Invites.List(r.Context())
+	if !form.Valid() {
+		s.renderReview(w, r, http.StatusUnprocessableEntity, entries, form, "")
+		return
+	}
+	if len(entries) != len(form.IDs) {
+		s.renderReview(w, r, http.StatusConflict, entries, form,
+			"Some of them were invited or left the waitlist since you reviewed this wave, so nothing was sent.")
+		return
+	}
+
+	wave, err := s.newWave(entries, form.Wave, s.now().Add(time.Duration(days)*24*time.Hour))
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	data := invitesPage{Nav: s.nav(r, "waitlist"), Waves: waves, Invites: invites, Now: s.now()}
-	if err := s.renderHTML(w, http.StatusOK, "invites.html", data); err != nil {
+	err = s.services.Invites.SendWave(r.Context(), wave, s.config.MailLimits.Available, s.actor(r))
+	switch {
+	case errors.Is(err, rss.ErrOverLimit):
+		s.renderReview(w, r, http.StatusConflict, entries, form,
+			"More emails were sent since you reviewed this wave, so nothing was sent. Here are the limits now.")
+		return
+	case errors.Is(err, rss.ErrNoRecord):
+		entries, err := s.services.Waitlist.ListWaiting(r.Context(), form.IDs)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		s.renderReview(w, r, http.StatusConflict, entries, form,
+			"Some of them were invited or left the waitlist since you reviewed this wave, so nothing was sent.")
+		return
+	case err != nil:
 		s.serverErrorHTML(w, r, err)
+		return
 	}
+
+	n := len(wave.Invites)
+	s.sessionManager.Put(r.Context(), sessionFlash, fmt.Sprintf("Sent %d %s in %s.", n, plural(n, "invite", "invites"), wave.Label))
+	http.Redirect(w, r, waitlistURL(rss.WaitlistInvited, 1), http.StatusSeeOther)
 }
 
-// newInviteForm invites someone by hand.
-type newInviteForm struct {
-	Email               string `form:"email"`
-	Note                string `form:"note"`
-	Days                string `form:"days"`
-	validator.Validator `form:"-"`
-}
-
-// newInvitePage is the form to invite someone by hand, and, once sent, the
-// invite's link.
-type newInvitePage struct {
-	Nav  navData
-	Form newInviteForm
-	// Link is the new invite's link, "" until it's made; Emailed, whether it
-	// was also emailed.
-	Link    string
-	Emailed bool
-}
-
-// newInviteHandler shows the form to invite someone by hand.
-func (s *Server) newInviteHandler(w http.ResponseWriter, r *http.Request) {
-	data := newInvitePage{Nav: s.nav(r, "waitlist"), Form: newInviteForm{Days: strconv.Itoa(defaultInviteDays)}}
-	if err := s.renderHTML(w, http.StatusOK, "invite_new.html", data); err != nil {
-		s.serverErrorHTML(w, r, err)
+// newWave makes the wave of invites to entries: each its invite's token and
+// its entry's new link token, and the email with both.
+func (s *Server) newWave(entries []rss.WaitlistEntry, label string, expiresAt time.Time) (rss.Wave, error) {
+	wave := rss.Wave{Label: label, ExpiresAt: expiresAt}
+	for _, e := range entries {
+		invite, inviteHash, err := token.New()
+		if err != nil {
+			return rss.Wave{}, err
+		}
+		leave, leaveHash, err := token.New()
+		if err != nil {
+			return rss.Wave{}, err
+		}
+		m, err := s.emails.Render("invite", inviteEmail{
+			Name:      e.Name,
+			SignupURL: s.config.AppURL + "/signup?invite=" + invite,
+			ExpiresOn: expiresAt.UTC().Format("2 January 2006"),
+			LeaveURL:  s.config.AppURL + "/waitlist/leave?token=" + leave,
+		})
+		if err != nil {
+			return rss.Wave{}, err
+		}
+		wave.Invites = append(wave.Invites, rss.WaveInvite{
+			WaitlistID: e.ID, Email: e.Email, InviteTokenHash: inviteHash, WaitlistTokenHash: leaveHash,
+			Subject: m.Subject, Text: m.Text, HTML: m.HTML,
+		})
 	}
+	return wave, nil
+}
+
+// inviteEmail is the invite email's data (internal/ui/emails/invite.tmpl).
+type inviteEmail struct {
+	Name, SignupURL, ExpiresOn, LeaveURL string
+}
+
+// plural is one when n is 1, else many.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // waitlistStatus says where row stands at now: unconfirmed, waiting, or
@@ -288,17 +373,4 @@ func waitlistStatus(row rss.WaitlistRow, now time.Time) string {
 		return "Invite revoked"
 	}
 	return "Waiting"
-}
-
-// inviteStatus is inv's status at now, in words.
-func inviteStatus(inv rss.Invite, now time.Time) string {
-	switch inv.Status(now) {
-	case rss.InviteRedeemed:
-		return "Signed up"
-	case rss.InviteExpired:
-		return "Expired"
-	case rss.InviteRevoked:
-		return "Revoked"
-	}
-	return "Pending"
 }

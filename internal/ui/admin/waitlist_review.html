@@ -17,6 +17,9 @@
         <h1>Invite {{len .Entries}} {{if eq (len .Entries) 1}}person{{else}}people{{end}}</h1>
         <p>Nothing is sent until you press Send.</p>
       </header>
+      {{with .Notice}}
+      <div class="flash" role="alert">{{.}}</div>
+      {{end}}
 
       {{with .Check}}
       <section class="admin-section" aria-labelledby="limits-heading">
@@ -24,7 +27,7 @@
         {{template "send-meter" .}}
         <p class="limits-summary">{{.N}} {{if eq .N 1}}invite{{else}}invites{{end}}. {{.Usage.Last24h}} of {{.Limits.Daily}} emails used today, {{.Usage.ThisMonth}} of {{.Limits.Monthly}} this month.</p>
         {{if .Over}}
-        <p class="limit-alert limit-over" role="alert">Only {{.Fit}} fit today without risking account emails.</p>
+        <p class="limit-alert limit-over" role="alert">{{if .Fit}}Only {{.Fit}} fit{{else}}No more invites fit{{end}} today without risking account emails.</p>
         {{else if .Warn}}
         <p class="limit-alert limit-warn" role="alert">This leaves {{.LeftToday}} emails today for account emails like password resets.</p>
         {{end}}
@@ -32,16 +35,24 @@
       {{end}}
 
       <section class="admin-section">
+        {{$focus := .Form.FirstError "wave" "days"}}
         <form class="admin-form" action="/waitlist/invite" method="post" data-busy>
           {{range .FitIDs}}<input type="hidden" name="id" value="{{.}}" />{{end}}
           <div class="field">
             <label for="wave">Wave</label>
-            <input type="text" id="wave" name="wave" value="{{.Wave}}" maxlength="100" aria-describedby="wave-hint" />
-            <p class="hint" id="wave-hint">The invites page sums up each wave under this label.</p>
+            <input type="text" id="wave" name="wave" value="{{.Form.Wave}}" maxlength="100"
+              aria-describedby="wave-hint{{with .Form.FieldErrors.wave}} wave-error{{end}}"
+              {{with .Form.FieldErrors.wave}}aria-invalid="true"{{end}}
+              {{if eq $focus "wave"}}autofocus{{end}} />
+            <p class="hint" id="wave-hint">The invites are labeled with it, to tell waves apart.</p>
+            {{with .Form.FieldErrors.wave}}<p class="error" id="wave-error">{{.}}</p>{{end}}
           </div>
           <div class="field">
             <label for="days">Expires after (days)</label>
-            <input type="number" id="days" name="days" value="{{.Days}}" min="1" max="90" inputmode="numeric" />
+            <input type="number" id="days" name="days" value="{{.Form.Days}}" min="1" max="90" inputmode="numeric"
+              {{with .Form.FieldErrors.days}}aria-invalid="true" aria-describedby="days-error"{{end}}
+              {{if eq $focus "days"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.days}}<p class="error" id="days-error">{{.}}</p>{{end}}
           </div>
           <div class="form-actions">
             {{if .Check.Over}}

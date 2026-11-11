@@ -25,20 +25,51 @@ func NewEmailRepository(db *sql.DB) *EmailRepository {
 	return &EmailRepository{DB: db}
 }
 
-// Enqueue adds m to the outbox, due now. rss.ErrTooManyEmails when its
-// address (ignoring case) already has maxEmailsPerAddressPerHour emails
-// queued in the last hour.
+// Enqueue adds m to the outbox, due now, and counts it in today's
+// email_daily_counts row. rss.ErrTooManyEmails when its address (ignoring
+// case) already has maxEmailsPerAddressPerHour emails queued in the last
+// hour.
 func (r *EmailRepository) Enqueue(ctx context.Context, m mail.Message) error {
-	stmt := `INSERT INTO emails (to_address, subject, text_body, html_body)
-		SELECT $1, $2, $3, $4
-		WHERE (SELECT count(*) FROM emails
-			WHERE to_address = $1 AND created_at > now() - interval '1 hour') < $5`
+	return enqueue(ctx, r.DB, m)
+}
 
-	err := execOne(ctx, r.DB, stmt, m.To, m.Subject, m.Text, m.HTML, maxEmailsPerAddressPerHour)
+// enqueue is Enqueue in q, a transaction or the database.
+func enqueue(ctx context.Context, q querier, m mail.Message) error {
+	stmt := `WITH e AS (
+			INSERT INTO emails (to_address, subject, text_body, html_body)
+			SELECT $1, $2, $3, $4
+			WHERE (SELECT count(*) FROM emails
+				WHERE to_address = $1 AND created_at > now() - interval '1 hour') < $5
+			RETURNING created_at
+		)
+		INSERT INTO email_daily_counts (day, queued)
+		SELECT (created_at AT TIME ZONE 'UTC')::date, 1 FROM e
+		ON CONFLICT (day) DO UPDATE SET queued = email_daily_counts.queued + 1`
+
+	err := execOne(ctx, q, stmt, m.To, m.Subject, m.Text, m.HTML, maxEmailsPerAddressPerHour)
 	if errors.Is(err, rss.ErrNoRecord) {
 		return rss.ErrTooManyEmails
 	}
 	return err
+}
+
+// Usage is how many emails count against the email provider's limits at
+// now: those queued in the last 24 hours, plus any older ones still pending,
+// which go out in the next; and those queued in now's UTC calendar month.
+func (r *EmailRepository) Usage(ctx context.Context, now time.Time) (rss.EmailUsage, error) {
+	return emailUsage(ctx, r.DB, now)
+}
+
+func emailUsage(ctx context.Context, q querier, now time.Time) (rss.EmailUsage, error) {
+	stmt := `SELECT
+		(SELECT count(*) FROM emails WHERE created_at > $1::timestamptz - interval '24 hours' OR status = 'pending'),
+		(SELECT coalesce(sum(queued), 0) FROM email_daily_counts
+			WHERE day >= date_trunc('month', $1::timestamptz AT TIME ZONE 'UTC')::date
+			AND day <= ($1::timestamptz AT TIME ZONE 'UTC')::date)`
+
+	var u rss.EmailUsage
+	err := q.QueryRowContext(ctx, stmt, now).Scan(&u.Last24h, &u.ThisMonth)
+	return u, err
 }
 
 // ClaimNext takes the pending email due soonest, counts the attempt and

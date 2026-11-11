@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -210,6 +211,13 @@ var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 // with testKey, and the recovery code testRecovery.
 func newTestServerWithAdmin(t *testing.T) (*Server, *time.Time) {
 	t.Helper()
+	return newTestServerWithAdminConfig(t, Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}, Services{Database: pinger{}})
+}
+
+// newTestServerWithAdminConfig is newTestServerWithAdmin with cfg and
+// services, whose AdminStore it replaces.
+func newTestServerWithAdminConfig(t *testing.T, cfg Config, services Services) (*Server, *time.Time) {
+	t.Helper()
 	admins := newFakeAdmins()
 	sealed, err := Seal(testKey, testSecret)
 	if err != nil {
@@ -222,7 +230,8 @@ func newTestServerWithAdmin(t *testing.T) (*Server, *time.Time) {
 	}, rss.AuditActor{}); err != nil {
 		t.Fatal(err)
 	}
-	s := newTestServerWith(t, Services{Database: pinger{}, Admins: admins})
+	services.Admins = admins
+	s := newTestServerConfig(t, cfg, services)
 	now := testNow
 	s.now = func() time.Time { return now }
 	return s, &now
@@ -293,3 +302,104 @@ func loggedIn(t *testing.T, s *Server) *browser {
 	}
 	return b
 }
+
+// fakeWaitlist is an in-memory WaitlistStore: its rows, oldest first, are
+// on a tab by their confirmation and their latest invite's status at
+// testNow, as the repository puts them.
+type fakeWaitlist struct {
+	mu   sync.Mutex
+	rows []rss.WaitlistRow
+}
+
+func waitlistTabOf(r rss.WaitlistRow) string {
+	switch {
+	case r.ConfirmedAt.IsZero():
+		return rss.WaitlistUnconfirmed
+	case r.Invite.ID != "" && r.Invite.Status(testNow) == rss.InvitePending:
+		return rss.WaitlistInvited
+	}
+	return rss.WaitlistWaiting
+}
+
+func (f *fakeWaitlist) Counts(context.Context) (rss.WaitlistCounts, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var c rss.WaitlistCounts
+	for _, r := range f.rows {
+		switch waitlistTabOf(r) {
+		case rss.WaitlistWaiting:
+			c.Waiting++
+		case rss.WaitlistInvited:
+			c.Invited++
+		default:
+			c.Unconfirmed++
+		}
+	}
+	return c, nil
+}
+
+func (f *fakeWaitlist) List(_ context.Context, tab string, limit, offset int) ([]rss.WaitlistRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []rss.WaitlistRow
+	for _, r := range f.rows {
+		if waitlistTabOf(r) == tab {
+			out = append(out, r)
+		}
+	}
+	out = out[min(offset, len(out)):]
+	return out[:min(limit, len(out))], nil
+}
+
+func (f *fakeWaitlist) ListWaiting(_ context.Context, ids []string) ([]rss.WaitlistEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []rss.WaitlistEntry
+	for _, r := range f.rows {
+		if waitlistTabOf(r) == rss.WaitlistWaiting && slices.Contains(ids, r.ID) {
+			out = append(out, r.WaitlistEntry)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeWaitlist) Oldest(_ context.Context, n int) ([]rss.WaitlistEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []rss.WaitlistEntry
+	for _, r := range f.rows {
+		if waitlistTabOf(r) == rss.WaitlistWaiting && len(out) < n {
+			out = append(out, r.WaitlistEntry)
+		}
+	}
+	return out, nil
+}
+
+// fakeInvites is an InviteStore that records the waves sent, and returns
+// err instead when it's set.
+type fakeInvites struct {
+	mu     sync.Mutex
+	waves  []rss.Wave
+	actors []rss.AuditActor
+	// available is what SendWave's available returned, for the last wave.
+	available int
+	usage     rss.EmailUsage
+	err       error
+}
+
+func (f *fakeInvites) SendWave(_ context.Context, w rss.Wave, available func(rss.EmailUsage) int, by rss.AuditActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.available = available(f.usage)
+	if f.err != nil {
+		return f.err
+	}
+	f.waves = append(f.waves, w)
+	f.actors = append(f.actors, by)
+	return nil
+}
+
+// fakeEmails is an EmailStore whose usage is fixed.
+type fakeEmails struct{ usage rss.EmailUsage }
+
+func (f *fakeEmails) Usage(context.Context, time.Time) (rss.EmailUsage, error) { return f.usage, nil }

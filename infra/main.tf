@@ -109,8 +109,9 @@ resource "render_web_service" "admin" {
   # Its DNS record is in domain.tf.
   custom_domains = [{ name = "admin.paperround.app" }]
 
-  # The admin's commands (admin invite, admin send-test-email) read the mail
-  # settings and RSS_APP_URL too, run from the service's Shell.
+  # The admin's invites link to RSS_APP_URL and show RSS_SUPPORT_EMAIL, and
+  # its commands (admin invite, admin send-test-email), run from the
+  # service's Shell, read the mail settings too.
   env_vars = merge(local.mail_env_vars, {
     RSS_ENV    = { value = "production" }
     RSS_DB_DSN = { value = sensitive(render_postgres.rss_db.connection_info.internal_connection_string) }
@@ -125,7 +126,7 @@ resource "render_web_service" "admin" {
     RSS_PORT       = { value = "8080" }
     PORT           = { value = "8080" }
     RSS_BASE_URL   = { value = "https://admin.paperround.app" }
-    # The reader's URL, for the links admin invite create prints.
+    # The reader's URL, for invites' links.
     RSS_APP_URL = { value = "https://paperround.app" }
   })
 

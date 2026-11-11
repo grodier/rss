@@ -144,6 +144,10 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **It looks like the reader, marked as the admin** (#562): the reader's tokens and fonts, a tinted sidebar, and an "Admin" mark beside the logo, so it's never mistaken for the reader; it follows the system's theme, as it has no settings.
 - **Dense tables** (#562): smaller type and tighter rows than the reader's lists, since it's a working tool; on a phone a wide table scrolls in its own frame, not the page.
   Figures are stat rows separated by dividers, not cards, as in the reader ("Design").
+- **The Overview's look** (#575, approved at its design checkpoint, PR #612): a section per group, in the order People, Content, then Queues (#610) and Jobs (#611), with the build as a line under the page head.
+  People and Content are stat rows: each figure a label, a number and a short second line ("of 182", "104 in 30 days"), "about" in the label of an estimated count, and, where a page exists, the label in the accent color and the whole figure its link.
+  It reuses #562's stat rows, and each number reads on its own at a glance, which is what the page is for.
+  Rejected: a dense table per section (compact, but no figure stands out and it reads as a report), and a strip of key figures in large type above compact rows (repeats figures, and which ones are key will shift as the app grows).
 - **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
 - **The charts' look** (#571, approved at its design checkpoint): thin lines in up to three series colors (`--accent`, `--brand-strong`, then `--series-3`), gridlines only at the value ticks, markers such as deploys as dashed vertical lines labelled at the top, thresholds as dashed horizontal lines, and a legend above the chart only when it has more than one series.
   Rejected: thresholds as tinted bands (good, needs improvement, poor), which say a threshold is good or bad when a later one may not be (a queue's limit) and drown the line in dark mode; and a legend below the chart, read only after the lines.
@@ -770,9 +774,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The first frame on Apple devices is adjusted Arial and Georgia rather than system-ui and Charter: closer to the final shape, which the recordings favoured.
   Each fallback face is tuned for its first `local()` font, so Noto Serif (Linux without Georgia) matches less closely.
 - **Fonts are preloaded only where a page shows them** (#546): Bricolage on every page, upright Newsreader on pages with reading text on their first screen, never the italic, which only some articles use.
-- **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the option or options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
+- **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Every option comes with a justification (what it fixes, why this way, and what it trades away), so the pick rests on reasons that can be recorded here rather than on taste alone.
-  One option is enough when it's clearly right, but it's still shown and justified.
+- **Every design checkpoint shows several options that differ in approach, and recommends one** (the owner, during #575; this replaces "one option is enough when it's clearly right").
+  Variations of one idea (a color, a spacing) don't count as options: a recommendation can only be judged against real alternatives, and a single option leaves the owner approving or rejecting rather than choosing.
+  The recommendation says why, so a pick against it is a deliberate choice.
   An issue can say a change needs no checkpoint: copy changes, and changes that reuse an existing pattern exactly (#419, #420).
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 - **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.

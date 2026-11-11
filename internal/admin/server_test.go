@@ -36,8 +36,8 @@ func newTestServerWith(t *testing.T, services Services) *Server {
 
 // newTestServerConfig returns a Server with cfg and services, sessions in
 // memory, testKey as its secret key unless cfg has one, and an empty
-// fakeAdmins and fakeAudit unless services has an AdminStore and an
-// AuditStore.
+// fakeAdmins, fakeAudit and fakeOverview unless services has an AdminStore,
+// an AuditStore and an OverviewStore.
 func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	t.Helper()
 	if cfg.SecretKey == nil {
@@ -48,6 +48,9 @@ func newTestServerConfig(t *testing.T, cfg Config, services Services) *Server {
 	}
 	if services.Audit == nil {
 		services.Audit = &fakeAudit{}
+	}
+	if services.Overview == nil {
+		services.Overview = &fakeOverview{}
 	}
 	sessions := NewSessionManager(memstore.NewWithCleanupInterval(0), cfg.Env)
 	s, err := New(slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, services, sessions)
@@ -80,7 +83,6 @@ func TestHome(t *testing.T) {
 		`<span class="admin-mark">Admin</span>`,
 		`<a href="/" aria-current="page">Overview</a>`,
 		`<h1>Overview</h1>`,
-		`<p class="empty">Nothing here yet.</p>`,
 		`<p>admin@example.com</p>`,
 	} {
 		if !strings.Contains(body, want) {

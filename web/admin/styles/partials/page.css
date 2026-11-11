@@ -153,4 +153,46 @@
     font-size: 0.75rem;
     font-weight: 500;
   }
+
+  /* A figure's short second line, under its number. */
+  .stat dd.stat-note {
+    color: var(--text-2);
+    font-family: var(--font);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  /* A figure with a page to dig in: its label is the link, in the accent
+     color, stretched over the whole figure. */
+  .stat-link {
+    position: relative;
+  }
+
+  .stat-link a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .stat-link a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .stat-link:hover {
+    background: var(--surface);
+  }
+
+  .stat-link:hover a {
+    text-decoration: underline;
+  }
+
+  .stat-link:has(a:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .stat-link a:focus-visible {
+    outline: none;
+  }
 }

@@ -487,7 +487,7 @@ Admin and observability:
   *Fix:* past 30 days, keep rows by route and device only, or read the day's views once for every metric.
 - [ ] **The admin's overview counts big tables** (#575).
   `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
-  *Signal:* the overview takes over a second.
+  *Signal:* the overview takes over a second (its query took about 1 ms warm on `make db/loadseed`'s 750,000 articles).
   *Fix:* an hourly counts table.
 - [ ] **A second service on the database's connections** (#573).
   `www` opens up to 10 connections; the admin adds its own pool on the same small Postgres plan.

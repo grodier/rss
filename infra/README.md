@@ -1,15 +1,17 @@
 # infra
 
-Terraform for production on Render: one Postgres 17 database (`rss-db`), one web service (`rss`) running `ghcr.io/grodier/rss`, and one cron job (`rss-backup`) that dumps the database to the Cloudflare R2 bucket `rss-backups` every night, all in Virginia.
+Terraform for production on Render: one Postgres 17 database (`rss-db`), two web services, the app (`rss`, running `ghcr.io/grodier/rss`) and the admin (`rss-admin`, running `ghcr.io/grodier/rss-admin`, behind Cloudflare Access; see "The admin"), and one cron job (`rss-backup`) that dumps the database to the Cloudflare R2 bucket `rss-backups` every night, all in Virginia.
 State lives in the R2 bucket `rss-tfstate`.
 Why Render and this setup: "Deployment" in [`docs/decisions.md`](../docs/decisions.md).
 
-Terraform doesn't own four things that change outside it, and ignores them:
+Terraform doesn't own these things that change outside it, and ignores them:
 
-- **The images** of the web service and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
+- **The images** of the web services and the backup cron job. Deploys set them by digest; `apply` never rolls a deploy back.
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
-- **`RSS_SMTP_PASSWORD`**, set in Render's dashboard (see "Domain and email").
+- **`RSS_SMTP_PASSWORD`**, set in Render's dashboard on both services (see "Domain and email").
+- **`RSS_SECRET_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin").
 - **Edge caching**, set in Render's dashboard (see "Edge caching").
+- **The admin's `onrender.com` subdomain, disabled** in Render's dashboard: the provider has no attribute for it (see "The admin").
 
 ## Prerequisites
 
@@ -31,6 +33,7 @@ export CLOUDFLARE_API_TOKEN=...     # the rss-terraform token
 export TF_VAR_cloudflare_account_id=...
 export TF_VAR_cloudflare_zone_id=...           # the georgerodier.com zone's ID
 export TF_VAR_cloudflare_app_zone_id=...       # the paperround.app zone's ID
+export TF_VAR_admin_access_email=...           # the email Cloudflare Access lets into the admin
 export TF_VAR_backup_r2_access_key_id=...      # the rss-backups R2 token's Access Key ID
 export TF_VAR_backup_r2_secret_access_key=...  # the rss-backups R2 token's Secret Access Key
 ```
@@ -58,7 +61,7 @@ Set it up once:
    - `r2-tfstate`: `access-key-id` (Text), `secret-access-key` (Password), `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
    - `r2-backups`: `access-key-id` (Text), `secret-access-key` (Password)
    - `render`: `api-key` (Password), `owner-id` (Text)
-   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text), `zone-id` (Text, `georgerodier.com`), `app-zone-id` (Text, `paperround.app`)
+   - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text), `zone-id` (Text, `georgerodier.com`), `app-zone-id` (Text, `paperround.app`), `admin-access-email` (Text), `team-name` (Text, the Zero Trust team, for reference)
 3. Outside the repository, create `~/.config/rss/infra.env`.
    It holds references, not secrets:
 
@@ -72,6 +75,7 @@ Set it up once:
    TF_VAR_cloudflare_account_id=op://rss/cloudflare/account-id
    TF_VAR_cloudflare_zone_id=op://rss/cloudflare/zone-id
    TF_VAR_cloudflare_app_zone_id=op://rss/cloudflare/app-zone-id
+   TF_VAR_admin_access_email=op://rss/cloudflare/admin-access-email
    TF_VAR_backup_r2_access_key_id=op://rss/r2-backups/access-key-id
    TF_VAR_backup_r2_secret_access_key=op://rss/r2-backups/secret-access-key
    ```
@@ -89,12 +93,12 @@ Set it up once:
 ## Deploys
 
 Three workflows in `.github/workflows` run production.
-They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_APP_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
+They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_ADMIN_SERVICE_ID` (the `rss-admin` service's `srv-…` ID, also Terraform's `admin_service_id` output), `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `ADMIN_ACCESS_EMAIL` (the email Cloudflare Access lets into the admin), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_APP_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
 
 ### How deploys happen
 
 Every push to `main` that passes CI deploys; merging the PR is the approval.
-CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss-backup:sha-<sha>`, then its `deploy` job calls `deploy.yml` (environment `production`, one deploy at a time), which:
+CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>`, `ghcr.io/grodier/rss-admin:sha-<sha>` (the Dockerfile's `admin` stage, from the same build) and `ghcr.io/grodier/rss-backup:sha-<sha>`, then its `deploy` job calls `deploy.yml` (environment `production`, one deploy at a time), which:
 
 1. resolves the tag to its digest, and fails if CI pushed no image for that commit;
 2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`.
@@ -102,7 +106,9 @@ CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>` and `ghcr.io/grodier/rss
 3. follows the deploy until it's live.
    Render runs `/www migrate -seed` first, which applies the migrations, then queues lookups of the seed list's sites not found yet (`www seed`; their keys are in its log); if it fails, the deploy fails within seconds and the old version keeps serving;
 4. checks that `/healthcheck` reports the commit's SHA as its `version`;
-5. deploys `ghcr.io/grodier/rss-backup@<digest>` to the `rss-backup` cron job, resolved the same way, and follows that deploy until it's live.
+5. deploys `ghcr.io/grodier/rss-backup@<digest>` to the `rss-backup` cron job, resolved the same way, and follows that deploy until it's live;
+6. deploys `ghcr.io/grodier/rss-admin@<digest>` to `rss-admin` the same way, and checks that `https://admin.paperround.app/healthcheck` reports the SHA (Access lets `/healthcheck` through).
+   It's last, so a failed admin deploy leaves `rss` and the backup job deployed and doesn't roll them back; rerun the job once it's fixed.
 
 If another deploy is already running (one from the dashboard, or one a Terraform apply started), Render queues ours behind it without saying which deploy it is, so the job fails.
 The queued deploy still goes ahead; follow it in Render's dashboard.
@@ -117,6 +123,7 @@ Run **Actions → Deploy → Run workflow** with an earlier commit's full SHA.
 Its image is still in GHCR.
 Rolling back doesn't undo migrations: the older image runs against the newer schema, and its `migrate` has nothing to apply.
 Every migration works with the version before it (see "Prototype stage" in [`CLAUDE.md`](../CLAUDE.md)), so rolling back one deploy is safe; going further back past a migration that dropped something the older code uses is not.
+Commits from before #573 have no `rss-admin` image, so rolling back to one fails at the last step, after `rss` and the backup job have been rolled back; the admin keeps running its newer image.
 
 ### Approving infrastructure applies
 
@@ -134,31 +141,89 @@ Plans don't wait behind applies; each pull request gets one plan at a time, and 
 
 ### Changing the web service or the backup job
 
-Until the provider is upgraded (a backlog item), an apply that changes `render_web_service.rss` fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).
+Until the provider is upgraded (a backlog item), an apply that changes `render_web_service.rss` (or `render_web_service.admin`) fails with *"unable to fetch image with provided input"*: deploys pin the service to a digest, and provider v1.9.1 can't send one back ([#106](https://github.com/render-oss/terraform-provider-render/issues/106)).
 Deploys pin `render_cron_job.backup` to a digest too, so expect the same of an apply that changes it.
 Plans aren't affected.
 Before approving such an apply:
 
-1. On the `rss` service's (or the `rss-backup` job's) **Settings → Image** in Render's dashboard, set **Source** to `ghcr.io/grodier/rss:main` (or `ghcr.io/grodier/rss-backup:main`) and save.
+1. On the `rss` service's (or `rss-admin`'s, or the `rss-backup` job's) **Settings → Image** in Render's dashboard, set **Source** to `ghcr.io/grodier/rss:main` (or `ghcr.io/grodier/rss-admin:main`, or `ghcr.io/grodier/rss-backup:main`) and save.
    CI pushes `:main` for every commit on `main`, so this redeploys the image that's running; wait until it's live.
 2. Approve the apply (or re-run it if it already failed).
 
 The next deploy pins the digest again.
 
-## Enrolling an admin
+## The admin
+
+The admin site (`cmd/admin`) runs as its own web service, `rss-admin`, at `https://admin.paperround.app`, with three layers in front of it (why: "Admin" in [`docs/decisions.md`](../docs/decisions.md)):
+
+- **Cloudflare Access** (`access.tf`), on the Zero Trust Free plan (team `bold-frog-19d2` in 1Password): only `ADMIN_ACCESS_EMAIL` gets in, with a one-time PIN emailed to it, for 24 hours.
+  `/healthcheck` is its own Access application that lets everyone through, so the deploy workflow can check the version; it reports what `paperround.app/healthcheck` does.
+  Access applies only to a proxied DNS record.
+- **No `onrender.com` URL**: the service's Render subdomain is disabled, so the only way in is through Access.
+  Terraform's provider has no attribute for it, so it's set in Render's dashboard.
+- **The admin's own login**, a password and a TOTP code, which is the real gate.
+
+**Its image** is the Dockerfile's `admin` stage, built in the same run as `rss`'s: Alpine, with `/admin` as the entrypoint and a non-root `admin` user with a shell, so `admin` commands run from the service's **Shell** in Render's dashboard.
+The `rss` image stays distroless, with no shell.
+The package `ghcr.io/grodier/rss-admin` must be public, like `rss`, or Render can't pull it.
+
+**Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY` and `RSS_SMTP_PASSWORD` are set in the dashboard.
+It runs none of `www`'s background workers.
+
+### Deploying the admin
+
+Done once, for #573.
+Before the PR:
+
+1. **Cloudflare:** turn on Zero Trust on the account (Free plan), and on the account-owned `rss-terraform` token add **Access: Edit** (under Cloudflare One / Zero Trust, "Access", which covers applications and policies).
+2. **Secrets:** add the repository secret `ADMIN_ACCESS_EMAIL`, and `admin-access-email` to 1Password (see "With 1Password").
+3. **The key:** generate `RSS_SECRET_KEY` straight into 1Password (`op item create --vault rss --category "API Credential" --title rss-admin "secret-key[password]=$(openssl rand -hex 32)"`).
+
+After merging, in order:
+
+1. **The image:** once CI's `image` job has pushed `ghcr.io/grodier/rss-admin`, make the package public (**GitHub → Packages → rss-admin → Package settings → Change visibility**).
+   The `deploy` job's last step fails this first time, since `RENDER_ADMIN_SERVICE_ID` isn't set yet; `rss` and the backup job are deployed before it.
+2. **Approve the apply.** It creates `rss-admin`, its DNS record (DNS-only for now) and the Access applications.
+   The service's first deploy fails, since `RSS_SECRET_KEY` isn't set: `admin` refuses to start in production without it.
+3. **Set the secrets** on `rss-admin`'s **Environment** page: `RSS_SECRET_KEY` from 1Password and `RSS_SMTP_PASSWORD` (the same Resend key as `rss`'s), then save, which redeploys.
+4. **Check the domain:** on `rss-admin`'s **Settings → Custom Domains**, wait until `admin.paperround.app` is verified, with a certificate.
+   Render asks for DNS-only records until then.
+5. **Disable the Render subdomain:** on the same page, set **Render Subdomain** to **Disabled**.
+6. **Add `RENDER_ADMIN_SERVICE_ID`** as a repository secret (`terraform output -raw admin_service_id`, or the `srv-…` ID in the service's URL in the dashboard), and rerun the failed `deploy` job.
+7. **Proxy the record:** a follow-up PR sets `proxied = true` on `cloudflare_dns_record.admin` and `RSS_PROXY_HOPS` to `3`.
+   Before approving its apply, check the `paperround.app` zone's **SSL/TLS → Overview** shows **Full (strict)** (or **Full**): with **Flexible**, Cloudflare would call Render over HTTP and Render's redirect to HTTPS would loop.
+8. **Check Access** (below), then open `rss-admin`'s **Shell** and run `/admin -version`, which should print the deployed SHA; then enroll (below), then check the client IP ("Checking the client IP").
+
+**Checking that Access can't be bypassed:**
+
+```sh
+curl -sI https://admin.paperround.app/login | head -3       # 302 to bold-frog-19d2.cloudflareaccess.com
+curl -s https://admin.paperround.app/healthcheck            # the JSON, with the deployed SHA
+curl -sI <the service's onrender.com URL> | head -1          # 404 (the URL is on the service's dashboard page)
+```
+
+In a browser, `https://admin.paperround.app` asks for your email first, then a PIN from your inbox, then the admin's own login.
+
+### Enrolling an admin
 
 The admin site has no admin until one is enrolled, and nothing seeds one.
-Once #573 deploys the admin service (with `RSS_SECRET_KEY`, 32 random bytes hex-encoded from `openssl rand -hex 32`, in its environment and nowhere else), open the service's **Shell** in Render's dashboard and run:
+Open the `rss-admin` service's **Shell** in Render's dashboard and run:
 
 ```sh
 /admin enroll -email you@example.com
 ```
 
 It reads `RSS_DB_DSN` and `RSS_SECRET_KEY` from the service's environment.
-Render's Shell needs a shell in the image, and the image (`gcr.io/distroless/static-debian12`) has none, so #573 has to provide one before this works (for example the admin's service on the `:debug-nonroot` variant, which adds busybox's `sh`).
 Type the password on the first line (the shell shows it, so clear the screen afterwards), scan the QR code (or add the `otpauth://` URI) with an authenticator app, type the code the app shows, and store the 10 recovery codes it prints in the password manager: they're shown once.
 For a lost phone or password, run the same with `-reset`, which replaces the admin's password, secret and recovery codes and logs every admin out, so a session on a lost device ends too.
-Rotating `RSS_SECRET_KEY` makes every admin's secret unreadable, so each must enroll again with `-reset`.
+
+### Rotating `RSS_SECRET_KEY`
+
+The key seals every admin's TOTP secret, so a new key makes every secret unreadable and every admin enrolls again.
+
+1. Replace the key in 1Password: `op item edit rss-admin --vault rss "secret-key[password]=$(openssl rand -hex 32)"`.
+2. Set it as `RSS_SECRET_KEY` on `rss-admin`'s **Environment** page (saving redeploys).
+3. From the service's **Shell**, run `/admin enroll -email <admin> -reset` for each admin.
 
 ## Backups and restore
 
@@ -226,7 +291,7 @@ A dump restores cleanly only into a database with the same migrations, so check 
 ## Signing up
 
 Signup needs a single-use invite; no page links to `/signup`, so each person gets their own link.
-Until the admin's pages send invites (#574), make them from the admin service's **Shell** in Render's dashboard, once #573 deploys it (with `RSS_APP_URL=https://paperround.app` in its environment, for the links):
+Until the admin's pages send invites (#574), make them from the `rss-admin` service's **Shell** in Render's dashboard (its `RSS_APP_URL` is `https://paperround.app`, for the links):
 
 ```sh
 /admin invite create -email someone@example.com   # bound to their confirmed waitlist entry
@@ -253,7 +318,7 @@ The app is served at `https://paperround.app` and sends its email from it, throu
 Why: "Accounts" in [`docs/decisions.md`](../docs/decisions.md).
 What lives where:
 
-- **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, all DNS-only, and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
+- **DNS records** in `domain.tf`, in the `paperround.app` zone: the app's CNAMEs on the apex (which Cloudflare flattens) and `www`, DNS-only, the admin's on `admin` (proxied, for Access, once Render has issued its certificate; see "The admin"), and Resend's records (CNAMEs on `send` and `rsend`, the DKIM key on `resend._domainkey`), with the names and values Resend's dashboard showed.
   The service's `custom_domains` makes Render verify the domain and issue its certificates; Render adds `www` with the apex and redirects it.
 - **The old host** `rss.georgerodier.com`: its CNAME stays in `domain.tf`, in the `georgerodier.com` zone, and it stays a custom domain on the service, so old links and bookmarks keep working.
   The app redirects it, and the service's `onrender.com` URL, to `https://paperround.app` with a 308 (`redirectToCanonicalHost`), except `/healthcheck`.
@@ -264,7 +329,7 @@ What lives where:
 - **DMARC**: the `p=none` record on `_dmarc.paperround.app`, which Cloudflare's **DMARC Management** (**`paperround.app` → Email → DMARC Management**) created outside Terraform, and whose reports it shows.
 
 Resend's free tier allows 100 emails a day and 3,000 a month.
-`admin send-test-email` (#259, moved to `admin` in #568) checks deliverability, from the admin service's shell once #573 deploys it, with the app's URL as `-base-url` (see the README).
+`admin send-test-email` (#259, moved to `admin` in #568) checks deliverability, from the `rss-admin` service's **Shell**, with the app's URL as `-base-url` (see the README).
 
 ### Setting up
 
@@ -329,6 +394,10 @@ Anything else means the hop count is wrong:
 
 To find the right count, change `RSS_PROXY_HOPS` on the service's **Environment** page (saving redeploys) and repeat the check, then set the value that works in `main.tf` and apply.
 If no value works, set it to `0` and stop: every visitor then shares one login limit, but nobody can forge their address.
+
+**The admin** has one more hop once its record is proxied: the `paperround.app` zone's Cloudflare, then Render's, then Render's proxy, so its `RSS_PROXY_HOPS` is `3`.
+Check it by logging in to the admin (after Access) and opening its audit log (`/audit`): the `login` row's IP must be your own public IP (`curl -4 https://api.ipify.org`, or `-6` if your browser used IPv6).
+The same mistakes show the same way, except that the forged-header test can't be sent from a browser.
 
 ## Facts recorded after setup
 

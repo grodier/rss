@@ -13,6 +13,18 @@ resource "render_postgres" "rss_db" {
   }
 }
 
+# Email settings both services use (see "Domain and email" in README.md); the
+# SMTP password is set in Render's dashboard, on each service.
+locals {
+  mail_env_vars = {
+    RSS_SMTP_HOST     = { value = "smtp.resend.com" }
+    RSS_SMTP_PORT     = { value = "465" }
+    RSS_SMTP_USERNAME = { value = "resend" }
+    RSS_MAIL_FROM     = { value = "rss <hello@paperround.app>" }
+    RSS_SUPPORT_EMAIL = { value = "rss-support@georgerodier.com" }
+  }
+}
+
 resource "render_web_service" "rss" {
   name   = "rss"
   plan   = "starter"
@@ -38,7 +50,7 @@ resource "render_web_service" "rss" {
   # the apex and redirects it there; rss.georgerodier.com is the old host.
   custom_domains = [{ name = "paperround.app" }, { name = "rss.georgerodier.com" }]
 
-  env_vars = {
+  env_vars = merge(local.mail_env_vars, {
     RSS_ENV = { value = "production" }
     # Internal connections support TLS, so lib/pq's default sslmode=require
     # works and never falls back to plaintext.
@@ -50,15 +62,10 @@ resource "render_web_service" "rss" {
     # Render routes to PORT; the app listens on RSS_PORT.
     RSS_PORT = { value = "8080" }
     PORT     = { value = "8080" }
-    # Email (see "Domain and email" in infra/README.md). The app reads these
-    # once #259 adds the flags; until then it ignores them.
-    RSS_BASE_URL      = { value = "https://paperround.app" }
-    RSS_SMTP_HOST     = { value = "smtp.resend.com" }
-    RSS_SMTP_PORT     = { value = "465" }
-    RSS_SMTP_USERNAME = { value = "resend" }
-    RSS_MAIL_FROM     = { value = "rss <hello@paperround.app>" }
-    RSS_SUPPORT_EMAIL = { value = "rss-support@georgerodier.com" }
-  }
+    # Email (see "Domain and email" in infra/README.md); the rest of the mail
+    # settings are in local.mail_env_vars.
+    RSS_BASE_URL = { value = "https://paperround.app" }
+  })
 
   lifecycle {
     ignore_changes = [
@@ -69,6 +76,65 @@ resource "render_web_service" "rss" {
       env_vars["RSS_DEBUG_EMAILS"],
       # Set in Render's dashboard, so it never lands in the state; see "Domain
       # and email" in infra/README.md.
+      env_vars["RSS_SMTP_PASSWORD"],
+    ]
+  }
+}
+
+# The admin site (cmd/admin), its own service from its own image, built from the
+# same commit as rss's (the Dockerfile's admin stage). Cloudflare Access is in
+# front of admin.paperround.app (access.tf), and the service's onrender.com URL
+# is disabled in Render's dashboard, so Access can't be bypassed; the admin's
+# login is the real gate. See "Admin" in docs/decisions.md and "Deploying the
+# admin" in README.md.
+resource "render_web_service" "admin" {
+  name   = "rss-admin"
+  plan   = "starter"
+  region = "virginia"
+
+  # The image's entrypoint is /admin, which serves.
+  runtime_source = {
+    image = {
+      image_url = "ghcr.io/grodier/rss-admin"
+      tag       = "main"
+    }
+  }
+
+  # Render checks it on the service's internal address, not through Access.
+  health_check_path = "/healthcheck"
+
+  # Matches the 30-second graceful shutdown in internal/admin/server.go.
+  max_shutdown_delay_seconds = 30
+
+  # Its DNS record is in domain.tf.
+  custom_domains = [{ name = "admin.paperround.app" }]
+
+  # The admin's commands (admin invite, admin send-test-email) read the mail
+  # settings and RSS_APP_URL too, run from the service's Shell.
+  env_vars = merge(local.mail_env_vars, {
+    RSS_ENV    = { value = "production" }
+    RSS_DB_DSN = { value = sensitive(render_postgres.rss_db.connection_info.internal_connection_string) }
+    # It shares the database's connections with rss: see "A second service on
+    # the database's connections" in docs/backlog.md.
+    RSS_DB_MAX_OPEN_CONNS = { value = "3" }
+    # Requests come through Render's Cloudflare, then Render's proxy, while
+    # its DNS record is DNS-only; see "Checking the client IP" in README.md.
+    RSS_PROXY_HOPS = { value = "2" }
+    RSS_PORT       = { value = "8080" }
+    PORT           = { value = "8080" }
+    RSS_BASE_URL   = { value = "https://admin.paperround.app" }
+    # The reader's URL, for the links admin invite create prints.
+    RSS_APP_URL = { value = "https://paperround.app" }
+  })
+
+  lifecycle {
+    ignore_changes = [
+      # Deploys (the deploy workflow) set the image by digest; apply must
+      # never roll them back.
+      runtime_source.image,
+      # Set in Render's dashboard, so neither lands in the state: the key the
+      # admins' TOTP secrets are sealed with, and the SMTP password.
+      env_vars["RSS_SECRET_KEY"],
       env_vars["RSS_SMTP_PASSWORD"],
     ]
   }

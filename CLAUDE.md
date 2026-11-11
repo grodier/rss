@@ -46,6 +46,7 @@ make db/reset                            # rebuild the local DB from scratch
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
 make db/migrations/new name=<name>       # new migration
 docker build -t rss .                    # build the container image (or: make docker/build)
+docker build --target admin -t rss-admin .  # build the admin's image (or: make docker/build/admin)
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 

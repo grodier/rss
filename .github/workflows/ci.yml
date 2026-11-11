@@ -191,6 +191,30 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+      # The admin's image, from the same Dockerfile's admin stage. The builder
+      # reuses the build stage from the step above, so both images hold
+      # binaries from one build. deploy.yml deploys it to the rss-admin service.
+      - name: build admin
+        id: build-admin
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: admin
+          platforms: linux/amd64
+          build-args: VERSION=${{ github.sha }}
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/grodier/rss-admin:sha-${{ github.sha }}
+            ghcr.io/grodier/rss-admin:main
+
+      - name: attest admin build provenance
+        if: env.PUSH == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/grodier/rss-admin
+          subject-digest: ${{ steps.build-admin.outputs.digest }}
+          push-to-registry: true
+
       # deploy.yml deploys it to Render's rss-backup cron job by digest; see
       # "Backups and restore" in infra/README.md.
       - name: build backup
@@ -223,3 +247,4 @@ jobs:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
       RENDER_BACKUP_JOB_ID: ${{ secrets.RENDER_BACKUP_JOB_ID }}
+      RENDER_ADMIN_SERVICE_ID: ${{ secrets.RENDER_ADMIN_SERVICE_ID }}

@@ -557,7 +557,7 @@ Pages read them only through the card-value accessors (see "Card values" under "
 
 ## Admin
 
-**Flow.** The admin site is a second binary, `admin`, with its own server on its own origin (production's, `admin.paperround.app`, is #573), for the owner only; this is its skeleton (#562) and login (#567), and later admin issues add its sections.
+**Flow.** The admin site is a second binary, `admin`, with its own server on its own origin (production's is `admin.paperround.app`, behind Cloudflare Access; see "The admin" in `infra/README.md`), for the owner only; this is its skeleton (#562) and login (#567), and later admin issues add its sections.
 Locally it runs with `make run/admin` (http://localhost:4001).
 
 1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`, and `admin enroll` (below); an unknown subcommand prints the usage and exits 2.

@@ -578,7 +578,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview (`homeHandler`) is an empty state until #575; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview is below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
    `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
@@ -595,6 +595,23 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 5. `internal/admin/chart/chart.go` (`LineChart.SVG`, `Histogram.SVG`) and `web/admin/styles/partials/chart.css`.
 
 **Tests:** `internal/admin/server_test.go`; `internal/admin/html_test.go`; `internal/admin/chart/chart_test.go` (with golden SVGs in `testdata`, `-update`); `cmd/admin/config_test.go`; `internal/assets/assets_test.go`; `internal/cli/cli_test.go`; `web/build_test.go` (`TestAdminManifest`); `web/admin/entries/entries.test.ts`.
+
+### Overview
+
+`GET /` (`homeHandler`) answers "is everything all right, and how is it growing?" with figures across every reader, never one reader's reading ("Admin" in decisions.md).
+
+1. **Counting.** `AdminOverviewRepository.Overview` counts the People and Content sections in one query at the handler's `now`: small tables exactly, and `articles`, `reads` and `timeline_entries` from the planner's estimate (`estimatedRows`, `pg_class.reltuples`), since counting them reads them whole (the watchlist entry "The admin's overview counts big tables").
+   Readers active count distinct `user_sessions.user_id` by `last_seen_at`, which moves at most once a day, so the label says "about"; waiting uses the waitlist's Waiting rule (`waitingEntry`).
+2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Waiting to `/waitlist`, Invites pending to `/invites`).
+   The head says the admin's build and when the page was rendered; the Queues (#610) and the jobs of the last 24 hours (#611) come later.
+
+**Start at:**
+
+1. `internal/admin/home.go`.
+2. `internal/psql/admin_overview.go`.
+3. `internal/ui/admin/home.html` and `partials/stats.html`.
+
+**Tests:** `internal/admin/overview_test.go`; `internal/psql/admin_overview_test.go`.
 
 ### Login
 

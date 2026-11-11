@@ -1,0 +1,13 @@
+{{/* stat-row is a row of figures ([]statTile): a label, a number and an
+optional second line, each a link where its page exists. */}}
+{{define "stat-row"}}
+<dl class="stats">
+  {{range .}}
+  <div class="stat{{if .Href}} stat-link{{end}}">
+    <dt>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</dt>
+    <dd>{{count .Value}}</dd>
+    {{with .Note}}<dd class="stat-note">{{.}}</dd>{{end}}
+  </div>
+  {{end}}
+</dl>
+{{end}}

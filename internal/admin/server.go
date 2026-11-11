@@ -97,6 +97,12 @@ type EmailStore interface {
 	Usage(ctx context.Context, now time.Time) (rss.EmailUsage, error)
 }
 
+// OverviewStore reads the Overview's counts; *psql.AdminOverviewRepository
+// is one.
+type OverviewStore interface {
+	Overview(ctx context.Context, now time.Time) (rss.AdminOverview, error)
+}
+
 type Services struct {
 	Database DatabasePinger
 	Admins   AdminStore
@@ -104,6 +110,7 @@ type Services struct {
 	Waitlist WaitlistStore
 	Invites  InviteStore
 	Emails   EmailStore
+	Overview OverviewStore
 }
 
 type Server struct {

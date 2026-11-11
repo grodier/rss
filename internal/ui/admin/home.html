@@ -15,8 +15,18 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Overview</h1>
+        <p>Admin {{.Version}} · rendered <time datetime="{{.RenderedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.RenderedAt.UTC.Format "2006-01-02 15:04"}} UTC</time></p>
       </header>
-      <p class="empty">Nothing here yet.</p>
+
+      <section class="admin-section" aria-labelledby="people">
+        <h2 id="people">People</h2>
+        {{template "stat-row" .People}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="content">
+        <h2 id="content">Content</h2>
+        {{template "stat-row" .Content}}
+      </section>
     </main>
   </div>
 </body>

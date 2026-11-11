@@ -1,0 +1,118 @@
+package admin
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/grodier/rss/internal/rss"
+)
+
+// fakeOverview is an OverviewStore returning o, or err, and remembering the
+// time it was asked for.
+type fakeOverview struct {
+	o   rss.AdminOverview
+	err error
+	now time.Time
+}
+
+func (f *fakeOverview) Overview(_ context.Context, now time.Time) (rss.AdminOverview, error) {
+	f.now = now
+	return f.o, f.err
+}
+
+// overviewServer returns a logged-in browser to a server whose Overview is
+// ov's.
+func overviewServer(t *testing.T, ov *fakeOverview) *browser {
+	t.Helper()
+	cfg := Config{Port: 4001, Env: "development", Version: "abc1234", BaseURL: "http://localhost:4001"}
+	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Overview: ov})
+	return loggedIn(t, s)
+}
+
+func TestOverview(t *testing.T) {
+	ov := &fakeOverview{o: rss.AdminOverview{
+		People: rss.OverviewPeople{
+			Accounts: 1284, ConfirmedAccounts: 1201, Signups7: 12, Signups30: 57,
+			Active7: 640, Active30: 902, Waiting: 3412, InvitesPending: 25,
+		},
+		Content: rss.OverviewContent{
+			Sites: 2210, Feeds: 2604, SubscribedFeeds: 1890, Subscriptions: 15032,
+			Articles: 1520400, Reads: 830120, TimelineEntries: 4200500,
+		},
+	}}
+	b := overviewServer(t, ov)
+
+	rr := b.get(t, "/")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", rr.Code)
+	}
+	if !ov.now.Equal(testNow) {
+		t.Errorf("Overview asked at %v, want the server's now, %v", ov.now, testNow)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`<h2 id="people">People</h2>`,
+		`<dt>Confirmed accounts</dt>`, `<dd>1,201</dd>`, `of 1,284`,
+		`<dt>Signups in 7 days</dt>`, `<dd>12</dd>`, `57 in 30 days`,
+		`<dt>Active in 7 days, about</dt>`, `<dd>640</dd>`, `902 in 30 days`,
+		`<dt><a href="/waitlist">Waiting</a></dt>`, `<dd>3,412</dd>`,
+		`<dt><a href="/invites">Invites pending</a></dt>`, `<dd>25</dd>`,
+		`<h2 id="content">Content</h2>`,
+		`<dt>Sites</dt>`, `<dd>2,210</dd>`,
+		`<dt>Feeds</dt>`, `<dd>2,604</dd>`, `1,890 with subscribers`,
+		`<dt>Subscriptions</dt>`, `<dd>15,032</dd>`,
+		`<dt>Articles, about</dt>`, `<dd>1,520,400</dd>`,
+		`<dt>Reads, about</dt>`, `<dd>830,120</dd>`,
+		`<dt>Timeline entries, about</dt>`, `<dd>4,200,500</dd>`,
+		`Admin abc1234 · rendered <time datetime="` + testNow.UTC().Format("2006-01-02T15:04:05Z") + `">` + testNow.UTC().Format("2006-01-02 15:04") + ` UTC</time>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %s", want)
+		}
+	}
+	// Only figures with a page are links.
+	if n := strings.Count(body, `class="stat stat-link"`); n != 2 {
+		t.Errorf("GET / has %d linked figures, want 2 (Waiting and Invites pending)", n)
+	}
+}
+
+func TestOverviewEmpty(t *testing.T) {
+	b := overviewServer(t, &fakeOverview{})
+
+	rr := b.get(t, "/")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	if n := strings.Count(body, `<dd>0</dd>`); n != 11 {
+		t.Errorf("GET / shows %d zeros, want 11 (every figure)", n)
+	}
+	for _, want := range []string{"of 0", "0 in 30 days", "0 with subscribers"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %q", want)
+		}
+	}
+}
+
+func TestOverviewStoreError(t *testing.T) {
+	b := overviewServer(t, &fakeOverview{err: errors.New("database down")})
+
+	if rr := b.get(t, "/"); rr.Code != http.StatusInternalServerError {
+		t.Errorf("GET / = %d, want 500", rr.Code)
+	}
+}
+
+func TestCount(t *testing.T) {
+	for n, want := range map[int]string{
+		0: "0", 7: "7", 999: "999", 1000: "1,000", 1284: "1,284", 999999: "999,999",
+		1000000: "1,000,000", -1284: "-1,284",
+	} {
+		if got := count(n); got != want {
+			t.Errorf("count(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

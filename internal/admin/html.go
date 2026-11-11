@@ -31,6 +31,8 @@ var templateFuncs = template.FuncMap{
 		}
 		return fmt.Sprintf("%d%%", part*100/whole)
 	},
+	// count formats n with commas between thousands: 1,284.
+	"count": count,
 	// subf subtracts b from a, to place an SVG shape from its end.
 	"subf": func(a, b float64) float64 { return a - b },
 	// date formats t as a UTC date.
@@ -53,11 +55,6 @@ func (s *Server) nav(r *http.Request, section string) navData {
 		nav.Email = admin.Email
 	}
 	return nav
-}
-
-// homePage is the Overview's data.
-type homePage struct {
-	Nav navData
 }
 
 // parseTemplates parses the admin's page templates once per process: they're

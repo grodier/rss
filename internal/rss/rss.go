@@ -758,3 +758,36 @@ type RUMView struct {
 	LCPElement    string // tag name of the LCP element
 	INPTarget     string // data-* hook or tag name of the slowest interaction's target
 }
+
+// AdminOverview is the admin's Overview: aggregates across every reader,
+// never one reader's reading ("Admin" in docs/decisions.md).
+type AdminOverview struct {
+	People  OverviewPeople
+	Content OverviewContent
+}
+
+// OverviewPeople are the Overview's counts of accounts and the waitlist.
+type OverviewPeople struct {
+	Accounts, ConfirmedAccounts int
+	// Signups7, Signups30 are the accounts made in the last 7 and 30 days.
+	Signups7, Signups30 int
+	// Active7, Active30 are the readers with a session seen in the last 7
+	// and 30 days. A session's last_seen_at is updated at most once a day,
+	// so they're about right, not exact.
+	Active7, Active30 int
+	// Waiting are the confirmed waitlist entries without a pending invite
+	// (the waitlist's Waiting tab); InvitesPending the invites neither
+	// used, revoked nor expired.
+	Waiting, InvitesPending int
+}
+
+// OverviewContent are the Overview's counts of what readers follow and
+// read. Articles, Reads and TimelineEntries are the planner's estimates, as
+// counting those tables exactly reads them whole.
+type OverviewContent struct {
+	Sites, Feeds, Subscriptions int
+	// SubscribedFeeds are the feeds with at least one subscriber.
+	SubscribedFeeds int
+	// Estimated.
+	Articles, Reads, TimelineEntries int
+}

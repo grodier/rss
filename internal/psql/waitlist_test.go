@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -172,6 +173,152 @@ func TestWaitlistRepository(t *testing.T) {
 		var pqErr *pq.Error
 		if !errors.As(err, &pqErr) || pqErr.Code != "23514" {
 			t.Errorf("Join error = %v, want a check violation", err)
+		}
+	})
+}
+
+// confirmedEntry joins and confirms a unique entry named name, joined at
+// joined; it's deleted when the test ends, with its invites and emails.
+func confirmedEntry(t *testing.T, db *sql.DB, name string, joined time.Time) rss.WaitlistEntry {
+	t.Helper()
+	repo := NewWaitlistRepository(db)
+	email := newWaitlistEmail(t, db)
+	cleanupExec(t, db, `DELETE FROM invites WHERE email = $1`, email)
+	t.Cleanup(func() { deleteEmailsTo(t, db, email) })
+	hash := newWaitlistHash(t)
+	e, err := repo.Join(t.Context(), rss.WaitlistEntry{Email: email, Name: name}, hash)
+	if err != nil {
+		t.Fatalf("Join: %v", err)
+	}
+	if err := repo.Confirm(t.Context(), hash); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE waitlist SET created_at = $2 WHERE id = $1`, e.ID, joined); err != nil {
+		t.Fatal(err)
+	}
+	e, err = repo.GetByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func TestWaitlistAdminQueries(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewWaitlistRepository(db)
+	ctx := t.Context()
+
+	before, err := repo.Counts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Joined in 1990, so they're older than any other test's entries.
+	day := func(d int) time.Time { return time.Date(1990, 1, d, 0, 0, 0, 0, time.UTC) }
+	waiting := confirmedEntry(t, db, "Waiting", day(1))
+	expired := confirmedEntry(t, db, "Expired", day(2))
+	invited := confirmedEntry(t, db, "Invited", day(3))
+	revoked := confirmedEntry(t, db, "Revoked", day(4))
+	unconfirmedEmail := newWaitlistEmail(t, db)
+	unconfirmed, err := repo.Join(ctx, rss.WaitlistEntry{Email: unconfirmedEmail, Name: "Unconfirmed"}, newWaitlistHash(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newInvite(t, db, rss.Invite{Email: expired.Email, WaitlistID: expired.ID, ExpiresAt: time.Now().Add(-time.Hour)})
+	// An older, expired invite, then the pending one: the row shows the latest.
+	newInvite(t, db, rss.Invite{Email: invited.Email, WaitlistID: invited.ID, ExpiresAt: time.Now().Add(-time.Hour)})
+	pending, _ := newInvite(t, db, rss.Invite{Email: invited.Email, WaitlistID: invited.ID, Wave: "W", ExpiresAt: time.Now().Add(time.Hour)})
+	r, _ := newInvite(t, db, rss.Invite{Email: revoked.Email, WaitlistID: revoked.ID, ExpiresAt: time.Now().Add(time.Hour)})
+	if err := NewInviteRepository(db).Revoke(ctx, r.ID, testActor(t, db)); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("Counts", func(t *testing.T) {
+		got, err := repo.Counts(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := rss.WaitlistCounts{Waiting: before.Waiting + 3, Invited: before.Invited + 1, Unconfirmed: before.Unconfirmed + 1}
+		if got != want {
+			t.Errorf("Counts = %+v, want %+v", got, want)
+		}
+	})
+
+	ours := map[string]bool{waiting.ID: true, expired.ID: true, invited.ID: true, revoked.ID: true, unconfirmed.ID: true}
+	list := func(t *testing.T, tab string) []rss.WaitlistRow {
+		t.Helper()
+		rows, err := repo.List(ctx, tab, 100_000, 0)
+		if err != nil {
+			t.Fatalf("List(%s): %v", tab, err)
+		}
+		return slices.DeleteFunc(rows, func(r rss.WaitlistRow) bool { return !ours[r.ID] })
+	}
+
+	t.Run("List's tabs, oldest first, with the latest invite", func(t *testing.T) {
+		names := func(rows []rss.WaitlistRow) []string {
+			var n []string
+			for _, r := range rows {
+				n = append(n, r.Name)
+			}
+			return n
+		}
+		if got := names(list(t, rss.WaitlistWaiting)); !slices.Equal(got, []string{"Waiting", "Expired", "Revoked"}) {
+			t.Errorf("waiting = %v", got)
+		}
+		inv := list(t, rss.WaitlistInvited)
+		if got := names(inv); !slices.Equal(got, []string{"Invited"}) {
+			t.Fatalf("invited = %v", got)
+		}
+		if inv[0].Invite.ID != pending.ID || inv[0].Invite.Wave != "W" || inv[0].Invite.Status(time.Now()) != rss.InvitePending {
+			t.Errorf("invited row's invite = %+v, want the pending one", inv[0].Invite)
+		}
+		if got := names(list(t, rss.WaitlistUnconfirmed)); !slices.Equal(got, []string{"Unconfirmed"}) {
+			t.Errorf("unconfirmed = %v", got)
+		}
+		rows := list(t, rss.WaitlistWaiting)
+		if rows[0].Invite.ID != "" || rows[1].Invite.Status(time.Now()) != rss.InviteExpired || rows[2].Invite.Status(time.Now()) != rss.InviteRevoked {
+			t.Errorf("waiting rows' invites = %+v, %+v, %+v; want none, expired, revoked", rows[0].Invite, rows[1].Invite, rows[2].Invite)
+		}
+		if rows[0].Email != waiting.Email || rows[0].ConfirmedAt.IsZero() || !rows[0].CreatedAt.Equal(day(1)) {
+			t.Errorf("row = %+v", rows[0])
+		}
+	})
+
+	t.Run("List pages", func(t *testing.T) {
+		first, err := repo.List(ctx, rss.WaitlistWaiting, 2, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := repo.List(ctx, rss.WaitlistWaiting, 2, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(first) != 2 || first[0].ID != waiting.ID || first[1].ID != expired.ID || len(second) == 0 || second[0].ID != revoked.ID {
+			t.Errorf("pages = %v, %v", first, second)
+		}
+		if _, err := repo.List(ctx, "everyone", 1, 0); err == nil {
+			t.Error("List(unknown tab) succeeded")
+		}
+	})
+
+	t.Run("ListWaiting keeps only the waiting", func(t *testing.T) {
+		got, err := repo.ListWaiting(ctx, []string{revoked.ID, invited.ID, unconfirmed.ID, waiting.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 || got[0].ID != waiting.ID || got[1].ID != revoked.ID {
+			t.Errorf("ListWaiting = %+v, want Waiting then Revoked", got)
+		}
+	})
+
+	t.Run("Oldest", func(t *testing.T) {
+		got, err := repo.Oldest(ctx, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 || got[0].ID != waiting.ID || got[1].ID != expired.ID {
+			t.Errorf("Oldest(2) = %+v, want Waiting then Expired", got)
 		}
 	})
 }

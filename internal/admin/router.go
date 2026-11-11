@@ -52,6 +52,9 @@ func (s *Server) router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuthentication)
 			r.Get("/", s.homeHandler)
+			r.Get("/waitlist", s.waitlistHandler)
+			r.Post("/waitlist/review", s.waitlistReviewHandler)
+			r.Post("/waitlist/invite", s.waitlistInviteHandler)
 			r.Get("/audit", s.auditHandler)
 		})
 	})

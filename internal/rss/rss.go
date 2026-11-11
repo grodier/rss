@@ -540,6 +540,27 @@ type WaitlistEntry struct {
 	CreatedAt   time.Time
 }
 
+// The admin's waitlist tabs: confirmed entries with no pending invite
+// (WaitlistWaiting), confirmed entries with one (WaitlistInvited), and
+// entries not yet confirmed (WaitlistUnconfirmed).
+const (
+	WaitlistWaiting     = "waiting"
+	WaitlistInvited     = "invited"
+	WaitlistUnconfirmed = "unconfirmed"
+)
+
+// WaitlistRow is a waitlist entry as the admin lists it, with its latest
+// invite (zero, with an empty ID, if it has none).
+type WaitlistRow struct {
+	WaitlistEntry
+	Invite Invite
+}
+
+// WaitlistCounts are how many entries each of the admin's waitlist tabs has.
+type WaitlistCounts struct {
+	Waiting, Invited, Unconfirmed int
+}
+
 // Invite is a single-use signup invite (an invites row). A bound invite has
 // an Email, and only that address can sign up with it; an open one has none.
 type Invite struct {
@@ -578,6 +599,34 @@ func (i Invite) Status(now time.Time) string {
 		return InviteExpired
 	}
 	return InvitePending
+}
+
+// Wave is a wave of invites to send from the admin: one per waiting
+// waitlist entry, each bound to it, under one label.
+type Wave struct {
+	Label     string
+	ExpiresAt time.Time
+	Invites   []WaveInvite
+}
+
+// WaveInvite is one invite of a Wave, with its email: the invite's token and
+// the entry's new link token (its leave link) are in the email, so both are
+// made, and the email rendered, before the wave is sent.
+type WaveInvite struct {
+	WaitlistID        string
+	Email             string
+	InviteTokenHash   []byte
+	WaitlistTokenHash []byte
+	// Subject, Text and HTML are the invite's email.
+	Subject, Text, HTML string
+}
+
+// EmailUsage is how many emails were queued against the email provider's
+// sending limits: in the last 24 hours (plus any still pending from before),
+// and in the current UTC calendar month.
+type EmailUsage struct {
+	Last24h   int
+	ThisMonth int
 }
 
 // Session is one logged-in device (a user_sessions row) with its user.

@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // app/entries/entries.test.ts, the reader's).
 const modules: Record<string, string[]> = {
   "../../shared/lib/busy-forms": ["init"],
+  "../features/select": ["init"],
 };
 
 const entries: Record<string, string[]> = {
-  admin: ["busy-forms"],
+  admin: ["busy-forms", "select"],
 };
 
 const load = import.meta.glob(["./*.ts", "!./*.test.ts"]);

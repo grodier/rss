@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 // WaitlistRepository stores the people waiting for an invite (waitlist
@@ -113,4 +115,111 @@ func execWaitlistToken(ctx context.Context, db *sql.DB, stmt string, tokenHash [
 		return rss.ErrNoRecord
 	}
 	return nil
+}
+
+// pendingInvite is true for a waitlist row w with an invite that can still
+// be used: the admin's Invited tab.
+const pendingInvite = `EXISTS (SELECT 1 FROM invites i WHERE i.waitlist_id = w.id
+	AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now())`
+
+// waitingEntry is true for a waitlist row w that's confirmed and has no
+// pending invite: the admin's Waiting tab, the only entries a wave invites.
+// An entry whose invite expired or was revoked is waiting again.
+const waitingEntry = `w.confirmed_at IS NOT NULL AND NOT ` + pendingInvite
+
+// waitlistTabs are the admin's tabs' conditions on a waitlist row w.
+var waitlistTabs = map[string]string{
+	rss.WaitlistWaiting:     waitingEntry,
+	rss.WaitlistInvited:     `w.confirmed_at IS NOT NULL AND ` + pendingInvite,
+	rss.WaitlistUnconfirmed: `w.confirmed_at IS NULL`,
+}
+
+// Counts returns how many entries each of the admin's tabs has.
+func (r *WaitlistRepository) Counts(ctx context.Context) (rss.WaitlistCounts, error) {
+	stmt := `SELECT
+			count(*) FILTER (WHERE confirmed AND NOT pending),
+			count(*) FILTER (WHERE confirmed AND pending),
+			count(*) FILTER (WHERE NOT confirmed)
+		FROM (SELECT w.confirmed_at IS NOT NULL AS confirmed, ` + pendingInvite + ` AS pending FROM waitlist w) e`
+
+	var c rss.WaitlistCounts
+	err := r.DB.QueryRowContext(ctx, stmt).Scan(&c.Waiting, &c.Invited, &c.Unconfirmed)
+	return c, err
+}
+
+// List returns at most limit of the entries on tab (rss.WaitlistWaiting,
+// WaitlistInvited or WaitlistUnconfirmed), oldest first, after skipping
+// offset, each with its latest invite.
+func (r *WaitlistRepository) List(ctx context.Context, tab string, limit, offset int) ([]rss.WaitlistRow, error) {
+	where, ok := waitlistTabs[tab]
+	if !ok {
+		return nil, fmt.Errorf("unknown waitlist tab %q", tab)
+	}
+	stmt := `SELECT w.id, w.email, w.name, w.sites, w.source, w.confirmed_at, w.created_at,
+			coalesce(i.id::text, ''), coalesce(i.wave, ''), i.expires_at, i.redeemed_at, i.revoked_at, i.created_at
+		FROM waitlist w
+		LEFT JOIN LATERAL (
+			SELECT * FROM invites i WHERE i.waitlist_id = w.id ORDER BY i.created_at DESC, i.id LIMIT 1
+		) i ON true
+		WHERE ` + where + `
+		ORDER BY w.created_at, w.id
+		LIMIT $1 OFFSET $2`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []rss.WaitlistRow
+	for rows.Next() {
+		var row rss.WaitlistRow
+		var confirmedAt, expiresAt, redeemedAt, revokedAt, invitedAt sql.NullTime
+		err := rows.Scan(&row.ID, &row.Email, &row.Name, &row.Sites, &row.Source, &confirmedAt, &row.CreatedAt,
+			&row.Invite.ID, &row.Invite.Wave, &expiresAt, &redeemedAt, &revokedAt, &invitedAt)
+		if err != nil {
+			return nil, err
+		}
+		row.ConfirmedAt = confirmedAt.Time
+		row.Invite.ExpiresAt, row.Invite.RedeemedAt, row.Invite.RevokedAt, row.Invite.CreatedAt =
+			expiresAt.Time, redeemedAt.Time, revokedAt.Time, invitedAt.Time
+		list = append(list, row)
+	}
+	return list, rows.Err()
+}
+
+// ListWaiting returns the waiting entries (confirmed, with no pending
+// invite) among ids, which must be UUIDs, oldest first.
+func (r *WaitlistRepository) ListWaiting(ctx context.Context, ids []string) ([]rss.WaitlistEntry, error) {
+	stmt := `SELECT ` + waitlistColumns + ` FROM waitlist w
+		WHERE w.id = ANY($1::uuid[]) AND ` + waitingEntry + `
+		ORDER BY w.created_at, w.id`
+	return r.listEntries(ctx, stmt, pq.Array(ids))
+}
+
+// Oldest returns the n oldest waiting entries, oldest first.
+func (r *WaitlistRepository) Oldest(ctx context.Context, n int) ([]rss.WaitlistEntry, error) {
+	stmt := `SELECT ` + waitlistColumns + ` FROM waitlist w
+		WHERE ` + waitingEntry + `
+		ORDER BY w.created_at, w.id
+		LIMIT $1`
+	return r.listEntries(ctx, stmt, n)
+}
+
+func (r *WaitlistRepository) listEntries(ctx context.Context, stmt string, args ...any) ([]rss.WaitlistEntry, error) {
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []rss.WaitlistEntry
+	for rows.Next() {
+		e, err := scanWaitlistEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }

@@ -62,13 +62,23 @@ func serve(cfg config, logger *slog.Logger) error {
 	sessions := admin.NewSessionManager(store, cfg.env)
 
 	srv, err := admin.New(logger, admin.Config{
-		Port:      cfg.port,
-		Env:       cfg.env,
-		Version:   version,
-		BaseURL:   cfg.baseURL,
-		ProxyHops: cfg.proxyHops,
-		SecretKey: key,
-	}, admin.Services{Database: db, Admins: psql.NewAdminRepository(db), Audit: psql.NewAuditRepository(db)}, sessions)
+		Port:         cfg.port,
+		Env:          cfg.env,
+		Version:      version,
+		BaseURL:      cfg.baseURL,
+		ProxyHops:    cfg.proxyHops,
+		SecretKey:    key,
+		AppURL:       cfg.appURL,
+		SupportEmail: cfg.supportEmail,
+		MailLimits:   cfg.mailLimits,
+	}, admin.Services{
+		Database: db,
+		Admins:   psql.NewAdminRepository(db),
+		Audit:    psql.NewAuditRepository(db),
+		Waitlist: psql.NewWaitlistRepository(db),
+		Invites:  psql.NewInviteRepository(db),
+		Emails:   psql.NewEmailRepository(db),
+	}, sessions)
 	if err != nil {
 		return err
 	}

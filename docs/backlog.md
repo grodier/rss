@@ -497,6 +497,10 @@ Admin and observability:
   An entry nobody confirms (a typo, or a bot past the honeypot and the per-IP limit) stays in `waitlist` for good, and each join queues an email.
   *Signal:* unconfirmed rows outnumber confirmed ones several times over, or waitlist emails show up in the outbox's per-day counts against the email limit.
   *Fix:* delete entries left unconfirmed for 30 days in the housekeeper, and add the bot challenge under "Security".
+- [ ] **The admin's waitlist page counts every entry and pages by offset** (#574).
+  `WaitlistRepository.Counts` scans the whole table with a subquery on `invites` per row, and `List` skips pages with `OFFSET`, on every view of `/waitlist`.
+  *Signal:* the waitlist passes about 50,000 entries, or `/waitlist` takes over 200ms.
+  *Fix:* page by the last row's `(created_at, id)`, like the audit log, and count the tabs from a partial index on confirmed entries.
 
 Background refresh:
 

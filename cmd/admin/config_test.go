@@ -6,6 +6,8 @@ import (
 	"flag"
 	"strings"
 	"testing"
+
+	"github.com/grodier/rss/internal/admin"
 )
 
 // noEnv is a getenv with no variables set, so the developer's environment
@@ -35,6 +37,12 @@ func TestParseConfig(t *testing.T) {
 				if cfg.db.dsn != dsn || cfg.db.maxOpenConns != 3 || cfg.db.maxIdleConns != 3 {
 					t.Errorf("db = %+v, want the DSN from RSS_DB_DSN and 3 connections", cfg.db)
 				}
+				if cfg.appURL != "http://localhost:8080" || cfg.supportEmail != "" {
+					t.Errorf("app URL, support email = %q, %q; want http://localhost:8080 and none", cfg.appURL, cfg.supportEmail)
+				}
+				if want := (admin.MailLimits{Daily: 100, Monthly: 3000, Reserve: 10}); cfg.mailLimits != want {
+					t.Errorf("mail limits = %+v, want %+v", cfg.mailLimits, want)
+				}
 			},
 		},
 		{
@@ -51,10 +59,18 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name: "env variables",
-			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_PORT": "5001", "RSS_PROXY_HOPS": "2", "RSS_DB_MAX_OPEN_CONNS": "4", "RSS_BASE_URL": "http://admin.localhost:5001"},
+			env: map[string]string{"RSS_DB_DSN": dsn, "RSS_PORT": "5001", "RSS_PROXY_HOPS": "2", "RSS_DB_MAX_OPEN_CONNS": "4", "RSS_BASE_URL": "http://admin.localhost:5001",
+				"RSS_APP_URL": "http://app.localhost:5000/", "RSS_SUPPORT_EMAIL": "help@example.com",
+				"RSS_MAIL_DAILY_LIMIT": "5", "RSS_MAIL_MONTHLY_LIMIT": "50", "RSS_MAIL_RESERVE": "1"},
 			check: func(t *testing.T, cfg config) {
 				if cfg.port != 5001 || cfg.proxyHops != 2 || cfg.db.maxOpenConns != 4 || cfg.baseURL != "http://admin.localhost:5001" {
 					t.Errorf("config = %+v", cfg)
+				}
+				if cfg.appURL != "http://app.localhost:5000" || cfg.supportEmail != "help@example.com" {
+					t.Errorf("app URL, support email = %q, %q; want the trailing slash trimmed, and help@example.com", cfg.appURL, cfg.supportEmail)
+				}
+				if want := (admin.MailLimits{Daily: 5, Monthly: 50, Reserve: 1}); cfg.mailLimits != want {
+					t.Errorf("mail limits = %+v, want %+v", cfg.mailLimits, want)
 				}
 			},
 		},
@@ -79,7 +95,7 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name: "production",
-			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com", "RSS_SECRET_KEY": strings.Repeat("ab", 32)},
+			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com", "RSS_APP_URL": "https://example.com", "RSS_SECRET_KEY": strings.Repeat("ab", 32)},
 			check: func(t *testing.T, cfg config) {
 				if cfg.env != "production" || cfg.secretKey != strings.Repeat("ab", 32) {
 					t.Errorf("env, secret key = %q, %q; want production and the key", cfg.env, cfg.secretKey)
@@ -104,6 +120,11 @@ func TestParseConfig(t *testing.T) {
 		{name: "relative base URL", args: []string{"-base-url", "admin.example.com"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be an absolute http or https URL"},
 		{name: "base URL with a path", args: []string{"-base-url", "https://example.com/admin"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must not have a path"},
 		{name: "http base URL in production", args: []string{"-env", "production"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be set to an https URL in production"},
+		{name: "http app URL in production", env: map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com", "RSS_SECRET_KEY": strings.Repeat("ab", 32)}, wantErr: "-app-url (RSS_APP_URL) must be an https URL in production"},
+		{name: "app URL with a path", args: []string{"-app-url", "https://example.com/app"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app URL "https://example.com/app"`},
+		{name: "invalid support email", args: []string{"-support-email", "nope"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid support email "nope"`},
+		{name: "reserve as big as the day", args: []string{"-mail-daily-limit", "10", "-mail-reserve", "10"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid mail limits"},
+		{name: "month under the day", args: []string{"-mail-monthly-limit", "50"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid mail limits"},
 		{name: "secret key not hex", args: []string{"-secret-key", "nope"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid -secret-key (RSS_SECRET_KEY)"},
 		{name: "secret key too short", args: []string{"-secret-key", "abcd"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be 32 bytes, hex-encoded"},
 		{name: "extra argument", args: []string{"-db-dsn", dsn, "now"}, wantErr: `unexpected argument "now"`},
@@ -132,7 +153,8 @@ func TestParseConfigUsageNamesEnv(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("parseConfig(-help) error = %v, want flag.ErrHelp", err)
 	}
-	for _, name := range []string{"RSS_DB_DSN", "RSS_PORT", "RSS_BASE_URL", "RSS_PROXY_HOPS", "RSS_DB_MAX_OPEN_CONNS", "RSS_SECRET_KEY"} {
+	for _, name := range []string{"RSS_DB_DSN", "RSS_PORT", "RSS_BASE_URL", "RSS_PROXY_HOPS", "RSS_DB_MAX_OPEN_CONNS", "RSS_SECRET_KEY",
+		"RSS_APP_URL", "RSS_SUPPORT_EMAIL", "RSS_MAIL_DAILY_LIMIT", "RSS_MAIL_MONTHLY_LIMIT", "RSS_MAIL_RESERVE"} {
 		if !strings.Contains(out.String(), name) {
 			t.Errorf("-help output doesn't mention %s:\n%s", name, out.String())
 		}

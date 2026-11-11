@@ -1,0 +1,19 @@
+{{/* send-meter draws the day's email limit as a bar (dot: a sendCheck):
+     the reserve kept for account emails at its end, then what's used
+     and what this send adds over it, and the 80% mark. SVG attributes size it, since the CSP blocks inline styles. The
+     text beside it carries the same numbers. */}}
+{{define "send-meter"}}{{$m := .Meter}}<div class="send-meter">
+  <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <rect class="meter-track" x="0" y="0" width="100" height="10" />
+    <rect class="meter-reserve" x="{{subf 100 $m.Reserve}}" y="0" width="{{$m.Reserve}}" height="10" />
+    <rect class="meter-used" x="0" y="0" width="{{$m.Used}}" height="10" />
+    <rect class="meter-send" x="{{$m.Used}}" y="0" width="{{$m.Send}}" height="10" />
+    <line class="meter-warn" x1="80" x2="80" y1="0" y2="10" />
+  </svg>
+  <ul class="meter-key" role="list">
+    <li><span class="swatch meter-used"></span>Used today {{.Usage.Last24h}}</li>
+    <li><span class="swatch meter-send"></span>This wave {{.Fit}}</li>
+    <li><span class="swatch meter-reserve"></span>Kept for account emails {{.Limits.Reserve}}</li>
+    <li class="meter-total">Daily limit {{.Limits.Daily}}</li>
+  </ul>
+</div>{{end}}

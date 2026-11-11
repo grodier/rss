@@ -1134,6 +1134,20 @@ Planned in #583.
 - **The email limit is checked before a wave is sent** (#574): emails queued in the last 24 hours and still pending, against the daily and monthly limits (Resend's free tier: 100 a day, 3,000 a month), less a reserve for account emails, so a wave can't use up the day and block a password reset.
   Past 80% of the day it warns; past the limit it says how many fit and offers to send just those.
   Moving to SES changes only the limits (`-mail-daily-limit`, `-mail-monthly-limit`, `-mail-reserve`).
+- **The reserve is 10 emails by default, not 20** (#574, at its design checkpoint): with a daily limit of 100, a reserve of 20 put "past 80% of the day" and "past what fits" on the same line (80), so the warning could never show; 10 leaves it the band from 80 to 90.
+  Rejected: warning at 70%, which warns about waves that leave a fifth of the day free.
+- **An entry whose invite expired or was revoked is waiting again** (#574, at its design checkpoint): it's on the Waiting tab, with a status saying so ("Invite expired {date}"), and the next wave can include it; a pending invite is what makes an entry Invited.
+  Rejected: keeping it on Invited until someone acts, which hides it from waves.
+- **Sending an invite gives the entry a new link token** (#574): the invite's email carries a leave link, the entry's token is stored hashed, and the entry is confirmed already, so its old link only left the list.
+- **A wave is sent in one transaction, checked again as it's sent** (#574): the invites, the entries' new tokens, the emails and one `invite.wave` audit entry commit together, under an advisory lock, after checking the limits and that everyone is still waiting; if anything changed since the review, nothing is sent and the review is shown again with the numbers as they are now, so two tabs can't both send.
+- **Emails are counted per UTC day in their own table** (#574, `email_daily_counts`), incremented in the statement that queues each email, since the outbox deletes finished emails after 7 days and a month can't be counted from it.
+- **The waitlist page's look** (#574, approved at its design checkpoint, PR #606): underlined tabs with their counts (Waiting, Invited, Unconfirmed), "Select the oldest N" above the table, and a bar fixed at the foot of the screen with "{n} selected" and Review invites, so the button stays in reach while scrolling a page of 100.
+  Only the Waiting tab has checkboxes: only waiting people can be invited.
+  Rejected: the counts as a row of figures that are the tabs, with the actions in the page head, which crowds the head on phones and scrolls the button away.
+- **The review shows the day's limit as a bar** (#574, approved at its design checkpoint): what's used, this wave, the reserve at its end and the 80% mark, over the issue's sentence, which carries the same numbers for screen readers; people who don't fit today are dimmed and marked "Waits".
+  Rejected: the numbers as a row of figures, which leaves the sums to the reader.
+- **The invites page and invites by hand are their own issue** (#607, split from #574 at its design checkpoint to keep the PR reviewable): the waitlist, the review, sending a wave and the invite email came first.
+  The invites page's agreed look, a Waves table (sent, signed up, active after 7 days) above one list of every invite, newest first, goes with it; rejected there: one list grouped under each wave's summary.
 
 ## Deployment
 

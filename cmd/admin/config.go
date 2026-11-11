@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	netmail "net/mail"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/admin"
 	"github.com/grodier/rss/internal/cli"
 )
 
@@ -22,7 +24,12 @@ type config struct {
 	// secretKey is the hex-encoded 32-byte key admins' TOTP secrets are
 	// sealed with; "" in development makes serve generate one per run.
 	secretKey string
-	db        dbConfig
+	// appURL is the reader's public URL, without a trailing slash, for the
+	// links in invites; supportEmail is shown in their footers.
+	appURL       string
+	supportEmail string
+	mailLimits   admin.MailLimits
+	db           dbConfig
 	// version, with -version, prints the build's version instead of serving.
 	version bool
 }
@@ -36,8 +43,12 @@ type dbConfig struct {
 
 func defaultConfig() config {
 	return config{
-		env:  "development",
-		port: 4001,
+		env:    "development",
+		port:   4001,
+		appURL: "http://localhost:8080",
+		// Resend's free tier, less a reserve for account emails like password
+		// resets (see "Waitlist and invites" in docs/decisions.md).
+		mailLimits: admin.MailLimits{Daily: 100, Monthly: 3000, Reserve: 10},
 		db: dbConfig{
 			// The admin shares the database with www, on a small plan: see
 			// "A second service on the database's connections" in
@@ -74,6 +85,20 @@ func (c config) Validate() error {
 	case c.env == "production":
 		errs = append(errs, errors.New("-secret-key (RSS_SECRET_KEY) must be set in production"))
 	}
+	if _, err := checkAppURL(c.appURL); err != nil {
+		errs = append(errs, err)
+	} else if c.env == "production" && !strings.HasPrefix(c.appURL, "https://") {
+		errs = append(errs, errors.New("-app-url (RSS_APP_URL) must be an https URL in production"))
+	}
+	if c.supportEmail != "" {
+		if _, err := netmail.ParseAddress(c.supportEmail); err != nil {
+			errs = append(errs, fmt.Errorf("invalid support email %q: %v", c.supportEmail, err))
+		}
+	}
+	l := c.mailLimits
+	if l.Daily < 1 || l.Monthly < l.Daily || l.Reserve < 0 || l.Reserve >= l.Daily {
+		errs = append(errs, fmt.Errorf("invalid mail limits (daily %d, monthly %d, reserve %d): need 1 <= daily <= monthly and 0 <= reserve < daily", l.Daily, l.Monthly, l.Reserve))
+	}
 	u, err := url.Parse(c.baseURL)
 	switch {
 	case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "":
@@ -102,6 +127,11 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.proxyHops, "proxy-hops", cfg.proxyHops, "Reverse proxies in front of the admin that append to X-Forwarded-For (0-3; 0 ignores the header)")
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
 	fs.StringVar(&cfg.secretKey, "secret-key", "", secretKeyUsage)
+	fs.StringVar(&cfg.appURL, "app-url", cfg.appURL, "The reader's public URL, for the links in invites")
+	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in invites' footers")
+	fs.IntVar(&cfg.mailLimits.Daily, "mail-daily-limit", cfg.mailLimits.Daily, "The email provider's daily sending limit, which invites are checked against")
+	fs.IntVar(&cfg.mailLimits.Monthly, "mail-monthly-limit", cfg.mailLimits.Monthly, "The email provider's monthly sending limit")
+	fs.IntVar(&cfg.mailLimits.Reserve, "mail-reserve", cfg.mailLimits.Reserve, "Emails a day and a month that invites leave for account emails, like password resets")
 	fs.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", cfg.db.maxOpenConns, "PostgreSQL max open connections (1-10)")
 	fs.BoolVar(&cfg.version, "version", false, "Print the build's version and exit")
 
@@ -125,6 +155,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 		cfg.baseURL = "http://localhost:" + strconv.Itoa(cfg.port)
 	}
 	cfg.baseURL = strings.TrimSuffix(cfg.baseURL, "/")
+	cfg.appURL = strings.TrimSuffix(cfg.appURL, "/")
 	cfg.db.maxIdleConns = cfg.db.maxOpenConns
 
 	if err := cfg.Validate(); err != nil {

@@ -1,6 +1,7 @@
 package psql
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,12 +26,21 @@ var emailsDueAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 func newEmailAddress(t *testing.T, repo *EmailRepository) string {
 	t.Helper()
 	addr := fmt.Sprintf("em-%d@example.com", time.Now().UnixNano())
-	t.Cleanup(func() {
-		if _, err := repo.DB.Exec(`DELETE FROM emails WHERE to_address = $1`, addr); err != nil {
-			t.Errorf("cleanup emails: %v", err)
-		}
-	})
+	t.Cleanup(func() { deleteEmailsTo(t, repo.DB, addr) })
 	return addr
+}
+
+// deleteEmailsTo deletes the emails to addr, and takes them off their days'
+// counts.
+func deleteEmailsTo(t *testing.T, db *sql.DB, addr string) {
+	t.Helper()
+	stmt := `WITH d AS (DELETE FROM emails WHERE to_address = $1 RETURNING created_at)
+		UPDATE email_daily_counts c SET queued = c.queued - n.queued
+		FROM (SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS queued FROM d GROUP BY 1) n
+		WHERE c.day = n.day`
+	if _, err := db.Exec(stmt, addr); err != nil {
+		t.Errorf("cleanup emails: %v", err)
+	}
 }
 
 // emailRow is an emails row as the tests check it.
@@ -307,6 +317,101 @@ func TestEmailRepository(t *testing.T) {
 			if q.Message.To != addr {
 				execEmailSQL(t, repo, `UPDATE emails SET next_attempt_at = now(), attempts = attempts - 1 WHERE id = $1`, q.ID)
 			}
+		}
+	})
+}
+
+// todayCount is today's email_daily_counts row, 0 without one.
+func todayCount(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var n int
+	err := db.QueryRow(`SELECT coalesce((SELECT queued FROM email_daily_counts WHERE day = (now() AT TIME ZONE 'UTC')::date), 0)`).Scan(&n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestEmailCounts(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewEmailRepository(db)
+	ctx := t.Context()
+
+	t.Run("Enqueue counts today's emails", func(t *testing.T) {
+		addr := newEmailAddress(t, repo)
+		before := todayCount(t, db)
+		for range 2 {
+			if err := repo.Enqueue(ctx, mail.Message{To: addr, Subject: "s"}); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+		}
+		if got := todayCount(t, db); got != before+2 {
+			t.Errorf("today's count = %d, want %d", got, before+2)
+		}
+	})
+
+	t.Run("Enqueue past the hourly cap counts nothing", func(t *testing.T) {
+		addr := newEmailAddress(t, repo)
+		for range maxEmailsPerAddressPerHour {
+			if err := repo.Enqueue(ctx, mail.Message{To: addr, Subject: "s"}); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+		}
+		before := todayCount(t, db)
+		if err := repo.Enqueue(ctx, mail.Message{To: addr, Subject: "s"}); !errors.Is(err, rss.ErrTooManyEmails) {
+			t.Fatalf("Enqueue over the cap error = %v, want ErrTooManyEmails", err)
+		}
+		if got := todayCount(t, db); got != before {
+			t.Errorf("today's count = %d, want it unchanged at %d", got, before)
+		}
+	})
+
+	t.Run("Usage counts the last 24 hours and pending emails", func(t *testing.T) {
+		addr := newEmailAddress(t, repo)
+		before, err := repo.Usage(ctx, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Queued now; pending from two days ago, still to go out; and sent
+		// two days ago, which no longer counts.
+		if err := repo.Enqueue(ctx, mail.Message{To: addr, Subject: "now"}); err != nil {
+			t.Fatal(err)
+		}
+		for _, status := range []string{"pending", "sent"} {
+			_, err := db.Exec(`INSERT INTO emails (to_address, subject, text_body, html_body, status, created_at)
+				VALUES ($1, 'old', '', '', $2, now() - interval '48 hours')`, addr, status)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := repo.Usage(ctx, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Last24h != before.Last24h+2 {
+			t.Errorf("Last24h = %d, want %d", got.Last24h, before.Last24h+2)
+		}
+		if got.ThisMonth != before.ThisMonth+1 {
+			t.Errorf("ThisMonth = %d, want %d: only Enqueue counts", got.ThisMonth, before.ThisMonth+1)
+		}
+	})
+
+	t.Run("Usage sums the UTC month's days", func(t *testing.T) {
+		days := map[string]int{"1990-02-28": 5, "1990-03-01": 3, "1990-03-15": 2, "1990-03-16": 7}
+		for day, n := range days {
+			if _, err := db.Exec(`INSERT INTO email_daily_counts (day, queued) VALUES ($1, $2)`, day, n); err != nil {
+				t.Fatal(err)
+			}
+			cleanupExec(t, db, `DELETE FROM email_daily_counts WHERE day = $1`, day)
+		}
+		// 1990-03-15 in UTC, though it's still the 14th 8 hours west.
+		west := time.FixedZone("UTC-8", -8*60*60)
+		got, err := repo.Usage(ctx, time.Date(1990, 3, 14, 20, 0, 0, 0, west))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ThisMonth != 5 {
+			t.Errorf("ThisMonth = %d, want 5: March's days up to the 15th", got.ThisMonth)
 		}
 	})
 }

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Invite {{len .Entries}} people - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Invite {{len .Entries}} {{if eq (len .Entries) 1}}person{{else}}people{{end}}</h1>
+        <p>Nothing is sent until you press Send.</p>
+      </header>
+      {{with .Notice}}
+      <div class="flash" role="alert">{{.}}</div>
+      {{end}}
+
+      {{with .Check}}
+      <section class="admin-section" aria-labelledby="limits-heading">
+        <h2 id="limits-heading">Email limits</h2>
+        {{template "send-meter" .}}
+        <p class="limits-summary">{{.N}} {{if eq .N 1}}invite{{else}}invites{{end}}. {{.Usage.Last24h}} of {{.Limits.Daily}} emails used today, {{.Usage.ThisMonth}} of {{.Limits.Monthly}} this month.</p>
+        {{if .Over}}
+        <p class="limit-alert limit-over" role="alert">{{if .Fit}}Only {{.Fit}} fit{{else}}No more invites fit{{end}} today without risking account emails.</p>
+        {{else if .Warn}}
+        <p class="limit-alert limit-warn" role="alert">This leaves {{.LeftToday}} emails today for account emails like password resets.</p>
+        {{end}}
+      </section>
+      {{end}}
+
+      <section class="admin-section">
+        {{$focus := .Form.FirstError "wave" "days"}}
+        <form class="admin-form" action="/waitlist/invite" method="post" data-busy>
+          {{range .FitIDs}}<input type="hidden" name="id" value="{{.}}" />{{end}}
+          <div class="field">
+            <label for="wave">Wave</label>
+            <input type="text" id="wave" name="wave" value="{{.Form.Wave}}" maxlength="100"
+              aria-describedby="wave-hint{{with .Form.FieldErrors.wave}} wave-error{{end}}"
+              {{with .Form.FieldErrors.wave}}aria-invalid="true"{{end}}
+              {{if eq $focus "wave"}}autofocus{{end}} />
+            <p class="hint" id="wave-hint">The invites are labeled with it, to tell waves apart.</p>
+            {{with .Form.FieldErrors.wave}}<p class="error" id="wave-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field">
+            <label for="days">Expires after (days)</label>
+            <input type="number" id="days" name="days" value="{{.Form.Days}}" min="1" max="90" inputmode="numeric"
+              {{with .Form.FieldErrors.days}}aria-invalid="true" aria-describedby="days-error"{{end}}
+              {{if eq $focus "days"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.days}}<p class="error" id="days-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            {{if .Check.Over}}
+            {{if .Check.Fit}}<button class="btn-primary" type="submit" data-busy-label="Sending…"><span data-busy-text>Send the oldest {{.Check.Fit}}</span></button>{{end}}
+            {{else}}
+            <button class="btn-primary" type="submit" data-busy-label="Sending…"><span data-busy-text>Send {{.Check.N}} {{if eq .Check.N 1}}invite{{else}}invites{{end}}</span></button>
+            {{end}}
+            <a class="btn" href="/waitlist">Cancel</a>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-section" aria-labelledby="who-heading">
+        <h2 id="who-heading">Who</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Joined</th>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Sites they'd like to follow</th>
+                {{if .Check.Over}}<th scope="col">Today</th>{{end}}
+              </tr>
+            </thead>
+            <tbody>
+              {{$fit := .Check.Fit}}{{$over := .Check.Over}}
+              {{range $i, $e := .Entries}}
+              <tr{{if and $over (ge $i $fit)}} class="muted"{{end}}>
+                <td>{{date .CreatedAt}}</td>
+                <td>{{.Name}}</td>
+                <td>{{.Email}}</td>
+                <td class="clip" title="{{.Sites}}">{{if .Sites}}{{.Sites}}{{else}}—{{end}}</td>
+                {{if $over}}<td>{{if lt $i $fit}}Sent{{else}}Waits{{end}}</td>{{end}}
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

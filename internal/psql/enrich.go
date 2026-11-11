@@ -19,6 +19,12 @@ func NewEnrichRepository(db *sql.DB) *EnrichRepository {
 	return &EnrichRepository{DB: db}
 }
 
+// enrichJobDue is true for a job j, of article a, that ClaimNext may
+// claim: due, and the article's feed has a subscriber. The admin's Overview
+// counts the enrichment queue with it (AdminOverviewRepository.Queues).
+const enrichJobDue = `j.next_attempt_at <= now()
+	AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = a.feed_id)`
+
 // ClaimNext claims a due job (next_attempt_at <= now()) whose article's feed
 // has a subscriber, lowest priority then earliest next_attempt_at first: it
 // moves the job's next_attempt_at to now() + lease and counts the attempt.
@@ -30,8 +36,7 @@ func (r *EnrichRepository) ClaimNext(ctx context.Context, lease time.Duration) (
 			WHERE article_id = (
 				SELECT j.article_id FROM enrich_jobs j
 				JOIN articles a ON a.id = j.article_id
-				WHERE j.next_attempt_at <= now()
-				  AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = a.feed_id)
+				WHERE ` + enrichJobDue + `
 				ORDER BY j.priority, j.next_attempt_at
 				FOR UPDATE OF j SKIP LOCKED
 				LIMIT 1

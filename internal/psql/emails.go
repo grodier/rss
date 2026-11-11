@@ -72,6 +72,10 @@ func emailUsage(ctx context.Context, q querier, now time.Time) (rss.EmailUsage, 
 	return u, err
 }
 
+// emailDue is true for an email ClaimNext may claim. The admin's Overview
+// counts the email queue with it (AdminOverviewRepository.Queues).
+const emailDue = `status = 'pending' AND next_attempt_at <= now()`
+
 // ClaimNext takes the pending email due soonest, counts the attempt and
 // leases it: no other worker claims it until lease has passed. rss.ErrNoRecord
 // when nothing is due.
@@ -79,7 +83,7 @@ func (r *EmailRepository) ClaimNext(ctx context.Context, lease time.Duration) (m
 	stmt := `UPDATE emails SET next_attempt_at = now() + make_interval(secs => $1), attempts = attempts + 1
 		WHERE id = (
 			SELECT id FROM emails
-			WHERE status = 'pending' AND next_attempt_at <= now()
+			WHERE ` + emailDue + `
 			ORDER BY next_attempt_at
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED

@@ -485,10 +485,11 @@ Admin and observability:
   Each day adds a `rum_daily` row for every combination seen (at most the app's 46 GET routes × 3 devices × 6 browsers × 6 metrics), kept 13 months, and the nightly rollup reads the day's `rum_views` rows once per metric.
   *Signal:* `rum_daily` passes a million rows, or the rollup takes over a second.
   *Fix:* past 30 days, keep rows by route and device only, or read the day's views once for every metric.
-- [ ] **The admin's overview counts big tables** (#575).
+- [ ] **The admin's overview counts big tables** (#575, #610).
   `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
-  *Signal:* the overview takes over a second (its query took about 1 ms warm on `make db/loadseed`'s 750,000 articles).
-  *Fix:* an hourly counts table.
+  Its queues are counted exactly, with their claim queries' conditions: refresh's and enrichment's run an `EXISTS` per due row, and enrichment's joins `articles`, so a large backlog is the slow part.
+  *Signal:* the overview takes over a second (on `make db/loadseed`'s 750,000 articles, the People and Content query took about 1 ms warm, and the queues about 2 ms with empty queues and 130 ms with 200,000 enrichment jobs due).
+  *Fix:* an hourly counts table; for the queues, count at most 10,000 due jobs each and show "10,000+".
 - [ ] **A second service on the database's connections** (#573).
   `www` opens up to 10 connections; the admin adds its own pool on the same small Postgres plan.
   *Signal:* connection errors, or the waits in #563's runtime metrics rising.

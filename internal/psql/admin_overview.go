@@ -56,3 +56,44 @@ func (r *AdminOverviewRepository) Overview(ctx context.Context, now time.Time) (
 		&c.Articles, &c.Reads, &c.TimelineEntries)
 	return o, err
 }
+
+// Queues counts each background queue's due jobs and finds when the oldest
+// was due, in the order the Overview lists them, in one round trip. Each
+// uses its claim query's own condition (feedDue, siteIconDue, …), so it
+// counts what the runner would take. Lookups and import feeds have no due
+// time: they're due from when they were asked for.
+func (r *AdminOverviewRepository) Queues(ctx context.Context) ([]rss.QueueStatus, error) {
+	stmt := `SELECT name, jobs, oldest FROM (
+		SELECT 1, 'lookup', count(*), min(requested_at) FROM lookups WHERE ` + lookupPending + `
+		UNION ALL
+		SELECT 2, 'import', count(*), min(pi.created_at)
+			FROM import_feeds p JOIN imports pi ON pi.id = p.import_id WHERE ` + importFeedPending + `
+		UNION ALL
+		SELECT 3, 'refresh', count(*), min(next_fetch_at) FROM feeds WHERE ` + feedDue + `
+		UNION ALL
+		SELECT 4, 'icon', count(*), min(icon_next_check_at) FROM sites WHERE ` + siteIconDue + `
+		UNION ALL
+		SELECT 5, 'enrich', count(*), min(j.next_attempt_at)
+			FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE ` + enrichJobDue + `
+		UNION ALL
+		SELECT 6, 'mail', count(*), min(next_attempt_at) FROM emails WHERE ` + emailDue + `
+		) q (ord, name, jobs, oldest) ORDER BY ord`
+
+	rows, err := r.DB.QueryContext(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var queues []rss.QueueStatus
+	for rows.Next() {
+		var q rss.QueueStatus
+		var oldest sql.NullTime
+		if err := rows.Scan(&q.Name, &q.Jobs, &oldest); err != nil {
+			return nil, err
+		}
+		q.Oldest = oldest.Time
+		queues = append(queues, q)
+	}
+	return queues, rows.Err()
+}

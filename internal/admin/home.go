@@ -27,6 +27,13 @@ type homePage struct {
 	Nav     navData
 	People  []statTile
 	Content []statTile
+	Queues  []queueRow
+	// QueuesBehind are the Queues that are behind, for option c's summary.
+	QueuesBehind []queueRow
+	// Option is the design checkpoint's option for the Queues section, a
+	// (default), b or c; the picked one replaces the switch before the PR
+	// is ready.
+	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
@@ -40,12 +47,28 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	queues, err := s.services.Overview.Queues(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	data := homePage{
 		Nav:        s.nav(r, "overview"),
 		People:     peopleTiles(o.People),
 		Content:    contentTiles(o.Content),
+		Queues:     queueRows(queues, now),
+		Option:     "a",
 		Version:    s.config.Version,
 		RenderedAt: now,
+	}
+	switch opt := r.URL.Query().Get("option"); opt {
+	case "b", "c":
+		data.Option = opt
+	}
+	for _, q := range data.Queues {
+		if q.Behind {
+			data.QueuesBehind = append(data.QueuesBehind, q)
+		}
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -76,6 +99,58 @@ func contentTiles(c rss.OverviewContent) []statTile {
 		{Label: "Reads, about", Value: c.Reads},
 		{Label: "Timeline entries, about", Value: c.TimelineEntries},
 	}
+}
+
+// queueRow is one queue in the Queues section: its name, how many jobs are
+// due, how long the oldest has waited ("—" for none), and whether it's
+// behind (rss.QueueBehindAfter). Each links to the Queues page once #582
+// adds it.
+type queueRow struct {
+	Label  string
+	Jobs   int
+	Wait   string
+	Behind bool
+}
+
+// queueLabels name the runners' queues on the Overview.
+var queueLabels = map[string]string{
+	"lookup":  "Lookups",
+	"import":  "Imports",
+	"refresh": "Refresh",
+	"icon":    "Icons",
+	"enrich":  "Enrichment",
+	"mail":    "Email",
+}
+
+// queueRows are the Queues section's rows at now.
+func queueRows(queues []rss.QueueStatus, now time.Time) []queueRow {
+	rows := make([]queueRow, len(queues))
+	for i, q := range queues {
+		label, ok := queueLabels[q.Name]
+		if !ok {
+			label = q.Name
+		}
+		rows[i] = queueRow{Label: label, Jobs: q.Jobs, Wait: "—", Behind: q.Behind(now)}
+		if q.Jobs > 0 {
+			rows[i].Wait = wait(now.Sub(q.Oldest))
+		}
+	}
+	return rows
+}
+
+// wait says how long a job has waited, roughly: "under 1 min", "3 min",
+// "5 h", "2 d". A due time a little after now (the database's clock ahead
+// of the admin's) waits under a minute.
+func wait(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "under 1 min"
+	case d < time.Hour:
+		return strconv.Itoa(int(d/time.Minute)) + " min"
+	case d < 48*time.Hour:
+		return strconv.Itoa(int(d/time.Hour)) + " h"
+	}
+	return strconv.Itoa(int(d/(24*time.Hour))) + " d"
 }
 
 // count formats n with commas between thousands: 1,284.

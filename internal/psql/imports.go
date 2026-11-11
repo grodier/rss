@@ -147,6 +147,11 @@ func (r *ImportRepository) ListByUser(ctx context.Context, userID string, limit 
 	return imports, nil
 }
 
+// importFeedPending is true for an import feed p that ClaimNext may claim.
+// The admin's Overview counts the import queue with it
+// (AdminOverviewRepository.Queues).
+const importFeedPending = `p.status = 'pending'`
+
 // ClaimNext marks the next pending feed running and returns it with its
 // import's user: the oldest import's first, lowest position first.
 // rss.ErrNoRecord when the queue is empty.
@@ -157,7 +162,7 @@ func (r *ImportRepository) ClaimNext(ctx context.Context) (rss.ImportFeed, error
 			SELECT p.import_id, p.position
 			FROM import_feeds p
 			JOIN imports pi ON pi.id = p.import_id
-			WHERE p.status = 'pending'
+			WHERE ` + importFeedPending + `
 			ORDER BY pi.created_at, p.import_id, p.position
 			FOR UPDATE OF p SKIP LOCKED
 			LIMIT 1

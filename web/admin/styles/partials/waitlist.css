@@ -1,5 +1,5 @@
 /* The waitlist and invites: the tabs over a list, the bar that acts on the
-   rows selected, the email limits' bar and alerts, invites' statuses, and a
+   rows selected, the email limits' bar and alerts, invites' status tones, and a
    new invite's link. */
 @layer components {
   /* Tabs under the page's head, each with its count; the current one is
@@ -166,17 +166,7 @@
     color: var(--on-danger-bg);
   }
 
-  /* An invite's status, as a small label. */
-  .status {
-    display: inline-block;
-    padding: 0.0625rem 0.5rem;
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--text-2);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
+  /* An invite's status (.status, in table.css): its tones. */
   .status-pending {
     background: var(--tone-3-bg);
     color: var(--tone-3);

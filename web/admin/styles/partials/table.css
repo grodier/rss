@@ -1,5 +1,6 @@
 /* Dense tables: smaller type and tighter rows than the reader's lists. A
-   table too wide for the screen scrolls in its .table-wrap, not the page. */
+   table too wide for the screen scrolls in its .table-wrap, not the page;
+   a row's status is a small label. */
 @layer components {
   /* Relative, so a visually hidden header stays inside it rather than
      widening the page from where the table would end unscrolled. */
@@ -80,5 +81,46 @@
 
   .changes code {
     overflow-wrap: anywhere;
+  }
+
+  /* A row's status, as a small label: neutral, or in a tone its page
+     adds (an invite's in waitlist.css). */
+  .status {
+    display: inline-block;
+    padding: 0.0625rem 0.5rem;
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  /* A queue whose oldest job has waited too long. */
+  .status-behind {
+    background: var(--danger-bg);
+    color: var(--on-danger-bg);
+  }
+
+  /* Design checkpoint (#610): options b and c. The unpicked ones go before
+     the PR is ready. */
+  .wait-behind,
+  .stat dd.wait-behind {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  .queue-alert {
+    margin-block-end: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .queue-alert-behind {
+    background: var(--danger-bg);
+    color: var(--on-danger-bg);
   }
 }

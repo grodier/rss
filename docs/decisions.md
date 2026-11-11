@@ -144,6 +144,10 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **It looks like the reader, marked as the admin** (#562): the reader's tokens and fonts, a tinted sidebar, and an "Admin" mark beside the logo, so it's never mistaken for the reader; it follows the system's theme, as it has no settings.
 - **Dense tables** (#562): smaller type and tighter rows than the reader's lists, since it's a working tool; on a phone a wide table scrolls in its own frame, not the page.
   Figures are stat rows separated by dividers, not cards, as in the reader ("Design").
+- **The Overview's look** (#575, approved at its design checkpoint, PR #612): a section per group, in the order People, Content, then Queues (#610) and Jobs (#611), with the build as a line under the page head.
+  People and Content are stat rows: each figure a label, a number and a short second line ("of 182", "104 in 30 days"), "about" in the label of an estimated count, and, where a page exists, the label in the accent color and the whole figure its link.
+  It reuses #562's stat rows, and each number reads on its own at a glance, which is what the page is for.
+  Rejected: a dense table per section (compact, but no figure stands out and it reads as a report), and a strip of key figures in large type above compact rows (repeats figures, and which ones are key will shift as the app grows).
 - **Charts are SVG drawn on the server** (#571), with no chart library: they fit the CSP and work without JavaScript.
 - **The charts' look** (#571, approved at its design checkpoint): thin lines in up to three series colors (`--accent`, `--brand-strong`, then `--series-3`), gridlines only at the value ticks, markers such as deploys as dashed vertical lines labelled at the top, thresholds as dashed horizontal lines, and a legend above the chart only when it has more than one series.
   Rejected: thresholds as tinted bands (good, needs improvement, poor), which say a threshold is good or bad when a later one may not be (a queue's limit) and drown the line in dark mode; and a legend below the chart, read only after the lines.

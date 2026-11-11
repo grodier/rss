@@ -28,8 +28,8 @@ func TestAdminOverviewRepositoryOverview(t *testing.T) {
 		}
 	}
 
-	// A new, unconfirmed account seen today, and a confirmed one from 20
-	// days ago last seen 10 days ago.
+	// A new, unconfirmed account seen today on two devices (counted once),
+	// and a confirmed one from 20 days ago last seen 10 days ago.
 	newReader := newTestUser(t, db)
 	oldReader := newTestUser(t, db)
 	exec(`UPDATE users SET email_confirmed_at = $2, created_at = $2 WHERE id = $1`, oldReader, now.Add(-20*24*time.Hour))
@@ -52,7 +52,8 @@ func TestAdminOverviewRepositoryOverview(t *testing.T) {
 	newOverviewInvite(t, db, "", now.Add(time.Hour), "redeemed_at")
 	newOverviewInvite(t, db, "", now.Add(time.Hour), "revoked_at")
 
-	// A site with a subscribed feed and an unsubscribed one.
+	// Two sites, one with a subscribed feed and one with an unsubscribed
+	// feed.
 	newSubscribedFeed(t, db, newReader)
 	newTestFeed(t, db)
 

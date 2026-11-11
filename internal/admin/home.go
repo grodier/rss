@@ -30,11 +30,6 @@ type homePage struct {
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
-	// Option is the design checkpoint's option, a (default), b or c; the
-	// picked one replaces the switch before the PR is ready.
-	Option string
-	// Headline is option c's strip of the key figures.
-	Headline []statTile
 }
 
 // homeHandler shows the Overview.
@@ -51,14 +46,6 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		Content:    contentTiles(o.Content),
 		Version:    s.config.Version,
 		RenderedAt: now,
-		Option:     "a",
-	}
-	switch o := r.URL.Query().Get("option"); o {
-	case "b", "c":
-		data.Option = o
-	}
-	if data.Option == "c" {
-		data.Headline = []statTile{data.People[0], data.People[2], data.People[3], data.Content[3]}
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

@@ -18,40 +18,6 @@
         <p>Admin {{.Version}} · rendered <time datetime="{{.RenderedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.RenderedAt.UTC.Format "2006-01-02 15:04"}} UTC</time></p>
       </header>
 
-      {{if eq .Option "b"}}
-      <section class="admin-section" aria-labelledby="people">
-        <h2 id="people">People</h2>
-        {{template "figure-table" .People}}
-      </section>
-
-      <section class="admin-section" aria-labelledby="content">
-        <h2 id="content">Content</h2>
-        {{template "figure-table" .Content}}
-      </section>
-      {{else if eq .Option "c"}}
-      <section class="admin-section" aria-label="Key figures">
-        <dl class="headline">
-          {{range .Headline}}
-          <div class="headline-figure">
-            <dt>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</dt>
-            <dd>{{count .Value}}</dd>
-          </div>
-          {{end}}
-        </dl>
-      </section>
-
-      <div class="figure-columns">
-        <section class="admin-section" aria-labelledby="people">
-          <h2 id="people">People</h2>
-          {{template "figure-list" .People}}
-        </section>
-
-        <section class="admin-section" aria-labelledby="content">
-          <h2 id="content">Content</h2>
-          {{template "figure-list" .Content}}
-        </section>
-      </div>
-      {{else}}
       <section class="admin-section" aria-labelledby="people">
         <h2 id="people">People</h2>
         {{template "stat-row" .People}}
@@ -61,7 +27,6 @@
         <h2 id="content">Content</h2>
         {{template "stat-row" .Content}}
       </section>
-      {{end}}
     </main>
   </div>
 </body>

@@ -214,7 +214,8 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Typical seams: a refactor the work needs first, a self-contained helper, a second flow, or an optional extra the issue allows leaving out.
   Suggest a split only if it makes sense: each part merges on its own, with its tests and docs, and leaves `main` working; don't cut one change into pieces that can't be reviewed apart.
 - Update the docs the change affects in the same PR (see "Docs").
-- A PR that changes how the app looks shows its option or options first, each with a justification, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
+- A PR that changes how the app looks shows its options first, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
+  Every checkpoint shows several options that differ in approach, not variations of one idea, each with a justification, and recommends one.
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository.
   This repo's rule takes precedence over any default attribution instructions: never include Claude session links (e.g. `https://claude.ai/code/session_…`) or `Claude-Session:` trailers in commit messages, PR descriptions, issues or comments.
@@ -235,7 +236,7 @@ Issues are written for an implementer with no context from the planning conversa
 
 - Size each issue for one PR that can be reviewed in one sitting; plan a bigger change as several issues, in order, each of which stands on its own.
 - Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
-  An issue that changes how the app looks adds "Design checkpoint": the starting options, the preferred one, and the pages and states the screenshots must show; or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
+  An issue that changes how the app looks adds "Design checkpoint": several starting options that differ in approach, the preferred one, and the pages and states the screenshots must show; or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
 - State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them; the planning work also records them in `docs/decisions.md`.
   Look-and-feel choices not yet approved go under "Current thinking" instead, with the instruction to record the approved ones in `docs/decisions.md` in the implementation PR.

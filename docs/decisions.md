@@ -770,9 +770,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The first frame on Apple devices is adjusted Arial and Georgia rather than system-ui and Charter: closer to the final shape, which the recordings favoured.
   Each fallback face is tuned for its first `local()` font, so Noto Serif (Linux without Georgia) matches less closely.
 - **Fonts are preloaded only where a page shows them** (#546): Bricolage on every page, upright Newsreader on pages with reading text on their first screen, never the italic, which only some articles use.
-- **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the option or options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
+- **A change to how the app looks is shown and agreed before its PR is ready for review** (#309, for #299 and #308; widened from open layout questions to every visual change in #425): a draft PR with the options behind one switch, screenshots at desktop and phone widths (committed under `.screenshots/` while the PR is a draft), and a stop until the owner picks one in a PR comment.
   Every option comes with a justification (what it fixes, why this way, and what it trades away), so the pick rests on reasons that can be recorded here rather than on taste alone.
-  One option is enough when it's clearly right, but it's still shown and justified.
+- **Every design checkpoint shows several options that differ in approach, and recommends one** (the owner, during #575; this replaces "one option is enough when it's clearly right").
+  Variations of one idea (a color, a spacing) don't count as options: a recommendation can only be judged against real alternatives, and a single option leaves the owner approving or rejecting rather than choosing.
+  The recommendation says why, so a pick against it is a deliberate choice.
   An issue can say a change needs no checkpoint: copy changes, and changes that reuse an existing pattern exactly (#419, #420).
   Each control must work on its own and next to the others planned for the same place, since not all of them may ship.
 - **Choices about how the app looks or reads are recorded here only once the owner has approved them in the implementation** (#425), at the design checkpoint or, without one, in the PR's review, since seeing the result can change the owner's mind.

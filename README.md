@@ -101,7 +101,7 @@ Production runs it on every deploy as `www migrate -seed`; locally, `make db/res
 
 ## The admin site
 
-`cmd/admin` is the admin site, the owner's tools, a second binary built into the same image (see "Admin" in [docs/features.md](docs/features.md)).
+`cmd/admin` is the admin site, the owner's tools, a second binary with its own image (`docker build --target admin`; see "Admin" in [docs/features.md](docs/features.md)).
 Run it next to the app, against the same database:
 
 ```sh

@@ -95,16 +95,25 @@ Its purpose is exploration more than bug fixing: showing how pages are put toget
 
 Planned in #583, from the owner's list and must-haves; the issues are on the [Admin Roadmap](https://github.com/grodier/rss/issues/560).
 
-- **A separate admin site and command, `cmd/admin`**, built into the same image as `www` and run as its own Render web service (about $7 a month).
+- **A separate admin site and command, `cmd/admin`**, built from the same commit as `www`, into its own image (#573), and run as its own Render web service (about $7 a month).
   Its web pages and its CLI subcommands share one package, `internal/admin`, so each action is written once.
   Rejected: admin routes inside `www`, which would put owner-only code and credentials behind the reader's host and sessions.
   The production database is only reachable from Render's private network, so `admin` commands against production run in the admin service's shell; the web pages are the everyday tool.
+- **The admin's image has a shell; `www`'s doesn't** (#573, changing "built into the same image as `www`").
+  Render's Shell, how `admin` commands reach production's database, needs a login shell for the image's user and a `~/.ssh` it owns, and Render doesn't support distroless images for it: even `:debug-nonroot` adds busybox but leaves the user's shell `/sbin/nologin`.
+  So the Dockerfile's `admin` stage is Alpine with a non-root `admin` user, and `www`, which takes untrusted input on a public host, stays distroless; one build makes both images' binaries, so both still run the same commit.
+  A shell only helps someone already running code in the process, and the admin's is behind Access and its login; the account that matters more is Render's, whose dashboard shows the services' secrets anyway.
+  Rejected: one Alpine image for both (simpler, but the public service gets a shell); enrolling from a laptop against production's database (opens the database to the internet and takes the secret key out of the service); a bootstrap page (new code on a public host, needed again for every `-reset`); Render one-off jobs (no stdin, and the QR code and recovery codes would land in the logs).
+  Revisit when the admin's pages and a web enrollment (passkeys) cover what the shell is for.
 - **It runs none of `www`'s background workers**, only its own small jobs (the health pinger, #576).
 - **On a subdomain, `admin.paperround.app`, set up as its own origin**: `__Host-` cookies with `SameSite=Strict`, its own CSP and its own HSTS (the reader's has no `includeSubDomains`).
   The reader and the admin are same-site but not same-origin, and `http.CrossOriginProtection` only lets same-origin form posts through, so no reader page can post to the admin.
   Rejected: a separate domain, which hides nothing (certificate transparency logs list every hostname) and is one more domain to keep.
 - **Three layers in front of it**: Cloudflare Access on the hostname, whose DNS record is the only proxied one; the service's `onrender.com` subdomain turned off, so Access can't be bypassed; and the admin's own login, which is the real gate.
   Access is defense in depth and needs no code.
+  It's on the Zero Trust Free plan, with a one-time PIN to the owner's email (#573): nothing to set up, and the admin's login is the strong factor.
+  Its `/healthcheck` is let through Access, so the deploy workflow checks the deployed version as it does for `www`; it reports nothing `paperround.app/healthcheck` doesn't.
+  The record starts DNS-only and is proxied once Render has issued the certificate, as Render asks.
 - **Admins are their own accounts, not readers** (an `admins` table), so a leaked reader password never opens the admin.
   A second factor is required: TOTP, with hashed one-time recovery codes, and the TOTP secret encrypted with a key held only in the admin service's environment.
   TOTP is a few lines of the standard library (RFC 6238); passkeys are a later upgrade (backlog).

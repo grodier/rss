@@ -30,3 +30,10 @@ variable "cloudflare_app_zone_id" {
   # A repository secret like the other IDs, so plans don't print it either.
   sensitive = true
 }
+
+variable "admin_access_email" {
+  description = "The email Cloudflare Access lets into the admin, with a one-time PIN (TF_VAR_admin_access_email)."
+  type        = string
+  # A repository secret, so the public repository and its plans don't show it.
+  sensitive = true
+}

@@ -1,6 +1,6 @@
 // Command admin is the admin site and its command-line tools (see package
 // internal/admin). It runs on its own origin, admin.paperround.app, as its
-// own service, from the same image as www.
+// own service, from its own image built from the same commit as www's.
 package main
 
 import (

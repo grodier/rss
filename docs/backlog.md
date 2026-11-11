@@ -116,6 +116,8 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Admin login alerts and email previews:** an email on every new admin login, and every email template rendered with sample data.
 - [ ] **Support extras:** change a reader's email on request (with the security email to the old address), and export a reader's data for them.
 - [ ] **Passkeys for admins**, as an upgrade to TOTP (needs `go-webauthn`, like readers' passkeys under "Accounts").
+- [ ] **Check Cloudflare Access's token in the admin** (after #573): middleware that verifies the `Cf-Access-Jwt-Assertion` header against the team's public keys (team `bold-frog-19d2`, in 1Password) and refuses requests without a valid one, as Cloudflare recommends, so a request that somehow skipped Access never reaches the login.
+  Defense in depth: with the `onrender.com` subdomain disabled there's no known way around Access, and the admin's login is the real gate.
 
 ## Observability
 

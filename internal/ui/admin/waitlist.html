@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Waitlist - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Waitlist</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/invites">Invites</a>
+          <a class="btn btn-sm" href="/invites/new">Invite someone</a>
+        </div>
+        <p>Everyone who joined, oldest first. Dates are UTC.</p>
+      </header>
+
+      <nav class="tabs" aria-label="Waitlist">
+        <ul role="list">
+          {{range .Tabs}}
+          <li><a href="{{if eq .Key "waiting"}}/waitlist{{else}}/waitlist?tab={{.Key}}{{end}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}} <span class="count">{{.Count}}</span></a></li>
+          {{end}}
+        </ul>
+      </nav>
+
+      <section class="admin-section">
+        {{if and .Selectable .Rows}}
+        <form class="filters" action="/waitlist/review" method="post">
+          <div>
+            <label for="oldest">Select the oldest</label>
+            <input type="number" id="oldest" name="oldest" value="{{.OldestDefault}}" min="1" max="100" inputmode="numeric" />
+          </div>
+          <button class="btn btn-sm" type="submit">Review</button>
+        </form>
+        {{end}}
+
+        {{if .Rows}}
+        <form id="selection" action="/waitlist/review" method="post"{{if .Selectable}} data-select{{end}}>
+          <div class="table-wrap">
+            <table class="data">
+              <thead>
+                <tr>
+                  {{if .Selectable}}<th scope="col" class="check"><input type="checkbox" aria-label="Select all on this page" data-select-all hidden /></th>{{end}}
+                  <th scope="col">Joined</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Sites they'd like to follow</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{$now := .Now}}
+                {{range .Rows}}
+                <tr>
+                  {{if $.Selectable}}<td class="check"><input type="checkbox" name="id" value="{{.ID}}" aria-label="Select {{.Name}}" /></td>{{end}}
+                  <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02"}}">{{.CreatedAt.UTC.Format "2006-01-02"}}</time></td>
+                  <td>{{.Name}}</td>
+                  <td>{{.Email}}</td>
+                  <td class="clip" title="{{.Sites}}">{{if .Sites}}{{.Sites}}{{else}}—{{end}}</td>
+                  <td>{{if .Source}}{{.Source}}{{else}}—{{end}}</td>
+                  <td>{{waitlistStatus . $now}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          {{if .Selectable}}
+          <div class="action-bar">
+            <p data-select-count hidden></p>
+            <button class="btn-primary btn-sm" type="submit">Review invites</button>
+          </div>
+          {{end}}
+        </form>
+        {{if or .Prev .Next}}
+        <div class="form-actions">
+          {{with .Prev}}<a class="btn btn-sm" href="{{.}}">Previous page</a>{{end}}
+          {{with .Next}}<a class="btn btn-sm" href="{{.}}">Next page</a>{{end}}
+        </div>
+        {{end}}
+        {{else}}
+        <p class="empty">{{if eq .Tab "waiting"}}No one is waiting.{{else if eq .Tab "invited"}}No one has an invite waiting to be used.{{else}}No one is waiting to confirm.{{end}}</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

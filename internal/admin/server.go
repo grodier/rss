@@ -35,6 +35,12 @@ type Config struct {
 	// SecretKey is the 32-byte key admins' TOTP secrets are sealed with
 	// (Seal), held only in the admin service's environment.
 	SecretKey []byte
+	// AppURL is the reader's public URL, without a trailing slash: invites'
+	// links point there.
+	AppURL string
+	// MailLimits are the email provider's sending limits, which invites are
+	// checked against.
+	MailLimits MailLimits
 }
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -60,10 +66,33 @@ type AuditStore interface {
 	List(ctx context.Context, f rss.AuditFilter, limit int) ([]rss.AuditEvent, error)
 }
 
+// WaitlistStore is the waitlist's repository; *psql.WaitlistRepository is
+// one.
+type WaitlistStore interface {
+	Counts(ctx context.Context) (rss.WaitlistCounts, error)
+	List(ctx context.Context, tab string, limit, offset int) ([]rss.WaitlistRow, error)
+	ListWaiting(ctx context.Context, ids []string) ([]rss.WaitlistEntry, error)
+	Oldest(ctx context.Context, n int) ([]rss.WaitlistEntry, error)
+}
+
+// InviteStore is the invites' repository; *psql.InviteRepository is one.
+type InviteStore interface {
+	List(ctx context.Context) ([]rss.Invite, error)
+	Waves(ctx context.Context) ([]rss.InviteWave, error)
+}
+
+// EmailStore is the outbox's repository; *psql.EmailRepository is one.
+type EmailStore interface {
+	Usage(ctx context.Context, now time.Time) (rss.EmailUsage, error)
+}
+
 type Services struct {
 	Database DatabasePinger
 	Admins   AdminStore
 	Audit    AuditStore
+	Waitlist WaitlistStore
+	Invites  InviteStore
+	Emails   EmailStore
 }
 
 type Server struct {

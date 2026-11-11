@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/grodier/rss/internal/admin/chart"
 	"github.com/grodier/rss/internal/ui"
@@ -18,10 +19,26 @@ var templateFuncs = template.FuncMap{
 	"assetTags": static.Tags,
 	// chart draws a chart.LineChart or chart.Histogram: {{chart .Latency}}.
 	"chart": func(c chart.Chart) template.HTML { return c.SVG() },
+	// waitlistStatus says where a waitlist row stands, at now.
+	"waitlistStatus": waitlistStatus,
+	// inviteStatus is an invite's status at now, as the invites page says
+	// it.
+	"inviteStatus": inviteStatus,
+	// subf subtracts b from a, to place an SVG shape from its end.
+	"subf": func(a, b float64) float64 { return a - b },
+	// percent is part as a share of whole, like "40%", or "" when whole is 0.
+	"percent": func(part, whole int) string {
+		if whole == 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d%%", part*100/whole)
+	},
+	// date formats t as a UTC date.
+	"date": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", "audit", or "" on pages outside the sections) and the logged-in
+// ("overview", "waitlist", "audit", or "" on pages outside the sections) and the logged-in
 // admin's email, "" when no one is logged in, which hides the sections and
 // Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {

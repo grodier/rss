@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Invite someone - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Invite someone</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/invites">Invites</a>
+        </div>
+        <p>An invite that isn't from the waitlist: for a friend, or someone who asked.</p>
+      </header>
+      <section class="admin-section">
+        {{if .Link}}
+        <div class="invite-link">
+          <label for="link">{{if .Emailed}}Invite emailed to {{.Form.Email}}. Its link:{{else}}Copy this link and send it yourself:{{end}}</label>
+          <input type="text" id="link" value="{{.Link}}" readonly autofocus spellcheck="false" />
+          <p class="hint">It works once, until {{.Form.Days}} days from now. You won't see it again: the invites page doesn't keep links.</p>
+        </div>
+        <div class="form-actions">
+          <a class="btn" href="/invites/new">Invite someone else</a>
+          <a class="btn" href="/invites">Back to invites</a>
+        </div>
+        {{else}}
+        {{$focus := .Form.FirstError "email" "note" "days"}}
+        <form class="admin-form" action="/invites/new" method="post" data-busy>
+          {{range .Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          <div class="field">
+            <label for="email">Email (optional)</label>
+            <input type="email" id="email" name="email" value="{{.Form.Email}}" autocapitalize="none" spellcheck="false"
+              aria-describedby="email-hint{{with .Form.FieldErrors.email}} email-error{{end}}"
+              {{with .Form.FieldErrors.email}}aria-invalid="true"{{end}}
+              {{if eq $focus "email"}}autofocus{{end}} />
+            <p class="hint" id="email-hint">With an email, only that address can use the invite, and it's emailed. Without, anyone with the link can.</p>
+            {{with .Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field">
+            <label for="note">Who it's for</label>
+            <input type="text" id="note" name="note" value="{{.Form.Note}}" maxlength="200"
+              aria-describedby="note-hint{{with .Form.FieldErrors.note}} note-error{{end}}"
+              {{with .Form.FieldErrors.note}}aria-invalid="true"{{end}}
+              {{if eq $focus "note"}}autofocus{{end}} />
+            <p class="hint" id="note-hint">Only shown here, on the invites page.</p>
+            {{with .Form.FieldErrors.note}}<p class="error" id="note-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field">
+            <label for="days">Expires after (days)</label>
+            <input type="number" id="days" name="days" value="{{.Form.Days}}" min="1" max="90" inputmode="numeric"
+              {{with .Form.FieldErrors.days}}aria-invalid="true" aria-describedby="days-error"{{end}}
+              {{if eq $focus "days"}}autofocus{{end}} />
+            {{with .Form.FieldErrors.days}}<p class="error" id="days-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" type="submit" data-busy-label="Creating…"><span data-busy-text>Create invite</span></button>
+          </div>
+        </form>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

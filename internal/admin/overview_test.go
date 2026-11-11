@@ -176,20 +176,6 @@ func TestOverviewQueuesEmpty(t *testing.T) {
 	}
 }
 
-// The design checkpoint's options; this goes with the switch once one is
-// picked.
-func TestOverviewQueueOptions(t *testing.T) {
-	b := overviewServer(t, &fakeOverview{queues: testQueues()})
-	for path, want := range map[string]string{
-		"/?option=b": `<dt>Refresh <span class="status status-behind">Behind</span></dt>`,
-		"/?option=c": `<p class="queue-alert queue-alert-behind" role="status">Behind: Refresh (15 min), Enrichment (5 h).</p>`,
-	} {
-		if body := b.get(t, path).Body.String(); !strings.Contains(body, want) {
-			t.Errorf("GET %s lacks %s", path, want)
-		}
-	}
-}
-
 func TestWait(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		-time.Minute:     "under 1 min",

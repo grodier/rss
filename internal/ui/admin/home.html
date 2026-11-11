@@ -30,43 +30,6 @@
 
       <section class="admin-section" aria-labelledby="queues">
         <h2 id="queues">Queues</h2>
-        {{if eq .Option "b"}}
-        <dl class="stats">
-          {{range .Queues}}
-          <div class="stat">
-            <dt>{{.Label}}{{if .Behind}} <span class="status status-behind">Behind</span>{{end}}</dt>
-            <dd>{{count .Jobs}}</dd>
-            <dd class="stat-note{{if .Behind}} wait-behind{{end}}">{{if .Jobs}}longest wait {{.Wait}}{{else}}none due{{end}}</dd>
-          </div>
-          {{end}}
-        </dl>
-        {{else if eq .Option "c"}}
-        {{if .QueuesBehind}}
-        <p class="queue-alert queue-alert-behind" role="status">Behind: {{range $i, $q := .QueuesBehind}}{{if $i}}, {{end}}{{$q.Label}} ({{$q.Wait}}){{end}}.</p>
-        {{else}}
-        <p class="queue-alert">Every queue is keeping up.</p>
-        {{end}}
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th scope="col">Queue</th>
-                <th scope="col" class="num">Due</th>
-                <th scope="col">Longest wait</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Queues}}
-              <tr>
-                <td>{{.Label}}</td>
-                <td class="num">{{count .Jobs}}</td>
-                <td{{if .Behind}} class="wait-behind"{{end}}>{{.Wait}}</td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        {{else}}
         <div class="table-wrap">
           <table class="data">
             <thead>
@@ -89,7 +52,6 @@
             </tbody>
           </table>
         </div>
-        {{end}}
       </section>
     </main>
   </div>

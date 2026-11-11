@@ -28,12 +28,6 @@ type homePage struct {
 	People  []statTile
 	Content []statTile
 	Queues  []queueRow
-	// QueuesBehind are the Queues that are behind, for option c's summary.
-	QueuesBehind []queueRow
-	// Option is the design checkpoint's option for the Queues section, a
-	// (default), b or c; the picked one replaces the switch before the PR
-	// is ready.
-	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
@@ -57,18 +51,8 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		People:     peopleTiles(o.People),
 		Content:    contentTiles(o.Content),
 		Queues:     queueRows(queues, now),
-		Option:     "a",
 		Version:    s.config.Version,
 		RenderedAt: now,
-	}
-	switch opt := r.URL.Query().Get("option"); opt {
-	case "b", "c":
-		data.Option = opt
-	}
-	for _, q := range data.Queues {
-		if q.Behind {
-			data.QueuesBehind = append(data.QueuesBehind, q)
-		}
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

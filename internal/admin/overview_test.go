@@ -116,3 +116,26 @@ func TestCount(t *testing.T) {
 		}
 	}
 }
+
+// The design checkpoint's options; this goes with the switch once one is
+// picked.
+func TestOverviewOptions(t *testing.T) {
+	b := overviewServer(t, &fakeOverview{o: rss.AdminOverview{People: rss.OverviewPeople{ConfirmedAccounts: 1201, Waiting: 3412}}})
+	for _, tt := range []struct {
+		path, want string
+	}{
+		{"/", `class="stats"`},
+		{"/?option=a", `class="stats"`},
+		{"/?option=z", `class="stats"`},
+		{"/?option=b", `<th scope="row"><a href="/waitlist">Waiting</a></th>`},
+		{"/?option=c", `class="headline"`},
+	} {
+		rr := b.get(t, tt.path)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", tt.path, rr.Code)
+		}
+		if body := rr.Body.String(); !strings.Contains(body, tt.want) || !strings.Contains(body, "3,412") {
+			t.Errorf("GET %s lacks %s or its figures", tt.path, tt.want)
+		}
+	}
+}

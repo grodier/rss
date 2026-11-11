@@ -195,4 +195,76 @@
   .stat-link a:focus-visible {
     outline: none;
   }
+
+  /* Design checkpoint (#575): options b and c. The unpicked ones go before
+     the PR is ready. */
+  .data th[scope="row"] {
+    font-weight: 600;
+  }
+
+  .data tr:last-child th {
+    border-block-end: 0;
+  }
+
+  /* Option c: a strip of the key figures in large type, then compact rows. */
+  .headline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 1rem 2rem;
+  }
+
+  .headline dt {
+    color: var(--text-2);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .headline dd {
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  .headline a,
+  .figure-list a {
+    color: var(--accent);
+  }
+
+  .figure-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+    border-block-start: 1px solid var(--border);
+  }
+
+  .figure-columns > .admin-section + .admin-section {
+    border-block-start: 0;
+  }
+
+  .figure-list {
+    border-block-start: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+
+  .figure-list > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    padding: 0.5rem 0;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .figure-list dd {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .figure-list dd span {
+    margin-inline-start: 0.5rem;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
 }

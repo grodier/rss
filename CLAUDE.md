@@ -52,7 +52,7 @@ terraform fmt -recursive infra           # format Terraform; CI's terraform job 
 
 Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck, the format check and the frontend tests.
 CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check, the frontend tests and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
-`infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves.
+`infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves; `infra-unlock.yml` releases a stale state lock (see "A stale state lock" in `infra/README.md`).
 
 ## Layout
 

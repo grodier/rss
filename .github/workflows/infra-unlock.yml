@@ -1,0 +1,58 @@
+name: Unlock Terraform state
+
+# Releases a Terraform state lock that a killed or cancelled run left behind,
+# so plans and applies work again (see "A stale state lock" in
+# infra/README.md). Run it by hand (Actions → Unlock Terraform state → Run
+# workflow) with the lock's ID from the failed run's "Lock Info", only when no
+# plan or apply is running: it waits for the owner's approval in the
+# infrastructure environment. Its own concurrency group, not terraform-apply,
+# so it never replaces an apply waiting for approval.
+on:
+  workflow_dispatch:
+    inputs:
+      lock_id:
+        description: The lock's ID, from the failed run's "Lock Info"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  unlock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: infrastructure # waits for the owner's approval
+    concurrency:
+      group: terraform-unlock
+      cancel-in-progress: false
+    env:
+      # Only the state's backend: unlocking calls no provider.
+      AWS_ACCESS_KEY_ID: ${{ secrets.TF_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_STATE_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "^1.10" # required_version in infra/versions.tf
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform -chdir=infra init
+
+      # The ID comes in through the environment, never into the script, and
+      # must be a lock ID (a UUID).
+      - name: terraform force-unlock
+        env:
+          LOCK_ID: ${{ inputs.lock_id }}
+        run: |
+          if ! [[ "$LOCK_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "::error::lock_id must be the lock's ID, a UUID like 5b675299-7fac-c518-d355-b5365dacdd66"
+            exit 1
+          fi
+          terraform -chdir=infra force-unlock -force "$LOCK_ID"

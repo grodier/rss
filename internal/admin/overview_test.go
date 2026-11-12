@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -254,6 +255,7 @@ func TestOverviewJobOptions(t *testing.T) {
 	for path, want := range map[string]string{
 		"/?option=b": `<td class="num job-failed">2%</td>`,
 		"/?option=c": `<rect class="job-failure" x="97.9" y="0" width="2" height="8" />`,
+		"/?option=d": `<rect class="job-failure" x="0" y="0" width="3" height="8" /><rect class="job-ok" x="3" y="0" width="39.6" height="8" />`,
 	} {
 		if body := b.get(t, path).Body.String(); !strings.Contains(body, want) {
 			t.Errorf("GET %s lacks %s", path, want)
@@ -270,6 +272,41 @@ func TestShare(t *testing.T) {
 	} {
 		if got := share(tt.part, tt.whole); got != tt.want {
 			t.Errorf("share(%d, %d) = %q, want %q", tt.part, tt.whole, got, tt.want)
+		}
+	}
+}
+
+func TestMixBar(t *testing.T) {
+	sh := func(kind string, width float64) jobShare { return jobShare{Kind: kind, Width: width} }
+	for _, tt := range []struct {
+		name   string
+		shares []jobShare
+		want   []barSegment
+	}{
+		{
+			"failures first, at their own width over the minimum",
+			[]jobShare{sh("ok", 40), sh("other", 55), sh("failure", 5)},
+			[]barSegment{{"failure", 0, 5}, {"ok", 5, 40}, {"other", 45, 55}},
+		},
+		{
+			"a few failures widened to the minimum, the rest shrunk, retries left as track",
+			[]jobShare{sh("ok", 90), sh("failure", 0.4)},
+			[]barSegment{{"failure", 0, 3}, {"ok", 3, 87.4}},
+		},
+		{
+			"no failures",
+			[]jobShare{sh("ok", 100), sh("failure", 0)},
+			[]barSegment{{"ok", 0, 100}},
+		},
+		{
+			"only failures",
+			[]jobShare{sh("ok", 0), sh("failure", 100)},
+			[]barSegment{{"failure", 0, 100}},
+		},
+	} {
+		got := mixBar(tt.shares)
+		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+			t.Errorf("%s: mixBar = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

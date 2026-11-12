@@ -34,7 +34,7 @@ type homePage struct {
 	Jobs         []jobRow
 	JobsRecorded bool
 	// Option is the design checkpoint's option for the Jobs section, a
-	// (default), b or c; the picked one replaces the switch before the PR
+	// (default), b, c or d; the picked one replaces the switch before the PR
 	// is ready.
 	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
@@ -72,7 +72,7 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		RenderedAt:   now,
 	}
 	switch opt := r.URL.Query().Get("option"); opt {
-	case "b", "c":
+	case "b", "c", "d":
 		data.Option = opt
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
@@ -188,7 +188,21 @@ type jobRow struct {
 	Label  string
 	Total  int
 	Shares []jobShare
+	// Bar is option d's bar: failures first, each at least
+	// minFailureWidth wide.
+	Bar []barSegment
 }
+
+// barSegment is one outcome's part of option d's bar, in percent of its
+// width.
+type barSegment struct {
+	Kind         string
+	Start, Width float64
+}
+
+// minFailureWidth is the narrowest a failure is drawn on option d's bar, in
+// percent, so a few failures among many jobs still show.
+const minFailureWidth = 3.0
 
 // jobShare is one outcome's share of a runner's jobs. Percent is rounded
 // ("<1%" for a few jobs of many); Start and Width place it on option c's
@@ -230,8 +244,49 @@ func jobRows(outcomes []rss.JobOutcomes) []jobRow {
 			start += sh.Width
 			rows[i].Shares = append(rows[i].Shares, sh)
 		}
+		rows[i].Bar = mixBar(rows[i].Shares)
 	}
 	return rows
+}
+
+// mixBar lays out option d's bar from a runner's shares: failures first,
+// each at least minFailureWidth wide, then its successes, then the rest,
+// scaled to fill what the failures leave. What no share covers (retries)
+// stays track.
+func mixBar(shares []jobShare) []barSegment {
+	var failures, rest float64
+	for _, s := range shares {
+		if s.Kind == "failure" && s.Width > 0 {
+			failures += max(s.Width, minFailureWidth)
+		} else {
+			rest += s.Width
+		}
+	}
+	covered := 0.0
+	for _, s := range shares {
+		covered += s.Width
+	}
+	scale := 1.0
+	if rest > 0 {
+		scale = max(covered-failures, 0) / rest
+	}
+	var bar []barSegment
+	start := 0.0
+	for _, kind := range []string{"failure", "ok", "other"} {
+		for _, s := range shares {
+			if s.Kind != kind || s.Width == 0 {
+				continue
+			}
+			w := s.Width * scale
+			if kind == "failure" {
+				w = max(s.Width, minFailureWidth)
+			}
+			w = math.Round(w*10) / 10
+			bar = append(bar, barSegment{Kind: kind, Start: start, Width: w})
+			start = math.Round((start+w)*10) / 10
+		}
+	}
+	return bar
 }
 
 // share is part of whole as a rounded percentage, "<1%" when part is a few

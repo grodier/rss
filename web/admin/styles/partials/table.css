@@ -156,7 +156,7 @@
   }
 
   .job-bar .job-other {
-    fill: var(--tone-3);
+    fill: var(--text-3);
   }
 
   .job-bar .job-failure {
@@ -184,10 +184,23 @@
   }
 
   .job-key .swatch.job-other {
-    background: var(--tone-3);
+    background: var(--text-3);
   }
 
   .job-key .swatch.job-failure {
     background: var(--danger);
+  }
+
+  .job-mix-col {
+    inline-size: 10rem;
+    min-inline-size: 10rem;
+  }
+
+  /* Its own width, not the cell's: a squeezed table would take it to 0. */
+  .job-bar.job-mix {
+    inline-size: 10rem;
+    max-inline-size: none;
+    margin-block: 0;
+    border-radius: 2px;
   }
 }

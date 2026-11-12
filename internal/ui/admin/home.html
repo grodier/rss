@@ -90,6 +90,29 @@
             </tbody>
           </table>
         </div>
+        {{else if eq .Option "d"}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col" class="job-mix-col"><span class="visually-hidden">Mix</span></th>
+                <th scope="col">Outcomes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Total}}</td>
+                <td class="job-mix-col">{{if .Total}}<svg class="job-bar job-mix" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="job-bar-track" x="0" y="0" width="100" height="8" />{{range .Bar}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{end}}</td>
+                <td>{{if .Total}}{{range $i, $s := .Shares}}{{if $i}} · {{end}}<span{{if $s.Failure}} class="job-failed"{{end}}>{{$s.Label}} {{$s.Percent}}</span>{{end}}{{else}}No jobs{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
         {{else if eq .Option "c"}}
         <ul class="job-bars" role="list">
           {{range .Jobs}}

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,12 +36,25 @@ var templateFuncs = template.FuncMap{
 	"count": count,
 	// subf subtracts b from a, to place an SVG shape from its end.
 	"subf": func(a, b float64) float64 { return a - b },
+	// ratingWord says a rating (good, needs-improvement, poor) in words.
+	"ratingWord": func(r string) string { return ratingWords[r] },
+	// segmented is a filter's data for the segmented partial: its label
+	// and choices.
+	"segmented": func(label string, links []filterLink) map[string]any {
+		return map[string]any{"Label": label, "Links": links}
+	},
+	// countTable is the count-table partial's data: its columns' names, its
+	// rows, and whether it shows their shares rather than their views.
+	"countTable": func(name, column string, rows []countRow, share bool) map[string]any {
+		return map[string]any{"Name": name, "Column": column, "Rows": rows, "Share": share}
+	},
+	"lower": strings.ToLower,
 	// date formats t as a UTC date.
 	"date": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", "waitlist", "audit", or "" on pages outside the sections) and the logged-in
+// ("overview", "waitlist", "webperf", "audit", or "" on pages outside the sections) and the logged-in
 // admin's email, "" when no one is logged in, which hides the sections and
 // Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {

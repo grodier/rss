@@ -79,6 +79,7 @@ func serve(cfg config, logger *slog.Logger) error {
 		Invites:  psql.NewInviteRepository(db),
 		Emails:   psql.NewEmailRepository(db),
 		Overview: psql.NewAdminOverviewRepository(db),
+		WebPerf:  psql.NewAdminWebPerfRepository(db),
 	}, sessions)
 	if err != nil {
 		return err

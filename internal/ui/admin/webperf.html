@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Web performance - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Web performance</h1>
+        <p>{{if .Views}}{{count .Views}} page views from real visitors {{.Period.Label}}{{else}}No page views {{.Period.Label}}{{end}}</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Period" .Periods)}}
+        {{template "segmented" (segmented "Device" .Devices)}}
+        {{template "segmented" (segmented "Percentile" .Percentiles)}}
+      </div>
+
+      {{if not .Views}}
+      <section class="admin-section">
+        <p class="empty">No page views {{.Period.Label}}. Each page the reader shows sends one beacon when it’s hidden, and they show up here.</p>
+      </section>
+      {{else}}
+      <section class="admin-section" aria-labelledby="vitals">
+        <h2 id="vitals">Core Web Vitals</h2>
+        <p class="assessment{{with .Assessment.Rating}} r-{{.}}{{end}}">
+          {{if eq .Assessment.Rating "good"}}{{template "rating-glyph" "good"}}<strong>Passed</strong>
+          {{else if .Assessment.Rating}}{{template "rating-glyph" .Assessment.Rating}}<strong>Not passed</strong>
+          {{else}}<strong>Not assessed</strong>{{end}}
+          <span>{{.Assessment.Text}}</span>
+        </p>
+        {{range .Vitals}}
+        <div class="vital{{if .Minor}} vital-minor{{end}}">
+          <div class="vital-summary">
+            <h3>{{.Name}} <span class="vital-full">{{.Full}}</span></h3>
+            <p class="vital-value">
+              <strong>{{.Selected.Value}}</strong>
+              <span class="vital-q">{{.Selected.Percentile}}</span>
+              {{with .Selected.Rating}}<span class="rating r-{{.}}">{{template "rating-glyph" .}}{{ratingWord .}}</span>{{end}}
+            </p>
+            <p class="vital-others">{{range .Others}}<span><span class="vital-q">{{.Percentile}}</span> {{template "rated-value" .}}</span>{{end}}</p>
+            {{if .Views}}
+            <svg class="shares" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="{{.Shares}}" focusable="false"><title>{{.Shares}}</title><rect class="bar-track" x="0" y="0" width="100" height="6" />{{range .Bar}}<rect class="share-{{.Rating}}" x="{{.Start}}" y="0" width="{{.Width}}" height="6" />{{end}}</svg>
+            <p class="vital-note">{{.Shares}}</p>
+            <p class="vital-note">{{count .Views}} views reported {{.Name}}</p>
+            {{else}}
+            <p class="vital-note">No view reported {{.Name}}.</p>
+            {{end}}
+          </div>
+          <div class="vital-chart">{{with .Chart}}{{chart .}}{{end}}</div>
+        </div>
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="breakdowns">
+        <h2 id="breakdowns">Breakdowns</h2>
+        {{range .Breakdowns}}
+        <h3 class="sub">{{.Title}}</h3>
+        {{if .Missing}}
+        <p class="missing">{{.Missing}}</p>
+        {{else}}
+        <div class="table-wrap">
+          <table class="data breakdown">
+            <colgroup><col class="col-name" /><col class="col-views" /><col /><col /><col /><col class="col-note" /></colgroup>
+            <thead>
+              <tr>
+                <th scope="col">{{.Column}}</th>
+                <th scope="col" class="num">Views</th>
+                <th scope="col" class="num">{{$.Percentile}} LCP</th>
+                <th scope="col" class="num">{{$.Percentile}} INP</th>
+                <th scope="col" class="num">{{$.Percentile}} CLS</th>
+                <th scope="col"><span class="visually-hidden">Note</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Rows}}{{template "segment-row" .}}{{end}}
+            </tbody>
+          </table>
+        </div>
+        {{end}}
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="pages">
+        <h2 id="pages">Pages</h2>
+        <h3 class="sub">Page views {{.Period.StepFor}}, top routes</h3>
+        {{chart .ViewsChart}}
+        <h3 class="sub">Routes</h3>
+        <div class="table-wrap">
+          <table class="data breakdown">
+            <colgroup><col class="col-name" /><col class="col-views" /><col /><col /><col /><col class="col-note" /></colgroup>
+            <thead>
+              <tr>
+                {{range .Routes.Columns}}<th scope="col"{{if .Numeric}} class="num"{{end}}{{with .Sort}} aria-sort="{{.}}"{{end}}><a href="{{.Href}}">{{.Label}}{{if .Sort}} <span aria-hidden="true">{{if eq .Sort "ascending"}}↑{{else}}↓{{end}}</span>{{end}}</a></th>{{end}}
+                <th scope="col"><span class="visually-hidden">Note</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Routes.Rows}}{{template "segment-row" .}}{{end}}
+            </tbody>
+          </table>
+        </div>
+        {{if .Routes.More}}<p class="more"><a href="{{.Routes.MoreHref}}">Show all {{count .Routes.More}} more routes</a></p>{{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="sources">
+        <h2 id="sources">Where visits come from, and how</h2>
+        <div class="side-by-side">
+          <div>
+            <h3 class="sub">Top referrers</h3>
+            {{if .Period.Rollups}}<p class="missing">Only the last 30 days’ views say where they came from: choose 24h, 7d or 30d.</p>
+            {{else if .Referrers}}{{template "count-table" (countTable "Host" "Views" .Referrers false)}}
+            {{else}}<p class="missing">No views came from another site.</p>{{end}}
+          </div>
+          <div>
+            <h3 class="sub">Protocol</h3>
+            {{if .Period.Rollups}}<p class="missing">Only the last 30 days’ views say how they were loaded: choose 24h, 7d or 30d.</p>
+            {{else}}{{template "count-table" (countTable "Protocol" "Share" .Protocols true)}}
+            <h3 class="sub">Connection</h3>
+            {{template "count-table" (countTable "Type" "Share" .Connections true)}}{{end}}
+          </div>
+        </div>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{/* segment-row is a breakdown's or the routes table's row (dot: a
+     segmentRow); one with few views is dimmed and tagged. */}}
+{{define "segment-row"}}<tr{{if .Few}} class="few"{{end}}>
+                <td>{{.Label}}{{if .Few}} <span class="tag">few views</span>{{end}}</td>
+                <td class="num">{{count .Views}}</td>
+                {{range .Values}}<td class="num">{{template "rated-value" .}}</td>{{end}}
+                <td class="note">{{.Note}}</td>
+              </tr>{{end}}
+
+{{/* count-table is a small table of values and their views or shares (dot:
+     countTable's map). */}}
+{{define "count-table"}}<div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">{{.Name}}</th><th scope="col" class="num">{{.Column}}</th></tr></thead>
+                <tbody>{{$share := .Share}}{{range .Rows}}<tr><td>{{.Label}}</td><td class="num">{{if $share}}{{.Share}}{{else}}{{count .Views}}{{end}}</td></tr>{{end}}</tbody>
+              </table>
+            </div>{{end}}
+
+{{/* segmented is a filter's choices as a row of links, the current one
+     marked (dot: segmented's map). */}}
+{{define "segmented"}}<nav class="segmented" aria-labelledby="seg-{{lower .Label}}">
+          <p id="seg-{{lower .Label}}">{{.Label}}</p>
+          <ul role="list">{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>{{end}}</ul>
+        </nav>{{end}}

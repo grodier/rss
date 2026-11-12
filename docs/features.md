@@ -578,13 +578,13 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview is below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
    The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
    Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
-   Colors are classes (`chart-series-1` to `-3`) set from the tokens, and every text from data is escaped; each `<svg>` has `role="img"`, a `<title>` and a `<desc>` that says what it shows (latest values and ranges, or a histogram's median and 95th percentile, from `Percentile`).
+   Colors are classes (`chart-series-1` to `-3`) set from the tokens, and every text from data is escaped; each `<svg>` has `role="img"`, a `<title>` and a `<desc>` that says what it shows (latest values and ranges, or a histogram's median and 95th percentile, from `metrics.Percentile`).
 
 **Start at:**
 
@@ -616,6 +616,30 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 3. `internal/ui/admin/home.html` and `partials/stats.html`.
 
 **Tests:** `internal/admin/overview_test.go`; `internal/psql/admin_overview_test.go`.
+
+### Web performance
+
+`GET /web-performance` (`webPerfHandler`) shows the real-user beacons (`rum_views` and `rum_daily`, written as "Observability" below says): how fast the reader's pages load and respond for real people, as page views only, never visitors or sessions ("Observability" in decisions.md).
+
+1. **Filters.** Three rows of links (`readWebPerfParams`, `webPerfParams.href`), so every view has its own URL and needs no script: the period (24h, 7d by default, 30d, 90d, 13m), the device (all, phone, tablet, desktop) and the percentile (p75 by default, p90, p95); a value the page doesn't offer is its default.
+   Up to 30 days read `rum_views`, which keeps 30; 90d and 13m read `rum_daily`'s whole UTC days before today, in whole steps (13 months are 56 weeks), so no point is part of one (`webPeriod.query`).
+2. **Reading.** `AdminWebPerfRepository.WebPerf` returns every view's stats, the breakdowns by device, browser, installed and route (LCP, INP and CLS only), the metrics a step at a time, each route's views a step at a time, and the referrers, protocols and connections.
+   From `rum_views` the percentiles are exact (`percentile_cont`), one query for the totals and one with grouping sets for the breakdowns; from `rum_daily` they're `metrics.Percentile` over the summed buckets, interpolated within a bucket, and a group's views are the most any of its metrics counted per day.
+   Either way the shares of good, needs-improvement and poor views are exact, since `metrics.RUMThresholds` are among `metrics.RUMBounds`.
+   Whether a view was installed, its referrer, protocol and connection are only in `rum_views`, so those parts say so for 90d and 13m.
+3. **Core Web Vitals.** A row per metric (`vital`): LCP, INP and CLS, then FCP and TTFB smaller, each with its value at the chosen percentile and its rating, the other two percentiles small beneath, the shares bar, how many views reported it, and its chart over time with the good and poor thresholds.
+   Above them, the assessment (`assess`) passes when LCP, INP and CLS are all good at p75, as Google assesses them, whatever percentile is chosen.
+   A rating (`rating`: a value on a threshold is in the better rating) is never color alone: each has a shape (`rating-glyph`: a circle, a square, a triangle) and its words.
+4. **Breakdowns and pages.** The device, browser and installed tables, and the routes table (`routes`: sortable by each column through links, the top 20 with "Show all"), give the views and LCP, INP and CLS at the chosen percentile (`segmentRows`); a row under 100 views is dimmed and tagged "few views", Safari's row notes that its INP is known to over-report, and a row missing a metric says which.
+   The page views chart (`routeViewsChart`) draws the three routes with the most views.
+
+**Start at:**
+
+1. `internal/admin/webperf.go` (`webPerfHandler`, `webPerfData`).
+2. `internal/psql/admin_webperf.go` (`WebPerf`, `raw`, `rollups`).
+3. `internal/ui/admin/webperf.html`, `partials/rating.html` and `web/admin/styles/partials/webperf.css`.
+
+**Tests:** `internal/admin/webperf_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket); `internal/metrics/percentile_test.go`.
 
 ### Login
 
@@ -662,7 +686,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 
 ### Observability
 
-`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin; the admin's pages that read them come later (#577, #578).
+`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin; the admin's Web performance page reads the real-user metrics (above), and its page for the rest comes later (#577).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.

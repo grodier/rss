@@ -759,6 +759,74 @@ type RUMView struct {
 	INPTarget     string // data-* hook or tag name of the slowest interaction's target
 }
 
+// WebPerfQuery says which real-user views the admin's web performance page
+// reads: those received in [From, To), on Device ("" for every device),
+// from rum_views, or from rum_daily's whole UTC days when Rollups is set
+// (From and To are then midnights), with Series' points Step apart.
+type WebPerfQuery struct {
+	From, To time.Time
+	Device   string
+	Rollups  bool
+	Step     time.Duration
+}
+
+// WebPerf is the real-user views of a WebPerfQuery. Installed, Referrers,
+// Protocols and Connections are only in rum_views, so they're nil from
+// rollups.
+type WebPerf struct {
+	Total       RUMGroup
+	Devices     []RUMGroup
+	Browsers    []RUMGroup
+	Installed   []RUMGroup // Key "true" or "false"
+	Routes      []RUMGroup
+	Series      []RUMPoint
+	RouteViews  []RUMRouteViews
+	Referrers   []RUMCount // by views, most first; never ""
+	Protocols   []RUMCount // Key "" when not reported
+	Connections []RUMCount // Key "" when not reported
+}
+
+// RUMGroup is the views of one value of a dimension (a device, a browser,
+// a route…), Key, or of every value.
+type RUMGroup struct {
+	Key   string
+	Views int
+	// Metrics are the views' stats by metric: ttfb, fcp, lcp, inp and cls
+	// in WebPerf's Total, only the Core Web Vitals (lcp, inp, cls) in its
+	// breakdowns. One no view reported is missing.
+	Metrics map[string]RUMStat
+}
+
+// RUMStat is one metric's values over some views.
+type RUMStat struct {
+	Views int // that reported it
+	// P75, P90 and P95 are its percentiles: exact from rum_views,
+	// interpolated within a bucket from rum_daily.
+	P75, P90, P95 float64
+	// Good, NeedsImprovement and Poor count the views by
+	// metrics.RUMThresholds.
+	Good, NeedsImprovement, Poor int
+}
+
+// RUMPoint is the views of one step of WebPerf's Series, starting at T.
+type RUMPoint struct {
+	T       time.Time
+	Metrics map[string]RUMStat
+}
+
+// RUMRouteViews is how many views a route had in the step starting at T.
+type RUMRouteViews struct {
+	T     time.Time
+	Route string
+	Views int
+}
+
+// RUMCount is how many views had a value, Key.
+type RUMCount struct {
+	Key   string
+	Views int
+}
+
 // AdminOverview is the admin's Overview: aggregates across every reader,
 // never one reader's reading ("Admin" in docs/decisions.md).
 type AdminOverview struct {

@@ -105,6 +105,12 @@ type OverviewStore interface {
 	Jobs(ctx context.Context, since time.Time) (outcomes []rss.JobOutcomes, recorded bool, err error)
 }
 
+// WebPerfStore reads the real-user views for the web performance page;
+// *psql.AdminWebPerfRepository is one.
+type WebPerfStore interface {
+	WebPerf(ctx context.Context, q rss.WebPerfQuery) (rss.WebPerf, error)
+}
+
 type Services struct {
 	Database DatabasePinger
 	Admins   AdminStore
@@ -113,6 +119,7 @@ type Services struct {
 	Invites  InviteStore
 	Emails   EmailStore
 	Overview OverviewStore
+	WebPerf  WebPerfStore
 }
 
 type Server struct {

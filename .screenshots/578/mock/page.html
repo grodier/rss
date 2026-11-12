@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Web performance - Paper Round admin</title>
+<link rel="stylesheet" href="assets/base.css" />
+<style>
+@layer base {
+  :root { --good: #2c6b3f; --needs-improvement: #9a5a00; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --good: #7fd49b; --needs-improvement: #f2b65a; } }
+  :root[data-theme="dark"] { --good: #7fd49b; --needs-improvement: #f2b65a; }
+}
+@layer components {
+  .seg-label { color: var(--text-2); font-size: 0.75rem; font-weight: 600; margin-block-end: 0.25rem; }
+  .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.8125rem; }
+  .seg a { padding: 0.3125rem 0.6875rem; color: var(--text); text-decoration: none; font-variant-numeric: tabular-nums; }
+  .seg a + a { border-inline-start: 1px solid var(--border); }
+  .seg a[aria-current] { background: var(--text); color: var(--bg); font-weight: 650; }
+  .controls { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; padding: 0.875rem 1.5rem; border-block-end: 1px solid var(--border); }
+  @media (max-width: 47.99rem) { .controls { padding-inline: 1rem; } }
+
+  .r-good { --rating: var(--good); }
+  .r-ni { --rating: var(--needs-improvement); }
+  .r-poor { --rating: var(--danger); }
+  .rating { display: inline-flex; align-items: center; gap: 0.3125rem; color: var(--rating); font-size: 0.8125rem; font-weight: 650; }
+  .glyph { inline-size: 0.625rem; block-size: 0.625rem; flex: none; fill: var(--rating); }
+
+  .assess { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-block-end: 0.75rem; font-size: 0.875rem; }
+  .assess strong { color: var(--rating); }
+  .assess span { color: var(--text-2); }
+
+  .shares { display: flex; block-size: 6px; border-radius: 3px; overflow: hidden; gap: 2px; margin-block: 0.5rem 0.25rem; }
+  .s-good { background: var(--good); } .s-ni { background: var(--needs-improvement); } .s-poor { background: var(--danger); }
+  .share-text, .n { color: var(--text-2); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+  .full { color: var(--text-3); font-size: 0.75rem; font-weight: 500; }
+
+  .strip { display: grid; grid-template-columns: 16rem minmax(0, 1fr); gap: 0.75rem 2rem; padding-block: 1rem; border-block-start: 1px solid var(--border); align-items: start; }
+  .strip:last-of-type { border-block-end: 1px solid var(--border); }
+  .strip h3 { font-size: 0.8125rem; font-weight: 700; }
+  .strip .p75 { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin-block-start: 0.125rem; }
+  .strip .p75 strong { font-family: var(--font-display); font-size: 1.625rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .strip .p75 .q { color: var(--text-2); font-size: 0.75rem; font-weight: 600; }
+  .strip.minor .p75 strong { font-size: 1.25rem; }
+  .others { display: flex; gap: 0.25rem 0.875rem; flex-wrap: wrap; font-size: 0.8125rem; font-variant-numeric: tabular-nums; margin-block-start: 0.25rem; }
+  .others span { display: inline-flex; align-items: center; gap: 0.25rem; }
+  .others .q { color: var(--text-2); font-size: 0.75rem; }
+  @media (max-width: 47.99rem) { .strip { grid-template-columns: 1fr; } }
+
+  /* r2: three percentiles side by side */
+  .trio { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 0 1.25rem; margin-block-start: 0.375rem; }
+  .trio dt { color: var(--text-2); font-size: 0.75rem; font-weight: 600; }
+  .trio dd { white-space: nowrap; display: flex; align-items: center; gap: 0.3125rem; font-family: var(--font-display); font-size: 1.25rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .trio div:first-child dd { font-size: 1.625rem; }
+  .strip.minor .trio dd { font-size: 1rem; }
+  .strip.minor .trio div:first-child dd { font-size: 1.25rem; }
+  .r2 .strip { grid-template-columns: 19rem minmax(0, 1fr); }
+  .toggles + .chart .chart-legend { display: none; }
+  .data.bd { table-layout: fixed; }
+  .data.bd col.c-name { inline-size: 24%; } .data.bd col.c-views { inline-size: 11%; } .data.bd col.c-note { inline-size: 26%; }
+  @media (max-width: 47.99rem) { .data.bd { table-layout: auto; } .r2 .strip { grid-template-columns: 1fr; } }
+  .toggles { display: flex; gap: 0.375rem; margin-block-end: 0.375rem; font-size: 0.75rem; }
+  .toggles button { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.5rem; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; }
+  .toggles button[aria-pressed="false"] { color: var(--text-3); border-style: dashed; }
+  .toggles button[aria-pressed="false"] .chart-key { opacity: 0.3; }
+  .js-note { color: var(--text-3); font-size: 0.6875rem; font-style: italic; }
+  .two { display: block; line-height: 1.3; }
+  .two small { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-2); font-size: 0.6875rem; }
+
+  /* r3: distribution */
+  .dist .bar-good { fill: var(--good); } .dist .bar-ni { fill: var(--needs-improvement); } .dist .bar-poor { fill: var(--danger); }
+  .dist .chart-labels text { font-size: 0.625rem; }
+  .overtime summary { cursor: pointer; color: var(--accent); font-size: 0.8125rem; font-weight: 600; margin-block-start: 0.5rem; }
+  .overtime[open] summary { margin-block-end: 0.5rem; }
+
+  .chart-cap { margin-block-end: 0.25rem; color: var(--text-2); font-size: 0.75rem; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1.25rem 2rem; }
+  .pair h3, .admin-section h3.sub { margin-block: 0 0.375rem; font-size: 0.8125rem; font-weight: 650; }
+  .admin-section h3.sub ~ h3.sub { margin-block-start: 1.25rem; }
+  .note { color: var(--text-2); font-size: 0.75rem; font-style: italic; }
+  .data th a { color: inherit; text-decoration: none; }
+  .data th[aria-sort] a { color: var(--text); }
+  .marked { color: var(--rating); font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; }
+  .few td { color: var(--text-3); }
+  .few .marked { color: var(--text-3); font-weight: 500; }
+  .few .marked .glyph { fill: var(--text-3); }
+  .tag { margin-inline-start: 0.375rem; padding: 0 0.375rem; border: 1px solid var(--border); border-radius: 999px; color: var(--text-3); font-size: 0.6875rem; }
+  .more { margin-block-start: 0.5rem; font-size: 0.8125rem; }
+  .more a { color: var(--accent); }
+  .lede { color: var(--text-2); font-size: 0.75rem; margin-block-end: 0.75rem; }
+}
+</style>
+</head>
+<body>
+{{define "glyph"}}{{if eq . "good"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg>{{else if eq . "ni"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9"/></svg>{{else if eq . "poor"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 10H0z"/></svg>{{end}}{{end}}
+{{define "rating"}}<span class="rating r-{{.}}">{{template "glyph" .}}{{word .}}</span>{{end}}
+{{define "shares"}}<div class="shares" role="img" aria-label="{{index . 0}}% good, {{index . 1}}% needs improvement, {{index . 2}}% poor"><span class="s-good" style="flex:{{index . 0}}"></span><span class="s-ni" style="flex:{{index . 1}}"></span><span class="s-poor" style="flex:{{index . 2}}"></span></div><p class="share-text">{{index . 0}}% good · {{index . 1}}% needs improvement · {{index . 2}}% poor</p>{{end}}
+{{define "val"}}{{if .Rating}}<span class="marked r-{{.Rating}}">{{template "glyph" .Rating}}{{.Value}}</span>{{else}}<span class="full">{{.Value}}</span>{{end}}{{end}}
+{{define "cells"}}{{$opt := .Opt}}{{range .Cells}}<td class="num">{{if and (eq $opt "r2") .Second}}<span class="two">{{template "val" .}}<br><small>{{template "glyph" .SecondRating}}{{.Second}}</small></span>{{else}}{{template "val" .}}{{end}}</td>{{end}}{{end}}
+{{define "btable"}}<div class="table-wrap"><table class="data bd"><colgroup><col class="c-name"><col class="c-views"><col><col><col><col class="c-note"></colgroup>
+<thead><tr><th scope="col">{{.Head}}</th><th scope="col" class="num">Views</th><th scope="col" class="num">{{.Pct}} LCP</th><th scope="col" class="num">{{.Pct}} INP</th><th scope="col" class="num">{{.Pct}} CLS</th><th scope="col"><span class="visually-hidden">Note</span></th></tr></thead>
+<tbody>{{$opt := .Option}}{{range .Rows}}<tr{{if .Few}} class="few"{{end}}><td>{{.Name}}{{if .Few}}<span class="tag">few views</span>{{end}}</td><td class="num">{{.Views}}</td>{{template "cells" (dict "Opt" $opt "Cells" .Cells)}}<td class="note">{{.Note}}</td></tr>{{end}}</tbody>
+</table></div>{{end}}
+{{define "small"}}<div><h3>{{.T}}</h3><div class="table-wrap"><table class="data"><thead><tr><th scope="col">{{.H}}</th><th scope="col" class="num">{{.V}}</th></tr></thead><tbody>{{range .Rows}}<tr><td>{{index . 0}}</td><td class="num">{{index . 1}}</td></tr>{{end}}</tbody></table></div></div>{{end}}
+
+<div class="admin">
+<header class="admin-side"><a class="brand" href="/"><img class="brand-mark" src="img/logo.svg" alt=""><span class="brand-name">Paper Round</span><span class="admin-mark">Admin</span></a>
+<nav aria-label="Admin"><ul class="admin-links" role="list"><li><a href="/">Overview</a></li><li><a href="/waitlist">Waitlist</a></li><li><a href="#" aria-current="page">Web performance</a></li><li><a href="/audit">Audit log</a></li></ul>
+<form class="admin-account"><p>owner@example.com</p><button class="btn btn-sm" type="button">Log out</button></form></nav>
+<details class="admin-menu"><summary>Menu</summary></details></header>
+<main class="admin-main admin-page {{.Option}}">
+<header class="page-head"><h1>Web performance</h1>
+<p>{{if .Empty}}No page views yet{{else}}{{.Views}} page views from real visitors, {{if .Long}}in the last 13 months (daily rollups){{else}}in the last 7 days{{end}}{{end}}</p></header>
+<div class="controls">
+<div><p class="seg-label">Period</p><nav class="seg" aria-label="Period">{{range .Periods}}<a href="#"{{if eq . $.Period}} aria-current="page"{{end}}>{{.}}</a>{{end}}</nav></div>
+<div><p class="seg-label">Device</p><nav class="seg" aria-label="Device">{{range .Devices}}<a href="#"{{if eq . $.DeviceSel}} aria-current="page"{{end}}>{{.}}</a>{{end}}</nav></div>
+{{if ne .Option "r2"}}<div><p class="seg-label">Percentile</p><nav class="seg" aria-label="Percentile">{{range .Pcts}}<a href="#"{{if eq . $.Pct}} aria-current="page"{{end}}>{{.}}</a>{{end}}</nav></div>{{end}}
+</div>
+{{if .Empty}}
+<section class="admin-section"><p class="empty">No page views yet. Each page the reader shows sends one beacon when it’s hidden; they show up here once anyone has browsed it.</p></section>
+{{else}}
+<section class="admin-section" aria-labelledby="cwv"><h2 id="cwv">Core Web Vitals</h2>
+{{if .AssessmentPass}}<p class="assess r-good">{{template "glyph" "good"}}<strong>Passed</strong> <span>LCP, INP and CLS are good at p75, as Google assesses them</span></p>
+{{else}}<p class="assess r-ni">{{template "glyph" "ni"}}<strong>Not passed</strong> <span>at p75, as Google assesses it: {{.Assessment}}</span></p>{{end}}
+{{range .Vitals}}<div class="strip{{if .Minor}} minor{{end}}">
+<div><h3>{{.Name}} <span class="full">{{.Full}}</span></h3>
+{{if eq $.Option "r2"}}
+<dl class="trio">{{range .All}}<div><dt>{{.Q}}</dt><dd class="r-{{.Rating}}">{{template "glyph" .Rating}}{{.Value}}</dd></div>{{end}}</dl>
+<p class="rating r-{{(index .All 0).Rating}}">{{word (index .All 0).Rating}} at p75</p>
+{{else}}
+<p class="p75"><strong>{{.Sel.Value}}</strong><span class="q">{{.Sel.Q}}</span>{{template "rating" .Sel.Rating}}</p>
+<p class="others">{{range .All}}{{if not .On}}<span><span class="q">{{.Q}}</span> <span class="marked r-{{.Rating}}">{{template "glyph" .Rating}}{{.Value}}</span></span>{{end}}{{end}}</p>
+{{end}}
+{{template "shares" .Shares}}<p class="n">{{.Views}} views reported {{.Name}}</p></div>
+<div>
+{{if eq $.Option "r1"}}{{.Chart}}
+{{else if eq $.Option "r2"}}<div class="toggles" aria-label="Lines"><button type="button" aria-pressed="true" class="chart-series-1"><span class="chart-key"></span>p75</button><button type="button" aria-pressed="true" class="chart-series-2"><span class="chart-key"></span>p90</button><button type="button" aria-pressed="true" class="chart-series-3"><span class="chart-key"></span>p95</button></div>{{.Chart3}}
+{{else}}<p class="chart-cap">Distribution of {{.Views}} views, with p75, p90 and p95</p>{{.Hist}}<details class="overtime"{{if .Open}} open{{end}}><summary>{{$.Pct}} over time</summary>{{.Chart}}</details>{{end}}
+</div></div>{{end}}
+{{if eq .Option "r2"}}<p class="js-note">The p75/p90/p95 buttons need JavaScript; without it, all three lines show and the buttons are hidden.</p>{{end}}
+</section>
+
+<section class="admin-section" aria-labelledby="breakdowns"><h2 id="breakdowns">Breakdowns</h2>
+{{if eq .Option "r2"}}<p class="lede">p75, with p95 under it.</p>{{end}}
+<h3 class="sub">By device</h3>{{template "btable" (dict "Head" "Device" "Rows" .Device "Option" .Option "Pct" (pctHead .))}}
+<h3 class="sub">By browser</h3>{{template "btable" (dict "Head" "Browser" "Rows" .Browser "Option" .Option "Pct" (pctHead .))}}
+<h3 class="sub">Installed or in the browser</h3>{{template "btable" (dict "Head" "Where" "Rows" .Installed "Option" .Option "Pct" (pctHead .))}}
+</section>
+<section class="admin-section" aria-labelledby="pages"><h2 id="pages">Pages</h2>
+<h3 class="sub">Page views per day, top 3 routes</h3>{{.ViewsChart}}
+<h3 class="sub">Routes</h3>
+<div class="table-wrap"><table class="data">
+<thead><tr><th scope="col"><a href="#">Route</a></th><th scope="col" class="num" aria-sort="descending"><a href="#">Views ↓</a></th><th scope="col" class="num"><a href="#">{{pctHead .}} LCP</a></th><th scope="col" class="num"><a href="#">{{pctHead .}} INP</a></th><th scope="col" class="num"><a href="#">{{pctHead .}} CLS</a></th></tr></thead>
+<tbody>{{$opt := .Option}}{{range .Routes}}<tr{{if .Few}} class="few"{{end}}><td><code>{{.Name}}</code>{{if .Few}}<span class="tag">few views</span>{{end}}</td><td class="num">{{.Views}}</td>{{template "cells" (dict "Opt" $opt "Cells" .Cells)}}</tr>{{end}}</tbody>
+</table></div>
+<p class="more"><a href="#">Show all {{.MoreRoutes}} more routes</a></p>
+</section>
+<section class="admin-section" aria-labelledby="sources"><h2 id="sources">Where visits come from, and how</h2>
+<div class="pair">{{template "small" (small "Top referrers" "Host" "Views" .Referrers)}}<div>{{template "small" (small "Protocol" "Protocol" "Share" .Protocols)}}<br>{{template "small" (small "Connection" "Type" "Share" .Connections)}}</div></div></section>
+{{end}}
+</main></div>
+</body></html>

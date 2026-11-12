@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/admin/chart"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -267,17 +268,45 @@ func TestRating(t *testing.T) {
 		v      float64
 		want   string
 	}{
-		{"lcp", 2500, "good"}, {"lcp", 2500.1, "needs-improvement"}, {"lcp", 4000, "needs-improvement"}, {"lcp", 4000.1, "poor"},
-		{"inp", 200, "good"}, {"inp", 201, "needs-improvement"}, {"inp", 500, "needs-improvement"}, {"inp", 501, "poor"},
-		{"cls", 0.1, "good"}, {"cls", 0.11, "needs-improvement"}, {"cls", 0.25, "needs-improvement"}, {"cls", 0.26, "poor"},
-		{"fcp", 1800, "good"}, {"fcp", 3001, "poor"},
-		{"ttfb", 800, "good"}, {"ttfb", 1801, "poor"},
+		{"lcp", 2500, "good"}, {"lcp", 2505.1, "needs-improvement"}, {"lcp", 4000, "needs-improvement"}, {"lcp", 4005.1, "poor"},
+		{"inp", 200, "good"}, {"inp", 200.6, "needs-improvement"}, {"inp", 500, "needs-improvement"}, {"inp", 500.6, "poor"},
+		{"cls", 0.1, "good"}, {"cls", 0.106, "needs-improvement"}, {"cls", 0.25, "needs-improvement"}, {"cls", 0.256, "poor"},
+		// Rated as shown: 2504 ms is "2.50 s", and CLS 0.1 read back from a
+		// real column is a little over 0.1.
+		{"lcp", 2504, "good"}, {"inp", 200.4, "good"}, {"cls", float64(float32(0.1)), "good"}, {"cls", 0.104, "good"},
+		{"fcp", 1800, "good"}, {"fcp", 3010, "poor"},
+		{"ttfb", 800, "good"}, {"ttfb", 1810, "poor"},
 		{"lcp", math.NaN(), ""},
 		{"server", 10, ""},
 	} {
 		if got := rating(tt.metric, tt.v); got != tt.want {
 			t.Errorf("rating(%s, %v) = %q, want %q", tt.metric, tt.v, got, tt.want)
 		}
+	}
+}
+
+// A step with no views is a gap in a metric's chart and none in the page
+// views chart, rather than left out, and the charts span the whole period.
+func TestWebPerfSteps(t *testing.T) {
+	wp := sampleWebPerf()
+	period := webPeriods[1] // 7d
+	ts := steps(period.query(testNow, ""))
+	if len(ts) != 28 || !ts[0].Equal(testNow.Add(-7*24*time.Hour)) {
+		t.Fatalf("steps = %d from %v, want 28 from 7 days ago", len(ts), ts[0])
+	}
+	// The window is whole seconds, as Postgres returns its bins' starts.
+	if q := period.query(testNow.Add(1234567*time.Nanosecond), ""); !q.To.Equal(testNow) || !q.From.Equal(ts[0]) {
+		t.Errorf("query at a fraction of a second = %v to %v, want %v to %v", q.From, q.To, ts[0], testNow)
+	}
+	page := webPerfData(wp, webPerfParams{period: "7d", percentile: "p75", sort: "views"}, period, ts)
+	lc := page.Vitals[0].Chart.(chart.LineChart)
+	points := lc.Series[0].Points
+	if len(points) != 28 || points[0].V != 2460 || points[1].V != 2460 || !math.IsNaN(points[2].V) {
+		t.Errorf("LCP points = %v, want 28, the first two 2460 and then gaps", points)
+	}
+	views := page.ViewsChart.(chart.LineChart).Series
+	if len(views) != 2 || len(views[1].Points) != 28 || views[1].Points[0].V != 540 || views[1].Points[1].V != 0 {
+		t.Errorf("page views = %v, want two routes over 28 steps, /articles/{id}'s 540 then 0", views)
 	}
 }
 

@@ -47,7 +47,9 @@ const defaultWebPeriod = "7d"
 
 // query is the period's query at now, on device.
 func (p webPeriod) query(now time.Time, device string) rss.WebPerfQuery {
-	q := rss.WebPerfQuery{To: now, Device: device, Rollups: p.Rollups, Step: p.Step}
+	// To whole seconds, so the steps' starts survive the round trip through
+	// Postgres, which keeps microseconds, and match its bins.
+	q := rss.WebPerfQuery{To: now.UTC().Truncate(time.Second), Device: device, Rollups: p.Rollups, Step: p.Step}
 	if p.Rollups {
 		q.To = now.UTC().Truncate(24 * time.Hour)
 	}
@@ -88,9 +90,6 @@ const fewViews = 100
 
 // topRoutes is how many routes the routes table shows before "Show all".
 const topRoutes = 20
-
-// topReferrers is how many referrer hosts the page lists.
-const topReferrers = 20
 
 // webPerfPage is the web performance page's data.
 type webPerfPage struct {
@@ -263,20 +262,32 @@ func (s *Server) webPerfHandler(w http.ResponseWriter, r *http.Request) {
 			period = p
 		}
 	}
-	wp, err := s.services.WebPerf.WebPerf(r.Context(), period.query(s.now(), params.device))
+	q := period.query(s.now(), params.device)
+	wp, err := s.services.WebPerf.WebPerf(r.Context(), q)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	data := webPerfData(wp, params, period)
+	data := webPerfData(wp, params, period, steps(q))
 	data.Nav = s.nav(r, "webperf")
 	if err := s.renderHTML(w, http.StatusOK, "webperf.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }
 
-// webPerfData is the page's data from wp.
-func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod) webPerfPage {
+// steps are the start of each of q's steps, from From to To, so the charts
+// show a step with no views as a gap rather than leaving it out.
+func steps(q rss.WebPerfQuery) []time.Time {
+	var ts []time.Time
+	for t := q.From; t.Before(q.To); t = t.Add(q.Step) {
+		ts = append(ts, t.UTC())
+	}
+	return ts
+}
+
+// webPerfData is the page's data from wp, whose series have a point at
+// each of steps that had views.
+func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod, steps []time.Time) webPerfPage {
 	page := webPerfPage{Period: period, Percentile: params.percentile, Views: wp.Total.Views}
 	for _, p := range webPeriods {
 		next := params
@@ -299,9 +310,9 @@ func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod) webPerf
 
 	page.Assessment = assess(wp.Total.Metrics)
 	for _, m := range webMetrics {
-		page.Vitals = append(page.Vitals, vital(m.Key, m.Name, m.Full, m.Minor, wp, params.percentile))
+		page.Vitals = append(page.Vitals, vital(m.Key, m.Name, m.Full, m.Minor, wp, params.percentile, steps))
 	}
-	page.ViewsChart = routeViewsChart(wp, period)
+	page.ViewsChart = routeViewsChart(wp, period, steps)
 
 	page.Breakdowns = []breakdown{
 		{Title: "By device", Column: "Device", Rows: segmentRows(wp.Devices, params.percentile, deviceLabel)},
@@ -313,10 +324,7 @@ func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod) webPerf
 	}
 	page.Routes = routes(wp.Routes, params)
 
-	for i, c := range wp.Referrers {
-		if i == topReferrers {
-			break
-		}
+	for _, c := range wp.Referrers {
 		page.Referrers = append(page.Referrers, countRow{Label: c.Key, Views: c.Views})
 	}
 	page.Protocols = shares(wp.Protocols)
@@ -345,13 +353,16 @@ func rated(metric string, s rss.RUMStat, ok bool, q string) ratedValue {
 	return ratedValue{Percentile: q, Value: formatMetric(metric, v), Rating: rating(metric, v)}
 }
 
-// rating is v's rating by metric's thresholds: a value on a threshold is
-// in the better rating, as Google rates them.
+// rating is v's rating by metric's thresholds, at the precision the page
+// shows it (formatMetric), so "2.50 s" is never rated worse than 2.5 s: a
+// value on a threshold is in the better rating, as Google rates them.
 func rating(metric string, v float64) string {
 	t, ok := metrics.RUMThresholds[metric]
-	switch {
-	case !ok || math.IsNaN(v):
+	if !ok || math.IsNaN(v) {
 		return ""
+	}
+	v = shown(metric, v)
+	switch {
 	case v <= t.Good:
 		return "good"
 	case v <= t.Poor:
@@ -362,6 +373,17 @@ func rating(metric string, v float64) string {
 
 // ratingWords are the ratings as the page says them.
 var ratingWords = map[string]string{"good": "Good", "needs-improvement": "Needs improvement", "poor": "Poor"}
+
+// shown is v rounded as formatMetric shows it.
+func shown(metric string, v float64) float64 {
+	switch {
+	case metric == "cls":
+		return math.Round(v*100) / 100
+	case v >= 999.5:
+		return math.Round(v/10) * 10
+	}
+	return math.Round(v)
+}
 
 // formatMetric formats a metric's value: CLS to two places, times in
 // milliseconds under a second and in seconds to two places from one.
@@ -407,7 +429,7 @@ func assess(stats map[string]rss.RUMStat) assessment {
 }
 
 // vital is metric's row.
-func vital(metric, name, full string, minor bool, wp rss.WebPerf, q string) vitalRow {
+func vital(metric, name, full string, minor bool, wp rss.WebPerf, q string, steps []time.Time) vitalRow {
 	s, ok := wp.Total.Metrics[metric]
 	row := vitalRow{Name: name, Full: full, Minor: minor, Views: s.Views, Selected: rated(metric, s, ok, q)}
 	for _, p := range webPercentiles {
@@ -420,13 +442,19 @@ func vital(metric, name, full string, minor bool, wp rss.WebPerf, q string) vita
 	}
 	row.Bar, row.Shares = ratingShares(s)
 
-	points := make([]chart.Point, len(wp.Series))
-	for i, p := range wp.Series {
-		v := math.NaN()
+	at := map[time.Time]rss.RUMStat{}
+	for _, p := range wp.Series {
 		if ps, ok := p.Metrics[metric]; ok && ps.Views > 0 {
+			at[p.T.UTC()] = ps
+		}
+	}
+	points := make([]chart.Point, len(steps))
+	for i, t := range steps {
+		v := math.NaN()
+		if ps, ok := at[t]; ok {
 			v = percentile(ps, q)
 		}
-		points[i] = chart.Point{T: p.T, V: v}
+		points[i] = chart.Point{T: t, V: v}
 	}
 	t := metrics.RUMThresholds[metric]
 	unit := "ms"
@@ -490,14 +518,12 @@ func segmentRows(groups []rss.RUMGroup, q string, label func(string) string) []s
 	return rows
 }
 
+// deviceLabel names a device as the device filter does.
 func deviceLabel(k string) string {
-	switch k {
-	case "phone":
-		return "Phone"
-	case "tablet":
-		return "Tablet"
-	case "desktop":
-		return "Desktop"
+	for _, d := range webDevices {
+		if d.Key == k {
+			return d.Label
+		}
 	}
 	return k
 }
@@ -614,7 +640,7 @@ func shares(counts []rss.RUMCount) []countRow {
 
 // routeViewsChart charts the views of the routes with the most views, a
 // line each, a point per step.
-func routeViewsChart(wp rss.WebPerf, period webPeriod) chart.Chart {
+func routeViewsChart(wp rss.WebPerf, period webPeriod, steps []time.Time) chart.Chart {
 	top := append([]rss.RUMGroup(nil), wp.Routes...)
 	sort.SliceStable(top, func(i, j int) bool {
 		if top[i].Views != top[j].Views {
@@ -623,20 +649,13 @@ func routeViewsChart(wp rss.WebPerf, period webPeriod) chart.Chart {
 		return top[i].Key < top[j].Key
 	})
 	top = top[:min(len(top), 3)]
-	var steps []time.Time
-	seen := map[time.Time]bool{}
 	views := map[string]map[time.Time]int{}
 	for _, v := range wp.RouteViews {
-		if !seen[v.T] {
-			seen[v.T] = true
-			steps = append(steps, v.T)
-		}
 		if views[v.Route] == nil {
 			views[v.Route] = map[time.Time]int{}
 		}
-		views[v.Route][v.T] += v.Views
+		views[v.Route][v.T.UTC()] += v.Views
 	}
-	sort.Slice(steps, func(i, j int) bool { return steps[i].Before(steps[j]) })
 	c := chart.LineChart{Title: fmt.Sprintf("Page views %s, top routes", period.StepFor), Height: 160}
 	for _, g := range top {
 		s := chart.Series{Name: g.Key}

@@ -781,7 +781,7 @@ type WebPerf struct {
 	Routes      []RUMGroup
 	Series      []RUMPoint
 	RouteViews  []RUMRouteViews
-	Referrers   []RUMCount // by views, most first; never ""
+	Referrers   []RUMCount // the 20 with the most views, most first; never ""
 	Protocols   []RUMCount // Key "" when not reported
 	Connections []RUMCount // Key "" when not reported
 }

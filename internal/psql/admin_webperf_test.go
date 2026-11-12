@@ -191,11 +191,41 @@ func TestAdminWebPerfDeviceAndWindow(t *testing.T) {
 		}
 	}
 
-	empty, err := perf.WebPerf(ctx, rss.WebPerfQuery{From: day.AddDate(0, 0, -7), To: day, Step: time.Hour})
-	if err != nil {
+	for _, rollups := range []bool{false, true} {
+		empty, err := perf.WebPerf(ctx, rss.WebPerfQuery{From: day.AddDate(0, 0, -7), To: day, Rollups: rollups, Step: 24 * time.Hour})
+		if err != nil {
+			t.Fatalf("an empty window (rollups %v): %v", rollups, err)
+		}
+		if empty.Total.Views != 0 || len(empty.Total.Metrics) != 0 || empty.Series != nil || empty.Routes != nil {
+			t.Errorf("an empty window (rollups %v) = %+v, want nothing", rollups, empty)
+		}
+	}
+}
+
+// A value on a threshold is in the better rating, from raw views as from
+// rollups, though the columns are real and the thresholds aren't.
+func TestAdminWebPerfThresholdEdges(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	perf := NewAdminWebPerfRepository(db)
+	ctx := context.Background()
+	day := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -3)
+	for _, cls := range []float64{0.1, 0.25, 0.2501} {
+		v := rumView(day.Add(time.Hour), "/", nil)
+		v.CLS = &cls
+		recordViews(t, repo, v)
+	}
+	if err := repo.RollUp(ctx, day.AddDate(0, 0, 1)); err != nil {
 		t.Fatal(err)
 	}
-	if empty.Total.Views != 0 || len(empty.Total.Metrics) != 0 || empty.Series != nil || empty.Routes != nil {
-		t.Errorf("an empty window = %+v, want nothing", empty)
+	for _, rollups := range []bool{false, true} {
+		wp, err := perf.WebPerf(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Rollups: rollups, Step: 24 * time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := wp.Total.Metrics["cls"]
+		if s.Good != 1 || s.NeedsImprovement != 1 || s.Poor != 1 {
+			t.Errorf("rollups %v: CLS 0.1, 0.25 and 0.2501 rated %d good, %d needing improvement, %d poor; want 1 each",
+				rollups, s.Good, s.NeedsImprovement, s.Poor)
+		}
 	}
 }

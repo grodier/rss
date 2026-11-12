@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -25,17 +26,25 @@ func NewAdminWebPerfRepository(db *sql.DB) *AdminWebPerfRepository {
 	return &AdminWebPerfRepository{DB: db}
 }
 
-// webPerfMetric is a metric the page shows, by its rum_daily name, with
-// its rum_views column.
-type webPerfMetric struct{ metric, column string }
-
-// webPerfMetrics are the metrics the page shows; webPerfVitals the Core Web
-// Vitals, all the breakdowns show. Each percentile of raw views sorts them,
-// so the breakdowns leave FCP and TTFB out.
+// webPerfMetrics are the rolled-up metrics the page rates (all but the
+// server's time); webPerfVitals the Core Web Vitals among them, the only
+// ones the breakdowns show, since each percentile of raw views sorts them.
 var (
-	webPerfVitals  = []webPerfMetric{{"lcp", "lcp_ms"}, {"inp", "inp_ms"}, {"cls", "cls"}}
-	webPerfMetrics = append([]webPerfMetric{{"ttfb", "ttfb_ms"}, {"fcp", "fcp_ms"}}, webPerfVitals...)
+	webPerfMetrics = slices.DeleteFunc(slices.Clone(rumColumns), func(c rumColumn) bool {
+		_, ok := metrics.RUMThresholds[c.metric]
+		return !ok
+	})
+	webPerfVitals = slices.DeleteFunc(slices.Clone(webPerfMetrics), func(c rumColumn) bool { return !isVital(c.metric) })
 )
+
+// isVital says whether metric is a Core Web Vital: LCP, INP or CLS.
+func isVital(metric string) bool {
+	return metric == "lcp" || metric == "inp" || metric == "cls"
+}
+
+// webPerfReferrers is how many referrer hosts WebPerf returns, those with
+// the most views: anyone can post a beacon, so there can be many.
+const webPerfReferrers = 20
 
 // webPerfQuantiles are RUMStat's percentiles, in its order.
 var webPerfQuantiles = []float64{0.75, 0.90, 0.95}
@@ -55,23 +64,24 @@ func (r *AdminWebPerfRepository) WebPerf(ctx context.Context, q rss.WebPerfQuery
 // rawStats are the select list's expressions for each of ms, in order:
 // how many views reported it, its percentiles, and how many were good and
 // poor (the rest need improvement). The thresholds are constants, not
-// input.
-func rawStats(ms []webPerfMetric) string {
+// input, compared as real, like the columns, so a value on one (CLS 0.1)
+// isn't taken for one above it.
+func rawStats(ms []rumColumn) string {
 	var b strings.Builder
 	for _, m := range ms {
 		t := metrics.RUMThresholds[m.metric]
 		fmt.Fprintf(&b, `,
 	    count(%[1]s),
 	    percentile_cont('{0.75,0.9,0.95}'::float8[]) WITHIN GROUP (ORDER BY %[1]s),
-	    count(*) FILTER (WHERE %[1]s <= %[2]g),
-	    count(*) FILTER (WHERE %[1]s > %[3]g)`, m.column, t.Good, t.Poor)
+	    count(*) FILTER (WHERE %[1]s <= %[2]g::real),
+	    count(*) FILTER (WHERE %[1]s > %[3]g::real)`, m.column, t.Good, t.Poor)
 	}
 	return b.String()
 }
 
 // scanRawStats returns scan destinations for rawStats(ms)' columns, and a
 // function that reads them into a group's metrics.
-func scanRawStats(ms []webPerfMetric) ([]any, func() map[string]rss.RUMStat) {
+func scanRawStats(ms []rumColumn) ([]any, func() map[string]rss.RUMStat) {
 	n := len(ms)
 	views := make([]int, n)
 	pcts := make([]pq.Float64Array, n)
@@ -103,7 +113,7 @@ const rawWhere = `received_at >= $1 AND received_at < $2 AND ($3 = '' OR device 
 // scanRaw runs query, whose select list ends with rawStats(ms), and calls
 // row for each row with a scan that reads the columns before them into its
 // destinations, and read, which returns the row's stats.
-func (r *AdminWebPerfRepository) scanRaw(ctx context.Context, query string, args []any, ms []webPerfMetric,
+func (r *AdminWebPerfRepository) scanRaw(ctx context.Context, query string, args []any, ms []rumColumn,
 	row func(scan func(...any) error, read func() map[string]rss.RUMStat) error) error {
 	rows, err := r.DB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -200,26 +210,37 @@ func (r *AdminWebPerfRepository) raw(ctx context.Context, q rss.WebPerfQuery) (r
 		return wp, err
 	}
 
-	// Where the views came from, and over what.
-	rows, err := r.DB.QueryContext(ctx, `SELECT referrer_host, protocol, connection, count(*)::int
+	// Where the views came from: the hosts with the most views.
+	rows, err := r.DB.QueryContext(ctx, `SELECT referrer_host, count(*)::int AS n
+	    FROM rum_views
+	    WHERE `+rawWhere+` AND referrer_host <> ''
+	    GROUP BY referrer_host
+	    ORDER BY n DESC, referrer_host
+	    LIMIT `+fmt.Sprint(webPerfReferrers), args...)
+	if err != nil {
+		return wp, err
+	}
+	wp.Referrers, err = scanCounts(rows)
+	if err != nil {
+		return wp, fmt.Errorf("web perf referrers: %w", err)
+	}
+
+	// And over what.
+	rows, err = r.DB.QueryContext(ctx, `SELECT protocol, connection, count(*)::int
 	    FROM rum_views
 	    WHERE `+rawWhere+`
-	    GROUP BY GROUPING SETS ((referrer_host), (protocol), (connection))`, args...)
+	    GROUP BY GROUPING SETS ((protocol), (connection))`, args...)
 	if err != nil {
 		return wp, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var referrer, protocol, connection sql.NullString
+		var protocol, connection sql.NullString
 		var n int
-		if err := rows.Scan(&referrer, &protocol, &connection, &n); err != nil {
+		if err := rows.Scan(&protocol, &connection, &n); err != nil {
 			return wp, err
 		}
 		switch {
-		case referrer.Valid:
-			if referrer.String != "" {
-				wp.Referrers = append(wp.Referrers, rss.RUMCount{Key: referrer.String, Views: n})
-			}
 		case protocol.Valid:
 			wp.Protocols = append(wp.Protocols, rss.RUMCount{Key: protocol.String, Views: n})
 		case connection.Valid:
@@ -227,12 +248,25 @@ func (r *AdminWebPerfRepository) raw(ctx context.Context, q rss.WebPerfQuery) (r
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return wp, fmt.Errorf("web perf sources: %w", err)
+		return wp, fmt.Errorf("web perf protocols: %w", err)
 	}
-	for _, cs := range [][]rss.RUMCount{wp.Referrers, wp.Protocols, wp.Connections} {
-		sortCounts(cs)
-	}
+	sortCounts(wp.Protocols)
+	sortCounts(wp.Connections)
 	return wp, nil
+}
+
+// scanCounts reads rows of a key and its views.
+func scanCounts(rows *sql.Rows) ([]rss.RUMCount, error) {
+	defer rows.Close()
+	var out []rss.RUMCount
+	for rows.Next() {
+		var c rss.RUMCount
+		if err := rows.Scan(&c.Key, &c.Views); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // rollupWhere picks q's rum_daily rows: $1 and $2 are its window's
@@ -276,7 +310,7 @@ func (r *AdminWebPerfRepository) rollups(ctx context.Context, q rss.WebPerfQuery
 		return g
 	}
 	rows, err := r.DB.QueryContext(ctx, rollupViews+`
-	    SELECT device, browser, route, sum(views)::int
+	    SELECT device, browser, route, coalesce(sum(views), 0)::int
 	    FROM views
 	    GROUP BY GROUPING SETS ((), (device), (browser), (route))`, args...)
 	if err != nil {
@@ -299,6 +333,12 @@ func (r *AdminWebPerfRepository) rollups(ctx context.Context, q rss.WebPerfQuery
 	}
 
 	buckets := map[*rss.RUMGroup]map[string][]int{}
+	bucketsOf := func(g *rss.RUMGroup) map[string][]int {
+		if buckets[g] == nil {
+			buckets[g] = map[string][]int{}
+		}
+		return buckets[g]
+	}
 	// Summed by every dimension at once first, which a hash does quickly,
 	// so the grouping sets' sorts have a few thousand rows rather than
 	// every day's buckets.
@@ -324,7 +364,7 @@ func (r *AdminWebPerfRepository) rollups(ctx context.Context, q rss.WebPerfQuery
 			if err := rows.Scan(&device, &browser, &route, &metric, &i, &n); err != nil {
 				return err
 			}
-			addBucket(buckets, group(device, browser, route), metric, i, n)
+			addBucket(bucketsOf(group(device, browser, route)), metric, i, n)
 		}
 		return rows.Err()
 	}()
@@ -332,15 +372,11 @@ func (r *AdminWebPerfRepository) rollups(ctx context.Context, q rss.WebPerfQuery
 		return wp, fmt.Errorf("web perf group buckets: %w", err)
 	}
 	for k, g := range groups {
-		g.Metrics = stats(buckets[g])
 		if k[0] != "" {
 			// Like the raw views', the breakdowns have only the vitals.
-			for metric := range g.Metrics {
-				if !slices.ContainsFunc(webPerfVitals, func(m webPerfMetric) bool { return m.metric == metric }) {
-					delete(g.Metrics, metric)
-				}
-			}
+			maps.DeleteFunc(buckets[g], func(metric string, _ []int) bool { return !isVital(metric) })
 		}
+		g.Metrics = stats(buckets[g])
 		switch k[0] {
 		case "device":
 			wp.Devices = append(wp.Devices, *g)
@@ -377,13 +413,7 @@ func (r *AdminWebPerfRepository) rollups(ctx context.Context, q rss.WebPerfQuery
 			if points[t] == nil {
 				points[t] = map[string][]int{}
 			}
-			m := points[t]
-			if m[metric] == nil {
-				m[metric] = make([]int, len(metrics.RUMBounds[metric])+1)
-			}
-			if i >= 1 && i <= len(m[metric]) {
-				m[metric][i-1] += n
-			}
+			addBucket(points[t], metric, i, n)
 		}
 		return rows.Err()
 	}()
@@ -425,12 +455,8 @@ func (r *AdminWebPerfRepository) routeViews(ctx context.Context, query string, a
 }
 
 // addBucket adds n views to bucket i (from 1, as unnest's ordinality
-// counts) of g's metric.
-func addBucket(buckets map[*rss.RUMGroup]map[string][]int, g *rss.RUMGroup, metric string, i, n int) {
-	if buckets[g] == nil {
-		buckets[g] = map[string][]int{}
-	}
-	m := buckets[g]
+// counts) of m's metric.
+func addBucket(m map[string][]int, metric string, i, n int) {
 	if m[metric] == nil {
 		m[metric] = make([]int, len(metrics.RUMBounds[metric])+1)
 	}

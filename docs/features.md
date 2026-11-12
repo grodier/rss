@@ -607,7 +607,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 3. **Queues.** `AdminOverviewRepository.Queues` counts each runner's due jobs and finds the oldest's due time in one query, with the same condition its claim query uses (`feedDue`, `siteIconDue`, `enrichJobDue`, `emailDue`, `lookupPending`, `importFeedPending`), so it counts what the runner would take next; lookups and import feeds are due from when they were asked for.
    `queueRows` says how long the oldest has waited (`wait`), and a queue is behind when that's over `rss.QueueBehindAfter` (15 minutes).
 4. **Jobs.** `AdminOverviewRepository.Jobs` sums `job_metrics`' minute rows of the last 24 hours by runner and outcome; minute rows are kept 7 days, so the window needs no hourly rollups.
-   `jobRows` shows refresh, lookups, enrichment and email with each outcome's share of the runner's jobs (`share`), a retry counting in the total only, and failures in the danger color when there were any; with no job metrics at all, the section says so.
+   `jobRows` sorts each shown runner's outcomes (refresh, lookups, enrichment, email) into the buckets they all share (`jobRunners`: done, failed, and other for the rest), and `bucketBar` draws them as one bar per runner, failures first and at least 3% wide, with the per-outcome breakdown as the bar's tooltip and label; the Failed column gives the exact share, and with no job metrics at all, the section says so.
 
 **Start at:**
 

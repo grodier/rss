@@ -203,7 +203,8 @@ func TestWait(t *testing.T) {
 }
 
 // testJobs are a day's outcomes: refresh with every outcome, lookups with
-// none, enrichment with retries and a few given up, and email all sent.
+// none, enrichment with retries and a few given up, email all sent, and
+// icons, which the section leaves out.
 func testJobs() []rss.JobOutcomes {
 	return []rss.JobOutcomes{
 		{Runner: "enrich", Total: 1000, Outcomes: []rss.JobOutcome{{Name: "gave_up", Jobs: 4}, {Name: "retry", Jobs: 96}, {Name: "saved", Jobs: 900}}},
@@ -225,17 +226,17 @@ func TestOverviewJobs(t *testing.T) {
 		`<h2 id="jobs">Jobs, last 24 hours</h2>`,
 		`<td>Refresh</td>`,
 		`<td class="num">2,000</td>`,
-		`<span>saved 40%</span> · <span>304 58%</span> · <span class="job-failed">failed 2%</span> · <span>gone &lt;1%</span>`,
-		`<td>Lookups</td>`,
-		`<td>No jobs</td>`,
-		`<span>saved 90%</span> · <span class="job-failed">gave up &lt;1%</span>`,
-		`<span>sent 100%</span> · <span>gave up 0%</span>`,
+		`aria-label="Refresh: saved 40%, 304 58%, failed 2%, gone &lt;1%"`,
+		`<rect class="bar-failed" x="0" y="0" width="3" height="8" /><rect class="bar-done" x="3" y="0" width="96.9" height="8" /><rect class="bar-other" x="99.9" y="0" width="0.1" height="8" />`,
+		`<td class="num"><span class="job-failed">2%</span></td>`,
+		"<td>Lookups</td>\n                <td class=\"num\">0</td>\n                <td class=\"job-bar-col\">No jobs</td>\n                <td class=\"num\">—</td>",
+		`<td class="num"><span class="job-failed">&lt;1%</span></td>`,
+		`<td class="num"><span class="job-none">none</span></td>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET / lacks %s", want)
 		}
 	}
-	// Icons and imports aren't shown.
 	if strings.Contains(body, "<td>Icons</td>\n                <td class=\"num\">5</td>") {
 		t.Error("GET / shows the icon runner's jobs")
 	}
@@ -246,23 +247,67 @@ func TestOverviewJobsNotRecorded(t *testing.T) {
 	if !strings.Contains(body, `<p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>`) {
 		t.Error("GET / lacks the empty state for no job metrics")
 	}
+	if strings.Contains(body, `class="job-key"`) {
+		t.Error("GET / shows the jobs' key with no job metrics")
+	}
 }
 
-// The design checkpoint's options; this goes with the switch once one is
-// picked.
-func TestOverviewJobOptions(t *testing.T) {
-	b := overviewServer(t, &fakeOverview{jobs: testJobs(), recorded: true})
-	for path, want := range map[string]string{
-		"/?option=b": `<td class="num job-failed">2%</td>`,
-		"/?option=c": `<rect class="job-failure" x="97.9" y="0" width="2" height="8" />`,
-		"/?option=e": `<td class="num"><span class="job-failed">2%</span></td>`,
-		"/?option=f": `<td class="num">98%</td>
-                <td class="num">&lt;1%</td>
-                <td class="num job-failed">2%</td>`,
-		"/?option=d": `<rect class="job-failure" x="0" y="0" width="3" height="8" /><rect class="job-ok" x="3" y="0" width="39.6" height="8" />`,
+func TestJobRows(t *testing.T) {
+	rows := jobRows(testJobs())
+	if len(rows) != 4 {
+		t.Fatalf("jobRows = %d rows, want 4 (refresh, lookups, enrichment, email)", len(rows))
+	}
+	for _, tt := range []struct {
+		label     string
+		total     int
+		failed    int
+		failedPct string
+		breakdown string
+		bar       []barSegment
+	}{
+		{"Refresh", 2000, 40, "2%", "saved 40%, 304 58%, failed 2%, gone <1%",
+			[]barSegment{{"failed", 0, 3}, {"done", 3, 96.9}, {"other", 99.9, 0.1}}},
+		{"Lookups", 0, 0, "", "", nil},
+		{"Enrichment", 1000, 4, "<1%", "saved 90%, gave up <1%, retry 10%",
+			[]barSegment{{"failed", 0, 3}, {"done", 3, 87.7}, {"other", 90.7, 9.3}}},
+		{"Email", 12, 0, "0%", "sent 100%",
+			[]barSegment{{"done", 0, 100}}},
 	} {
-		if body := b.get(t, path).Body.String(); !strings.Contains(body, want) {
-			t.Errorf("GET %s lacks %s", path, want)
+		var row jobRow
+		for _, r := range rows {
+			if r.Label == tt.label {
+				row = r
+			}
+		}
+		if row.Total != tt.total || row.Failed != tt.failed || row.FailedPct != tt.failedPct {
+			t.Errorf("%s: total %d, failed %d (%q); want %d, %d (%q)", tt.label, row.Total, row.Failed, row.FailedPct, tt.total, tt.failed, tt.failedPct)
+		}
+		if row.Breakdown != tt.breakdown {
+			t.Errorf("%s: breakdown %q, want %q", tt.label, row.Breakdown, tt.breakdown)
+		}
+		if fmt.Sprint(row.Bar) != fmt.Sprint(tt.bar) {
+			t.Errorf("%s: bar %v, want %v", tt.label, row.Bar, tt.bar)
+		}
+	}
+}
+
+func TestBucketBar(t *testing.T) {
+	for _, tt := range []struct {
+		name                string
+		done, other, failed float64
+		want                []barSegment
+	}{
+		{"failures over the minimum keep their width", 40, 55, 5,
+			[]barSegment{{"failed", 0, 5}, {"done", 5, 40}, {"other", 45, 55}}},
+		{"a few failures widened to the minimum, the rest shrunk", 90, 9.6, 0.4,
+			[]barSegment{{"failed", 0, 3}, {"done", 3, 87.7}, {"other", 90.7, 9.3}}},
+		{"no failures", 100, 0, 0,
+			[]barSegment{{"done", 0, 100}}},
+		{"only failures", 0, 0, 100,
+			[]barSegment{{"failed", 0, 100}}},
+	} {
+		if got := bucketBar(tt.done, tt.other, tt.failed); fmt.Sprint(got) != fmt.Sprint(tt.want) {
+			t.Errorf("%s: bucketBar = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }
@@ -276,72 +321,6 @@ func TestShare(t *testing.T) {
 	} {
 		if got := share(tt.part, tt.whole); got != tt.want {
 			t.Errorf("share(%d, %d) = %q, want %q", tt.part, tt.whole, got, tt.want)
-		}
-	}
-}
-
-func TestMixBar(t *testing.T) {
-	sh := func(kind string, width float64) jobShare { return jobShare{Kind: kind, Width: width} }
-	for _, tt := range []struct {
-		name   string
-		shares []jobShare
-		want   []barSegment
-	}{
-		{
-			"failures first, at their own width over the minimum",
-			[]jobShare{sh("ok", 40), sh("other", 55), sh("failure", 5)},
-			[]barSegment{{"failure", 0, 5}, {"ok", 5, 40}, {"other", 45, 55}},
-		},
-		{
-			"a few failures widened to the minimum, the rest shrunk, retries left as track",
-			[]jobShare{sh("ok", 90), sh("failure", 0.4)},
-			[]barSegment{{"failure", 0, 3}, {"ok", 3, 87.4}},
-		},
-		{
-			"no failures",
-			[]jobShare{sh("ok", 100), sh("failure", 0)},
-			[]barSegment{{"ok", 0, 100}},
-		},
-		{
-			"only failures",
-			[]jobShare{sh("ok", 0), sh("failure", 100)},
-			[]barSegment{{"failure", 0, 100}},
-		},
-	} {
-		got := mixBar(tt.shares)
-		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
-			t.Errorf("%s: mixBar = %v, want %v", tt.name, got, tt.want)
-		}
-	}
-}
-
-func TestJobBuckets(t *testing.T) {
-	rows := jobRows(testJobs())
-	for _, tt := range []struct {
-		label               string
-		done, failed, other int
-		donePct, failedPct  string
-		otherPct, breakdown string
-	}{
-		{"Refresh", 1958, 40, 2, "98%", "2%", "<1%", "saved 40%, 304 58%, failed 2%, gone <1%"},
-		{"Lookups", 0, 0, 0, "", "", "", ""},
-		{"Enrichment", 900, 4, 96, "90%", "<1%", "10%", "saved 90%, gave up <1%, retry 10%"},
-		{"Email", 12, 0, 0, "100%", "0%", "0%", "sent 100%"},
-	} {
-		var row jobRow
-		for _, r := range rows {
-			if r.Label == tt.label {
-				row = r
-			}
-		}
-		if row.Done != tt.done || row.Failed != tt.failed || row.Other != tt.other {
-			t.Errorf("%s: done, failed, other = %d, %d, %d; want %d, %d, %d", tt.label, row.Done, row.Failed, row.Other, tt.done, tt.failed, tt.other)
-		}
-		if row.DonePct != tt.donePct || row.FailedPct != tt.failedPct || row.OtherPct != tt.otherPct {
-			t.Errorf("%s: shares %q, %q, %q; want %q, %q, %q", tt.label, row.DonePct, row.FailedPct, row.OtherPct, tt.donePct, tt.failedPct, tt.otherPct)
-		}
-		if row.Breakdown != tt.breakdown {
-			t.Errorf("%s: breakdown %q, want %q", tt.label, row.Breakdown, tt.breakdown)
 		}
 	}
 }

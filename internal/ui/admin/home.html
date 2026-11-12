@@ -56,68 +56,11 @@
 
       <section class="admin-section" aria-labelledby="jobs">
         <h2 id="jobs">Jobs, last 24 hours</h2>
-        {{if not .JobsRecorded}}
-        <p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>
-        {{else if eq .Option "b"}}
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th scope="col">Runner</th>
-                <th scope="col">Outcome</th>
-                <th scope="col" class="num">Jobs</th>
-                <th scope="col" class="num">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Jobs}}{{$runner := .}}
-              {{if .Total}}
-              {{range $i, $s := .Shares}}
-              <tr{{if $i}} class="job-cont"{{end}}>
-                <td>{{if not $i}}{{$runner.Label}} <span class="job-total">{{count $runner.Total}}</span>{{end}}</td>
-                <td>{{$s.Label}}</td>
-                <td class="num">{{count $s.Jobs}}</td>
-                <td class="num{{if $s.Failure}} job-failed{{end}}">{{$s.Percent}}</td>
-              </tr>
-              {{end}}
-              {{else}}
-              <tr>
-                <td>{{.Label}}</td>
-                <td colspan="3">No jobs</td>
-              </tr>
-              {{end}}
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        {{else if eq .Option "d"}}
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th scope="col">Runner</th>
-                <th scope="col" class="num">Jobs</th>
-                <th scope="col" class="job-mix-col"><span class="visually-hidden">Mix</span></th>
-                <th scope="col">Outcomes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Jobs}}
-              <tr>
-                <td>{{.Label}}</td>
-                <td class="num">{{count .Total}}</td>
-                <td class="job-mix-col">{{if .Total}}<svg class="job-bar job-mix" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="job-bar-track" x="0" y="0" width="100" height="8" />{{range .Bar}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{end}}</td>
-                <td>{{if .Total}}{{range $i, $s := .Shares}}{{if $i}} · {{end}}<span{{if $s.Failure}} class="job-failed"{{end}}>{{$s.Label}} {{$s.Percent}}</span>{{end}}{{else}}No jobs{{end}}</td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        {{else if eq .Option "e"}}
-        <ul class="job-key job-key-line" role="list">
-          <li><span class="swatch job-ok"></span>Done</li>
-          <li><span class="swatch job-other"></span>Other (retries, gone feeds)</li>
-          <li><span class="swatch job-failure"></span>Failed</li>
+        {{if .JobsRecorded}}
+        <ul class="job-key" role="list">
+          <li><span class="swatch bar-done"></span>Done</li>
+          <li><span class="swatch bar-other"></span>Other (retries, gone feeds)</li>
+          <li><span class="swatch bar-failed"></span>Failed</li>
         </ul>
         <div class="table-wrap">
           <table class="data">
@@ -125,7 +68,7 @@
               <tr>
                 <th scope="col">Runner</th>
                 <th scope="col" class="num">Jobs</th>
-                <th scope="col" class="job-wide-col"><span class="visually-hidden">Outcomes</span></th>
+                <th scope="col" class="job-bar-col"><span class="visually-hidden">Outcomes</span></th>
                 <th scope="col" class="num">Failed</th>
               </tr>
             </thead>
@@ -134,83 +77,15 @@
               <tr>
                 <td>{{.Label}}</td>
                 <td class="num">{{count .Total}}</td>
-                <td class="job-wide-col">{{if .Total}}<svg class="job-bar job-wide" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label="{{.Label}}: {{.Breakdown}}" focusable="false"><title>{{.Breakdown}}</title><rect class="job-bar-track" x="0" y="0" width="100" height="8" />{{range .BucketBar}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{else}}No jobs{{end}}</td>
+                <td class="job-bar-col">{{if .Total}}<svg class="job-bar" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label="{{.Label}}: {{.Breakdown}}" focusable="false"><title>{{.Breakdown}}</title><rect class="bar-track" x="0" y="0" width="100" height="8" />{{range .Bar}}<rect class="bar-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{else}}No jobs{{end}}</td>
                 <td class="num">{{if not .Total}}—{{else if .Failed}}<span class="job-failed">{{.FailedPct}}</span>{{else}}<span class="job-none">none</span>{{end}}</td>
               </tr>
               {{end}}
             </tbody>
           </table>
         </div>
-        {{else if eq .Option "f"}}
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th scope="col">Runner</th>
-                <th scope="col" class="num">Jobs</th>
-                <th scope="col" class="num">Done</th>
-                <th scope="col" class="num">Other</th>
-                <th scope="col" class="num">Failed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Jobs}}
-              <tr title="{{.Breakdown}}">
-                <td>{{.Label}}</td>
-                <td class="num">{{count .Total}}</td>
-                {{if .Total}}
-                <td class="num">{{.DonePct}}</td>
-                <td class="num">{{.OtherPct}}</td>
-                <td class="num {{if .Failed}}job-failed{{else}}job-none{{end}}">{{.FailedPct}}</td>
-                {{else}}
-                <td class="num">—</td>
-                <td class="num">—</td>
-                <td class="num">—</td>
-                {{end}}
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        <p class="job-note">Done: saved, 304s, lookups answered, emails sent. Other: retries and gone feeds.</p>
-        {{else if eq .Option "c"}}
-        <ul class="job-bars" role="list">
-          {{range .Jobs}}
-          <li>
-            <p class="job-bar-head"><strong>{{.Label}}</strong> <span>{{if .Total}}{{count .Total}} jobs{{else}}No jobs{{end}}</span></p>
-            {{if .Total}}
-            <svg class="job-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-              <rect class="job-bar-track" x="0" y="0" width="100" height="8" />
-              {{range .Shares}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}
-            </svg>
-            <ul class="job-key" role="list">
-              {{range .Shares}}<li{{if .Failure}} class="job-failed"{{end}}><span class="swatch job-{{.Kind}}"></span>{{.Label}} {{.Percent}}</li>{{end}}
-            </ul>
-            {{end}}
-          </li>
-          {{end}}
-        </ul>
         {{else}}
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th scope="col">Runner</th>
-                <th scope="col" class="num">Jobs</th>
-                <th scope="col">Outcomes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Jobs}}
-              <tr>
-                <td>{{.Label}}</td>
-                <td class="num">{{count .Total}}</td>
-                <td>{{if .Total}}{{range $i, $s := .Shares}}{{if $i}} · {{end}}<span{{if $s.Failure}} class="job-failed"{{end}}>{{$s.Label}} {{$s.Percent}}</span>{{end}}{{else}}No jobs{{end}}</td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
+        <p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>
         {{end}}
       </section>
     </main>

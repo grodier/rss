@@ -34,10 +34,6 @@ type homePage struct {
 	// false until www has written any job metrics.
 	Jobs         []jobRow
 	JobsRecorded bool
-	// Option is the design checkpoint's option for the Jobs section, a
-	// (default), b, c, d, e or f; the picked one replaces the switch before the PR
-	// is ready.
-	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
@@ -68,13 +64,8 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		Queues:       queueRows(queues, now),
 		Jobs:         jobRows(jobs),
 		JobsRecorded: recorded,
-		Option:       "a",
 		Version:      s.config.Version,
 		RenderedAt:   now,
-	}
-	switch opt := r.URL.Query().Get("option"); opt {
-	case "b", "c", "d", "e", "f":
-		data.Option = opt
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -162,83 +153,49 @@ func wait(d time.Duration) string {
 // jobsWindow is how far back the Jobs section looks.
 const jobsWindow = 24 * time.Hour
 
-// jobOutcome is an outcome the Jobs section shows: its job_metrics name,
-// its label, and whether it's a failure, shown in the danger color when
-// any job had it.
+// jobOutcome is a runner's outcome as the Jobs section reads it: its
+// job_metrics name, its label in the breakdown, and its bucket.
 type jobOutcome struct {
 	name, label string
-	failure     bool
+	bucket      string // done or failed; any outcome not listed is other
 }
 
-// jobRunners are the runners the Jobs section shows, in order, with the
-// outcomes it shows for each. An outcome left out (enrichment's and
-// email's retry) counts in the runner's total only.
+// jobRunners are the runners the Jobs section shows, in order. Every
+// runner's outcomes fall into the same buckets, so the bars compare down
+// the page: done (a 304 is a feed checked with nothing new, a lookup with
+// no feeds an answer), failed, and other (retries, gone feeds).
 var jobRunners = []struct {
 	name, label string
 	outcomes    []jobOutcome
 }{
-	{"refresh", "Refresh", []jobOutcome{{"saved", "saved", false}, {"not_modified", "304", false}, {"failed", "failed", true}, {"gone", "gone", false}}},
-	{"lookup", "Lookups", []jobOutcome{{"found", "found", false}, {"none", "no feeds", false}, {"failed", "failed", true}}},
-	{"enrich", "Enrichment", []jobOutcome{{"saved", "saved", false}, {"gave_up", "gave up", true}}},
-	{"mail", "Email", []jobOutcome{{"sent", "sent", false}, {"gave_up", "gave up", true}}},
+	{"refresh", "Refresh", []jobOutcome{{"saved", "saved", "done"}, {"not_modified", "304", "done"}, {"failed", "failed", "failed"}, {"gone", "gone", ""}}},
+	{"lookup", "Lookups", []jobOutcome{{"found", "found", "done"}, {"none", "no feeds", "done"}, {"failed", "failed", "failed"}}},
+	{"enrich", "Enrichment", []jobOutcome{{"saved", "saved", "done"}, {"gave_up", "gave up", "failed"}}},
+	{"mail", "Email", []jobOutcome{{"sent", "sent", "done"}, {"gave_up", "gave up", "failed"}}},
 }
 
-// jobRow is one runner in the Jobs section: its jobs in the window and
-// each shown outcome's share of them.
+// jobRow is one runner in the Jobs section: its jobs in the window, its
+// failures, its bar of the buckets, and each outcome's share, for the
+// bar's tooltip and label.
 type jobRow struct {
-	Label  string
-	Total  int
-	Shares []jobShare
-	// Bar is option d's bar: failures first, each at least
-	// minFailureWidth wide.
-	Bar []barSegment
-	// Done, Failed and Other are the runner's jobs in the buckets every
-	// runner shares (options e and f): done (jobDone), failed (its failure
-	// outcomes), and the rest (retries, gone feeds).
-	Done, Failed, Other          int
-	DonePct, FailedPct, OtherPct string
-	// BucketBar is option e's bar of the buckets, failures first;
-	// Breakdown names each outcome's share, for its tooltip and label.
-	BucketBar []barSegment
+	Label     string
+	Total     int
+	Failed    int
+	FailedPct string
+	Bar       []barSegment
 	Breakdown string
 }
 
-// jobDone are the outcomes of jobs that did their work, by runner: a 304 is
-// a feed checked with nothing new, and a lookup with no feeds an answer.
-var jobDone = map[string][]string{
-	"refresh": {"saved", "not_modified"},
-	"lookup":  {"found", "none"},
-	"enrich":  {"saved"},
-	"mail":    {"sent"},
-}
-
-// outcomeLabels name outcomes whose job_metrics name isn't the label.
-var outcomeLabels = map[string]string{"not_modified": "304", "none": "no feeds", "gave_up": "gave up"}
-
-// barSegment is one outcome's part of option d's bar, in percent of its
-// width.
+// barSegment is one bucket's part of a runner's bar, in percent of its
+// width; Kind is done, other or failed.
 type barSegment struct {
 	Kind         string
 	Start, Width float64
 }
 
-// minFailureWidth is the narrowest a failure is drawn on option d's bar, in
-// percent, so a few failures among many jobs still show.
+// minFailureWidth is the narrowest failures are drawn on a bar, in
+// percent, so a few among many jobs still show.
 const minFailureWidth = 3.0
-
-// jobShare is one outcome's share of a runner's jobs. Percent is rounded
-// ("<1%" for a few jobs of many); Start and Width place it on option c's
-// bar, in percent.
-type jobShare struct {
-	Label        string
-	Jobs         int
-	Percent      string
-	Failure      bool
-	Start, Width float64
-	// Kind colors option c's segment: ok (the runner's success), failure,
-	// or other.
-	Kind string
-}
 
 // jobRows are the Jobs section's rows, from the runners' outcomes.
 func jobRows(outcomes []rss.JobOutcomes) []jobRow {
@@ -249,110 +206,65 @@ func jobRows(outcomes []rss.JobOutcomes) []jobRow {
 	rows := make([]jobRow, len(jobRunners))
 	for i, jr := range jobRunners {
 		o := byRunner[jr.name]
-		rows[i] = jobRow{Label: jr.label, Total: o.Total}
-		start := 0.0
+		row := jobRow{Label: jr.label, Total: o.Total}
+		var done int
+		var parts []string
+		listed := map[string]bool{}
 		for _, out := range jr.outcomes {
+			listed[out.name] = true
 			n := o.Jobs(out.name)
-			sh := jobShare{Label: out.label, Jobs: n, Percent: share(n, o.Total), Failure: out.failure && n > 0, Start: start, Kind: "other"}
-			switch {
-			case out.failure:
-				sh.Kind = "failure"
-			case out.name == jr.outcomes[0].name:
-				sh.Kind = "ok"
+			switch out.bucket {
+			case "done":
+				done += n
+			case "failed":
+				row.Failed += n
 			}
-			if o.Total > 0 {
-				sh.Width = float64(n) * 100 / float64(o.Total)
+			if n > 0 {
+				parts = append(parts, out.label+" "+share(n, o.Total))
 			}
-			start += sh.Width
-			rows[i].Shares = append(rows[i].Shares, sh)
 		}
-		rows[i].Bar = mixBar(rows[i].Shares)
-		bucketRow(&rows[i], jr.name, o, jr.outcomes)
+		// Then the outcomes no bucket names (retries), as job_metrics
+		// names them.
+		for _, out := range o.Outcomes {
+			if !listed[out.Name] {
+				parts = append(parts, out.Name+" "+share(out.Jobs, o.Total))
+			}
+		}
+		row.Breakdown = strings.Join(parts, ", ")
+		row.FailedPct = share(row.Failed, o.Total)
+		if o.Total > 0 {
+			pct := func(n int) float64 { return float64(n) * 100 / float64(o.Total) }
+			row.Bar = bucketBar(pct(done), pct(o.Total-done-row.Failed), pct(row.Failed))
+		}
+		rows[i] = row
 	}
 	return rows
 }
 
-// bucketRow fills row's buckets (options e and f) from the runner's
-// outcomes.
-func bucketRow(row *jobRow, runner string, o rss.JobOutcomes, shown []jobOutcome) {
-	for _, name := range jobDone[runner] {
-		row.Done += o.Jobs(name)
-	}
-	for _, out := range shown {
-		if out.failure {
-			row.Failed += o.Jobs(out.name)
-		}
-	}
-	row.Other = o.Total - row.Done - row.Failed
-	row.DonePct, row.FailedPct, row.OtherPct = share(row.Done, o.Total), share(row.Failed, o.Total), share(row.Other, o.Total)
-	if o.Total == 0 {
-		return
-	}
-	width := func(n int) float64 { return float64(n) * 100 / float64(o.Total) }
-	row.BucketBar = mixBar([]jobShare{
-		{Kind: "ok", Width: width(row.Done)},
-		{Kind: "other", Width: width(row.Other)},
-		{Kind: "failure", Width: width(row.Failed)},
-	})
-	// The shown outcomes in their order, then any others (retries).
-	var parts []string
-	listed := map[string]bool{}
-	for _, out := range shown {
-		listed[out.name] = true
-		if n := o.Jobs(out.name); n > 0 {
-			parts = append(parts, out.label+" "+share(n, o.Total))
-		}
-	}
-	for _, out := range o.Outcomes {
-		if listed[out.Name] {
-			continue
-		}
-		label, ok := outcomeLabels[out.Name]
-		if !ok {
-			label = out.Name
-		}
-		parts = append(parts, label+" "+share(out.Jobs, o.Total))
-	}
-	row.Breakdown = strings.Join(parts, ", ")
-}
-
-// mixBar lays out option d's bar from a runner's shares: failures first,
-// each at least minFailureWidth wide, then its successes, then the rest,
-// scaled to fill what the failures leave. What no share covers (retries)
-// stays track.
-func mixBar(shares []jobShare) []barSegment {
-	var failures, rest float64
-	for _, s := range shares {
-		if s.Kind == "failure" && s.Width > 0 {
-			failures += max(s.Width, minFailureWidth)
-		} else {
-			rest += s.Width
-		}
-	}
-	covered := 0.0
-	for _, s := range shares {
-		covered += s.Width
-	}
-	scale := 1.0
-	if rest > 0 {
-		scale = max(covered-failures, 0) / rest
-	}
+// bucketBar lays out a runner's bar from its buckets' shares, in percent:
+// failures first, at least minFailureWidth wide, then done, then other,
+// shrunk to fill what the failures leave. Widths are rounded to a tenth.
+func bucketBar(done, other, failed float64) []barSegment {
 	var bar []barSegment
 	start := 0.0
-	for _, kind := range []string{"failure", "ok", "other"} {
-		for _, s := range shares {
-			if s.Kind != kind || s.Width == 0 {
-				continue
-			}
-			w := s.Width * scale
-			if kind == "failure" {
-				w = max(s.Width, minFailureWidth)
-			}
-			w = math.Round(w*10) / 10
-			bar = append(bar, barSegment{Kind: kind, Start: start, Width: w})
-			start = math.Round((start+w)*10) / 10
+	add := func(kind string, w float64) {
+		w = math.Round(w*10) / 10
+		if w <= 0 {
+			return
 		}
+		bar = append(bar, barSegment{Kind: kind, Start: start, Width: w})
+		start = math.Round((start+w)*10) / 10
 	}
+	scale := 1.0
+	if failed > 0 && failed < minFailureWidth {
+		if rest := done + other; rest > 0 {
+			scale = (rest - (minFailureWidth - failed)) / rest
+		}
+		failed = minFailureWidth
+	}
+	add("failed", failed)
+	add("done", done*scale)
+	add("other", other*scale)
 	return bar
 }
 

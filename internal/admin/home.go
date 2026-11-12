@@ -4,6 +4,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
@@ -34,7 +35,7 @@ type homePage struct {
 	Jobs         []jobRow
 	JobsRecorded bool
 	// Option is the design checkpoint's option for the Jobs section, a
-	// (default), b, c or d; the picked one replaces the switch before the PR
+	// (default), b, c, d, e or f; the picked one replaces the switch before the PR
 	// is ready.
 	Option string
 	// Version is the admin's build; RenderedAt when this page was made.
@@ -72,7 +73,7 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		RenderedAt:   now,
 	}
 	switch opt := r.URL.Query().Get("option"); opt {
-	case "b", "c", "d":
+	case "b", "c", "d", "e", "f":
 		data.Option = opt
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
@@ -191,7 +192,28 @@ type jobRow struct {
 	// Bar is option d's bar: failures first, each at least
 	// minFailureWidth wide.
 	Bar []barSegment
+	// Done, Failed and Other are the runner's jobs in the buckets every
+	// runner shares (options e and f): done (jobDone), failed (its failure
+	// outcomes), and the rest (retries, gone feeds).
+	Done, Failed, Other          int
+	DonePct, FailedPct, OtherPct string
+	// BucketBar is option e's bar of the buckets, failures first;
+	// Breakdown names each outcome's share, for its tooltip and label.
+	BucketBar []barSegment
+	Breakdown string
 }
+
+// jobDone are the outcomes of jobs that did their work, by runner: a 304 is
+// a feed checked with nothing new, and a lookup with no feeds an answer.
+var jobDone = map[string][]string{
+	"refresh": {"saved", "not_modified"},
+	"lookup":  {"found", "none"},
+	"enrich":  {"saved"},
+	"mail":    {"sent"},
+}
+
+// outcomeLabels name outcomes whose job_metrics name isn't the label.
+var outcomeLabels = map[string]string{"not_modified": "304", "none": "no feeds", "gave_up": "gave up"}
 
 // barSegment is one outcome's part of option d's bar, in percent of its
 // width.
@@ -245,8 +267,53 @@ func jobRows(outcomes []rss.JobOutcomes) []jobRow {
 			rows[i].Shares = append(rows[i].Shares, sh)
 		}
 		rows[i].Bar = mixBar(rows[i].Shares)
+		bucketRow(&rows[i], jr.name, o, jr.outcomes)
 	}
 	return rows
+}
+
+// bucketRow fills row's buckets (options e and f) from the runner's
+// outcomes.
+func bucketRow(row *jobRow, runner string, o rss.JobOutcomes, shown []jobOutcome) {
+	for _, name := range jobDone[runner] {
+		row.Done += o.Jobs(name)
+	}
+	for _, out := range shown {
+		if out.failure {
+			row.Failed += o.Jobs(out.name)
+		}
+	}
+	row.Other = o.Total - row.Done - row.Failed
+	row.DonePct, row.FailedPct, row.OtherPct = share(row.Done, o.Total), share(row.Failed, o.Total), share(row.Other, o.Total)
+	if o.Total == 0 {
+		return
+	}
+	width := func(n int) float64 { return float64(n) * 100 / float64(o.Total) }
+	row.BucketBar = mixBar([]jobShare{
+		{Kind: "ok", Width: width(row.Done)},
+		{Kind: "other", Width: width(row.Other)},
+		{Kind: "failure", Width: width(row.Failed)},
+	})
+	// The shown outcomes in their order, then any others (retries).
+	var parts []string
+	listed := map[string]bool{}
+	for _, out := range shown {
+		listed[out.name] = true
+		if n := o.Jobs(out.name); n > 0 {
+			parts = append(parts, out.label+" "+share(n, o.Total))
+		}
+	}
+	for _, out := range o.Outcomes {
+		if listed[out.Name] {
+			continue
+		}
+		label, ok := outcomeLabels[out.Name]
+		if !ok {
+			label = out.Name
+		}
+		parts = append(parts, label+" "+share(out.Jobs, o.Total))
+	}
+	row.Breakdown = strings.Join(parts, ", ")
 }
 
 // mixBar lays out option d's bar from a runner's shares: failures first,

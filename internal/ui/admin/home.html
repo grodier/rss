@@ -113,6 +113,66 @@
             </tbody>
           </table>
         </div>
+        {{else if eq .Option "e"}}
+        <ul class="job-key job-key-line" role="list">
+          <li><span class="swatch job-ok"></span>Done</li>
+          <li><span class="swatch job-other"></span>Other (retries, gone feeds)</li>
+          <li><span class="swatch job-failure"></span>Failed</li>
+        </ul>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col" class="job-wide-col"><span class="visually-hidden">Outcomes</span></th>
+                <th scope="col" class="num">Failed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Total}}</td>
+                <td class="job-wide-col">{{if .Total}}<svg class="job-bar job-wide" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label="{{.Label}}: {{.Breakdown}}" focusable="false"><title>{{.Breakdown}}</title><rect class="job-bar-track" x="0" y="0" width="100" height="8" />{{range .BucketBar}}<rect class="job-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{else}}No jobs{{end}}</td>
+                <td class="num">{{if not .Total}}—{{else if .Failed}}<span class="job-failed">{{.FailedPct}}</span>{{else}}<span class="job-none">none</span>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else if eq .Option "f"}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col" class="num">Done</th>
+                <th scope="col" class="num">Other</th>
+                <th scope="col" class="num">Failed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr title="{{.Breakdown}}">
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Total}}</td>
+                {{if .Total}}
+                <td class="num">{{.DonePct}}</td>
+                <td class="num">{{.OtherPct}}</td>
+                <td class="num {{if .Failed}}job-failed{{else}}job-none{{end}}">{{.FailedPct}}</td>
+                {{else}}
+                <td class="num">—</td>
+                <td class="num">—</td>
+                <td class="num">—</td>
+                {{end}}
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <p class="job-note">Done: saved, 304s, lookups answered, emails sent. Other: retries and gone feeds.</p>
         {{else if eq .Option "c"}}
         <ul class="job-bars" role="list">
           {{range .Jobs}}

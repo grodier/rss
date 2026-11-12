@@ -203,4 +203,39 @@
     margin-block: 0;
     border-radius: 2px;
   }
+
+  /* Options e and f: the buckets every runner shares. */
+  .job-key-line {
+    margin-block-end: 0.5rem;
+  }
+
+  .job-wide-col {
+    inline-size: 60%;
+    min-inline-size: 10rem;
+  }
+
+  .job-bar.job-wide {
+    min-inline-size: 10rem;
+    max-inline-size: none;
+    margin-block: 0;
+    border-radius: 2px;
+  }
+
+  .job-none {
+    color: var(--text-3);
+  }
+
+  /* On a phone the bar gives way, so Failed stays on screen. */
+  @media (max-width: 47.99rem) {
+    .job-wide-col,
+    .job-bar.job-wide {
+      min-inline-size: 4rem;
+    }
+  }
+
+  .job-note {
+    margin-block-start: 0.5rem;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
 }

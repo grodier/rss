@@ -255,6 +255,10 @@ func TestOverviewJobOptions(t *testing.T) {
 	for path, want := range map[string]string{
 		"/?option=b": `<td class="num job-failed">2%</td>`,
 		"/?option=c": `<rect class="job-failure" x="97.9" y="0" width="2" height="8" />`,
+		"/?option=e": `<td class="num"><span class="job-failed">2%</span></td>`,
+		"/?option=f": `<td class="num">98%</td>
+                <td class="num">&lt;1%</td>
+                <td class="num job-failed">2%</td>`,
 		"/?option=d": `<rect class="job-failure" x="0" y="0" width="3" height="8" /><rect class="job-ok" x="3" y="0" width="39.6" height="8" />`,
 	} {
 		if body := b.get(t, path).Body.String(); !strings.Contains(body, want) {
@@ -307,6 +311,37 @@ func TestMixBar(t *testing.T) {
 		got := mixBar(tt.shares)
 		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
 			t.Errorf("%s: mixBar = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestJobBuckets(t *testing.T) {
+	rows := jobRows(testJobs())
+	for _, tt := range []struct {
+		label               string
+		done, failed, other int
+		donePct, failedPct  string
+		otherPct, breakdown string
+	}{
+		{"Refresh", 1958, 40, 2, "98%", "2%", "<1%", "saved 40%, 304 58%, failed 2%, gone <1%"},
+		{"Lookups", 0, 0, 0, "", "", "", ""},
+		{"Enrichment", 900, 4, 96, "90%", "<1%", "10%", "saved 90%, gave up <1%, retry 10%"},
+		{"Email", 12, 0, 0, "100%", "0%", "0%", "sent 100%"},
+	} {
+		var row jobRow
+		for _, r := range rows {
+			if r.Label == tt.label {
+				row = r
+			}
+		}
+		if row.Done != tt.done || row.Failed != tt.failed || row.Other != tt.other {
+			t.Errorf("%s: done, failed, other = %d, %d, %d; want %d, %d, %d", tt.label, row.Done, row.Failed, row.Other, tt.done, tt.failed, tt.other)
+		}
+		if row.DonePct != tt.donePct || row.FailedPct != tt.failedPct || row.OtherPct != tt.otherPct {
+			t.Errorf("%s: shares %q, %q, %q; want %q, %q, %q", tt.label, row.DonePct, row.FailedPct, row.OtherPct, tt.donePct, tt.failedPct, tt.otherPct)
+		}
+		if row.Breakdown != tt.breakdown {
+			t.Errorf("%s: breakdown %q, want %q", tt.label, row.Breakdown, tt.breakdown)
 		}
 	}
 }

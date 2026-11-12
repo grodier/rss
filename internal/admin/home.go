@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
@@ -28,6 +30,10 @@ type homePage struct {
 	People  []statTile
 	Content []statTile
 	Queues  []queueRow
+	// Jobs are the runners' outcomes in the last 24 hours; JobsRecorded is
+	// false until www has written any job metrics.
+	Jobs         []jobRow
+	JobsRecorded bool
 	// Version is the admin's build; RenderedAt when this page was made.
 	Version    string
 	RenderedAt time.Time
@@ -46,13 +52,20 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	jobs, recorded, err := s.services.Overview.Jobs(r.Context(), now.Add(-jobsWindow))
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	data := homePage{
-		Nav:        s.nav(r, "overview"),
-		People:     peopleTiles(o.People),
-		Content:    contentTiles(o.Content),
-		Queues:     queueRows(queues, now),
-		Version:    s.config.Version,
-		RenderedAt: now,
+		Nav:          s.nav(r, "overview"),
+		People:       peopleTiles(o.People),
+		Content:      contentTiles(o.Content),
+		Queues:       queueRows(queues, now),
+		Jobs:         jobRows(jobs),
+		JobsRecorded: recorded,
+		Version:      s.config.Version,
+		RenderedAt:   now,
 	}
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -135,6 +148,137 @@ func wait(d time.Duration) string {
 		return strconv.Itoa(int(d/time.Hour)) + " h"
 	}
 	return strconv.Itoa(int(d/(24*time.Hour))) + " d"
+}
+
+// jobsWindow is how far back the Jobs section looks.
+const jobsWindow = 24 * time.Hour
+
+// jobOutcome is a runner's outcome as the Jobs section reads it: its
+// job_metrics name, its label in the breakdown, and its bucket.
+type jobOutcome struct {
+	name, label string
+	bucket      string // done or failed; any outcome not listed is other
+}
+
+// jobRunners are the runners the Jobs section shows, in order. Every
+// runner's outcomes fall into the same buckets, so the bars compare down
+// the page: done (a 304 is a feed checked with nothing new, a lookup with
+// no feeds an answer), failed, and other (retries, gone feeds).
+var jobRunners = []struct {
+	name, label string
+	outcomes    []jobOutcome
+}{
+	{"refresh", "Refresh", []jobOutcome{{"saved", "saved", "done"}, {"not_modified", "304", "done"}, {"failed", "failed", "failed"}, {"gone", "gone", ""}}},
+	{"lookup", "Lookups", []jobOutcome{{"found", "found", "done"}, {"none", "no feeds", "done"}, {"failed", "failed", "failed"}}},
+	{"enrich", "Enrichment", []jobOutcome{{"saved", "saved", "done"}, {"gave_up", "gave up", "failed"}}},
+	{"mail", "Email", []jobOutcome{{"sent", "sent", "done"}, {"gave_up", "gave up", "failed"}}},
+}
+
+// jobRow is one runner in the Jobs section: its jobs in the window, its
+// failures, its bar of the buckets, and each outcome's share, for the
+// bar's tooltip and label.
+type jobRow struct {
+	Label     string
+	Total     int
+	Failed    int
+	FailedPct string
+	Bar       []barSegment
+	Breakdown string
+}
+
+// barSegment is one bucket's part of a runner's bar, in percent of its
+// width; Kind is done, other or failed.
+type barSegment struct {
+	Kind         string
+	Start, Width float64
+}
+
+// minFailureWidth is the narrowest failures are drawn on a bar, in
+// percent, so a few among many jobs still show.
+const minFailureWidth = 3.0
+
+// jobRows are the Jobs section's rows, from the runners' outcomes.
+func jobRows(outcomes []rss.JobOutcomes) []jobRow {
+	byRunner := map[string]rss.JobOutcomes{}
+	for _, o := range outcomes {
+		byRunner[o.Runner] = o
+	}
+	rows := make([]jobRow, len(jobRunners))
+	for i, jr := range jobRunners {
+		o := byRunner[jr.name]
+		row := jobRow{Label: jr.label, Total: o.Total}
+		var done int
+		var parts []string
+		listed := map[string]bool{}
+		for _, out := range jr.outcomes {
+			listed[out.name] = true
+			n := o.Jobs(out.name)
+			switch out.bucket {
+			case "done":
+				done += n
+			case "failed":
+				row.Failed += n
+			}
+			if n > 0 {
+				parts = append(parts, out.label+" "+share(n, o.Total))
+			}
+		}
+		// Then the outcomes no bucket names (retries), as job_metrics
+		// names them.
+		for _, out := range o.Outcomes {
+			if !listed[out.Name] {
+				parts = append(parts, out.Name+" "+share(out.Jobs, o.Total))
+			}
+		}
+		row.Breakdown = strings.Join(parts, ", ")
+		row.FailedPct = share(row.Failed, o.Total)
+		if o.Total > 0 {
+			pct := func(n int) float64 { return float64(n) * 100 / float64(o.Total) }
+			row.Bar = bucketBar(pct(done), pct(o.Total-done-row.Failed), pct(row.Failed))
+		}
+		rows[i] = row
+	}
+	return rows
+}
+
+// bucketBar lays out a runner's bar from its buckets' shares, in percent:
+// failures first, at least minFailureWidth wide, then done, then other,
+// shrunk to fill what the failures leave. Widths are rounded to a tenth.
+func bucketBar(done, other, failed float64) []barSegment {
+	var bar []barSegment
+	start := 0.0
+	add := func(kind string, w float64) {
+		w = math.Round(w*10) / 10
+		if w <= 0 {
+			return
+		}
+		bar = append(bar, barSegment{Kind: kind, Start: start, Width: w})
+		start = math.Round((start+w)*10) / 10
+	}
+	scale := 1.0
+	if failed > 0 && failed < minFailureWidth {
+		if rest := done + other; rest > 0 {
+			scale = (rest - (minFailureWidth - failed)) / rest
+		}
+		failed = minFailureWidth
+	}
+	add("failed", failed)
+	add("done", done*scale)
+	add("other", other*scale)
+	return bar
+}
+
+// share is part of whole as a rounded percentage, "<1%" when part is a few
+// of many, and "" when whole is 0.
+func share(part, whole int) string {
+	if whole == 0 {
+		return ""
+	}
+	p := int(math.Round(float64(part) * 100 / float64(whole)))
+	if p == 0 && part > 0 {
+		return "<1%"
+	}
+	return strconv.Itoa(p) + "%"
 }
 
 // count formats n with commas between thousands: 1,284.

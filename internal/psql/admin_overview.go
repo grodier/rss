@@ -97,3 +97,45 @@ func (r *AdminOverviewRepository) Queues(ctx context.Context) ([]rss.QueueStatus
 	}
 	return queues, rows.Err()
 }
+
+// Jobs sums the jobs each runner finished since since, by outcome, from
+// job_metrics' minute rows: they're kept 7 days (metrics.Housekeeper), so
+// a window of a day needs no hourly rows and is exact to the minute.
+// Runners and outcomes are in name order. recorded is whether job_metrics
+// has any rows at all, so the Overview can tell "no jobs lately" from "no
+// metrics yet".
+func (r *AdminOverviewRepository) Jobs(ctx context.Context, since time.Time) (outcomes []rss.JobOutcomes, recorded bool, err error) {
+	rows, err := r.DB.QueryContext(ctx, `SELECT runner, outcome, sum(jobs)::int
+		FROM job_metrics
+		WHERE resolution = 'minute' AND period_start >= $1
+		GROUP BY runner, outcome
+		ORDER BY runner, outcome`, since)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var runner string
+		var o rss.JobOutcome
+		if err := rows.Scan(&runner, &o.Name, &o.Jobs); err != nil {
+			return nil, false, err
+		}
+		if n := len(outcomes); n == 0 || outcomes[n-1].Runner != runner {
+			outcomes = append(outcomes, rss.JobOutcomes{Runner: runner})
+		}
+		last := &outcomes[len(outcomes)-1]
+		last.Outcomes = append(last.Outcomes, o)
+		last.Total += o.Jobs
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(outcomes) > 0 {
+		return outcomes, true, nil
+	}
+	// Nothing in the window: one more look, for whether anything was ever
+	// recorded.
+	err = r.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM job_metrics)`).Scan(&recorded)
+	return nil, recorded, err
+}

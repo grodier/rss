@@ -1,6 +1,6 @@
 /* Dense tables: smaller type and tighter rows than the reader's lists. A
    table too wide for the screen scrolls in its .table-wrap, not the page;
-   a row's status is a small label. */
+   a row's status is a small label, and the Overview's jobs a bar. */
 @layer components {
   /* Relative, so a visually hidden header stays inside it rather than
      widening the page from where the table would end unscrolled. */
@@ -99,5 +99,74 @@
   .status-behind {
     background: var(--danger-bg);
     color: var(--on-danger-bg);
+  }
+
+  /* The Overview's jobs: each runner's bar of its outcomes (done, other,
+     failed), drawn as SVG rects like the waitlist's email meter, with its
+     failures beside it. */
+  .job-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-block-end: 0.5rem;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .job-key .swatch {
+    display: inline-block;
+    margin-inline-end: 0.25rem;
+  }
+
+  .job-bar-col {
+    inline-size: 60%;
+    min-inline-size: 10rem;
+  }
+
+  /* Its own width, not the cell's: the reset's max-inline-size would let a
+     squeezed table take it to nothing. */
+  .job-bar {
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 10rem;
+    max-inline-size: none;
+    block-size: 0.5rem;
+    border-radius: 2px;
+  }
+
+  .bar-track {
+    fill: var(--surface);
+  }
+
+  .bar-done {
+    fill: var(--tone-2);
+    background: var(--tone-2);
+  }
+
+  .bar-other {
+    fill: var(--text-3);
+    background: var(--text-3);
+  }
+
+  .bar-failed {
+    fill: var(--danger);
+    background: var(--danger);
+  }
+
+  .job-failed {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  .job-none {
+    color: var(--text-3);
+  }
+
+  /* On a phone the bar gives way, so Failed stays on screen. */
+  @media (max-width: 47.99rem) {
+    .job-bar-col,
+    .job-bar {
+      min-inline-size: 4rem;
+    }
   }
 }

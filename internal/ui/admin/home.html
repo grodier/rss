@@ -53,6 +53,41 @@
           </table>
         </div>
       </section>
+
+      <section class="admin-section" aria-labelledby="jobs">
+        <h2 id="jobs">Jobs, last 24 hours</h2>
+        {{if .JobsRecorded}}
+        <ul class="job-key" role="list">
+          <li><span class="swatch bar-done"></span>Done</li>
+          <li><span class="swatch bar-other"></span>Other (retries, gone feeds)</li>
+          <li><span class="swatch bar-failed"></span>Failed</li>
+        </ul>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col" class="num">Jobs</th>
+                <th scope="col" class="job-bar-col"><span class="visually-hidden">Outcomes</span></th>
+                <th scope="col" class="num">Failed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr>
+                <td>{{.Label}}</td>
+                <td class="num">{{count .Total}}</td>
+                <td class="job-bar-col">{{if .Total}}<svg class="job-bar" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label="{{.Label}}: {{.Breakdown}}" focusable="false"><title>{{.Breakdown}}</title><rect class="bar-track" x="0" y="0" width="100" height="8" />{{range .Bar}}<rect class="bar-{{.Kind}}" x="{{.Start}}" y="0" width="{{.Width}}" height="8" />{{end}}</svg>{{else}}No jobs{{end}}</td>
+                <td class="num">{{if not .Total}}—{{else if .Failed}}<span class="job-failed">{{.FailedPct}}</span>{{else}}<span class="job-none">none</span>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <p class="empty">No job metrics yet. <code>www</code> writes them once a minute.</p>
+        {{end}}
+      </section>
     </main>
   </div>
 </body>

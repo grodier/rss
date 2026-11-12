@@ -1,6 +1,6 @@
 /* An admin page: its head (the reader's nameplate rule, smaller), sections,
-   empty states, filter rows and stat rows. Denser than the reader: it's a
-   working tool. */
+   empty states, filter rows, stat rows and color keys' swatches. Denser
+   than the reader: it's a working tool. */
 @layer layout {
   .admin-page {
     max-inline-size: 80rem;
@@ -194,5 +194,12 @@
 
   .stat-link a:focus-visible {
     outline: none;
+  }
+
+  /* A color key's swatch; its color comes from the class it's keyed to. */
+  .swatch {
+    inline-size: 0.625rem;
+    block-size: 0.625rem;
+    border-radius: 2px;
   }
 }

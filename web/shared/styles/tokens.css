@@ -39,6 +39,10 @@
     --tone-6-bg: #def3f3;
     /* A chart's third series, after --accent and --brand-strong. */
     --series-3: #2e7d4f;
+    /* Web performance ratings, Google's good and needs improvement (poor
+       is --danger). */
+    --good: #2c6b3f;
+    --needs-improvement: #9a5a00;
     --avatar-icon-bg: #fff;
     --debug-bg: #fffbea;
     --debug-border: #c99a06;
@@ -131,6 +135,8 @@
       --tone-6: #d8faf9;
       --tone-6-bg: #006060;
       --series-3: #6fcf8f;
+      --good: #7fd49b;
+      --needs-improvement: #f2b65a;
       --avatar-icon-bg: #e8edf5;
       --debug-bg: #473506;
       --debug-border: #e1b75c;
@@ -175,6 +181,8 @@
     --tone-6: #d8faf9;
     --tone-6-bg: #006060;
     --series-3: #6fcf8f;
+    --good: #7fd49b;
+    --needs-improvement: #f2b65a;
     --avatar-icon-bg: #e8edf5;
     --debug-bg: #473506;
     --debug-border: #e1b75c;

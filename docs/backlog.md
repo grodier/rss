@@ -123,7 +123,9 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 
 - [ ] **Alerts.** Email the owner when p95 latency, the error rate or a queue's backlog passes a threshold; UptimeRobot already covers downtime.
 - [ ] **Backup status.** The last R2 dump's time and size on the admin, which needs read access to the bucket from the admin service.
-- [ ] **Real-user data quality.** Drop beacons from headless browsers and crawlers that run scripts (their User-Agents name `HeadlessChrome` or a bot), which count as Chrome today, and have the admin (#578) show referrer hosts as text, never links: anyone can post one, so they invite referrer spam.
+- [ ] **Real-user data quality.** Drop beacons from headless browsers and crawlers that run scripts (their User-Agents name `HeadlessChrome` or a bot), which count as Chrome today; the admin's web performance page (#578) keeps showing referrer hosts as text, never links, since anyone can post one.
+- [ ] **A readout on the admin's charts.** Hovering or tapping a line chart shows the values at that time, as progressive JavaScript over the server's SVG; it would help most on the web performance page (#578), whose charts have no gridline per point.
+- [ ] **CLS charts read flat.** A line chart's scale reaches its highest threshold, so CLS (poor at 0.25) around 0.04 draws nearly flat on the web performance page (#578); the scale could stop at the good threshold while the values stay under it.
 - [ ] **A lab check in CI.** A Lighthouse run on a few pages, next to the real-user numbers, if regressions slip through before real users see them.
 
 ## Feed discovery
@@ -485,6 +487,11 @@ Admin and observability:
   Each day adds a `rum_daily` row for every combination seen (at most the app's 46 GET routes × 3 devices × 6 browsers × 6 metrics), kept 13 months, and the nightly rollup reads the day's `rum_views` rows once per metric.
   *Signal:* `rum_daily` passes a million rows, or the rollup takes over a second.
   *Fix:* past 30 days, keep rows by route and device only, or read the day's views once for every metric.
+- [ ] **The web performance page sorts every raw view per metric and group** (#578).
+  Up to 30 days, the page reads `rum_views` with `percentile_cont`, which sorts each group's values: the totals, the breakdowns by device, browser, installed and route (LCP, INP and CLS only), and each step's points.
+  With 300,000 views (`rum_views` caps at 500,000), on a 4-core laptop: 24h about 80 ms, 7d about 0.5 s, 30d about 2 s (1.1 s on one device); from `rum_daily`, 13m about 0.7 s with 180,000 daily rows.
+  *Signal:* 7d, the default, takes over a second, or 30d over 5 s.
+  *Fix:* finer buckets per hour (an `rum_hourly` rollup) for the breakdowns, keeping exact percentiles for the totals only.
 - [ ] **The admin's overview counts big tables** (#575, #610).
   `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
   Its queues are counted exactly, with their claim queries' conditions: refresh's and enrichment's run an `EXISTS` per due row, and enrichment's joins `articles`, so a large backlog is the slow part.

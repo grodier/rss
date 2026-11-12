@@ -41,8 +41,11 @@ func (r *RUMRepository) Record(ctx context.Context, v rss.RUMView) error {
 	return err
 }
 
-// rumColumns are the rum_views columns rolled up, by rum_daily metric.
-var rumColumns = []struct{ metric, column string }{
+// rumColumn is a rum_views column, by its rum_daily metric.
+type rumColumn struct{ metric, column string }
+
+// rumColumns are the rum_views columns rolled up.
+var rumColumns = []rumColumn{
 	{"ttfb", "ttfb_ms"},
 	{"fcp", "fcp_ms"},
 	{"lcp", "lcp_ms"},

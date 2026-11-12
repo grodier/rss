@@ -1,0 +1,10 @@
+{{/* rating-glyph is a rating's shape (dot: good, needs-improvement or
+     poor; "" draws nothing): a circle, a square and a triangle, so a rating
+     never rests on its color alone. Its color is the rating's (r-<rating>,
+     webperf.css). */}}
+{{define "rating-glyph"}}{{if eq . "good"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><circle cx="5" cy="5" r="5" /></svg>{{else if eq . "needs-improvement"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><rect x="0.5" y="0.5" width="9" height="9" /></svg>{{else if eq . "poor"}}<svg class="glyph" viewBox="0 0 10 10" aria-hidden="true" focusable="false"><path d="M5 0 10 10H0z" /></svg>{{end}}{{end}}
+
+{{/* rated-value is a value with its rating's shape and color (dot: a
+     ratedValue); a value with no rating is muted, like "—". The rating is
+     also said in words, for screen readers. */}}
+{{define "rated-value"}}{{if .Rating}}<span class="rated r-{{.Rating}}">{{template "rating-glyph" .Rating}}{{.Value}}<span class="visually-hidden"> ({{ratingWord .Rating}})</span></span>{{else}}<span class="unrated">{{.Value}}</span>{{end}}{{end}}

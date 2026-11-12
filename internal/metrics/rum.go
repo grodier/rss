@@ -24,3 +24,20 @@ var RUMBounds = map[string][]float64{
 	"cls":    rumCLSBounds,
 	"server": DurationBounds,
 }
+
+// RUMThresholds are Google's limits for each real-user metric the admin
+// rates: a value at or under Good is good, one above Poor is poor, and one
+// between needs improvement. Each is among the metric's RUMBounds, so the
+// shares counted from rum_daily's buckets are exact.
+var RUMThresholds = map[string]Thresholds{
+	"ttfb": {Good: 800, Poor: 1800},
+	"fcp":  {Good: 1800, Poor: 3000},
+	"lcp":  {Good: 2500, Poor: 4000},
+	"inp":  {Good: 200, Poor: 500},
+	"cls":  {Good: 0.1, Poor: 0.25},
+}
+
+// Thresholds are a metric's "good" and "poor" limits.
+type Thresholds struct {
+	Good, Poor float64
+}

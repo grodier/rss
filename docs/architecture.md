@@ -78,8 +78,8 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, and the waitlist's waves of invites | `assets`, `chart`, `clientip`, `mail`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
-| `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function), and percentiles from histogram buckets | — |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, and the web performance page | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |
@@ -95,7 +95,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
-| `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`) | `rss` |
+| `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`); the real-user thresholds (`RUMThresholds`) and percentiles from histogram buckets (`Percentile`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
@@ -277,6 +277,7 @@ request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_dai
   The rollup starts after the newest hourly row and inserts with `ON CONFLICT DO NOTHING`, so every instance runs it and an hour is rolled up once; it only takes whole hours, since an hour that has rows is never rolled up again.
 - **Real-user metrics:** `rum_views` gets a row per beacon, with no user, IP address or URL; the daily rollup counts each whole UTC day's views into one `rum_daily` row per route, device, browser and metric, with its views in the metric's `metrics.RUMBounds` buckets, so the 30 days of views and 13 months of days answer the same percentiles.
   Like the hourly rollup, it starts after the newest day rolled up, inserts with `ON CONFLICT DO NOTHING` and takes whole days only; a view counts for each metric it reported.
+  The admin's Web performance page reads `rum_views` up to 30 days back, with exact percentiles, and `rum_daily` beyond, with `metrics.Percentile` over the summed buckets; a group's views from `rum_daily` are the most any of its metrics counted, per day, route, device and browser.
 - **`server_errors`** is capped by count, not age: every instance's housekeeper keeps the newest 1,000 (`Trim`), so a quiet month keeps its errors and a burst can't grow the table past an hour's worth.
 - **`waitlist`:** one row per address (`citext`), with one link token's hash that both confirms the entry and leaves the list; joining again while unconfirmed replaces the row's details and hash in the same `INSERT … ON CONFLICT`, and a confirmed row is left alone.
   An entry counts once `confirmed_at` is set; leaving deletes the row.

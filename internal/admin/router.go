@@ -60,6 +60,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/invites/{id}/resend", s.inviteResendHandler)
 			r.Get("/invites/new", s.newInviteHandler)
 			r.Post("/invites/new", s.newInviteFormHandler)
+			r.Get("/web-performance", s.webPerfHandler)
 			r.Get("/audit", s.auditHandler)
 		})
 	})

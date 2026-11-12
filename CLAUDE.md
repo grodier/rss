@@ -59,7 +59,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `cmd/www`: config flags and wiring
 - `cmd/admin`: the admin site's binary (its own service): config flags, wiring and its subcommands
 - `internal/admin`: the admin site's server (router, middleware, handlers, rendering, its login and enrolling), shared by its pages and `cmd/admin`'s subcommands
-- `internal/admin/chart`: the admin's charts (line charts, histograms), drawn as SVG on the server, and percentiles from histogram buckets
+- `internal/admin/chart`: the admin's charts (line charts, histograms), drawn as SVG on the server
 - `internal/cli`: what the commands share (`SetFlagsFromEnv`, `NewLogger`)
 - `internal/server`: router, middleware, handlers, rendering, error responses
 - `internal/rss`: domain types (Feed, User, …) and sentinel errors
@@ -71,7 +71,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/ratelimit`: in-memory fixed-window rate limiters, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
-- `internal/metrics`: counts `www`'s requests and background jobs and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background
+- `internal/metrics`: counts `www`'s requests and background jobs and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background; the real-user metrics' buckets and thresholds, and percentiles from buckets
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/seed`: the seed list (`sites.txt`, embedded) of sites to look up before anyone searches for them; `www seed` queues their lookups
 - `internal/opml`: reads the feeds listed in OPML files

@@ -34,6 +34,7 @@ export TF_VAR_cloudflare_account_id=...
 export TF_VAR_cloudflare_zone_id=...           # the georgerodier.com zone's ID
 export TF_VAR_cloudflare_app_zone_id=...       # the paperround.app zone's ID
 export TF_VAR_admin_access_email=...           # the email Cloudflare Access lets into the admin
+export TF_VAR_app_internal_url=...             # http://<the rss service's Connect → Internal address>
 export TF_VAR_backup_r2_access_key_id=...      # the rss-backups R2 token's Access Key ID
 export TF_VAR_backup_r2_secret_access_key=...  # the rss-backups R2 token's Secret Access Key
 ```
@@ -60,7 +61,7 @@ Set it up once:
    Secrets are *Password* fields, the rest *Text*:
    - `r2-tfstate`: `access-key-id` (Text), `secret-access-key` (Password), `endpoint` (Text, the full `https://…r2.cloudflarestorage.com` URL)
    - `r2-backups`: `access-key-id` (Text), `secret-access-key` (Password)
-   - `render`: `api-key` (Password), `owner-id` (Text)
+   - `render`: `api-key` (Password), `owner-id` (Text), `app-internal-url` (Text, `http://` and the `rss` service's **Connect → Internal** address)
    - `cloudflare`: `api-token` (Password, the `rss-terraform` token), `account-id` (Text), `zone-id` (Text, `georgerodier.com`), `app-zone-id` (Text, `paperround.app`), `admin-access-email` (Text), `team-name` (Text, the Zero Trust team, for reference)
 3. Outside the repository, create `~/.config/rss/infra.env`.
    It holds references, not secrets:
@@ -76,6 +77,7 @@ Set it up once:
    TF_VAR_cloudflare_zone_id=op://rss/cloudflare/zone-id
    TF_VAR_cloudflare_app_zone_id=op://rss/cloudflare/app-zone-id
    TF_VAR_admin_access_email=op://rss/cloudflare/admin-access-email
+   TF_VAR_app_internal_url=op://rss/render/app-internal-url
    TF_VAR_backup_r2_access_key_id=op://rss/r2-backups/access-key-id
    TF_VAR_backup_r2_secret_access_key=op://rss/r2-backups/secret-access-key
    ```
@@ -93,7 +95,7 @@ Set it up once:
 ## Deploys
 
 Three workflows in `.github/workflows` run production.
-They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_ADMIN_SERVICE_ID` (the `rss-admin` service's `srv-…` ID, also Terraform's `admin_service_id` output), `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `ADMIN_ACCESS_EMAIL` (the email Cloudflare Access lets into the admin), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_APP_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
+They read these repository secrets (all of them secrets, IDs included): `RENDER_API_KEY`, `RENDER_OWNER_ID`, `RENDER_SERVICE_ID`, `RENDER_ADMIN_SERVICE_ID` (the `rss-admin` service's `srv-…` ID, also Terraform's `admin_service_id` output), `RENDER_BACKUP_JOB_ID` (the `rss-backup` cron job's `crn-…` ID, also Terraform's `backup_job_id` output), `ADMIN_ACCESS_EMAIL` (the email Cloudflare Access lets into the admin), `APP_INTERNAL_URL` (`http://` and the `rss` service's **Connect → Internal** address, which the admin's pinger checks), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_APP_ZONE_ID`, `TF_STATE_ACCESS_KEY_ID`, `TF_STATE_SECRET_ACCESS_KEY`, `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`.
 
 ### How deploys happen
 
@@ -180,8 +182,8 @@ The admin site (`cmd/admin`) runs as its own web service, `rss-admin`, at `https
 The `rss` image stays distroless, with no shell.
 The package `ghcr.io/grodier/rss-admin` must be public, like `rss`, or Render can't pull it.
 
-**Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY` and `RSS_SMTP_PASSWORD` are set in the dashboard.
-It runs none of `www`'s background workers.
+**Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links) and on the private network in `RSS_APP_INTERNAL_URL` (for the pinger, from the `app_internal_url` variable), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY` and `RSS_SMTP_PASSWORD` are set in the dashboard.
+It runs none of `www`'s background workers; its own is the pinger, which checks `rss`'s `/healthcheck` over the private network every minute.
 
 ### Deploying the admin
 

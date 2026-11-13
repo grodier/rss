@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,8 +44,9 @@ func runServe(args []string, getenv func(string) string, stdout, stderr io.Write
 	return 0
 }
 
-// serve opens the database and runs the admin's server until a signal stops
-// it. The admin runs none of www's background workers.
+// serve opens the database and runs the admin's server, and its pinger when
+// -app-internal-url is set, until a signal stops them. The admin runs none of
+// www's background workers.
 func serve(cfg config, logger *slog.Logger) error {
 	db, err := psql.OpenDB(cfg.db.dsn, cfg.db.maxOpenConns, cfg.db.maxIdleConns, cfg.db.maxIdleTime)
 	if err != nil {
@@ -91,7 +93,26 @@ func serve(cfg config, logger *slog.Logger) error {
 	// Ctrl-C kills the process if graceful shutdown hangs.
 	context.AfterFunc(ctx, stop)
 
-	return srv.Serve(ctx)
+	// ctx is also canceled when the server stops on its own, stopping the
+	// pinger.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	if cfg.appInternalURL != "" {
+		pinger := &admin.Pinger{URL: cfg.appInternalURL, Store: psql.NewAvailabilityRepository(db), Logger: logger}
+		wg.Go(func() { pinger.Run(ctx) })
+	} else if cfg.env == "production" {
+		logger.Warn("no -app-internal-url (RSS_APP_INTERNAL_URL): not checking www's availability")
+	} else {
+		logger.Info("no -app-internal-url (RSS_APP_INTERNAL_URL): not checking www's availability")
+	}
+
+	err = srv.Serve(ctx)
+	// Stop the pinger and wait for it before the deferred db.Close runs.
+	cancel()
+	wg.Wait()
+	return err
 }
 
 // secretKey returns -secret-key's key or, in development without one, a new

@@ -63,9 +63,9 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 
 `admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
-Inside it runs one component, the HTTP server (`internal/admin`), on port 4001; it runs none of `www`'s workers.
+Inside it run two components, the HTTP server (`internal/admin`), on port 4001, and, when `-app-internal-url` is set, the pinger (`admin.Pinger`, see "Background work"); it runs none of `www`'s workers.
 The invites it sends are queued in the shared `emails` outbox, with links to `-app-url` (the reader), and `www`'s mail runner sends them; `-mail-daily-limit`, `-mail-monthly-limit` and `-mail-reserve` are the email provider's limits it checks them against.
-On SIGINT or SIGTERM the server drains requests for up to 30 seconds, then the database is closed.
+On SIGINT or SIGTERM the server drains requests for up to 30 seconds and the pinger stops, then the database is closed.
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
 `admin create-user` (`cmd/admin/create_user.go`) creates a reader's account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
@@ -78,7 +78,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, and the web performance page | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the web performance page, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
@@ -98,7 +98,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`); the real-user thresholds (`RUMThresholds`) and percentiles from histogram buckets (`Percentile`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
-| `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 (`Bytes`) | — |
+| `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 without NUL bytes, which Postgres text refuses (`Bytes`) | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |
@@ -253,6 +253,7 @@ sessions (scs's table: session data keyed by token, no foreign keys)
 emails   (the outbox: no foreign keys)
 email_daily_counts   (emails queued per UTC day, for the admin's sending limits)
 request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
+availability_checks   (written by the admin's pinger; no foreign keys)
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").
@@ -333,6 +334,13 @@ The metrics components (`internal/metrics`) claim nothing: every instance runs t
 It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
 Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 
+The admin's own background job is the pinger (`admin.Pinger`, started by `admin serve` when `-app-internal-url` is set); the only other is the session store's cleanup of expired `admin_sessions` every 5 minutes.
+Every minute it sends `GET /healthcheck` to `www` over Render's private network, with 5 seconds to answer, and records the outcome in `availability_checks` (`psql.AvailabilityRepository`): ok when the body's status is `available`, the body's status otherwise, or `timeout` or `error` (refused, not a 200, or not a healthcheck's JSON) with no latency.
+A check cut short by shutdown isn't recorded; a failed write is logged and the check dropped.
+It logs when `www` stops answering `available` and when it does again, not every failed minute.
+At startup and every hour it deletes checks older than 90 days (`DeleteBefore`).
+The admin runs one instance, so nothing coordinates the checks; during a deploy's overlap two instances may both check for a few seconds.
+
 ## Outbound HTTP
 
 All requests to URLs a user can influence (websites to look up, feeds and the pages they point to, articles' web pages) go through `fetch.Client` (`internal/fetch`):
@@ -349,6 +357,7 @@ Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.F
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest` servers; `cmd/www` never sets it.
 
 Email goes over SMTP (`internal/mail`) to the configured provider, a fixed host from the configuration that no user can influence, so it doesn't go through `internal/fetch`.
+The admin's pinger requests `www`'s `/healthcheck` at `-app-internal-url`, also a fixed host from the configuration, with its own client: no environment proxy, a new connection per check, no redirects, answers read up to 64 KiB; `AvailabilityRepository.Record` keeps 100 bytes of the answer's status and version (`textcut.Bytes`).
 
 ## Security measures
 

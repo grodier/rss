@@ -88,7 +88,7 @@ func (p *Pinger) Ping(ctx context.Context) {
 	}
 	switch {
 	case !c.OK && !p.down:
-		p.logger().Warn("www is unavailable", "status", c.Status, "error", err)
+		p.logger().Warn("www is unavailable", "error", err)
 	case c.OK && p.down:
 		p.logger().Info("www is available again")
 	}
@@ -128,7 +128,8 @@ func (p *Pinger) Check(ctx context.Context) (rss.AvailabilityCheck, error) {
 	c.Version = body.SystemInfo.Version
 	c.OK = body.Status == "available"
 	if !c.OK {
-		return c, fmt.Errorf("www answered %q", c.Status)
+		// %.100q: the status is untrusted and up to maxHealthcheckBody long.
+		return c, fmt.Errorf("www answered %.100q", c.Status)
 	}
 	return c, nil
 }

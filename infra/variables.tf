@@ -47,7 +47,7 @@ variable "app_internal_url" {
   # A missing secret expands to "", which would turn the admin's pinger off
   # without a word; fail the plan instead.
   validation {
-    condition     = can(regex("^https?://[^/]+$", var.app_internal_url))
-    error_message = "app_internal_url must be http://<host>:<port> with no path (the APP_INTERNAL_URL secret)."
+    condition     = can(regex("^https?://[A-Za-z0-9.-]+(:[0-9]+)?$", var.app_internal_url))
+    error_message = "app_internal_url must be http://<host>:<port>, with no path, query or spaces (the APP_INTERNAL_URL secret)."
   }
 }

@@ -1,0 +1,4 @@
+{
+  "available": "{\"database\":\"ok\",\"status\":\"available\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n",
+  "degraded": "{\"database\":\"unreachable\",\"status\":\"degraded\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n"
+}

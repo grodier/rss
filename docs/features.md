@@ -574,7 +574,7 @@ Pages read them only through the card-value accessors (see "Card values" under "
 Locally it runs with `make run/admin` (http://localhost:4001).
 
 1. **Command.** `cmd/admin` (`run`) runs the server for `admin` or `admin serve`, and `admin enroll` (below); an unknown subcommand prints the usage and exits 2.
-   `parseConfig` reads the flags, each also settable by its `RSS_` variable (`internal/cli`), and `serve` opens a pool of at most `-db-max-open-conns` (3) connections on the reader's database and runs `admin.Server` until a signal.
+   `parseConfig` reads the flags, each also settable by its `RSS_` variable (`internal/cli`), and `serve` opens a pool of at most `-db-max-open-conns` (3) connections on the reader's database and runs `admin.Server`, and `admin.Pinger` when `-app-internal-url` is set (see "Observability"), until a signal.
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
@@ -686,7 +686,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 
 ### Observability
 
-`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin; the admin's Web performance page reads the real-user metrics (above), and its page for the rest comes later (#577).
+`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin, and the admin checks `www`'s availability from inside Render's network; the admin's Web performance page reads the real-user metrics (above), and its pages for the rest come later (#577, #616).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.
@@ -702,6 +702,8 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 8. **Storing it.** `rumHandler` (`internal/server/rum.go`) always answers 204; it drops the beacon over `rumLimiter`'s or `rumTotalLimiter`'s limit, or when its path resolves to no page (`rumRoute`), or its navigation type or width isn't valid.
    It keeps the route pattern, a device class from the width, and the browser's family and major version from the User-Agent (`parseBrowser`), cuts numbers to their ranges (outside them, NULL) and checks every other field against a set or a pattern, then stores the row (`RUMRepository.Record`).
 9. **Rollup.** The housekeeper counts each UTC day's views into `rum_daily`, one row per route, device, browser and metric with its views per `metrics.RUMBounds` bucket, an hour after the day ends (`RUMRepository.RollUp`), deletes views after 30 days and daily rows after 13 months, and keeps at most the newest 500,000 views (`Trim`).
+10. **Availability.** With `-app-internal-url` set, `admin serve` runs `admin.Pinger`, which requests `www`'s `/healthcheck` every minute and stores the outcome in `availability_checks` (`AvailabilityRepository.Record`): ok when `www` answers `available` within 5 seconds, else its status, `timeout` or `error` (details under "Background work" in architecture.md).
+    It deletes checks after 90 days.
 
 **Start at:**
 
@@ -709,8 +711,9 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 2. `internal/metrics/requests.go`, `jobs.go`, `runtime.go`, `errors.go`, `housekeeper.go` and `rum.go`.
 3. `internal/psql/metrics.go` (`RollUp`), `server_errors.go` and `rum.go`.
 4. `web/app/features/rum.ts` and `internal/server/rum.go`.
+5. `internal/admin/pinger.go` (`Pinger.Check`) and `internal/psql/availability.go`.
 
-**Tests:** `internal/metrics/*_test.go`; each runner's `TestRunMetrics`, `TestProcessMetrics`, `TestRefreshMetrics`, `TestCheckMetrics` or `TestSendMetrics`; `internal/psql/metrics_test.go`, `server_errors_test.go` and `rum_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`), `errors_test.go` and `rum_test.go`; `web/app/features/rum.test.ts`.
+**Tests:** `internal/metrics/*_test.go`; each runner's `TestRunMetrics`, `TestProcessMetrics`, `TestRefreshMetrics`, `TestCheckMetrics` or `TestSendMetrics`; `internal/psql/metrics_test.go`, `server_errors_test.go` and `rum_test.go`; `internal/server/middleware_test.go` (`TestRecordRequest`, `TestServerTiming`), `errors_test.go` and `rum_test.go`; `web/app/features/rum.test.ts`; `internal/admin/pinger_test.go` (`TestPingerReadsWWWsHealthcheck` reads the answers `internal/server`'s `TestHealthcheckFixture` writes, `-update`), `internal/psql/availability_test.go` and `cmd/admin/config_test.go`.
 
 **Why:** "Observability" in decisions.md.
 

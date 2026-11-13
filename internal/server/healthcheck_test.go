@@ -1,15 +1,53 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+// healthcheckFixture holds /healthcheck's answers, available and degraded,
+// which the admin's pinger reads (internal/admin/pinger_test.go): it decodes
+// them with its own type, so a renamed key fails its test, not production.
+const healthcheckFixture = "testdata/healthcheck.json"
+
+func TestHealthcheckFixture(t *testing.T) {
+	answer := func(db *fakeDatabase) string {
+		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", Version: "abc123"}, Services{Database: db})
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthcheck", nil))
+		return rr.Body.String()
+	}
+	down := &fakeDatabase{pingFn: func(context.Context) error { return errors.New("connection refused") }}
+	fixture := map[string]string{"available": answer(&fakeDatabase{}), "degraded": answer(down)}
+
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(fixture); err != nil {
+		t.Fatal(err)
+	}
+	if *updateFixtures {
+		if err := os.WriteFile(healthcheckFixture, b.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(healthcheckFixture)
+	if err != nil {
+		t.Fatalf("%v; run: go test ./internal/server -run TestHealthcheckFixture -update", err)
+	}
+	if !bytes.Equal(got, b.Bytes()) {
+		t.Errorf("%s doesn't match /healthcheck's answers; run: go test ./internal/server -run TestHealthcheckFixture -update", healthcheckFixture)
+	}
+}
 
 func TestHealthcheck(t *testing.T) {
 	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", Version: "abc123"}, Services{Database: &fakeDatabase{}})

@@ -2,9 +2,11 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -135,6 +137,37 @@ func TestPingerCheck(t *testing.T) {
 				t.Errorf("checked at %v, want during the check", c.CheckedAt)
 			}
 		})
+	}
+}
+
+// TestPingerReadsWWWsHealthcheck checks the pinger against www's real
+// /healthcheck answers, written by internal/server's TestHealthcheckFixture,
+// so a renamed key in either fails here rather than in production.
+func TestPingerReadsWWWsHealthcheck(t *testing.T) {
+	raw, err := os.ReadFile("../server/testdata/healthcheck.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answers map[string]string
+	if err := json.Unmarshal(raw, &answers); err != nil {
+		t.Fatal(err)
+	}
+	for status, wantOK := range map[string]bool{"available": true, "degraded": false} {
+		t.Run(status, func(t *testing.T) {
+			p, _ := newPinger(t, answer(t, 200, answers[status]))
+			c, _ := p.Check(context.Background())
+			if c.OK != wantOK || c.Status != status || c.Version != "abc123" {
+				t.Errorf("check = %+v; want ok %v, status %s, version abc123", c, wantOK, status)
+			}
+		})
+	}
+}
+
+func TestPingerCheckLongStatusError(t *testing.T) {
+	p, _ := newPinger(t, answer(t, 200, `{"status":"`+strings.Repeat("x", 5000)+`"}`))
+	_, err := p.Check(context.Background())
+	if err == nil || len(err.Error()) > 200 {
+		t.Errorf("err = %d bytes, want the status cut to 100 characters", len(err.Error()))
 	}
 }
 

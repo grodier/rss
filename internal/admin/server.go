@@ -18,6 +18,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/mail"
+	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
@@ -45,6 +46,9 @@ type Config struct {
 	// MailLimits are the email provider's sending limits, which invites are
 	// checked against.
 	MailLimits MailLimits
+	// AppInternalURL is www's URL on the private network that the pinger
+	// checks; "" when it doesn't run, which the service page says.
+	AppInternalURL string
 }
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -111,6 +115,20 @@ type WebPerfStore interface {
 	WebPerf(ctx context.Context, q rss.WebPerfQuery) (rss.WebPerf, error)
 }
 
+// AvailabilityReader reads the pinger's checks for the service page;
+// *psql.AvailabilityRepository is one.
+type AvailabilityReader interface {
+	Uptime(ctx context.Context, now time.Time) (rss.Uptime, error)
+	Incidents(ctx context.Context, since time.Time, limit int) ([]rss.Incident, error)
+	LatestVersion(ctx context.Context) (rss.AvailabilityCheck, error)
+}
+
+// RuntimeReader reads www's runtime samples; *psql.MetricsRepository is
+// one.
+type RuntimeReader interface {
+	ListRuntime(ctx context.Context, from, to time.Time) ([]metrics.RuntimeRow, error)
+}
+
 type Services struct {
 	Database DatabasePinger
 	Admins   AdminStore
@@ -120,6 +138,9 @@ type Services struct {
 	Emails   EmailStore
 	Overview OverviewStore
 	WebPerf  WebPerfStore
+
+	Availability AvailabilityReader
+	Runtime      RuntimeReader
 }
 
 type Server struct {

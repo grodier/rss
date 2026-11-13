@@ -750,6 +750,27 @@ const (
 	CheckError   = "error"
 )
 
+// Uptime is the share of the admin's availability checks that were ok,
+// over the last 24 hours, 7 days, 30 days and 90 days.
+type Uptime struct {
+	Day, Week, Month, Quarter UptimeWindow
+}
+
+// UptimeWindow counts a window's checks; Checks is 0 when none were made.
+type UptimeWindow struct {
+	Checks, OK int
+}
+
+// Incident is a run of failed availability checks with no ok check between
+// them.
+type Incident struct {
+	StartedAt    time.Time // the first failed check
+	LastFailedAt time.Time
+	EndedAt      time.Time // the first ok check after it; zero while it lasts
+	Checks       int       // failed checks in it
+	Statuses     []string  // the failed checks' statuses, distinct, sorted
+}
+
 // RUMView is one page view's real-user metrics, from the beacon a page sends
 // when it's hidden (a rum_views row). It carries no identifiers: no user, IP
 // address or URL. A nil metric wasn't reported.

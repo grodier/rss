@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Service - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Service</h1>
+        <p>www’s availability from inside Render’s network, its Go runtime and its version.</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Period" .Periods)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="availability">
+        <h2 id="availability">Availability</h2>
+        {{if not .Pinging}}
+        <p class="missing">Not configured: set -app-internal-url (RSS_APP_INTERNAL_URL) to check www every minute.</p>
+        {{else if not .HasChecks}}
+        <p class="missing">No checks yet: the admin checks www every minute.</p>
+        {{else}}
+        {{template "stat-row" .Uptime}}
+        <h3 class="sub">Incidents</h3>
+        {{if .Incidents}}
+        <div class="table-wrap">
+          <table class="data incidents">
+            <thead>
+              <tr>
+                <th scope="col">Started</th>
+                <th scope="col">Ended</th>
+                <th scope="col" class="num">Duration</th>
+                <th scope="col" class="num">Checks</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Incidents}}
+              <tr>
+                <td><time datetime="{{.Started.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Started.UTC.Format "2006-01-02 15:04"}} UTC</time></td>
+                <td>{{if .Ended.IsZero}}<span class="status status-danger">Ongoing</span>{{else}}<time datetime="{{.Ended.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Ended.UTC.Format "2006-01-02 15:04"}} UTC</time>{{end}}</td>
+                <td class="num">{{.Duration}}</td>
+                <td class="num">{{count .Checks}}</td>
+                <td>{{.Statuses}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{if .MoreIncidents}}<p class="missing">Showing the 50 most recent.</p>{{end}}
+        {{else}}
+        <p class="missing">No incidents in the last {{.Period.Label}}.</p>
+        {{end}}
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="runtime">
+        <h2 id="runtime">Go runtime</h2>
+        {{with .RuntimeNote}}<p class="missing">{{.}}</p>{{end}}
+        {{if .Charts}}
+        <div class="service-charts">
+          {{range .Charts}}
+          <figure class="service-chart">
+            <figcaption><h3>{{.Title}}</h3>{{with .Unit}} <span class="unit">{{.}}</span>{{end}}</figcaption>
+            {{chart .}}
+          </figure>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="missing">No runtime metrics yet: www writes them once a minute.</p>
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="version">
+        <h2 id="version">Version</h2>
+        {{if not .Pinging}}
+        <p class="missing">Not configured: set -app-internal-url (RSS_APP_INTERNAL_URL) to check www every minute.</p>
+        {{else if .Version}}
+        <p class="service-version">www is running {{with .Version}}{{if .Href}}<a href="{{.Href}}"><code>{{.Text}}</code></a>{{else}}<code>{{.Text}}</code>{{end}}, as of <time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z"}}">{{.At.UTC.Format "2006-01-02 15:04"}} UTC</time>{{end}}.</p>
+        {{else}}
+        <p class="missing">No version reported yet.</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

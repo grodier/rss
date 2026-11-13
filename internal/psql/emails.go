@@ -8,6 +8,7 @@ import (
 
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 )
 
 // maxEmailsPerAddressPerHour caps the emails queued to one address in any
@@ -115,7 +116,7 @@ func (r *EmailRepository) MarkFailed(ctx context.Context, id, msg string, retryA
 	stmt := `UPDATE emails SET next_attempt_at = $2, last_error = $3
 		WHERE id = $1`
 
-	return execOne(ctx, r.DB, stmt, id, retryAt, truncateUTF8(msg, maxErrorLen))
+	return execOne(ctx, r.DB, stmt, id, retryAt, textcut.Bytes(msg, maxErrorLen))
 }
 
 // GiveUp marks an email failed for good, with an internal error message
@@ -124,7 +125,7 @@ func (r *EmailRepository) GiveUp(ctx context.Context, id, msg string) error {
 	stmt := `UPDATE emails SET status = 'failed', last_error = $2, text_body = '', html_body = ''
 		WHERE id = $1`
 
-	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen))
+	return execOne(ctx, r.DB, stmt, id, textcut.Bytes(msg, maxErrorLen))
 }
 
 // DeleteFinished deletes sent and failed emails created before before, and

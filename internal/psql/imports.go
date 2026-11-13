@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 	"github.com/lib/pq"
 )
 
@@ -184,7 +185,7 @@ func (r *ImportRepository) Finish(ctx context.Context, f rss.ImportFeed) error {
 			error = $6, finished_at = now()
 		WHERE import_id = $1 AND position = $2`
 
-	return execOne(ctx, r.DB, stmt, f.ImportID, f.Position, f.Status, f.Failure, f.FeedID, truncateUTF8(f.Error, maxErrorLen))
+	return execOne(ctx, r.DB, stmt, f.ImportID, f.Position, f.Status, f.Failure, f.FeedID, textcut.Bytes(f.Error, maxErrorLen))
 }
 
 // ResetStale puts running feeds started more than olderThan ago back to

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/grodier/rss/internal/textcut"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -226,7 +227,7 @@ func (insp *PageInspection) addJSONLD(text string, seen map[string]bool) {
 			}
 		}
 	}
-	insp.JSONLD = append(insp.JSONLD, cutBytes(text, jsonLDMax))
+	insp.JSONLD = append(insp.JSONLD, textcut.Bytes(text, jsonLDMax))
 }
 
 // jsonLDTypes returns the @type values of a JSON-LD block's top-level
@@ -280,17 +281,4 @@ func cutRunes(s string, max int) string {
 		return s
 	}
 	return string([]rune(s)[:max])
-}
-
-// cutBytes returns s cut at max bytes on a UTF-8 boundary, with invalid
-// UTF-8 replaced.
-func cutBytes(s string, max int) string {
-	if len(s) > max {
-		i := max
-		for i > 0 && !utf8.RuneStart(s[i]) {
-			i--
-		}
-		s = s[:i]
-	}
-	return strings.ToValidUTF8(s, "�")
 }

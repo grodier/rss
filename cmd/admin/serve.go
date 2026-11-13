@@ -102,6 +102,8 @@ func serve(cfg config, logger *slog.Logger) error {
 	if cfg.appInternalURL != "" {
 		pinger := &admin.Pinger{URL: cfg.appInternalURL, Store: psql.NewAvailabilityRepository(db), Logger: logger}
 		wg.Go(func() { pinger.Run(ctx) })
+	} else if cfg.env == "production" {
+		logger.Warn("no -app-internal-url (RSS_APP_INTERNAL_URL): not checking www's availability")
 	} else {
 		logger.Info("no -app-internal-url (RSS_APP_INTERNAL_URL): not checking www's availability")
 	}

@@ -123,6 +123,15 @@ func TestPingerCheck(t *testing.T) {
 			wantVersion: strings.Repeat("v", maxCheckText),
 			wantLatency: true,
 		},
+		{
+			name: "NUL bytes",
+			handler: func(t *testing.T) http.HandlerFunc {
+				return answer(t, 200, `{"status":"degra\u0000ded","system_info":{"version":"v\u00001"}}`)
+			},
+			wantStatus:  "degraded",
+			wantVersion: "v1",
+			wantLatency: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -179,12 +180,14 @@ func (p *Pinger) Tidy(ctx context.Context, now time.Time) {
 }
 
 // pingClient is the default Client: no environment proxy (the private
-// network is reached directly) and no redirects (www's /healthcheck answers
-// itself, so a redirect is an error).
+// network is reached directly), a new connection for every check (a kept-alive
+// one would stay on one www instance, and on an old one through a deploy), and
+// no redirects (www's /healthcheck answers itself, so a redirect is an error).
 var pingClient = &http.Client{
 	Transport: func() http.RoundTripper {
 		t := http.DefaultTransport.(*http.Transport).Clone()
 		t.Proxy = nil
+		t.DisableKeepAlives = true
 		return t
 	}(),
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -204,9 +207,11 @@ func (p *Pinger) logger() *slog.Logger {
 	return p.Logger
 }
 
-// cut cuts s, valid UTF-8 as JSON decodes it, to maxCheckText bytes without
-// splitting a character.
+// cut drops NUL bytes from s, which Postgres text can't hold, and cuts it,
+// valid UTF-8 as JSON decodes it, to maxCheckText bytes without splitting a
+// character.
 func cut(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
 	if len(s) <= maxCheckText {
 		return s
 	}

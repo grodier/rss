@@ -43,4 +43,11 @@ variable "app_internal_url" {
   type        = string
   # A repository secret, so the public repository and its plans don't show it.
   sensitive = true
+
+  # A missing secret expands to "", which would turn the admin's pinger off
+  # without a word; fail the plan instead.
+  validation {
+    condition     = can(regex("^https?://[^/]+$", var.app_internal_url))
+    error_message = "app_internal_url must be http://<host>:<port> with no path (the APP_INTERNAL_URL secret)."
+  }
 }

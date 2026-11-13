@@ -29,7 +29,11 @@ func TestBytes(t *testing.T) {
 		// A cut through a valid character drops it rather than leaving a
 		// replacement for its first bytes.
 		{"emoji across the limit", "ab\U0001F600", 5, "ab"},
-		{"invalid byte at the cut", "abcd\xff\xffef", 6, "abcd"},
+		// A run of invalid bytes is one replacement, so text after a long
+		// run still fits.
+		{"long invalid run", "\xff\xff\xff\xff\xff\xffabc", 6, "\uFFFDabc"},
+		{"stray continuation bytes", "error: \x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 12, "error: \uFFFD"},
+		{"NUL bytes", "a\x00b\x00", 10, "a\uFFFDb\uFFFD"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -37,8 +41,8 @@ func TestBytes(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("Bytes(%q, %d) = %q, want %q", tt.s, tt.max, got, tt.want)
 			}
-			if len(got) > tt.max || !utf8.ValidString(got) {
-				t.Errorf("Bytes(%q, %d) = %q: %d bytes, valid %v; want at most %d valid bytes", tt.s, tt.max, got, len(got), utf8.ValidString(got), tt.max)
+			if len(got) > tt.max || !utf8.ValidString(got) || strings.IndexByte(got, 0) >= 0 {
+				t.Errorf("Bytes(%q, %d) = %q: %d bytes, valid %v; want at most %d valid bytes, no NUL", tt.s, tt.max, got, len(got), utf8.ValidString(got), tt.max)
 			}
 		})
 	}

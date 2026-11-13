@@ -82,7 +82,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/enrich`: fetches the web pages of articles missing an image, title or excerpt and stores their Open Graph metadata in the background (`Runner`)
 - `internal/sanitize`: makes untrusted article HTML safe to render (bluemonday)
 - `internal/password`: Argon2id password hashing and verification
-- `internal/textcut`: cuts untrusted text to a size in bytes as valid UTF-8, for storing (Postgres text) or showing it
+- `internal/textcut`: cuts untrusted text to a size in bytes as valid UTF-8 without NUL bytes, for storing (Postgres text) or showing it
 - `internal/token`: one-time tokens for email links (random token, SHA-256 hash to store)
 - `internal/ui`: embedded templates (the reader's in `templates/`, the admin's in `admin/`), emails and the web app manifest
 - `internal/validator`: form validation

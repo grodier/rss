@@ -206,6 +206,9 @@ Planned in #583 with the admin, which is where it's read.
 - **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
 - **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
 - **Availability is checked from both sides** (#576, #588): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
+- **The service page's inside view** (#616): uptime is the share of the pinger's checks that were ok, over the checks made (minutes with no check count neither way); an incident is a run of failed checks with no ok check between them, ended by the next ok check, and missing minutes don't end or split one.
+- **Runtime across `www`'s instances** (#616): memory, goroutines and GC pause take the highest instance at each minute, since the limits are per instance; database connections are summed, since the instances share the database's; each chart step then takes the highest of its minutes, so a spike isn't averaged away.
+- **Runtime metrics stay at 7 days** (#616): the service page's 30-day period shows the 7 days kept, and says so; keeping more is its own retention decision.
 
 ## Feed discovery
 

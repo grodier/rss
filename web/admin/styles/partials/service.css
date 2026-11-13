@@ -7,6 +7,11 @@
     gap: 1.25rem 2rem;
   }
 
+  /* Room under the note that runtime metrics are kept for 30 days. */
+  .missing + .service-charts {
+    margin-block-start: 0.75rem;
+  }
+
   .service-chart figcaption {
     display: flex;
     align-items: baseline;

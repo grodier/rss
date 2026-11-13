@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 )
 
 // EnrichRepository hands out enrich_jobs and records what enrichment read
@@ -85,7 +86,7 @@ func (r *EnrichRepository) SavePage(ctx context.Context, articleID string, p rss
 func (r *EnrichRepository) Retry(ctx context.Context, articleID, msg string, next time.Time) error {
 	stmt := `UPDATE enrich_jobs SET last_error = $2, next_attempt_at = $3
 		WHERE article_id = $1`
-	return execOne(ctx, r.DB, stmt, articleID, truncateUTF8(msg, maxErrorLen), next)
+	return execOne(ctx, r.DB, stmt, articleID, textcut.Bytes(msg, maxErrorLen), next)
 }
 
 // GiveUp deletes article articleID's job, leaving its page_* columns empty.

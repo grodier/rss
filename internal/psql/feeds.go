@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 )
 
 // feedColumnNames are the columns scanFeed reads, in order.
@@ -181,7 +182,7 @@ func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next
 			refresh_requested_at = NULL
 		WHERE id = $1`
 
-	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen), next)
+	return execOne(ctx, r.DB, stmt, id, textcut.Bytes(msg, maxErrorLen), next)
 }
 
 // RecordNotModified records a 304 for feed id: a successful attempt with no

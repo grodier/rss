@@ -11,8 +11,9 @@ import (
 )
 
 // maxErrorLen caps the error messages stored by LookupRepository.Fail,
-// FeedRepository.RecordFailure and EmailRepository's MarkFailed and GiveUp,
-// in bytes.
+// FeedRepository.RecordFailure, EnrichRepository.Retry,
+// ImportRepository.Finish and EmailRepository's MarkFailed and GiveUp, in
+// bytes.
 const maxErrorLen = 1000
 
 const lookupColumns = `id, site_key, url, status, site_id, error, attempts, requested_at, started_at, finished_at`

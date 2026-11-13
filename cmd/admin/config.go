@@ -28,8 +28,12 @@ type config struct {
 	// links in invites; supportEmail is shown in their footers.
 	appURL       string
 	supportEmail string
-	mailLimits   admin.MailLimits
-	db           dbConfig
+	// appInternalURL is www's URL on the private network, without a
+	// trailing slash, whose /healthcheck the pinger checks; "" runs no
+	// checks.
+	appInternalURL string
+	mailLimits     admin.MailLimits
+	db             dbConfig
 	// version, with -version, prints the build's version instead of serving.
 	version bool
 }
@@ -90,6 +94,13 @@ func (c config) Validate() error {
 	} else if c.env == "production" && !strings.HasPrefix(c.appURL, "https://") {
 		errs = append(errs, errors.New("-app-url (RSS_APP_URL) must be an https URL in production"))
 	}
+	if c.appInternalURL != "" {
+		u, err := url.Parse(c.appInternalURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			errs = append(errs, fmt.Errorf("invalid app internal URL %q: must be an absolute http or https URL with no path", c.appInternalURL))
+		}
+	}
 	if c.supportEmail != "" {
 		if _, err := netmail.ParseAddress(c.supportEmail); err != nil {
 			errs = append(errs, fmt.Errorf("invalid support email %q: %v", c.supportEmail, err))
@@ -128,6 +139,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
 	fs.StringVar(&cfg.secretKey, "secret-key", "", secretKeyUsage)
 	fs.StringVar(&cfg.appURL, "app-url", cfg.appURL, "The reader's public URL, for the links in invites")
+	fs.StringVar(&cfg.appInternalURL, "app-internal-url", "", "The reader's URL on the private network, whose /healthcheck the admin checks every minute (empty: no checks)")
 	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in invites' footers")
 	fs.IntVar(&cfg.mailLimits.Daily, "mail-daily-limit", cfg.mailLimits.Daily, "The email provider's daily sending limit, which invites are checked against")
 	fs.IntVar(&cfg.mailLimits.Monthly, "mail-monthly-limit", cfg.mailLimits.Monthly, "The email provider's monthly sending limit")
@@ -156,6 +168,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	}
 	cfg.baseURL = strings.TrimSuffix(cfg.baseURL, "/")
 	cfg.appURL = strings.TrimSuffix(cfg.appURL, "/")
+	cfg.appInternalURL = strings.TrimSuffix(cfg.appInternalURL, "/")
 	cfg.db.maxIdleConns = cfg.db.maxOpenConns
 
 	if err := cfg.Validate(); err != nil {

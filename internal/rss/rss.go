@@ -732,6 +732,24 @@ type ServerError struct {
 	Panic      bool
 }
 
+// AvailabilityCheck is the outcome of one of the admin's checks of www's
+// /healthcheck over the private network (an availability_checks row).
+type AvailabilityCheck struct {
+	CheckedAt time.Time
+	OK        bool     // www answered "available" in time
+	Status    string   // the body's status, or CheckTimeout or CheckError
+	LatencyMs *float64 // nil when www didn't answer
+	Version   string   // the body's system_info.version; "" when it didn't say
+}
+
+// The statuses of an AvailabilityCheck www didn't answer: it took longer
+// than the check's timeout, or the request failed or its answer wasn't a
+// healthcheck's.
+const (
+	CheckTimeout = "timeout"
+	CheckError   = "error"
+)
+
 // RUMView is one page view's real-user metrics, from the beacon a page sends
 // when it's hidden (a rum_views row). It carries no identifiers: no user, IP
 // address or URL. A nil metric wasn't reported.

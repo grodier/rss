@@ -37,3 +37,10 @@ variable "admin_access_email" {
   # A repository secret, so the public repository and its plans don't show it.
   sensitive = true
 }
+
+variable "app_internal_url" {
+  description = "The rss service's URL on Render's private network, http://<its Connect → Internal address> (TF_VAR_app_internal_url)."
+  type        = string
+  # A repository secret, so the public repository and its plans don't show it.
+  sensitive = true
+}

@@ -330,7 +330,7 @@ The metrics components (`internal/metrics`) claim nothing: every instance runs t
 `metrics.Jobs` does the same with the runners' jobs, keyed by the minute each finished in, runner and outcome.
 `metrics.Runtime` writes one sample at the end of each minute, stamped with that minute; its GC pause p99 covers the minute.
 `metrics.ErrorLog.Record` never blocks a response: it queues the error in a buffer of 100, dropping it with a warning when the buffer is full, and `Run` writes each with a 2-second timeout, logging and dropping one that fails (the database may be why the request failed).
-`metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls request and job minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute and runtime rows older than 7 days and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
+`metrics.Housekeeper` runs at startup and then hourly: it trims `server_errors` to the newest 1,000 (`Trim`), rolls request and job minute rows older than 2 hours into hourly rows (`RollUp`), then deletes minute rows older than 7 days, runtime rows older than 30 and hourly rows older than 90 (`DeleteBefore`); if the rollup fails it deletes no metrics.
 It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
 Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 

@@ -46,10 +46,10 @@ type Pinger struct {
 	URL    string
 	Store  AvailabilityStore
 	Logger *slog.Logger
-	// Client makes the checks; nil uses one that ignores proxy settings
-	// and doesn't follow redirects. Timeout is PingTimeout when zero.
-	Client  *http.Client
-	Timeout time.Duration
+	// Timeout is how long www has to answer, PingTimeout when zero, and
+	// StoreTimeout how long recording a check or deleting old ones may take,
+	// pingStoreTimeout when zero.
+	Timeout, StoreTimeout time.Duration
 
 	// down is whether the last recorded check failed, so the log says when
 	// www goes down and comes back, not every minute it stays down.
@@ -94,9 +94,11 @@ func (p *Pinger) Ping(ctx context.Context) {
 	}
 	p.down = !c.OK
 
-	ctx, cancel := context.WithTimeout(ctx, pingStoreTimeout)
+	// A write that runs out of pingStoreTimeout is logged; one cut short by
+	// shutdown (ctx) isn't.
+	sctx, cancel := context.WithTimeout(ctx, p.storeTimeout())
 	defer cancel()
-	if err := p.Store.Record(ctx, c); err != nil && ctx.Err() == nil {
+	if err := p.Store.Record(sctx, c); err != nil && ctx.Err() == nil {
 		p.logger().Error("pinger: record check", "error", err)
 	}
 }
@@ -150,7 +152,7 @@ func (p *Pinger) get(ctx context.Context) (healthcheckBody, error) {
 	if err != nil {
 		return body, err
 	}
-	resp, err := p.client().Do(req)
+	resp, err := pingClient.Do(req)
 	if err != nil {
 		return body, err
 	}
@@ -169,14 +171,14 @@ func (p *Pinger) get(ctx context.Context) (healthcheckBody, error) {
 
 // Tidy deletes the checks older than AvailabilityRetention at now.
 func (p *Pinger) Tidy(ctx context.Context, now time.Time) {
-	ctx, cancel := context.WithTimeout(ctx, pingStoreTimeout)
+	sctx, cancel := context.WithTimeout(ctx, p.storeTimeout())
 	defer cancel()
-	if err := p.Store.DeleteBefore(ctx, now.Add(-AvailabilityRetention)); err != nil && ctx.Err() == nil {
+	if err := p.Store.DeleteBefore(sctx, now.Add(-AvailabilityRetention)); err != nil && ctx.Err() == nil {
 		p.logger().Error("pinger: delete old checks", "error", err)
 	}
 }
 
-// pingClient is the default Client: no environment proxy (the private
+// pingClient makes every check: no environment proxy (the private
 // network is reached directly), a new connection for every check (a kept-alive
 // one would stay on one www instance, and on an old one through a deploy), and
 // no redirects (www's /healthcheck answers itself, so a redirect is an error).
@@ -190,11 +192,11 @@ var pingClient = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
-func (p *Pinger) client() *http.Client {
-	if p.Client != nil {
-		return p.Client
+func (p *Pinger) storeTimeout() time.Duration {
+	if p.StoreTimeout == 0 {
+		return pingStoreTimeout
 	}
-	return pingClient
+	return p.StoreTimeout
 }
 
 func (p *Pinger) logger() *slog.Logger {

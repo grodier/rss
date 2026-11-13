@@ -183,7 +183,7 @@ The `rss` image stays distroless, with no shell.
 The package `ghcr.io/grodier/rss-admin` must be public, like `rss`, or Render can't pull it.
 
 **Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links) and on the private network in `RSS_APP_INTERNAL_URL` (for the pinger, from the `app_internal_url` variable), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY` and `RSS_SMTP_PASSWORD` are set in the dashboard.
-It runs none of `www`'s background workers; its only background job is the pinger, which checks `rss`'s `/healthcheck` over the private network every minute.
+It runs none of `www`'s background workers; its own is the pinger, which checks `rss`'s `/healthcheck` over the private network every minute.
 
 ### Deploying the admin
 

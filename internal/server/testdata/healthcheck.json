@@ -1,4 +1,10 @@
 {
-  "available": "{\"database\":\"ok\",\"status\":\"available\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n",
-  "degraded": "{\"database\":\"unreachable\",\"status\":\"degraded\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n"
+  "available": {
+    "code": 200,
+    "body": "{\"database\":\"ok\",\"status\":\"available\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n"
+  },
+  "degraded": {
+    "code": 200,
+    "body": "{\"database\":\"unreachable\",\"status\":\"degraded\",\"system_info\":{\"environment\":\"development\",\"version\":\"abc123\"}}\n"
+  }
 }

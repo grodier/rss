@@ -14,19 +14,24 @@ import (
 )
 
 // healthcheckFixture holds /healthcheck's answers, available and degraded,
-// which the admin's pinger reads (internal/admin/pinger_test.go): it decodes
-// them with its own type, so a renamed key fails its test, not production.
+// with their status codes, which the admin's pinger reads
+// (internal/admin/pinger_test.go): it decodes them with its own type, so a
+// renamed key or a new status code fails its test, not production.
 const healthcheckFixture = "testdata/healthcheck.json"
 
 func TestHealthcheckFixture(t *testing.T) {
-	answer := func(db *fakeDatabase) string {
+	type answer struct {
+		Code int    `json:"code"`
+		Body string `json:"body"`
+	}
+	get := func(db *fakeDatabase) answer {
 		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", Version: "abc123"}, Services{Database: db})
 		rr := httptest.NewRecorder()
 		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthcheck", nil))
-		return rr.Body.String()
+		return answer{rr.Code, rr.Body.String()}
 	}
 	down := &fakeDatabase{pingFn: func(context.Context) error { return errors.New("connection refused") }}
-	fixture := map[string]string{"available": answer(&fakeDatabase{}), "degraded": answer(down)}
+	fixture := map[string]answer{"available": get(&fakeDatabase{}), "degraded": get(down)}
 
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)

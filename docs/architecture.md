@@ -334,7 +334,7 @@ The metrics components (`internal/metrics`) claim nothing: every instance runs t
 It does the same for the real-user views, with `psql.RUMRepository`: it rolls each UTC day that ended over an hour ago into daily rows, then deletes views older than 30 days and daily rows older than 13 months, and deletes no views by age if their rollup fails.
 Whether or not the rollup worked, it then keeps only the newest 500,000 views (`Trim`), so a flood of beacons can't fill the disk.
 
-The admin's only background job is the pinger (`admin.Pinger`, started by `admin serve` when `-app-internal-url` is set).
+The admin's own background job is the pinger (`admin.Pinger`, started by `admin serve` when `-app-internal-url` is set); the only other is the session store's cleanup of expired `admin_sessions` every 5 minutes.
 Every minute it sends `GET /healthcheck` to `www` over Render's private network, with 5 seconds to answer, and records the outcome in `availability_checks` (`psql.AvailabilityRepository`): ok when the body's status is `available`, the body's status otherwise, or `timeout` or `error` (refused, not a 200, or not a healthcheck's JSON) with no latency.
 A check cut short by shutdown isn't recorded; a failed write is logged and the check dropped.
 It logs when `www` stops answering `available` and when it does again, not every failed minute.

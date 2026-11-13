@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,20 +17,30 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// fakeAvailabilityStore records what the pinger stores.
+// fakeAvailabilityStore records what the pinger stores. With hang set, it
+// waits for its context to end and returns its error, like a hung database.
 type fakeAvailabilityStore struct {
 	checks        []rss.AvailabilityCheck
 	deletedBefore time.Time
 	err           error
+	hang          bool
 }
 
 func (f *fakeAvailabilityStore) Record(ctx context.Context, c rss.AvailabilityCheck) error {
 	f.checks = append(f.checks, c)
-	return f.err
+	return f.result(ctx)
 }
 
 func (f *fakeAvailabilityStore) DeleteBefore(ctx context.Context, before time.Time) error {
 	f.deletedBefore = before
+	return f.result(ctx)
+}
+
+func (f *fakeAvailabilityStore) result(ctx context.Context) error {
+	if f.hang {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return f.err
 }
 
@@ -148,13 +160,16 @@ func TestPingerReadsWWWsHealthcheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var answers map[string]string
+	var answers map[string]struct {
+		Code int    `json:"code"`
+		Body string `json:"body"`
+	}
 	if err := json.Unmarshal(raw, &answers); err != nil {
 		t.Fatal(err)
 	}
 	for status, wantOK := range map[string]bool{"available": true, "degraded": false} {
 		t.Run(status, func(t *testing.T) {
-			p, _ := newPinger(t, answer(t, 200, answers[status]))
+			p, _ := newPinger(t, answer(t, answers[status].Code, answers[status].Body))
 			c, _ := p.Check(context.Background())
 			if c.OK != wantOK || c.Status != status || c.Version != "abc123" {
 				t.Errorf("check = %+v; want ok %v, status %s, version abc123", c, wantOK, status)
@@ -166,7 +181,10 @@ func TestPingerReadsWWWsHealthcheck(t *testing.T) {
 func TestPingerCheckLongStatusError(t *testing.T) {
 	p, _ := newPinger(t, answer(t, 200, `{"status":"`+strings.Repeat("x", 5000)+`"}`))
 	_, err := p.Check(context.Background())
-	if err == nil || len(err.Error()) > 200 {
+	if err == nil {
+		t.Fatal("err = nil, want www's status")
+	}
+	if len(err.Error()) > 200 {
 		t.Errorf("err = %d bytes, want the status cut to 100 characters", len(err.Error()))
 	}
 }
@@ -210,6 +228,24 @@ func TestPingerPing(t *testing.T) {
 	p.Ping(ctx)
 	if len(store.checks) != 3 {
 		t.Errorf("recorded %d checks, want 3", len(store.checks))
+	}
+}
+
+// TestPingerStoreTimeoutIsLogged: a write that runs out of the store's
+// timeout is an error to log, unlike one cut short by shutdown.
+func TestPingerStoreTimeoutIsLogged(t *testing.T) {
+	p, store := newPinger(t, answer(t, 200, `{"status":"available"}`))
+	var logs bytes.Buffer
+	p.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	p.StoreTimeout = 20 * time.Millisecond
+	store.hang = true
+
+	p.Ping(context.Background())
+	p.Tidy(context.Background(), time.Now())
+	for _, want := range []string{"pinger: record check", "pinger: delete old checks"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("logs = %q, want %q", logs.String(), want)
+		}
 	}
 }
 

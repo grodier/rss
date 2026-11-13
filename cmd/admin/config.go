@@ -96,9 +96,12 @@ func (c config) Validate() error {
 	}
 	if c.appInternalURL != "" {
 		u, err := url.Parse(c.appInternalURL)
+		// No "?", "#" or "@" at all: an empty query or fragment parses as
+		// none, but "#" would turn the /healthcheck appended to it into a
+		// fragment. infra/variables.tf checks the same shape.
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
-			u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-			errs = append(errs, fmt.Errorf("invalid app internal URL %q: must be an absolute http or https URL with no path", c.appInternalURL))
+			u.Path != "" || strings.ContainsAny(c.appInternalURL, "?#@") {
+			errs = append(errs, fmt.Errorf("invalid app internal URL %q: must be http(s)://<host>[:<port>], with no path, query, fragment or user", c.appInternalURL))
 		}
 	}
 	if c.supportEmail != "" {

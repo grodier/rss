@@ -98,7 +98,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`); the real-user thresholds (`RUMThresholds`) and percentiles from histogram buckets (`Percentile`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
-| `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 (`Bytes`) | — |
+| `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 without NUL bytes, which Postgres text refuses (`Bytes`) | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |

@@ -202,7 +202,7 @@ Planned in #583 with the admin, which is where it's read.
   The per-IP limit alone can be got round by rotating addresses (an IPv6 /48 holds 65,536 /64s), and a full disk would take the whole app down, not just its metrics; beacons past a cap are dropped, real ones too, which only loses measurements.
   The total also bounds a day's views, at 864,000 per instance, whose rollup took about 6 s on a local database, inside the housekeeping's minute.
   Not prevented, as nothing identifies a beacon's sender: plausible made-up values, which can outweigh real ones on a quiet route.
-- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days (at most 500,000) and daily rollups for 13 months (#563, #565).
+- **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days (at most 500,000) and daily rollups for 13 months (#563, #565); the admin's availability checks for 90 days (#588).
 - **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
 - **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
 - **Availability is checked from both sides** (#576): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.

@@ -127,6 +127,9 @@ resource "render_web_service" "admin" {
     RSS_BASE_URL   = { value = "https://admin.paperround.app" }
     # The reader's URL, for the links admin invite create prints.
     RSS_APP_URL = { value = "https://paperround.app" }
+    # rss's address on the private network, whose /healthcheck the admin's
+    # pinger checks every minute.
+    RSS_APP_INTERNAL_URL = { value = var.app_internal_url }
   })
 
   lifecycle {

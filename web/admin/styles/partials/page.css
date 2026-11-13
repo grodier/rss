@@ -174,8 +174,9 @@
     font-weight: 650;
   }
 
-  /* Space above a subheading that follows content, not the heading. */
-  .admin-section h3.sub:not(h2 + h3) {
+  /* Space above a subheading that follows content: not one that starts its
+     container (a column) or follows the section's heading. */
+  .admin-section h3.sub:not(:first-child, h2 + h3) {
     margin-block-start: 1.25rem;
   }
 

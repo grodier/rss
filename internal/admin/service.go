@@ -107,7 +107,8 @@ func (s *Server) serviceHandler(w http.ResponseWriter, r *http.Request) {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		incidents, err := s.services.Availability.Incidents(ctx, now.Add(-period.Span), maxIncidents)
+		// One more than shown, to know whether any were left out.
+		incidents, err := s.services.Availability.Incidents(ctx, now.Add(-period.Span), maxIncidents+1)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
@@ -119,8 +120,8 @@ func (s *Server) serviceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		page.HasChecks = uptime.Quarter.Checks > 0
 		page.Uptime = uptimeTiles(uptime)
-		page.Incidents = incidentRows(incidents, now)
-		page.MoreIncidents = len(incidents) == maxIncidents
+		page.MoreIncidents = len(incidents) > maxIncidents
+		page.Incidents = incidentRows(incidents[:min(len(incidents), maxIncidents)], now)
 		if err == nil {
 			page.Version = version(latest)
 		}
@@ -240,19 +241,24 @@ func version(c rss.AvailabilityCheck) *versionInfo {
 // instance, and connections are summed, since the instances share the
 // database's. Each step's point is then the highest of its minutes, so a
 // spike isn't averaged away, except for connection waits, a rate: the
-// step's waits over its minutes with samples. A step with no samples is a
-// gap. rows are oldest first, as MetricsRepository.ListRuntime returns
+// step's waits over its minutes that measured them. A step with no samples
+// is a gap. rows are oldest first, as MetricsRepository.ListRuntime returns
 // them.
 func runtimeCharts(rows []metrics.RuntimeRow, from, to time.Time, step time.Duration) []chart.LineChart {
 	// One minute's values across instances.
 	type minute struct {
 		heap, total, goroutines, gc float64 // the highest instance's
 		open, inUse, waits          float64 // summed
+		waited                      bool    // an instance measured its waits
 	}
 	minutes := map[time.Time]*minute{}
-	// The previous sample's cumulative wait count per instance: waits are
-	// the increase since it.
-	lastWaits := map[string]int64{}
+	// Each instance's previous sample: waits are the cumulative count's
+	// increase since it.
+	type sample struct {
+		t     time.Time
+		count int64
+	}
+	last := map[string]sample{}
 	for _, r := range rows {
 		t := r.PeriodStart.UTC()
 		m := minutes[t]
@@ -267,19 +273,24 @@ func runtimeCharts(rows []metrics.RuntimeRow, from, to time.Time, step time.Dura
 		m.open += float64(r.DBOpen)
 		m.inUse += float64(r.DBInUse)
 		// An instance's first sample has nothing to compare with, and a
-		// count that went down is a restarted process's: neither adds.
-		if last, ok := lastWaits[r.Instance]; ok && r.DBWaitCount >= last {
-			m.waits += float64(r.DBWaitCount - last)
+		// count that went down is a restarted process's: neither measures
+		// waits. An increase over missing samples is spread over the minutes
+		// it covers, so the gap's last minute doesn't take it all.
+		if prev, ok := last[r.Instance]; ok && r.DBWaitCount >= prev.count {
+			gap := max(1, int(t.Sub(prev.t)/time.Minute))
+			m.waits += float64(r.DBWaitCount-prev.count) / float64(gap)
+			m.waited = true
 		}
-		lastWaits[r.Instance] = r.DBWaitCount
+		last[r.Instance] = sample{t, r.DBWaitCount}
 	}
 
 	// Each step's values: index 0 heap, 1 total, 2 goroutines, 3 gc, 4
-	// open, 5 in use, 6 waits per minute; samples counts its minutes.
+	// open, 5 in use, 6 waits per minute; samples counts its minutes, and
+	// waited those that measured waits.
 	const n = 7
 	type stepValues struct {
-		v       [n]float64
-		samples int
+		v               [n]float64
+		samples, waited int
 	}
 	start := from.Truncate(step)
 	var steps []stepValues
@@ -296,7 +307,10 @@ func runtimeCharts(rows []metrics.RuntimeRow, from, to time.Time, step time.Dura
 		for j, x := range []float64{m.heap, m.total, m.goroutines, m.gc, m.open, m.inUse} {
 			s.v[j] = max(s.v[j], x)
 		}
-		s.v[6] += m.waits
+		if m.waited {
+			s.v[6] += m.waits
+			s.waited++
+		}
 	}
 
 	var series [n][]chart.Point
@@ -305,9 +319,11 @@ func runtimeCharts(rows []metrics.RuntimeRow, from, to time.Time, step time.Dura
 		for j := range s.v {
 			v := math.NaN()
 			switch {
-			case s.samples == 0:
 			case j == 6:
-				v = s.v[j] / float64(s.samples)
+				if s.waited > 0 {
+					v = s.v[j] / float64(s.waited)
+				}
+			case s.samples == 0:
 			default:
 				v = s.v[j]
 			}

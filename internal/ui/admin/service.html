@@ -25,7 +25,7 @@
       <section class="admin-section" aria-labelledby="availability">
         <h2 id="availability">Availability</h2>
         {{if not .Pinging}}
-        <p class="missing">Not configured: set -app-internal-url (RSS_APP_INTERNAL_URL) to check www every minute.</p>
+        {{template "not-pinging"}}
         {{else if not .HasChecks}}
         <p class="missing">No checks yet: the admin checks www every minute.</p>
         {{else}}
@@ -83,7 +83,7 @@
       <section class="admin-section" aria-labelledby="version">
         <h2 id="version">Version</h2>
         {{if not .Pinging}}
-        <p class="missing">Not configured: set -app-internal-url (RSS_APP_INTERNAL_URL) to check www every minute.</p>
+        {{template "not-pinging"}}
         {{else if .Version}}
         <p class="service-version">www is running {{with .Version}}{{if .Href}}<a href="{{.Href}}"><code>{{.Text}}</code></a>{{else}}<code>{{.Text}}</code>{{end}}, as of <time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z"}}">{{.At.UTC.Format "2006-01-02 15:04"}} UTC</time>{{end}}.</p>
         {{else}}
@@ -95,3 +95,7 @@
 </body>
 
 </html>
+
+{{/* not-pinging says how to turn on the pinger, in each section that needs
+     it. */}}
+{{define "not-pinging"}}<p class="missing">Not configured: set -app-internal-url (RSS_APP_INTERNAL_URL) to check www every minute.</p>{{end}}

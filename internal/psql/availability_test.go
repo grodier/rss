@@ -187,14 +187,27 @@ func TestAvailabilityIncidents(t *testing.T) {
 			want: []rss.Incident{{StartedAt: at(6), LastFailedAt: at(8), Checks: 2, Statuses: []string{"error"}}},
 		},
 		{
+			// One under way at since keeps its real start and checks.
 			name: "since in the middle of one", since: at(2), limit: 50,
 			want: []rss.Incident{
 				{StartedAt: at(6), LastFailedAt: at(8), Checks: 2, Statuses: []string{"error"}},
 				{StartedAt: at(4), LastFailedAt: at(4), EndedAt: at(5), Checks: 1, Statuses: []string{"degraded"}},
-				{StartedAt: at(2), LastFailedAt: at(2), EndedAt: at(3), Checks: 1, Statuses: []string{"error"}},
+				{StartedAt: at(1), LastFailedAt: at(2), EndedAt: at(3), Checks: 2, Statuses: []string{"error", "timeout"}},
 			},
 		},
-		{name: "none since", since: at(9), limit: 50},
+		{
+			// Ended before since: not in the period.
+			name: "since after one ended", since: at(3), limit: 50,
+			want: []rss.Incident{
+				{StartedAt: at(6), LastFailedAt: at(8), Checks: 2, Statuses: []string{"error"}},
+				{StartedAt: at(4), LastFailedAt: at(4), EndedAt: at(5), Checks: 1, Statuses: []string{"degraded"}},
+			},
+		},
+		{
+			// No ok check after it: still under way at since.
+			name: "ongoing at since", since: at(9), limit: 50,
+			want: []rss.Incident{{StartedAt: at(6), LastFailedAt: at(8), Checks: 2, Statuses: []string{"error"}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

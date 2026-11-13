@@ -53,12 +53,14 @@ func (r *AvailabilityRepository) Uptime(ctx context.Context, now time.Time) (rss
 }
 
 // Incidents returns the incidents with a failed check since since, newest
-// first, at most limit. One that started before since starts at its first
-// failed check after since.
+// first, at most limit, each from its first failed check, even one before
+// since.
 func (r *AvailabilityRepository) Incidents(ctx context.Context, since time.Time, limit int) ([]rss.Incident, error) {
 	// Gaps and islands: each ok check starts a new span, so a span's failed
 	// checks are one incident, ended by the next ok check. Missing minutes
-	// start nothing, so they don't split one.
+	// start nothing, so they don't split one. Reading from the last ok check
+	// at or before since gives an incident under way at since its real
+	// start, and leaves out one that ended by then.
 	rows, err := r.DB.QueryContext(ctx, `SELECT min(checked_at), max(checked_at), min(next_ok), count(*),
 		    array_agg(DISTINCT status ORDER BY status)
 		FROM (
@@ -67,7 +69,8 @@ func (r *AvailabilityRepository) Incidents(ctx context.Context, since time.Time,
 		        min(checked_at) FILTER (WHERE ok)
 		            OVER (ORDER BY checked_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS next_ok
 		    FROM availability_checks
-		    WHERE checked_at >= $1
+		    WHERE checked_at >= coalesce(
+		        (SELECT max(checked_at) FROM availability_checks WHERE ok AND checked_at <= $1), $1)
 		) c
 		WHERE NOT ok
 		GROUP BY span

@@ -184,13 +184,26 @@ func TestServicePageNoIncidents(t *testing.T) {
 		t.Error("page lacks the no-incidents line")
 	}
 
-	a.incidents = make([]rss.Incident, maxIncidents)
-	for i := range a.incidents {
-		a.incidents[i] = rss.Incident{StartedAt: testNow.Add(-time.Duration(i+1) * time.Hour), EndedAt: testNow.Add(-time.Duration(i+1)*time.Hour + time.Minute), Checks: 1, Statuses: []string{"error"}}
+	// The page asks for one more than it shows, to know if any are left out.
+	incidents := func(n int) []rss.Incident {
+		out := make([]rss.Incident, n)
+		for i := range out {
+			out[i] = rss.Incident{StartedAt: testNow.Add(-time.Duration(i+1) * time.Hour), EndedAt: testNow.Add(-time.Duration(i+1)*time.Hour + time.Minute), Checks: 1, Statuses: []string{"error"}}
+		}
+		return out
 	}
-	body = serviceServer(t, a, sampleRuntime(), true).get(t, "/service").Body.String()
-	if !strings.Contains(body, "Showing the 50 most recent.") {
-		t.Error("page with 50 incidents lacks its note")
+	for _, tt := range []struct {
+		n, rows int
+		note    bool
+	}{{maxIncidents, maxIncidents, false}, {maxIncidents + 1, maxIncidents, true}} {
+		a.incidents = incidents(tt.n)
+		body = serviceServer(t, a, sampleRuntime(), true).get(t, "/service").Body.String()
+		if got := strings.Count(body, "<td class=\"num\">1 min</td>"); got != tt.rows {
+			t.Errorf("%d incidents: %d rows, want %d", tt.n, got, tt.rows)
+		}
+		if got := strings.Contains(body, "Showing the 50 most recent."); got != tt.note {
+			t.Errorf("%d incidents: note shown %v, want %v", tt.n, got, tt.note)
+		}
 	}
 }
 
@@ -221,8 +234,8 @@ func TestServicePagePeriods(t *testing.T) {
 			if want := `<a href="` + href + `" aria-current="page">` + tt.current + `</a>`; !strings.Contains(body, want) {
 				t.Errorf("page lacks %q", want)
 			}
-			if !a.since.Equal(tt.since) || a.limit != maxIncidents {
-				t.Errorf("incidents since %v, limit %d; want %v, %d", a.since, a.limit, tt.since, maxIncidents)
+			if !a.since.Equal(tt.since) || a.limit != maxIncidents+1 {
+				t.Errorf("incidents since %v, limit %d; want %v, %d", a.since, a.limit, tt.since, maxIncidents+1)
 			}
 			if !rt.from.Equal(tt.from) || !rt.to.Equal(testNow) {
 				t.Errorf("runtime from %v to %v, want %v to %v", rt.from, rt.to, tt.from, testNow)
@@ -273,7 +286,8 @@ func TestRuntimeCharts(t *testing.T) {
 		// Step 2 (12:10–12:20) has no samples: a gap.
 		// Step 3 (12:20–12:30): a restarted (counter down, no waits).
 		{PeriodStart: m(20), Instance: "a", HeapBytes: mb, TotalBytes: mb, Goroutines: 1, DBOpen: 1, DBWaitCount: 2},
-		// and a new instance's first sample (no waits), then b waits 4.
+		// and a new instance's first sample (no waits), then b's 4 more
+		// since 12:00, 22 minutes back, spread over them.
 		{PeriodStart: m(21), Instance: "c", HeapBytes: mb, TotalBytes: mb, Goroutines: 1, DBOpen: 1, DBWaitCount: 50},
 		{PeriodStart: m(22), Instance: "b", HeapBytes: mb, TotalBytes: mb, Goroutines: 1, DBOpen: 1, DBWaitCount: 11},
 	}
@@ -295,9 +309,11 @@ func TestRuntimeCharts(t *testing.T) {
 		"Memory/Total":                {60, gap, 1},
 		"Goroutines/Goroutines":       {9, gap, 1},
 		"GC pause p99/p99":            {3, gap, 0},
-		"Database connections/Open":   {6, gap, 1},       // 2 + 4 at 12:00
-		"Database connections/In use": {3, gap, 0},       // 1 + 2 = 3 at 12:00, 3 at 12:01
-		"Connection waits/Waits":      {3, gap, 4.0 / 3}, // 6 over 2 minutes; 4 over 3
+		"Database connections/Open":   {6, gap, 1}, // 2 + 4 at 12:00
+		"Database connections/In use": {3, gap, 0}, // 1 + 2 = 3 at 12:00, 3 at 12:01
+		// Only the minutes that measured waits count: 12:01's 6, and 12:22's
+		// 4 over 22 minutes.
+		"Connection waits/Waits": {6, gap, 4.0 / 22},
 	}
 	for _, c := range charts {
 		for _, s := range c.Series {

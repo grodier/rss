@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-	"unicode/utf8"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 )
 
 // maxErrorLen caps the error messages stored by LookupRepository.Fail,
@@ -106,7 +106,7 @@ func (r *LookupRepository) Fail(ctx context.Context, id, msg string) error {
 	stmt := `UPDATE lookups SET status = 'failed', error = $2, finished_at = now()
 		WHERE id = $1`
 
-	return execOne(ctx, r.DB, stmt, id, truncateUTF8(msg, maxErrorLen))
+	return execOne(ctx, r.DB, stmt, id, textcut.Bytes(msg, maxErrorLen))
 }
 
 // ResetStale puts running lookups started more than olderThan ago back to
@@ -161,16 +161,4 @@ func scanLookup(row *sql.Row) (rss.Lookup, error) {
 	l.StartedAt = startedAt.Time
 	l.FinishedAt = finishedAt.Time
 	return l, nil
-}
-
-// truncateUTF8 shortens s to at most n bytes without splitting a rune, so the
-// result stays valid UTF-8 for Postgres.
-func truncateUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
 }

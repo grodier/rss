@@ -81,8 +81,8 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, and the web performance page | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch` and `enrich` for the debug inspectors; `psql` for interface checks only |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password` |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password`, `textcut` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
@@ -91,13 +91,14 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/siteicon` | Site icon workers | `discovery`, `fetch`, `rss` |
 | `internal/enrich` | Article enrichment workers | `discovery`, `fetch`, `ingest`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
-| `internal/discovery` | Normalize user input, find a site's feeds, read pages' tags | `fetch`, `feedparse` |
+| `internal/discovery` | Normalize user input, find a site's feeds, read pages' tags | `fetch`, `feedparse`, `textcut` |
 | `internal/feedparse` | Recognize and parse RSS, Atom and JSON Feed (via gofeed) | — |
 | `internal/fetch` | The only outbound HTTP client for user-influenced URLs | — |
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
 | `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`); the real-user thresholds (`RUMThresholds`) and percentiles from histogram buckets (`Percentile`) | `rss` |
 | `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
+| `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 (`Bytes`) | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |
 | `internal/rss` | Domain types (`Feed`, `Article`, `Site`, …) and sentinel errors | — |
 | `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |

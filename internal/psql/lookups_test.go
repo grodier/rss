@@ -383,6 +383,18 @@ func TestLookupRepositoryFinishAndFail(t *testing.T) {
 		}
 	})
 
+	// Postgres refuses invalid UTF-8 in text, so a message carrying a remote
+	// server's stray byte would fail the write that records the failure.
+	t.Run("Fail stores a message with invalid UTF-8", func(t *testing.T) {
+		l := newRunning(t)
+		if err := repo.Fail(t.Context(), l.ID, "fetch: bad \xff byte"); err != nil {
+			t.Fatalf("Fail: %v", err)
+		}
+		if got := getLookup(t, repo, l.ID); got.Error != "fetch: bad � byte" {
+			t.Errorf("error = %q; want the invalid byte replaced", got.Error)
+		}
+	})
+
 	t.Run("missing ID returns ErrNoRecord", func(t *testing.T) {
 		if err := repo.Finish(t.Context(), missingID, ""); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("Finish err = %v; want ErrNoRecord", err)

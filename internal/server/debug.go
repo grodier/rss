@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/discovery"
@@ -21,6 +20,7 @@ import (
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 	"github.com/grodier/rss/internal/validator"
 )
 
@@ -457,8 +457,8 @@ func (s *Server) inspectFeed(ctx context.Context, view *feedInspectView, resp *f
 			ExternalID: id,
 			Title:      it.Item.Title,
 			Fields:     parsedItemFields(it.Item),
-			Raw:        cutText(it.Raw, inspectItemMax),
-			Gofeed:     cutText(it.Gofeed, inspectItemMax),
+			Raw:        textcut.Bytes(it.Raw, inspectItemMax),
+			Gofeed:     textcut.Bytes(it.Gofeed, inspectItemMax),
 		}
 		a, isKept := kept[id]
 		switch {
@@ -521,7 +521,7 @@ func newInspectResponse(resp *fetch.Response, elapsed time.Duration) *inspectRes
 		Size:        debugBytes(len(resp.Body)),
 		ContentType: ct,
 		Sniff:       "not a feed",
-		Body:        cutText(string(resp.Body), inspectBodyMax),
+		Body:        textcut.Bytes(string(resp.Body), inspectBodyMax),
 	}
 	if resp.URL != nil {
 		out.URL = resp.URL.String()
@@ -543,19 +543,6 @@ func newInspectResponse(resp *fetch.Response, elapsed time.Duration) *inspectRes
 	return out
 }
 
-// cutText returns s cut at max bytes on a UTF-8 boundary, with invalid
-// UTF-8 replaced.
-func cutText(s string, max int) string {
-	if len(s) > max {
-		i := max
-		for i > 0 && !utf8.RuneStart(s[i]) {
-			i--
-		}
-		s = s[:i]
-	}
-	return strings.ToValidUTF8(s, "\uFFFD")
-}
-
 // parsedItemFields are the fields of a parsed item, as feedparse.Item names
 // them.
 func parsedItemFields(it feedparse.Item) []debugField {
@@ -570,8 +557,8 @@ func parsedItemFields(it feedparse.Item) []debugField {
 		{Name: "MediaType", Value: it.MediaType},
 		{Name: "Authors", Value: debugList(it.Authors)},
 		{Name: "Title", Value: it.Title},
-		{Name: "Summary", Value: cutText(it.Summary, inspectItemMax), Note: debugBytes(len(it.Summary))},
-		{Name: "Content", Value: cutText(it.Content, inspectItemMax), Note: debugBytes(len(it.Content))},
+		{Name: "Summary", Value: textcut.Bytes(it.Summary, inspectItemMax), Note: debugBytes(len(it.Summary))},
+		{Name: "Content", Value: textcut.Bytes(it.Content, inspectItemMax), Note: debugBytes(len(it.Content))},
 		{Name: "Published", Value: published},
 		{Name: "PublishedDateOnly", Value: strconv.FormatBool(it.PublishedDateOnly)},
 	}
@@ -808,8 +795,8 @@ func newArticleDebugView(a rss.Article, d rss.ArticleDebug, body template.HTML, 
 			{Name: "sanitized body", Value: fmt.Sprintf("%d bytes", len(body))},
 			{Name: "lead image", Value: lead},
 		},
-		RawSummary:  cutText(a.Summary, articleRawMax),
-		RawContent:  cutText(a.Content, articleRawMax),
+		RawSummary:  textcut.Bytes(a.Summary, articleRawMax),
+		RawContent:  textcut.Bytes(a.Content, articleRawMax),
 		SummarySize: debugBytes(len(a.Summary)),
 		ContentSize: debugBytes(len(a.Content)),
 	}

@@ -180,7 +180,7 @@ func TestMetricsDeleteBefore(t *testing.T) {
 	if err := repo.RollUp(ctx, ago(80*day)); err != nil {
 		t.Fatalf("RollUp: %v", err)
 	}
-	for _, d := range []time.Duration{8 * day, 6 * day} {
+	for _, d := range []time.Duration{31 * day, 29 * day} {
 		if err := repo.SaveRuntime(ctx, metrics.RuntimeRow{PeriodStart: ago(d), Instance: "web-1", HeapBytes: 1}); err != nil {
 			t.Fatalf("SaveRuntime: %v", err)
 		}
@@ -230,8 +230,8 @@ func TestMetricsDeleteBefore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRuntime: %v", err)
 	}
-	if len(runtime) != 1 || !runtime[0].PeriodStart.Equal(ago(6*day)) {
-		t.Errorf("runtime rows = %+v, want only the one from 6 days ago", runtime)
+	if len(runtime) != 1 || !runtime[0].PeriodStart.Equal(ago(29*day)) {
+		t.Errorf("runtime rows = %+v, want only the one from 29 days ago", runtime)
 	}
 }
 

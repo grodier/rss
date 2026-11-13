@@ -14,7 +14,7 @@ const (
 	RollUpAfter      = 2 * time.Hour
 	MinuteRetention  = 7 * 24 * time.Hour
 	HourRetention    = 90 * 24 * time.Hour
-	RuntimeRetention = 7 * 24 * time.Hour
+	RuntimeRetention = 30 * 24 * time.Hour
 	// RUMRollUpAfter leaves a day's last beacons time to be stored.
 	RUMRollUpAfter   = time.Hour
 	RUMViewRetention = 30 * 24 * time.Hour

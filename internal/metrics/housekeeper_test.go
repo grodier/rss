@@ -70,8 +70,8 @@ func TestTidy(t *testing.T) {
 	if want := now.Add(-2 * time.Hour); !store.rolledUpBefore.Equal(want) {
 		t.Errorf("RollUp before %v, want %v", store.rolledUpBefore, want)
 	}
-	if !store.minutes.Equal(now.Add(-7*day)) || !store.hours.Equal(now.Add(-90*day)) || !store.runtimeTo.Equal(now.Add(-7*day)) {
-		t.Errorf("DeleteBefore(%v, %v, %v), want 7, 90 and 7 days ago", store.minutes, store.hours, store.runtimeTo)
+	if !store.minutes.Equal(now.Add(-7*day)) || !store.hours.Equal(now.Add(-90*day)) || !store.runtimeTo.Equal(now.Add(-30*day)) {
+		t.Errorf("DeleteBefore(%v, %v, %v), want 7, 90 and 30 days ago", store.minutes, store.hours, store.runtimeTo)
 	}
 	if trimmer.keep != 1000 {
 		t.Errorf("Trim(%d), want Trim(1000)", trimmer.keep)

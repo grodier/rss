@@ -95,8 +95,8 @@
     font-weight: 600;
   }
 
-  /* A queue whose oldest job has waited too long. */
-  .status-behind {
+  /* A status that needs attention: a queue behind, an incident ongoing. */
+  .status-danger {
     background: var(--danger-bg);
     color: var(--on-danger-bg);
   }

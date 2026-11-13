@@ -1,59 +1,8 @@
-/* The web performance page: its filters, the Core Web Vitals' rows (a
-   summary beside a chart), the ratings' colors and shapes, and the
-   breakdowns' tables. A rating is never color alone: each has a shape
-   (rating.html) and its words. */
+/* The web performance page: the Core Web Vitals' rows (a summary beside a
+   chart), the ratings' colors and shapes, and the breakdowns' tables. A
+   rating is never color alone: each has a shape (rating.html) and its
+   words. */
 @layer components {
-  /* A row of filters, each a label over its choices as joined links. */
-  .segments {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
-    padding: 0.875rem 1.5rem;
-    border-block-end: 1px solid var(--border);
-  }
-
-  .segmented p {
-    margin-block-end: 0.25rem;
-    color: var(--text-2);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .segmented ul {
-    display: flex;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    font-size: 0.8125rem;
-  }
-
-  .segmented li + li {
-    border-inline-start: 1px solid var(--border);
-  }
-
-  .segmented a {
-    display: block;
-    padding: 0.3125rem 0.6875rem;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    text-decoration: none;
-  }
-
-  .segmented a:hover {
-    background: var(--surface);
-  }
-
-  .segmented a[aria-current] {
-    background: var(--text);
-    color: var(--bg);
-    font-weight: 650;
-  }
-
-  .segmented a:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-  }
-
   /* Ratings: a class sets the color its text and shape use. */
   .r-good {
     --rating: var(--good);
@@ -204,17 +153,6 @@
     }
   }
 
-  /* Subheadings within a section. */
-  .admin-section h3.sub {
-    margin-block-end: 0.375rem;
-    font-size: 0.8125rem;
-    font-weight: 650;
-  }
-
-  .admin-section h3.sub:not(:first-of-type) {
-    margin-block-start: 1.25rem;
-  }
-
   /* The breakdowns and routes share their columns' widths, so they line
      up down the page; on phones they size to their content and scroll. */
   .data.breakdown {
@@ -274,12 +212,6 @@
     border-radius: 999px;
     color: var(--text-3);
     font-size: 0.6875rem;
-  }
-
-  /* What a section can't show for the period, in place of its table. */
-  .missing {
-    color: var(--text-2);
-    font-size: 0.8125rem;
   }
 
   .more {

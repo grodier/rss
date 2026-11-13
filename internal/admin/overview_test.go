@@ -157,16 +157,16 @@ func TestOverviewQueues(t *testing.T) {
 		`<h2 id="queues">Queues</h2>`,
 		"<td>Lookups</td>\n                <td class=\"num\">2</td>\n                <td>under 1 min</td>",
 		"<td>Imports</td>\n                <td class=\"num\">0</td>\n                <td>—</td>",
-		"<td>Refresh</td>\n                <td class=\"num\">1,284</td>\n                <td>15 min</td>\n                <td><span class=\"status status-behind\">Behind</span></td>",
+		"<td>Refresh</td>\n                <td class=\"num\">1,284</td>\n                <td>15 min</td>\n                <td><span class=\"status status-danger\">Behind</span></td>",
 		"<td>Icons</td>\n                <td class=\"num\">7</td>\n                <td>3 min</td>",
-		"<td>Enrichment</td>\n                <td class=\"num\">40</td>\n                <td>5 h</td>\n                <td><span class=\"status status-behind\">Behind</span></td>",
+		"<td>Enrichment</td>\n                <td class=\"num\">40</td>\n                <td>5 h</td>\n                <td><span class=\"status status-danger\">Behind</span></td>",
 		"<td>Email</td>\n                <td class=\"num\">1</td>\n                <td>15 min</td>\n                <td><span class=\"status\">OK</span></td>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET / lacks %q", want)
 		}
 	}
-	if n := strings.Count(body, "status-behind"); n != 2 {
+	if n := strings.Count(body, "status-danger"); n != 2 {
 		t.Errorf("GET / marks %d queues behind, want 2 (Refresh and Enrichment)", n)
 	}
 }
@@ -180,7 +180,7 @@ func TestOverviewQueuesEmpty(t *testing.T) {
 	if n := strings.Count(body, "<td>—</td>"); n != 6 {
 		t.Errorf("GET / shows %d queues with no wait, want 6", n)
 	}
-	if strings.Contains(body, "status-behind") {
+	if strings.Contains(body, "status-danger") {
 		t.Error("GET / marks an empty queue behind")
 	}
 }

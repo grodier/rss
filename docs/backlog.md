@@ -497,7 +497,7 @@ Admin and observability:
   *Signal:* the service page takes over half a second, or `availability_checks` holds more than one check a minute (several pingers).
   *Fix:* an hourly rollup of checks and ok checks for the uptime windows; incidents stay on the raw rows, which only failed runs need.
 - [ ] **The service page steps runtime samples in Go** (#616).
-  Its runtime charts read every `runtime_metrics` row in the period, one per instance per minute, and step them in Go: at 30 days (and 90, which shows the 30 kept) about 43,000 rows per instance, more while instances overlap during deploys.
+  Its runtime charts read every `runtime_metrics` row in the period, one per instance per minute, and step them in Go: at 30 days about 43,000 rows per instance, more while instances overlap during deploys.
   *Signal:* the service page at 30 days takes over a second, or `www` runs several instances for good.
   *Fix:* step in SQL (`date_bin` with `max` per step) and read only the points.
 - [ ] **The admin's overview counts big tables** (#575, #610).

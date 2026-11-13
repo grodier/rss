@@ -210,18 +210,17 @@ func TestServicePageNoIncidents(t *testing.T) {
 func TestServicePagePeriods(t *testing.T) {
 	day := 24 * time.Hour
 	tests := []struct {
-		query           string
-		current         string
-		since, from     time.Time
-		note            bool
-		noIncidentsText string
+		query       string
+		current     string
+		since, from time.Time // from is zero when runtime isn't read
+		kept        bool
 	}{
-		{"", "24h", testNow.Add(-day), testNow.Add(-day), false, ""},
-		{"?period=bogus", "24h", testNow.Add(-day), testNow.Add(-day), false, ""},
-		{"?period=7d", "7d", testNow.Add(-7 * day), testNow.Add(-7 * day), false, ""},
-		{"?period=30d", "30d", testNow.Add(-30 * day), testNow.Add(-30 * day).Truncate(4 * time.Hour), false, ""},
-		// Runtime metrics are kept 30 days: 90 asks for those, and says so.
-		{"?period=90d", "90d", testNow.Add(-90 * day), testNow.Add(-30 * day).Truncate(4 * time.Hour), true, ""},
+		{"", "24h", testNow.Add(-day), testNow.Add(-day), false},
+		{"?period=bogus", "24h", testNow.Add(-day), testNow.Add(-day), false},
+		{"?period=7d", "7d", testNow.Add(-7 * day), testNow.Add(-7 * day), false},
+		{"?period=30d", "30d", testNow.Add(-30 * day), testNow.Add(-30 * day).Truncate(4 * time.Hour), false},
+		// Runtime metrics are kept 30 days: 90 reads none, and says why.
+		{"?period=90d", "90d", testNow.Add(-90 * day), time.Time{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.current+tt.query, func(t *testing.T) {
@@ -237,11 +236,17 @@ func TestServicePagePeriods(t *testing.T) {
 			if !a.since.Equal(tt.since) || a.limit != maxIncidents+1 {
 				t.Errorf("incidents since %v, limit %d; want %v, %d", a.since, a.limit, tt.since, maxIncidents+1)
 			}
-			if !rt.from.Equal(tt.from) || !rt.to.Equal(testNow) {
+			if tt.from.IsZero() {
+				if !rt.from.IsZero() {
+					t.Errorf("runtime read from %v, want not read", rt.from)
+				}
+			} else if !rt.from.Equal(tt.from) || !rt.to.Equal(testNow) {
 				t.Errorf("runtime from %v to %v, want %v to %v", rt.from, rt.to, tt.from, testNow)
 			}
-			if got := strings.Contains(body, "Runtime metrics are kept for 30 days."); got != tt.note {
-				t.Errorf("kept-for-30-days line shown: %v, want %v", got, tt.note)
+			kept := strings.Contains(body, "Runtime metrics are kept for 30 days: choose 24h, 7d or 30d.")
+			charts := strings.Count(body, `<figure class="service-chart">`)
+			if kept != tt.kept || (kept && charts != 0) || (!kept && charts != 5) {
+				t.Errorf("kept line shown %v with %d charts; want shown %v, and 5 charts only without it", kept, charts, tt.kept)
 			}
 		})
 	}

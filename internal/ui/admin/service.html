@@ -65,8 +65,9 @@
 
       <section class="admin-section" aria-labelledby="runtime">
         <h2 id="runtime">Go runtime</h2>
-        {{with .RuntimeNote}}<p class="missing">{{.}}</p>{{end}}
-        {{if .Charts}}
+        {{if .RuntimeKept}}
+        <p class="missing">{{.RuntimeKept}}</p>
+        {{else if .Charts}}
         <div class="service-charts">
           {{range .Charts}}
           <figure class="service-chart">

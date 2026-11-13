@@ -56,10 +56,11 @@ type servicePage struct {
 	Incidents     []incidentRow
 	MoreIncidents bool // the list stopped at maxIncidents
 
-	// Charts are the runtime charts, nil with no samples in the period;
-	// RuntimeNote says when the period reaches past what's kept.
+	// Charts are the runtime charts, nil with no samples in the period.
+	// RuntimeKept, set when the period reaches past what's kept, says so in
+	// their place.
 	Charts      []chart.LineChart
-	RuntimeNote string
+	RuntimeKept string
 
 	Version *versionInfo // nil when no check has reported one
 }
@@ -128,24 +129,41 @@ func (s *Server) serviceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Runtime metrics are kept for metrics.RuntimeRetention: a longer
-	// period shows what's kept, and says so.
-	span := min(period.Span, metrics.RuntimeRetention)
+	// period says so instead of charts that would show less than it says,
+	// as the web performance page does past its raw views.
 	if period.Span > metrics.RuntimeRetention {
-		page.RuntimeNote = fmt.Sprintf("Runtime metrics are kept for %d days.", int(metrics.RuntimeRetention/(24*time.Hour)))
-	}
-	from := now.Add(-span).Truncate(period.Step)
-	rows, err := s.services.Runtime.ListRuntime(r.Context(), from, now)
-	if err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
-	}
-	if len(rows) > 0 {
-		page.Charts = runtimeCharts(rows, from, now, period.Step)
+		page.RuntimeKept = runtimeKept()
+	} else {
+		from := now.Add(-period.Span).Truncate(period.Step)
+		rows, err := s.services.Runtime.ListRuntime(r.Context(), from, now)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		if len(rows) > 0 {
+			page.Charts = runtimeCharts(rows, from, now, period.Step)
+		}
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "service.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// runtimeKept says how long runtime metrics are kept and which periods show
+// them: "Runtime metrics are kept for 30 days: choose 24h, 7d or 30d."
+func runtimeKept() string {
+	var keys []string
+	for _, p := range servicePeriods {
+		if p.Span <= metrics.RuntimeRetention {
+			keys = append(keys, p.Key)
+		}
+	}
+	choose := keys[len(keys)-1]
+	if len(keys) > 1 {
+		choose = strings.Join(keys[:len(keys)-1], ", ") + " or " + choose
+	}
+	return fmt.Sprintf("Runtime metrics are kept for %d days: choose %s.", int(metrics.RuntimeRetention/(24*time.Hour)), choose)
 }
 
 // uptimeTiles are u's four windows as a stat row.

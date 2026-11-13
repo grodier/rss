@@ -162,6 +162,8 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **The service page: one page, its runtime charts two to a row** (#616, approved at its design checkpoint, PR #622): Availability (a stat row of uptime over 24 hours, 7, 30 and 90 days over the incidents table), then Go runtime, then Version, on one page, with #576's Instances after Availability; the five runtime charts two to a row on desktop and one on phones, each under its title and unit.
   The period is the web performance page's row of links under the head, so the admin's pages filter the same way; a source that's not configured or empty is a one-line quiet message in its section, not an error box, and an ongoing incident is the status label in the danger tone.
   Rejected: one chart per row at every width (more precise, but about twice as long on desktop, and #576 adds charts); a tab per section (short tabs, but availability and the runtime are no longer seen together, which is the point of one service page).
+- **At 90 days the service page shows no runtime charts, only that they're kept 30 days and which periods show them** (#616, PR #622, changed after the checkpoint): charts of the 30 days kept under a 90-day period would show less than the period says, and the same as 30d; this is how the web performance page treats data its rollups don't keep.
+  Rejected: a period per section (two filter rows, and #576's sections would each need one); an hourly rollup of runtime metrics for 90 days (a migration and a rollup for trends that each deploy resets; its own issue if wanted).
 - **Ratings are never color alone** (#578): good, needs improvement and poor each have a shape (a circle, a square, a triangle) and their words, in the new `--good` and `--needs-improvement` tokens and `--danger`.
 - **The assessment stays at p75** (#578): "Passed" when LCP, INP and CLS are all good at p75, as Google assesses them, whatever percentile the page shows; a rating at p90 or p95 uses the same thresholds.
 - **p75, p90 and p95, not p99** (#578): at the app's traffic, p99 is a handful of views, so it would be noise; add it if traffic grows.
@@ -212,7 +214,7 @@ Planned in #583 with the admin, which is where it's read.
 - **The service page's inside view** (#616): uptime is the share of the pinger's checks that were ok, over the checks made (minutes with no check count neither way); an incident is a run of failed checks with no ok check between them, ended by the next ok check, and missing minutes don't end or split one.
 - **Runtime across `www`'s instances** (#616): memory, goroutines and GC pause take the highest instance at each minute, since the limits are per instance; database connections are summed, since the instances share the database's; each chart step then takes the highest of its minutes, so a spike isn't averaged away.
 - **Runtime metrics are kept 30 days, not 7** (#616): a slow leak builds over weeks, and 7 days may cover only one or two deploys to compare; about 43,000 small rows per instance.
-- **Availability checks are kept 90 days, and the service page shows them all** (#588, #616): a 90-day period shows the trend over months, over the same span as the hourly request metrics; at 90 days its runtime charts show the 30 days kept.
+- **Availability checks are kept 90 days, and the service page shows them all** (#588, #616): a 90-day period shows the trend over months, over the same span as the hourly request metrics.
 
 ## Feed discovery
 

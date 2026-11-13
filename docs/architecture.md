@@ -357,7 +357,7 @@ Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.F
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest` servers; `cmd/www` never sets it.
 
 Email goes over SMTP (`internal/mail`) to the configured provider, a fixed host from the configuration that no user can influence, so it doesn't go through `internal/fetch`.
-The admin's pinger requests `www`'s `/healthcheck` at `-app-internal-url`, also a fixed host from the configuration, with its own client: no environment proxy, no redirects, answers read up to 64 KiB.
+The admin's pinger requests `www`'s `/healthcheck` at `-app-internal-url`, also a fixed host from the configuration, with its own client: no environment proxy, a new connection per check, no redirects, answers read up to 64 KiB; `AvailabilityRepository.Record` keeps 100 bytes of the answer's status and version (`textcut.Bytes`).
 
 ## Security measures
 

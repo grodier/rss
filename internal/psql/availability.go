@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/textcut"
 )
 
 // AvailabilityRepository stores the admin's checks of www's /healthcheck
@@ -18,11 +19,15 @@ func NewAvailabilityRepository(db *sql.DB) *AvailabilityRepository {
 	return &AvailabilityRepository{DB: db}
 }
 
-// Record stores c.
+// MaxCheckText is the most bytes of a check's status and version that Record
+// keeps: the answer is www's, but a misconfigured URL could reach anything.
+const MaxCheckText = 100
+
+// Record stores c, with its status and version cut to MaxCheckText bytes.
 func (r *AvailabilityRepository) Record(ctx context.Context, c rss.AvailabilityCheck) error {
 	_, err := r.DB.ExecContext(ctx, `INSERT INTO availability_checks (checked_at, ok, status, latency_ms, version)
 		VALUES ($1, $2, $3, $4, $5)`,
-		c.CheckedAt, c.OK, c.Status, c.LatencyMs, c.Version)
+		c.CheckedAt, c.OK, textcut.Bytes(c.Status, MaxCheckText), c.LatencyMs, textcut.Bytes(c.Version, MaxCheckText))
 	return err
 }
 

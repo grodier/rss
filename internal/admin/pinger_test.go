@@ -114,24 +114,6 @@ func TestPingerCheck(t *testing.T) {
 			},
 			wantStatus: rss.CheckError,
 		},
-		{
-			name: "long status and version",
-			handler: func(t *testing.T) http.HandlerFunc {
-				return answer(t, 200, `{"status":"`+strings.Repeat("é", 80)+`","system_info":{"version":"`+strings.Repeat("v", 150)+`"}}`)
-			},
-			wantStatus:  strings.Repeat("é", 50),
-			wantVersion: strings.Repeat("v", maxCheckText),
-			wantLatency: true,
-		},
-		{
-			name: "NUL bytes",
-			handler: func(t *testing.T) http.HandlerFunc {
-				return answer(t, 200, `{"status":"degra\u0000ded","system_info":{"version":"v\u00001"}}`)
-			},
-			wantStatus:  "degraded",
-			wantVersion: "v1",
-			wantLatency: true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,9 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/grodier/rss/internal/rss"
 )
@@ -28,8 +26,6 @@ const (
 	pingStoreTimeout = 10 * time.Second
 	// maxHealthcheckBody caps the answer read; www's is under 200 bytes.
 	maxHealthcheckBody = 64 << 10
-	// maxCheckText caps the status and version kept from an answer.
-	maxCheckText = 100
 )
 
 // AvailabilityStore stores the pinger's checks; *psql.AvailabilityRepository
@@ -128,8 +124,8 @@ func (p *Pinger) Check(ctx context.Context) (rss.AvailabilityCheck, error) {
 
 	latency := float64(time.Since(start)) / float64(time.Millisecond)
 	c.LatencyMs = &latency
-	c.Status = cut(body.Status)
-	c.Version = cut(body.SystemInfo.Version)
+	c.Status = body.Status
+	c.Version = body.SystemInfo.Version
 	c.OK = body.Status == "available"
 	if !c.OK {
 		return c, fmt.Errorf("www answered %q", c.Status)
@@ -205,19 +201,4 @@ func (p *Pinger) logger() *slog.Logger {
 		return slog.New(slog.DiscardHandler)
 	}
 	return p.Logger
-}
-
-// cut drops NUL bytes from s, which Postgres text can't hold, and cuts it,
-// valid UTF-8 as JSON decodes it, to maxCheckText bytes without splitting a
-// character.
-func cut(s string) string {
-	s = strings.ReplaceAll(s, "\x00", "")
-	if len(s) <= maxCheckText {
-		return s
-	}
-	end := maxCheckText
-	for end > 0 && !utf8.RuneStart(s[end]) {
-		end--
-	}
-	return s[:end]
 }

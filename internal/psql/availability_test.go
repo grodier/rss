@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,22 @@ func TestAvailabilityRecord(t *testing.T) {
 	}
 	if got := availabilityChecks(t, db); !reflect.DeepEqual(got, want) {
 		t.Errorf("stored checks:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func TestAvailabilityRecordCutsText(t *testing.T) {
+	repo, db := newAvailabilityRepo(t)
+	at := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
+	c := rss.AvailabilityCheck{CheckedAt: at, Status: strings.Repeat("é", 80), Version: "v\xff" + strings.Repeat("v", 150)}
+	if err := repo.Record(context.Background(), c); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	got := availabilityChecks(t, db)[0]
+	if want := strings.Repeat("é", MaxCheckText/2); got.Status != want {
+		t.Errorf("status = %q, want %q", got.Status, want)
+	}
+	if want := "v\uFFFD" + strings.Repeat("v", MaxCheckText-4); got.Version != want {
+		t.Errorf("version = %q, want %q", got.Version, want)
 	}
 }
 

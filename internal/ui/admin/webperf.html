@@ -153,10 +153,3 @@
                 <tbody>{{$share := .Share}}{{range .Rows}}<tr><td>{{.Label}}</td><td class="num">{{if $share}}{{.Share}}{{else}}{{count .Views}}{{end}}</td></tr>{{end}}</tbody>
               </table>
             </div>{{end}}
-
-{{/* segmented is a filter's choices as a row of links, the current one
-     marked (dot: segmented's map). */}}
-{{define "segmented"}}<nav class="segmented" aria-labelledby="seg-{{lower .Label}}">
-          <p id="seg-{{lower .Label}}">{{.Label}}</p>
-          <ul role="list">{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>{{end}}</ul>
-        </nav>{{end}}

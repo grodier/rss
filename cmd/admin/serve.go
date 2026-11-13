@@ -73,6 +73,8 @@ func serve(cfg config, logger *slog.Logger) error {
 		AppURL:       cfg.appURL,
 		SupportEmail: cfg.supportEmail,
 		MailLimits:   cfg.mailLimits,
+
+		AppInternalURL: cfg.appInternalURL,
 	}, admin.Services{
 		Database: db,
 		Admins:   psql.NewAdminRepository(db),
@@ -82,6 +84,9 @@ func serve(cfg config, logger *slog.Logger) error {
 		Emails:   psql.NewEmailRepository(db),
 		Overview: psql.NewAdminOverviewRepository(db),
 		WebPerf:  psql.NewAdminWebPerfRepository(db),
+
+		Availability: psql.NewAvailabilityRepository(db),
+		Runtime:      psql.NewMetricsRepository(db),
 	}, sessions)
 	if err != nil {
 		return err

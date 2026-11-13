@@ -20,6 +20,7 @@ import (
 type statTile struct {
 	Label string
 	Value int
+	Text  string // shown in place of Value when set: "99.93%"
 	Note  string
 	Href  string
 }

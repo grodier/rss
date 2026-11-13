@@ -492,8 +492,12 @@ Admin and observability:
   With 300,000 views (`rum_views` caps at 500,000), on a 4-core laptop: 24h about 80 ms, 7d about 0.5 s, 30d about 2 s (1.1 s on one device); from `rum_daily`, 13m about 0.7 s with 180,000 daily rows.
   *Signal:* 7d, the default, takes over a second, or 30d over 5 s.
   *Fix:* finer buckets per hour (an `rum_hourly` rollup) for the breakdowns, keeping exact percentiles for the totals only.
+- [ ] **The service page counts 90 days of checks on every view** (#616).
+  `AvailabilityRepository.Uptime` counts the four windows in one pass over up to 90 days of `availability_checks` (about 130,000 rows, one a minute), and 90d's `Incidents` runs two window functions over the same rows, whatever is on screen.
+  *Signal:* the service page takes over half a second, or `availability_checks` holds more than one check a minute (several pingers).
+  *Fix:* an hourly rollup of checks and ok checks for the uptime windows; incidents stay on the raw rows, which only failed runs need.
 - [ ] **The service page steps runtime samples in Go** (#616).
-  Its runtime charts read every `runtime_metrics` row in the period, one per instance per minute, and step them in Go: at 30 days (and 90, which shows the 30 kept) about 43,000 rows per instance, more while instances overlap during deploys.
+  Its runtime charts read every `runtime_metrics` row in the period, one per instance per minute, and step them in Go: at 30 days about 43,000 rows per instance, more while instances overlap during deploys.
   *Signal:* the service page at 30 days takes over a second, or `www` runs several instances for good.
   *Fix:* step in SQL (`date_bin` with `max` per step) and read only the points.
 - [ ] **The admin's overview counts big tables** (#575, #610).

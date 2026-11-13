@@ -46,7 +46,7 @@
                 <td>{{.Label}}</td>
                 <td class="num">{{count .Jobs}}</td>
                 <td>{{.Wait}}</td>
-                <td>{{if .Behind}}<span class="status status-behind">Behind</span>{{else}}<span class="status">OK</span>{{end}}</td>
+                <td>{{if .Behind}}<span class="status status-danger">Behind</span>{{else}}<span class="status">OK</span>{{end}}</td>
               </tr>
               {{end}}
             </tbody>

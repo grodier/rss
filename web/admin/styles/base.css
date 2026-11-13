@@ -1,9 +1,11 @@
 /* Every admin page's stylesheet: the shared partials (the reader's layers,
    reset, fonts, tokens and base styles), then the admin's own, in this
    order: shell (the sidebar and the phone menu), page (heads, sections,
-   empty states, filters, stat rows), table, chart, waitlist (the waitlist and invites) and webperf (web performance). Vite inlines each
-   @import when it builds, so it's one file. A later admin page group's sheet
-   imports the partials its pages need in the same order. */
+   empty states, filters, stat rows), table, chart, waitlist (the waitlist
+   and invites), webperf (web performance) and service (the service page).
+   Vite inlines each @import when it builds, so it's one file. A later admin
+   page group's sheet imports the partials its pages need in the same
+   order. */
 @import "../../shared/styles/layers.css";
 @import "../../shared/styles/reset.css";
 @import "../../shared/styles/fonts.css";
@@ -15,3 +17,4 @@
 @import "./partials/chart.css";
 @import "./partials/waitlist.css";
 @import "./partials/webperf.css";
+@import "./partials/service.css";

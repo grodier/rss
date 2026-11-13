@@ -641,6 +641,24 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 **Tests:** `internal/admin/webperf_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket); `internal/metrics/percentile_test.go`.
 
+### Service health
+
+`GET /service` (`serviceHandler`) shows `www` as a whole: its availability as the admin's pinger sees it from inside Render's network (see "Observability" below), its Go runtime and its version.
+
+1. **Period.** A row of links (the `segmented` partial), 24h by default, 7d, 30d or 90d, for the incidents and the runtime charts; a value the page doesn't offer is the default.
+2. **Availability.** Only when the pinger runs (`Config.AppInternalURL`, from `-app-internal-url`); otherwise the section says how to turn it on and nothing is read.
+   `AvailabilityRepository.Uptime` counts the checks, and the ok ones, over 24 hours, 7, 30 and 90 days, always all four (`uptimeTiles`, rounded down so one failed check never shows as 100%), and `Incidents` returns the runs of failed checks in the period, newest first, at most 50: each ok check starts a new run, so a missing minute doesn't split one, a run with no ok check after it is ongoing, and one under way when the period starts keeps its real start.
+3. **Go runtime.** `MetricsRepository.ListRuntime` reads the period's `runtime_metrics` rows (90d, past the 30 days kept, `metrics.RuntimeRetention`, says to choose a shorter period instead, as the web performance page does past its raw views), and `runtimeCharts` steps them into five charts: at each minute memory, goroutines and GC pause take the highest instance and connections the sum, then each step takes its highest minute; connection waits are the increase of each instance's counter, spread over the minutes since its previous sample, per minute that measured them; a step with no samples is a gap.
+4. **Version.** The newest check that reported one (`LatestVersion`); a commit SHA is shortened and linked to the commit.
+
+**Start at:**
+
+1. `internal/admin/service.go` (`serviceHandler`, `runtimeCharts`).
+2. `internal/psql/availability.go` (`Uptime`, `Incidents`).
+3. `internal/ui/admin/service.html` and `web/admin/styles/partials/service.css`.
+
+**Tests:** `internal/admin/service_test.go`; `internal/psql/availability_test.go`.
+
 ### Login
 
 Admins are their own accounts (`admins`), apart from readers, and every admin page but the login's needs one logged in with a password and a second factor (see "The admin's login" in architecture.md).
@@ -686,7 +704,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 
 ### Observability
 
-`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin, and the admin checks `www`'s availability from inside Render's network; the admin's Web performance page reads the real-user metrics (above), and its pages for the rest come later (#577, #616).
+`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin, and the admin checks `www`'s availability from inside Render's network; the admin's Web performance page reads the real-user metrics and its Service page the availability checks and runtime metrics (above), and its page for the rest comes later (#577).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.

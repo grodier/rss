@@ -107,6 +107,11 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Shared timelines:** list them with what each costs to serve (the shared feed's query is on the watchlist), and revoke a link for abuse.
 - [ ] **Articles:** find one by ID or URL, re-enrich it, remove it for a takedown, and block a URL or host from ingestion.
 - [ ] **Feed fixes:** change a feed's URL by hand (until permanent redirects are followed, under "Feed ingestion"), merge duplicates, pause a feed, delete one (showing its subscriber count), and a per-host view of feeds and failures.
+- [ ] **Feed triage, optional:** more on a feed's admin page than its current state (#581 shows the last error, failures in a row and the fetch times), to consider if that isn't enough to decide a fix.
+  Three parts, each useful alone:
+  - the "Fetch history" under "Feed ingestion" (the last 20 or so attempts per feed: time, status, duration, size, items, new and updated, error) as a timeline on the feed's page, which reverses debug mode's "Nothing new is stored" ("Debug mode" in decisions.md) and adds a write per fetch for the watchlist;
+  - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
+  - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
 - [ ] **Seed list status:** each seed site found, failed or pending, and re-queuing the failed ones.
 - [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
 - [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
@@ -517,6 +522,12 @@ Admin and observability:
   `WaitlistRepository.Counts` scans the whole table with a subquery on `invites` per row, and `List` skips pages with `OFFSET`, on every view of `/waitlist`.
   *Signal:* the waitlist passes about 50,000 entries, or `/waitlist` takes over 200ms.
   *Fix:* page by the last row's `(created_at, id)`, like the audit log, and count the tabs from a partial index on confirmed entries.
+- [ ] **The admin's feed list reads every feed and counts its subscribers** (#581).
+  `AdminFeedRepository.ListFeeds` filters and sorts with no index (only Gone could use one): every view reads every feed, and the default order, by subscribers, counts each feed's subscriptions before taking the first 100; a page after the first does the same again from the cursor.
+  The filters' counts (`CountFeeds`) read every feed once more per view, with an `EXISTS` on `subscriptions` for Stale and No subscribers.
+  On `make db/loadseed`'s 1,000 feeds, a page took about 3 ms by posts, failures or last success and 20 ms by subscribers (35 ms past the first page); a feed's page about 11 ms, counting a busy feed's 36,000 articles.
+  *Signal:* feeds pass about 50,000, or `/feeds` takes over 200ms.
+  *Fix:* a `subscribers` count column on `feeds`, kept by subscribing and unsubscribing, with indexes on the orders the page uses.
 - [ ] **The invites page sums every wave on each view** (#607).
   `InviteRepository.Waves` groups every invite with a wave and checks each signed-up one's sessions, on every view of `/invites`.
   *Signal:* invites pass about 50,000, or `/invites` takes over 200ms.

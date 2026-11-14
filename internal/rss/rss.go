@@ -949,3 +949,71 @@ func (o JobOutcomes) Jobs(name string) int {
 	}
 	return 0
 }
+
+// The admin's feed list's filters (AdminFeedQuery.Filter).
+const (
+	AdminFeedsAll           = "all"
+	AdminFeedsFailing       = "failing"        // AdminFailingAfter or more failures in a row
+	AdminFeedsGone          = "gone"           // answered 410 Gone
+	AdminFeedsNeverFetched  = "never-fetched"  // no successful fetch yet
+	AdminFeedsStale         = "stale"          // subscribed, not gone, no successful fetch for AdminStaleAfter
+	AdminFeedsNoSubscribers = "no-subscribers" // no one subscribes
+)
+
+// The admin's feed list's orders (AdminFeedQuery.Sort): the most
+// subscribers, posts per week or failures first, or the oldest last
+// success first, a feed never fetched before all.
+const (
+	AdminFeedsBySubscribers = "subscribers"
+	AdminFeedsByPosts       = "posts"
+	AdminFeedsByFailures    = "failures"
+	AdminFeedsByLastSuccess = "last-success"
+)
+
+// AdminFailingAfter is how many failed fetches in a row put a feed under
+// the admin's Failing filter, like the reader's warning.
+const AdminFailingAfter = 3
+
+// AdminStaleAfter is how long a subscribed feed can go without a
+// successful fetch before the admin's Stale filter lists it.
+const AdminStaleAfter = 24 * time.Hour
+
+// AdminFeedQuery is a page of the admin's feed list: a filter, a search of
+// titles, URLs and site hosts (Q, "" for none), an order, and the feed
+// whose row the page starts after (After, "" for the first page).
+type AdminFeedQuery struct {
+	Filter string
+	Q      string
+	Sort   string
+	After  string
+	Limit  int
+}
+
+// AdminFeedRow is a feed as the admin lists it: the feed, its site's host
+// and how many readers subscribe to it (a count, never who).
+type AdminFeedRow struct {
+	Feed
+	SiteHost    string
+	Subscribers int
+}
+
+// AdminFeed is one feed's admin page: its row, its site, its articles'
+// count and the newest one's arrival, and its articles' enrichment jobs'
+// count and the oldest one's creation (zero times with none).
+type AdminFeed struct {
+	AdminFeedRow
+	Site            Site
+	Articles        int
+	NewestArticleAt time.Time
+	EnrichJobs      int
+	OldestEnrichJob time.Time
+}
+
+// AdminSite is one site's admin page: the site, its icon's bookkeeping, its
+// lookup (ID "" when it has none) and its feeds, by title.
+type AdminSite struct {
+	Site   Site
+	Icon   SiteDebug
+	Lookup Lookup
+	Feeds  []AdminFeedRow
+}

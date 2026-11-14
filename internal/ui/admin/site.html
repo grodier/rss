@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{.Site.Site.Host}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      {{$now := .Now}}
+      {{with .Site}}
+      <header class="page-head">
+        <h1>{{.Site.Host}}</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{$.ReaderURL}}">In the reader</a>
+          <a class="btn btn-sm" href="{{$.History}}">History</a>
+        </div>
+        <p>{{with .Site.Title}}{{.}}, {{end}}<code>{{.Site.URL}}</code></p>
+      </header>
+      {{with $.Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      <section class="admin-section" aria-labelledby="feeds-heading">
+        <h2 id="feeds-heading">Feeds</h2>
+        {{if $.Feeds.Rows}}
+        {{template "feed-table" $.Feeds}}
+        {{else}}
+        <p class="empty">No feeds.</p>
+        {{end}}
+      </section>
+
+      <div class="admin-pair">
+        <section class="admin-section health{{if $.Lookup.Bad}} health-bad{{end}}" aria-labelledby="lookup-heading">
+          <h2 id="lookup-heading">Lookup</h2>
+          <p class="health-line">{{$.Lookup.Text}}</p>
+          {{with $.Lookup.Detail}}<pre class="health-error"><code>{{.}}</code></pre>{{end}}
+          <div class="form-actions">
+            <form action="/sites/{{.Site.ID}}/lookup" method="post"><button class="btn btn-sm" type="submit">Check for new feeds</button></form>
+          </div>
+        </section>
+        <section class="admin-section health" aria-labelledby="icon-heading">
+          <h2 id="icon-heading">Icon</h2>
+          <p class="health-line">
+            {{- with .Icon}}{{if .Icon.SiteID}}{{.Icon.Width}}×{{.Icon.Height}} {{.Icon.ContentType}}, {{count .IconBytes}} bytes, fetched {{ago $now .Icon.FetchedAt}} from <code>{{.Icon.SourceURL}}</code>.
+            {{- else}}No icon{{if not .IconCheckedAt.IsZero}}: none found {{ago $now .IconCheckedAt}}{{end}}.{{end}}
+            Next check {{ago $now .IconNextCheckAt}}.{{end -}}
+          </p>
+          <div class="form-actions">
+            <form action="/sites/{{.Site.ID}}/check-icon" method="post"><button class="btn btn-sm" type="submit">Check the icon again</button></form>
+          </div>
+        </section>
+      </div>
+
+      <section class="admin-section" aria-labelledby="site-heading">
+        <h2 id="site-heading">Details</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">URL</th><td class="wrap"><code>{{.Site.URL}}</code></td></tr>
+              <tr><th scope="row">Title</th><td class="wrap">{{with .Site.Title}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Description</th><td class="wrap">{{with .Site.Description}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Found</th><td>{{stamp .Site.CreatedAt}}</td></tr>
+              <tr><th scope="row">Updated</th><td>{{stamp .Site.UpdatedAt}}</td></tr>
+              <tr><th scope="row">Lookup requested</th><td>{{stamp .Lookup.RequestedAt}}</td></tr>
+              <tr><th scope="row">Lookup finished</th><td>{{stamp .Lookup.FinishedAt}}</td></tr>
+              <tr><th scope="row">Icon checked</th><td>{{stamp .Icon.IconCheckedAt}}</td></tr>
+              <tr><th scope="row">Icon’s next check</th><td>{{stamp .Icon.IconNextCheckAt}}</td></tr>
+              <tr><th scope="row">ID</th><td><code>{{.Site.ID}}</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="missing">Dates are UTC.</p>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

@@ -45,7 +45,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 - The **server error log** (`metrics.ErrorLog`) writes the 500s and panics the server reports to `server_errors`, one at a time, from a buffer.
 - The **metrics housekeeper** (`metrics.Housekeeper`) rolls up and deletes old metrics and real-user views, and deletes all but the newest 1,000 server errors, every hour.
 
-`ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`.
+`ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`; so does the admin's Refresh now, through `ingest`.
 
 `cmd/www/main.go` (`run`) hands `www migrate` and `www seed` to their own functions (below).
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
@@ -64,6 +64,7 @@ It only writes `lookups` rows, so it's cheap to run on every deploy: production 
 `admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
 Inside it run two components, the HTTP server (`internal/admin`), on port 4001, and, when `-app-internal-url` is set, the pinger (`admin.Pinger`, see "Background work"); it runs none of `www`'s workers.
+For the feeds page's Refresh now it builds its own `fetch.Client` and `ingest.Refresher`, as `www` does, so the admin fetches feeds only through `internal/fetch`.
 The invites it sends are queued in the shared `emails` outbox, with links to `-app-url` (the reader), and `www`'s mail runner sends them; `-mail-daily-limit`, `-mail-monthly-limit` and `-mail-reserve` are the email provider's limits it checks them against.
 On SIGINT or SIGTERM the server drains requests for up to 30 seconds and the pinger stops, then the database is closed.
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
@@ -77,8 +78,8 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
-| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites pages, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
@@ -355,6 +356,8 @@ All requests to URLs a user can influence (websites to look up, feeds and the pa
 Site icons are downloaded through their own `fetch.Client`, with bodies capped at 256 KiB (`siteicon.MaxBytes`); the home page they're found on goes through the shared one.
 
 Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.Fetcher`), synchronously in the request, with a 30 s budget (`inspectTimeout`) and an extended write deadline; they save nothing.
+
+The admin's Refresh now (`feedRefreshHandler`) fetches a feed through its own `fetch.Client`, with the same rules, within 8 s.
 
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest` servers; `cmd/www` never sets it.
 

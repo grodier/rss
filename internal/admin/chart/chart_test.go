@@ -168,6 +168,45 @@ func TestLineChartEscapes(t *testing.T) {
 	}
 }
 
+func TestLineChartMarkers(t *testing.T) {
+	// 101 points a minute apart: a marker's x is its minute, in percent.
+	values := make([]float64, 101)
+	c := LineChart{
+		Series: []Series{{Name: "a", Points: points(values...)}},
+		Markers: []Marker{
+			{T: t0.Add(50 * time.Minute), Label: "Deploy b"},
+			{T: t0.Add(10 * time.Minute), Label: "Deploy a"},
+			// Within 1.5% of the one before: drawn as one line, at the
+			// newer.
+			{T: t0.Add(51 * time.Minute), Label: "Deploy c"},
+			{T: t0.Add(52 * time.Minute), Label: "Deploy d"},
+			// Outside the chart's time range.
+			{T: t0.Add(-time.Minute), Label: "Deploy before"},
+		},
+	}
+	svg := string(c.SVG())
+	for _, want := range []string{
+		`<line class="chart-marker" x1="10%" x2="10%"`,
+		`<line class="chart-marker" x1="52%" x2="52%"`,
+		`<line class="chart-marker-hit" x1="10%" x2="10%" y1="14" y2="178"><title>Deploy a, Nov 9 12:10 UTC</title></line>`,
+		"<title>Deploy b, Nov 9 12:50 UTC\nDeploy c, Nov 9 12:51 UTC\nDeploy d, Nov 9 12:52 UTC</title>",
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("SVG lacks %s:\n%s", want, svg)
+		}
+	}
+	if n := strings.Count(svg, `<line class="chart-marker"`); n != 2 {
+		t.Errorf("%d marker lines, want 2", n)
+	}
+	if strings.Contains(svg, "<title>Deploy before") || strings.Contains(svg, `<text class="chart-marker"`) {
+		t.Errorf("SVG draws a marker outside its range, or a marker's text:\n%s", svg)
+	}
+	// The description still names every marker.
+	if !strings.Contains(svg, "Marked: Deploy b at Nov 9 12:50, Deploy a at Nov 9 12:10, Deploy c at Nov 9 12:51, Deploy d at Nov 9 12:52") {
+		t.Errorf("description doesn't list the markers:\n%s", svg)
+	}
+}
+
 func TestLineChartLegendOnlyForSeveralSeries(t *testing.T) {
 	one := string(LineChart{Series: []Series{{Name: "a", Points: points(1, 2)}}}.SVG())
 	if strings.Contains(one, "chart-legend") {

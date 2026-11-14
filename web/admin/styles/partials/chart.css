@@ -106,9 +106,12 @@
     stroke-dasharray: 4 3;
   }
 
-  .chart-svg text.chart-marker {
-    fill: var(--text);
-    font-weight: 600;
+  /* A marker's hover target: wider than its line, and invisible. */
+  line.chart-marker-hit {
+    stroke: transparent;
+    stroke-width: 11px;
+    pointer-events: stroke;
+    cursor: help;
   }
 
   .chart-bars rect {

@@ -33,8 +33,10 @@
 <text x="28.57%" y="194" text-anchor="middle">12:02</text>
 <text x="57.14%" y="194" text-anchor="middle">12:04</text>
 <text x="85.71%" y="194" text-anchor="middle">12:06</text>
-<text class="chart-marker" x="71.43%" y="10" text-anchor="middle">Deploy 4f2a1c9</text>
 </g>
+<line class="chart-marker-hit" x1="71.43%" x2="71.43%" y1="14" y2="178">
+<title>Deploy 4f2a1c9, Nov 9 12:05 UTC</title>
+</line>
 <text class="chart-threshold" x="100%" y="50" dx="7" dy="0.35em">Slow</text>
 <g class="chart-end chart-series-2">
 <circle cx="100%" cy="78" r="3"/>

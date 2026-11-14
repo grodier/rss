@@ -112,7 +112,6 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   - the "Fetch history" under "Feed ingestion" (the last 20 or so attempts per feed: time, status, duration, size, items, new and updated, error) as a timeline on the feed's page, which reverses debug mode's "Nothing new is stored" ("Debug mode" in decisions.md) and adds a write per fetch for the watchlist;
   - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
   - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
-- [ ] **Seed list status:** each seed site found, failed or pending, and re-queuing the failed ones.
 - [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
 - [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
 - [ ] **Performance watchlist board:** each watchlist entry's signal, read live.
@@ -142,6 +141,13 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Logged-out access.**
   Let logged-out visitors search and view site and feed pages, to help people find the app.
   Keep lookups login-only.
+  Discover (#633) and its section pages (#634) are the natural pages to open first.
+- [ ] **Bring your web: the sites of people you follow elsewhere, and your bookmarks (needs planning).**
+  From #450's prototypes: a Bluesky handle's follows through the public API (many handles are the person's own domain, so discovery can go straight to their site; Mastodon profiles carry website links too), and a browser bookmarks file, whose sites are looked up and offered ticked, like an import.
+  Deferred because they help most once readers arrive from outside the owner's circle; both are lookups at scale (one per account followed or site bookmarked), and a bookmarks file is private, so it must be read and discarded.
+- [ ] **Lists readers make and share, to bring people in (needs planning).**
+  From #450: starter packs, reimagined as a reader's list of sites ("What I read on design") with a public page and "Follow all on Paper Round", which carries the list through the waitlist or signup so the newcomer's Home starts with it.
+  For the traction stage, not first run: unlisted links first, since discoverable lists bring the spam and impersonation that keep shared timelines out of Search; check it against "Shared timelines" and "Your friends' picks" so there aren't three sharing systems.
 - [ ] **Name → website suggestions.**
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
@@ -207,6 +213,9 @@ Each with when it pays off:
 
 ## Reading
 
+- [ ] **A Paper Round blog, followed by new accounts by default.**
+  From #450: its welcome post replaces the pinned Getting started guide (#641), and occasional round-ups ("Five sites worth following this week") bring discovery into the timeline in the app's own medium.
+  Needs someone to write it regularly, and a host outside the app's own site key, since discovery refuses links to the app (#471).
 - [ ] **Enrich older articles (low priority).** #306 only enriches a feed's 20 newest articles on its first save, then new arrivals.
   A second, lowest-priority queue could work back through older articles that are missing an image, title or excerpt, when nothing else is waiting.
   Worth it once something reads the old archive: searching all articles, related articles, or saved articles from far back that look bare.
@@ -217,10 +226,6 @@ Each with when it pays off:
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.
   Needs a failure story ("Couldn't load the article; read it on {site}").
-- [ ] **Search your articles (needs planning).**
-  Search across every article in your subscriptions, not just Saved: "that post I read last month".
-  Postgres full-text search (`tsvector` with a GIN index) over the title, page title and excerpt, scoped to the user's feeds; whether it covers the full content too is a storage and copyright question.
-  Plan after "Article retention" (under Feed ingestion), which decides how far back there is to search; it would also replace the Saved search's `ILIKE` ("Saved search scans with `ILIKE`" in the watchlist).
 - [ ] **Dates for undated articles from their pages.**
   Enrichment could read a page's `article:published_time` and fill an undated article's `published_at`, so rows and feed pages show a date; its timeline position wouldn't move (it's set once), and many pages have no date.
   Deferred from #438, which places undated articles without one.
@@ -337,7 +342,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Today's text expression (`concat_ws`) can't be indexed because Postgres doesn't count it as immutable, so build the text with `||` (same result: the columns are never NULL).
   Words with punctuation (`c++`, `node.js`) are split differently by the index, so they skip it and use the exact match alone.
   If common words matter in practice, look at recent weeks first and widen only when a page isn't full.
-  The same index could serve "Search your articles" (under Reading).
+  The same index could serve searching your articles (#647 plans it).
   Plan after #404, so it's measured against the new timeline query.
 - [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures.
   A flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos; decide with "Measure embeds and media".
@@ -607,6 +612,14 @@ Other background work (#302, #304, #306):
   Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.
   *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
   *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
+- [ ] **Daily refreshes of Discover's feeds** (#632).
+  The main feed of every site with a section is fetched about once a day even with no followers, so N sectioned sites cost N fetches and their article saves a day, growing with the seed list rather than with readers.
+  *Signal:* refresh workers busy with unfollowed feeds in the admin's job metrics, or `ClaimDue`'s claim latency rising.
+  *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
+- [ ] **Discover reads every section on each visit** (#633, #643).
+  The no-query page reads each section's first sites that the reader doesn't follow, their latest titles and the reader's followed count per section, in one or two statements per load.
+  *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page, or the query in `pg_stat_statements`.
+  *Fix:* cache each reader's sections for a few minutes, or precompute the per-section lists when the seed or refreshes change them.
 
 Pages and queries:
 
@@ -731,6 +744,10 @@ Pages and queries:
   Fine for hundreds of saves.
   *Signal:* `/saved?q=` latency rising for users with thousands of saves.
   *Fix:* `pg_trgm` or full-text search, chosen with the site search's (#451).
+- [ ] **Search runs several searches per keystroke** (#645, #646).
+  The whole-app search runs your feeds (an `ILIKE` scan of the reader's subscriptions), saved (the scan above) and new sites (the "Search scans with `ILIKE`" entry) on each pause in typing, and Discover's search counts the first two for its link to Search.
+  *Signal:* `/search` p95 rising on the admin's endpoints page, or any of its queries in `pg_stat_statements`.
+  *Fix:* indexes chosen by #451 and #647, or a shorter list of groups while typing and the rest on Enter.
 - [ ] **Site icons served from Postgres** (#305).
   Each icon request that misses the browser's cache reads its `bytea` row.
   URLs carry the icon's hash and are cached for a year, so repeat views cost nothing, but every new visitor's first timeline asks for up to 30 icons.

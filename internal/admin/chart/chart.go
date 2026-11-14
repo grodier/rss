@@ -78,8 +78,8 @@ type Histogram struct {
 const (
 	defaultHeight = 200
 
-	// The plot's top leaves room for the top tick's label and markers'
-	// labels; its bottom for the time axis' labels.
+	// The plot's top leaves room for the top tick's label; its bottom for
+	// the time axis' labels.
 	plotTop    = 18
 	axisHeight = 22
 
@@ -181,14 +181,12 @@ func (c LineChart) SVG() template.HTML {
 			fmt.Fprintf(&b, `<line class="chart-threshold" x1="0" x2="100%%" y1="%s" y2="%s"/>`, y, y)
 		}
 	}
-	var markers []Marker
+	var groups [][]Marker
 	if span > 0 {
-		for _, m := range c.Markers {
-			if !m.T.Before(tMin) && !m.T.After(tMax) {
-				markers = append(markers, m)
-				x := num(xPct(m.T))
-				fmt.Fprintf(&b, `<line class="chart-marker" x1="%s%%" x2="%s%%" y1="%d" y2="%s"/>`, x, x, plotTop-4, num(plotBottom))
-			}
+		groups = groupMarkers(c.Markers, tMin, tMax, xPct)
+		for _, g := range groups {
+			x := num(xPct(g[len(g)-1].T))
+			fmt.Fprintf(&b, `<line class="chart-marker" x1="%s%%" x2="%s%%" y1="%d" y2="%s"/>`, x, x, plotTop-4, num(plotBottom))
 		}
 	}
 
@@ -204,8 +202,8 @@ func (c LineChart) SVG() template.HTML {
 	b.WriteString(`</svg>`)
 
 	// The labels, over the lines: each value tick's above its gridline at
-	// the left, the top one with the unit; the time axis' below the plot,
-	// fewer on narrower charts; and the markers' at the top.
+	// the left, the top one with the unit, and the time axis' below the
+	// plot, fewer on narrower charts.
 	b.WriteString(`<g class="chart-labels">`)
 	for i, v := range yTicks {
 		label := formatTick(v, yStep)
@@ -236,11 +234,17 @@ func (c LineChart) SVG() template.HTML {
 			fmt.Fprintf(&b, `<text x="%s%%" y="%d" text-anchor="%s"%s>%s</text>`, num(pcts[i]), height-6, textAnchor, classAttr(classes[i]), esc(label))
 		}
 	}
-	for _, m := range markers {
-		x := xPct(m.T)
-		fmt.Fprintf(&b, `<text class="chart-marker" x="%s%%" y="10"%s>%s</text>`, num(x), anchor(x), esc(m.Label))
-	}
 	b.WriteString(`</g>`)
+
+	// Markers carry no text, which can't fit when several are close
+	// together: each line has a wider, invisible line over everything,
+	// whose title the browser shows on hover. The description lists them
+	// all for screen readers.
+	for _, g := range groups {
+		x := num(xPct(g[len(g)-1].T))
+		fmt.Fprintf(&b, `<line class="chart-marker-hit" x1="%s%%" x2="%s%%" y1="%d" y2="%s"><title>%s</title></line>`,
+			x, x, plotTop-4, num(plotBottom), esc(markerTitle(g)))
+	}
 
 	// At the right, each threshold's label and each line's latest value,
 	// at its end, moved apart so none overlap.
@@ -279,6 +283,43 @@ func (c LineChart) SVG() template.HTML {
 
 	b.WriteString(`</svg></div>`)
 	return template.HTML(b.String())
+}
+
+// markerGap is how close, as a share of the chart's width, two markers are
+// drawn as one: 1.5% is 4px on the narrowest chart and 10px on a wide one,
+// about the width of the line's hover target.
+const markerGap = 1.5
+
+// groupMarkers returns the markers from tMin to tMax, oldest first, in
+// groups of those closer together than markerGap: each group is drawn as
+// one line, at its newest marker.
+func groupMarkers(markers []Marker, tMin, tMax time.Time, xPct func(time.Time) float64) [][]Marker {
+	var in []Marker
+	for _, m := range markers {
+		if !m.T.Before(tMin) && !m.T.After(tMax) {
+			in = append(in, m)
+		}
+	}
+	slices.SortStableFunc(in, func(a, b Marker) int { return a.T.Compare(b.T) })
+	var groups [][]Marker
+	for _, m := range in {
+		if n := len(groups); n > 0 && xPct(m.T)-xPct(groups[n-1][len(groups[n-1])-1].T) < markerGap {
+			groups[n-1] = append(groups[n-1], m)
+			continue
+		}
+		groups = append(groups, []Marker{m})
+	}
+	return groups
+}
+
+// markerTitle is a marker line's hover text: "Deploy 4f2a1c9, Nov 9
+// 12:05 UTC", a line per marker of its group.
+func markerTitle(g []Marker) string {
+	lines := make([]string, len(g))
+	for i, m := range g {
+		lines[i] = m.Label + ", " + m.T.UTC().Format("Jan 2 15:04") + " UTC"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // describe says in a sentence what c shows, for screen readers: each
@@ -679,18 +720,6 @@ func withUnit(s, unit string) string {
 		return s + "%"
 	}
 	return s + " " + unit
-}
-
-// anchor keeps a label at x (a percentage) inside the drawing: centered,
-// or starting or ending at x near an edge.
-func anchor(x float64) string {
-	switch {
-	case x < 12:
-		return ` text-anchor="start"`
-	case x > 88:
-		return ` text-anchor="end"`
-	}
-	return ` text-anchor="middle"`
 }
 
 func classAttr(class string) string {

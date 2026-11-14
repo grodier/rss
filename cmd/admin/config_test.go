@@ -106,6 +106,15 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "render settings",
+			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_RENDER_API_KEY": "rnd_test", "RSS_RENDER_SERVICE_ID": "srv-abc123"},
+			check: func(t *testing.T, cfg config) {
+				if cfg.renderAPIKey != "rnd_test" || cfg.renderServiceID != "srv-abc123" {
+					t.Errorf("render settings = %q, %q; want rnd_test and srv-abc123", cfg.renderAPIKey, cfg.renderServiceID)
+				}
+			},
+		},
+		{
 			name: "version",
 			args: []string{"-version"},
 			check: func(t *testing.T, cfg config) {
@@ -130,6 +139,8 @@ func TestParseConfig(t *testing.T) {
 		{name: "app internal URL with an empty query", args: []string{"-app-internal-url", "http://rss-abcd:8080?"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app internal URL "http://rss-abcd:8080?"`},
 		{name: "app internal URL with a user", args: []string{"-app-internal-url", "http://u:p@rss-abcd:8080"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app internal URL "http://u:p@rss-abcd:8080"`},
 		{name: "app internal URL without a scheme", args: []string{"-app-internal-url", "rss-abcd:8080"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app internal URL "rss-abcd:8080"`},
+		{name: "Render service ID with a path", args: []string{"-render-service-id", "srv-abc/../x"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid Render service ID "srv-abc/../x"`},
+		{name: "Render service ID without its prefix", args: []string{"-render-service-id", "abc123"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid Render service ID "abc123"`},
 		{name: "invalid support email", args: []string{"-support-email", "nope"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid support email "nope"`},
 		{name: "reserve as big as the day", args: []string{"-mail-daily-limit", "10", "-mail-reserve", "10"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid mail limits"},
 		{name: "month under the day", args: []string{"-mail-monthly-limit", "50"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "invalid mail limits"},

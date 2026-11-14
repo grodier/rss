@@ -130,6 +130,9 @@ resource "render_web_service" "admin" {
     # rss's address on the private network, whose /healthcheck the admin's
     # pinger checks every minute.
     RSS_APP_INTERNAL_URL = { value = var.app_internal_url }
+    # rss's ID, whose CPU, memory and deploys the service page reads from
+    # Render's API with RSS_RENDER_API_KEY.
+    RSS_RENDER_SERVICE_ID = { value = render_web_service.rss.id }
   })
 
   lifecycle {
@@ -137,10 +140,12 @@ resource "render_web_service" "admin" {
       # Deploys (the deploy workflow) set the image by digest; apply must
       # never roll them back.
       runtime_source.image,
-      # Set in Render's dashboard, so neither lands in the state: the key the
-      # admins' TOTP secrets are sealed with, and the SMTP password.
+      # Set in Render's dashboard, so none lands in the state: the key the
+      # admins' TOTP secrets are sealed with, the SMTP password, and the
+      # Render API key the service page reads rss's figures with.
       env_vars["RSS_SECRET_KEY"],
       env_vars["RSS_SMTP_PASSWORD"],
+      env_vars["RSS_RENDER_API_KEY"],
     ]
   }
 }

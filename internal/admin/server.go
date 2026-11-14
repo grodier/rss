@@ -17,6 +17,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/admin/render"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/ratelimit"
@@ -121,6 +122,15 @@ type AvailabilityReader interface {
 	Uptime(ctx context.Context, now time.Time) (rss.Uptime, error)
 	Incidents(ctx context.Context, since time.Time, limit int) ([]rss.Incident, error)
 	LatestVersion(ctx context.Context) (rss.AvailabilityCheck, error)
+	VersionsIn(ctx context.Context, spans []rss.Span) ([]string, error)
+}
+
+// RenderReader reads www's service from Render's API; *render.Client is
+// one. Services.Render is nil when the admin has no Render settings, which
+// the service page says.
+type RenderReader interface {
+	Instances(ctx context.Context, from, to time.Time, step time.Duration) (render.Instances, error)
+	Deploys(ctx context.Context, limit int) ([]render.Deploy, error)
 }
 
 // RuntimeReader reads www's runtime samples; *psql.MetricsRepository is
@@ -141,6 +151,7 @@ type Services struct {
 
 	Availability AvailabilityReader
 	Runtime      RuntimeReader
+	Render       RenderReader
 }
 
 type Server struct {

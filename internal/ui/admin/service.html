@@ -15,7 +15,7 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Service</h1>
-        <p>www’s availability from inside Render’s network, its Go runtime and its version.</p>
+        <p>www’s availability from inside Render’s network, its instances, its Go runtime and its deploys.</p>
       </header>
 
       <div class="segments">
@@ -63,6 +63,26 @@
         {{end}}
       </section>
 
+      <section class="admin-section" aria-labelledby="instances">
+        <h2 id="instances">Instances</h2>
+        {{if not .Rendering}}
+        {{template "not-rendering"}}
+        {{else if .RenderFailed}}
+        <p class="missing">Couldn’t reach Render.</p>
+        {{else if .Instances}}
+        <div class="service-charts">
+          {{range .Instances}}
+          <figure class="service-chart">
+            <figcaption><h3>{{.Title}}</h3>{{with .Unit}} <span class="unit">{{.}}</span>{{end}}</figcaption>
+            {{chart .}}
+          </figure>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="missing">No figures from Render for the last {{.Period.Label}}.</p>
+        {{end}}
+      </section>
+
       <section class="admin-section" aria-labelledby="runtime">
         <h2 id="runtime">Go runtime</h2>
         {{if .RuntimeKept}}
@@ -90,12 +110,47 @@
         {{else}}
         <p class="missing">No version reported yet.</p>
         {{end}}
+        <h3 class="sub">Deploys</h3>
+        {{if not .Rendering}}
+        {{template "not-rendering"}}
+        {{else if .DeploysFailed}}
+        <p class="missing">Couldn’t reach Render.</p>
+        {{else if .Deploys}}
+        <div class="table-wrap">
+          <table class="data deploys">
+            <thead>
+              <tr>
+                <th scope="col">Started</th>
+                <th scope="col">Finished</th>
+                <th scope="col">Version</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Deploys}}
+              <tr>
+                <td><time datetime="{{.Created.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Created.UTC.Format "2006-01-02 15:04"}} UTC</time></td>
+                <td>{{if .Finished.IsZero}}–{{else}}<time datetime="{{.Finished.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Finished.UTC.Format "2006-01-02 15:04"}} UTC</time>{{end}}</td>
+                <td>{{with .Version}}{{if .Href}}<a href="{{.Href}}"><code>{{.Text}}</code></a>{{else if .Text}}<code>{{.Text}}</code>{{else}}Unknown{{end}}{{end}}</td>
+                <td>{{if .Failed}}<span class="status status-danger">{{.Status}}</span>{{else}}<span class="status">{{.Status}}</span>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <p class="missing">No deploys yet.</p>
+        {{end}}
       </section>
     </main>
   </div>
 </body>
 
 </html>
+
+{{/* not-rendering says how to read www's figures from Render, in each
+     section that needs them. */}}
+{{define "not-rendering"}}<p class="missing">Not configured: set -render-api-key (RSS_RENDER_API_KEY) and -render-service-id (RSS_RENDER_SERVICE_ID) to read www’s figures from Render.</p>{{end}}
 
 {{/* not-pinging says how to turn on the pinger, in each section that needs
      it. */}}

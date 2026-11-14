@@ -78,8 +78,9 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
+| `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password`, `textcut` |
@@ -358,6 +359,7 @@ Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.F
 `fetch.Options.AllowPrivate` turns the address check off for tests that use `httptest` servers; `cmd/www` never sets it.
 
 Email goes over SMTP (`internal/mail`) to the configured provider, a fixed host from the configuration that no user can influence, so it doesn't go through `internal/fetch`.
+The admin's service page reads `www`'s CPU, memory and deploys from Render's API (`internal/admin/render`, `https://api.render.com`), a fixed host with the service ID from the configuration, so it doesn't go through `internal/fetch` either: a 10-second timeout per request, answers read up to 4 MiB and cached for a minute, and the API key only in a header.
 The admin's pinger requests `www`'s `/healthcheck` at `-app-internal-url`, also a fixed host from the configuration, with its own client: no environment proxy, a new connection per check, no redirects, answers read up to 64 KiB; `AvailabilityRepository.Record` keeps 100 bytes of the answer's status and version (`textcut.Bytes`).
 
 ## Security measures

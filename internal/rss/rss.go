@@ -742,6 +742,11 @@ type AvailabilityCheck struct {
 	Version   string   // the body's system_info.version; "" when it didn't say
 }
 
+// Span is a range of time, From included and To not.
+type Span struct {
+	From, To time.Time
+}
+
 // The statuses of an AvailabilityCheck www didn't answer: it took longer
 // than the check's timeout, or the request failed or its answer wasn't a
 // healthcheck's.

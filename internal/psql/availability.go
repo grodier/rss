@@ -113,6 +113,44 @@ func (r *AvailabilityRepository) LatestVersion(ctx context.Context) (rss.Availab
 	return c, err
 }
 
+// VersionsIn returns, for each span, the version the last check in it
+// reported; "" for a span with no check that reported one. The service page
+// labels a deploy with the version www reported while it was live, since
+// Render's records of image-backed deploys carry no commit.
+func (r *AvailabilityRepository) VersionsIn(ctx context.Context, spans []rss.Span) ([]string, error) {
+	versions := make([]string, len(spans))
+	if len(spans) == 0 {
+		return versions, nil
+	}
+	froms := make([]string, len(spans))
+	tos := make([]string, len(spans))
+	for i, s := range spans {
+		froms[i], tos[i] = s.From.UTC().Format(time.RFC3339Nano), s.To.UTC().Format(time.RFC3339Nano)
+	}
+	// One index scan per span, backwards from its end on the primary key.
+	rows, err := r.DB.QueryContext(ctx, `SELECT s.i, c.version
+		FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS s(from_at, to_at, i)
+		CROSS JOIN LATERAL (
+		    SELECT version FROM availability_checks
+		    WHERE checked_at >= s.from_at AND checked_at < s.to_at AND version <> ''
+		    ORDER BY checked_at DESC
+		    LIMIT 1
+		) c`, pq.Array(froms), pq.Array(tos))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i int
+		var v string
+		if err := rows.Scan(&i, &v); err != nil {
+			return nil, err
+		}
+		versions[i-1] = v
+	}
+	return versions, rows.Err()
+}
+
 // DeleteBefore deletes the checks made before before.
 func (r *AvailabilityRepository) DeleteBefore(ctx context.Context, before time.Time) error {
 	_, err := r.DB.ExecContext(ctx, `DELETE FROM availability_checks WHERE checked_at < $1`, before)

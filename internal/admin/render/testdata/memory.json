@@ -1,0 +1,10 @@
+[
+  {
+    "labels": [{"field": "resource", "value": "srv-test"}, {"field": "instance", "value": "srv-test-aaaaa"}],
+    "unit": "bytes",
+    "values": [
+      {"timestamp": "2026-11-09T11:00:00Z", "value": 104857600},
+      {"timestamp": "2026-11-09T11:10:00Z", "value": 125829120}
+    ]
+  }
+]

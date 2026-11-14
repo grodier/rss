@@ -524,6 +524,7 @@ Admin and observability:
   *Fix:* page by the last row's `(created_at, id)`, like the audit log, and count the tabs from a partial index on confirmed entries.
 - [ ] **The admin's feed list reads every feed and counts its subscribers** (#581).
   `AdminFeedRepository.ListFeeds` filters and sorts with no index (only Gone could use one): every view reads every feed, and the default order, by subscribers, counts each feed's subscriptions before taking the first 100; a page after the first does the same again from the cursor.
+  The filters' counts (`CountFeeds`) read every feed once more per view, with an `EXISTS` on `subscriptions` for Stale and No subscribers.
   On `make db/loadseed`'s 1,000 feeds, a page took about 3 ms by posts, failures or last success and 20 ms by subscribers (35 ms past the first page); a feed's page about 11 ms, counting a busy feed's 36,000 articles.
   *Signal:* feeds pass about 50,000, or `/feeds` takes over 200ms.
   *Fix:* a `subscribers` count column on `feeds`, kept by subscribing and unsubscribing, with indexes on the orders the page uses.

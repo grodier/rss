@@ -1,28 +1,33 @@
-{{/* feed-table lists feeds (dot: a feedTable): each linking to its page
-     and its site's, its subscribers (a count, never who), its posting rate,
-     its fetches, and whether it's failing or gone. A sortable column's
-     header links to its order, the current one marked. Dates are UTC. */}}
+{{/* feed-table lists feeds (dot: a feedTable): each linking to its page,
+     with its site's host under it; what's wrong with it, if anything (the
+     problem-text partial); its subscribers (a count, never who) and posting
+     rate; and its last success, in bold when it's late, and next fetch,
+     relative to the table's time with the UTC time on hover. A sortable
+     column's header links to its order, the current one marked. */}}
 {{define "feed-table"}}<div class="table-wrap">
-          <table class="data">
+          <table class="data feeds">
             <thead>
               <tr>
                 {{range .Columns}}<th scope="col"{{if .Numeric}} class="num"{{end}}{{with .Sort}} aria-sort="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}">{{.Label}}{{if .Sort}} <span aria-hidden="true">{{if eq .Sort "ascending"}}↑{{else}}↓{{end}}</span>{{end}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}
               </tr>
             </thead>
             <tbody>
+              {{$now := .Now}}
               {{range .Rows}}
               <tr>
-                <td class="wrap"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a></td>
-                <td><a href="/sites/{{.SiteID}}">{{.SiteHost}}</a></td>
+                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a><small>{{.SiteHost}}</small></td>
+                <td class="feed-problem">{{template "problem-text" .Problem}}</td>
                 <td class="num">{{count .Subscribers}}</td>
                 <td class="num">{{perWeek .PostsPerWeek}}</td>
-                <td>{{stamp .LastFetched}}</td>
-                <td>{{stamp .LastAttempt}}</td>
-                <td class="num">{{if failing .ConsecutiveFailures}}<span class="status status-danger">{{.ConsecutiveFailures}}</span>{{else}}{{.ConsecutiveFailures}}{{end}}</td>
-                <td>{{if .GoneAt.IsZero}}{{stamp .NextFetch}}{{else}}—{{end}}</td>
-                <td>{{if .GoneAt.IsZero}}—{{else}}<span class="status status-danger">{{date .GoneAt}}</span>{{end}}</td>
+                <td>{{if .LastFetched.IsZero}}—{{else}}<time{{if .Late}} class="late"{{end}} datetime="{{.LastFetched.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .LastFetched}} UTC">{{ago $now .LastFetched}}</time>{{end}}</td>
+                <td>{{if .GoneAt.IsZero}}<time datetime="{{.NextFetch.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .NextFetch}} UTC">{{ago $now .NextFetch}}</time>{{else}}—{{end}}</td>
               </tr>
               {{end}}
             </tbody>
           </table>
         </div>{{end}}
+
+{{/* problem-text says what's wrong (dot: a feedProblem): its phrase, in
+     the danger tone when it's bad, then its error, cut to one line in a
+     table with the whole of it on hover; nothing when nothing is. */}}
+{{define "problem-text"}}{{if .Text}}<span class="problem{{if .Bad}} problem-bad{{end}}"{{with .Detail}} title="{{.}}"{{end}}><strong>{{.Text}}</strong>{{with .Detail}}<span class="problem-detail"> · {{.}}</span>{{end}}</span>{{end}}{{end}}

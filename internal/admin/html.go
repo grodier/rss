@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/admin/chart"
-	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -59,11 +58,10 @@ var templateFuncs = template.FuncMap{
 		}
 		return t.UTC().Format("2006-01-02 15:04")
 	},
+	// ago says how long before now t was ("2 days ago", "in 3 h").
+	"ago": ago,
 	// perWeek formats a feed's posts a week to one decimal place.
 	"perWeek": func(n float64) string { return fmt.Sprintf("%.1f", n) },
-	// failing is whether a feed's failures in a row put it under the feeds
-	// page's Failing filter.
-	"failing": func(n int) bool { return n >= rss.AdminFailingAfter },
 }
 
 // navData is what the admin-nav partial shows: the current section

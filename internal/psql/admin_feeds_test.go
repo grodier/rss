@@ -120,6 +120,34 @@ func TestAdminFeedRepositoryListFeeds(t *testing.T) {
 		}
 	})
 
+	t.Run("counts", func(t *testing.T) {
+		got, err := repo.CountFeeds(t.Context(), host)
+		if err != nil {
+			t.Fatalf("CountFeeds: %v", err)
+		}
+		want := map[string]int{
+			rss.AdminFeedsAll: 6, rss.AdminFeedsFailing: 1, rss.AdminFeedsGone: 1,
+			rss.AdminFeedsNeverFetched: 2, rss.AdminFeedsStale: 1, rss.AdminFeedsNoSubscribers: 2,
+		}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("CountFeeds = %v, want %v", got, want)
+		}
+		// Each count is what its filter lists.
+		for filter, n := range got {
+			if rows := list(rss.AdminFeedQuery{Filter: filter}); len(rows) != n {
+				t.Errorf("filter %s lists %d feeds, counted %d", filter, len(rows), n)
+			}
+		}
+		// No search counts every feed, these included.
+		all, err := repo.CountFeeds(t.Context(), "")
+		if err != nil {
+			t.Fatalf("CountFeeds(\"\"): %v", err)
+		}
+		if all[rss.AdminFeedsAll] < 6 {
+			t.Errorf("CountFeeds(\"\") counts %d feeds, want at least this test's 6", all[rss.AdminFeedsAll])
+		}
+	})
+
 	t.Run("search", func(t *testing.T) {
 		got := ids(list(rss.AdminFeedQuery{Filter: rss.AdminFeedsAll, Q: host + "-nothing"}))
 		if len(got) != 0 {

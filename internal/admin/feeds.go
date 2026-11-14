@@ -41,20 +41,67 @@ var feedFilters = []struct{ Key, Label string }{
 
 // feedColumns are the feeds tables' columns; Sort is the order a column's
 // header sorts by, "" for none, and Ascending whether it sorts that way.
+// Problem sorts by failures in a row, the most first.
 var feedColumns = []struct {
 	Label, Sort string
 	Numeric     bool
 	Ascending   bool
 }{
 	{Label: "Feed"},
-	{Label: "Site"},
+	{Label: "Problem", Sort: rss.AdminFeedsByFailures},
 	{Label: "Subscribers", Sort: rss.AdminFeedsBySubscribers, Numeric: true},
 	{Label: "Posts a week", Sort: rss.AdminFeedsByPosts, Numeric: true},
 	{Label: "Last success", Sort: rss.AdminFeedsByLastSuccess, Ascending: true},
-	{Label: "Last attempt"},
-	{Label: "Failures", Sort: rss.AdminFeedsByFailures, Numeric: true},
 	{Label: "Next fetch"},
-	{Label: "Gone"},
+}
+
+// feedProblem is what's wrong with a feed, as the feeds tables and its page
+// say it: a short phrase (Text), the error behind it (Detail, "" for none),
+// and whether it's bad enough for the danger tone (failing or gone). Text
+// is "" when nothing is wrong.
+type feedProblem struct {
+	Text, Detail string
+	Bad          bool
+}
+
+// problemOf says what's wrong with f, the first that applies: gone, failing
+// (rss.AdminFailingAfter or more failures in a row, the Failing filter's
+// threshold), failed fewer times than that, or never fetched.
+func problemOf(f rss.AdminFeedRow) feedProblem {
+	switch {
+	case !f.GoneAt.IsZero():
+		return feedProblem{Text: "Gone since " + f.GoneAt.UTC().Format("2 Jan 2006"), Bad: true}
+	case f.ConsecutiveFailures >= rss.AdminFailingAfter:
+		return feedProblem{Text: fmt.Sprintf("Failing %d×", f.ConsecutiveFailures), Detail: f.LastError, Bad: true}
+	case f.ConsecutiveFailures > 0:
+		return feedProblem{Text: fmt.Sprintf("Failed %d×", f.ConsecutiveFailures), Detail: f.LastError}
+	case f.LastFetched.IsZero():
+		return feedProblem{Text: "Never fetched"}
+	}
+	return feedProblem{}
+}
+
+// isLate reports whether f's last success is older than the Stale filter
+// allows, at now, for a subscribed feed that isn't gone: the tables show it
+// in bold, rather than a label, since Stale is a filter, not a problem.
+func isLate(f rss.AdminFeedRow, now time.Time) bool {
+	return f.GoneAt.IsZero() && f.Subscribers > 0 && !f.LastFetched.IsZero() &&
+		now.Sub(f.LastFetched) > rss.AdminStaleAfter
+}
+
+// feedRow is a feed as the feeds tables show it.
+type feedRow struct {
+	rss.AdminFeedRow
+	Problem feedProblem
+	Late    bool
+}
+
+func feedRows(rows []rss.AdminFeedRow, now time.Time) []feedRow {
+	out := make([]feedRow, len(rows))
+	for i, r := range rows {
+		out[i] = feedRow{AdminFeedRow: r, Problem: problemOf(r), Late: isLate(r, now)}
+	}
+	return out
 }
 
 // feedsParams are the feeds page's URL parameters.
@@ -123,7 +170,7 @@ type feedsPage struct {
 // the time they're shown at.
 type feedTable struct {
 	Columns []sortColumn
-	Rows    []rss.AdminFeedRow
+	Rows    []feedRow
 	Now     time.Time
 }
 
@@ -151,7 +198,8 @@ func feedTableColumns(params *feedsParams) []sortColumn {
 }
 
 // feedsHandler lists feeds, feedsPageSize at a time, filtered by ?filter=,
-// searched by ?q= and ordered by ?sort=, from after the feed ?after=.
+// searched by ?q= and ordered by ?sort=, from after the feed ?after=, with
+// how many feeds matching the search each filter keeps.
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	params, ok := readFeedsParams(r)
 	if !ok {
@@ -171,6 +219,12 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	counts, err := s.services.Feeds.CountFeeds(r.Context(), params.q)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	page := feedsPage{Nav: s.nav(r, "feeds"), Filter: params.filter, Q: params.q, Sort: params.sort}
 	if len(rows) > feedsPageSize {
 		rows = rows[:feedsPageSize]
@@ -181,9 +235,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, f := range feedFilters {
 		next := params
 		next.filter, next.after = f.Key, ""
-		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: next.href(), Current: f.Key == params.filter})
+		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: next.href(), Current: f.Key == params.filter, Count: count(counts[f.Key])})
 	}
-	page.Table = feedTable{Columns: feedTableColumns(&params), Rows: rows, Now: s.now()}
+	now := s.now()
+	page.Table = feedTable{Columns: feedTableColumns(&params), Rows: feedRows(rows, now), Now: now}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -195,6 +250,14 @@ type feedPage struct {
 	Nav   navData
 	Flash string
 	Feed  rss.AdminFeed
+	// Problem is what's wrong with it, and Heading its status panel's
+	// heading: the problem, or when it was last fetched if that's late,
+	// or that it's fetching normally.
+	Problem feedProblem
+	Heading string
+	// Figures are its subscribers, posts a week, articles and enrichment
+	// jobs.
+	Figures []statTile
 	// ReaderURL is the feed's page in the reader, where debug mode
 	// inspects it; History, its entries in the audit log.
 	ReaderURL string
@@ -229,17 +292,74 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	now := s.now()
 	data := feedPage{
 		Nav:       s.nav(r, "feeds"),
 		Flash:     s.sessionManager.PopString(r.Context(), sessionFlash),
 		Feed:      feed,
+		Problem:   problemOf(feed.AdminFeedRow),
+		Figures:   feedFigures(feed, now),
 		ReaderURL: s.config.AppURL + "/feeds/" + feed.ID,
 		History:   auditHistoryURL("feed", feed.ID),
-		Now:       s.now(),
+		Now:       now,
+	}
+	switch {
+	case data.Problem.Text != "":
+		data.Heading = data.Problem.Text
+	case isLate(feed.AdminFeedRow, now):
+		data.Heading = "Last fetched " + ago(now, feed.LastFetched)
+	default:
+		data.Heading = "Fetching normally"
 	}
 	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// feedFigures are a feed's figures at now: its subscribers (a count,
+// never who), posts a week, articles and enrichment jobs.
+func feedFigures(f rss.AdminFeed, now time.Time) []statTile {
+	articles := statTile{Label: "Articles", Value: f.Articles, Note: "none yet"}
+	if !f.NewestArticleAt.IsZero() {
+		articles.Note = "newest " + ago(now, f.NewestArticleAt)
+	}
+	jobs := statTile{Label: "Enrichment jobs", Value: f.EnrichJobs}
+	if !f.OldestEnrichJob.IsZero() {
+		jobs.Note = "oldest " + ago(now, f.OldestEnrichJob)
+	}
+	return []statTile{
+		{Label: "Subscribers", Value: f.Subscribers},
+		{Label: "Posts a week", Text: fmt.Sprintf("%.1f", f.PostsPerWeek)},
+		articles,
+		jobs,
+	}
+}
+
+// ago says how long before now t was, or "in …" for a time after now:
+// minutes under an hour, hours under two days, then days ("just now"
+// under a minute either way). The pages give the UTC time beside it or on
+// hover.
+func ago(now, t time.Time) string {
+	d := now.Sub(t)
+	future := d < 0
+	if future {
+		d = -d
+	}
+	var s string
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		s = fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < 48*time.Hour:
+		s = fmt.Sprintf("%d h", int(d.Hours()))
+	default:
+		s = fmt.Sprintf("%d days", int(d.Hours()/24))
+	}
+	if future {
+		return "in " + s
+	}
+	return s + " ago"
 }
 
 // backTo redirects to path with msg as its flash.
@@ -344,10 +464,13 @@ func (s *Server) feedAction(w http.ResponseWriter, r *http.Request, feed rss.Adm
 
 // sitePage is a site's page.
 type sitePage struct {
-	Nav       navData
-	Flash     string
-	Site      rss.AdminSite
-	Feeds     feedTable
+	Nav   navData
+	Flash string
+	Site  rss.AdminSite
+	Feeds feedTable
+	// Lookup says how the site's lookup stands, in the feeds' Problem
+	// style.
+	Lookup    feedProblem
 	ReaderURL string
 	History   string
 	Now       time.Time
@@ -385,7 +508,8 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Nav:       s.nav(r, "feeds"),
 		Flash:     s.sessionManager.PopString(r.Context(), sessionFlash),
 		Site:      site,
-		Feeds:     feedTable{Columns: feedTableColumns(nil), Rows: site.Feeds, Now: now},
+		Feeds:     feedTable{Columns: feedTableColumns(nil), Rows: feedRows(site.Feeds, now), Now: now},
+		Lookup:    lookupSummary(site.Lookup, now),
 		ReaderURL: s.config.AppURL + "/sites/" + site.Site.ID,
 		History:   auditHistoryURL("site", site.Site.ID),
 		Now:       now,
@@ -393,6 +517,30 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "site.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// lookupSummary says how lookup l stands at now, with its error when it
+// failed; l.ID is "" when the site has none.
+func lookupSummary(l rss.Lookup, now time.Time) feedProblem {
+	attempts := "1 attempt"
+	if l.Attempts != 1 {
+		attempts = fmt.Sprintf("%d attempts", l.Attempts)
+	}
+	switch l.Status {
+	case "":
+		return feedProblem{Text: "No lookup of this site yet."}
+	case rss.LookupPending:
+		return feedProblem{Text: "Waiting to run, asked for " + ago(now, l.RequestedAt) + "."}
+	case rss.LookupRunning:
+		return feedProblem{Text: "Running, started " + ago(now, l.StartedAt) + " (" + attempts + ")."}
+	case rss.LookupFailed:
+		return feedProblem{Text: "Failed " + ago(now, l.FinishedAt) + " after " + attempts + ".", Detail: l.Error, Bad: true}
+	}
+	found := "found feeds"
+	if l.SiteID == "" {
+		found = "found no feeds"
+	}
+	return feedProblem{Text: "Done " + ago(now, l.FinishedAt) + ", " + found + " (" + attempts + ")."}
 }
 
 // siteLookupHandler queues a lookup of the site {id} at a reader's

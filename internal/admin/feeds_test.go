@@ -26,6 +26,8 @@ type fakeFeeds struct {
 	mu      sync.Mutex
 	rows    []rss.AdminFeedRow
 	queries []rss.AdminFeedQuery
+	counts  map[string]int
+	counted []string
 	feed    rss.AdminFeed
 	site    rss.AdminSite
 	err     error
@@ -43,6 +45,13 @@ func (f *fakeFeeds) ListFeeds(_ context.Context, q rss.AdminFeedQuery) ([]rss.Ad
 	defer f.mu.Unlock()
 	f.queries = append(f.queries, q)
 	return f.rows, nil
+}
+
+func (f *fakeFeeds) CountFeeds(_ context.Context, q string) (map[string]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.counted = append(f.counted, q)
+	return f.counts, nil
 }
 
 func (f *fakeFeeds) Feed(_ context.Context, id string) (rss.AdminFeed, error) {
@@ -104,7 +113,7 @@ func testFeed() rss.AdminFeed {
 			Feed: rss.Feed{
 				ID: feedID(1), SiteID: siteID(1), Url: "https://example.com/feed.xml", Title: "Example feed",
 				LastError: `<script>alert("feed")</script>`, ConsecutiveFailures: 4, PostsPerWeek: 2.25,
-				LastFetched: testNow.Add(-50 * time.Hour), NextFetch: testNow.Add(time.Hour),
+				LastFetched: testNow.Add(-50 * time.Hour), LastAttempt: testNow.Add(-30 * time.Minute), NextFetch: testNow.Add(time.Hour),
 			},
 			SiteHost: "example.com", Subscribers: 1234,
 		},
@@ -120,7 +129,7 @@ func testSite() rss.AdminSite {
 		Site: rss.Site{ID: siteID(1), Host: "example.com", URL: "https://example.com/"},
 		Icon: rss.SiteDebug{IconNextCheckAt: testNow.Add(24 * time.Hour)},
 		Lookup: rss.Lookup{ID: "l1", SiteKey: "example.com", Status: rss.LookupFailed,
-			Error: `<img src=x onerror="lookup">`, Attempts: 2, RequestedAt: testNow},
+			Error: `<img src=x onerror="lookup">`, Attempts: 2, RequestedAt: testNow.Add(-2 * time.Hour), FinishedAt: testNow.Add(-time.Hour)},
 		Feeds: []rss.AdminFeedRow{testFeed().AdminFeedRow},
 	}
 }
@@ -179,7 +188,8 @@ func TestFeedsPageQuery(t *testing.T) {
 func TestFeedsPage(t *testing.T) {
 	gone := testFeed().AdminFeedRow
 	gone.ID, gone.Title, gone.ConsecutiveFailures, gone.GoneAt = feedID(2), "Gone feed", 0, testNow.Add(-24*time.Hour)
-	feeds := &fakeFeeds{rows: []rss.AdminFeedRow{testFeed().AdminFeedRow, gone}}
+	feeds := &fakeFeeds{rows: []rss.AdminFeedRow{testFeed().AdminFeedRow, gone},
+		counts: map[string]int{rss.AdminFeedsFailing: 1, rss.AdminFeedsGone: 1, rss.AdminFeedsAll: 1234}}
 	b := feedsServer(t, feeds, &fakeRefresher{}, &fakeAudit{})
 
 	rr := b.get(t, "/feeds?filter=all&q=example&sort=failures")
@@ -189,18 +199,25 @@ func TestFeedsPage(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<a href="/feeds" aria-current="page">Feeds</a>`,
-		// The filters keep the search and order; All is current.
-		`<a href="/feeds?filter=gone&amp;q=example&amp;sort=failures">Gone</a>`,
-		`<a href="/feeds?filter=all&amp;q=example&amp;sort=failures" aria-current="page">All</a>`,
-		// Sortable headers keep the filter and search; Failures is current.
-		`<th scope="col" class="num" aria-sort="descending"><a href="/feeds?filter=all&amp;q=example&amp;sort=failures">Failures <span aria-hidden="true">↓</span></a></th>`,
+		// The filters keep the search and order, with their counts (0 for
+		// one the store didn't count); All is current.
+		`<a href="/feeds?filter=gone&amp;q=example&amp;sort=failures">Gone <span class="seg-count">1</span></a>`,
+		`<a href="/feeds?filter=stale&amp;q=example&amp;sort=failures">Stale <span class="seg-count">0</span></a>`,
+		`<a href="/feeds?filter=all&amp;q=example&amp;sort=failures" aria-current="page">All <span class="seg-count">1,234</span></a>`,
+		// Sortable headers keep the filter and search; Problem, which sorts
+		// by failures, is current.
+		`<th scope="col" aria-sort="descending"><a href="/feeds?filter=all&amp;q=example&amp;sort=failures">Problem <span aria-hidden="true">↓</span></a></th>`,
 		`<a href="/feeds?filter=all&amp;q=example&amp;sort=last-success">Last success</a>`,
 		`<a href="/feeds?filter=all&amp;q=example">Subscribers</a>`,
-		`<th scope="col">Last attempt</th>`,
-		// The rows.
-		`<a href="/feeds/` + feedID(1) + `">Example feed</a>`, `<a href="/sites/` + siteID(1) + `">example.com</a>`,
-		`1,234`, `2.2`, `<span class="status status-danger">4</span>`,
-		`<span class="status status-danger">2026-11-08</span>`,
+		`<th scope="col">Next fetch</th>`,
+		// The rows: the problem in words, its error escaped; a late last
+		// success in bold, relative, with its UTC time on hover.
+		`<a href="/feeds/` + feedID(1) + `">Example feed</a><small>example.com</small>`,
+		`<span class="problem problem-bad" title="&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;"><strong>Failing 4×</strong><span class="problem-detail"> · &lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</span></span>`,
+		`<strong>Gone since 8 Nov 2026</strong>`,
+		`1,234`, `2.2`,
+		`class="late" datetime="2026-11-07T10:00:00Z" title="2026-11-07 10:00 UTC">2 days ago</time>`,
+		`title="2026-11-09 13:00 UTC">in 1 h</time>`,
 		`value="example"`, `<a class="btn btn-sm" href="/feeds?filter=all&amp;sort=failures">Clear</a>`,
 	} {
 		if !strings.Contains(body, want) {
@@ -209,6 +226,13 @@ func TestFeedsPage(t *testing.T) {
 	}
 	if strings.Contains(body, ">Next<") {
 		t.Error("GET /feeds with one page offers Next")
+	}
+	if strings.Contains(body, "<script>alert") {
+		t.Error("GET /feeds renders an error as markup")
+	}
+	// The counts are of the feeds the search matches.
+	if got := feeds.counted[len(feeds.counted)-1]; got != "example" {
+		t.Errorf("counted feeds matching %q, want %q", got, "example")
 	}
 
 	// Last success sorts oldest first.
@@ -250,11 +274,13 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<h1>Example feed</h1>`,
-		`<code>&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</code>`,
+		`<section class="admin-section health health-bad"`, `<h2 id="health-heading" class="health-title">Failing 4×</h2>`,
+		`Last success 2 days ago, last try 30 min ago; next try in 1 h.`,
+		`<pre class="health-error"><code>&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</code></pre>`,
 		`href="` + testAppURL + `/feeds/` + feedID(1) + `">In the reader</a>`,
 		`href="/audit?target_id=` + feedID(1) + `&amp;target_type=feed">History</a>`,
 		`/feeds/` + feedID(1) + `/refresh`, `/feeds/` + feedID(1) + `/reset-backoff`,
-		`<td>1,234</td>`, `<td>42</td>`, `<td>2.2</td>`,
+		`<dd>1,234</dd>`, `<dd>42</dd>`, `<dd>2.2</dd>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("feed page lacks %s", want)
@@ -276,9 +302,10 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	for _, want := range []string{
 		`<h1>example.com</h1>`,
 		`<code>&lt;img src=x onerror=&#34;lookup&#34;&gt;</code>`,
-		`<span class="status status-danger">failed</span>`,
+		`<section class="admin-section health health-bad" aria-labelledby="lookup-heading">`,
+		`<p class="health-line">Failed 1 h ago after 2 attempts.</p>`,
 		`<a href="/feeds/` + feedID(1) + `">Example feed</a>`,
-		`<td>None</td>`, `2026-11-10 12:00`,
+		`No icon.`, `Next check in 24 h.`, `2026-11-10 12:00`,
 		`/sites/` + siteID(1) + `/lookup`, `/sites/` + siteID(1) + `/check-icon`,
 		`href="` + testAppURL + `/sites/` + siteID(1) + `">In the reader</a>`,
 	} {
@@ -442,4 +469,136 @@ func TestFeedRefresh(t *testing.T) {
 			t.Errorf("POST refresh that can't be recorded = %d, want 500", rr.Code)
 		}
 	})
+}
+
+func TestProblemOf(t *testing.T) {
+	tests := []struct {
+		name string
+		feed rss.Feed
+		want feedProblem
+	}{
+		{"gone, whatever else", rss.Feed{GoneAt: testNow, ConsecutiveFailures: 5, LastError: "status 410"},
+			feedProblem{Text: "Gone since 9 Nov 2026", Bad: true}},
+		{"failing", rss.Feed{ConsecutiveFailures: rss.AdminFailingAfter, LastError: "status 503", LastFetched: testNow},
+			feedProblem{Text: "Failing 3×", Detail: "status 503", Bad: true}},
+		{"failed, under the threshold", rss.Feed{ConsecutiveFailures: 2, LastError: "status 500", LastFetched: testNow},
+			feedProblem{Text: "Failed 2×", Detail: "status 500"}},
+		{"never fetched", rss.Feed{}, feedProblem{Text: "Never fetched"}},
+		{"failing, never fetched", rss.Feed{ConsecutiveFailures: 4, LastError: "x"},
+			feedProblem{Text: "Failing 4×", Detail: "x", Bad: true}},
+		{"fine", rss.Feed{LastFetched: testNow}, feedProblem{}},
+	}
+	for _, tt := range tests {
+		if got := problemOf(rss.AdminFeedRow{Feed: tt.feed}); got != tt.want {
+			t.Errorf("%s: problemOf = %+v, want %+v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestIsLate(t *testing.T) {
+	old := testNow.Add(-rss.AdminStaleAfter - time.Minute)
+	tests := []struct {
+		name string
+		row  rss.AdminFeedRow
+		want bool
+	}{
+		{"subscribed, over a day", rss.AdminFeedRow{Feed: rss.Feed{LastFetched: old}, Subscribers: 1}, true},
+		{"subscribed, under a day", rss.AdminFeedRow{Feed: rss.Feed{LastFetched: testNow.Add(-time.Hour)}, Subscribers: 1}, false},
+		{"no subscribers", rss.AdminFeedRow{Feed: rss.Feed{LastFetched: old}}, false},
+		{"gone", rss.AdminFeedRow{Feed: rss.Feed{LastFetched: old, GoneAt: testNow}, Subscribers: 1}, false},
+		{"never fetched", rss.AdminFeedRow{Subscribers: 1}, false},
+	}
+	for _, tt := range tests {
+		if got := isLate(tt.row, testNow); got != tt.want {
+			t.Errorf("%s: isLate = %t, want %t", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestAgo(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{-30 * time.Second, "just now"},
+		{30 * time.Second, "just now"},
+		{-36 * time.Minute, "36 min ago"},
+		{-time.Hour, "1 h ago"},
+		{-47 * time.Hour, "47 h ago"},
+		{-50 * time.Hour, "2 days ago"},
+		{3 * time.Hour, "in 3 h"},
+		{6 * 24 * time.Hour, "in 6 days"},
+	}
+	for _, tt := range tests {
+		if got := ago(testNow, testNow.Add(tt.d)); got != tt.want {
+			t.Errorf("ago(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+func TestLookupSummary(t *testing.T) {
+	hourAgo := testNow.Add(-time.Hour)
+	tests := []struct {
+		lookup rss.Lookup
+		want   feedProblem
+	}{
+		{rss.Lookup{}, feedProblem{Text: "No lookup of this site yet."}},
+		{rss.Lookup{ID: "l", Status: rss.LookupPending, RequestedAt: hourAgo}, feedProblem{Text: "Waiting to run, asked for 1 h ago."}},
+		{rss.Lookup{ID: "l", Status: rss.LookupRunning, StartedAt: hourAgo, Attempts: 2}, feedProblem{Text: "Running, started 1 h ago (2 attempts)."}},
+		{rss.Lookup{ID: "l", Status: rss.LookupDone, FinishedAt: hourAgo, Attempts: 1, SiteID: "s"}, feedProblem{Text: "Done 1 h ago, found feeds (1 attempt)."}},
+		{rss.Lookup{ID: "l", Status: rss.LookupDone, FinishedAt: hourAgo, Attempts: 1}, feedProblem{Text: "Done 1 h ago, found no feeds (1 attempt)."}},
+		{rss.Lookup{ID: "l", Status: rss.LookupFailed, FinishedAt: hourAgo, Attempts: 3, Error: "boom"}, feedProblem{Text: "Failed 1 h ago after 3 attempts.", Detail: "boom", Bad: true}},
+	}
+	for _, tt := range tests {
+		if got := lookupSummary(tt.lookup, testNow); got != tt.want {
+			t.Errorf("lookupSummary(%s) = %+v, want %+v", tt.lookup.Status, got, tt.want)
+		}
+	}
+}
+
+// TestFeedPageStates checks the feed page's status panel in the states
+// the failing testFeed doesn't cover: its heading and line, and which
+// actions it offers.
+func TestFeedPageStates(t *testing.T) {
+	late, fine, gone, never := testFeed(), testFeed(), testFeed(), testFeed()
+	for _, f := range []*rss.AdminFeed{&late, &fine, &gone, &never} {
+		f.ConsecutiveFailures, f.LastError = 0, ""
+	}
+	fine.LastFetched = testNow.Add(-36 * time.Minute)
+	gone.GoneAt, gone.LastError = testNow.Add(-24*time.Hour), "status 410"
+	never.LastFetched, never.LastAttempt = time.Time{}, time.Time{}
+	tests := []struct {
+		name          string
+		feed          rss.AdminFeed
+		want          []string
+		refresh, gone bool
+	}{
+		{"late", late, []string{`class="health-title">Last fetched 2 days ago</h2>`, `Last success 2 days ago; next fetch in 1 h.`}, true, false},
+		{"fine", fine, []string{`class="health-title">Fetching normally</h2>`, `Last success 36 min ago; next fetch in 1 h.`}, true, false},
+		{"gone", gone, []string{`health-bad`, `class="health-title">Gone since 8 Nov 2026</h2>`, `It answered 410 Gone on 2026-11-08 12:00 UTC, so it isn’t fetched any more. Its last success was 2 days ago.`}, false, true},
+		{"never fetched", never, []string{`class="health-title">Never fetched</h2>`, `No fetch has worked yet, and none has been tried. Next try in 1 h.`}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := feedsServer(t, &fakeFeeds{feed: tt.feed}, &fakeRefresher{}, &fakeAudit{})
+			body := b.get(t, "/feeds/"+feedID(1)).Body.String()
+			for _, want := range tt.want {
+				if !strings.Contains(body, want) {
+					t.Errorf("feed page lacks %s", want)
+				}
+			}
+			if strings.Contains(body, "health-error") {
+				t.Error("feed page shows an error with no failures")
+			}
+			if strings.Contains(body, "/reset-backoff") {
+				t.Error("feed page offers Reset backoff with no failures")
+			}
+			if got := strings.Contains(body, "/refresh"); got != tt.refresh {
+				t.Errorf("offers Refresh now = %t, want %t", got, tt.refresh)
+			}
+			if got := strings.Contains(body, "/clear-gone"); got != tt.gone {
+				t.Errorf("offers Clear gone = %t, want %t", got, tt.gone)
+			}
+		})
+	}
 }

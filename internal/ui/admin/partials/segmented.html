@@ -4,5 +4,5 @@
      <div class="segments"> under its head. */}}
 {{define "segmented"}}<nav class="segmented" aria-labelledby="seg-{{lower .Label}}">
           <p id="seg-{{lower .Label}}">{{.Label}}</p>
-          <ul role="list">{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>{{end}}</ul>
+          <ul role="list">{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}{{with .Count}} <span class="seg-count">{{.}}</span>{{end}}</a></li>{{end}}</ul>
         </nav>{{end}}

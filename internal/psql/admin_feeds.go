@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -87,6 +89,40 @@ func (s scanTail) Scan(dest ...any) error {
 	return s.row.Scan(append(dest, s.tail...)...)
 }
 
+// adminFeedSearch is the condition that feeds f of sites s match q (any
+// case, in the title, URL or site's host) with q's pattern as argument n.
+func adminFeedSearch(n int) string {
+	return fmt.Sprintf(`(f.title ILIKE $%[1]d ESCAPE '\' OR f.url ILIKE $%[1]d ESCAPE '\' OR s.host ILIKE $%[1]d ESCAPE '\')`, n)
+}
+
+// CountFeeds counts the feeds each filter keeps whose title, URL or site's
+// host contains q (any case; "" for every feed), by filter, in one pass over
+// the feeds (see "The admin's feed list" in docs/backlog.md).
+func (r *AdminFeedRepository) CountFeeds(ctx context.Context, q string) (map[string]int, error) {
+	keys := slices.Sorted(maps.Keys(adminFeedFilters))
+	cols := make([]string, len(keys))
+	for i, k := range keys {
+		cols[i] = `count(*) FILTER (WHERE ` + adminFeedFilters[k] + `)`
+	}
+	stmt := `SELECT ` + strings.Join(cols, ", ") + `
+		FROM feeds f JOIN sites s ON s.id = f.site_id
+		WHERE $1 = '' OR ` + adminFeedSearch(2)
+
+	counts := make([]int, len(keys))
+	dest := make([]any, len(keys))
+	for i := range counts {
+		dest[i] = &counts[i]
+	}
+	if err := r.DB.QueryRowContext(ctx, stmt, q, likePattern(q)).Scan(dest...); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(keys))
+	for i, k := range keys {
+		out[k] = counts[i]
+	}
+	return out, nil
+}
+
 // ListFeeds returns a page of the feeds q's filter keeps whose title, URL
 // or site's host contains q.Q (any case), in q's order, starting after the
 // feed q.After. An unknown filter or order is an error. Every filter but
@@ -106,8 +142,7 @@ func (r *AdminFeedRepository) ListFeeds(ctx context.Context, q rss.AdminFeedQuer
 	where := []string{filter}
 	if q.Q != "" {
 		args = append(args, likePattern(q.Q))
-		n := len(args)
-		where = append(where, fmt.Sprintf(`(f.title ILIKE $%[1]d ESCAPE '\' OR f.url ILIKE $%[1]d ESCAPE '\' OR s.host ILIKE $%[1]d ESCAPE '\')`, n))
+		where = append(where, adminFeedSearch(len(args)))
 	}
 	dir, cmp := "", ">"
 	if order.desc {

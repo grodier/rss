@@ -116,6 +116,9 @@ type filterLink struct {
 	Label   string
 	Href    string
 	Current bool
+	// Count is how many the choice shows, formatted, "" for no count (the
+	// feeds page's filters have one).
+	Count string
 }
 
 // assessment is the Core Web Vitals' verdict at p75: Passed when LCP, INP

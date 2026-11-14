@@ -37,6 +37,12 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // waiting for it. A re-queue keeps site_id, so the site page keeps working while the
 // re-check runs. Either way the lookup has a reader's priority (0).
 func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
+	return requestLookup(ctx, r.DB, siteKey, url, homePage, doneTTL, failedTTL)
+}
+
+// requestLookup is Request on q, so the admin can queue one in its action's
+// transaction (AdminFeedRepository.CheckForFeeds).
+func requestLookup(ctx context.Context, q querier, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
 	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
 	stmt := `INSERT INTO lookups (site_key, url) VALUES ($1, $2)
 		ON CONFLICT (site_key) DO UPDATE SET
@@ -48,14 +54,14 @@ func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, hom
 			OR (NOT ` + found + ` AND lookups.finished_at < now() - make_interval(secs => $4)))
 		RETURNING ` + lookupColumns
 
-	l, err := scanLookup(r.DB.QueryRowContext(ctx, stmt, siteKey, url, doneTTL.Seconds(), failedTTL.Seconds(), homePage))
+	l, err := scanLookup(q.QueryRowContext(ctx, stmt, siteKey, url, doneTTL.Seconds(), failedTTL.Seconds(), homePage))
 	if errors.Is(err, rss.ErrNoRecord) {
 		// The row exists and is still in progress or its result still applies.
-		if _, err := r.DB.ExecContext(ctx, `UPDATE lookups SET priority = 0
+		if _, err := q.ExecContext(ctx, `UPDATE lookups SET priority = 0
 			WHERE site_key = $1 AND status = 'pending' AND priority > 0`, siteKey); err != nil {
 			return rss.Lookup{}, err
 		}
-		return r.GetBySiteKey(ctx, siteKey)
+		return scanLookup(q.QueryRowContext(ctx, `SELECT `+lookupColumns+` FROM lookups WHERE site_key = $1`, siteKey))
 	}
 	return l, err
 }

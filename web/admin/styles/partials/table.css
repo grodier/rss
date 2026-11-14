@@ -68,6 +68,17 @@
     overflow-wrap: anywhere;
   }
 
+  /* A record's fields, a row each: its name, then its value; every such
+     table on a page has the same name column, so their values line up. */
+  .facts th[scope="row"] {
+    inline-size: 12rem;
+    min-inline-size: 9rem;
+  }
+
+  .facts tr:last-child th {
+    border-block-end: 0;
+  }
+
   /* The fields an action changed, one per line: the name over its values
      before and after. */
   .changes > div + div {

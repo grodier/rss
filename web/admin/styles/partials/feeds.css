@@ -1,0 +1,99 @@
+/* The feeds and sites pages: a feed's problem, said in words, in the
+   tables and atop its page (the status panel, tinted when it's bad), a
+   late last success in bold, and a site's lookup and icon side by side. */
+@layer components {
+  .feeds .feed-name small {
+    display: block;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  /* One line: the phrase, then as much of the error as fits. */
+  .feeds .feed-problem {
+    max-inline-size: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .problem {
+    color: var(--text-2);
+  }
+
+  .problem strong {
+    font-weight: 600;
+  }
+
+  .problem-bad strong {
+    color: var(--danger);
+  }
+
+  .late {
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  .health {
+    background: var(--surface);
+  }
+
+  .health-bad {
+    background: var(--danger-bg);
+  }
+
+  /* The feed's status panel's heading is its state, so it reads as a
+     title rather than a section's label. */
+  .admin-section > h2.health-title {
+    margin: 0;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 750;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .health-line {
+    margin-block-start: 0.25rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+  }
+
+  .health-bad > h2.health-title,
+  .health-bad .health-line {
+    color: var(--on-danger-bg);
+  }
+
+  .health-error {
+    margin-block-start: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.8125rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .health .form-actions {
+    margin-block-start: 0.75rem;
+  }
+
+  /* Two sections side by side on wide screens, stacked on phones, with the
+     dividers a section between sections would have. */
+  .admin-pair {
+    border-block: 1px solid var(--border);
+  }
+
+  @media (min-width: 48rem) {
+    .admin-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .admin-pair > .admin-section + .admin-section {
+      border-block-start: 0;
+      border-inline-start: 1px solid var(--border);
+    }
+  }
+}

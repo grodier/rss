@@ -19,6 +19,8 @@ import (
 	"github.com/grodier/rss/internal/admin"
 	"github.com/grodier/rss/internal/admin/render"
 	"github.com/grodier/rss/internal/cli"
+	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/psql"
 )
 
@@ -74,6 +76,11 @@ func serve(cfg config, logger *slog.Logger) error {
 		Emails:   psql.NewEmailRepository(db),
 		Overview: psql.NewAdminOverviewRepository(db),
 		WebPerf:  psql.NewAdminWebPerfRepository(db),
+
+		Feeds: psql.NewAdminFeedRepository(db),
+		// Refresh now fetches through internal/fetch, like www's
+		// refreshes, with the admin's own client.
+		Refresher: &ingest.Refresher{Fetcher: fetch.New(fetch.Options{}), Store: psql.NewFeedRepository(db)},
 
 		Availability: psql.NewAvailabilityRepository(db),
 		Runtime:      psql.NewMetricsRepository(db),

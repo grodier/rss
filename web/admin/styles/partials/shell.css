@@ -180,7 +180,15 @@
       color: var(--bg);
     }
 
-    /* The open list takes the bar's full width, under the brand. */
+    /* The open list takes the bar's full width, under the brand. Browsers
+       wrap a details element's content in its ::details-content box, which
+       is then the bar's flex item, not the nav: without this, its empty box
+       pushes Menu to the middle when closed, and the open list is a column
+       at the right. */
+    .admin-menu::details-content {
+      flex-basis: 100%;
+    }
+
     .admin-menu nav {
       flex-basis: 100%;
       padding-block: 0.5rem 0.25rem;

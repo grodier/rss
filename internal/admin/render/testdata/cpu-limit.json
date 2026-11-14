@@ -1,0 +1,10 @@
+[
+  {
+    "labels": [{"field": "resource", "value": "srv-test"}],
+    "unit": "cpu",
+    "values": [
+      {"timestamp": "2026-11-09T11:00:00Z", "value": 0.5},
+      {"timestamp": "2026-11-09T11:20:00Z", "value": 0.5}
+    ]
+  }
+]

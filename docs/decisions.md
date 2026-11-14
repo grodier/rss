@@ -184,7 +184,7 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 
 Planned in #583 with the admin, which is where it's read.
 
-- **One place to look: the admin.** The app records its own request, background-job and real-user metrics in Postgres, and the admin fetches container CPU and memory and deploys from Render's API, and uptime from UptimeRobot's (#576).
+- **One place to look: the admin.** The app records its own request, background-job and real-user metrics in Postgres, and the admin fetches container CPU and memory and deploys from Render's API (#576), and uptime from UptimeRobot's (#623).
   Render's latency by path and its metrics streaming need a Professional workspace (production is on Hobby), and a hosted tool (Grafana, Datadog) would be another data processor in the privacy policy, for volumes Postgres handles easily.
 - **Request metrics are grouped by chi route pattern** (`/feeds/{id}`), never by URL, so no IDs or tokens are stored (#563).
   Each instance counts in memory and writes one row per route per minute, with latency in fixed histogram buckets, from which the admin reads percentiles.
@@ -210,7 +210,11 @@ Planned in #583 with the admin, which is where it's read.
 - **Retention**: request metrics at one minute for 7 days and hourly for 90; raw beacons for 30 days (at most 500,000) and daily rollups for 13 months (#563, #565); the admin's availability checks for 90 days (#588); runtime metrics for 30 days (#616, from 7).
 - **Recent server errors are kept in a table capped by count** (#564), by route pattern, so the admin can show them next to each route without log access.
 - **A Render API key on the admin service** (#576) is accepted: Render keys have full account access, but a compromised admin can already write to the database.
-- **Availability is checked from both sides** (#576, #588): UptimeRobot's API for the outside view, and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
+  It's its own key, not the one Terraform and CI use, so each can be revoked alone.
+- **Deploys are labelled with the version the pinger saw** (#576): we deploy images by digest, so Render's deploy records carry no commit; a deploy that went live takes the version the pinger last saw before the next one went live, and any other its digest.
+  Rejected: deploying by a reference that also carries the tag, which Render might not accept, and labelling by digest alone, which doesn't trace a change to a commit.
+- **Render's figures are the highest instance's, and its limits come from its API** (#576): two instances overlap during every deploy and each has new IDs, so a series per instance would be many short lines; this matches the runtime charts, and the limits follow a plan change without a code change.
+- **Availability is checked from both sides** (#623, #588): UptimeRobot's API for the outside view (split from #576 before building, to keep each PR reviewable), and the admin pinging `www`'s `/healthcheck` over the private network every minute, to tell the app being down from the edge or DNS being down.
 - **The service page's inside view** (#616): uptime is the share of the pinger's checks that were ok, over the checks made (minutes with no check count neither way); an incident is a run of failed checks with no ok check between them, ended by the next ok check, and missing minutes don't end or split one.
 - **Runtime across `www`'s instances** (#616): memory, goroutines and GC pause take the highest instance at each minute, since the limits are per instance; database connections are summed, since the instances share the database's; each chart step then takes the highest of its minutes, so a spike isn't averaged away.
 - **Runtime metrics are kept 30 days, not 7** (#616): a slow leak builds over weeks, and 7 days may cover only one or two deploys to compare; about 43,000 small rows per instance.

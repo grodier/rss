@@ -10,6 +10,7 @@ Terraform doesn't own these things that change outside it, and ignores them:
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard on both services (see "Domain and email").
 - **`RSS_SECRET_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin").
+- **`RSS_RENDER_API_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin's Render API key").
 - **Edge caching**, set in Render's dashboard (see "Edge caching").
 - **The admin's `onrender.com` subdomain, disabled** in Render's dashboard: the provider has no attribute for it (see "The admin").
 
@@ -182,7 +183,7 @@ The admin site (`cmd/admin`) runs as its own web service, `rss-admin`, at `https
 The `rss` image stays distroless, with no shell.
 The package `ghcr.io/grodier/rss-admin` must be public, like `rss`, or Render can't pull it.
 
-**Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links) and on the private network in `RSS_APP_INTERNAL_URL` (for the pinger, from the `app_internal_url` variable), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY` and `RSS_SMTP_PASSWORD` are set in the dashboard.
+**Its environment:** the database (at most 3 connections), its own URL in `RSS_BASE_URL`, the reader's in `RSS_APP_URL` (for invite links) and on the private network in `RSS_APP_INTERNAL_URL` (for the pinger, from the `app_internal_url` variable), `rss`'s service ID in `RSS_RENDER_SERVICE_ID` (for the service page), and the mail settings `rss` has, all in `main.tf`; `RSS_SECRET_KEY`, `RSS_SMTP_PASSWORD` and `RSS_RENDER_API_KEY` are set in the dashboard.
 It runs none of `www`'s background workers; its own is the pinger, which checks `rss`'s `/healthcheck` over the private network every minute.
 
 ### Deploying the admin
@@ -231,6 +232,18 @@ Open the `rss-admin` service's **Shell** in Render's dashboard and run:
 It reads `RSS_DB_DSN` and `RSS_SECRET_KEY` from the service's environment.
 Type the password on the first line (the shell shows it, so clear the screen afterwards), scan the QR code (or add the `otpauth://` URI) with an authenticator app, type the code the app shows, and store the 10 recovery codes it prints in the password manager: they're shown once.
 For a lost phone or password, run the same with `-reset`, which replaces the admin's password, secret and recovery codes and logs every admin out, so a session on a lost device ends too.
+
+### The admin's Render API key
+
+The service page reads `rss`'s CPU, memory and deploys from Render's API with `RSS_RENDER_API_KEY` (#576).
+Render keys can't be scoped: this one has full access to the account, and the admin only reads with it.
+It's its own key, not Terraform's and CI's `RENDER_API_KEY`, so each can be revoked alone, and it's kept in 1Password.
+
+**Setting it:** on `rss-admin`'s **Environment** page, add `RSS_RENDER_API_KEY` and save, which redeploys.
+Only once `main.tf`'s `ignore_changes` lists it (it does from #576 on): an apply removes any variable it neither sets nor ignores.
+Without it the service page says Render isn't configured; with a bad one, "Couldn’t reach Render.", and the admin logs the status Render answered.
+
+**Rotating it:** in Render's **Account Settings → API Keys**, create a new key, replace it in 1Password and on `rss-admin`'s **Environment** page (saving redeploys), then delete the old key.
 
 ### Rotating `RSS_SECRET_KEY`
 

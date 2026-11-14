@@ -89,8 +89,8 @@ func TestOverview(t *testing.T) {
 		}
 	}
 	// Only figures with a page are links.
-	if n := strings.Count(body, `class="stat stat-link"`); n != 2 {
-		t.Errorf("GET / has %d linked figures, want 2 (Waiting and Invites pending)", n)
+	if n := strings.Count(body, `class="stat stat-link"`); n != 4 {
+		t.Errorf("GET / has %d linked figures, want 4 (the service's two, Waiting and Invites pending)", n)
 	}
 }
 
@@ -322,5 +322,55 @@ func TestShare(t *testing.T) {
 		if got := share(tt.part, tt.whole); got != tt.want {
 			t.Errorf("share(%d, %d) = %q, want %q", tt.part, tt.whole, got, tt.want)
 		}
+	}
+}
+
+// overviewServerPinging is overviewServer with the pinger's checks in a.
+func overviewServerPinging(t *testing.T, a *fakeAvailability) *browser {
+	t.Helper()
+	cfg := Config{Port: 4001, Env: "development", Version: "abc1234", BaseURL: "http://localhost:4001", AppInternalURL: "http://rss-test:8080"}
+	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Overview: &fakeOverview{}, Availability: a})
+	return loggedIn(t, s)
+}
+
+func TestOverviewService(t *testing.T) {
+	body := overviewServerPinging(t, sampleAvailability()).get(t, "/").Body.String()
+	for _, want := range []string{
+		`<h2 id="service">Service</h2>`,
+		`<dt><a href="/service">Uptime, 24 hours</a></dt>`, `<dd>99.86%</dd>`, `1,438 of 1,440 checks`,
+		`<dt><a href="/service">www’s version</a></dt>`, `<dd>0123456</dd>`, `as of 11:59 UTC`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %s", want)
+		}
+	}
+}
+
+func TestOverviewServiceNotConfigured(t *testing.T) {
+	body := overviewServer(t, &fakeOverview{}).get(t, "/").Body.String()
+	if n := strings.Count(body, `<dd>Not configured</dd>`); n != 2 {
+		t.Errorf("GET / says Not configured %d times, want 2", n)
+	}
+}
+
+func TestOverviewServiceNoChecks(t *testing.T) {
+	body := overviewServerPinging(t, &fakeAvailability{latestErr: rss.ErrNoRecord}).get(t, "/").Body.String()
+	for _, want := range []string{`<dd>No checks</dd>`, `<dd>None reported</dd>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET / lacks %s", want)
+		}
+	}
+}
+
+func TestOverviewServiceError(t *testing.T) {
+	for name, a := range map[string]*fakeAvailability{
+		"uptime":  {err: errors.New("database down")},
+		"version": {latestErr: errors.New("database down")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if rr := overviewServerPinging(t, a).get(t, "/"); rr.Code != http.StatusInternalServerError {
+				t.Errorf("GET / = %d, want 500", rr.Code)
+			}
+		})
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	netmail "net/mail"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -32,8 +33,13 @@ type config struct {
 	// trailing slash, whose /healthcheck the pinger checks; "" runs no
 	// checks.
 	appInternalURL string
-	mailLimits     admin.MailLimits
-	db             dbConfig
+	// renderAPIKey and renderServiceID are Render's settings: the service
+	// page reads www's CPU, memory and deploys with them when both are set
+	// (production sets the ID in Terraform, the key in Render's dashboard).
+	renderAPIKey    string
+	renderServiceID string
+	mailLimits      admin.MailLimits
+	db              dbConfig
 	// version, with -version, prints the build's version instead of serving.
 	version bool
 }
@@ -104,6 +110,9 @@ func (c config) Validate() error {
 			errs = append(errs, fmt.Errorf("invalid app internal URL %q: must be http(s)://<host>[:<port>], with no path, query, fragment or user", c.appInternalURL))
 		}
 	}
+	if c.renderServiceID != "" && !renderServiceID.MatchString(c.renderServiceID) {
+		errs = append(errs, fmt.Errorf("invalid Render service ID %q: must be srv- and lowercase letters or digits", c.renderServiceID))
+	}
 	if c.supportEmail != "" {
 		if _, err := netmail.ParseAddress(c.supportEmail); err != nil {
 			errs = append(errs, fmt.Errorf("invalid support email %q: %v", c.supportEmail, err))
@@ -129,6 +138,9 @@ func (c config) Validate() error {
 // flags not on the command line, from RSS_ environment variables looked up
 // with getenv. Like the flag package, it writes its errors and the -help
 // output to out, so the caller only has to exit.
+// renderServiceID matches a Render service's ID.
+var renderServiceID = regexp.MustCompile(`^srv-[a-z0-9]+$`)
+
 func parseConfig(args []string, getenv func(string) string, out io.Writer) (config, error) {
 	cfg := defaultConfig()
 
@@ -143,6 +155,8 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.StringVar(&cfg.secretKey, "secret-key", "", secretKeyUsage)
 	fs.StringVar(&cfg.appURL, "app-url", cfg.appURL, "The reader's public URL, for the links in invites")
 	fs.StringVar(&cfg.appInternalURL, "app-internal-url", "", "The reader's URL on the private network, whose /healthcheck the admin checks every minute (empty: no checks)")
+	fs.StringVar(&cfg.renderAPIKey, "render-api-key", "", "A Render API key, to read www's CPU, memory and deploys (empty: not shown)")
+	fs.StringVar(&cfg.renderServiceID, "render-service-id", "", "www's Render service ID (srv-…), whose CPU, memory and deploys the service page shows")
 	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in invites' footers")
 	fs.IntVar(&cfg.mailLimits.Daily, "mail-daily-limit", cfg.mailLimits.Daily, "The email provider's daily sending limit, which invites are checked against")
 	fs.IntVar(&cfg.mailLimits.Monthly, "mail-monthly-limit", cfg.mailLimits.Monthly, "The email provider's monthly sending limit")

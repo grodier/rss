@@ -1,0 +1,18 @@
+[
+  {
+    "labels": [{"field": "resource", "value": "srv-test"}, {"field": "instance", "value": "srv-test-aaaaa"}],
+    "unit": "cpu",
+    "values": [
+      {"timestamp": "2026-11-09T11:00:00Z", "value": 0.012},
+      {"timestamp": "2026-11-09T11:10:00Z", "value": 0.034}
+    ]
+  },
+  {
+    "labels": [{"field": "resource", "value": "srv-test"}, {"field": "instance", "value": "srv-test-bbbbb"}],
+    "unit": "cpu",
+    "values": [
+      {"timestamp": "2026-11-09T11:10:00Z", "value": 0.051},
+      {"timestamp": "2026-11-09T11:20:00Z", "value": 0.02}
+    ]
+  }
+]

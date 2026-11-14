@@ -137,6 +137,8 @@ It prints a QR code and the `otpauth://` URI it holds; add it to an authenticato
 | `-secret-key` | `RSS_SECRET_KEY` | _(none; required in production)_ | Key that seals admins' TOTP secrets: 32 bytes, hex-encoded (`openssl rand -hex 32`); in development, a new one each run when unset |
 | `-app-url` | `RSS_APP_URL` | `http://localhost:8080` | The reader's public URL, for the links in invites (`https` in production) |
 | `-app-internal-url` | `RSS_APP_INTERNAL_URL` | _(none)_ | The reader's URL on the private network (`http` or `https`, no path), whose `/healthcheck` the admin checks every minute; unset, it runs no checks. Locally, `http://localhost:8080` checks a local `www` |
+| `-render-api-key` | `RSS_RENDER_API_KEY` | _(none)_ | A Render API key, with which the service page reads `www`'s CPU, memory and deploys; unset, or without `-render-service-id`, the page says they're not configured |
+| `-render-service-id` | `RSS_RENDER_SERVICE_ID` | _(none)_ | `www`'s Render service ID (`srv-…`), whose figures the service page reads with `-render-api-key` |
 | `-support-email` | `RSS_SUPPORT_EMAIL` | _(none)_ | Where people can get help, shown in invites' footers, as for `www` |
 | `-mail-daily-limit` | `RSS_MAIL_DAILY_LIMIT` | `100` | The email provider's daily sending limit, which waves of invites are checked against |
 | `-mail-monthly-limit` | `RSS_MAIL_MONTHLY_LIMIT` | `3000` | The email provider's monthly sending limit |

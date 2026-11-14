@@ -5,11 +5,13 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/grodier/rss/internal/admin/chart"
+	"github.com/grodier/rss/internal/admin/render"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -20,10 +22,12 @@ type fakeAvailability struct {
 	uptime    rss.Uptime
 	incidents []rss.Incident
 	latest    rss.AvailabilityCheck
-	latestErr error // rss.ErrNoRecord: no version reported yet
-	err       error // every method's
+	latestErr error    // rss.ErrNoRecord: no version reported yet
+	versions  []string // VersionsIn's, by span
+	err       error    // every method's
 
 	calls int
+	spans []rss.Span
 	since time.Time
 	limit int
 }
@@ -45,6 +49,62 @@ func (f *fakeAvailability) LatestVersion(context.Context) (rss.AvailabilityCheck
 		return rss.AvailabilityCheck{}, f.err
 	}
 	return f.latest, f.latestErr
+}
+
+func (f *fakeAvailability) VersionsIn(_ context.Context, spans []rss.Span) ([]string, error) {
+	f.calls++
+	f.spans = spans
+	out := make([]string, len(spans))
+	for i := range spans {
+		if i < len(f.versions) {
+			out[i] = f.versions[i]
+		}
+	}
+	return out, f.err
+}
+
+// fakeRender is a RenderReader returning its fields, or its errors.
+type fakeRender struct {
+	instances    render.Instances
+	deploys      []render.Deploy
+	instancesErr error
+	deploysErr   error
+}
+
+func (f *fakeRender) Instances(context.Context, time.Time, time.Time, time.Duration) (render.Instances, error) {
+	return f.instances, f.instancesErr
+}
+
+func (f *fakeRender) Deploys(context.Context, int) ([]render.Deploy, error) {
+	return f.deploys, f.deploysErr
+}
+
+const (
+	newDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	oldDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	badDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	oldSHA    = "fedcba9876543210fedcba9876543210fedcba98"
+)
+
+// sampleRender is an hour of one instance's figures and three deploys:
+// the live one two hours ago, a failed one before it, and the one it
+// replaced a day ago.
+func sampleRender() *fakeRender {
+	var cpu, mem, count []render.Point
+	for i := range 6 {
+		at := testNow.Add(-time.Hour + time.Duration(i)*10*time.Minute)
+		cpu = append(cpu, render.Point{T: at, V: 0.02})
+		mem = append(mem, render.Point{T: at, V: 120 << 20})
+		count = append(count, render.Point{T: at, V: 1})
+	}
+	return &fakeRender{
+		instances: render.Instances{CPU: cpu, Memory: mem, Count: count, CPULimit: 0.5, MemoryLimit: 512 << 20},
+		deploys: []render.Deploy{
+			{ID: "dep-new", Status: "live", Image: newDigest, CreatedAt: testNow.Add(-2*time.Hour - 2*time.Minute), FinishedAt: testNow.Add(-2 * time.Hour)},
+			{ID: "dep-failed", Status: "update_failed", Image: badDigest, CreatedAt: testNow.Add(-3 * time.Hour), FinishedAt: testNow.Add(-3*time.Hour + time.Minute)},
+			{ID: "dep-old", Status: "deactivated", Image: oldDigest, CreatedAt: testNow.Add(-26 * time.Hour), FinishedAt: testNow.Add(-26*time.Hour + 3*time.Minute)},
+		},
+	}
 }
 
 // fakeRuntime is a RuntimeReader returning rows, or err, and remembering
@@ -96,11 +156,22 @@ func sampleRuntime() *fakeRuntime {
 // pinging is set.
 func serviceServer(t *testing.T, a *fakeAvailability, rt *fakeRuntime, pinging bool) *browser {
 	t.Helper()
+	return serviceServerWithRender(t, a, rt, pinging, nil)
+}
+
+// serviceServerWithRender is serviceServer reading Render's figures from
+// rd, unless it's nil.
+func serviceServerWithRender(t *testing.T, a *fakeAvailability, rt *fakeRuntime, pinging bool, rd *fakeRender) *browser {
+	t.Helper()
 	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}
 	if pinging {
 		cfg.AppInternalURL = "http://rss-test:8080"
 	}
-	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Availability: a, Runtime: rt})
+	services := Services{Database: pinger{}, Availability: a, Runtime: rt}
+	if rd != nil {
+		services.Render = rd
+	}
+	s, _ := newTestServerWithAdminConfig(t, cfg, services)
 	return loggedIn(t, s)
 }
 
@@ -131,7 +202,7 @@ func TestServicePage(t *testing.T) {
 	if n := strings.Count(body, `<figure class="service-chart">`); n != 5 {
 		t.Errorf("%d runtime charts, want 5", n)
 	}
-	for _, unwanted := range []string{"Not configured", "No checks yet", "Showing the 50 most recent", "kept for"} {
+	for _, unwanted := range []string{"Not configured: set -app-internal-url", "No checks yet", "Showing the 50 most recent", "kept for"} {
 		if strings.Contains(body, unwanted) {
 			t.Errorf("page has %q", unwanted)
 		}
@@ -384,6 +455,159 @@ func TestDuration(t *testing.T) {
 	} {
 		if got := duration(tt.d); got != tt.want {
 			t.Errorf("duration(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+func TestServicePageRender(t *testing.T) {
+	a := sampleAvailability()
+	// The live deploy's span, then the one it replaced: VersionsIn is asked
+	// oldest first.
+	a.versions = []string{oldSHA, testSHA}
+	b := serviceServerWithRender(t, a, sampleRuntime(), true, sampleRender())
+	rr := b.get(t, "/service")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /service = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	wantSpans := []rss.Span{
+		{From: testNow.Add(-26*time.Hour + 3*time.Minute), To: testNow.Add(-2 * time.Hour)},
+		{From: testNow.Add(-2 * time.Hour), To: testNow},
+	}
+	if !slices.Equal(a.spans, wantSpans) {
+		t.Errorf("VersionsIn spans = %v, want %v", a.spans, wantSpans)
+	}
+	for _, want := range []string{
+		`<h2 id="instances">Instances</h2>`,
+		`<h3>CPU</h3> <span class="unit">CPU</span>`,
+		`<h3>Memory</h3> <span class="unit">MB</span>`,
+		`<h3>Instances</h3>`,
+		// The limits are thresholds.
+		`Limit at 0.5 CPU`, `Limit at 512 MB`,
+		// The deploys, newest first: a version the pinger saw is linked,
+		// a failed deploy shows its digest.
+		`<a href="https://github.com/grodier/rss/commit/` + testSHA + `"><code>0123456</code></a></td>
+                <td><span class="status">Live</span>`,
+		`<code>sha256:ccccccc</code></td>
+                <td><span class="status status-danger">Failed</span>`,
+		`<a href="https://github.com/grodier/rss/commit/` + oldSHA + `"><code>fedcba9</code></a></td>
+                <td><span class="status">Replaced</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	// Three Render charts and five runtime charts, each marking the deploy
+	// that went live in the period, not the failed one or the older one.
+	if n := strings.Count(body, `<figure class="service-chart">`); n != 8 {
+		t.Errorf("%d charts, want 8", n)
+	}
+	if n := strings.Count(body, `<line class="chart-marker"`); n != 8 {
+		t.Errorf("%d deploy markers, want 8 (one per chart)", n)
+	}
+	if n := strings.Count(body, "Deploy 0123456 at"); n != 8 {
+		t.Errorf("charts describe the deploy %d times, want 8", n)
+	}
+	for _, unwanted := range []string{"Not configured", "Couldn’t reach Render", "ccccccc at", "fedcba9 at"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("page has %q", unwanted)
+		}
+	}
+}
+
+func TestServicePageRenderWithoutPinger(t *testing.T) {
+	a := sampleAvailability()
+	body := serviceServerWithRender(t, a, sampleRuntime(), false, sampleRender()).get(t, "/service").Body.String()
+	if a.calls != 0 {
+		t.Errorf("availability asked %d times, want none", a.calls)
+	}
+	// Every deploy is labelled with its digest.
+	for _, want := range []string{"<code>sha256:bbbbbbb</code>", "<code>sha256:ccccccc</code>", "<code>sha256:aaaaaaa</code>", "Deploy sha256:bbbbbbb at"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+func TestServicePageRenderNotConfigured(t *testing.T) {
+	body := serviceServer(t, sampleAvailability(), sampleRuntime(), true).get(t, "/service").Body.String()
+	// Instances and Deploys both say so.
+	if n := strings.Count(body, "Not configured: set -render-api-key (RSS_RENDER_API_KEY) and -render-service-id (RSS_RENDER_SERVICE_ID)"); n != 2 {
+		t.Errorf("not-configured line %d times, want 2", n)
+	}
+	if strings.Contains(body, `<line class="chart-marker"`) {
+		t.Error("charts mark deploys without Render")
+	}
+}
+
+func TestServicePageRenderFails(t *testing.T) {
+	boom := errors.New("render: status 503")
+	for name, tt := range map[string]struct {
+		setup             func(*fakeRender)
+		failures, markers int
+	}{
+		"metrics": {setup: func(rd *fakeRender) { rd.instancesErr = boom }, failures: 1, markers: 5},
+		"deploys": {setup: func(rd *fakeRender) { rd.deploysErr = boom }, failures: 1},
+		"both":    {setup: func(rd *fakeRender) { rd.instancesErr, rd.deploysErr = boom, boom }, failures: 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rd := sampleRender()
+			tt.setup(rd)
+			rr := serviceServerWithRender(t, sampleAvailability(), sampleRuntime(), true, rd).get(t, "/service")
+			if rr.Code != http.StatusOK {
+				t.Fatalf("GET /service = %d, want 200", rr.Code)
+			}
+			body := rr.Body.String()
+			if n := strings.Count(body, "Couldn’t reach Render."); n != tt.failures {
+				t.Errorf("Couldn’t reach Render %d times, want %d", n, tt.failures)
+			}
+			if n := strings.Count(body, `<line class="chart-marker"`); n != tt.markers {
+				t.Errorf("%d deploy markers, want %d", n, tt.markers)
+			}
+			// The rest of the page is there.
+			if !strings.Contains(body, `<dd>99.86%</dd>`) || !strings.Contains(body, "www is running") {
+				t.Error("page lacks the pinger's figures")
+			}
+		})
+	}
+}
+
+func TestServicePageRenderNoFigures(t *testing.T) {
+	rd := sampleRender()
+	rd.instances, rd.deploys = render.Instances{}, nil
+	body := serviceServerWithRender(t, sampleAvailability(), sampleRuntime(), true, rd).get(t, "/service").Body.String()
+	for _, want := range []string{"No figures from Render for the last 24 hours.", "No deploys yet."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+func TestServicePageRenderVersionsError(t *testing.T) {
+	a := sampleAvailability()
+	b := serviceServerWithRender(t, a, sampleRuntime(), true, sampleRender())
+	a.err = errors.New("database down")
+	if rr := b.get(t, "/service"); rr.Code != http.StatusInternalServerError {
+		t.Errorf("GET /service = %d, want 500", rr.Code)
+	}
+}
+
+func TestDeployStatus(t *testing.T) {
+	for status, want := range map[string]struct {
+		label  string
+		failed bool
+	}{
+		"live":               {"Live", false},
+		"deactivated":        {"Replaced", false},
+		"canceled":           {"Canceled", false},
+		"build_failed":       {"Failed", true},
+		"update_failed":      {"Failed", true},
+		"pre_deploy_failed":  {"Failed", true},
+		"update_in_progress": {"In progress", false},
+		"queued":             {"In progress", false},
+	} {
+		if label, failed := deployStatus(status); label != want.label || failed != want.failed {
+			t.Errorf("deployStatus(%q) = %q, %v; want %q, %v", status, label, failed, want.label, want.failed)
 		}
 	}
 }

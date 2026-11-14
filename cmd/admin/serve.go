@@ -17,6 +17,7 @@ import (
 	"github.com/alexedwards/scs/postgresstore"
 
 	"github.com/grodier/rss/internal/admin"
+	"github.com/grodier/rss/internal/admin/render"
 	"github.com/grodier/rss/internal/cli"
 	"github.com/grodier/rss/internal/psql"
 )
@@ -44,7 +45,8 @@ func runServe(args []string, getenv func(string) string, stdout, stderr io.Write
 	return 0
 }
 
-// serve opens the database and runs the admin's server, and its pinger when
+// serve opens the database and runs the admin's server, reading www's
+// figures from Render when its settings are set, and its pinger when
 // -app-internal-url is set, until a signal stops them. The admin runs none of
 // www's background workers.
 func serve(cfg config, logger *slog.Logger) error {
@@ -63,6 +65,25 @@ func serve(cfg config, logger *slog.Logger) error {
 	defer store.StopCleanup()
 	sessions := admin.NewSessionManager(store, cfg.env)
 
+	services := admin.Services{
+		Database: db,
+		Admins:   psql.NewAdminRepository(db),
+		Audit:    psql.NewAuditRepository(db),
+		Waitlist: psql.NewWaitlistRepository(db),
+		Invites:  psql.NewInviteRepository(db),
+		Emails:   psql.NewEmailRepository(db),
+		Overview: psql.NewAdminOverviewRepository(db),
+		WebPerf:  psql.NewAdminWebPerfRepository(db),
+
+		Availability: psql.NewAvailabilityRepository(db),
+		Runtime:      psql.NewMetricsRepository(db),
+	}
+	if cfg.renderAPIKey != "" && cfg.renderServiceID != "" {
+		services.Render = render.New(cfg.renderAPIKey, cfg.renderServiceID)
+	} else {
+		logger.Info("no -render-api-key or -render-service-id (RSS_RENDER_API_KEY, RSS_RENDER_SERVICE_ID): not reading www's figures from Render")
+	}
+
 	srv, err := admin.New(logger, admin.Config{
 		Port:         cfg.port,
 		Env:          cfg.env,
@@ -75,19 +96,7 @@ func serve(cfg config, logger *slog.Logger) error {
 		MailLimits:   cfg.mailLimits,
 
 		AppInternalURL: cfg.appInternalURL,
-	}, admin.Services{
-		Database: db,
-		Admins:   psql.NewAdminRepository(db),
-		Audit:    psql.NewAuditRepository(db),
-		Waitlist: psql.NewWaitlistRepository(db),
-		Invites:  psql.NewInviteRepository(db),
-		Emails:   psql.NewEmailRepository(db),
-		Overview: psql.NewAdminOverviewRepository(db),
-		WebPerf:  psql.NewAdminWebPerfRepository(db),
-
-		Availability: psql.NewAvailabilityRepository(db),
-		Runtime:      psql.NewMetricsRepository(db),
-	}, sessions)
+	}, services, sessions)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -28,6 +31,7 @@ type statTile struct {
 // homePage is the Overview's data.
 type homePage struct {
 	Nav     navData
+	Service []statTile
 	People  []statTile
 	Content []statTile
 	Queues  []queueRow
@@ -58,8 +62,14 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	service, err := s.serviceTiles(r.Context(), now)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 	data := homePage{
 		Nav:          s.nav(r, "overview"),
+		Service:      service,
 		People:       peopleTiles(o.People),
 		Content:      contentTiles(o.Content),
 		Queues:       queueRows(queues, now),
@@ -71,6 +81,35 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "home.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// serviceTiles are the Service section's figures, from the pinger's checks:
+// www's uptime over 24 hours and its version, linking to the service page.
+func (s *Server) serviceTiles(ctx context.Context, now time.Time) ([]statTile, error) {
+	uptime := statTile{Label: "Uptime, 24 hours", Text: "Not configured", Href: "/service"}
+	ver := statTile{Label: "www’s version", Text: "Not configured", Href: "/service"}
+	if s.config.AppInternalURL == "" {
+		return []statTile{uptime, ver}, nil
+	}
+	u, err := s.services.Availability.Uptime(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	uptime.Text = uptimePercent(u.Day)
+	if u.Day.Checks > 0 {
+		uptime.Note = fmt.Sprintf("%s of %s checks", count(u.Day.OK), count(u.Day.Checks))
+	}
+	latest, err := s.services.Availability.LatestVersion(ctx)
+	switch {
+	case errors.Is(err, rss.ErrNoRecord):
+		ver.Text = "None reported"
+	case err != nil:
+		return nil, err
+	default:
+		ver.Text = version(latest).Text
+		ver.Note = "as of " + latest.CheckedAt.UTC().Format("15:04") + " UTC"
+	}
+	return []statTile{uptime, ver}, nil
 }
 
 // peopleTiles are the People section's figures. Accounts link to the users

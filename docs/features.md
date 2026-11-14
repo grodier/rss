@@ -604,6 +604,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    Readers active count distinct `user_sessions.user_id` by `last_seen_at`, which moves at most once a day, so the label says "about"; waiting uses the waitlist's Waiting rule (`waitingEntry`).
 2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Waiting to `/waitlist`, Invites pending to `/invites`).
    The head says the admin's build and when the page was rendered.
+   The Service section, first, shows `www`'s uptime over 24 hours and its version from the pinger's checks (`serviceTiles`), linking to the service page, or "Not configured" without the pinger.
 3. **Queues.** `AdminOverviewRepository.Queues` counts each runner's due jobs and finds the oldest's due time in one query, with the same condition its claim query uses (`feedDue`, `siteIconDue`, `enrichJobDue`, `emailDue`, `lookupPending`, `importFeedPending`), so it counts what the runner would take next; lookups and import feeds are due from when they were asked for.
    `queueRows` says how long the oldest has waited (`wait`), and a queue is behind when that's over `rss.QueueBehindAfter` (15 minutes).
 4. **Jobs.** `AdminOverviewRepository.Jobs` sums `job_metrics`' minute rows of the last 24 hours by runner and outcome; minute rows are kept 7 days, so the window needs no hourly rollups.
@@ -643,21 +644,29 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 ### Service health
 
-`GET /service` (`serviceHandler`) shows `www` as a whole: its availability as the admin's pinger sees it from inside Render's network (see "Observability" below), its Go runtime and its version.
+`GET /service` (`serviceHandler`) shows `www` as a whole: its availability as the admin's pinger sees it from inside Render's network (see "Observability" below), its instances' CPU and memory from Render's API, its Go runtime, its version and its deploys.
 
-1. **Period.** A row of links (the `segmented` partial), 24h by default, 7d, 30d or 90d, for the incidents and the runtime charts; a value the page doesn't offer is the default.
+1. **Period.** A row of links (the `segmented` partial), 24h by default, 7d, 30d or 90d, for the incidents and the charts; a value the page doesn't offer is the default.
 2. **Availability.** Only when the pinger runs (`Config.AppInternalURL`, from `-app-internal-url`); otherwise the section says how to turn it on and nothing is read.
    `AvailabilityRepository.Uptime` counts the checks, and the ok ones, over 24 hours, 7, 30 and 90 days, always all four (`uptimeTiles`, rounded down so one failed check never shows as 100%), and `Incidents` returns the runs of failed checks in the period, newest first, at most 50: each ok check starts a new run, so a missing minute doesn't split one, a run with no ok check after it is ongoing, and one under way when the period starts keeps its real start.
-3. **Go runtime.** `MetricsRepository.ListRuntime` reads the period's `runtime_metrics` rows (90d, past the 30 days kept, `metrics.RuntimeRetention`, says to choose a shorter period instead, as the web performance page does past its raw views), and `runtimeCharts` steps them into five charts: at each minute memory, goroutines and GC pause take the highest instance and connections the sum, then each step takes its highest minute; connection waits are the increase of each instance's counter, spread over the minutes since its previous sample, per minute that measured them; a step with no samples is a gap.
-4. **Version.** The newest check that reported one (`LatestVersion`); a commit SHA is shortened and linked to the commit.
+3. **Render.** Only with both `-render-api-key` and `-render-service-id` (`Services.Render`, a `render.Client`); otherwise Instances and Deploys say how to set them and nothing is read.
+   `renderSections` asks Render for the period's metrics and the latest 100 deploys at once, within 5 seconds (`renderTimeout`, inside the server's write timeout), to the minute so that loads within a minute reuse the client's cached answers.
+   Render failing or timing out shows "Couldn’t reach Render." in its sections and is logged; the rest of the page renders.
+4. **Instances.** `instanceCharts` draws CPU and memory, the highest instance's at each step (`render.Client.Instances`; two instances overlap during every deploy), with Render's limits as threshold lines, and the instance count, each spanning the whole period.
+5. **Deploy markers.** Every chart marks the deploys that went live in the period.
+   Render's records of our image-backed deploys carry an image digest, not a commit, so `deployVersions` labels each deploy that went live with the version the pinger last saw before the next one went live (`AvailabilityRepository.VersionsIn`), and any other deploy, or every one without the pinger, with its digest's first 7 characters.
+6. **Go runtime.** `MetricsRepository.ListRuntime` reads the period's `runtime_metrics` rows (90d, past the 30 days kept, `metrics.RuntimeRetention`, says to choose a shorter period instead, as the web performance page does past its raw views), and `runtimeCharts` steps them into five charts: at each minute memory, goroutines and GC pause take the highest instance and connections the sum, then each step takes its highest minute; connection waits are the increase of each instance's counter, spread over the minutes since its previous sample, per minute that measured them; a step with no samples is a gap.
+7. **Version.** The newest check that reported one (`LatestVersion`); a commit SHA is shortened and linked to the commit.
+   Under it, the 10 newest deploys with their status and version.
 
 **Start at:**
 
-1. `internal/admin/service.go` (`serviceHandler`, `runtimeCharts`).
-2. `internal/psql/availability.go` (`Uptime`, `Incidents`).
-3. `internal/ui/admin/service.html` and `web/admin/styles/partials/service.css`.
+1. `internal/admin/service.go` (`serviceHandler`, `renderSections`, `runtimeCharts`).
+2. `internal/psql/availability.go` (`Uptime`, `Incidents`, `VersionsIn`).
+3. `internal/admin/render` (`Client.Instances`, `Client.Deploys`).
+4. `internal/ui/admin/service.html` and `web/admin/styles/partials/service.css`.
 
-**Tests:** `internal/admin/service_test.go`; `internal/psql/availability_test.go`.
+**Tests:** `internal/admin/service_test.go`; `internal/admin/render/render_test.go` (Render's answers in `testdata/`); `internal/psql/availability_test.go`.
 
 ### Login
 

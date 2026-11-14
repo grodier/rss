@@ -1,0 +1,49 @@
+[
+  {
+    "cursor": "c2",
+    "deploy": {
+      "id": "dep-new",
+      "status": "live",
+      "trigger": "api",
+      "image": {"ref": "ghcr.io/grodier/rss@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sha": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      "createdAt": "2026-11-09T10:00:00Z",
+      "startedAt": "2026-11-09T10:00:05Z",
+      "finishedAt": "2026-11-09T10:02:00Z",
+      "updatedAt": "2026-11-09T10:02:00Z"
+    }
+  },
+  {
+    "cursor": "c1",
+    "deploy": {
+      "id": "dep-failed",
+      "status": "update_failed",
+      "trigger": "api",
+      "image": {"ref": "ghcr.io/grodier/rss@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      "createdAt": "2026-11-09T09:00:00Z",
+      "finishedAt": "2026-11-09T09:01:00Z",
+      "updatedAt": "2026-11-09T09:01:00Z"
+    }
+  },
+  {
+    "cursor": "c0",
+    "deploy": {
+      "id": "dep-old",
+      "status": "deactivated",
+      "trigger": "manual",
+      "image": {"ref": "ghcr.io/grodier/rss@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sha": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "createdAt": "2026-11-08T12:00:00Z",
+      "finishedAt": "2026-11-08T12:03:00Z",
+      "updatedAt": "2026-11-09T10:02:00Z"
+    }
+  },
+  {
+    "cursor": "cq",
+    "deploy": {
+      "id": "dep-running",
+      "status": "update_in_progress",
+      "trigger": "api",
+      "createdAt": "2026-11-09T11:59:00Z",
+      "updatedAt": "2026-11-09T11:59:30Z"
+    }
+  }
+]

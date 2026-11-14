@@ -253,3 +253,37 @@ func TestAvailabilityLatestVersion(t *testing.T) {
 		t.Errorf("LatestVersion = %q at %v, want new at %v", got.Version, got.CheckedAt, t0.Add(2*time.Minute))
 	}
 }
+
+func TestAvailabilityVersionsIn(t *testing.T) {
+	repo, _ := newAvailabilityRepo(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	got, err := repo.VersionsIn(ctx, nil)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("VersionsIn(nil) = %q, %v, want none", got, err)
+	}
+
+	recordCheck(t, repo, t0, true, "", "old")
+	recordCheck(t, repo, t0.Add(time.Minute), true, "", "old")
+	// The deploy that went live at t0+90s: the old instance can still
+	// answer its first check, but the span's last check is the new one's.
+	recordCheck(t, repo, t0.Add(2*time.Minute), true, "", "old")
+	recordCheck(t, repo, t0.Add(3*time.Minute), true, "", "new")
+	recordCheck(t, repo, t0.Add(4*time.Minute), false, rss.CheckTimeout, "") // didn't say
+	recordCheck(t, repo, t0.Add(10*time.Minute), true, "", "newer")
+
+	got, err = repo.VersionsIn(ctx, []rss.Span{
+		{From: t0.Add(-time.Hour), To: t0.Add(90 * time.Second)},
+		{From: t0.Add(90 * time.Second), To: t0.Add(10 * time.Minute)}, // To isn't included
+		{From: t0.Add(5 * time.Minute), To: t0.Add(6 * time.Minute)},   // no check
+		{From: t0.Add(4 * time.Minute), To: t0.Add(5 * time.Minute)},   // none reported a version
+		{From: t0.Add(10 * time.Minute), To: t0.Add(time.Hour)},        // From is included
+	})
+	if err != nil {
+		t.Fatalf("VersionsIn: %v", err)
+	}
+	if want := []string{"old", "new", "", "", "newer"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("VersionsIn = %q, want %q", got, want)
+	}
+}

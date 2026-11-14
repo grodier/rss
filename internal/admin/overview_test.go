@@ -77,7 +77,7 @@ func TestOverview(t *testing.T) {
 		`<dt><a href="/invites">Invites pending</a></dt>`, `<dd>25</dd>`,
 		`<h2 id="content">Content</h2>`,
 		`<dt>Sites</dt>`, `<dd>2,210</dd>`,
-		`<dt>Feeds</dt>`, `<dd>2,604</dd>`, `1,890 with subscribers`,
+		`<dt><a href="/feeds?filter=all">Feeds</a></dt>`, `<dd>2,604</dd>`, `1,890 with subscribers`,
 		`<dt>Subscriptions</dt>`, `<dd>15,032</dd>`,
 		`<dt>Articles, about</dt>`, `<dd>1,520,400</dd>`,
 		`<dt>Reads, about</dt>`, `<dd>830,120</dd>`,
@@ -89,8 +89,8 @@ func TestOverview(t *testing.T) {
 		}
 	}
 	// Only figures with a page are links.
-	if n := strings.Count(body, `class="stat stat-link"`); n != 4 {
-		t.Errorf("GET / has %d linked figures, want 4 (the service's two, Waiting and Invites pending)", n)
+	if n := strings.Count(body, `class="stat stat-link"`); n != 5 {
+		t.Errorf("GET / has %d linked figures, want 5 (the service's two, Waiting, Invites pending and Feeds)", n)
 	}
 }
 

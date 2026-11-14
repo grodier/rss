@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/admin/chart"
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -51,12 +52,24 @@ var templateFuncs = template.FuncMap{
 	"lower": strings.ToLower,
 	// date formats t as a UTC date.
 	"date": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
+	// stamp formats t as a UTC date and time to the minute, "—" when zero.
+	"stamp": func(t time.Time) string {
+		if t.IsZero() {
+			return "—"
+		}
+		return t.UTC().Format("2006-01-02 15:04")
+	},
+	// perWeek formats a feed's posts a week to one decimal place.
+	"perWeek": func(n float64) string { return fmt.Sprintf("%.1f", n) },
+	// failing is whether a feed's failures in a row put it under the feeds
+	// page's Failing filter.
+	"failing": func(n int) bool { return n >= rss.AdminFailingAfter },
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", "waitlist", "webperf", "audit", or "" on pages outside the sections) and the logged-in
-// admin's email, "" when no one is logged in, which hides the sections and
-// Log out. Every page's data carries it as Nav, like the reader's pages.
+// ("overview", "waitlist", "feeds", "service", "webperf", "audit", or ""
+// on pages outside the sections) and the logged-in admin's email, "" when
+// no one is logged in, which hides the sections and Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {
 	Section string
 	Email   string

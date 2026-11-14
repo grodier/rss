@@ -125,12 +125,12 @@ func peopleTiles(p rss.OverviewPeople) []statTile {
 	}
 }
 
-// contentTiles are the Content section's figures. Sites and feeds link to
-// the feeds page once #581 adds it.
+// contentTiles are the Content section's figures. Feeds links to the
+// feeds page, all of them.
 func contentTiles(c rss.OverviewContent) []statTile {
 	return []statTile{
 		{Label: "Sites", Value: c.Sites},
-		{Label: "Feeds", Value: c.Feeds, Note: count(c.SubscribedFeeds) + " with subscribers"},
+		{Label: "Feeds", Value: c.Feeds, Note: count(c.SubscribedFeeds) + " with subscribers", Href: "/feeds?filter=" + rss.AdminFeedsAll},
 		{Label: "Subscriptions", Value: c.Subscriptions},
 		{Label: "Articles, about", Value: c.Articles},
 		{Label: "Reads, about", Value: c.Reads},

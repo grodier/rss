@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Feeds - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Feeds</h1>
+        <p>Feeds that fail, went quiet or answered 410, and how their fetching stands. Dates are UTC.</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Show" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="feeds-heading">
+        <h2 id="feeds-heading" class="visually-hidden">Feeds</h2>
+        <form class="filters" action="/feeds" method="get" role="search" aria-label="Search feeds">
+          <input type="hidden" name="filter" value="{{.Filter}}" />
+          <input type="hidden" name="sort" value="{{.Sort}}" />
+          <div>
+            <label for="q">Title, URL or site</label>
+            <input type="search" id="q" name="q" value="{{.Q}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <button class="btn btn-sm" type="submit">Search</button>
+          {{if .Q}}<a class="btn btn-sm" href="{{.ClearSearch}}">Clear</a>{{end}}
+        </form>
+
+        {{if .Table.Rows}}
+        {{template "feed-table" .Table}}
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Next</a>
+        </div>
+        {{end}}
+        {{else}}
+        <p class="empty">{{if .Q}}No feeds here match “{{.Q}}”.{{else}}No feeds here.{{end}}</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

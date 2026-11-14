@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{.Site.Site.Host}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      {{with .Site}}
+      <header class="page-head">
+        <h1>{{.Site.Host}}</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{$.ReaderURL}}">In the reader</a>
+          <a class="btn btn-sm" href="{{$.History}}">History</a>
+        </div>
+        <p>A site, its feeds, its icon and its lookup. Dates are UTC; debug mode inspects it in the reader.</p>
+      </header>
+      {{with $.Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      <section class="admin-section" aria-labelledby="actions-heading">
+        <h2 id="actions-heading">Actions</h2>
+        <div class="form-actions">
+          <form action="/sites/{{.Site.ID}}/lookup" method="post"><button class="btn btn-sm" type="submit">Check for new feeds</button></form>
+          <form action="/sites/{{.Site.ID}}/check-icon" method="post"><button class="btn btn-sm" type="submit">Check the icon again</button></form>
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="site-heading">
+        <h2 id="site-heading">Site</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">ID</th><td><code>{{.Site.ID}}</code></td></tr>
+              <tr><th scope="row">URL</th><td class="wrap"><code>{{.Site.URL}}</code></td></tr>
+              <tr><th scope="row">Title</th><td class="wrap">{{with .Site.Title}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Description</th><td class="wrap">{{with .Site.Description}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Found</th><td>{{stamp .Site.CreatedAt}}</td></tr>
+              <tr><th scope="row">Updated</th><td>{{stamp .Site.UpdatedAt}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="feeds-heading">
+        <h2 id="feeds-heading">Feeds</h2>
+        {{if $.Feeds.Rows}}
+        {{template "feed-table" $.Feeds}}
+        {{else}}
+        <p class="empty">No feeds.</p>
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="icon-heading">
+        <h2 id="icon-heading">Icon</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              {{if .Icon.Icon.SiteID}}
+              <tr><th scope="row">Size</th><td>{{.Icon.Icon.Width}}×{{.Icon.Icon.Height}}, {{count .Icon.IconBytes}} bytes</td></tr>
+              <tr><th scope="row">Type</th><td>{{.Icon.Icon.ContentType}}</td></tr>
+              <tr><th scope="row">Source</th><td class="wrap"><code>{{.Icon.Icon.SourceURL}}</code></td></tr>
+              <tr><th scope="row">Fetched</th><td>{{stamp .Icon.Icon.FetchedAt}}</td></tr>
+              {{else}}
+              <tr><th scope="row">Icon</th><td>None</td></tr>
+              {{end}}
+              <tr><th scope="row">Last checked</th><td>{{stamp .Icon.IconCheckedAt}}</td></tr>
+              <tr><th scope="row">Next check</th><td>{{stamp .Icon.IconNextCheckAt}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="lookup-heading">
+        <h2 id="lookup-heading">Lookup</h2>
+        {{if .Lookup.ID}}{{with .Lookup}}
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">Status</th><td><span class="status{{if eq .Status "failed"}} status-danger{{end}}">{{.Status}}</span></td></tr>
+              <tr><th scope="row">URL</th><td class="wrap"><code>{{.URL}}</code></td></tr>
+              <tr><th scope="row">Attempts</th><td>{{.Attempts}}</td></tr>
+              <tr><th scope="row">Error</th><td class="wrap">{{with .Error}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Requested</th><td>{{stamp .RequestedAt}}</td></tr>
+              <tr><th scope="row">Finished</th><td>{{stamp .FinishedAt}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {{end}}{{else}}
+        <p class="empty">No lookup of this site.</p>
+        {{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

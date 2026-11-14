@@ -1,0 +1,28 @@
+{{/* feed-table lists feeds (dot: a feedTable): each linking to its page
+     and its site's, its subscribers (a count, never who), its posting rate,
+     its fetches, and whether it's failing or gone. A sortable column's
+     header links to its order, the current one marked. Dates are UTC. */}}
+{{define "feed-table"}}<div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                {{range .Columns}}<th scope="col"{{if .Numeric}} class="num"{{end}}{{with .Sort}} aria-sort="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}">{{.Label}}{{if .Sort}} <span aria-hidden="true">{{if eq .Sort "ascending"}}↑{{else}}↓{{end}}</span>{{end}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Rows}}
+              <tr>
+                <td class="wrap"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a></td>
+                <td><a href="/sites/{{.SiteID}}">{{.SiteHost}}</a></td>
+                <td class="num">{{count .Subscribers}}</td>
+                <td class="num">{{perWeek .PostsPerWeek}}</td>
+                <td>{{stamp .LastFetched}}</td>
+                <td>{{stamp .LastAttempt}}</td>
+                <td class="num">{{if failing .ConsecutiveFailures}}<span class="status status-danger">{{.ConsecutiveFailures}}</span>{{else}}{{.ConsecutiveFailures}}{{end}}</td>
+                <td>{{if .GoneAt.IsZero}}{{stamp .NextFetch}}{{else}}—{{end}}</td>
+                <td>{{if .GoneAt.IsZero}}—{{else}}<span class="status status-danger">{{date .GoneAt}}</span>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>{{end}}

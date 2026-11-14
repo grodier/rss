@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{with .Feed.Title}}{{.}}{{else}}Feed{{end}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      {{with .Feed}}
+      <header class="page-head">
+        <h1>{{with .Title}}{{.}}{{else}}Feed{{end}}</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{$.ReaderURL}}">In the reader</a>
+          <a class="btn btn-sm" href="{{$.History}}">History</a>
+        </div>
+        <p>A feed of <a href="/sites/{{.Site.ID}}">{{.SiteHost}}</a>. Dates are UTC; debug mode inspects it in the reader.</p>
+      </header>
+      {{with $.Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      <section class="admin-section" aria-labelledby="actions-heading">
+        <h2 id="actions-heading">Actions</h2>
+        <div class="form-actions">
+          {{if .GoneAt.IsZero}}
+          <form action="/feeds/{{.ID}}/refresh" method="post" data-busy><button class="btn btn-sm" type="submit" data-busy-label="Refreshing…"><span data-busy-text>Refresh now</span></button></form>
+          {{end}}
+          <form action="/feeds/{{.ID}}/reset-backoff" method="post"><button class="btn btn-sm" type="submit">Reset backoff</button></form>
+          {{if not .GoneAt.IsZero}}
+          <form action="/feeds/{{.ID}}/clear-gone" method="post"><button class="btn btn-sm" type="submit">Clear gone</button></form>
+          {{end}}
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="fetching-heading">
+        <h2 id="fetching-heading">Fetching</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">Last success</th><td>{{stamp .LastFetched}}</td></tr>
+              <tr><th scope="row">Last attempt</th><td>{{stamp .LastAttempt}}</td></tr>
+              <tr><th scope="row">Last error</th><td class="wrap">{{with .LastError}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Failures in a row</th><td>{{if failing .ConsecutiveFailures}}<span class="status status-danger">{{.ConsecutiveFailures}}</span>{{else}}{{.ConsecutiveFailures}}{{end}}</td></tr>
+              <tr><th scope="row">Next fetch</th><td>{{stamp .NextFetch}}</td></tr>
+              <tr><th scope="row">Gone</th><td>{{if .GoneAt.IsZero}}—{{else}}<span class="status status-danger">{{stamp .GoneAt}}</span>{{end}}</td></tr>
+              <tr><th scope="row">Refresh requested</th><td>{{stamp .RefreshRequestedAt}}</td></tr>
+              <tr><th scope="row">ETag</th><td class="wrap">{{with .ETag}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Last-Modified</th><td class="wrap">{{with .LastModified}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="feed-heading">
+        <h2 id="feed-heading">Feed</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">ID</th><td><code>{{.ID}}</code></td></tr>
+              <tr><th scope="row">URL</th><td class="wrap"><code>{{.Url}}</code></td></tr>
+              <tr><th scope="row">Site URL</th><td class="wrap">{{with .SiteUrl}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Title</th><td class="wrap">{{with .Title}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Description</th><td class="wrap">{{with .Description}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Site</th><td><a href="/sites/{{.Site.ID}}">{{.SiteHost}}</a></td></tr>
+              <tr><th scope="row">Found</th><td>{{stamp .CreatedAt}}</td></tr>
+              <tr><th scope="row">Subscribers</th><td>{{count .Subscribers}}</td></tr>
+              <tr><th scope="row">Posts a week</th><td>{{perWeek .PostsPerWeek}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-section" aria-labelledby="articles-heading">
+        <h2 id="articles-heading">Articles</h2>
+        <div class="table-wrap">
+          <table class="data facts">
+            <tbody>
+              <tr><th scope="row">Articles</th><td>{{count .Articles}}</td></tr>
+              <tr><th scope="row">Newest</th><td>{{stamp .NewestArticleAt}}</td></tr>
+              <tr><th scope="row">Enrichment jobs</th><td>{{count .EnrichJobs}}</td></tr>
+              <tr><th scope="row">Oldest enrichment job</th><td>{{stamp .OldestEnrichJob}}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

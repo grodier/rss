@@ -578,7 +578,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
    `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
@@ -602,7 +602,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 1. **Counting.** `AdminOverviewRepository.Overview` counts the People and Content sections in one query at the handler's `now`: small tables exactly, and `articles`, `reads` and `timeline_entries` from the planner's estimate (`estimatedRows`, `pg_class.reltuples`), since counting them reads them whole (the watchlist entry "The admin's overview counts big tables").
    Readers active count distinct `user_sessions.user_id` by `last_seen_at`, which moves at most once a day, so the label says "about"; waiting uses the waitlist's Waiting rule (`waitingEntry`).
-2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Waiting to `/waitlist`, Invites pending to `/invites`).
+2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Waiting to `/waitlist`, Invites pending to `/invites`, Feeds to every feed on `/feeds`).
    The head says the admin's build and when the page was rendered.
    The Service section, first, shows `www`'s uptime over 24 hours and its version from the pinger's checks (`serviceTiles`), linking to the service page, or "Not configured" without the pinger.
 3. **Queues.** `AdminOverviewRepository.Queues` counts each runner's due jobs and finds the oldest's due time in one query, with the same condition its claim query uses (`feedDue`, `siteIconDue`, `enrichJobDue`, `emailDue`, `lookupPending`, `importFeedPending`), so it counts what the runner would take next; lookups and import feeds are due from when they were asked for.
@@ -617,6 +617,31 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 3. `internal/ui/admin/home.html` and `partials/stats.html`.
 
 **Tests:** `internal/admin/overview_test.go`; `internal/psql/admin_overview_test.go`.
+
+### Feeds and sites
+
+`GET /feeds` (`feedsHandler`) finds the feeds that fail, went quiet or answered 410, and each feed's and site's page fixes their fetching; subscribers are counts, never who ("Admin" in decisions.md).
+
+1. **The list.** A row of filter links (`feedFilters`): Failing (`rss.AdminFailingAfter`, 3, failures in a row, the reader's warning), Gone, Never fetched (no successful fetch), Stale (subscribed, not gone, and no successful fetch for a day, counting a feed never fetched from when it was found), No subscribers and All, Failing by default; a search of titles, URLs and site hosts (`?q=`); and headers that sort by subscribers (the default), posts a week, failures (most first) or last success (oldest first, never fetched before all).
+   A filter or order the page doesn't offer is its default, and each link keeps the others (`feedsParams.href`).
+   `AdminFeedRepository.ListFeeds` returns 100 a page; its cursor (`?after=`) is the last row's feed, compared on the order's key and then the ID, read from the feed itself, so a row that changes between pages doesn't lose the place.
+   Every filter but Gone reads every feed and counts its subscribers (the watchlist entry "The admin's feed list").
+2. **A feed's page.** `GET /feeds/{id}` (`feedHandler`, `AdminFeedRepository.Feed`) shows every column of the feed, `last_error` and the validators as escaped text, its site, its subscriber count, its articles' count and newest date, and its articles' enrichment jobs (count and oldest), with links to its page in the reader, where debug mode inspects it, and to its History in the audit log.
+3. **A site's page.** `GET /sites/{id}` (`siteHandler`, `AdminFeedRepository.Site`) shows the site's columns, its feeds in the list's table (the `feed-table` partial, unsorted), its icon (size, type, source and when fetched, or none) and when the icon worker last and next looks, and its lookup (by its host, the lookups' site key: status, attempts, error, requested and finished).
+4. **Actions.** Each is a POST that redirects back to its page with a flash, and each is recorded in the audit log:
+   - Refresh now (`feedRefreshHandler`) calls `ingest.Refresher.Refresh` within 8 s, as the reader's Refresh button does but without its 5-minute rule or per-reader limit, through the admin's own `fetch.Client` (see "Outbound HTTP" in architecture.md); the fetch records its outcome on the feed as any does, and the handler then records `feed.refresh` with the outcome (saved with its counts, not modified, gone, or failed with the error), even when the fetch used up the request's time.
+     A gone feed isn't refreshed: Clear gone first.
+   - Reset backoff (`AdminFeedRepository.ResetBackoff`, `feed.reset_backoff`) and Clear gone (`ClearGone`, `feed.clear_gone`, only for a gone feed) make the feed due now, the first with no failures counted; the background refresh runner fetches it if it has subscribers.
+   - Check for new feeds (`CheckForFeeds`, `site.lookup`) queues a lookup of the site's home page at a reader's priority with the reader's `LookupRepository.Request` statement (`requestLookup`, in the action's transaction) and no time-to-live, so a finished lookup runs again; one already pending or running stays as it is.
+   - Check the icon again (`CheckIcon`, `site.check_icon`) makes the site's icon due now.
+
+**Start at:**
+
+1. `internal/admin/feeds.go` (`feedsHandler`, `feedRefreshHandler`).
+2. `internal/psql/admin_feeds.go` (`ListFeeds`, `updateFeed`, `CheckForFeeds`).
+3. `internal/ui/admin/feeds.html`, `feed.html`, `site.html` and `partials/feeds.html`.
+
+**Tests:** `internal/admin/feeds_test.go`; `internal/psql/admin_feeds_test.go`.
 
 ### Web performance
 
@@ -698,7 +723,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 1. **Logins.** `loginFormHandler` records a wrong email or password as `login_failed` with the submitted email, and `loginCodeFormHandler` a wrong code as `login_failed` with the admin; both through `s.audit`, which records them by the request's actor (`s.actor`: the logged-in admin, `via = 'web'` and the client IP) or, before anyone is logged in, by the admin or email given, and a failure to record is logged, not shown.
    A correct code records `login` before the session holds the admin, so a login that can't be recorded fails (500); `logoutHandler` records `logout`, and logs out even when that can't be recorded.
 2. **Actions.** An action that changes something passes who did it, an `rss.AuditActor`, to the repository method that makes the change, which records what it did (the action, the target, and the fields it changed before and after) in the same transaction, so the same change is recorded the same way from the web or the command line.
-   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`); web actions pass `s.actor(r)`, like sending a wave of invites (`invite.wave`, with its label, count and entries).
+   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`); web actions pass `s.actor(r)`, like sending a wave of invites (`invite.wave`, with its label, count and entries) or the feeds and sites pages' fixes (`feed.reset_backoff` and others, under "Feeds and sites").
 3. **Typed confirmation.** A destructive action's form has a field where the admin types the target's name, and `confirmDestructive` checks it (ignoring case and the spaces around it) before acting, with "Type {name} to confirm."; no action uses it yet.
 4. **The page.** `GET /audit` (`auditHandler`) lists entries newest first, 100 at a time, with an Older link whose cursor (`?before=`) is the last entry's ID (`AuditRepository.List`, keyed on `occurred_at` and `id`), filtered by `?action=`, `?target_type=` and `?target_id=`.
    Each row shows the time (UTC), the admin, the action, the target with a History link (`auditHistoryURL`, which a record's admin page links to once one exists) and each changed field's values before and after as JSON, and the client IP or "Command line".

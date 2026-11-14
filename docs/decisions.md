@@ -178,6 +178,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **A chart stretches to its column, but its text doesn't scale** (#571): positions across are percentages and positions down are pixels, so labels stay 11px or larger at every width, and a narrow chart draws fewer axis labels.
   This replaces the planned `viewBox` scaling, which can't keep labels at 11px on a 320px phone without making them over 30px on a desktop.
   Rejected: on phones, a fixed-width chart that scrolls sideways like the tables, which starts with the latest value off-screen.
+- **The feeds page's filters** (#581): Never fetched means no successful fetch yet, whether or not one was tried, and Stale counts a subscribed feed that was never fetched from when it was found, so one found a minute ago isn't stale and one that never worked is.
+  Failing is the reader's threshold, 3 failures in a row (`rss.AdminFailingAfter`), so the admin and the reader's warning agree.
+- **Refresh now is recorded after the fetch, with its outcome** (#581): the refresher records the fetch on the feed as any fetch does, and can't take an `rss.AuditActor`, so the handler records `feed.refresh` itself, the one admin action not recorded in its change's transaction; an entry that says what happened is worth more than one written before it.
+  It refuses a gone feed (Clear gone first), since a successful fetch doesn't clear `gone_at`.
+- **A row of filter links too wide for a phone scrolls in its own frame** (#581), like a table, rather than wrapping: the feeds page's six filters don't fit on 320px.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability

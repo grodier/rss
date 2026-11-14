@@ -133,6 +133,24 @@ type RenderReader interface {
 	Deploys(ctx context.Context, limit int) ([]render.Deploy, error)
 }
 
+// FeedStore reads the feeds and sites pages and makes their fixes;
+// *psql.AdminFeedRepository is one.
+type FeedStore interface {
+	ListFeeds(ctx context.Context, q rss.AdminFeedQuery) ([]rss.AdminFeedRow, error)
+	Feed(ctx context.Context, id string) (rss.AdminFeed, error)
+	Site(ctx context.Context, id string) (rss.AdminSite, error)
+	ResetBackoff(ctx context.Context, id string, by rss.AuditActor) error
+	ClearGone(ctx context.Context, id string, by rss.AuditActor) error
+	CheckIcon(ctx context.Context, id string, by rss.AuditActor) error
+	CheckForFeeds(ctx context.Context, id string, by rss.AuditActor) (rss.Lookup, error)
+}
+
+// Refresher fetches a feed now and records the outcome on it;
+// *ingest.Refresher, with the admin's own fetch.Client, is one.
+type Refresher interface {
+	Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
+}
+
 // RuntimeReader reads www's runtime samples; *psql.MetricsRepository is
 // one.
 type RuntimeReader interface {
@@ -148,6 +166,9 @@ type Services struct {
 	Emails   EmailStore
 	Overview OverviewStore
 	WebPerf  WebPerfStore
+
+	Feeds     FeedStore
+	Refresher Refresher
 
 	Availability AvailabilityReader
 	Runtime      RuntimeReader

@@ -1,4 +1,4 @@
-// Search's and a lookup's enhancements. Their stylesheet is search.css, by
+// Discover's and a lookup's enhancements. Their stylesheet is discover.css, by
 // the group's name. Every page works without them.
 import * as busyForms from "../../shared/lib/busy-forms";
 import * as backForward from "../features/back-forward";

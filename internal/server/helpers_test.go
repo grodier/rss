@@ -18,7 +18,7 @@ func TestSafeReturnPath(t *testing.T) {
 		want string
 	}{
 		{"local path", "/sites/abc", "/sites/abc"},
-		{"query string", "/search?q=x", "/search?q=x"},
+		{"query string", "/discover?q=x", "/discover?q=x"},
 		{"fragment", "/sites/abc#feed-x", "/sites/abc#feed-x"},
 		{"empty", "", fallback},
 		{"relative path", "feeds/x", fallback},

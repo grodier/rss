@@ -44,7 +44,7 @@ const entries: Record<string, string[]> = {
     "divider-draw",
     "infinite-scroll",
   ],
-  search: ["rum", "back-forward", "busy-forms", "live-search", "lookup-status"],
+  discover: ["rum", "back-forward", "busy-forms", "live-search", "lookup-status"],
   timelines: ["rum", "back-forward", "timeline-form", "reorder"],
   account: ["rum", "local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
   login: ["rum", "back-forward", "busy-forms", "password-toggle"],

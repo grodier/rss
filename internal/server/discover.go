@@ -24,7 +24,7 @@ type searchForm struct {
 	validator.Validator `form:"-"`
 }
 
-type searchData struct {
+type discoverData struct {
 	Nav      navData
 	Form     searchForm
 	Sites    []rss.SiteWithFeeds
@@ -42,13 +42,13 @@ type searchData struct {
 	Icons map[string]string
 }
 
-// searchHandler searches the database only. GET requests are not covered by
+// discoverHandler searches the database only. GET requests are not covered by
 // CrossOriginProtection, so GET handlers never fetch user-supplied URLs or make
 // changes on the user's behalf; at most they do idempotent, bounded upkeep
 // (see feedHandler's RequestRefresh).
-func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
-	data := searchData{
-		Nav:   s.nav(r, "search"),
+func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
+	data := discoverData{
+		Nav:   s.nav(r, "discover"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
 	}
@@ -97,7 +97,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := s.renderHTML(w, status, "search.html", data); err != nil {
+	if err := s.renderHTML(w, status, "discover.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
 }

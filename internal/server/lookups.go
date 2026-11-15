@@ -42,12 +42,12 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 		form.AddFieldError("q", appLinkMessage)
 	}
 	if !form.Valid() {
-		data := searchData{
-			Nav:   s.nav(r, "search"),
+		data := discoverData{
+			Nav:   s.nav(r, "discover"),
 			Form:  searchForm(form),
 			Flash: s.sessionManager.PopString(r.Context(), "flash"),
 		}
-		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "search.html", data); err != nil {
+		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
 			s.serverErrorHTML(w, r, err)
 		}
 		return
@@ -145,7 +145,7 @@ func (s *Server) lookupHandler(w http.ResponseWriter, r *http.Request) {
 		Failed     bool
 		Flash      string
 	}{
-		Nav:        s.nav(r, "search"),
+		Nav:        s.nav(r, "discover"),
 		ID:         lookup.ID,
 		SiteKey:    lookup.SiteKey,
 		InProgress: lookupInProgress(lookup),

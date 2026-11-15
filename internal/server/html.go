@@ -71,7 +71,7 @@ func monogram(name string) string {
 // navData is what the app-nav partial shows: the current section, the
 // logged-in user, and whether debug mode is on.
 type navData struct {
-	Section string // "home", "saved", "feeds", "search", "settings" or ""
+	Section string // "home", "saved", "feeds", "discover", "settings" or ""
 	User    rss.User
 	Debug   bool
 }

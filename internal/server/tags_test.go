@@ -245,7 +245,7 @@ func TestTagHandler(t *testing.T) {
 		body := rr.Body.String()
 		assertBodyContains(t, body,
 			"You're not following any feeds yet.",
-			`<a href="/search">Search</a>`,
+			`Find sites to follow in <a href="/discover">Discover</a>`,
 			`action="/tags/`+testTagID+`/rename"`,
 		)
 		if strings.Contains(body, `class="tag-feeds"`) {

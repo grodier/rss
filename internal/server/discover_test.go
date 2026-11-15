@@ -14,16 +14,16 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-func searchRequest(t *testing.T, s *Server, q string) *httptest.ResponseRecorder {
+func discoverRequest(t *testing.T, s *Server, q string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/search?q="+q, nil)
+	req := httptest.NewRequest(http.MethodGet, "/discover?q="+q, nil)
 	// scs needs a session in the context for PopString.
 	ctx, err := s.sessionManager.Load(req.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	s.searchHandler(rr, req.WithContext(ctx))
+	s.discoverHandler(rr, req.WithContext(ctx))
 	return rr
 }
 
@@ -36,7 +36,7 @@ func failingSearchStore(t *testing.T) *fakeSearchStore {
 
 func TestSearchNoQuery(t *testing.T) {
 	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	rr := searchRequest(t, s, "")
+	rr := discoverRequest(t, s, "")
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
 	}
@@ -47,7 +47,7 @@ func TestSearchNoQuery(t *testing.T) {
 
 func TestSearchTooLong(t *testing.T) {
 	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	rr := searchRequest(t, s, strings.Repeat("a", 201))
+	rr := discoverRequest(t, s, strings.Repeat("a", 201))
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", rr.Code)
 	}
@@ -67,7 +67,7 @@ func TestSearchResults(t *testing.T) {
 		}, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
-	rr := searchRequest(t, s, "ex")
+	rr := discoverRequest(t, s, "ex")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
@@ -82,7 +82,7 @@ func TestSearchResults(t *testing.T) {
 	}
 
 	// An address is also matched by its site key; the query stays as typed.
-	searchRequest(t, s, "https://www.NPR.org/news")
+	discoverRequest(t, s, "https://www.NPR.org/news")
 	if gotQ != "https://www.NPR.org/news" || gotKey != "npr.org" {
 		t.Errorf("Search called with %q, %q; want the query as typed and site key npr.org", gotQ, gotKey)
 	}
@@ -91,7 +91,7 @@ func TestSearchResults(t *testing.T) {
 // TestLiveSearchMarkup checks the markup live-search.ts relies on, in
 // every state of the page, since a page in any state can be typed into: the
 // app entry's script, a GET
-// form[data-live-search] to /search with a q input, and one
+// form[data-live-search] to /discover with a q input, and one
 // [data-search-results] container holding the lookup offer, the results
 // (.result) and the no-results message, and empty with no query.
 func TestLiveSearchMarkup(t *testing.T) {
@@ -122,7 +122,7 @@ func TestLiveSearchMarkup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rr := searchRequest(t, s, tt.q)
+			rr := discoverRequest(t, s, tt.q)
 			if rr.Code != tt.status {
 				t.Fatalf("status = %d, want %d", rr.Code, tt.status)
 			}
@@ -132,7 +132,7 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 
 			scripts := findAll(doc, func(n *html.Node) bool {
-				return n.Data == "script" && attr(n, "src") == entryJS("search") && attr(n, "type") == "module"
+				return n.Data == "script" && attr(n, "src") == entryJS("discover") && attr(n, "type") == "module"
 			})
 			if len(scripts) != 1 {
 				t.Errorf("found %d search entry module scripts, want 1", len(scripts))
@@ -142,8 +142,8 @@ func TestLiveSearchMarkup(t *testing.T) {
 			if len(forms) != 1 {
 				t.Fatalf("found %d form[data-live-search], want 1", len(forms))
 			}
-			if a, m := attr(forms[0], "action"), attr(forms[0], "method"); a != "/search" || m != "get" {
-				t.Errorf("live search form action=%q method=%q, want GET /search", a, m)
+			if a, m := attr(forms[0], "action"), attr(forms[0], "method"); a != "/discover" || m != "get" {
+				t.Errorf("live search form action=%q method=%q, want GET /discover", a, m)
 			}
 			if qs := findAll(forms[0], func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "q" }); len(qs) != 1 {
 				t.Errorf("live search form has %d q inputs, want 1", len(qs))
@@ -186,7 +186,7 @@ func TestSearchAppLink(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.q, func(t *testing.T) {
-			rr := searchRequest(t, s, url.QueryEscape(tt.q))
+			rr := discoverRequest(t, s, url.QueryEscape(tt.q))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200", rr.Code)
 			}
@@ -206,7 +206,7 @@ func TestSearchAppLink(t *testing.T) {
 
 func TestSearchInputAttributes(t *testing.T) {
 	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	body := searchRequest(t, s, "").Body.String()
+	body := discoverRequest(t, s, "").Body.String()
 	for _, want := range []string{`type="search" id="q"`, `autocapitalize="none"`, `autocorrect="off"`, `spellcheck="false"`, `enterkeyhint="search"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("search input missing %s", want)
@@ -219,7 +219,7 @@ func TestSearchNoResults(t *testing.T) {
 		return nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
-	rr := searchRequest(t, s, "zzz")
+	rr := discoverRequest(t, s, "zzz")
 	if !strings.Contains(rr.Body.String(), "No sites or feeds match") {
 		t.Error("empty-state message missing")
 	}
@@ -236,7 +236,7 @@ func TestSearchEmptyFeedTitleShowsURL(t *testing.T) {
 		}}, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
-	body := searchRequest(t, s, "one").Body.String()
+	body := discoverRequest(t, s, "one").Body.String()
 
 	for _, want := range []string{
 		`<a href="/feeds/feed-1">Titled</a>`,
@@ -253,7 +253,7 @@ func TestSearchStoreError(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
-	rr := searchRequest(t, s, "ex")
+	rr := discoverRequest(t, s, "ex")
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rr.Code)
 	}
@@ -264,7 +264,7 @@ func TestSearchEscapesQuery(t *testing.T) {
 		return nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
-	rr := searchRequest(t, s, "%3Cscript%3E")
+	rr := discoverRequest(t, s, "%3Cscript%3E")
 	if strings.Contains(rr.Body.String(), "<script>") {
 		t.Error("query rendered unescaped")
 	}
@@ -283,14 +283,14 @@ func TestSearchHandlerSubscribedMarker(t *testing.T) {
 	// get searches as user-1.
 	get := func(t *testing.T, s *Server) *httptest.ResponseRecorder {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodGet, "/search?q=ex", nil)
+		req := httptest.NewRequest(http.MethodGet, "/discover?q=ex", nil)
 		ctx, err := s.sessionManager.Load(req.Context(), "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
 		rr := httptest.NewRecorder()
-		s.searchHandler(rr, req.WithContext(ctx))
+		s.discoverHandler(rr, req.WithContext(ctx))
 		return rr
 	}
 
@@ -357,7 +357,7 @@ func TestSearchSiteIcons(t *testing.T) {
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}, SiteService: &fakeSiteStore{}})
 	testSiteIcons(t, s, testSiteID, "O", func(t *testing.T) string {
-		rr := searchRequest(t, s, "one")
+		rr := discoverRequest(t, s, "one")
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d", rr.Code)
 		}

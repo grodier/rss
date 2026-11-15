@@ -10,9 +10,9 @@ const page = (results: number) =>
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  history.replaceState(null, "", "/search");
+  history.replaceState(null, "", "/discover");
   document.body.innerHTML = `
-    <form action="/search" method="get" data-live-search>
+    <form action="/discover" method="get" data-live-search>
       <span class="error">Type at least 2 characters.</span>
       <div class="search-field"><svg class="icon"></svg><input type="search" name="q"></div>
     </form>
@@ -58,7 +58,7 @@ describe("live-search", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(new URL("/search?q=loa", location.href).href);
+    expect(url).toBe(new URL("/discover?q=loa", location.href).href);
     expect(init.credentials).toBe("same-origin");
   });
 
@@ -78,7 +78,7 @@ describe("live-search", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(results().querySelectorAll(".result")).toHaveLength(2);
     expect(results().textContent).not.toContain("Earlier results");
-    expect(location.pathname + location.search).toBe("/search?q=load");
+    expect(location.pathname + location.search).toBe("/discover?q=load");
     expect(document.querySelector("form .error")).toBeNull();
     await vi.advanceTimersByTimeAsync(50);
     expect(liveRegion()).toBe("2 sites");
@@ -95,10 +95,10 @@ describe("live-search", () => {
   });
 
   it("empties the results without a request when the box is emptied", async () => {
-    history.replaceState(null, "", "/search?q=load");
+    history.replaceState(null, "", "/discover?q=load");
     type("");
     expect(results().children).toHaveLength(0);
-    expect(location.pathname + location.search).toBe("/search");
+    expect(location.pathname + location.search).toBe("/discover");
     await vi.advanceTimersByTimeAsync(1000);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -125,7 +125,7 @@ describe("live-search", () => {
     type("load");
     await vi.advanceTimersByTimeAsync(300);
     expect(results().textContent).toContain("Earlier results");
-    expect(location.pathname + location.search).toBe("/search");
+    expect(location.pathname + location.search).toBe("/discover");
     expect(document.querySelector("form .error")).not.toBeNull();
     expect(results().hasAttribute("aria-busy")).toBe(false);
   });

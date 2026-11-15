@@ -164,14 +164,14 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| L1 Query that isn't a website address | Search `zzzz` | Search, 200 | "No sites or feeds match “zzzz”." and no lookup offered | The search box's placeholder mentions URLs; the result doesn't | ok |
-| L2 Address that can't be looked up | Search `127.0.0.1`, `localhost:8080` or `ftp://example.com` | Search, 200, no lookup offered | As L1 | As L1 | ok (`LooksLikeURL` refuses them; a hostname that resolves to a private address fails as L4) |
-| L2a Link to the app itself | Run with `-base-url http://paperround.test:8080` (`localhost` is L2) and search `paperround.test:8080/shared/x` | Search, 200, in place of Look up | "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader." | Yes: it says where to follow it | new (#471) |
-| L3 Invalid address posted | Code read: only a crafted post to `/lookups` | Search, 422, above the search box | "Enter a website address like example.com" | Yes | needs work: the error isn't tied to the input (see R4) |
-| L3a Link to the app itself posted | As L2a, then a crafted post of that address to `/lookups` | Search, 422, above the search box | As L2a; not counted by the lookup limit | Yes | new (#471); not tied to the input, as L3 |
-| L4 Lookup fails | Look up `nonexistent.invalid` (also: a timeout, too many redirects, a blocked or huge or non-HTML response) | Lookup page, 200 | "We couldn't reach {site}. Try again later." + "Back to search" | Not for an hour: a failed lookup is reused for an hour, and nothing says so | needs work: one message for every cause, and "later" means an hour |
+| L1 Query that isn't a website address | Search `zzzz` | Discover, 200 | "No sites or feeds match “zzzz”." and no lookup offered | The search box's placeholder mentions addresses; the result doesn't | ok |
+| L2 Address that can't be looked up | Search `127.0.0.1`, `localhost:8080` or `ftp://example.com` | Discover, 200, no lookup offered | As L1 | As L1 | ok (`LooksLikeURL` refuses them; a hostname that resolves to a private address fails as L4) |
+| L2a Link to the app itself | Run with `-base-url http://paperround.test:8080` (`localhost` is L2) and search `paperround.test:8080/shared/x` | Discover, 200, in place of Look up | "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader." | Yes: it says where to follow it | new (#471) |
+| L3 Invalid address posted | Code read: only a crafted post to `/lookups` | Discover, 422, above the search box | "Enter a website address like example.com" | Yes | needs work: the error isn't tied to the input (see R4) |
+| L3a Link to the app itself posted | As L2a, then a crafted post of that address to `/lookups` | Discover, 422, above the search box | As L2a; not counted by the lookup limit | Yes | new (#471); not tied to the input, as L3 |
+| L4 Lookup fails | Look up `nonexistent.invalid` (also: a timeout, too many redirects, a blocked or huge or non-HTML response) | Lookup page, 200 | "We couldn't reach {site}. Try again later." + "Back to Discover" | Not for an hour: a failed lookup is reused for an hour, and nothing says so | needs work: one message for every cause, and "later" means an hour |
 | L5 Lookup in progress | Look up a slow site (or `INSERT INTO lookups (site_key, url) VALUES ('pending.example', 'https://pending.example/')`, open `/lookups/{id}`) | Lookup page, updates in place (JavaScript) or refreshes itself every 2 s | "Looking for feeds on {site}…" + "Refresh" | Waits | ok |
-| L6 Lookup done, no feeds | Look up a site without feeds, or whose only feed doesn't parse (or the row above with `status = 'done'`) | Lookup page, 200 | "No feeds found on {site}." + "Back to search" | Yes | ok |
+| L6 Lookup done, no feeds | Look up a site without feeds, or whose only feed doesn't parse (or the row above with `status = 'done'`) | Lookup page, 200 | "No feeds found on {site}." + "Back to Discover" | Yes | ok |
 | L7 Lookup done with feeds | Look up a site with feeds | 303 to the site page | None | n/a | ok |
 | L8 Lookup row gone | `/lookups/{uuid}` | 404 (H2) | As H2 | Home only | ok |
 | L9 Site page with no feeds | `/sites/{empty.example}` | Site page, 200 | "No feeds found for this site yet." (and "Check again" when allowed) | Yes | ok |
@@ -208,21 +208,21 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | D9 Refresh while one is running | Code read: click Refresh twice | The second waits, then gets D5 if the first succeeded | As D5 | Yes | ok |
 | D10 Feed page at 375 px, followed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Unfollow fit beside the avatar; no sideways scroll | ok (2026-10-31, #431: checked at 320, 360, 375 and 390 px, and the site page at 320 px) |
 
-## Search
+## Discover
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| R1 Empty query | `/search` or `/search?q=`, or clear the box (with JavaScript, without a request) | Search, 200 | Just the search box | n/a | ok |
-| R2 No results | `/search?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Search, 200 | "No sites or feeds match “zzzz”."; live search announces "No sites" | Yes (L1) | ok |
-| R3 Special characters | `/search?q=%25`, `_`, `"<script>\` | Search, 200 | As R2; matched literally and escaped | Yes | ok |
-| R4 Query over 200 characters | `/search?q=` + 201 letters | Search, 422, above the search box | "Search must be 200 characters or fewer"; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |
+| R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, without a request) | Discover, 200 | Just the search box | n/a | ok |
+| R2 No results | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Discover, 200 | "No sites or feeds match “zzzz”."; live search announces "No sites" | Yes (L1) | ok |
+| R3 Special characters | `/discover?q=%25`, `_`, `"<script>\` | Discover, 200 | As R2; matched literally and escaped | Yes | ok |
+| R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, above the search box | "Search must be 200 characters or fewer"; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |
 
 ## Empty states
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| Y1 Home, no subscriptions | A new account's `/` | Home, 200 | "Your timeline is empty. Find feeds to follow with Search, or import your subscriptions from another reader; their articles will show up here." | Yes, with links | ok |
-| Y2 My feeds, none | New account's `/feeds` | 200 | "You're not following any feeds yet. Search for a site to find some." | Yes | ok |
+| Y1 Home, no subscriptions | A new account's `/` | Home, 200 | "Your timeline is empty. Find sites to follow in Discover, or import your subscriptions from another reader; their articles will show up here." | Yes, with links | ok |
+| Y2 My feeds, none | New account's `/feeds` | 200 | "You're not following any feeds yet. Find sites to follow in Discover." | Yes | ok |
 | Y3 Saved, none | New account's `/saved` | 200 | "Nothing saved yet. Use the bookmark on any article to keep it here." | Yes | ok |
 | Y4 Saved search, no matches | `/saved?q=zzz` with saves | 200 | "No saved articles match “zzz”." | Yes | ok |
 | Y5 Tags, none | New account's `/tags` | 200 | "You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them." | Yes | ok |
@@ -281,7 +281,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | G1 Name blank, with a comma, or too long | New tag, or rename | 422, under Name | "Enter a name."; "Tags can't contain commas."; "Must be 50 characters or fewer." | Yes | ok |
 | G2 Duplicate name | A tag that exists, in any case | 422, under Name | "You already have a tag called “news”." | Yes | ok |
 | G3 Over 100 tags | `INSERT INTO tags (user_id, name) SELECT '{A}', 't' \|\| g FROM generate_series(1, 100) g`, then New tag | 422, under Name | "You can have up to 100 tags." | Only by deleting one | ok |
-| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not following any feeds yet. Search for a site to find some." | Yes | ok |
+| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not following any feeds yet. Find sites to follow in Discover." | Yes | ok |
 | G5 Unknown or another user's tag | `/tags/{uuid}`; as B, A's | 404 (H2) | As H2 | Home only | ok |
 
 ## Shared timelines

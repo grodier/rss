@@ -147,9 +147,9 @@ Either way the page then shows the link once, since only its hash is stored.
 
 **Why:** "Waitlist and invites" in decisions.md.
 
-## Search, site lookups and discovery
+## Discover, site lookups and discovery
 
-**Flow.** `GET /search?q=…` only searches the database: sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
+**Flow.** Discover (`GET /discover?q=…`, the fourth tab) only searches the database: sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
 With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
@@ -157,7 +157,7 @@ With JavaScript, Look up and the site page's "Check for new feeds" show they're 
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
 While it runs, `lookup-status.ts` fetches the page's own URL 2 s after each answer, only while the page is visible: a redirect to the site page replaces the lookup page (`location.replace`, so Back skips it), any other redirect (Log in) is followed, and a finished page's message replaces the spinner and is announced in the polite live region; without JavaScript, a `<meta http-equiv="refresh">` in `<noscript>` reloads the page instead.
-An address on the app's own site (`-base-url`'s site key, such as a shared timeline's link) is never looked up: the Search page says so in place of Look up, and `/lookups` refuses it with a field error before the per-user limit.
+An address on the app's own site (`-base-url`'s site key, such as a shared timeline's link) is never looked up: Discover says so in place of Look up, and `/lookups` refuses it with a field error before the per-user limit.
 
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
 Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`.
@@ -175,7 +175,7 @@ The command logs the sites it retried and those that failed too recently to retr
 
 **Start at:**
 
-1. `internal/server/search.go` and `internal/psql/search.go`; live search is `web/app/features/live-search.ts`.
+1. `internal/server/discover.go` and `internal/psql/search.go`; live search is `web/app/features/live-search.ts`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
@@ -183,7 +183,7 @@ The command logs the sites it retried and those that failed too recently to retr
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`).
 
-**Tests:** `internal/server/search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 
@@ -268,7 +268,7 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `search_test.go`, `settings_test.go`, `import_test.go`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
+**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `settings_test.go`, `import_test.go`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

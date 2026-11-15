@@ -46,7 +46,9 @@ func testWaitlist() *fakeWaitlist {
 	expired.Invite = rss.Invite{ID: "inv-2", ExpiresAt: testNow.Add(-time.Hour)}
 	invited.Invite = rss.Invite{ID: "inv-3", ExpiresAt: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)}
 	unconfirmed.ConfirmedAt = time.Time{}
-	return &fakeWaitlist{rows: []rss.WaitlistRow{waitingRow(1), expired, invited, unconfirmed}}
+	first := waitingRow(1)
+	first.SectionNames = []string{"Food", "Film and TV"}
+	return &fakeWaitlist{rows: []rss.WaitlistRow{first, expired, invited, unconfirmed}}
 }
 
 func TestWaitlistPage(t *testing.T) {
@@ -63,6 +65,7 @@ func TestWaitlistPage(t *testing.T) {
 		`>Unconfirmed <span class="count">1</span></a>`,
 		`aria-current="page">Waiting`,
 		"Person 1", "person1@example.com", "lwn.net", "hn",
+		"<th scope=\"col\">Sections they'd like to read</th>", "<td>Food, Film and TV</td>",
 		"Invite expired 2026-11-09",
 		`name="id" value="` + entryID(1) + `"`,
 		`name="oldest" value="2"`,
@@ -134,7 +137,7 @@ func TestWaitlistReview(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
-		"Invite 2 people", "Person 1", "Person 2",
+		"Invite 2 people", "Person 1", "Person 2", "<td>Food, Film and TV</td>",
 		"2 invites. 12 of 100 emails used today, 240 of 3000 this month.",
 		`value="Wave 2026-11-09"`, `name="days" value="14"`,
 		`name="id" value="` + entryID(1) + `"`, `name="id" value="` + entryID(2) + `"`,

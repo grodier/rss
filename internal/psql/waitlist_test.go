@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -51,9 +52,15 @@ func TestWaitlistRepository(t *testing.T) {
 		return hash
 	}
 
+	sections, err := listSections(ctx, db)
+	if err != nil || len(sections) < 3 {
+		t.Fatalf("listSections = %d sections, %v; want the seeded ones", len(sections), err)
+	}
+
 	t.Run("Join stores an unconfirmed entry", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
-		e := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring"}
+		e := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring",
+			Sections: []string{sections[0].ID, sections[2].ID}}
 		hash := newWaitlistHash(t)
 		got, err := repo.Join(ctx, e, hash)
 		if err != nil {
@@ -63,15 +70,16 @@ func TestWaitlistRepository(t *testing.T) {
 			t.Errorf("Join = %+v, want an ID, a created_at and no confirmed_at", got)
 		}
 		e.ID, e.CreatedAt = got.ID, got.CreatedAt
-		if got != e {
+		e.SectionNames = []string{sections[0].Name, sections[2].Name}
+		if !reflect.DeepEqual(got, e) {
 			t.Errorf("Join = %+v, want %+v", got, e)
 		}
 		byToken, err := repo.GetByToken(ctx, hash)
-		if err != nil || byToken != got {
+		if err != nil || !reflect.DeepEqual(byToken, got) {
 			t.Errorf("GetByToken = %+v, %v; want %+v", byToken, err, got)
 		}
 		byEmail, err := repo.GetByEmail(ctx, strings.ToUpper(email))
-		if err != nil || byEmail != got {
+		if err != nil || !reflect.DeepEqual(byEmail, got) {
 			t.Errorf("GetByEmail = %+v, %v; want %+v", byEmail, err, got)
 		}
 		if _, err := repo.GetByEmail(ctx, "nobody-"+email); !errors.Is(err, rss.ErrNoRecord) {
@@ -81,7 +89,7 @@ func TestWaitlistRepository(t *testing.T) {
 
 	t.Run("Join again while unconfirmed replaces the entry's details and token", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
-		first := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring"}
+		first := rss.WaitlistEntry{Email: email, Name: "Ada", Sites: "kottke.org", Source: "spring", Sections: []string{sections[0].ID}}
 		oldHash := join(t, first)
 		before, _ := repo.GetByToken(ctx, oldHash)
 
@@ -93,7 +101,7 @@ func TestWaitlistRepository(t *testing.T) {
 		if got.ID != before.ID || !got.CreatedAt.Equal(before.CreatedAt) {
 			t.Errorf("Join made a new entry: %+v, was %+v", got, before)
 		}
-		if got.Name != "Ada King" || got.Sites != "" || got.Source != "" {
+		if got.Name != "Ada King" || got.Sites != "" || got.Source != "" || len(got.Sections) != 0 || len(got.SectionNames) != 0 {
 			t.Errorf("Join = %+v, want the new details", got)
 		}
 		if _, err := repo.GetByToken(ctx, oldHash); !errors.Is(err, rss.ErrNoRecord) {
@@ -282,6 +290,25 @@ func TestWaitlistAdminQueries(t *testing.T) {
 		}
 		if rows[0].Email != waiting.Email || rows[0].ConfirmedAt.IsZero() || !rows[0].CreatedAt.Equal(day(1)) {
 			t.Errorf("row = %+v", rows[0])
+		}
+	})
+
+	t.Run("List names the sections that still exist, in their order", func(t *testing.T) {
+		sections, err := listSections(ctx, db)
+		if err != nil || len(sections) < 2 {
+			t.Fatalf("listSections = %d sections, %v", len(sections), err)
+		}
+		// Chosen in another order, and a section since dropped.
+		stmt := `UPDATE waitlist SET sections = ARRAY[$2, gen_random_uuid()::text, $3]::uuid[] WHERE id = $1`
+		if _, err := db.Exec(stmt, waiting.ID, sections[1].ID, sections[0].ID); err != nil {
+			t.Fatal(err)
+		}
+		rows := list(t, rss.WaitlistWaiting)
+		if want := []string{sections[0].Name, sections[1].Name}; !slices.Equal(rows[0].SectionNames, want) {
+			t.Errorf("SectionNames = %q, want %q", rows[0].SectionNames, want)
+		}
+		if len(rows[1].SectionNames) != 0 {
+			t.Errorf("SectionNames of an entry that chose none = %q", rows[1].SectionNames)
 		}
 	})
 

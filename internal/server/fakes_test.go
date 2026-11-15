@@ -256,6 +256,7 @@ func (f *fakeSearchStore) Search(ctx context.Context, q, siteKey string, limit i
 
 type fakeDiscoverStore struct {
 	sectionsFn     func(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error)
+	listSectionsFn func(ctx context.Context) ([]rss.Section, error)
 	sectionFn      func(ctx context.Context, slug string) (rss.Section, error)
 	sectionFeedsFn func(ctx context.Context, userID, sectionID string) ([]rss.DiscoverFeed, error)
 	sectionPostsFn func(ctx context.Context, userID, sectionID string, before rss.ArticleCursor, limit int) ([]rss.SectionPost, error)
@@ -263,6 +264,13 @@ type fakeDiscoverStore struct {
 
 func (f *fakeDiscoverStore) Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error) {
 	return f.sectionsFn(ctx, userID, perSection)
+}
+
+func (f *fakeDiscoverStore) ListSections(ctx context.Context) ([]rss.Section, error) {
+	if f.listSectionsFn == nil {
+		return nil, nil
+	}
+	return f.listSectionsFn(ctx)
 }
 
 func (f *fakeDiscoverStore) Section(ctx context.Context, slug string) (rss.Section, error) {

@@ -3,11 +3,13 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,13 @@ import (
 var waitlistLinkRX = regexp.MustCompile(`https://rss\.example\.com/waitlist/(confirm|leave)\?token=([A-Za-z0-9_-]{43})`)
 
 const waitlistMember = "member@example.com"
+
+// waitlistSections are the sections newWaitlistTestServer's form offers.
+var waitlistSections = []rss.Section{
+	{ID: "sec-news", Slug: "news", Name: "News"},
+	{ID: "sec-food", Slug: "food", Name: "Food"},
+	{ID: "sec-film", Slug: "film-and-tv", Name: "Film and TV"},
+}
 
 // newWaitlistTestServer returns a server whose GetByEmail knows only
 // waitlistMember, with its waitlist store and email queue.
@@ -34,7 +43,10 @@ func newWaitlistTestServer(t *testing.T) (*Server, *fakeWaitlistStore, *fakeEmai
 			return rss.User{}, rss.ErrNoRecord
 		}},
 		WaitlistService: store,
-		EmailQueue:      queue,
+		DiscoverService: &fakeDiscoverStore{listSectionsFn: func(context.Context) ([]rss.Section, error) {
+			return waitlistSections, nil
+		}},
+		EmailQueue: queue,
 	})
 	return s, store, queue
 }
@@ -131,6 +143,91 @@ func TestWaitlistJoin(t *testing.T) {
 		}
 	})
 
+	t.Run("sections: known ones kept once each, in the sections' order", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			posted []string
+			want   []string
+		}{
+			{"none", nil, nil},
+			{"in the sections' order", []string{"sec-film", "sec-news"}, []string{"sec-news", "sec-film"}},
+			{"unknown dropped", []string{"sec-food", "sec-gone", "News"}, []string{"sec-food"}},
+			{"duplicates once", []string{"sec-food", "sec-food"}, []string{"sec-food"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				s, store, _ := newWaitlistTestServer(t)
+				form := waitlistValues("ada@example.com")
+				form["sections"] = tt.posted
+				assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", form), "/waitlist/joined")
+				for _, e := range store.entries {
+					if !slices.Equal(e.Sections, tt.want) {
+						t.Errorf("stored sections %q, want %q", e.Sections, tt.want)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("joining again replaces the sections", func(t *testing.T) {
+		s, store, _ := newWaitlistTestServer(t)
+		form := waitlistValues("ada@example.com")
+		form["sections"] = []string{"sec-news", "sec-food"}
+		assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", form), "/waitlist/joined")
+		form["sections"] = []string{"sec-film"}
+		assertRedirect(t, postWaitlist(t, s, "192.0.2.1:1234", form), "/waitlist/joined")
+		if len(store.entries) != 1 {
+			t.Fatalf("stored %d entries, want 1", len(store.entries))
+		}
+		for _, e := range store.entries {
+			if !slices.Equal(e.Sections, []string{"sec-film"}) {
+				t.Errorf("stored sections %q, want the second answer's", e.Sections)
+			}
+		}
+	})
+
+	t.Run("the home page asks what they like to read", func(t *testing.T) {
+		s, _, _ := newWaitlistTestServer(t)
+		body := getHome(t, s, "/", false).Body.String()
+		assertBodyContains(t, body,
+			`<fieldset class="field section-choices" aria-describedby="sections-hint">`,
+			`<legend>What do you like to read? (optional)</legend>`,
+			`<input type="checkbox" name="sections" value="sec-news" /><span>News</span>`,
+			`<input type="checkbox" name="sections" value="sec-film" /><span>Film and TV</span>`,
+			`<p class="hint" id="sections-hint">We'll show these sections first in Discover.</p>`,
+		)
+		if strings.Contains(body, "checked") {
+			t.Error("a section is checked on the first visit")
+		}
+		if strings.Index(body, `id="sites"`) > strings.Index(body, `name="sections"`) {
+			t.Error("the sections aren't under the sites question")
+		}
+	})
+
+	t.Run("no sections, no question", func(t *testing.T) {
+		s, _, _ := newWaitlistTestServer(t)
+		s.services.DiscoverService = emptyCatalog()
+		if body := getHome(t, s, "/", false).Body.String(); strings.Contains(body, "section-choices") {
+			t.Error("the question is shown without sections")
+		}
+	})
+
+	t.Run("the sections' store failing is a 500", func(t *testing.T) {
+		s, store, _ := newWaitlistTestServer(t)
+		s.services.DiscoverService = &fakeDiscoverStore{listSectionsFn: func(context.Context) ([]rss.Section, error) {
+			return nil, errors.New("db down")
+		}}
+		if rr := getHome(t, s, "/", false); rr.Code != http.StatusInternalServerError {
+			t.Errorf("GET /: status = %d, want 500", rr.Code)
+		}
+		if rr := postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com")); rr.Code != http.StatusInternalServerError {
+			t.Errorf("POST /waitlist: status = %d, want 500", rr.Code)
+		}
+		if len(store.entries) != 0 {
+			t.Errorf("stored %d entries, want none", len(store.entries))
+		}
+	})
+
 	t.Run("the home page carries a valid ?ref=", func(t *testing.T) {
 		s, _, _ := newWaitlistTestServer(t)
 		body := getHome(t, s, "/?ref=spring-launch", false).Body.String()
@@ -199,6 +296,24 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("the chosen sections stay checked", func(t *testing.T) {
+		s, _, _ := newWaitlistTestServer(t)
+		form := waitlistValues("ada@example.com", "email", "")
+		form["sections"] = []string{"sec-food", "sec-gone"}
+		rr := postWaitlist(t, s, "192.0.2.1:1234", form)
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+		}
+		body := rr.Body.String()
+		assertBodyContains(t, body,
+			`<input type="checkbox" name="sections" value="sec-food" checked /><span>Food</span>`,
+			`<input type="checkbox" name="sections" value="sec-news" /><span>News</span>`,
+		)
+		if strings.Contains(body, "sec-gone") {
+			t.Error("an unknown section is echoed back")
+		}
+	})
 
 	t.Run("500 characters is fine", func(t *testing.T) {
 		s, _, _ := newWaitlistTestServer(t)

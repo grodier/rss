@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 func TestUserRepository(t *testing.T) {
@@ -432,6 +434,19 @@ func TestCreateFromInvite(t *testing.T) {
 		return at
 	}
 
+	sectionsOf := func(t *testing.T, id string) []string {
+		t.Helper()
+		var got []string
+		if err := db.QueryRow(`SELECT sections::text[] FROM users WHERE id = $1`, id).Scan(pq.Array(&got)); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	sections, err := listSections(t.Context(), db)
+	if err != nil || len(sections) < 2 {
+		t.Fatalf("listSections = %d sections, %v", len(sections), err)
+	}
+
 	t.Run("open invite redeems once", func(t *testing.T) {
 		inv, hash := newInvite(t, db, rss.Invite{Note: "for Grace"})
 		email := newUserEmail(t)
@@ -442,6 +457,9 @@ func TestCreateFromInvite(t *testing.T) {
 		}
 		if confirmedAt(t, id).Valid {
 			t.Error("an open invite's account starts confirmed")
+		}
+		if got := sectionsOf(t, id); len(got) != 0 {
+			t.Errorf("sections = %q, want none", got)
 		}
 		got, err := NewInviteRepository(db).GetByToken(t.Context(), hash)
 		if err != nil {
@@ -458,10 +476,11 @@ func TestCreateFromInvite(t *testing.T) {
 		}
 	})
 
-	t.Run("bound invite confirms and deletes the waitlist entry", func(t *testing.T) {
+	t.Run("bound invite confirms, copies the sections and deletes the waitlist entry", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
 		t.Cleanup(func() { db.Exec(`DELETE FROM users WHERE email = $1`, email) })
-		entry, err := NewWaitlistRepository(db).Join(t.Context(), rss.WaitlistEntry{Email: email, Name: "Ada"}, newWaitlistHash(t))
+		chosen := []string{sections[0].ID, sections[1].ID}
+		entry, err := NewWaitlistRepository(db).Join(t.Context(), rss.WaitlistEntry{Email: email, Name: "Ada", Sections: chosen}, newWaitlistHash(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -477,6 +496,9 @@ func TestCreateFromInvite(t *testing.T) {
 		}
 		if !confirmedAt(t, id).Valid {
 			t.Error("a bound invite's account isn't confirmed")
+		}
+		if got := sectionsOf(t, id); !slices.Equal(got, chosen) {
+			t.Errorf("sections = %q, want the entry's %q", got, chosen)
 		}
 		var n int
 		if err := db.QueryRow(`SELECT count(*) FROM waitlist WHERE id = $1`, entry.ID).Scan(&n); err != nil || n != 0 {

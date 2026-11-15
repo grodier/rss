@@ -38,8 +38,13 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
+		sections, err := s.services.DiscoverService.ListSections(r.Context())
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
 		form := waitlistForm{Source: waitlistSource(r.URL.Query().Get("ref"))}
-		s.renderWaitlistHost(w, r, http.StatusOK, newWaitlistFormData(form))
+		s.renderWaitlistHost(w, r, http.StatusOK, newWaitlistFormData(form, sections))
 		return
 	}
 

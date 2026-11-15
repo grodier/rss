@@ -381,20 +381,7 @@ func (r *AdminFeedRepository) CheckForFeeds(ctx context.Context, id string, by r
 
 // DiscoverSections returns Discover's sections in their default order.
 func (r *AdminFeedRepository) DiscoverSections(ctx context.Context) ([]rss.Section, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, slug, name FROM discover_sections ORDER BY position, name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []rss.Section
-	for rows.Next() {
-		var sec rss.Section
-		if err := rows.Scan(&sec.ID, &sec.Slug, &sec.Name); err != nil {
-			return nil, err
-		}
-		out = append(out, sec)
-	}
-	return out, rows.Err()
+	return listSections(ctx, r.DB)
 }
 
 // SetDiscoverSection puts feed id in Discover's catalog under the section

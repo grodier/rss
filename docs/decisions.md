@@ -1243,6 +1243,10 @@ Planned in #583.
   Rejected: "Which feed reader do you use now?", whose answer wouldn't change anything we do; "What do you mostly read?", too vague to act on; and "How many feeds do you follow now?", useful only for planning waves by load, which one more field on the form doesn't justify yet.
   Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
   Every waitlist email has a link to leave the list.
+- **A second optional question, "What do you like to read?", with Discover's sections as checkbox chips** (#642, planned in #450), under the sites question, with the hint "We'll show these sections first in Discover."
+  This reverses #566's rejection of "What do you mostly read?" (above): with sections the answer is something the app acts on, ordering Discover; see "First run and discovery".
+  It's stored on the entry and copied to the account at signup, since the entry is deleted then, and the admin shows it next to the sites answer.
+- **The answer is stored as section IDs, not names** (#642): #628 moved the list of sections from code to a table after #642 was planned, with feeds referring to a section by its ID, so a renamed section is still the one people chose and a dropped one is left out where the answer is read.
 - **Joining twice says so**: "already on the waitlist" for a confirmed address, a new confirmation email for an unconfirmed one, and "there's already an account" with a link to log in, as signup does ("Helpful errors" above).
 - **Bots meet a honeypot field and a per-IP limit**, not Turnstile yet, which needs a script and a CSP change (backlog, under "Security").
 - **The form is a partial on today's logged-out home page**; the landing page is separate work the owner tracks, which places it there.

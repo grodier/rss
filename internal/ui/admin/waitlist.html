@@ -55,6 +55,7 @@
                   <th scope="col">Name</th>
                   <th scope="col">Email</th>
                   <th scope="col">Sites they'd like to follow</th>
+                  <th scope="col">Sections they'd like to read</th>
                   <th scope="col">Source</th>
                   <th scope="col">Status</th>
                 </tr>
@@ -68,6 +69,7 @@
                   <td>{{.Name}}</td>
                   <td>{{.Email}}</td>
                   <td class="clip" title="{{.Sites}}">{{if .Sites}}{{.Sites}}{{else}}—{{end}}</td>
+                  <td>{{with .SectionNames}}{{join .}}{{else}}—{{end}}</td>
                   <td>{{if .Source}}{{.Source}}{{else}}—{{end}}</td>
                   <td>{{waitlistStatus . $now}}</td>
                 </tr>

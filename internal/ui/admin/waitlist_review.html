@@ -75,6 +75,7 @@
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
                 <th scope="col">Sites they'd like to follow</th>
+                <th scope="col">Sections they'd like to read</th>
                 {{if .Check.Over}}<th scope="col">Today</th>{{end}}
               </tr>
             </thead>
@@ -86,6 +87,7 @@
                 <td>{{.Name}}</td>
                 <td>{{.Email}}</td>
                 <td class="clip" title="{{.Sites}}">{{if .Sites}}{{.Sites}}{{else}}—{{end}}</td>
+                <td>{{with .SectionNames}}{{join .}}{{else}}—{{end}}</td>
                 {{if $over}}<td>{{if lt $i $fit}}Sent{{else}}Waits{{end}}</td>{{end}}
               </tr>
               {{end}}

@@ -989,12 +989,14 @@ type AdminFeedQuery struct {
 	Limit  int
 }
 
-// AdminFeedRow is a feed as the admin lists it: the feed, its site's host
-// and how many readers subscribe to it (a count, never who).
+// AdminFeedRow is a feed as the admin lists it: the feed, its site's host,
+// how many readers subscribe to it (a count, never who) and its section in
+// Discover's catalog ("" when it isn't in it).
 type AdminFeedRow struct {
 	Feed
 	SiteHost    string
 	Subscribers int
+	Section     string
 }
 
 // AdminFeed is one feed's admin page: its row, its site, its articles'

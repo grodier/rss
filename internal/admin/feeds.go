@@ -263,6 +263,16 @@ type feedPage struct {
 	ReaderURL string
 	History   string
 	Now       time.Time
+	// Discover is the Discover panel's form, Sections its choices.
+	Discover discoverForm
+	Sections []rss.Section
+}
+
+// discoverForm puts a feed in Discover's catalog under a section, or takes
+// it out with "".
+type discoverForm struct {
+	Section             string `form:"section"`
+	validator.Validator `form:"-"`
 }
 
 // feedFromURL returns the feed the URL's {id} names; when there's none, it
@@ -292,6 +302,11 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.renderFeed(w, r, http.StatusOK, feed, discoverForm{Section: feed.Section})
+}
+
+// renderFeed shows feed's page with status and form in its Discover panel.
+func (s *Server) renderFeed(w http.ResponseWriter, r *http.Request, status int, feed rss.AdminFeed, form discoverForm) {
 	now := s.now()
 	data := feedPage{
 		Nav:       s.nav(r, "feeds"),
@@ -302,6 +317,8 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		ReaderURL: s.config.AppURL + "/feeds/" + feed.ID,
 		History:   auditHistoryURL("feed", feed.ID),
 		Now:       now,
+		Discover:  form,
+		Sections:  rss.Sections,
 	}
 	switch {
 	case data.Problem.Text != "":
@@ -311,9 +328,48 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		data.Heading = "Fetching normally"
 	}
-	if err := s.renderHTML(w, http.StatusOK, "feed.html", data); err != nil {
+	if err := s.renderHTML(w, status, "feed.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// feedDiscoverHandler puts the feed {id} in Discover's catalog under the
+// posted section, or takes it out with an empty one. A gone feed can't be
+// put in. It's recorded as feed.discover with the section before and after.
+func (s *Server) feedDiscoverHandler(w http.ResponseWriter, r *http.Request) {
+	feed, ok := s.feedFromURL(w, r)
+	if !ok {
+		return
+	}
+	var form discoverForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	_, known := rss.SectionNamed(form.Section)
+	form.CheckField(form.Section == "" || known, "section", "Choose one of the sections.")
+	if !form.Valid() {
+		s.renderFeed(w, r, http.StatusUnprocessableEntity, feed, form)
+		return
+	}
+	err := s.services.Feeds.SetDiscoverSection(r.Context(), feed.ID, form.Section, s.actor(r))
+	switch {
+	case errors.Is(err, rss.ErrFeedGone):
+		form.AddFieldError("section", "This feed is gone, so it can't be in Discover. Clear gone first if it's back.")
+		s.renderFeed(w, r, http.StatusUnprocessableEntity, feed, form)
+		return
+	case errors.Is(err, rss.ErrNoRecord):
+		s.notFoundResponse(w, r)
+		return
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	msg := "Not in Discover."
+	if form.Section != "" {
+		msg = "In Discover under " + form.Section + "."
+	}
+	s.backTo(w, r, "/feeds/"+feed.ID, msg)
 }
 
 // feedFigures are a feed's figures at now: its subscribers (a count,

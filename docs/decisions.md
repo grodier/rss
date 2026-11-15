@@ -192,6 +192,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Refresh now is recorded after the fetch, with its outcome** (#581): the refresher records the fetch on the feed as any fetch does, and can't take an `rss.AuditActor`, so the handler records `feed.refresh` itself, the one admin action not recorded in its change's transaction; an entry that says what happened is worth more than one written before it.
   It refuses a gone feed (Clear gone first), since a successful fetch doesn't clear `gone_at`.
 - **A row of filter links too wide for a phone scrolls in its own frame** (#581), like a table, rather than wrapping: the feeds page's six filters don't fit on 320px.
+- **A feed's place in Discover is edited on its admin page, as a status panel** (#628, approved at its design checkpoint): its heading says where the feed stands ("In Discover under Food" or "Not in Discover"), like the fetching panel above it, with a section select and Save under it; the site page's feed table names each feed's section.
+  The feed page is where the choice is made because it shows what the choice needs (posting rate, health, its site); an overview of the catalog by section is #648's Discover page.
+  Rejected: a plain labelled form (it read as foreign to a page of status and figures), a button per section that saves on click (grows with the list, and a stray click saves), and the select in the page head (no room for its hint or error).
+  A gone feed can't be added, since Discover would offer a feed that no longer updates; one already in the catalog can still be taken out.
+  Breadcrumbs on the feed and site pages, which the checkpoint showed were missing, are #655.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability

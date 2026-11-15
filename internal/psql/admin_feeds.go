@@ -61,20 +61,22 @@ var adminFeedSorts = map[string]adminFeedSort{
 }
 
 // adminFeedRowColumns are the columns scanAdminFeedRow reads, for feeds f
-// joined to sites s.
-var adminFeedRowColumns = qualifiedFeedColumns + `, s.host, ` + adminSubscribers("f")
+// joined to sites s: the feed, its site's host, its subscribers and its
+// section in Discover's catalog (empty when it isn't in it).
+var adminFeedRowColumns = qualifiedFeedColumns + `, s.host, ` + adminSubscribers("f") +
+	`, COALESCE((SELECT d.section FROM discover_feeds d WHERE d.feed_id = f.id), '')`
 
 // scanAdminFeedRow scans a row selected with adminFeedRowColumns, then
 // extra.
 func scanAdminFeedRow(row interface{ Scan(...any) error }, extra ...any) (rss.AdminFeedRow, error) {
 	var r rss.AdminFeedRow
-	var host string
+	var host, section string
 	var subscribers int
-	feed, err := scanFeed(scanTail{row: row, tail: append([]any{&host, &subscribers}, extra...)})
+	feed, err := scanFeed(scanTail{row: row, tail: append([]any{&host, &subscribers, &section}, extra...)})
 	if err != nil {
 		return rss.AdminFeedRow{}, err
 	}
-	r.Feed, r.SiteHost, r.Subscribers = feed, host, subscribers
+	r.Feed, r.SiteHost, r.Subscribers, r.Section = feed, host, subscribers, section
 	return r, nil
 }
 
@@ -370,4 +372,54 @@ func (r *AdminFeedRepository) CheckForFeeds(ctx context.Context, id string, by r
 		return rss.Lookup{}, err
 	}
 	return l, tx.Commit()
+}
+
+// SetDiscoverSection puts feed id in Discover's catalog under section, or
+// takes it out with "", recorded as feed.discover by by with the section
+// before and after ("" for none). Setting the section it already has
+// records nothing. rss.ErrUnknownSection for a section not in
+// rss.Sections, rss.ErrFeedGone to add a gone feed (taking one out is
+// fine), rss.ErrNoRecord if the feed doesn't exist.
+func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, section string, by rss.AuditActor) error {
+	if _, ok := rss.SectionNamed(section); section != "" && !ok {
+		return rss.ErrUnknownSection
+	}
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Locking the feed orders this after another change to its section.
+	var gone bool
+	var before string
+	err = tx.QueryRowContext(ctx, `SELECT f.gone_at IS NOT NULL,
+			COALESCE((SELECT d.section FROM discover_feeds d WHERE d.feed_id = f.id), '')
+		FROM feeds f WHERE f.id = $1 FOR UPDATE`, id).Scan(&gone, &before)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.ErrNoRecord
+	}
+	if err != nil {
+		return err
+	}
+	switch {
+	case section == before:
+		return nil
+	case section != "" && gone:
+		return rss.ErrFeedGone
+	case section == "":
+		_, err = tx.ExecContext(ctx, `DELETE FROM discover_feeds WHERE feed_id = $1`, id)
+	default:
+		_, err = tx.ExecContext(ctx, `INSERT INTO discover_feeds (feed_id, section) VALUES ($1, $2)
+			ON CONFLICT (feed_id) DO UPDATE SET section = EXCLUDED.section`, id, section)
+	}
+	if err != nil {
+		return err
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "feed.discover", TargetType: "feed", TargetID: id,
+		Before: map[string]any{"section": before}, After: map[string]any{"section": section}})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }

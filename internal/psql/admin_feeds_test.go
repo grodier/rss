@@ -398,3 +398,102 @@ func TestAdminFeedRepositoryActions(t *testing.T) {
 		t.Errorf("CheckForFeeds of nothing: %v, want ErrNoRecord", err)
 	}
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestAdminFeedRepositorySetDiscoverSection(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminFeedRepository(db)
+	by := testActor(t, db)
+	siteID, _ := adminFeedsSite(t, db)
+	feed := adminFeed(t, db, siteID, "Picked", ``)
+	gone := adminFeed(t, db, siteID, "Gone", `gone_at = now()`)
+	missing := "00000000-0000-4000-8000-000000000000"
+
+	section := func(id string) string {
+		t.Helper()
+		f, err := repo.Feed(t.Context(), id)
+		if err != nil {
+			t.Fatalf("Feed: %v", err)
+		}
+		return f.Section
+	}
+	entries := func(id string) []rss.AuditEvent {
+		t.Helper()
+		var out []rss.AuditEvent
+		for _, e := range auditBy(t, db, by) {
+			if e.Action == "feed.discover" && e.TargetID == id {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	set := func(id, s string) {
+		t.Helper()
+		if err := repo.SetDiscoverSection(t.Context(), id, s, by); err != nil {
+			t.Fatalf("SetDiscoverSection(%q): %v", s, err)
+		}
+	}
+
+	if got := section(feed); got != "" {
+		t.Fatalf("a new feed's section = %q, want none", got)
+	}
+	set(feed, "Science")
+	if got := section(feed); got != "Science" {
+		t.Errorf("after setting Science: %q", got)
+	}
+	set(feed, "Food")
+	if got := section(feed); got != "Food" {
+		t.Errorf("after changing to Food: %q", got)
+	}
+	// The section it already has: no change, no record.
+	set(feed, "Food")
+	set(feed, "")
+	if got := section(feed); got != "" {
+		t.Errorf("after removing: %q, want none", got)
+	}
+	// Newest first.
+	es := entries(feed)
+	want := [][2]string{{"Food", ""}, {"Science", "Food"}, {"", "Science"}}
+	if len(es) != len(want) {
+		t.Fatalf("%d feed.discover entries, want %d: %+v", len(es), len(want), es)
+	}
+	for i, w := range want {
+		if es[i].TargetType != "feed" || es[i].Before["section"] != w[0] || es[i].After["section"] != w[1] {
+			t.Errorf("entry %d = %+v, want %q to %q", i, es[i], w[0], w[1])
+		}
+	}
+
+	if err := repo.SetDiscoverSection(t.Context(), feed, "Astrology", by); err != rss.ErrUnknownSection {
+		t.Errorf("an unknown section: %v, want ErrUnknownSection", err)
+	}
+	if err := repo.SetDiscoverSection(t.Context(), gone, "Science", by); err != rss.ErrFeedGone {
+		t.Errorf("adding a gone feed: %v, want ErrFeedGone", err)
+	}
+	if err := repo.SetDiscoverSection(t.Context(), missing, "Science", by); err != rss.ErrNoRecord {
+		t.Errorf("a feed that doesn't exist: %v, want ErrNoRecord", err)
+	}
+	if section(feed) != "" || section(gone) != "" || len(entries(gone)) != 0 {
+		t.Errorf("a refused change was made or recorded")
+	}
+
+	// A gone feed already in Discover can be taken out.
+	set(feed, "Music")
+	if _, err := db.Exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, feed); err != nil {
+		t.Fatal(err)
+	}
+	set(feed, "")
+	if got := section(feed); got != "" {
+		t.Errorf("after taking a gone feed out: %q", got)
+	}
+
+	// A deleted feed's row goes with it.
+	other := adminFeed(t, db, siteID, "Deleted", ``)
+	set(other, "News")
+	if _, err := db.Exec(`DELETE FROM feeds WHERE id = $1`, other); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM discover_feeds WHERE feed_id = $1`, other).Scan(&n); err != nil || n != 0 {
+		t.Errorf("a deleted feed's discover_feeds rows: %d (%v), want 0", n, err)
+	}
+}

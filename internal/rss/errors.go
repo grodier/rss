@@ -19,3 +19,12 @@ var (
 	// or already used, or a bound invite used with another address.
 	ErrInviteUnusable = errors.New("invite can't be used")
 )
+
+// Discover's catalog (see Sections).
+var (
+	// ErrUnknownSection is a section that isn't one of Sections.
+	ErrUnknownSection = errors.New("rss: not one of Discover's sections")
+	// ErrFeedGone is a feed that answered 410 Gone, which can't be put in
+	// Discover.
+	ErrFeedGone = errors.New("rss: the feed is gone")
+)

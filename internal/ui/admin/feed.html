@@ -53,6 +53,24 @@
         {{template "stat-row" $.Figures}}
       </section>
 
+      <section class="admin-section" aria-labelledby="discover-heading">
+        <h2 id="discover-heading" class="health-title">{{with .Section}}In Discover under {{.}}{{else}}Not in Discover{{end}}</h2>
+        <p class="health-line" id="section-hint">{{if .Section}}New readers find it in Discover’s {{.Section}} section.{{else}}Pick a section to show it to new readers in Discover.{{end}}</p>
+        <form class="filters discover-form" action="/feeds/{{.ID}}/discover" method="post">
+          <div>
+            <label for="section">Section</label>
+            <select id="section" name="section" aria-describedby="section-hint{{with $.Discover.FieldErrors.section}} section-error{{end}}"
+              {{with $.Discover.FieldErrors.section}}aria-invalid="true" autofocus{{end}}>
+              <option value="">Not in Discover</option>
+              {{range $.Sections}}<option value="{{.Name}}"{{if eq .Name $.Discover.Section}} selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </div>
+          <button class="btn btn-sm" type="submit">Save</button>
+        </form>
+        {{with $.Discover.FieldErrors.section}}<p class="error" id="section-error">{{.}}</p>{{end}}
+      </section>
+
       <section class="admin-section" aria-labelledby="details-heading">
         <h2 id="details-heading">Details</h2>
         <div class="table-wrap">

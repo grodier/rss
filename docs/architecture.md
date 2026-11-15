@@ -231,6 +231,7 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               │          ├──< saves >── users
                               │          ├──< stars >── users
                               │          └──< enrich_jobs
+                              ├── discover_feeds (one row per feed in Discover's catalog)
                               │
                             sites ──< lookups (site_id, once found)
                               └──< site_icons
@@ -273,6 +274,8 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   `Unsubscribe` keeps the reader's rows for the feed, so following it again finds its posts where they were.
   `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
   Every timeline that isn't starred-only or shared reads them (`ListTimeline`): an entry is at the reader's row's position when there is one, else at `timeline_at`, and rows of feeds the reader no longer follows are left out by a join with `subscriptions`.
+- **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section, a `rss.Sections` name (the database doesn't check it; `SetDiscoverSection` does).
+  Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.
@@ -296,7 +299,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   `EmailRepository.Usage` counts the last 24 hours from `emails` (plus anything still pending) and the month from this table; rows are never deleted (one a day).
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` deletes the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
-Deleting a site cascades to its feeds and their articles, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
+Deleting a site cascades to its feeds and their articles, `discover_feeds` rows, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions` and `user_tokens`, and leaves their `emails`.
 Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean, except for the reader's `timeline_entries` rows for the feed, which stay until a visit trims them; deleting a tag removes it from subscriptions and timelines; deleting a timeline deletes its `timeline_tags`, `timeline_feeds` and `timeline_lines` rows.
 Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 

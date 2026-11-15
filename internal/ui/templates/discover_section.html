@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - {{.Section.Name}}{{if .Posts}} - recent posts{{end}}</title>
+  {{template "assets" "section"}}
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      {{/* Discover is a small link above the section's name, not a back
+           link ("No back links in page heads" in docs/decisions.md). */}}
+      <header class="page-head section-head">
+        <div>
+          <a class="head-kicker" href="/discover">Discover</a>
+          <h1>{{.Section.Name}}</h1>
+        </div>
+      </header>
+
+      {{/* Each tab is its own page, so this is navigation (links with
+           aria-current), as the timeline tabs are; timeline-tabs.ts slides
+           the underline between them. */}}
+      <nav class="timeline-tabs section-tabs" aria-label="{{.Section.Name}}">
+        <ul role="list">
+          <li><a href="/discover/sections/{{.Section.Slug}}"{{if not .Posts}} aria-current="page"{{end}}>Feeds{{if not .Posts}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
+          <li><a href="/discover/sections/{{.Section.Slug}}/posts"{{if .Posts}} aria-current="page"{{end}}>Recent posts{{if .Posts}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
+        </ul>
+      </nav>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+
+      {{if .Posts}}
+      {{if .Before}}
+      <div class="timeline-about">
+        <div class="timeline-links"><a href="/discover/sections/{{.Section.Slug}}/posts">Back to newest</a></div>
+      </div>
+      {{end}}
+      {{if .Rows}}
+      <div class="article-list">{{range .Rows}}{{template "article-row" .}}{{end}}</div>
+      {{else if .Before}}
+      <p class="empty">No older posts.</p>
+      {{else}}
+      <p class="empty">No posts in {{.Section.Name}} yet.</p>
+      {{end}}
+      {{if .Next}}
+      <nav class="pager"><a class="btn" rel="next" href="/discover/sections/{{.Section.Slug}}/posts?before={{.Next}}">Older posts</a></nav>
+      {{end}}
+      {{else}}
+      {{if .Feeds}}
+      <ul class="discover-feeds" role="list">
+        {{range .Feeds}}{{template "discover-feed" (discoverRow . (index $.Icons .Site.ID) (print "/discover/sections/" $.Section.Slug))}}{{end}}
+      </ul>
+      {{else}}
+      <p class="empty">No feeds in {{.Section.Name}} yet. <a href="/discover">Back to Discover</a></p>
+      {{end}}
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

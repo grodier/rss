@@ -274,6 +274,7 @@ type articleRow struct {
 	Divider  bool             // the "You were here" line goes above this row
 	Position time.Time        // the row's position in the reader's timeline (see rss.ArticleWithFeed); zero elsewhere
 	Eager    bool             // load the card image at once: the first row with an image on a list's first page
+	Follow   *followButton    // Follow in the foot, for a feed the reader doesn't follow; a section's Recent posts only
 }
 
 // markFirstImageEager sets Eager on the first row with a card image. Call it

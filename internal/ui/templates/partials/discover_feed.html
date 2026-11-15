@@ -1,0 +1,41 @@
+{{/* discover-feed is a catalog feed's row, on Discover and a section's
+     Feeds tab; its data is a discoverRow. The row shows its site, the
+     feed's own title when it isn't just the site's name, its posting rate
+     and latest post, a peek at its latest posts, then Follow, or "✓
+     Following" linking to the feed's page when the reader follows it (only
+     a section's page lists followed feeds). save-star.ts toggles Follow
+     without a reload (form[data-toggle]) and announces
+     data-announce-pressed or data-announce-unpressed. */}}
+{{define "discover-feed"}}
+{{$f := .Feed}}{{$name := $f.Name}}
+<li class="discover-feed" id="feed-{{$f.Feed.ID}}">
+  {{template "avatar" (avatar $f.Site.ID $name .Icon)}}
+  <div class="discover-feed-main">
+    <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host">{{$f.Site.Host}}</span></p>
+    {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
+    <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
+    {{if $f.Latest}}
+    <details class="discover-peek">
+      <summary>Latest posts</summary>
+      <ul role="list">
+        {{range $f.Latest}}<li><a href="/articles/{{.ID}}">{{.DisplayTitle}}</a> {{template "local-date" .FeedSortAt}}</li>{{end}}
+      </ul>
+    </details>
+    {{end}}
+  </div>
+  {{if $f.Following}}
+  <a class="following-label" href="/feeds/{{$f.Feed.ID}}" aria-label="Following {{$f.Label}}: go to the feed">✓ Following</a>
+  {{else}}
+  {{template "follow-form" (followButton $f.Feed.ID $f.Label (print .ReturnTo "#feed-" $f.Feed.ID))}}
+  {{end}}
+</li>
+{{end}}
+
+{{/* follow-form is Follow for a feed the reader doesn't follow; its data
+     is a followButton. */}}
+{{define "follow-form"}}
+<form class="follow-form" action="/feeds/{{.FeedID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{.Label}}" data-announce-unpressed="Unfollowed {{.Label}}">
+  <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+  <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{.Label}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
+</form>
+{{end}}

@@ -104,6 +104,8 @@ func (s *Server) router() http.Handler {
 			r.Post("/articles/{id}/unstar", s.articleUnstarHandler)
 			r.Get("/sites/{id}", s.siteHandler)
 			r.Get("/discover", s.discoverHandler)
+			r.Get("/discover/sections/{slug}", s.discoverSectionHandler)
+			r.Get("/discover/sections/{slug}/posts", s.discoverSectionPostsHandler)
 			r.Post("/lookups", s.lookupCreateHandler)
 			r.Get("/lookups/{id}", s.lookupHandler)
 			r.Get("/settings", s.settingsHandler)

@@ -57,6 +57,13 @@
     scroll-padding-inline-end: 1.5rem; /* the fade */
   }
 
+  /* A Discover section's tabs (Feeds, Recent posts) sit under its page
+     head, on a plain divider like the timeline's tab head. */
+  .section-tabs {
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+
   .timeline-tabs li {
     flex: none;
   }

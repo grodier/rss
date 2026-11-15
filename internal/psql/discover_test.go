@@ -2,6 +2,7 @@ package psql
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -122,8 +123,8 @@ func TestDiscoverRepositorySections(t *testing.T) {
 	if want := []string{d.ID, b.ID, a.ID}; !slices.Equal(ids(mine[0]), want) {
 		t.Errorf("first's feeds = %v; want %v (c, followed and gone left out or cut)", ids(mine[0]), want)
 	}
-	if mine[0].Total != 4 || mine[0].Name != first.Name {
-		t.Errorf("first = %q, Total %d; want %q, 4 (a, b, c, d)", mine[0].Name, mine[0].Total, first.Name)
+	if mine[0].Total != 5 || mine[0].Name != first.Name {
+		t.Errorf("first = %q, Total %d; want %q, 5 (a, b, c, d and followed; not gone)", mine[0].Name, mine[0].Total, first.Name)
 	}
 	if want := []string{sibling}; !slices.Equal(ids(mine[1]), want) || mine[1].Total != 1 {
 		t.Errorf("second's feeds = %v, Total %d; want %v, 1", ids(mine[1]), mine[1].Total, want)
@@ -152,8 +153,8 @@ func TestDiscoverRepositorySections(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, s := range got {
-			if s.Slug == first.Slug && (len(s.Feeds) != 1 || s.Feeds[0].Feed.ID != d.ID || s.Total != 4) {
-				t.Errorf("first with 1 per section = %v, Total %d; want [d], 4", ids(s), s.Total)
+			if s.Slug == first.Slug && (len(s.Feeds) != 1 || s.Feeds[0].Feed.ID != d.ID || s.Total != 5) {
+				t.Errorf("first with 1 per section = %v, Total %d; want [d], 5", ids(s), s.Total)
 			}
 		}
 	})
@@ -170,6 +171,145 @@ func TestDiscoverRepositorySections(t *testing.T) {
 			if last := s.Feeds[len(s.Feeds)-1]; last.Feed.ID != c.ID || len(last.Latest) != 0 || !last.LatestAt().IsZero() {
 				t.Errorf("last feed = %+v; want c, with no articles, last", last)
 			}
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDiscoverRepositorySection(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDiscoverRepository(db)
+	sec := newTestSection(t, db, "Section", 1)
+
+	got, err := repo.Section(t.Context(), sec.Slug)
+	if err != nil || got != sec {
+		t.Errorf("Section(%q) = %+v, %v; want %+v", sec.Slug, got, err, sec)
+	}
+	if _, err := repo.Section(t.Context(), "no-such-section"); !errors.Is(err, rss.ErrNoRecord) {
+		t.Errorf("unknown slug: err = %v, want ErrNoRecord", err)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDiscoverRepositorySectionFeeds(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDiscoverRepository(db)
+	userID := newTestUser(t, db)
+	day := func(n int) time.Time { return time.Now().Add(-time.Duration(n) * 24 * time.Hour).Truncate(time.Second) }
+
+	sec := newTestSection(t, db, "Section", 1)
+	other := newTestSection(t, db, "Other", 2)
+	a := newCatalogFeed(t, db, sec, day(5))
+	b := newCatalogFeed(t, db, sec, day(2), day(3), day(4), day(6))
+	none := newCatalogFeed(t, db, sec)
+	followed := newCatalogFeed(t, db, sec, day(1))
+	gone := newCatalogFeed(t, db, sec, day(0))
+	if _, err := db.Exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	newCatalogFeed(t, db, other, day(0))
+	newTestFeed(t, db) // not in the catalog
+	if err := NewSubscriptionRepository(db).Subscribe(t.Context(), userID, followed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.SectionFeeds(t.Context(), userID, sec.ID)
+	if err != nil {
+		t.Fatalf("SectionFeeds: %v", err)
+	}
+	var ids []string
+	for _, f := range got {
+		ids = append(ids, f.Feed.ID)
+	}
+	if want := []string{followed.ID, b.ID, a.ID, none.ID}; !slices.Equal(ids, want) {
+		t.Fatalf("feeds = %v; want %v (newest-posting first, the one without articles last, gone and other sections' left out)", ids, want)
+	}
+	for _, f := range got {
+		if want := f.Feed.ID == followed.ID; f.Following != want {
+			t.Errorf("%s: Following = %v, want %v", f.Feed.ID, f.Following, want)
+		}
+		if f.Site.ID != f.Feed.SiteID || f.Site.Host == "" {
+			t.Errorf("%s: site = %+v", f.Feed.ID, f.Site)
+		}
+	}
+	if fb := got[1]; len(fb.Latest) != DiscoverLatest || !fb.LatestAt().Equal(day(2)) {
+		t.Errorf("b's Latest = %d articles, LatestAt %v; want %d, %v", len(fb.Latest), fb.LatestAt(), DiscoverLatest, day(2))
+	}
+	if len(got[3].Latest) != 0 {
+		t.Errorf("none's Latest = %+v, want empty", got[3].Latest)
+	}
+
+	t.Run("a section with no feeds", func(t *testing.T) {
+		empty := newTestSection(t, db, "Empty", 3)
+		got, err := repo.SectionFeeds(t.Context(), userID, empty.ID)
+		if err != nil || len(got) != 0 {
+			t.Errorf("SectionFeeds = %+v, %v; want none", got, err)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDiscoverRepositorySectionPosts(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDiscoverRepository(db)
+	userID := newTestUser(t, db)
+	now := time.Now().Truncate(time.Second)
+	hour := func(n int) time.Time { return now.Add(-time.Duration(n) * time.Hour) }
+	unix := func(n int) int64 { return hour(n).Unix() }
+
+	sec := newTestSection(t, db, "Section", 1)
+	other := newTestSection(t, db, "Other", 2)
+	a := newCatalogFeed(t, db, sec, hour(1), hour(4), hour(6))
+	b := newCatalogFeed(t, db, sec, hour(2), hour(3), hour(5))
+	gone := newCatalogFeed(t, db, sec, hour(0))
+	if _, err := db.Exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	newCatalogFeed(t, db, other, hour(0))
+	notCatalog := newTestFeed(t, db)
+	saveDated(t, db, notCatalog, hour(0))
+	if err := NewSubscriptionRepository(db).Subscribe(t.Context(), userID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	type post struct {
+		feed      string
+		at        int64
+		following bool
+	}
+	read := func(before rss.ArticleCursor, limit int) ([]post, []rss.SectionPost) {
+		t.Helper()
+		got, err := repo.SectionPosts(t.Context(), userID, sec.ID, before, limit)
+		if err != nil {
+			t.Fatalf("SectionPosts: %v", err)
+		}
+		var out []post
+		for _, p := range got {
+			if p.Feed.Site.ID != p.Feed.Feed.SiteID || p.Feed.Site.Host == "" || p.Article.ID == "" || p.Article.FeedID != p.Feed.Feed.ID {
+				t.Errorf("post = %+v; want its article, feed and site", p)
+			}
+			out = append(out, post{p.Feed.Feed.ID, p.Article.PublishedAt.Unix(), p.Feed.Following})
+		}
+		return out, got
+	}
+
+	first, raw := read(rss.ArticleCursor{}, 4)
+	want := []post{{a.ID, unix(1), false}, {b.ID, unix(2), true}, {b.ID, unix(3), true}, {a.ID, unix(4), false}}
+	if !slices.Equal(first, want) {
+		t.Fatalf("first page = %+v; want %+v (newest first, only this section's catalog feeds, not gone)", first, want)
+	}
+
+	last := raw[len(raw)-1].Article
+	second, _ := read(rss.ArticleCursor{At: last.FeedSortAt(), ID: last.ID}, 4)
+	if want := []post{{b.ID, unix(5), true}, {a.ID, unix(6), false}}; !slices.Equal(second, want) {
+		t.Errorf("second page = %+v; want %+v", second, want)
+	}
+
+	t.Run("a section with no feeds", func(t *testing.T) {
+		empty := newTestSection(t, db, "Empty", 3)
+		got, err := repo.SectionPosts(t.Context(), userID, empty.ID, rss.ArticleCursor{}, 10)
+		if err != nil || len(got) != 0 {
+			t.Errorf("SectionPosts = %+v, %v; want none", got, err)
 		}
 	})
 }

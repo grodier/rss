@@ -64,36 +64,10 @@
       <section class="discover-section" id="section-{{.Slug}}" aria-labelledby="section-{{.Slug}}-name">
         <div class="list-head">
           <h2 id="section-{{.Slug}}-name">{{.Name}}</h2>
+          <a href="/discover/sections/{{.Slug}}">All {{.Total}}<span class="visually-hidden"> {{.Name}} feeds</span> <span aria-hidden="true">›</span></a>
         </div>
-        {{/* A catalog feed's row: its site, the feed's own title when it isn't
-             just the site's name, its posting rate and latest post, a peek at
-             its latest posts and Follow. save-star.ts toggles Follow without a
-             reload (form[data-toggle]) and announces data-announce-pressed or
-             data-announce-unpressed. */}}
         <ul class="discover-feeds" role="list">
-          {{range .Feeds}}
-          {{$f := .}}{{$name := $f.Name}}
-          <li class="discover-feed" id="feed-{{$f.Feed.ID}}">
-            {{template "avatar" (avatar $f.Site.ID $name (index $.Icons $f.Site.ID))}}
-            <div class="discover-feed-main">
-              <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host">{{$f.Site.Host}}</span></p>
-              {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
-              <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
-              {{if $f.Latest}}
-              <details class="discover-peek">
-                <summary>Latest posts</summary>
-                <ul role="list">
-                  {{range $f.Latest}}<li><a href="/articles/{{.ID}}">{{.DisplayTitle}}</a> {{template "local-date" .FeedSortAt}}</li>{{end}}
-                </ul>
-              </details>
-              {{end}}
-            </div>
-            <form class="follow-form" action="/feeds/{{$f.Feed.ID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{$f.Label}}" data-announce-unpressed="Unfollowed {{$f.Label}}">
-              <input type="hidden" name="return_to" value="/discover#feed-{{$f.Feed.ID}}">
-              <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{$f.Label}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
-            </form>
-          </li>
-          {{end}}
+          {{range .Feeds}}{{template "discover-feed" (discoverRow . (index $.Icons .Site.ID) "/discover")}}{{end}}
         </ul>
       </section>
       {{end}}

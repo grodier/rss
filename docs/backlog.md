@@ -363,6 +363,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
+- [ ] **A Discover section's tabs share the timeline tabs' motion** (#634).
+  They reuse `.tab-indicator`, so going from a section page to Home or a timeline slides the underline from the section's tab to the timeline's, across unrelated rows, instead of fading with the page; and `timeline-tabs.ts` hands the section row's scroll (0) to the next page, so a timeline's row restores to its start before it scrolls its current tab into view.
+  Fix: give the section row its own view-transition name and saved-scroll key, or save and restore only between rows of the same kind.
 - [ ] **Flash messages push the page down (needs planning).**
   A flash is in the column above the page's content, so a page that gains one after a redirect lays its content out about 40 px lower than the page before it; the page crossfade (#513) blends the two, so everything below shows twice, offset, for its 150 ms (unsubscribing on a feed page shows it best).
   An entrance animation (#516; its PR, #551, was closed) made it worse: the content landed before the flash appeared in its empty space, so the page seemed pushed down by nothing.
@@ -617,9 +620,13 @@ Other background work (#302, #304, #306):
   `ClaimDue` checks the catalog with a hashed subplan over all of `discover_feeds`, still on `feeds_next_fetch_at_idx`: on `make db/loadseed`'s data plus 5,000 unfollowed feeds, 3,000 of them in the catalog spread over the day (160 due), a claim took 1.3–1.9 ms against 0.6 ms without the catalog check; with 1,500 catalog feeds overdue at once (a backlog after downtime), 3.2 ms against 1.4 ms.
   *Signal:* refresh workers busy with unfollowed feeds in the admin's job metrics, or `ClaimDue`'s claim latency rising.
   *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
+- [ ] **A section's page lists every catalog feed in the section, and its Recent posts merge every feed's newest articles** (#634).
+  The Feeds tab is unpaginated, with an index probe and three latest titles per feed; each Recent posts page reads up to 31 articles from `articles_feed_sort_idx` per catalog feed in the section, then keeps 31, so a page costs about feeds × 31 index rows; both grow with how many feeds an admin puts in one section, not with readers.
+  *Signal:* a section past about 200 feeds, or `/discover/sections/{slug}` or its `/posts` p95 over 200 ms on the admin's endpoints page.
+  *Fix:* page the Feeds tab, and bound Recent posts' per-feed scan below by the previous page's last post (as `timelineStmt` does with `above`), or keep a section's recent posts in a table refreshed by ingest.
 - [ ] **Discover reads every section on each visit** (#633, #643).
   The no-query page reads each section's first catalog feeds that the reader doesn't follow, their latest titles and the reader's followed count per section, in one or two statements per load, computed for each reader rather than stored.
-  #633's `DiscoverRepository.Sections` is one statement that probes `articles_feed_sort_idx` once per unfollowed catalog feed to order each section by its newest post: on `make db/loadseed`'s data (750,000 articles) with 4,000 catalog feeds (1,000 with articles) and a reader following 300 feeds, it took 20 ms warm (planning 1.5–2 ms) and 950 ms with a cold cache right after a restart; the probes grow with the catalog, not with readers.
+  #633's `DiscoverRepository.Sections` is one statement that probes `articles_feed_sort_idx` once per catalog feed (since #634, followed ones too, for "All N") to order each section by its newest post: on `make db/loadseed`'s data (750,000 articles) with 4,000 catalog feeds (1,000 with articles) and a reader following 300 feeds, it took 20 ms warm (planning 1.5–2 ms) and 950 ms with a cold cache right after a restart; the probes grow with the catalog, not with readers.
   A stored latest-article time on `feeds`, kept by `saveArticles`, would drop the probes.
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page, or the query in `pg_stat_statements`.
   *Fix:* cache each reader's sections for a few minutes, or precompute the per-section lists when the seed or refreshes change them.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isolate, submit } from "../../shared/test/setup";
+import { isolate, liveRegion, submit } from "../../shared/test/setup";
 
 isolate();
 
@@ -107,6 +107,39 @@ describe("save-star", () => {
     });
     submit(form(), button());
     await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+  });
+
+  describe("Follow", () => {
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <form class="follow-form" method="post" action="/feeds/f1/subscribe" data-toggle
+            data-announce-pressed="Following Example" data-announce-unpressed="Unfollowed Example">
+          <input type="hidden" name="return_to" value="/discover#feed-f1">
+          <button class="follow-button" type="submit" aria-pressed="false" aria-label="Follow Example">Follow</button>
+        </form>`;
+    });
+
+    it("follows, then unfollows, announcing each", async () => {
+      await press();
+      expect(fetchMock.mock.calls[0][0]).toBe(new URL("/feeds/f1/subscribe", location.href).href);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe("/feeds/f1/unsubscribe");
+      await vi.waitFor(() => expect(liveRegion()).toBe("Following Example"));
+
+      await press();
+      expect(fetchMock.mock.calls[1][0]).toBe(new URL("/feeds/f1/unsubscribe", location.href).href);
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(form().getAttribute("action")).toBe("/feeds/f1/subscribe");
+      await vi.waitFor(() => expect(liveRegion()).toBe("Unfollowed Example"));
+      expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    it("submits the form normally on anything but a 204, such as a gone feed's redirect", async () => {
+      fetchMock.mockImplementation(async () => new Response("<p>Feed</p>", { status: 200 }));
+      submit(form(), button());
+      await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+    });
   });
 
   it("leaves other forms alone", async () => {

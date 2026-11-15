@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/grodier/rss/internal/rss"
@@ -28,6 +29,28 @@ var templateFuncs = template.FuncMap{
 	"homeName":    func() string { return homeName },
 	"monogram":    monogram,
 	"postingRate": postingRate,
+	"since":       func(t time.Time) string { return since(t, time.Now()) },
+}
+
+// since says how long before now t was, by whole days, for "Latest {when}":
+// "today" (or a future t), "yesterday", "N days ago" up to two weeks, then
+// weeks up to two months, then months, then years.
+func since(t, now time.Time) string {
+	days := int(now.Sub(t) / (24 * time.Hour))
+	switch {
+	case days < 1:
+		return "today"
+	case days == 1:
+		return "yesterday"
+	case days < 14:
+		return fmt.Sprintf("%d days ago", days)
+	case days < 60:
+		return fmt.Sprintf("%d weeks ago", days/7)
+	case days < 730:
+		return fmt.Sprintf("%d months ago", days/30)
+	default:
+		return fmt.Sprintf("%d years ago", days/365)
+	}
 }
 
 // avatarView is what the avatar partial shows: the site's icon, else its

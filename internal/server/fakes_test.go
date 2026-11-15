@@ -246,6 +246,14 @@ func (f *fakeSearchStore) Search(ctx context.Context, q, siteKey string, limit i
 	return f.searchFn(ctx, q, siteKey, limit)
 }
 
+type fakeDiscoverStore struct {
+	sectionsFn func(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error)
+}
+
+func (f *fakeDiscoverStore) Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error) {
+	return f.sectionsFn(ctx, userID, perSection)
+}
+
 type fakeLookupStore struct {
 	requestFn      func(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
 	getByIDFn      func(ctx context.Context, id string) (rss.Lookup, error)

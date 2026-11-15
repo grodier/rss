@@ -168,6 +168,7 @@ func (app *Application) Run() error {
 		WaitlistService:     psql.NewWaitlistRepository(db),
 		InviteService:       psql.NewInviteRepository(db),
 		SearchService:       psql.NewSearchRepository(db),
+		DiscoverService:     psql.NewDiscoverRepository(db),
 		SiteService:         psql.NewSiteRepository(db),
 		LookupService:       psql.NewLookupRepository(db),
 		ArticleService:      psql.NewArticleRepository(db),

@@ -54,6 +54,54 @@
       </section>
       {{end}}
 
+      {{if and (not .Searched) .Sections}}
+      <nav class="section-chips" aria-label="Sections">
+        <ul role="list">
+          {{range .Sections}}<li><a class="chip" href="#section-{{.Slug}}">{{.Name}}</a></li>{{end}}
+        </ul>
+      </nav>
+      {{range .Sections}}
+      <section class="discover-section" id="section-{{.Slug}}" aria-labelledby="section-{{.Slug}}-name">
+        <div class="list-head">
+          <h2 id="section-{{.Slug}}-name">{{.Name}}</h2>
+        </div>
+        <ul class="discover-feeds{{if eq $.Layout "c"}} discover-grid{{end}}" role="list">
+          {{/* A catalog feed's row on Discover: its site, the feed's own title when
+               it isn't just the site's name, its posting rate and latest post, a peek
+               at its latest posts and Follow. save-star.ts toggles Follow without a
+               reload (form[data-toggle]) and announces data-announce-pressed. */}}
+          {{range .Feeds}}
+          {{$f := .}}{{$name := $f.Name}}
+          <li class="discover-feed" id="feed-{{$f.Feed.ID}}">
+            {{template "avatar" (avatar $f.Site.ID $name (index $.Icons $f.Site.ID))}}
+            <div class="discover-feed-main">
+              <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host">{{$f.Site.Host}}</span></p>
+              {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
+              <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
+              {{if $f.Latest}}
+              {{if eq $.Layout "b"}}
+              {{with index $f.Latest 0}}<p class="discover-newest"><a href="/articles/{{.ID}}">{{.DisplayTitle}}</a></p>{{end}}
+              {{else}}
+              <details class="discover-peek">
+                <summary>Latest posts</summary>
+                <ul role="list">
+                  {{range $f.Latest}}<li><a href="/articles/{{.ID}}">{{.DisplayTitle}}</a> {{template "local-date" .FeedSortAt}}</li>{{end}}
+                </ul>
+              </details>
+              {{end}}
+              {{end}}
+            </div>
+            <form class="follow-form" action="/feeds/{{$f.Feed.ID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{$name}}" data-announce-unpressed="Unfollowed {{$name}}">
+              <input type="hidden" name="return_to" value="/discover#feed-{{$f.Feed.ID}}">
+              <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{$name}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
+            </form>
+          </li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+      {{end}}
+
       {{if .Searched}}
       {{range .Sites}}
       <section class="result">
@@ -82,3 +130,4 @@
 </body>
 
 </html>
+

@@ -8,10 +8,11 @@ import { enhanceShare } from "./share";
 // the form's page for the query about 250 ms after the last keystroke
 // (aborting any request still in flight) and swap its
 // [data-search-results] into this page's, so results update in place.
-// Nothing is fetched under 2 characters; an empty box shows the no-query
-// state (an empty container) without a request. The URL follows the query,
-// so a reload or Back shows the same results, and the number of sites is
-// announced in the polite live region; focus never moves. A swap also
+// Nothing is fetched under 2 characters; emptying the box fetches the
+// no-query page at once, so Discover's sections come back as they are now
+// (without the feeds followed meanwhile). The URL follows the query, so a
+// reload or Back shows the same results, and the number of sites a query
+// found is announced in the polite live region; focus never moves. A swap also
 // removes the form's error, left from a page rendered as a 422, since the
 // new query is valid. On any failure (a non-200, a redirect to the login
 // page, a network error) the page is left as it is: submitting the form
@@ -73,6 +74,7 @@ export function init(): void {
       const container = doc.querySelector("[data-search-results]");
       if (!container || controller.signal.aborted) return;
       show(q, container);
+      if (!q) return;
       const n = results.querySelectorAll(".result").length;
       announce(n === 0 ? "No sites" : n === 1 ? "1 site" : `${n} sites`);
     } catch {
@@ -91,7 +93,7 @@ export function init(): void {
     const q = input.value.trim();
     if (q === "") {
       stopBusy();
-      show("", document.createElement("div"));
+      void search("");
       return;
     }
     if ([...q].length < 2) {

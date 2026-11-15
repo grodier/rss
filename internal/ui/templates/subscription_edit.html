@@ -69,8 +69,8 @@
 
       <form class="danger-zone" action="/feeds/{{.Sub.Feed.ID}}/unsubscribe" method="post">
         <input type="hidden" name="return_to" value="/feeds">
-        <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Sub.Title .Sub.Feed.Title .Sub.Feed.Url}}">Unsubscribe</button>
-        <p class="hint">Unsubscribing also removes your name and tags for this feed.</p>
+        <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unfollow {{or .Sub.Title .Sub.Feed.Title .Sub.Feed.Url}}">Unfollow</button>
+        <p class="hint">Unfollowing also removes your name and tags for this feed.</p>
       </form>
     </main>
   </div>

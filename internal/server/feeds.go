@@ -226,7 +226,7 @@ func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !feed.GoneAt.IsZero() {
-		s.redirectWithFlash(w, r, form, feed, "This feed no longer exists, so you can't subscribe to it.")
+		s.redirectWithFlash(w, r, form, feed, "This feed no longer exists, so you can't follow it.")
 		return
 	}
 
@@ -239,7 +239,7 @@ func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.redirectWithFlash(w, r, form, feed, "Subscribed to "+feedLabel(feed)+".")
+	s.redirectWithFlash(w, r, form, feed, "Following "+feedLabel(feed)+".")
 }
 
 // feedUnsubscribeHandler removes the user's subscription to a feed, including
@@ -256,7 +256,7 @@ func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	s.redirectWithFlash(w, r, form, feed, "Unsubscribed from "+feedLabel(feed)+".")
+	s.redirectWithFlash(w, r, form, feed, "Unfollowed "+feedLabel(feed)+".")
 }
 
 // subscriptionTarget reads what the subscribe and unsubscribe handlers share:

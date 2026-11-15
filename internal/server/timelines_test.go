@@ -1299,7 +1299,7 @@ func TestTimelineSharePage(t *testing.T) {
 			`<input type="text" id="share-feed-url" value="https://rss.example/shared/`+testShareToken+`/feed.atom" readonly />`,
 			`<label for="share-page-url">Page link</label>`,
 			`<input type="text" id="share-page-url" value="https://rss.example/shared/`+testShareToken+`" readonly`,
-			"A page to send to people: it says how to subscribe.",
+			"A page to send to people: it says how to follow it.",
 			`<form action="/timelines/`+testTimelineID+`/unshare" method="post">`,
 			`<button class="btn-sm" type="submit">Stop sharing</button>`,
 			`<form action="/timelines/`+testTimelineID+`/share/new-link" method="post">`,

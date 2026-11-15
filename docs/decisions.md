@@ -363,12 +363,16 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
 Planned in #126, with issues #128–#133.
 
 - **Refresh workers run inside `www`**, not as a cron-hit endpoint or a separate service.
-- **Only feeds someone subscribes to, or whose page view requested a refresh, are refreshed in the background.** Nobody waits on the rest.
+- **Only feeds someone subscribes to, or whose page view requested a refresh, are refreshed in the background.** Nobody waits on the rest, except Discover's catalog (#632, below).
   (#137)
 - **The Refresh button stays synchronous** and goes through the same `ingest.Refresher` as the workers, so there is one fetch-and-save path.
 - **The schedule is ours:** an interval with jitter, backoff after failures, and the server's `Retry-After` / `Cache-Control` hints, which can only delay a fetch.
   RSS `<ttl>` and `sy:updatePeriod` are ignored.
   (#126, #133)
+- **Discover's catalog feeds are refreshed even with no followers, about once a day** (#632, planned in #450): Discover shows each feed's posting rate and latest posts, and Picks recent articles from feeds the reader doesn't follow, so they can't keep the articles from their lookup forever.
+  Only catalog feeds (`discover_feeds`): they're what Discover and Picks show, and other unfollowed feeds keep the rule above.
+  Any feed nobody follows waits at least a day between fetches, whatever its posting rate or outcome, so the cost grows with the catalog, not with readers; once someone follows it, its normal schedule applies from its next fetch, with no fetch forced on follow, since the feed is at most a day old.
+  Later saves of a feed nobody follows queue no enrichment, since enrichment only works for followed feeds and the jobs would pile up; a first save keeps its allowance, as feeds are looked up before anyone follows them.
 - **Busy feeds are fetched more often; quiet ones stay hourly** (#456, planned on #438).
   The interval is about four fetches per expected article, from `posts_per_week`, between 15 minutes and an hour, so feeds posting more than 6 a day are fetched sooner and 24 a day or more every 15 minutes.
   At an hour, an article waited 30 minutes on average to be fetched, and a feed whose file holds fewer items than an hour of posts loses articles outright; in #438's simulation, faster busy feeds cost 22% more fetches and cut the wait to 11 minutes.

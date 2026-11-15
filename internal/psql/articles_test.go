@@ -2149,8 +2149,33 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 		}
 	})
 
-	t.Run("later saves", func(t *testing.T) {
+	t.Run("first save of a feed nobody follows", func(t *testing.T) {
 		feed := newTestFeed(t, db)
+		items := []rss.Article{{ExternalID: "a", URL: "https://example.com/a", Title: "A"}}
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if want := map[string]int{"a": 1}; !maps.Equal(enrichJobs(t, db, feed.ID), want) {
+			t.Errorf("jobs = %v, want %v", enrichJobs(t, db, feed.ID), want)
+		}
+	})
+
+	t.Run("later save of a feed nobody follows", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "old", Title: "Old"}}, feed.NextFetch); err != nil {
+			t.Fatalf("first SaveFetch: %v", err)
+		}
+		items := []rss.Article{{ExternalID: "new", URL: "https://example.com/new", Title: "New"}}
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if jobs := enrichJobs(t, db, feed.ID); len(jobs) != 0 {
+			t.Errorf("jobs = %v, want none", jobs)
+		}
+	})
+
+	t.Run("later saves", func(t *testing.T) {
+		feed := newSubscribedFeed(t, db, newTestUser(t, db))
 		first := rss.Article{ExternalID: "old", URL: "https://example.com/old", Title: "Old"}
 		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{first}, feed.NextFetch); err != nil {
 			t.Fatalf("first SaveFetch: %v", err)

@@ -767,13 +767,17 @@ func needsEnrichment(a rss.Article) bool {
 // enrichCandidates returns which of articles may get an enrichment job when
 // newly inserted, and at what priority. On a feed's first save (prevFetched
 // zero) only the enrichFirstSave articles with the latest positions may, at
-// enrichPriorityBacklog; on later saves every article may, at
-// enrichPriorityNew.
-func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched time.Time) (eligible []bool, priority int) {
+// enrichPriorityBacklog; on later saves every article of a followed feed
+// may, at enrichPriorityNew, and none of a feed nobody follows: enrichment
+// only works for followed feeds, and Discover's catalog refreshes its feeds
+// daily (#632), so their jobs would pile up unclaimed. A first save keeps
+// its allowance whoever follows, since a feed is looked up before anyone
+// follows it.
+func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched time.Time, followed bool) (eligible []bool, priority int) {
 	eligible = make([]bool, len(articles))
 	if !prevFetched.IsZero() {
 		for i := range eligible {
-			eligible[i] = true
+			eligible[i] = followed
 		}
 		return eligible, enrichPriorityNew
 	}
@@ -796,7 +800,7 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 // last_attempt_at to now() and clears last_error and consecutive_failures.
 // A new article's timeline_at and backlog are set on insert (see timelineAt
 // and isBacklog) and never change. A newly inserted article that needsEnrichment and is among
-// enrichCandidates gets an enrich_jobs row. Every article sharing a
+// enrichCandidates (which depend on whether the feed has a subscriber) gets an enrich_jobs row. Every article sharing a
 // non-empty canonical_url with an inserted or updated one, that one
 // included, gets has_copies (never cleared). It locks the feed row so
 // concurrent saves of a feed are ordered.
@@ -818,14 +822,17 @@ func enrichCandidates(articles []rss.Article, positions []time.Time, prevFetched
 func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.Article) (rss.FetchResult, error) {
 	var prevFetched, prevAttempt sql.NullTime
 	var now time.Time
-	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, last_attempt_at, now() FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &prevAttempt, &now); err != nil {
+	var followed bool
+	if err := q.QueryRowContext(ctx, `SELECT last_fetched_at, last_attempt_at, now(),
+			EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)
+		FROM feeds WHERE id = $1 FOR UPDATE`, feedID).Scan(&prevFetched, &prevAttempt, &now, &followed); err != nil {
 		return rss.FetchResult{}, err
 	}
 	if !prevAttempt.Valid || !prevAttempt.Time.After(now.Add(-staleFeedAfter)) {
 		prevFetched = sql.NullTime{}
 	}
 	positions := timelineAt(articles, prevFetched.Time, now)
-	enrichable, priority := enrichCandidates(articles, positions, prevFetched.Time)
+	enrichable, priority := enrichCandidates(articles, positions, prevFetched.Time, followed)
 
 	// The conflict's WHERE skips unchanged articles, so they return no row.
 	// An existing published_at is kept: some feeds bump the date on every edit.

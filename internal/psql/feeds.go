@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,7 +117,9 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 // value when the new one is empty), overwrites etag and last_modified with
 // f.ETag and f.LastModified, saves articles and records the successful
 // attempt (see saveArticles), then sets next_fetch_at to catchUp if the
-// result is Behind, else to f.NextFetch. It returns rss.ErrNoRecord if the
+// result is Behind, else to f.NextFetch, either no sooner than
+// rss.UnfollowedRefreshInterval from now if the feed has no subscribers (see
+// scheduledNext). It returns rss.ErrNoRecord if the
 // feed doesn't exist, and an error if f.NextFetch or catchUp is zero.
 func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []rss.Article, catchUp time.Time) (rss.FetchResult, error) {
 	// A zero time would make the feed due immediately, silently.
@@ -161,7 +164,7 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 	if res.Behind {
 		next = catchUp
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE feeds SET next_fetch_at = $2 WHERE id = $1`, f.ID, next); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE feeds SET next_fetch_at = `+scheduledNext("$2")+` WHERE id = $1`, f.ID, next); err != nil {
 		return rss.FetchResult{}, err
 	}
 
@@ -174,11 +177,11 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 
 // RecordFailure records a failed fetch of feed id: sets last_attempt_at,
 // last_error (msg truncated to maxErrorLen bytes), increments
-// consecutive_failures and sets next_fetch_at to next. rss.ErrNoRecord if the
-// feed doesn't exist.
+// consecutive_failures and sets next_fetch_at to next (see scheduledNext).
+// rss.ErrNoRecord if the feed doesn't exist.
 func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next time.Time) error {
 	stmt := `UPDATE feeds SET last_attempt_at = now(), last_error = $2,
-			consecutive_failures = consecutive_failures + 1, next_fetch_at = $3,
+			consecutive_failures = consecutive_failures + 1, next_fetch_at = ` + scheduledNext("$3") + `,
 			refresh_requested_at = NULL
 		WHERE id = $1`
 
@@ -187,12 +190,12 @@ func (r *FeedRepository) RecordFailure(ctx context.Context, id, msg string, next
 
 // RecordNotModified records a 304 for feed id: a successful attempt with no
 // changes (last_fetched_at, last_attempt_at, clears last_error and
-// consecutive_failures) and next_fetch_at = next. It recomputes posts_per_week
+// consecutive_failures) and next_fetch_at = next (see scheduledNext). It recomputes posts_per_week
 // so the 30-day window keeps sliding for feeds that stopped changing.
 // rss.ErrNoRecord if missing.
 func (r *FeedRepository) RecordNotModified(ctx context.Context, id string, next time.Time) error {
 	stmt := `UPDATE feeds SET last_fetched_at = now(), last_attempt_at = now(),
-			last_error = '', consecutive_failures = 0, next_fetch_at = $2,
+			last_error = '', consecutive_failures = 0, next_fetch_at = ` + scheduledNext("$2") + `,
 			refresh_requested_at = NULL, posts_per_week = ` + postsPerWeek + `
 		WHERE id = $1`
 
@@ -210,15 +213,28 @@ func (r *FeedRepository) MarkGone(ctx context.Context, id string) error {
 	return execOne(ctx, r.DB, stmt, id)
 }
 
+// scheduledNext returns the SQL for the next_fetch_at to store, in an UPDATE
+// of feeds, for a feed whose fetch outcome scheduled param: param if the feed
+// has a subscriber, else no sooner than rss.UnfollowedRefreshInterval from
+// now. Feeds nobody follows are only fetched for Discover's catalog or a
+// refresh request, and about once a day is fresh enough for both (#632).
+func scheduledNext(param string) string {
+	return `CASE WHEN EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id) THEN ` + param +
+		` ELSE GREATEST(` + param + `, now() + interval '` + strconv.Itoa(int(rss.UnfollowedRefreshInterval.Seconds())) + ` seconds') END`
+}
+
 // feedDue is true for a feed ClaimDue may claim: due, not gone, and
-// subscribed or requested. The admin's Overview counts the refresh queue
-// with it (AdminOverviewRepository.Queues).
+// subscribed, requested or in Discover's catalog (discover_feeds). The
+// admin's Overview counts the refresh queue with it
+// (AdminOverviewRepository.Queues).
 const feedDue = `next_fetch_at <= now() AND gone_at IS NULL
 	AND (refresh_requested_at IS NOT NULL
-	     OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id))`
+	     OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)
+	     OR EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = feeds.id))`
 
-// ClaimDue claims a due feed (next_fetch_at <= now()) that has a subscriber
-// or a pending refresh request (see RequestRefresh), by moving its
+// ClaimDue claims a due feed (next_fetch_at <= now()) that has a subscriber,
+// a pending refresh request (see RequestRefresh) or a place in Discover's
+// catalog, by moving its
 // next_fetch_at to now() + lease, and returns it. Requested feeds come first,
 // since someone is waiting on the page; then the feed that has been due
 // longest. If the claimer never records an outcome, the feed is due again when

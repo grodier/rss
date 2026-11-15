@@ -193,6 +193,12 @@ func TestDiscoverNoQuery(t *testing.T) {
 		if got := attr(findAll(row("feed-1"), func(n *html.Node) bool { return n.Data == "form" })[0], "data-announce-pressed"); got != "Following Bake Club" {
 			t.Errorf("data-announce-pressed = %q, want Following Bake Club", got)
 		}
+		// A feed with a title of its own is named by both, so a site's two
+		// catalog feeds aren't announced alike.
+		b2 := findAll(row("feed-2"), func(n *html.Node) bool { return n.Data == "button" })[0]
+		if got, want := attr(b2, "aria-label"), "Follow cook.example – Recipes only"; got != want {
+			t.Errorf("feed-2 Follow aria-label = %q, want %q", got, want)
+		}
 	})
 
 	t.Run("empty catalog", func(t *testing.T) {

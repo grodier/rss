@@ -65,11 +65,12 @@
         <div class="list-head">
           <h2 id="section-{{.Slug}}-name">{{.Name}}</h2>
         </div>
-        <ul class="discover-feeds{{if eq $.Layout "c"}} discover-grid{{end}}" role="list">
-          {{/* A catalog feed's row on Discover: its site, the feed's own title when
-               it isn't just the site's name, its posting rate and latest post, a peek
-               at its latest posts and Follow. save-star.ts toggles Follow without a
-               reload (form[data-toggle]) and announces data-announce-pressed. */}}
+        {{/* A catalog feed's row: its site, the feed's own title when it isn't
+             just the site's name, its posting rate and latest post, a peek at
+             its latest posts and Follow. save-star.ts toggles Follow without a
+             reload (form[data-toggle]) and announces data-announce-pressed or
+             data-announce-unpressed. */}}
+        <ul class="discover-feeds" role="list">
           {{range .Feeds}}
           {{$f := .}}{{$name := $f.Name}}
           <li class="discover-feed" id="feed-{{$f.Feed.ID}}">
@@ -79,9 +80,6 @@
               {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
               <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
               {{if $f.Latest}}
-              {{if eq $.Layout "b"}}
-              {{with index $f.Latest 0}}<p class="discover-newest"><a href="/articles/{{.ID}}">{{.DisplayTitle}}</a></p>{{end}}
-              {{else}}
               <details class="discover-peek">
                 <summary>Latest posts</summary>
                 <ul role="list">
@@ -89,11 +87,10 @@
                 </ul>
               </details>
               {{end}}
-              {{end}}
             </div>
-            <form class="follow-form" action="/feeds/{{$f.Feed.ID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{$name}}" data-announce-unpressed="Unfollowed {{$name}}">
+            <form class="follow-form" action="/feeds/{{$f.Feed.ID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{$f.Label}}" data-announce-unpressed="Unfollowed {{$f.Label}}">
               <input type="hidden" name="return_to" value="/discover#feed-{{$f.Feed.ID}}">
-              <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{$name}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
+              <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{$f.Label}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
             </form>
           </li>
           {{end}}

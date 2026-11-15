@@ -168,20 +168,17 @@
     border-inline-start: 2px solid var(--border);
   }
 
-  .discover-peek li,
-  .discover-newest {
+  .discover-peek li {
     font-size: 0.875rem;
     line-height: 1.35;
   }
 
-  .discover-peek a,
-  .discover-newest a {
+  .discover-peek a {
     color: var(--text);
     text-decoration: none;
   }
 
-  .discover-peek a:hover,
-  .discover-newest a:hover {
+  .discover-peek a:hover {
     text-decoration: underline;
   }
 
@@ -189,15 +186,6 @@
     color: var(--text-3);
     font-size: 0.75rem;
     white-space: nowrap;
-  }
-
-  .discover-newest {
-    display: -webkit-box;
-    margin-block-start: 0.375rem;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
   }
 
   /* Follow: a primary pill until pressed, then a quiet "Following". */
@@ -214,17 +202,5 @@
   .follow-button[aria-pressed="true"] .follow-off,
   .follow-button[aria-pressed="false"] .follow-on {
     display: none;
-  }
-
-  /* Option (c): two columns of tiles on wide screens; rows on phones. */
-  @media (min-width: 43rem) {
-    .discover-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .discover-grid .discover-feed:nth-child(odd) {
-      border-inline-end: 1px solid var(--border);
-    }
   }
 }

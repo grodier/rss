@@ -49,6 +49,22 @@ func (f DiscoverFeed) Name() string {
 	return f.Site.Host
 }
 
+// Label names the feed on its own, for Follow's accessible name and what
+// it announces: the site's name, with the feed's own title when Discover
+// shows one, so a site's two catalog feeds aren't both "Bitwise". A title
+// that already includes the site's name stands alone.
+func (f DiscoverFeed) Label() string {
+	t := f.FeedTitle()
+	switch {
+	case t == "":
+		return f.Name()
+	case strings.Contains(strings.ToLower(t), strings.ToLower(f.Name())):
+		return t
+	default:
+		return f.Name() + " – " + t
+	}
+}
+
 // FeedTitle is the feed's own title when Discover shows it under the site's
 // name: "" if it's empty or just the site's name again.
 func (f DiscoverFeed) FeedTitle() string {

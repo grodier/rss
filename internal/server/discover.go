@@ -46,9 +46,6 @@ type discoverData struct {
 	// Sections is Discover's catalog as this reader sees it, shown when
 	// there's no query; empty when the catalog has nothing for them.
 	Sections []rss.DiscoverSection
-	// Layout picks the design checkpoint's option ("a", "b" or "c") for
-	// screenshots. Temporary: removed with the options not picked.
-	Layout string
 }
 
 // discoverHandler searches the database only. GET requests are not covered by
@@ -60,12 +57,6 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 		Nav:   s.nav(r, "discover"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
-	}
-	switch l := r.URL.Query().Get("layout"); l {
-	case "b", "c":
-		data.Layout = l
-	default:
-		data.Layout = "a"
 	}
 	status := http.StatusOK
 

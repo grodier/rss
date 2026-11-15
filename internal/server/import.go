@@ -263,10 +263,10 @@ func (s *Server) importHandler(w http.ResponseWriter, r *http.Request) {
 func importSummary(subscribed, already, failed int) string {
 	var parts []string
 	if subscribed > 0 {
-		parts = append(parts, fmt.Sprintf("%d subscribed", subscribed))
+		parts = append(parts, fmt.Sprintf("%d followed", subscribed))
 	}
 	if already > 0 {
-		parts = append(parts, fmt.Sprintf("%d already subscribed", already))
+		parts = append(parts, fmt.Sprintf("%d already following", already))
 	}
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d couldn't be added", failed))

@@ -198,15 +198,15 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | D1 Fetch failed once | "Failing Once" from the setup | Feed page, 200 | "The last attempt to fetch this feed failed ({time}). We'll keep trying." | Nothing to do | ok |
-| D2 Fetch failing (3+ times) | "Failing Thrice" | My feeds: "This feed is failing to update."; feed page: "The last 3 attempts to fetch this feed failed, most recently {time}. We'll keep trying." | (as Where) | Nothing to do but wait or unsubscribe | ok |
-| D3 Gone (410) | "Gone Feed" | My feeds: "This feed no longer exists."; feed page: "This feed no longer exists: its publisher removed it. We've stopped checking it." with no Refresh button | (as Where) | Unsubscribe | ok |
+| D2 Fetch failing (3+ times) | "Failing Thrice" | My feeds: "This feed is failing to update."; feed page: "The last 3 attempts to fetch this feed failed, most recently {time}. We'll keep trying." | (as Where) | Nothing to do but wait or unfollow | ok |
+| D3 Gone (410) | "Gone Feed" | My feeds: "This feed no longer exists."; feed page: "This feed no longer exists: its publisher removed it. We've stopped checking it." with no Refresh button | (as Where) | Unfollow | ok |
 | D4 Never fetched, no articles | "Never Fetched" | Feed page, 200 | "Never fetched." and "No articles yet." | Waits | ok |
 | D5 Refresh within 5 minutes of a fetch | `UPDATE feeds SET last_fetched_at = now() WHERE id = '{feed}'`, click Refresh | Feed page, flash | "This feed was refreshed in the last few minutes. Try again later." | Yes | ok |
 | D6 Refresh fails | Refresh "OK Feed" (its host doesn't exist); a feed whose address returns a web page; one that answers 410 | Feed page, flash | "Couldn't reach this feed. Try again later."; "This feed's address didn't return a feed. Try again later."; "This feed no longer exists. We've stopped checking it." | Yes | ok |
-| D7 Refresh a gone feed, or subscribe to one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't subscribe to it." | n/a | ok |
+| D7 Refresh a gone feed, or follow one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't follow it." | n/a | ok |
 | D8 Refresh rate limited | 11 refreshes in 10 minutes | Feed page, flash | "You've refreshed a lot of feeds recently. Please wait a few minutes and try again." | After the wait | ok |
 | D9 Refresh while one is running | Code read: click Refresh twice | The second waits, then gets D5 if the first succeeded | As D5 | Yes | ok |
-| D10 Feed page at 375 px, subscribed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Unsubscribe fit beside the avatar; no sideways scroll | ok (2026-10-31, #431: checked at 320, 360, 375 and 390 px, and the site page at 320 px) |
+| D10 Feed page at 375 px, followed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Unfollow fit beside the avatar; no sideways scroll | ok (2026-10-31, #431: checked at 320, 360, 375 and 390 px, and the site page at 320 px) |
 
 ## Search
 
@@ -222,7 +222,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | Y1 Home, no subscriptions | A new account's `/` | Home, 200 | "Your timeline is empty. Find feeds to follow with Search, or import your subscriptions from another reader; their articles will show up here." | Yes, with links | ok |
-| Y2 My feeds, none | New account's `/feeds` | 200 | "You're not subscribed to any feeds yet. Search for a site to find some." | Yes | ok |
+| Y2 My feeds, none | New account's `/feeds` | 200 | "You're not following any feeds yet. Search for a site to find some." | Yes | ok |
 | Y3 Saved, none | New account's `/saved` | 200 | "Nothing saved yet. Use the bookmark on any article to keep it here." | Yes | ok |
 | Y4 Saved search, no matches | `/saved?q=zzz` with saves | 200 | "No saved articles match “zzz”." | Yes | ok |
 | Y5 Tags, none | New account's `/tags` | 200 | "You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them." | Yes | ok |
@@ -234,9 +234,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| U1 Subscribe or unsubscribe succeeds | Click Subscribe / Unsubscribe | Same page, flash | "Subscribed to {feed}."; "Unsubscribed from {feed}." | n/a | ok |
-| U2 Subscribe to an unknown feed | `curl` a post to `/feeds/{uuid}/subscribe` | 404 (H2) | As H2 | Home only | ok |
-| U3 Subscribe or unsubscribe fails | Code read: a store error | 500 (H8) | As H8 | As H8 | ok (see H1) |
+| U1 Follow or unfollow succeeds | Click Follow / Unfollow | Same page, flash | "Following {feed}."; "Unfollowed {feed}." | n/a | ok |
+| U2 Follow an unknown feed | `curl` a post to `/feeds/{uuid}/subscribe` | 404 (H2) | As H2 | Home only | ok |
+| U3 Follow or unfollow fails | Code read: a store error | 500 (H8) | As H8 | As H8 | ok (see H1) |
 | U4 Edit: name too long | Edit subscription, name of 101 characters | 422, under Name | "Must be 100 characters or fewer." | Yes | ok |
 | U5 Edit: new tag too long, or over 100 tags | New tag of 51 characters; or 100 tags already | 422, under New tags | "Each tag must be 50 characters or fewer."; "You can have up to 100 tags." | Yes | ok |
 | U6 Edit a feed you don't follow | As B, `/feeds/{A's feed}/edit` | 404 (H3) | As H2 | Home only | ok |
@@ -281,7 +281,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | G1 Name blank, with a comma, or too long | New tag, or rename | 422, under Name | "Enter a name."; "Tags can't contain commas."; "Must be 50 characters or fewer." | Yes | ok |
 | G2 Duplicate name | A tag that exists, in any case | 422, under Name | "You already have a tag called “news”." | Yes | ok |
 | G3 Over 100 tags | `INSERT INTO tags (user_id, name) SELECT '{A}', 't' \|\| g FROM generate_series(1, 100) g`, then New tag | 422, under Name | "You can have up to 100 tags." | Only by deleting one | ok |
-| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not subscribed to any feeds yet. Search for a site to find some." | Yes | ok |
+| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not following any feeds yet. Search for a site to find some." | Yes | ok |
 | G5 Unknown or another user's tag | `/tags/{uuid}`; as B, A's | 404 (H2) | As H2 | Home only | ok |
 
 ## Shared timelines

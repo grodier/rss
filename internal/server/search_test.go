@@ -316,7 +316,7 @@ func TestSearchHandlerSubscribedMarker(t *testing.T) {
 		if n := strings.Count(body, `class="subscribed"`); n != 1 {
 			t.Errorf("found %d Subscribed markers, want 1", n)
 		}
-		if !strings.Contains(body, `F2</a> <span class="subscribed">Subscribed</span>`) {
+		if !strings.Contains(body, `F2</a> <span class="subscribed">Following</span>`) {
 			t.Error("subscribed feed F2 missing its marker")
 		}
 	})

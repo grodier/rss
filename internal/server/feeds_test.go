@@ -409,7 +409,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 			t.Errorf("missing Back to newest link to %s: %s", feedPath, body)
 		}
 		// Paged views keep the feed's header.
-		if !strings.Contains(body, "Example Feed Title") || !strings.Contains(body, "Subscribe") {
+		if !strings.Contains(body, "Example Feed Title") || !strings.Contains(body, ">Follow</button>") {
 			t.Errorf("paged view lost the feed header: %s", body)
 		}
 	})
@@ -743,7 +743,7 @@ func TestFeedsHandler(t *testing.T) {
 			)
 		}
 		// Unsubscribe is on Edit subscription and the feed page.
-		assertNotContains(t, body, "/unsubscribe", "Unsubscribe")
+		assertNotContains(t, body, "/unsubscribe", "Unfollow")
 	})
 
 	t.Run("renamed subscription shows its name and an Edit link", func(t *testing.T) {
@@ -790,10 +790,10 @@ func TestFeedsHandler(t *testing.T) {
 		req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
 		rr := httptest.NewRecorder()
 		s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s.sessionManager.Put(r.Context(), "flash", "Unsubscribed from One.")
+			s.sessionManager.Put(r.Context(), "flash", "Unfollowed One.")
 			s.feedsHandler(w, r)
 		})).ServeHTTP(rr, req)
-		assertContains(t, rr.Body.String(), "Unsubscribed from One.")
+		assertContains(t, rr.Body.String(), "Unfollowed One.")
 	})
 
 	t.Run("store error", func(t *testing.T) {
@@ -1325,7 +1325,7 @@ func TestFeedSubscribeHandler(t *testing.T) {
 		if loc := rr.Header().Get("Location"); loc != "/sites/"+testSiteID+"?x=1" {
 			t.Errorf("Location = %q, want the return_to path", loc)
 		}
-		if want := "Subscribed to Example Feed."; flash != want {
+		if want := "Following Example Feed."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)
 		}
 		if len(calls) != 1 || calls[0] != (subscriptionCall{"user-1", testFeedID}) {
@@ -1361,7 +1361,7 @@ func TestFeedSubscribeHandler(t *testing.T) {
 
 		_, flash := postSubscription(t, s, s.feedSubscribeHandler, "user-1", testFeedID, "")
 
-		if want := "Subscribed to https://example.com/feed.xml."; flash != want {
+		if want := "Following https://example.com/feed.xml."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)
 		}
 	})
@@ -1399,7 +1399,7 @@ func TestFeedSubscribeHandler(t *testing.T) {
 		if rr.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusSeeOther)
 		}
-		if want := "This feed no longer exists, so you can't subscribe to it."; flash != want {
+		if want := "This feed no longer exists, so you can't follow it."; flash != want {
 			t.Errorf("flash = %q, want %q", flash, want)
 		}
 		if called {
@@ -1428,9 +1428,9 @@ func TestFeedUnsubscribeHandler(t *testing.T) {
 		wantCode  int
 		wantFlash string
 	}{
-		{"success", feed, nil, http.StatusSeeOther, "Unsubscribed from Example Feed."},
-		{"empty title uses the URL", rss.Feed{Url: "https://example.com/feed.xml"}, nil, http.StatusSeeOther, "Unsubscribed from https://example.com/feed.xml."},
-		{"gone feed", rss.Feed{Title: "Old Feed", GoneAt: time.Now()}, nil, http.StatusSeeOther, "Unsubscribed from Old Feed."},
+		{"success", feed, nil, http.StatusSeeOther, "Unfollowed Example Feed."},
+		{"empty title uses the URL", rss.Feed{Url: "https://example.com/feed.xml"}, nil, http.StatusSeeOther, "Unfollowed https://example.com/feed.xml."},
+		{"gone feed", rss.Feed{Title: "Old Feed", GoneAt: time.Now()}, nil, http.StatusSeeOther, "Unfollowed Old Feed."},
 		{"store error", feed, errors.New("db down"), http.StatusInternalServerError, ""},
 	}
 	for _, tt := range tests {
@@ -1488,22 +1488,22 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 		{
 			name: "not subscribed",
 			feed: rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
-			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Subscribe to Example Feed"`},
+			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Follow Example Feed"`},
 			notWant: []string{
-				unsubscribeForm, "Subscribed ✓", "/edit",
+				unsubscribeForm, "Following", "/edit",
 			},
 		},
 		{
 			name:       "subscribed",
 			feed:       rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
 			subscribed: true,
-			want:       []string{unsubscribeForm, `aria-label="Unsubscribe from Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
+			want:       []string{unsubscribeForm, `aria-label="Unfollow Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
 			notWant:    []string{subscribeForm},
 		},
 		{
 			name: "empty title labels the button with the URL",
 			feed: rss.Feed{Url: "https://example.com/feed.xml"},
-			want: []string{`aria-label="Subscribe to https://example.com/feed.xml"`},
+			want: []string{`aria-label="Follow https://example.com/feed.xml"`},
 		},
 		{
 			name:    "gone and not subscribed",
@@ -1576,7 +1576,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 			want: []string{
 				"<title>Paper Round - Pro Football Talk</title>",
 				"<h1>Pro Football Talk</h1>",
-				`aria-label="Unsubscribe from Pro Football Talk"`,
+				`aria-label="Unfollow Pro Football Talk"`,
 				`From <a href="/sites/` + testSiteID + `">Example Site</a> ` + feedTitleLine + `</p>`,
 			},
 			notWant: []string{"<h1>Example Feed Title</h1>"},
@@ -1586,7 +1586,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 			get: func(context.Context, string, string) (rss.Subscription, error) {
 				return rss.Subscription{}, nil
 			},
-			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Unsubscribe from Example Feed Title"`},
+			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Unfollow Example Feed Title"`},
 			notWant: []string{"Feed title “"},
 		},
 		{
@@ -1594,8 +1594,8 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 			get: func(context.Context, string, string) (rss.Subscription, error) {
 				return rss.Subscription{}, rss.ErrNoRecord
 			},
-			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Subscribe to Example Feed Title"`},
-			notWant: []string{"Feed title “", "Unsubscribe"},
+			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Follow Example Feed Title"`},
+			notWant: []string{"Feed title “", "Unfollow"},
 		},
 	}
 	for _, tt := range tests {
@@ -1806,7 +1806,7 @@ func TestSubscriptionEdit(t *testing.T) {
 		assertBodyContains(t, rr.Body.String(),
 			`<form class="danger-zone" action="/feeds/`+testFeedID+`/unsubscribe" method="post">
         <input type="hidden" name="return_to" value="/feeds">`,
-			`aria-label="Unsubscribe from Pro Football Talk">Unsubscribe</button>`,
+			`aria-label="Unfollow Pro Football Talk">Unfollow</button>`,
 		)
 	})
 

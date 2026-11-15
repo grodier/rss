@@ -299,10 +299,10 @@ func TestSiteHandlerSubscribeControls(t *testing.T) {
 		`id="feed-` + subscribedID + `"`,
 		`action="/feeds/` + subscribedID + `/unsubscribe"`,
 		`value="/sites/` + testSiteID + `#feed-` + subscribedID + `"`,
-		`aria-label="Unsubscribe from Followed"`,
+		`aria-label="Unfollow Followed"`,
 		`action="/feeds/` + openID + `/subscribe"`,
 		`value="/sites/` + testSiteID + `#feed-` + openID + `"`,
-		`aria-label="Subscribe to Open"`,
+		`aria-label="Follow Open"`,
 		`action="/feeds/` + goneFollowID + `/unsubscribe"`,
 		"This feed no longer exists.",
 	} {

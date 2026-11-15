@@ -64,7 +64,7 @@
           <li class="feed-row" id="feed-{{.ID}}">
             {{template "avatar" (avatar .SiteID (or .Title .Url) (index $.Icons .SiteID))}}
             <div>
-              <a class="feed-row-title" href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="chip">Subscribed ✓</span>{{end}}
+              <a class="feed-row-title" href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="chip">Following</span>{{end}}
               {{with .Description}}<p class="feed-desc">{{.}}</p>{{end}}
               <p class="feed-url">{{.Url}}</p>
               {{if and (not (index $.Subscribed .ID)) (not .GoneAt.IsZero)}}
@@ -74,12 +74,12 @@
             {{if index $.Subscribed .ID}}
             <form action="/feeds/{{.ID}}/unsubscribe" method="post">
               <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
-              <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unsubscribe from {{or .Title .Url}}">Unsubscribe</button>
+              <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unfollow {{or .Title .Url}}">Unfollow</button>
             </form>
             {{else if .GoneAt.IsZero}}
             <form action="/feeds/{{.ID}}/subscribe" method="post">
               <input type="hidden" name="return_to" value="/sites/{{$.Site.ID}}#feed-{{.ID}}">
-              <button class="btn-primary btn-sm" type="submit" aria-label="Subscribe to {{or .Title .Url}}">Subscribe</button>
+              <button class="btn-primary btn-sm" type="submit" aria-label="Follow {{or .Title .Url}}">Follow</button>
             </form>
             {{end}}
           </li>

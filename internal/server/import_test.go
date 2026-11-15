@@ -448,7 +448,7 @@ func TestImportHandler(t *testing.T) {
 		}
 		assertBodyContains(t, body,
 			"<h1>Import finished</h1>",
-			"2 subscribed, 1 already subscribed, 4 couldn&#39;t be added.",
+			"2 followed, 1 already following, 4 couldn&#39;t be added.",
 			`<a href="/">Go to your timeline</a>`,
 			`<a class="feed-row-title" href="/feeds/feed-a">Outline A</a>`,
 			`<a class="feed-row-title" href="/feeds/feed-b">Feed B</a>`,
@@ -464,8 +464,8 @@ func TestImportHandler(t *testing.T) {
 			"A Paper Round link. Follow it in another feed reader.",
 		)
 		// Groups in order.
-		subscribed := strings.Index(body, "<h2>Subscribed</h2>")
-		already := strings.Index(body, "<h2>Already subscribed</h2>")
+		subscribed := strings.Index(body, "<h2>Followed</h2>")
+		already := strings.Index(body, "<h2>Already following</h2>")
 		failed := strings.Index(body, "<h2>Couldn't add</h2>")
 		if subscribed < 0 || already < subscribed || failed < already {
 			t.Errorf("groups out of order or missing: %d, %d, %d", subscribed, already, failed)
@@ -478,8 +478,8 @@ func TestImportHandler(t *testing.T) {
 	t.Run("summary leaves out empty groups", func(t *testing.T) {
 		feeds := []rss.ImportFeed{{URL: "https://a.example/feed", Status: rss.ImportAlreadySubscribed, FeedID: "feed-a"}}
 		body := serveImport(t, importServer(t, getReturns(imp, feeds, nil)), testImportID).Body.String()
-		assertBodyContains(t, body, "<p>1 already subscribed.</p>")
-		if strings.Contains(body, "<h2>Subscribed</h2>") || strings.Contains(body, "<h2>Couldn't add</h2>") {
+		assertBodyContains(t, body, "<p>1 already following.</p>")
+		if strings.Contains(body, "<h2>Followed</h2>") || strings.Contains(body, "<h2>Couldn't add</h2>") {
 			t.Error("shows empty groups")
 		}
 	})

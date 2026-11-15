@@ -255,7 +255,7 @@ Planned in #50 (issues #51–#67).
   There's no rate limit: debouncing bounds each reader's requests, and the `ILIKE` scan's cost is on the watchlist.
   GET handlers still never fetch user-supplied URLs, so looking up an address still takes a click on Look up, which appears as you type.
   The number of sites is announced in a polite live region rather than making the results a live region, which would read every result out.
-- **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the Search page already is the results, so updating it adds no new widget, keeps each result's feeds, "Subscribed" marker and the Look up button in view, and leaves keyboard and screen-reader behavior as it was.
+- **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the Search page already is the results, so updating it adds no new widget, keeps each result's feeds, "Following" marker and the Look up button in view, and leaves keyboard and screen-reader behavior as it was.
   A dropdown of up to 5 site names was the alternative; it's a new ARIA combobox (arrow keys, Enter, Escape) to get right, and hides the results it duplicates.
   Results can shift under the box as you type, but only after a pause.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
@@ -382,6 +382,10 @@ Planned in #126, with issues #128–#133.
 Planned in #139 (issues #135–#138).
 
 - **Subscribing and unsubscribing are one click with no confirmation**, and redirect back to the page they were posted from.
+- **Readers follow feeds: actions and states say Follow, Following and Unfollow** (#630, planned in #450), matching the tagline and the empty states' "Find feeds to follow", and the Follow buttons the first-run pages will add.
+  "Subscriptions" stays where it names the OPML file and its import and export ("Import subscriptions", `subscriptions.opml`), since that's the word other readers use for the file and switchers look for it; "Edit subscription" stays too, as the page edits the subscription's name and tags.
+  The privacy policy and terms keep their wording unless a sentence describes a button.
+  Only text people read changed: routes, tables and Go names keep "subscribe" (`/feeds/{id}/subscribe`, `subscriptions`, `SubscriptionService`).
 - **My feeds' rows are links with one control** (#424, the owner's pick of three options at the design checkpoint): the whole row opens the feed page, Edit is a pencil, and Unsubscribe is on Edit subscription and the feed page rather than on the row.
   A list of 50 subscriptions had 100 pills, and on phones they squeezed each row's text to a third of the width; unsubscribing from the list now takes two taps, but it's one click on the page where its consequence (losing the name and tags) is set.
   An overflow menu per row (hides both actions, and `<details>` menus don't close without JavaScript) and the pills under each row's text (still two per row) were the other options.
@@ -797,7 +801,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **One centered column, nav on the left.** A rail with icons and labels on wide screens, icons only on medium ones, and a top bar (logo, logout) with a bottom tab bar on phones.
   CSS only; no JavaScript.
 - **320 px is the narrowest width we support:** no page scrolls sideways at 320 px or wider (#431).
-  A subscribed feed page shows Edit and Unsubscribe without a "Subscribed ✓" chip, since the red Unsubscribe already says you're subscribed and the chip pushed the row off narrow phones; wrapping the buttons beside the avatar looked ragged, and moving them under the heading pushed the feed's facts down.
+  A followed feed page shows Edit and Unfollow without a "Following" chip, since the red Unfollow already says you're following and the chip pushed the row off narrow phones; wrapping the buttons beside the avatar looked ragged, and moving them under the heading pushed the feed's facts down.
 - **Lists are sections separated by dividers, not boxes.** A card is only for a preview of something elsewhere: an article now, Open Graph data later.
 - **Avatars are letters on a tint chosen by site** (`avatarTone`), so a site's feeds share a color, for sites without a usable icon (below).
 - **Site icons replace the letter where a site has a usable one** (planned in #309, issues #304, #305):

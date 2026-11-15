@@ -123,7 +123,8 @@ type Refresher struct {
 // its posting rate (see NextFetch), or sooner when the save finds the feed
 // may have outrun its file (see CatchUpFetch and rss.FetchResult.Behind),
 // either delayed until the response is no longer fresh per Cache-Control
-// max-age or Expires, up to MaxRetryDelay. It sends the feed's stored
+// max-age or Expires, up to MaxRetryDelay. The Store holds a feed nobody
+// follows to rss.UnfollowedRefreshInterval, whatever it's given. It sends the feed's stored
 // validators, and when the server answers 304 it records that with
 // Store.RecordNotModified, without parsing, and returns a result with
 // NotModified set. The caller sets the deadline on ctx. Fetch failures wrap

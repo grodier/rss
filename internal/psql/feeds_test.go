@@ -68,6 +68,16 @@ func newSubscribedFeed(t *testing.T, db *sql.DB, userID string) rss.Feed {
 	return f
 }
 
+// addToDiscover puts feed id in Discover's catalog, under its first
+// section. Deleting the feed deletes the row.
+func addToDiscover(t *testing.T, db *sql.DB, id string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO discover_feeds (feed_id, section_id)
+		SELECT $1, id FROM discover_sections ORDER BY position LIMIT 1`, id); err != nil {
+		t.Fatalf("insert discover_feeds: %v", err)
+	}
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestFeedRepositoryClaimDue(t *testing.T) {
 	db := psqltest.NewDB(t)
@@ -211,6 +221,41 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 		}
 		// MarkGone clears requests, so set it afterwards.
 		setRefreshRequested(t, db, gone.ID)
+
+		claim(t, subscribed)
+	})
+
+	t.Run("claims a catalog feed with no subscriber", func(t *testing.T) {
+		catalog, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		addToDiscover(t, db, catalog.ID)
+		setNextFetch(t, db, catalog.ID, longAgo)
+		setNextFetch(t, db, subscribed.ID, longAgo.Add(time.Hour))
+
+		claim(t, catalog)
+	})
+
+	t.Run("skips the catalog feed's site's other feeds", func(t *testing.T) {
+		catalog, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		addToDiscover(t, db, catalog.ID)
+		sibling, err := repo.Upsert(t.Context(), rss.Feed{
+			SiteID: catalog.SiteID,
+			Url:    fmt.Sprintf("https://example.com/sibling-%d.xml", time.Now().UnixNano()),
+		})
+		if err != nil {
+			t.Fatalf("Upsert sibling: %v", err)
+		}
+		setNextFetch(t, db, sibling, longAgo.Add(-time.Hour))
+		setNextFetch(t, db, catalog.ID, time.Now().Add(time.Hour)) // not due
+		setNextFetch(t, db, subscribed.ID, longAgo)
+
+		claim(t, subscribed)
+	})
+
+	t.Run("skips a catalog feed that isn't due yet", func(t *testing.T) {
+		catalog, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
+		addToDiscover(t, db, catalog.ID)
+		setNextFetch(t, db, catalog.ID, time.Now().Add(time.Hour))
+		setNextFetch(t, db, subscribed.ID, longAgo)
 
 		claim(t, subscribed)
 	})
@@ -550,9 +595,12 @@ func TestSaveFetchCatchUp(t *testing.T) {
 		{"first save", nil, articles("a", "b", "c"), false},
 		{"a single new article", articles("a"), articles("b"), false},
 	}
+	// Followed, so the schedule isn't held to a day (see
+	// TestFeedRepositoryUnfollowedSchedule).
+	userID := newTestUser(t, db)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			feed := newTestFeed(t, db)
+			feed := newSubscribedFeed(t, db, userID)
 			if tt.first != nil {
 				if _, err := repo.SaveFetch(ctx, feed, tt.first, feed.NextFetch); err != nil {
 					t.Fatalf("first SaveFetch: %v", err)
@@ -581,6 +629,89 @@ func TestSaveFetchCatchUp(t *testing.T) {
 			if !got.NextFetch.Equal(want) {
 				t.Errorf("NextFetch = %v, want %v", got.NextFetch, want)
 			}
+		})
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryUnfollowedSchedule(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+	userID := newTestUser(t, db)
+	later := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	// Each records an outcome scheduling feed's next fetch at next.
+	record := map[string]func(t *testing.T, feed rss.Feed, next time.Time){
+		"SaveFetch": func(t *testing.T, feed rss.Feed, next time.Time) {
+			feed.NextFetch = next
+			if _, err := repo.SaveFetch(ctx, feed, nil, next); err != nil {
+				t.Fatalf("SaveFetch: %v", err)
+			}
+		},
+		"SaveFetch catching up": func(t *testing.T, feed rss.Feed, next time.Time) {
+			// A first article, then a later save whose items are all new.
+			feed.NextFetch = next
+			if _, err := repo.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "a", Title: "A"}}, next); err != nil {
+				t.Fatalf("first SaveFetch: %v", err)
+			}
+			res, err := repo.SaveFetch(ctx, feed, []rss.Article{{ExternalID: "b", Title: "B"}, {ExternalID: "c", Title: "C"}}, next)
+			if err != nil {
+				t.Fatalf("SaveFetch: %v", err)
+			}
+			if !res.Behind {
+				t.Fatalf("got %+v; want Behind", res)
+			}
+		},
+		"RecordNotModified": func(t *testing.T, feed rss.Feed, next time.Time) {
+			if err := repo.RecordNotModified(ctx, feed.ID, next); err != nil {
+				t.Fatalf("RecordNotModified: %v", err)
+			}
+		},
+		"RecordFailure": func(t *testing.T, feed rss.Feed, next time.Time) {
+			if err := repo.RecordFailure(ctx, feed.ID, "boom", next); err != nil {
+				t.Fatalf("RecordFailure: %v", err)
+			}
+		},
+	}
+	nextFetch := func(t *testing.T, id string) time.Time {
+		t.Helper()
+		f, err := repo.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		return f.NextFetch
+	}
+
+	for name, record := range record {
+		t.Run(name, func(t *testing.T) {
+			t.Run("unfollowed waits a day", func(t *testing.T) {
+				feed := newTestFeed(t, db)
+				addToDiscover(t, db, feed.ID)
+				before := dbNow(t, db)
+				record(t, feed, time.Now().Add(15*time.Minute))
+				if got, after := nextFetch(t, feed.ID), dbNow(t, db); got.Before(before.Add(rss.UnfollowedRefreshInterval)) || got.After(after.Add(rss.UnfollowedRefreshInterval)) {
+					t.Errorf("NextFetch = %v; want now + %v, within [%v, %v]", got, rss.UnfollowedRefreshInterval, before, after)
+				}
+			})
+
+			t.Run("unfollowed keeps a later time", func(t *testing.T) {
+				feed := newTestFeed(t, db)
+				record(t, feed, later)
+				if got := nextFetch(t, feed.ID); !got.Equal(later) {
+					t.Errorf("NextFetch = %v; want %v", got, later)
+				}
+			})
+
+			t.Run("followed is unchanged", func(t *testing.T) {
+				feed := newSubscribedFeed(t, db, userID)
+				addToDiscover(t, db, feed.ID)
+				next := time.Now().Add(15 * time.Minute).Truncate(time.Second)
+				record(t, feed, next)
+				if got := nextFetch(t, feed.ID); !got.Equal(next) {
+					t.Errorf("NextFetch = %v; want %v", got, next)
+				}
+			})
 		})
 	}
 }

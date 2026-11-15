@@ -201,6 +201,7 @@ The last two share one path, `ingest.Refresher.Refresh`:
    After a success (2xx or 304) the feed is due again after an interval set by its posting rate as of its last save (`NextFetch`, from `feed.PostsPerWeek`): about four fetches per expected article, between 15 minutes and an hour (an hour for a rate of 0), ±10%.
    A save that finds the feed may have outrun its file (`FetchResult.Behind`: a later save of two or more articles, all new, of a feed attempted within two days) schedules a catch-up fetch instead: half the time since the previous successful fetch, at least 15 minutes, and never later than the rate's interval (`CatchUpFetch`); `SaveFetch` picks between the two after saving the articles, and the next ordinary save goes back to the rate.
    Either is delayed if `Cache-Control` / `Expires` says the response stays fresh longer (capped at 24 h).
+   A feed with no subscribers, whatever the outcome, isn't due again for at least a day (`rss.UnfollowedRefreshInterval`): `SaveFetch`, `RecordNotModified` and `RecordFailure` check for a subscriber as they store `next_fetch_at` (`scheduledNext`), so the Refresher doesn't need to know who follows.
    The workers log `behind` with each refreshed feed.
    - **304:** `RecordNotModified`.
    - **410:** `MarkGone`; not fetched again until a lookup finds the feed again.
@@ -216,8 +217,10 @@ A newly inserted article missing an image, title or excerpt gets an enrichment j
 
 `feeds.posts_per_week` is the feed's articles published in the last 30 days (undated ones count from when they were saved) × 7 ÷ the days its articles cover, from its oldest article to now but at least 7 and at most 30 (`postsPerWeek`), recomputed at the end of every `saveArticles` and by `RecordNotModified`, so the window keeps sliding for feeds that stopped changing.
 
-Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber or a pending refresh request, requested ones first.
+Which feeds the workers fetch: `ClaimDue` takes a due feed that has a subscriber, a pending refresh request or a place in Discover's catalog (`discover_feeds`), requested ones first.
 A request is made when someone views a stale feed's page (`feedHandler` calls `RequestRefresh`).
+Catalog feeds nobody follows are so fetched about once a day, so what Discover and Picks show of them is at most a day old; other feeds nobody follows are fetched only on request.
+A feed that gains its first follower keeps its `next_fetch_at`, at most a day away, and goes back to its posting rate's interval after its next fetch.
 The Refresh button instead fetches right away, within 8 s, and reports the result in a flash; it refuses gone feeds, feeds fetched successfully in the last 5 minutes, and users over the per-user limit.
 With JavaScript, the button shows it's working ("Refreshing…") while the fetch runs (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 
@@ -387,7 +390,7 @@ Card images are lazy except one: on a list's first page (timeline, Saved, a feed
 *News* (on a later save: undated, or published since a day before the feed's previous successful fetch) goes by its date, never below a floor, the later of the previous fetch and `rss.NewsWindow` (6 hours) before the save (`placeNews`): undated news at the save time, 1 µs apart in document order; news dated above the floor at its date, but below the undated news; news dated at or below the floor spread evenly, newest-published first, between the floor and the lowest news placed by date.
 *Backlog* (every item on a feed's first save, or older items appearing later) goes at its published date, or now if that's in the future.
 A first save's undated items are spaced out at the feed's pace below the item before them in its document, the newest at least a day back (`placeUndated`).
-A later save of a feed with no fetch attempt for two days (`staleFeedAfter`), such as a catalog feed nobody followed until now, counts as a first save: nobody was fetching it, so when its items appeared is unknown and their dates are the best order (the previous attempt decides, not the previous success, so a followed feed that was down keeps its news); it gets the first save's enrichment allowance and is never `Behind`.
+A later save of a feed with no fetch attempt for two days (`staleFeedAfter`), such as a looked-up feed nobody followed until now, counts as a first save: nobody was fetching it, so when its items appeared is unknown and their dates are the best order (the previous attempt decides, not the previous success, so a followed feed that was down keeps its news); it gets the first save's enrichment allowance and is never `Behind`.
 Whether an article was placed as backlog is stored with it (`isBacklog`), for debug mode.
 So new items land near the top in publish order (and, for a reader who has looked recently, above what they've seen: see "The reader's position"), and an imported archive, dated or not, doesn't.
 
@@ -519,7 +522,7 @@ There is no service worker, install button or banner, and no pull-to-refresh: ta
 **Flow.** Many feed items arrive without an image, a title or any text; enrichment fetches their web page in the background and stores what its meta tags say.
 
 1. **Queuing.** `saveArticles` knows which upserted articles were inserted (`RETURNING id, (xmax = 0)`).
-   A new article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row if `enrichCandidates` allows it: on a feed's first save only the 20 with the latest `timeline_at`, at priority 1; on later saves every one, at priority 0.
+   A new article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row if `enrichCandidates` allows it: on a feed's first save only the 20 with the latest `timeline_at`, at priority 1; on later saves every one, at priority 0, but none for a feed nobody follows (a catalog feed's daily refreshes), whose jobs would never be claimed.
    Updated articles aren't queued again, and older articles never.
 2. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`) claims a due job whose article's feed has a subscriber, priority 0 first, with a 2-minute lease, and counts the attempt.
    A looked-up site nobody subscribes to costs no page fetches.

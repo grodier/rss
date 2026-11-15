@@ -123,7 +123,8 @@ func TestEnrichRepositoryRecord(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewEnrichRepository(db)
 	articles := NewArticleRepository(db)
-	feed := newTestFeed(t, db)
+	// Followed, since later saves of a feed nobody follows queue no jobs.
+	feed := newSubscribedFeed(t, db, newTestUser(t, db))
 	ctx := t.Context()
 
 	t.Run("SavePage", func(t *testing.T) {

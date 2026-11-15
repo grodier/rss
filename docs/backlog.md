@@ -614,6 +614,7 @@ Other background work (#302, #304, #306):
   *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
 - [ ] **Daily refreshes of Discover's feeds** (#632).
   Every feed in Discover's catalog is fetched about once a day even with no followers, so N catalog feeds cost N fetches and their article saves a day, growing with the catalog rather than with readers.
+  `ClaimDue` checks the catalog with a hashed subplan over all of `discover_feeds`, still on `feeds_next_fetch_at_idx`: on `make db/loadseed`'s data plus 5,000 unfollowed feeds, 3,000 of them in the catalog spread over the day (160 due), a claim took 1.3–1.9 ms against 0.6 ms without the catalog check; with 1,500 catalog feeds overdue at once (a backlog after downtime), 3.2 ms against 1.4 ms.
   *Signal:* refresh workers busy with unfollowed feeds in the admin's job metrics, or `ClaimDue`'s claim latency rising.
   *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
 - [ ] **Discover reads every section on each visit** (#633, #643).

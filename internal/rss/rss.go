@@ -69,6 +69,11 @@ type Article struct {
 // saveArticles and Subscribe).
 const NewsWindow = 6 * time.Hour
 
+// UnfollowedRefreshInterval is the shortest a feed with no subscribers
+// waits between fetches, whatever its posting rate, so feeds kept fresh for
+// Discover cost about one fetch a day each (see psql.FeedRepository.ClaimDue).
+const UnfollowedRefreshInterval = 24 * time.Hour
+
 // FeedSortAt is the article's position on its feed page: PublishedAt, else CreatedAt.
 func (a Article) FeedSortAt() time.Time {
 	if !a.PublishedAt.IsZero() {

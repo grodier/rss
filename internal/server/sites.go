@@ -55,66 +55,12 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	icons := s.pageIcons(r, []string{site.ID})
-	rows := siteFeedRows(site, icons[site.ID], feeds, facts, subscribed, r.URL.Path)
-	posts, err := s.sitePosts(r, userID, rows)
+	rows := siteFeedRows(site, feeds, facts, subscribed)
+	postFeeds := sitePostFeeds(rows)
+	posts, err := s.sitePosts(r, userID, postFeeds)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
-	}
-	// PROTOTYPE (option f): posts without Follow or avatars, and what
-	// they're drawn from when that's some of the site's feeds.
-	var postsFrom string
-	if r.URL.Query().Get("layout") == "f" {
-		names := map[string]string{}
-		for _, f := range rows {
-			names[f.Feed.ID] = f.Name
-		}
-		// Each post names its feed only when they're from several.
-		distinct := map[string]bool{}
-		for _, p := range posts {
-			distinct[p.Article.FeedID] = true
-		}
-		for i := range posts {
-			if len(distinct) < 2 {
-				posts[i].Feed = rss.Feed{}
-			}
-			posts[i].Follow = nil
-			posts[i].NoAvatar = true
-			if posts[i].Feed.ID != "" {
-				posts[i].Feed.Title = names[posts[i].Feed.ID]
-			}
-		}
-		var catalog []string
-		live := 0
-		for _, f := range rows {
-			if f.Gone() {
-				continue
-			}
-			live++
-			if f.Facts.Section.ID != "" {
-				catalog = append(catalog, f.Name)
-			}
-		}
-		if len(catalog) > 0 && len(catalog) < live {
-			postsFrom = strings.Join(catalog, ", ")
-		}
-	}
-	// PROTOTYPE (option c): a tab per feed.
-	tab := r.URL.Query().Get("feed")
-	if r.URL.Query().Get("layout") == "c" && len(rows) > 0 {
-		if tab == "" {
-			tab = rows[0].Feed.ID
-		}
-		for i := range rows {
-			if rows[i].Feed.ID == tab {
-				posts, err = s.sitePosts(r, userID, rows[i:i+1])
-				if err != nil {
-					s.serverErrorHTML(w, r, err)
-					return
-				}
-			}
-		}
 	}
 
 	// No lookup for the site's key means it can be checked now.
@@ -134,15 +80,19 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Nav         navData
-		Site        rss.Site
-		Icons       map[string]string
-		Feeds       []siteFeedRow
-		Posts       []articleRow
-		Live        bool   // some feed isn't gone
-		Layout      string // PROTOTYPE
-		Tab         string // PROTOTYPE
-		PostsFrom   string // PROTOTYPE
+		Nav   navData
+		Site  rss.Site
+		Icons map[string]string
+		// Feeds is the site's first siteFeedsShown feeds and MoreFeeds the
+		// rest, behind "Show N more feeds"; FeedCount counts both.
+		Feeds     []siteFeedRow
+		MoreFeeds []siteFeedRow
+		FeedCount int
+		Posts     []articleRow
+		// PostsFrom names the feeds Recent posts are drawn from when
+		// they're only some of the site's live feeds; empty otherwise.
+		PostsFrom   []string
+		Live        bool // some feed isn't gone
 		LastChecked time.Time
 		Checking    bool
 		CanRecheck  bool
@@ -152,13 +102,13 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Nav:         s.nav(r, ""),
 		Site:        site,
-		Icons:       icons,
-		Feeds:       rows,
+		Icons:       s.pageIcons(r, []string{site.ID}),
+		Feeds:       rows[:min(len(rows), siteFeedsShown)],
+		MoreFeeds:   rows[min(len(rows), siteFeedsShown):],
+		FeedCount:   len(rows),
 		Posts:       posts,
+		PostsFrom:   postsFrom(rows, postFeeds),
 		Live:        slices.ContainsFunc(rows, func(f siteFeedRow) bool { return !f.Gone() }),
-		Layout:      r.URL.Query().Get("layout"),
-		Tab:         tab,
-		PostsFrom:   postsFrom,
 		LastChecked: lookup.FinishedAt,
 		Checking:    lookupInProgress(lookup),
 		CanRecheck:  canRecheck(lookup, time.Now()),
@@ -172,39 +122,46 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// sitePostsLimit is how many of a site's newest articles its page shows.
-const sitePostsLimit = 10
+const (
+	// sitePostsLimit is how many of a site's newest articles its page
+	// shows.
+	sitePostsLimit = 10
+	// siteFeedsShown is how many of a site's feeds its page lists before
+	// "Show N more feeds", so a site with many keeps its posts in view.
+	siteFeedsShown = 4
+)
 
 // siteFeedRow is one of a site's feeds as its page lists it.
 type siteFeedRow struct {
 	Feed   rss.Feed
-	Name   string // PROTOTYPE: its title without the site's name (shortFeedName)
+	Name   string // its title without the site's name (shortFeedName)
 	Facts  rss.FeedFacts
-	Site   string       // its site's name, for the avatar's letter
-	Icon   string       // its site's icon URL, or "" for its letter
 	Follow followButton // Follow, or Following when the reader follows it
 }
 
 // Gone is whether the feed no longer exists (it answered 410).
 func (f siteFeedRow) Gone() bool { return !f.Feed.GoneAt.IsZero() }
 
+// inCatalog is whether the feed is in Discover's catalog.
+func (f siteFeedRow) inCatalog() bool { return f.Facts.Section.ID != "" }
+
 // siteFeedRows lists a site's feeds for its page: those in Discover's
 // catalog first, as an admin picked them, then the others, and the gone
-// ones last, each group in feeds' order. Follow sends the reader back to
-// path, at the feed's row.
-func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string]rss.FeedFacts, subscribed map[string]bool, path string) []siteFeedRow {
+// ones last, each group most recently posting first, as a section's page
+// orders its feeds, so the capped list shows the active ones. Follow sends
+// the reader back to the feed's row.
+func siteFeedRows(site rss.Site, feeds []rss.Feed, facts map[string]rss.FeedFacts, subscribed map[string]bool) []siteFeedRow {
+	siteName := cmp.Or(site.Title, site.Host)
 	rows := make([]siteFeedRow, len(feeds))
 	for i, f := range feeds {
 		rows[i] = siteFeedRow{
 			Feed:  f,
-			Name:  shortFeedName(cmp.Or(f.Title, f.Url), cmp.Or(site.Title, site.Host)),
+			Name:  shortFeedName(cmp.Or(f.Title, f.Url), siteName),
 			Facts: facts[f.ID],
-			Site:  cmp.Or(site.Title, site.Host),
-			Icon:  icon,
 			Follow: followButton{
 				FeedID:    f.ID,
 				Label:     rss.DiscoverFeed{Feed: f, Site: site}.Label(),
-				ReturnTo:  path + "#feed-" + f.ID,
+				ReturnTo:  "/sites/" + site.ID + "#feed-" + f.ID,
 				Following: subscribed[f.ID],
 			},
 		}
@@ -213,96 +170,19 @@ func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string
 		switch {
 		case r.Gone():
 			return 2
-		case r.Facts.Section.ID != "":
+		case r.inCatalog():
 			return 0
 		default:
 			return 1
 		}
 	}
-	// Within a group, the most recently posting first, as a section's
-	// page orders its feeds, so a capped list shows the active ones.
 	slices.SortStableFunc(rows, func(a, b siteFeedRow) int {
 		if d := rank(a) - rank(b); d != 0 {
 			return d
 		}
-		return b.Facts.Latest.FeedSortAt().Compare(a.Facts.Latest.FeedSortAt())
+		return b.Facts.LatestAt.Compare(a.Facts.LatestAt)
 	})
 	return rows
-}
-
-// sitePosts returns a site's newest sitePostsLimit articles as its page's
-// Recent posts: those of its feeds in Discover's catalog, which an admin
-// picked as its best, or of all its feeds when none is, leaving out gone
-// feeds either way. A copy of an article in two of the feeds (a blog's
-// all-posts and category feeds) shows once. With more than one feed, each
-// row names its feed.
-func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) ([]articleRow, error) {
-	var catalog, live []string
-	byID := make(map[string]siteFeedRow, len(feeds))
-	for _, f := range feeds {
-		byID[f.Feed.ID] = f
-		if f.Gone() {
-			continue
-		}
-		live = append(live, f.Feed.ID)
-		if f.Facts.Section.ID != "" {
-			catalog = append(catalog, f.Feed.ID)
-		}
-	}
-	ids := live
-	if len(catalog) > 0 {
-		ids = catalog
-	}
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
-	// Twice the limit, so copies dropped below still leave a full list.
-	articles, err := s.services.ArticleService.ListByFeeds(r.Context(), ids, rss.ArticleCursor{}, 2*sitePostsLimit)
-	if err != nil {
-		return nil, err
-	}
-	posts := make([]articleRow, 0, sitePostsLimit)
-	seen := map[string]bool{}
-	for _, a := range articles {
-		if len(posts) == sitePostsLimit {
-			break
-		}
-		if a.CanonicalURL != "" {
-			if seen[a.CanonicalURL] {
-				continue
-			}
-			seen[a.CanonicalURL] = true
-		}
-		row := articleRow{Article: a, ReturnTo: r.URL.RequestURI()}
-		f := byID[a.FeedID]
-		if len(feeds) > 1 {
-			// Named as Follow names it, site and feed title, so each post
-			// says which feed it's from.
-			row.Feed = f.Feed
-			row.Feed.Title = f.Follow.Label
-			row.Icon = f.Icon
-		}
-		if !f.Follow.Following {
-			follow := f.Follow
-			follow.ReturnTo = r.URL.RequestURI() + "#article-" + a.ID
-			row.Follow = &follow
-		}
-		posts = append(posts, row)
-	}
-
-	if err := s.fillRead(r.Context(), userID, posts); err != nil {
-		return nil, err
-	}
-	if err := s.fillSaved(r.Context(), userID, posts); err != nil {
-		return nil, err
-	}
-	if err := s.fillStarred(r.Context(), userID, posts); err != nil {
-		return nil, err
-	}
-	s.fillDebug(r, posts)
-	markFirstImageEager(posts)
-	return posts, nil
 }
 
 // shortFeedName is a feed's title on its site's page, where the site's
@@ -319,6 +199,107 @@ func shortFeedName(title, siteName string) string {
 		}
 	}
 	return title
+}
+
+// sitePostFeeds returns the feeds a site's Recent posts are drawn from,
+// in rows' order: its live feeds in Discover's catalog, which an admin
+// picked as its best, or all its live feeds when none is.
+func sitePostFeeds(rows []siteFeedRow) []siteFeedRow {
+	var catalog, live []siteFeedRow
+	for _, f := range rows {
+		if f.Gone() {
+			continue
+		}
+		live = append(live, f)
+		if f.inCatalog() {
+			catalog = append(catalog, f)
+		}
+	}
+	if len(catalog) > 0 {
+		return catalog
+	}
+	return live
+}
+
+// postsFrom names the feeds Recent posts are drawn from (postFeeds, from
+// sitePostFeeds) when they're only some of rows' live feeds, so the
+// reader can tell why the others' posts are missing; else nil.
+func postsFrom(rows, postFeeds []siteFeedRow) []string {
+	live := 0
+	for _, f := range rows {
+		if !f.Gone() {
+			live++
+		}
+	}
+	if len(postFeeds) == live {
+		return nil
+	}
+	names := make([]string, len(postFeeds))
+	for i, f := range postFeeds {
+		names[i] = f.Name
+	}
+	return names
+}
+
+// sitePosts returns the newest sitePostsLimit articles of feeds as a
+// site's Recent posts. A copy of an article in two of the feeds (a blog's
+// all-posts and category feeds) shows once. When the posts come from more
+// than one feed, each names its feed (by its short name, without an
+// avatar, as the site's is in the head); Follow is in the feed list
+// above, so posts don't repeat it.
+func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) ([]articleRow, error) {
+	if len(feeds) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, len(feeds))
+	byID := make(map[string]siteFeedRow, len(feeds))
+	for i, f := range feeds {
+		ids[i] = f.Feed.ID
+		byID[f.Feed.ID] = f
+	}
+
+	// Twice the limit, so copies dropped below still leave a full list.
+	articles, err := s.services.ArticleService.ListByFeeds(r.Context(), ids, rss.ArticleCursor{}, 2*sitePostsLimit)
+	if err != nil {
+		return nil, err
+	}
+	posts := make([]articleRow, 0, sitePostsLimit)
+	seen := map[string]bool{}
+	fromFeeds := map[string]bool{}
+	for _, a := range articles {
+		if len(posts) == sitePostsLimit {
+			break
+		}
+		if a.CanonicalURL != "" {
+			if seen[a.CanonicalURL] {
+				continue
+			}
+			seen[a.CanonicalURL] = true
+		}
+		posts = append(posts, articleRow{Article: a, ReturnTo: r.URL.RequestURI()})
+		fromFeeds[a.FeedID] = true
+	}
+	if len(fromFeeds) > 1 {
+		for i := range posts {
+			f := byID[posts[i].Article.FeedID]
+			posts[i].Feed = f.Feed
+			posts[i].Feed.Title = f.Name
+			posts[i].NoAvatar = true
+		}
+	}
+
+	if err := s.fillRead(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	if err := s.fillSaved(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	if err := s.fillStarred(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	s.fillDebug(r, posts)
+	markFirstImageEager(posts)
+	return posts, nil
 }
 
 // siteDebug loads the site page's debug panel: the site's fields and a line

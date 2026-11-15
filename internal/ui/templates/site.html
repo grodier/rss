@@ -28,28 +28,16 @@
         {{with .Site.Description}}
         <p class="profile-desc">{{.}}</p>
         {{end}}
-        {{if and (eq .Layout "f") (eq (len .Feeds) 1)}}{{with $row := index .Feeds 0}}
-        {{/* PROTOTYPE (option f): a site with one feed follows it from its head. */}}
+        {{/* A site with one feed follows it from here, as there's no
+             choosing to do; with several, the list below holds Follow. */}}
+        {{if eq .FeedCount 1}}{{with index .Feeds 0}}
         <div class="site-head-follow" id="feed-{{.Feed.ID}}">
-          {{template "follow-form" .Follow}}
-          {{if .Gone}}<p class="fetch-error">This feed no longer exists.</p>{{else}}
-          <p class="site-feed-facts">
-            {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$row.Facts.Section.Slug}}">{{$row.Facts.Section.Name}}</a> · {{end -}}
-            <span>{{postingRate .Feed.PostsPerWeek}}</span>
-            {{- with .Facts.Latest.ID}} · <span>Latest {{since $row.Facts.Latest.FeedSortAt}}</span>{{end -}}
-          </p>
-          {{end}}
+          {{if or .Follow.Following (not .Gone)}}{{template "follow-form" .Follow}}{{end}}
+          {{template "site-feed-facts" .}}
         </div>
         {{end}}{{end}}
-        {{if or (not .LastChecked.IsZero) .Checking}}
-        <p class="facts">
-          {{if not .LastChecked.IsZero}}
-          <span>{{template "icon-clock"}}Feeds last checked {{template "local-time" .LastChecked}}.</span>
-          {{end}}
-          {{if .Checking}}
-          <span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span>
-          {{end}}
-        </p>
+        {{if .Checking}}
+        <p class="facts"><span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span></p>
         {{end}}
       </section>
 
@@ -61,20 +49,53 @@
       <p class="debug-note">Runs a lookup of this site now without saving anything.</p>
       {{end}}
 
-      {{if eq .Layout "f"}}
-      {{template "site-refined" .}}
-      {{else if eq .Layout "d"}}
-      {{template "site-tabbed" .}}
-      {{else if eq .Layout "e"}}
-      {{template "site-compact" .}}
-      {{else if eq .Layout "c"}}
-      {{template "site-tabs" .}}
-      {{else if eq .Layout "b"}}
-      {{template "site-feeds" .}}
-      {{template "site-posts" .}}
-      {{else}}
-      {{template "site-posts" .}}
-      {{template "site-feeds" .}}
+      {{if gt .FeedCount 1}}
+      <section class="site-feeds">
+        <div class="list-head">
+          <h2>{{.FeedCount}} feeds</h2>
+        </div>
+        <ul role="list">
+          {{range .Feeds}}{{template "site-feed" .}}{{end}}
+        </ul>
+        {{with .MoreFeeds}}
+        <details class="site-more-feeds">
+          <summary>Show {{len .}} more {{if eq (len .) 1}}feed{{else}}feeds{{end}}</summary>
+          <ul role="list">
+            {{range .}}{{template "site-feed" .}}{{end}}
+          </ul>
+        </details>
+        {{end}}
+      </section>
+      {{end}}
+
+      <section class="site-posts">
+        <div class="list-head">
+          <h2>Recent posts</h2>
+        </div>
+        {{with .PostsFrom}}<p class="site-posts-from">From {{range $i, $name := .}}{{if $i}}, {{end}}{{$name}}{{end}}, the {{if eq (len .) 1}}feed{{else}}feeds{{end}} Discover lists.</p>{{end}}
+        {{if .Posts}}
+        <div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>
+        {{else if not .Feeds}}
+        <p class="empty">No feeds found for this site yet.</p>
+        {{else if .Live}}
+        <p class="empty">No posts yet.</p>
+        {{else}}
+        <p class="empty">No posts to show: this site's feeds no longer exist.</p>
+        {{end}}
+      </section>
+
+      {{/* Looking for more feeds is rare, so it's a quiet line at the
+           foot rather than a button by the list. */}}
+      {{if or .CanRecheck (not .LastChecked.IsZero)}}
+      <div class="site-recheck">
+        {{if not .LastChecked.IsZero}}<p>Feeds last checked {{template "local-time" .LastChecked}}.</p>{{end}}
+        {{if .CanRecheck}}
+        <form action="/lookups" method="post" data-busy>
+          <input type="hidden" name="q" value="{{.Site.URL}}">
+          <p>Missing a feed? <button class="site-recheck-button" type="submit" data-busy-label="Checking {{.Site.Host}} for new feeds…"><span data-busy-text>Check {{.Site.Host}} for new feeds</span></button></p>
+        </form>
+        {{end}}
+      </div>
       {{end}}
     </main>
   </div>
@@ -82,195 +103,30 @@
 
 </html>
 
-{{/* site-posts is the site's Recent posts: its newest articles, from the
-     feeds Discover picked, else from all its feeds that aren't gone. */}}
-{{define "site-posts"}}
-{{if .Feeds}}
-<section class="site-posts">
-  <div class="list-head">
-    <h2>Recent posts</h2>
-  </div>
-  {{if .Posts}}
-  <div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>
-  {{else if .Live}}
-  <p class="empty">No posts yet.</p>
-  {{else}}
-  <p class="empty">No posts to show: this site's feeds no longer exist.</p>
-  {{end}}
-</section>
-{{end}}
-{{end}}
-
-{{/* site-feeds is the site's feeds, each with what helps choose it and
-     Follow, or "Following", which unfollows; save-star.ts toggles it
-     without a reload. */}}
-{{define "site-feeds"}}
-<section class="site-feeds">
-  <div class="list-head">
-    <h2>Feeds</h2>
-    {{if .CanRecheck}}
-    <form action="/lookups" method="post" data-busy>
-      <input type="hidden" name="q" value="{{.Site.URL}}">
-      <button class="btn-sm" type="submit" data-busy-label="Checking for new feeds…">{{template "icon-refresh"}}<span data-busy-text>Check for new feeds</span></button>
-    </form>
-    {{end}}
-  </div>
-  {{if .Feeds}}
-  <ul role="list">
-    {{range .Feeds}}{{template "site-feed" .}}{{end}}
-  </ul>
-  {{else}}
-  <p class="empty">No feeds found for this site yet.</p>
-  {{end}}
-</section>
-{{end}}
-
+{{/* site-feed is one of a site's feeds in its page's list: its name
+     (without the site's), its facts, and Follow, or "Following", which
+     unfollows; save-star.ts toggles it without a reload. */}}
 {{define "site-feed"}}
-{{$f := .Feed}}
-<li class="feed-row site-feed" id="feed-{{$f.ID}}">
-  {{template "avatar" (avatar $f.SiteID .Site .Icon)}}
-  <div>
-    <a class="feed-row-title" href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>
-    {{if .Gone}}
-    <p class="fetch-error">This feed no longer exists.</p>
-    {{else}}
-    <p class="site-feed-facts">
-      {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$.Facts.Section.Slug}}">{{$.Facts.Section.Name}}</a> · {{end -}}
-      <span>{{postingRate $f.PostsPerWeek}}</span>
-      {{- with .Facts.Latest.ID}} · <span>Latest {{since $.Facts.Latest.FeedSortAt}}</span>{{end -}}
-    </p>
-    {{with .Facts.Latest.ID}}<p class="site-feed-latest"><a href="/articles/{{.}}">{{$.Facts.Latest.DisplayTitle}}</a></p>{{end}}
-    {{end}}
-  </div>
-  {{if or .Follow.Following (not .Gone)}}{{template "follow-form" .Follow}}{{end}}
-</li>
-{{end}}
-
-{{/* PROTOTYPE (option c, removed after the checkpoint): a tab per feed. */}}
-{{define "site-tabs"}}
-<nav class="timeline-tabs" aria-label="Feeds">
-  <ul role="list">
-    {{range .Feeds}}<li><a href="?layout=c&feed={{.Feed.ID}}"{{if eq .Feed.ID $.Tab}} aria-current="page"{{end}}>{{or .Feed.Title .Feed.Url}}{{if eq .Feed.ID $.Tab}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
-  </ul>
-</nav>
-<ul role="list">
-  {{range .Feeds}}{{if eq .Feed.ID $.Tab}}{{template "site-feed" .}}{{end}}{{end}}
-</ul>
-{{if .Posts}}<div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>{{else}}<p class="empty">No posts yet.</p>{{end}}
-{{end}}
-
-{{/* PROTOTYPE (option d): Recent posts and Feeds tabs, as a section's page. */}}
-{{define "site-tabbed"}}
-{{$feeds := eq .Tab "feeds"}}
-<nav class="timeline-tabs section-tabs" aria-label="{{or .Site.Title .Site.Host}}">
-  <ul role="list">
-    <li><a href="?layout=d"{{if not $feeds}} aria-current="page"{{end}}>Recent posts{{if not $feeds}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
-    <li><a href="?layout=d&feed=feeds"{{if $feeds}} aria-current="page"{{end}}>Feeds <span class="tab-count">{{len .Feeds}}</span>{{if $feeds}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>
-  </ul>
-</nav>
-{{if $feeds}}
-{{if .CanRecheck}}
-<div class="list-head">
-  <p class="hint">Missing a feed?</p>
-  <form action="/lookups" method="post" data-busy>
-    <input type="hidden" name="q" value="{{.Site.URL}}">
-    <button class="btn-sm" type="submit" data-busy-label="Checking for new feeds…">{{template "icon-refresh"}}<span data-busy-text>Check for new feeds</span></button>
-  </form>
-</div>
-{{end}}
-<ul role="list">{{range .Feeds}}{{template "site-feed" .}}{{end}}</ul>
-{{else}}
-{{if .Posts}}<div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>{{else}}<p class="empty">No posts yet.</p>{{end}}
-{{end}}
-{{end}}
-
-{{/* PROTOTYPE (option e): a compact list of the feeds, to follow at a
-     glance, above the posts. */}}
-{{define "site-compact"}}
-<section class="site-feeds">
-  <div class="list-head">
-    <h2>Feeds</h2>
-    {{if .CanRecheck}}
-    <form action="/lookups" method="post" data-busy>
-      <input type="hidden" name="q" value="{{.Site.URL}}">
-      <button class="btn-sm" type="submit" data-busy-label="Checking for new feeds…">{{template "icon-refresh"}}<span data-busy-text>Check for new feeds</span></button>
-    </form>
-    {{end}}
-  </div>
-  <ul role="list">
-    {{range $row := .Feeds}}
-    <li class="feed-row site-feed site-feed-compact" id="feed-{{.Feed.ID}}">
-      <div>
-        <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>
-        {{if .Gone}}<p class="fetch-error">This feed no longer exists.</p>{{else}}
-        <p class="site-feed-facts">
-          {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$row.Facts.Section.Slug}}">{{$row.Facts.Section.Name}}</a> · {{end -}}
-          <span>{{postingRate .Feed.PostsPerWeek}}</span>
-          {{- with .Facts.Latest.ID}} · <span>Latest {{since $row.Facts.Latest.FeedSortAt}}</span>{{end -}}
-        </p>
-        {{end}}
-      </div>
-      {{if or .Follow.Following (not .Gone)}}{{template "follow-form" .Follow}}{{end}}
-    </li>
-    {{end}}
-  </ul>
-</section>
-{{template "site-posts" .}}
-{{end}}
-
-{{/* PROTOTYPE (option f): (e) refined. */}}
-{{define "site-compact-row"}}
-<li class="feed-row site-feed site-feed-compact" id="feed-{{.Feed.ID}}">
+<li class="feed-row site-feed" id="feed-{{.Feed.ID}}">
   <div>
     <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{.Name}}</a>
-    {{if .Gone}}<p class="fetch-error">This feed no longer exists.</p>{{else}}
-    <p class="site-feed-facts">
-      {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$.Facts.Section.Slug}}">{{$.Facts.Section.Name}}</a> · {{end -}}
-      <span>{{postingRate .Feed.PostsPerWeek}}</span>
-      {{- with .Facts.Latest.ID}} · <span>Latest {{since $.Facts.Latest.FeedSortAt}}</span>{{end -}}
-    </p>
-    {{end}}
+    {{template "site-feed-facts" .}}
   </div>
   {{if or .Follow.Following (not .Gone)}}{{template "follow-form" .Follow}}{{end}}
 </li>
 {{end}}
 
-{{define "site-refined"}}
-{{if gt (len .Feeds) 1}}
-<section class="site-feeds">
-  <div class="list-head">
-    <h2>{{len .Feeds}} feeds</h2>
-  </div>
-  <ul role="list">
-    {{range $i, $row := .Feeds}}{{if lt $i 4}}{{template "site-compact-row" $row}}{{end}}{{end}}
-  </ul>
-  {{if gt (len .Feeds) 4}}
-  <details class="site-more-feeds">
-    <summary>Show {{len (slice .Feeds 4)}} more feeds</summary>
-    <ul role="list">
-      {{range $i, $row := .Feeds}}{{if ge $i 4}}{{template "site-compact-row" $row}}{{end}}{{end}}
-    </ul>
-  </details>
-  {{end}}
-</section>
-{{end}}
-<section class="site-posts">
-  <div class="list-head">
-    <h2>Recent posts</h2>
-  </div>
-  {{with .PostsFrom}}<p class="site-posts-from">From {{.}}, the feed Discover lists.</p>{{end}}
-  {{if .Posts}}
-  <div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>
-  {{else if .Live}}
-  <p class="empty">No posts yet.</p>
-  {{else}}
-  <p class="empty">No posts to show: this site's feeds no longer exist.</p>
-  {{end}}
-</section>
-{{if .CanRecheck}}
-<form class="site-recheck" action="/lookups" method="post" data-busy>
-  <input type="hidden" name="q" value="{{.Site.URL}}">
-  <p>Missing a feed? <button class="site-recheck-button" type="submit" data-busy-label="Checking for new feeds…"><span data-busy-text>Check {{.Site.Host}} for new feeds</span></button></p>
-</form>
+{{/* site-feed-facts is a site feed's facts line: its section, if it's in
+     Discover's catalog, how often it posts and when it last did; or that
+     it's gone. */}}
+{{define "site-feed-facts"}}
+{{if .Gone}}
+<p class="fetch-error">This feed no longer exists.</p>
+{{else}}
+<p class="site-feed-facts">
+  {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$.Facts.Section.Slug}}">{{$.Facts.Section.Name}}</a> · {{end -}}
+  <span>{{postingRate .Feed.PostsPerWeek}}</span>
+  {{- if not .Facts.LatestAt.IsZero}} · <span>Latest {{since .Facts.LatestAt}}</span>{{end -}}
+</p>
 {{end}}
 {{end}}

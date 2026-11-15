@@ -174,7 +174,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | L6 Lookup done, no feeds | Look up a site without feeds, or whose only feed doesn't parse (or the row above with `status = 'done'`) | Lookup page, 200 | "No feeds found on {site}." + "Back to Discover" | Yes | ok |
 | L7 Lookup done with feeds | Look up a site with feeds | 303 to the site page | None | n/a | ok |
 | L8 Lookup row gone | `/lookups/{uuid}` | 404 (H2) | As H2 | Home only | ok |
-| L9 Site page with no feeds | `/sites/{empty.example}` | Site page, 200 | "No feeds found for this site yet." (and "Check again" when allowed) | Yes | ok |
+| L9 Site page with no feeds | `/sites/{empty.example}` | Site page, 200 | "No feeds found for this site yet." under Recent posts (and "Missing a feed? Check {host} for new feeds" at the foot when allowed) | Yes | ok (#635) |
+| L9a Site page, no posts yet | A site whose live feeds have no articles | Site page, 200 | "No posts yet." under Recent posts; the feeds and Follow still show | Yes | new in #635, not reviewed |
+| L9b Site page, every feed gone | A site whose feeds all answered 410 | Site page, 200 | "No posts to show: this site's feeds no longer exist."; each feed says "This feed no longer exists." with no Follow (a followed one keeps "Following" to unfollow) | Yes, Check {host} for new feeds | new in #635, not reviewed |
 | L10 Rate limited | H7 | | | | see H7 |
 
 ## OPML import

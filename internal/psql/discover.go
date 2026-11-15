@@ -215,24 +215,6 @@ func (l *latestArticle) dests() []any {
 	return []any{&l.id, &l.title, &l.pageTitle, &l.excerpt, &l.pageDesc, &l.published, &l.created}
 }
 
-// article is l as an article of the feed feedID; ok is false when the row
-// is NULL, as the feed has no articles.
-func (l latestArticle) article(feedID string) (a rss.Article, ok bool) {
-	if !l.id.Valid {
-		return rss.Article{}, false
-	}
-	return rss.Article{
-		ID:              l.id.String,
-		FeedID:          feedID,
-		Title:           l.title.String,
-		PageTitle:       l.pageTitle.String,
-		Excerpt:         l.excerpt.String,
-		PageDescription: l.pageDesc.String,
-		PublishedAt:     nullTime(l.published),
-		CreatedAt:       nullTime(l.created),
-	}, true
-}
-
 // discoverFeedDests are the destinations of a catalog feed's columns: the
 // feed's id, site_id, url, title and posts_per_week, then its site's host,
 // url and title.
@@ -248,9 +230,18 @@ func appendLatest(feeds []rss.DiscoverFeed, f rss.DiscoverFeed, l latestArticle)
 	if len(feeds) == 0 || feeds[len(feeds)-1].Feed.ID != f.Feed.ID {
 		feeds = append(feeds, f)
 	}
-	if a, ok := l.article(f.Feed.ID); ok {
+	if l.id.Valid {
 		feed := &feeds[len(feeds)-1]
-		feed.Latest = append(feed.Latest, a)
+		feed.Latest = append(feed.Latest, rss.Article{
+			ID:              l.id.String,
+			FeedID:          f.Feed.ID,
+			Title:           l.title.String,
+			PageTitle:       l.pageTitle.String,
+			Excerpt:         l.excerpt.String,
+			PageDescription: l.pageDesc.String,
+			PublishedAt:     nullTime(l.published),
+			CreatedAt:       nullTime(l.created),
+		})
 	}
 	return feeds
 }

@@ -26,9 +26,8 @@ var (
 	// qualifiedArticleColumns prefixes each column with the articles alias a,
 	// for queries that join tables with clashing column names.
 	qualifiedArticleColumns = "a." + strings.Join(articleColumnNames, ", a.")
-	// listArticleColumns and qualifiedListArticleColumns are the select lists
-	// for articles shown in a list (see articleListColumns).
-	listArticleColumns          = articleListColumns("")
+	// qualifiedListArticleColumns is the select list for articles shown in
+	// a list (see articleListColumns).
 	qualifiedListArticleColumns = articleListColumns("a.")
 )
 

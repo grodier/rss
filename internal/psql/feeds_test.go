@@ -930,3 +930,66 @@ func TestFeedRepositoryGetByURL(t *testing.T) {
 		t.Errorf("GetByURL missing = %v; want ErrNoRecord", err)
 	}
 }
+
+// newTestFeedOn is newTestFeed on the site siteID, which deletes it on
+// cleanup.
+func newTestFeedOn(t *testing.T, db *sql.DB, siteID string) rss.Feed {
+	t.Helper()
+	f := rss.Feed{
+		SiteID:    siteID,
+		Url:       fmt.Sprintf("https://example.com/site-feed-%d.xml", time.Now().UnixNano()),
+		Title:     "Feed",
+		NextFetch: time.Now().Add(time.Hour),
+	}
+	id, err := NewFeedRepository(db).Upsert(t.Context(), f)
+	if err != nil {
+		t.Fatalf("Upsert feed: %v", err)
+	}
+	f.ID = id
+	return f
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositorySiteFeedFacts(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	sec := newTestSection(t, db, "Site facts", 1)
+	siteID := newTestSite(t, db)
+	date := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	picked := newTestFeedOn(t, db, siteID)
+	putInSection(t, db, picked.ID, sec)
+	saveDated(t, db, picked, date, date.Add(time.Hour), date.Add(-time.Hour))
+	other := newTestFeedOn(t, db, siteID)
+	saveDated(t, db, other, date.Add(-48*time.Hour))
+	empty := newTestFeedOn(t, db, siteID)
+	elsewhere := newTestFeed(t, db) // on another site
+
+	facts, err := repo.SiteFeedFacts(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("SiteFeedFacts: %v", err)
+	}
+
+	if len(facts) != 3 {
+		t.Errorf("got facts for %d feeds, want the site's 3: %+v", len(facts), facts)
+	}
+	if _, ok := facts[elsewhere.ID]; ok {
+		t.Errorf("got facts for another site's feed")
+	}
+	if got := facts[picked.ID]; got.Section != sec || !got.LatestAt.Equal(date.Add(time.Hour)) {
+		t.Errorf("catalog feed's facts = %+v, want section %+v and its newest article's time %v", got, sec, date.Add(time.Hour))
+	}
+	if got := facts[other.ID]; got.Section != (rss.Section{}) || !got.LatestAt.Equal(date.Add(-48*time.Hour)) {
+		t.Errorf("other feed's facts = %+v, want no section and %v", got, date.Add(-48*time.Hour))
+	}
+	if got, ok := facts[empty.ID]; !ok || got != (rss.FeedFacts{}) {
+		t.Errorf("empty feed's facts = %+v (present %v), want zero", got, ok)
+	}
+
+	t.Run("site without feeds", func(t *testing.T) {
+		facts, err := repo.SiteFeedFacts(t.Context(), newTestSite(t, db))
+		if err != nil || len(facts) != 0 {
+			t.Errorf("SiteFeedFacts = %v, %v; want none", facts, err)
+		}
+	})
+}

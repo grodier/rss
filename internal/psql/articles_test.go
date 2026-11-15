@@ -2754,3 +2754,67 @@ func TestListShared(t *testing.T) {
 		}
 	})
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestListByFeeds(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	ctx := t.Context()
+	date := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+	hours := func(hs ...int) []time.Time {
+		var ts []time.Time
+		for _, h := range hs {
+			ts = append(ts, date.Add(time.Duration(h)*time.Hour))
+		}
+		return ts
+	}
+
+	a, b, other := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
+	saveDated(t, db, a, hours(5, 3, 1)...)
+	saveDated(t, db, b, hours(4, 2)...)
+	saveDated(t, db, other, hours(10)...)
+
+	// at lists articles' published hours after date, in order.
+	at := func(as []rss.Article) []int {
+		got := []int{}
+		for _, x := range as {
+			got = append(got, int(x.PublishedAt.Sub(date)/time.Hour))
+		}
+		return got
+	}
+
+	t.Run("merges the feeds newest first, up to limit", func(t *testing.T) {
+		got, err := articles.ListByFeeds(ctx, []string{a.ID, b.ID}, rss.ArticleCursor{}, 4)
+		if err != nil {
+			t.Fatalf("ListByFeeds: %v", err)
+		}
+		if want := []int{5, 4, 3, 2}; !slices.Equal(at(got), want) {
+			t.Errorf("got hours %v, want %v", at(got), want)
+		}
+		if got[0].Summary != "" || got[0].Content != "" {
+			t.Errorf("got Summary %q, Content %q, want both empty", got[0].Summary, got[0].Content)
+		}
+	})
+
+	t.Run("after a cursor", func(t *testing.T) {
+		first, err := articles.ListByFeeds(ctx, []string{a.ID, b.ID}, rss.ArticleCursor{}, 2)
+		if err != nil {
+			t.Fatalf("ListByFeeds: %v", err)
+		}
+		last := first[len(first)-1]
+		got, err := articles.ListByFeeds(ctx, []string{a.ID, b.ID}, rss.ArticleCursor{At: last.FeedSortAt(), ID: last.ID}, 10)
+		if err != nil {
+			t.Fatalf("ListByFeeds: %v", err)
+		}
+		if want := []int{3, 2, 1}; !slices.Equal(at(got), want) {
+			t.Errorf("got hours %v, want %v", at(got), want)
+		}
+	})
+
+	t.Run("no feeds", func(t *testing.T) {
+		got, err := articles.ListByFeeds(ctx, nil, rss.ArticleCursor{}, 10)
+		if err != nil || len(got) != 0 {
+			t.Errorf("ListByFeeds = %v, %v; want none", got, err)
+		}
+	})
+}

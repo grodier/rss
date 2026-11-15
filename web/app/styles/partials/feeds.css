@@ -26,11 +26,6 @@
     font-size: 0.8125rem;
   }
 
-  .feed-row .feed-desc {
-    margin-block-start: 0.125rem;
-    font-size: 0.875rem;
-  }
-
   .feed-row .feed-url {
     margin-block-start: 0.125rem;
     overflow: hidden;
@@ -107,16 +102,19 @@
     text-decoration: underline;
   }
 
-  /* A site page's feeds: top-aligned, as a row runs to three lines, with
-     its facts and its latest post's title under the title. */
+  /* A site page's feeds: a compact list without avatars, as the site's
+     is in the head just above, so a site's few feeds fit on a phone's
+     first screen with its posts. */
   .site-feed {
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 0.625rem;
     scroll-margin-block-start: 1rem;
   }
 
-  .site-feed .site-feed-facts {
+  .site-feed-facts {
     margin-block-start: 0.125rem;
     color: var(--text-3);
+    font-size: 0.8125rem;
   }
 
   /* Wraps between its parts, never inside one. */
@@ -136,26 +134,20 @@
     text-decoration: underline;
   }
 
-  /* PROTOTYPE (option e): no avatar, as the site's is just above. */
-  .site-feed-compact {
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding-block: 0.625rem;
-  }
-
-  /* PROTOTYPE (option f). */
+  /* A site with one feed: Follow and its facts in the site's head. */
   .site-head-follow {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem 0.75rem;
     margin-block-start: 0.875rem;
-    font-size: 0.8125rem;
   }
 
   .site-head-follow .site-feed-facts {
-    color: var(--text-3);
+    margin: 0;
   }
 
+  /* "Show N more feeds", past the first few. */
   .site-more-feeds > summary {
     padding: 0.625rem 1rem;
     border-block-end: 1px solid var(--border);
@@ -165,6 +157,11 @@
     cursor: pointer;
   }
 
+  .site-more-feeds > summary:hover {
+    color: var(--text);
+  }
+
+  /* Which feeds Recent posts come from, when it's only some. */
   .site-posts-from {
     padding: 0.625rem 1rem;
     border-block-end: 1px solid var(--border);
@@ -172,6 +169,8 @@
     font-size: 0.8125rem;
   }
 
+  /* The page's foot: when its feeds were last looked for, and a quiet
+     button to look again. */
   .site-recheck {
     padding: 1.25rem 1rem 2rem;
     color: var(--text-3);
@@ -183,31 +182,19 @@
     display: inline;
     padding: 0;
     border: 0;
+    border-radius: 0;
     background: none;
     color: var(--accent);
     font: inherit;
     text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
     cursor: pointer;
   }
 
-  .tab-count {
-    color: var(--text-3);
-    font-weight: 500;
-  }
-
-  .site-feed .site-feed-latest {
-    margin-block-start: 0.25rem;
-    font-size: 0.875rem;
-  }
-
-  .site-feed-latest a {
-    color: var(--text-2);
-    text-decoration: none;
-  }
-
-  .site-feed-latest a:hover {
-    color: var(--text);
-    text-decoration: underline;
+  .site-recheck-button:hover {
+    background: none;
+    text-decoration-thickness: 2px;
   }
 
   /* Only sites with two or more subscriptions get a header, so a group

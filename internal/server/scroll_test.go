@@ -433,7 +433,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 		label, busy  string // the button's label and busy label; "" for a form that isn't busy
 	}{
 		{"discover", "/lookups", "discover", "Look up example.com", "Looking up example.com…"},
-		{"site", "/lookups", "reading", "Check for new feeds", "Checking for new feeds…"},
+		{"site", "/lookups", "reading", "Check example.com for new feeds", "Checking example.com for new feeds…"},
 		{"feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
 		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
 		{"import", "/settings/import", "account", "Import", "Importing…"},

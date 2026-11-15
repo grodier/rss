@@ -182,6 +182,11 @@ The page shows the sections as chips linking to their anchors, then each section
 Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
 With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
 
+**Import on Discover.** With no query, Discover also says something about importing, decided by `discoverImportFor` from what the account has done, so it needs no stored state and no dismiss button.
+While the reader's latest import (`ImportRepository.ListByUser` with a limit of 1) has feeds pending or running, a card above the chips shows its progress as on load, without polling ("{done} of {total} feeds so far", a `<progress>` bar) and links to its page, which updates in place.
+Otherwise a reader who has never imported and follows fewer than 10 feeds (`importOfferBelow`, `SubscriptionRepository.Count`) gets a card offering import, linking to `/settings/import`; anyone else gets a one-line link at the end of the page.
+With a query, none of them shows, as live search replaces the container they're in.
+
 **A section's page.** Each section's head on Discover links "All {Total} ›" to its page, `GET /discover/sections/{slug}` (`discoverSectionHandler`), whose head has "Discover" as a small link above the section's name, then two tabs, Feeds and Recent posts, each its own page with `aria-current`, in the timeline tabs' style (`timeline-tabs.ts` slides the underline between them); an unknown slug is a 404 (`DiscoverRepository.Section`).
 Feeds lists every catalog feed in the section that isn't gone, followed or not (`SectionFeeds`), the most recently posting first, as Discover's rows (the `discover-feed` partial, shared with Discover); a feed the reader follows shows "✓ Following" linking to its page in place of Follow, since the page answers "what's in this section", not "what's new to me".
 Recent posts, `GET /discover/sections/{slug}/posts` (`discoverSectionPostsHandler`), is those feeds' articles, newest first, as article rows paged like a feed page (`SectionPosts`, one `articles_feed_sort_idx` scan per feed, merged; "Older posts" with infinite scroll); each row names its feed by `DiscoverFeed.Label` and has Follow in its foot, beside Star, Share and Save, when the reader doesn't follow the feed (`articleRow.Follow`).
@@ -208,7 +213,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 
 **Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
-**Why:** "Feed discovery" in decisions.md.
+**Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 
 ## Feed ingestion and background refresh
 

@@ -268,8 +268,8 @@ type feedPage struct {
 	Sections []rss.Section
 }
 
-// discoverForm puts a feed in Discover's catalog under a section, or takes
-// it out with "".
+// discoverForm puts a feed in Discover's catalog under the section with
+// this ID, or takes it out with "".
 type discoverForm struct {
 	Section             string `form:"section"`
 	validator.Validator `form:"-"`
@@ -302,11 +302,17 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderFeed(w, r, http.StatusOK, feed, discoverForm{Section: feed.Section})
+	sections, err := s.services.Feeds.DiscoverSections(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	s.renderFeed(w, r, http.StatusOK, feed, sections, discoverForm{Section: feed.Section.ID})
 }
 
-// renderFeed shows feed's page with status and form in its Discover panel.
-func (s *Server) renderFeed(w http.ResponseWriter, r *http.Request, status int, feed rss.AdminFeed, form discoverForm) {
+// renderFeed shows feed's page with status, and sections and form in its
+// Discover panel.
+func (s *Server) renderFeed(w http.ResponseWriter, r *http.Request, status int, feed rss.AdminFeed, sections []rss.Section, form discoverForm) {
 	now := s.now()
 	data := feedPage{
 		Nav:       s.nav(r, "feeds"),
@@ -318,7 +324,7 @@ func (s *Server) renderFeed(w http.ResponseWriter, r *http.Request, status int, 
 		History:   auditHistoryURL("feed", feed.ID),
 		Now:       now,
 		Discover:  form,
-		Sections:  rss.Sections,
+		Sections:  sections,
 	}
 	switch {
 	case data.Problem.Text != "":
@@ -346,17 +352,31 @@ func (s *Server) feedDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		s.formErrorResponse(w, r, err)
 		return
 	}
-	_, known := rss.SectionNamed(form.Section)
-	form.CheckField(form.Section == "" || known, "section", "Choose one of the sections.")
-	if !form.Valid() {
-		s.renderFeed(w, r, http.StatusUnprocessableEntity, feed, form)
+	sections, err := s.services.Feeds.DiscoverSections(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
 		return
 	}
-	err := s.services.Feeds.SetDiscoverSection(r.Context(), feed.ID, form.Section, s.actor(r))
+	var name string
+	for _, sec := range sections {
+		if sec.ID == form.Section {
+			name = sec.Name
+		}
+	}
+	form.CheckField(form.Section == "" || name != "", "section", "Choose one of the sections.")
+	if form.Valid() {
+		err = s.services.Feeds.SetDiscoverSection(r.Context(), feed.ID, form.Section, s.actor(r))
+		switch {
+		case errors.Is(err, rss.ErrUnknownSection):
+			// Deleted since the list was read.
+			form.AddFieldError("section", "Choose one of the sections.")
+		case errors.Is(err, rss.ErrFeedGone):
+			form.AddFieldError("section", "This feed is gone, so it can't be in Discover. Clear gone first if it's back.")
+		}
+	}
 	switch {
-	case errors.Is(err, rss.ErrFeedGone):
-		form.AddFieldError("section", "This feed is gone, so it can't be in Discover. Clear gone first if it's back.")
-		s.renderFeed(w, r, http.StatusUnprocessableEntity, feed, form)
+	case !form.Valid():
+		s.renderFeed(w, r, http.StatusUnprocessableEntity, feed, sections, form)
 		return
 	case errors.Is(err, rss.ErrNoRecord):
 		s.notFoundResponse(w, r)
@@ -366,8 +386,8 @@ func (s *Server) feedDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg := "Not in Discover."
-	if form.Section != "" {
-		msg = "In Discover under " + form.Section + "."
+	if name != "" {
+		msg = "In Discover under " + name + "."
 	}
 	s.backTo(w, r, "/feeds/"+feed.ID, msg)
 }

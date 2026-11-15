@@ -231,7 +231,7 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               │          ├──< saves >── users
                               │          ├──< stars >── users
                               │          └──< enrich_jobs
-                              ├── discover_feeds (one row per feed in Discover's catalog)
+                              ├── discover_feeds (one row per feed in Discover's catalog) >── discover_sections
                               │
                             sites ──< lookups (site_id, once found)
                               └──< site_icons
@@ -274,8 +274,9 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   `Unsubscribe` keeps the reader's rows for the feed, so following it again finds its posts where they were.
   `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
   Every timeline that isn't starred-only or shared reads them (`ListTimeline`): an entry is at the reader's row's position when there is one, else at `timeline_at`, and rows of feeds the reader no longer follows are left out by a join with `subscriptions`.
-- **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section, a `rss.Sections` name (the database doesn't check it; `SetDiscoverSection` does).
+- **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section's ID.
   Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
+  `discover_sections` is the list of sections, in `position` order; code never names one, so renaming or adding a section is a row change, and a section with feeds under it can't be deleted.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.

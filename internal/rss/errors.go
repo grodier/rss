@@ -20,9 +20,10 @@ var (
 	ErrInviteUnusable = errors.New("invite can't be used")
 )
 
-// Discover's catalog (see Sections).
+// Discover's catalog (see Section).
 var (
-	// ErrUnknownSection is a section that isn't one of Sections.
+	// ErrUnknownSection is a section ID that isn't one of Discover's
+	// sections.
 	ErrUnknownSection = errors.New("rss: not one of Discover's sections")
 	// ErrFeedGone is a feed that answered 410 Gone, which can't be put in
 	// Discover.

@@ -173,7 +173,7 @@ The site page lists the feeds with subscribe buttons and offers "Check for new f
 A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
 The command logs the sites it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
 
-**Discover's catalog.** The feeds picked for Discover, each under one of `rss.Sections`, are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
+**Discover's catalog.** The feeds picked for Discover, each under one of Discover's sections (`discover_sections`, seeded by its migration), are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
 The seed list gets sites and their feeds into the database; the catalog is which of those feeds Discover shows.
 Nothing shows the catalog to readers yet.
 
@@ -643,8 +643,8 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    - Check for new feeds (`CheckForFeeds`, `site.lookup`) queues a lookup of the site's home page at a reader's priority with the reader's `LookupRepository.Request` statement (`requestLookup`, in the action's transaction) and no time-to-live, so a finished lookup runs again; one already pending or running stays as it is.
    - Check the icon again (`CheckIcon`, `site.check_icon`) makes the site's icon due now.
 5. **Discover's catalog.** A feed's Discover panel says whether it's in the catalog and under which section, as its heading, with a section select and Save posting to `POST /feeds/{id}/discover` (`feedDiscoverHandler`); the empty choice takes it out.
-   `AdminFeedRepository.SetDiscoverSection` changes the feed's `discover_feeds` row and records `feed.discover` with the section before and after, in one transaction; saving the section it already has records nothing.
-   A section not in `rss.Sections` and adding a gone feed are refused with a field error (422); a gone feed already in the catalog can still be taken out.
+   `AdminFeedRepository.SetDiscoverSection` changes the feed's `discover_feeds` row and records `feed.discover` with the section's ID and name before and after, in one transaction, so the entry still reads after a rename; saving the section it already has records nothing.
+   The panel's choices are `discover_sections` in their order (`DiscoverSections`), posted by ID; a section that doesn't exist and adding a gone feed are refused with a field error (422); a gone feed already in the catalog can still be taken out.
 
 **Start at:**
 
@@ -652,7 +652,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. `internal/psql/admin_feeds.go` (`ListFeeds`, `updateFeed`, `CheckForFeeds`, `SetDiscoverSection`).
 3. `internal/ui/admin/feeds.html`, `feed.html`, `site.html` and `partials/feeds.html`.
 
-**Tests:** `internal/admin/feeds_test.go`; `internal/psql/admin_feeds_test.go`; `internal/rss/sections_test.go`.
+**Tests:** `internal/admin/feeds_test.go`; `internal/psql/admin_feeds_test.go`.
 
 ### Web performance
 

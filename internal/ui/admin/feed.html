@@ -54,15 +54,15 @@
       </section>
 
       <section class="admin-section" aria-labelledby="discover-heading">
-        <h2 id="discover-heading" class="health-title">{{with .Section}}In Discover under {{.}}{{else}}Not in Discover{{end}}</h2>
-        <p class="health-line" id="section-hint">{{if .Section}}New readers find it in Discover’s {{.Section}} section.{{else}}Pick a section to show it to new readers in Discover.{{end}}</p>
+        <h2 id="discover-heading" class="health-title">{{with .Section.Name}}In Discover under {{.}}{{else}}Not in Discover{{end}}</h2>
+        <p class="health-line" id="section-hint">{{with .Section.Name}}New readers find it in Discover’s {{.}} section.{{else}}Pick a section to show it to new readers in Discover.{{end}}</p>
         <form class="filters discover-form" action="/feeds/{{.ID}}/discover" method="post">
           <div>
             <label for="section">Section</label>
             <select id="section" name="section" aria-describedby="section-hint{{with $.Discover.FieldErrors.section}} section-error{{end}}"
               {{with $.Discover.FieldErrors.section}}aria-invalid="true" autofocus{{end}}>
               <option value="">Not in Discover</option>
-              {{range $.Sections}}<option value="{{.Name}}"{{if eq .Name $.Discover.Section}} selected{{end}}>{{.Name}}</option>
+              {{range $.Sections}}<option value="{{.ID}}"{{if eq .ID $.Discover.Section}} selected{{end}}>{{.Name}}</option>
               {{end}}
             </select>
           </div>

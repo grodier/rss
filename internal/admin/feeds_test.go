@@ -93,11 +93,24 @@ func (f *fakeFeeds) CheckForFeeds(_ context.Context, id string, by rss.AuditActo
 	return rss.Lookup{Status: rss.LookupPending}, f.call("lookup", id, by)
 }
 
-func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, section string, by rss.AuditActor) error {
-	if section != "" && !f.feed.GoneAt.IsZero() && f.feed.Section != section {
+// testSections are the fake's Discover sections.
+var testSections = []rss.Section{
+	{ID: "40000000-0000-4000-8000-000000000001", Slug: "science", Name: "Science"},
+	{ID: "40000000-0000-4000-8000-000000000002", Slug: "food", Name: "Food"},
+	{ID: "40000000-0000-4000-8000-000000000003", Slug: "film-and-tv", Name: "Film and TV"},
+}
+
+func (f *fakeFeeds) DiscoverSections(context.Context) ([]rss.Section, error) {
+	return testSections, nil
+}
+
+// SetDiscoverSection refuses to add a gone feed, as the repository does,
+// then records the call as "discover:" and the section's ID.
+func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, sectionID string, by rss.AuditActor) error {
+	if sectionID != "" && !f.feed.GoneAt.IsZero() && f.feed.Section.ID != sectionID {
 		return rss.ErrFeedGone
 	}
-	return f.call("discover:"+section, id, by)
+	return f.call("discover:"+sectionID, id, by)
 }
 
 // fakeRefresher returns res and err, keeping the feeds it refreshed and
@@ -613,8 +626,9 @@ func TestFeedPageStates(t *testing.T) {
 }
 
 func TestFeedDiscoverPanel(t *testing.T) {
+	science, food := testSections[0], testSections[1]
 	inFood := testFeed()
-	inFood.Section = "Food"
+	inFood.Section = food
 	tests := []struct {
 		name string
 		feed rss.AdminFeed
@@ -626,14 +640,14 @@ func TestFeedDiscoverPanel(t *testing.T) {
 		}},
 		{"in Discover", inFood, []string{
 			`<h2 id="discover-heading" class="health-title">In Discover under Food</h2>`,
-			`<option value="Food" selected>Food</option>`,
+			`<option value="` + food.ID + `" selected>Food</option>`,
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := feedsServer(t, &fakeFeeds{feed: tt.feed}, &fakeRefresher{}, &fakeAudit{})
 			body := b.get(t, "/feeds/"+feedID(1)).Body.String()
-			for _, want := range append(tt.want, `action="/feeds/`+feedID(1)+`/discover"`, `<option value="Film and TV">Film and TV</option>`) {
+			for _, want := range append(tt.want, `action="/feeds/`+feedID(1)+`/discover"`, `<option value="`+science.ID+`">Science</option>`) {
 				if !strings.Contains(body, want) {
 					t.Errorf("feed page lacks %s", want)
 				}
@@ -646,7 +660,7 @@ func TestFeedDiscoverPanel(t *testing.T) {
 
 	// The site page's feed table names each feed's section.
 	site := testSite()
-	site.Feeds[0].Section = "Food"
+	site.Feeds[0].Section = food
 	b := feedsServer(t, &fakeFeeds{site: site}, &fakeRefresher{}, &fakeAudit{})
 	if body := b.get(t, "/sites/"+siteID(1)).Body.String(); !strings.Contains(body, `<small>example.com · Discover: Food</small>`) {
 		t.Error("site page doesn't name its feed's Discover section")
@@ -654,10 +668,11 @@ func TestFeedDiscoverPanel(t *testing.T) {
 }
 
 func TestFeedDiscover(t *testing.T) {
+	science, food := testSections[0], testSections[1]
 	gone := testFeed()
 	gone.GoneAt = testNow
 	goneInFood := gone
-	goneInFood.Section = "Food"
+	goneInFood.Section = food
 	tests := []struct {
 		name    string
 		feed    rss.AdminFeed
@@ -666,11 +681,11 @@ func TestFeedDiscover(t *testing.T) {
 		flash   string // after the redirect; "" when the form is shown again with 422
 		error   string
 	}{
-		{"set", testFeed(), "Science", "discover:Science", "In Discover under Science.", ""},
+		{"set", testFeed(), science.ID, "discover:" + science.ID, "In Discover under Science.", ""},
 		{"remove", testFeed(), "", "discover:", "Not in Discover.", ""},
-		{"unknown section", testFeed(), "Astrology", "", "", "Choose one of the sections."},
-		{"a section's slug", testFeed(), "film-and-tv", "", "", "Choose one of the sections."},
-		{"gone", gone, "Science", "", "", "This feed is gone, so it can&#39;t be in Discover."},
+		{"unknown section", testFeed(), "40000000-0000-4000-8000-000000000099", "", "", "Choose one of the sections."},
+		{"a section's name", testFeed(), "Science", "", "", "Choose one of the sections."},
+		{"gone", gone, science.ID, "", "", "This feed is gone, so it can&#39;t be in Discover."},
 		{"gone, taken out", goneInFood, "", "discover:", "Not in Discover.", ""},
 	}
 	for _, tt := range tests {
@@ -714,11 +729,11 @@ func TestFeedDiscover(t *testing.T) {
 
 	b := feedsServer(t, &fakeFeeds{feed: testFeed(), err: errors.New("boom")}, &fakeRefresher{}, &fakeAudit{})
 	for _, path := range []string{"/feeds/" + feedID(2) + "/discover", "/feeds/nope/discover"} {
-		if rr := b.post(t, path, url.Values{"section": {"Science"}}); rr.Code != http.StatusNotFound {
+		if rr := b.post(t, path, url.Values{"section": {testSections[0].ID}}); rr.Code != http.StatusNotFound {
 			t.Errorf("POST %s = %d, want 404", path, rr.Code)
 		}
 	}
-	if rr := b.post(t, "/feeds/"+feedID(1)+"/discover", url.Values{"section": {"Science"}}); rr.Code != http.StatusInternalServerError {
+	if rr := b.post(t, "/feeds/"+feedID(1)+"/discover", url.Values{"section": {testSections[0].ID}}); rr.Code != http.StatusInternalServerError {
 		t.Errorf("POST with a failing store = %d, want 500", rr.Code)
 	}
 }

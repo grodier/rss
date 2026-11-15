@@ -16,7 +16,7 @@
               {{$now := .Now}}
               {{range .Rows}}
               <tr>
-                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a><small>{{.SiteHost}}{{with .Section}} · Discover: {{.}}{{end}}</small></td>
+                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a><small>{{.SiteHost}}{{with .Section.Name}} · Discover: {{.}}{{end}}</small></td>
                 <td class="feed-problem">{{template "problem-text" .Problem}}</td>
                 <td class="num">{{count .Subscribers}}</td>
                 <td class="num">{{perWeek .PostsPerWeek}}</td>

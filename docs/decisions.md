@@ -325,7 +325,10 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   Following a site's "main" feed, the first its page advertised, was planned (#629) and dropped in review: a site that lists its comments or podcast feed first would make a new reader follow the wrong thing, and one bad guess is a poor first experience.
   So nothing guesses: Discover's rows are picked feeds (a newspaper's Science and Food feeds can sit in different sections), the site page keeps a Follow per feed with what helps choose (#635), and the waitlist's sites are followed only when the feed is unambiguous (#640).
   "The feed most people follow" was rejected as a way to pick, since it's cross-reader data.
-- **Sections are back, for Discover only** (#628): one per catalog feed, from a master list in code (`rss.Sections`).
+- **Sections are back, for Discover only** (#628): one per catalog feed, from a fixed list, so a typo can't create a section.
+  The list is a table (`discover_sections`), not code, changed in #628's review from the planned list in code: renaming, dropping or adding a section shouldn't need a migration of the catalog or a deploy, and the owner expects to edit them from the admin later (dropping one nobody picks, or a write-in option).
+  Feeds refer to a section by its ID, so a rename changes nothing else; a section with feeds under it can't be deleted until they're moved.
+  The migration seeds the starting list; there's no admin page for sections yet.
   They never appear on subscriptions, aren't tags and readers can't edit them, which is what made #447's topics awkward beside private tags.
 - **The catalog lives in the database, edited in the admin** (#628), not in the seed list: production data is kept now that schema changes are migrations, and bulk upload and a model's suggestions (#649) write to it, so a file would be a second source of truth.
   The seed list keeps its job of looking sites up before anyone searches for them.

@@ -13,6 +13,8 @@ import (
 const (
 	searchMaxChars = 200
 	searchLimit    = 20
+	// discoverPerSection is how many feeds each of Discover's sections shows.
+	discoverPerSection = 3
 )
 
 // appLinkMessage is shown in place of a lookup for an address on the app
@@ -38,8 +40,12 @@ type discoverData struct {
 	AppLink bool
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
-	// Icons holds the icon URLs of the result sites that have one.
+	// Icons holds the icon URLs of the result sites, or of the sections'
+	// sites, that have one.
 	Icons map[string]string
+	// Sections is Discover's catalog as this reader sees it, shown when
+	// there's no query; empty when the catalog has nothing for them.
+	Sections []rss.DiscoverSection
 }
 
 // discoverHandler searches the database only. GET requests are not covered by
@@ -59,7 +65,24 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case !data.Form.Valid():
 		status = http.StatusUnprocessableEntity
-	case data.Form.Q != "":
+	case data.Form.Q == "":
+		userID, _ := s.authenticatedUserID(r)
+		sections, err := s.services.DiscoverService.Sections(r.Context(), userID, discoverPerSection)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		data.Sections = sections
+		var siteIDs []string
+		for _, sec := range sections {
+			for _, f := range sec.Feeds {
+				siteIDs = append(siteIDs, f.Site.ID)
+			}
+		}
+		if len(siteIDs) > 0 {
+			data.Icons = s.pageIcons(r, siteIDs)
+		}
+	default:
 		var siteKey string
 		if u, err := discovery.ParseInput(data.Form.Q); err == nil {
 			siteKey = discovery.SiteKey(u)

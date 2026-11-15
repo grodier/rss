@@ -238,11 +238,18 @@ func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ct
 
 	// save-star.ts posts the form with fetch and only needs to know it worked;
 	// a form submission goes back to the row it came from.
-	if m := r.Header.Get("Sec-Fetch-Mode"); m == "cors" || m == "same-origin" {
+	if fetched(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
+}
+
+// fetched reports whether r was sent by a script's fetch rather than a form
+// submission or a navigation, from its Sec-Fetch-Mode.
+func fetched(r *http.Request) bool {
+	m := r.Header.Get("Sec-Fetch-Mode")
+	return m == "cors" || m == "same-origin"
 }
 
 // withFragment returns path with its fragment, if any, replaced by fragment.

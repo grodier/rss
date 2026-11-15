@@ -94,13 +94,19 @@ describe("live-search", () => {
     expect(liveRegion()).toBe(said);
   });
 
-  it("empties the results without a request when the box is emptied", async () => {
+  it("brings the no-query page back at once when the box is emptied, without announcing", async () => {
     history.replaceState(null, "", "/discover?q=load");
+    fetchMock.mockImplementation(
+      async () => new Response(`<main><div data-search-results><section id="section-news">News</section></div></main>`),
+    );
     type("");
-    expect(results().children).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(new URL("/discover", location.href).href);
+    expect(results().querySelector("#section-news")).not.toBeNull();
     expect(location.pathname + location.search).toBe("/discover");
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(liveRegion()).toBe("");
   });
 
   it.each([

@@ -1271,12 +1271,23 @@ func TestFeedRefreshHandlerDeadline(t *testing.T) {
 // left in the session.
 func postSubscription(t *testing.T, s *Server, handler http.HandlerFunc, userID, feedID, returnTo string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
+	return postSubscriptionMode(t, s, handler, userID, feedID, returnTo, "")
+}
+
+// postSubscriptionMode is postSubscription with the Sec-Fetch-Mode header
+// set to mode, as a browser sets it for fetch ("same-origin"); an empty
+// mode sends no header.
+func postSubscriptionMode(t *testing.T, s *Server, handler http.HandlerFunc, userID, feedID, returnTo, mode string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
 	form := url.Values{}
 	if returnTo != "" {
 		form.Set("return_to", returnTo)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/feeds/x/subscribe", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if mode != "" {
+		req.Header.Set("Sec-Fetch-Mode", mode)
+	}
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", feedID)
 	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
@@ -1416,6 +1427,27 @@ func TestFeedSubscribeHandler(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 	})
+}
+
+// TestFeedFollowFetch checks that Follow and Unfollow posted with fetch
+// (save-star.ts, on Discover) get a 204 and no flash, since the page says
+// what happened itself, and that a gone feed still gets its redirect.
+func TestFeedFollowFetch(t *testing.T) {
+	feed := rss.Feed{Title: "Example Feed"}
+	for _, mode := range []string{"same-origin", "cors"} {
+		s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{})
+		for name, handler := range map[string]http.HandlerFunc{"subscribe": s.feedSubscribeHandler, "unsubscribe": s.feedUnsubscribeHandler} {
+			rr, flash := postSubscriptionMode(t, s, handler, "user-1", testFeedID, "/discover#feed-"+testFeedID, mode)
+			if rr.Code != http.StatusNoContent || flash != "" {
+				t.Errorf("%s (%s): status %d, flash %q; want 204, none", name, mode, rr.Code, flash)
+			}
+		}
+	}
+
+	gone := subscriptionServer(t, rss.Feed{Title: "Old Feed", GoneAt: time.Now()}, nil, &fakeSubscriptionStore{})
+	if rr, _ := postSubscriptionMode(t, gone, gone.feedSubscribeHandler, "user-1", testFeedID, "/discover", "same-origin"); rr.Code != http.StatusSeeOther {
+		t.Errorf("gone feed: status %d, want 303, so save-star.ts submits the form for the flash", rr.Code)
+	}
 }
 
 func TestFeedUnsubscribeHandler(t *testing.T) {

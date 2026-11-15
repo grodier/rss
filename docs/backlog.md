@@ -619,6 +619,8 @@ Other background work (#302, #304, #306):
   *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
 - [ ] **Discover reads every section on each visit** (#633, #643).
   The no-query page reads each section's first catalog feeds that the reader doesn't follow, their latest titles and the reader's followed count per section, in one or two statements per load, computed for each reader rather than stored.
+  #633's `DiscoverRepository.Sections` is one statement that probes `articles_feed_sort_idx` once per unfollowed catalog feed to order each section by its newest post: on `make db/loadseed`'s data (750,000 articles) with 4,000 catalog feeds (1,000 with articles) and a reader following 300 feeds, it took 20 ms warm (planning 1.5–2 ms) and 950 ms with a cold cache right after a restart; the probes grow with the catalog, not with readers.
+  A stored latest-article time on `feeds`, kept by `saveArticles`, would drop the probes.
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page, or the query in `pg_stat_statements`.
   *Fix:* cache each reader's sections for a few minutes, or precompute the per-section lists when the seed or refreshes change them.
 

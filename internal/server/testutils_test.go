@@ -45,6 +45,11 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.StarService == nil {
 		svc.StarService = &fakeStarStore{}
 	}
+	// Discover with no query shows the catalog; a test that doesn't care
+	// gets an empty one.
+	if svc.DiscoverService == nil {
+		svc.DiscoverService = emptyCatalog()
+	}
 	// Every timeline page lists the tabs; a test that doesn't care gets none.
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}

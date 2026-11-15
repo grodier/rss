@@ -149,8 +149,8 @@ Either way the page then shows the link once, since only its hash is stored.
 
 ## Discover, site lookups and discovery
 
-**Flow.** Discover (`GET /discover?q=…`, the fourth tab) only searches the database: sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
-With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query.
+**Flow.** Discover (`GET /discover`, the fourth tab) shows Discover's catalog by section when there's no query, and searches the database when there is one (`?q=…`): sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
+With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
 With JavaScript, Look up and the site page's "Check for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
@@ -175,11 +175,16 @@ The command logs the sites it retried and those that failed too recently to retr
 
 **Discover's catalog.** The feeds picked for Discover, each under one of Discover's sections (`discover_sections`, seeded by its migration), are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
 The seed list gets sites and their feeds into the database; the catalog is which of those feeds Discover shows.
-Nothing shows the catalog to readers yet.
+
+**Discover's sections.** With no query, `discoverHandler` reads `DiscoverRepository.Sections` with 3 feeds a section (`discoverPerSection`), in one statement for every section: the catalog's feeds the reader doesn't follow and that aren't gone, each section's first 3 by their newest article (one probe of `articles_feed_sort_idx` per feed), how many the section has (`Total`, for #634's "All N"), and each kept feed's 3 newest articles.
+A section with none of them is left out, chip and all; an empty catalog leaves the search box alone.
+The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest {when}" (`postingRate`, `since`), a "Latest posts" disclosure with the 3 titles, and Follow.
+Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
+With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
 
 **Start at:**
 
-1. `internal/server/discover.go` and `internal/psql/search.go`; live search is `web/app/features/live-search.ts`.
+1. `internal/server/discover.go`, `internal/psql/search.go` and `discover.go` (`Sections`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
@@ -187,7 +192,7 @@ Nothing shows the catalog to readers yet.
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`).
 
-**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
 
 **Why:** "Feed discovery" in decisions.md.
 

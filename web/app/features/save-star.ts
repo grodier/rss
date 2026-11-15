@@ -1,9 +1,12 @@
+import { announce } from "../../shared/lib/announce";
 import { busyDelay } from "../../shared/lib/busy-delay";
 
-// Save and Star buttons: form[data-toggle] posts to /articles/{id}/save,
-// /unsave, /star or /unstar. Post it with fetch instead, then flip
-// aria-pressed (rows.css swaps the icon) and the action, so the page
-// doesn't reload. Success is a 204; on anything else, including a
+// Save, Star and Discover's Follow buttons: form[data-toggle] posts to
+// /articles/{id}/save, /unsave, /star or /unstar, or /feeds/{id}/subscribe
+// or /unsubscribe. Post it with fetch instead, then flip aria-pressed (the
+// stylesheet swaps the icon or the label) and the action, so the page
+// doesn't reload, and announce the form's data-announce-pressed or
+// data-announce-unpressed, if it has one, in the polite live region. Success is a 204; on anything else, including a
 // redirect to the login page, submit the form normally so the round trip
 // shows what happened. Delegated, so rows added by infinite scroll
 // work too.
@@ -46,10 +49,12 @@ export function init(): void {
       "action",
       form
         .getAttribute("action")!
-        .replace(/\/(un)?(save|star)$/, (_: string, un: string | undefined, verb: string) =>
+        .replace(/\/(un)?(save|star|subscribe)$/, (_: string, un: string | undefined, verb: string) =>
           pressed ? `/un${verb}` : `/${verb}`,
         ),
     );
+    const message = pressed ? form.dataset.announcePressed : form.dataset.announceUnpressed;
+    if (message) announce(message);
     delete button.dataset.justToggled;
     if (pressed) {
       void button.offsetWidth; // restart the animation

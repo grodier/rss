@@ -239,7 +239,7 @@ func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.redirectWithFlash(w, r, form, feed, "Following "+feedLabel(feed)+".")
+	s.toggledFeed(w, r, form, feed, "Following "+feedLabel(feed)+".")
 }
 
 // feedUnsubscribeHandler removes the user's subscription to a feed, including
@@ -256,7 +256,18 @@ func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	s.redirectWithFlash(w, r, form, feed, "Unfollowed "+feedLabel(feed)+".")
+	s.toggledFeed(w, r, form, feed, "Unfollowed "+feedLabel(feed)+".")
+}
+
+// toggledFeed answers a successful follow or unfollow: a 204 when save-star.ts
+// posted it with fetch, which says what happened itself, else a redirect
+// back with msg as the flash.
+func (s *Server) toggledFeed(w http.ResponseWriter, r *http.Request, form returnForm, feed rss.Feed, msg string) {
+	if fetched(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	s.redirectWithFlash(w, r, form, feed, msg)
 }
 
 // subscriptionTarget reads what the subscribe and unsubscribe handlers share:

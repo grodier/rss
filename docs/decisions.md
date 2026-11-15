@@ -849,6 +849,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **Images in articles are left as they are in dark** (#413), even transparent diagrams and logos with black text, since a white tile behind every image looks worse for the common case; revisit if testers report them.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
+- **Discover lists its catalog as sections of feed rows, each with a "Latest posts" peek** (#633, option (a) of three at its design checkpoint): a row shows the site and its host, the feed's own title when it isn't just the site's name, "About N posts a week · Latest 2 days ago", and a `<details>` with its 3 newest titles, then Follow.
+  Section chips at the top scroll sideways on phones rather than wrapping; each section is a `list-head` and rows, like My feeds; three feeds a section.
+  The meta line wraps between its parts, never inside one.
+  Follow is a primary pill until pressed, then a quiet "Following", and its accessible name includes the feed's title, so a site's two catalog feeds aren't both "Follow Bitwise".
+  Rejected: the newest title inline in place of the peek (one post stands for the whole feed, each row is a line taller, and article text in Discover's lists reads as a second Home), and a two-column grid on wide screens (the reading column is about 600 px even at 1280, so tiles broke hosts mid-word and left holes, for a second layout to maintain).
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).

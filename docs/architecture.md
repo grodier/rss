@@ -199,7 +199,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
 | `GET /sites/{id}` | yes | A site and its feeds |
-| `GET /discover` | yes | Discover: search sites and feeds in the database |
+| `GET /discover` | yes | Discover: the catalog's sections, or with `?q=` a search of sites and feeds in the database |
 | `POST /lookups`, `GET /lookups/{id}` | yes | Queue a site lookup; its status page |
 | `GET /settings` | yes | The Settings home: the account and the other categories |
 | `GET /settings/account`, `/reading`, `/data`, `/help` | yes | Settings' category pages |
@@ -277,6 +277,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
 - **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section's ID.
   Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
   `discover_sections` is the list of sections, in `position` order; code never names one, so renaming or adding a section is a row change, and a section with feeds under it can't be deleted.
+  `DiscoverRepository.Sections` reads it for each reader on each visit, leaving out the feeds they follow with a `NOT EXISTS` on `subscriptions`; nothing per reader is stored.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).
 - **Ownership by composite foreign keys:** `subscription_tags`, `timeline_tags` and `timeline_feeds` reference `(id, user_id)` pairs, so a subscription can only carry its own user's tags and a timeline can only name its own user's tags and subscriptions, and repositories need no ownership check for them.
   `tags.name` and `users.email` are `citext`, so unique ignoring case.

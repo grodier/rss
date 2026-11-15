@@ -121,6 +121,15 @@ type SearchStore interface {
 	Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error)
 }
 
+// DiscoverStore reads Discover's catalog as a reader sees it; satisfied by
+// *psql.DiscoverRepository.
+type DiscoverStore interface {
+	// Sections returns Discover's sections in order, each with up to
+	// perSection of its catalog feeds userID doesn't follow; see
+	// psql.DiscoverRepository.Sections.
+	Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error)
+}
+
 // LookupStore queues and reads site lookups.
 type LookupStore interface {
 	Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error)
@@ -366,6 +375,7 @@ type Services struct {
 	WaitlistService     WaitlistStore
 	InviteService       InviteStore
 	SearchService       SearchStore
+	DiscoverService     DiscoverStore
 	SiteService         SiteStore
 	LookupService       LookupStore
 	Refresher           FeedRefresher

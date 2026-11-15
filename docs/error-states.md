@@ -212,7 +212,8 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, without a request) | Discover, 200 | Just the search box | n/a | ok |
+| R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, it fetches the no-query page) | Discover, 200 | Discover's sections under the search box; with an empty catalog (or every catalog feed followed or gone), just the search box | n/a | new (#633) |
+| R1a Section with nothing to show | A section with no catalog feeds, or whose feeds the reader all follows | Discover, 200 | The section and its chip are left out | n/a | new (#633) |
 | R2 No results | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Discover, 200 | "No sites or feeds match “zzzz”."; live search announces "No sites" | Yes (L1) | ok |
 | R3 Special characters | `/discover?q=%25`, `_`, `"<script>\` | Discover, 200 | As R2; matched literally and escaped | Yes | ok |
 | R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, above the search box | "Search must be 200 characters or fewer"; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |

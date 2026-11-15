@@ -24,7 +24,8 @@ func NewWaitlistRepository(db *sql.DB) *WaitlistRepository {
 const waitlistColumns = `id, email, name, sites, ` + waitlistSectionColumns + `, source, confirmed_at, created_at`
 
 // waitlistSectionColumns are an entry's sections, then the names of those
-// that still exist, in the sections' order.
+// that still exist, in the sections' order. sections is unqualified so it
+// works with the table aliased (w) or not (RETURNING).
 const waitlistSectionColumns = `sections::text[],
 	ARRAY(SELECT ds.name FROM discover_sections ds WHERE ds.id = ANY(sections) ORDER BY ds.position, ds.name)`
 
@@ -36,11 +37,11 @@ func scanWaitlistEntry(row interface{ Scan(...any) error }) (rss.WaitlistEntry, 
 	return e, err
 }
 
-// Join adds e to the waitlist, unconfirmed, with the link token tokenHash.
+// Join adds e to the waitlist, unconfirmed, with the link token tokenHash;
 // e.Sections must be IDs of discover_sections. An unconfirmed entry with
 // the same address gets e's name, sites, sections and source and the new
-// hash, so only the newest link works; it keeps its
-// created_at. rss.ErrDuplicateEmail if the address is already confirmed.
+// hash, so only the newest link works; it keeps its created_at.
+// rss.ErrDuplicateEmail if the address is already confirmed.
 func (r *WaitlistRepository) Join(ctx context.Context, e rss.WaitlistEntry, tokenHash []byte) (rss.WaitlistEntry, error) {
 	stmt := `INSERT INTO waitlist (email, name, sites, sections, source, token_hash)
 		VALUES ($1, $2, $3, $4::uuid[], $5, $6)

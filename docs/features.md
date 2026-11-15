@@ -114,7 +114,7 @@ A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field 
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
 `WaitlistRepository.Join` inserts the entry unconfirmed in one statement: an unconfirmed entry with the same address is refreshed with the new details and token, so only the newest link works, and a confirmed one is `rss.ErrDuplicateEmail`.
 The optional sites answer is kept as typed, for the owner to add to the seed list and to check discovery against before inviting; nothing reads it automatically.
-The optional "What do you like to read?" offers Discover's sections as checkbox chips (`DiscoverRepository.ListSections`, read for every logged-out `/` and every join); the handler keeps only the IDs of sections that exist, once each, in the sections' order (`chosenSections`), and stores them on the entry, replaced like the other answers when joining again.
+The optional "What do you like to read?" offers Discover's sections as check pills, like the timeline form's tags (`DiscoverRepository.ListSections`, read for every logged-out `/` and every join); the handler keeps only the IDs of sections that exist, once each, in the sections' order (`chosenSections`), and stores them on the entry, replaced like the other answers when joining again.
 The handler then queues `waitlist_confirm`, keeps the address in the session as `waitlistJoinedTo` and redirects to `/waitlist/joined`.
 Log in links to the form for people who arrive there without an account.
 

@@ -191,9 +191,10 @@ func TestWaitlistJoin(t *testing.T) {
 		body := getHome(t, s, "/", false).Body.String()
 		assertBodyContains(t, body,
 			`<fieldset class="field section-choices" aria-describedby="sections-hint">`,
+			`<ul class="check-pills" role="list">`,
 			`<legend>What do you like to read? (optional)</legend>`,
-			`<input type="checkbox" name="sections" value="sec-news" /><span>News</span>`,
-			`<input type="checkbox" name="sections" value="sec-film" /><span>Film and TV</span>`,
+			`<input type="checkbox" name="sections" value="sec-news" />`, `</svg>News`,
+			`<input type="checkbox" name="sections" value="sec-film" />`, `</svg>Film and TV`,
 			`<p class="hint" id="sections-hint">We'll show these sections first in Discover.</p>`,
 		)
 		if strings.Contains(body, "checked") {
@@ -307,8 +308,8 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 		}
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			`<input type="checkbox" name="sections" value="sec-food" checked /><span>Food</span>`,
-			`<input type="checkbox" name="sections" value="sec-news" /><span>News</span>`,
+			`<input type="checkbox" name="sections" value="sec-food" checked />`, `</svg>Food`,
+			`<input type="checkbox" name="sections" value="sec-news" />`, `</svg>News`,
 		)
 		if strings.Contains(body, "sec-gone") {
 			t.Error("an unknown section is echoed back")

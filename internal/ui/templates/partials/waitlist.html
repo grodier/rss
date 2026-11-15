@@ -39,13 +39,16 @@
       {{with .Form.FieldErrors.sites}}<p class="error" id="sites-error">{{.}}</p>{{end}}
     </div>
     {{with .Sections}}
-    {{/* Checkboxes styled as chips; the native ones stay for the keyboard
-         and screen readers. */}}
     <fieldset class="field section-choices" aria-describedby="sections-hint">
       <legend>What do you like to read? (optional)</legend>
-      <ul class="choice-chips">
+      <ul class="check-pills" role="list">
         {{range .}}
-        <li><label class="choice-chip"><input type="checkbox" name="sections" value="{{.ID}}"{{if $.Chosen .ID}} checked{{end}} /><span>{{.Name}}</span></label></li>
+        <li>
+          <label class="check-pill">
+            <input type="checkbox" name="sections" value="{{.ID}}"{{if $.Chosen .ID}} checked{{end}} />
+            {{template "icon-check"}}{{.Name}}
+          </label>
+        </li>
         {{end}}
       </ul>
       <p class="hint" id="sections-hint">We'll show these sections first in Discover.</p>

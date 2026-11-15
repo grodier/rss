@@ -65,7 +65,7 @@ func TestWaitlistPage(t *testing.T) {
 		`>Unconfirmed <span class="count">1</span></a>`,
 		`aria-current="page">Waiting`,
 		"Person 1", "person1@example.com", "lwn.net", "hn",
-		"<th scope=\"col\">Sections they'd like to read</th>", "<td>Food, Film and TV</td>",
+		"<th scope=\"col\">Sections they'd like to read</th>", `<td class="clip" title="Food, Film and TV">Food, Film and TV</td>`,
 		"Invite expired 2026-11-09",
 		`name="id" value="` + entryID(1) + `"`,
 		`name="oldest" value="2"`,
@@ -137,7 +137,7 @@ func TestWaitlistReview(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
-		"Invite 2 people", "Person 1", "Person 2", "<td>Food, Film and TV</td>",
+		"Invite 2 people", "Person 1", "Person 2", `<td class="clip" title="Food, Film and TV">Food, Film and TV</td>`,
 		"2 invites. 12 of 100 emails used today, 240 of 3000 this month.",
 		`value="Wave 2026-11-09"`, `name="days" value="14"`,
 		`name="id" value="` + entryID(1) + `"`, `name="id" value="` + entryID(2) + `"`,

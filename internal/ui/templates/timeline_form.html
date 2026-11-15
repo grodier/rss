@@ -197,10 +197,10 @@
      what timeline-form.ts needs to rebuild the summary: a tag's name; a feed's name,
      tag IDs and posting rate. */}}
 {{define "timeline-tag-pills"}}
-<ul class="tag-pills" role="list"{{if eq .Field "include_tags"}} aria-labelledby="include-tags-label"{{else}} aria-label="Leave out feeds with these tags"{{end}}>
+<ul class="check-pills" role="list"{{if eq .Field "include_tags"}} aria-labelledby="include-tags-label"{{else}} aria-label="Leave out feeds with these tags"{{end}}>
   {{range .Tags}}
   <li>
-    <label class="tag-pill">
+    <label class="check-pill">
       <input type="checkbox" name="{{$.Field}}" value="{{.ID}}" data-name="{{.Name}}"{{if index $.Ticked .ID}} checked{{end}}>
       {{template "icon-check"}}{{.Name}}
     </label>

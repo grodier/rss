@@ -69,7 +69,7 @@
                   <td>{{.Name}}</td>
                   <td>{{.Email}}</td>
                   <td class="clip" title="{{.Sites}}">{{if .Sites}}{{.Sites}}{{else}}—{{end}}</td>
-                  <td>{{with .SectionNames}}{{join .}}{{else}}—{{end}}</td>
+                  <td class="clip" title="{{join .SectionNames}}">{{with .SectionNames}}{{join .}}{{else}}—{{end}}</td>
                   <td>{{if .Source}}{{.Source}}{{else}}—{{end}}</td>
                   <td>{{waitlistStatus . $now}}</td>
                 </tr>

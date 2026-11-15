@@ -144,6 +144,8 @@ type FeedStore interface {
 	ClearGone(ctx context.Context, id string, by rss.AuditActor) error
 	CheckIcon(ctx context.Context, id string, by rss.AuditActor) error
 	CheckForFeeds(ctx context.Context, id string, by rss.AuditActor) (rss.Lookup, error)
+	DiscoverSections(ctx context.Context) ([]rss.Section, error)
+	SetDiscoverSection(ctx context.Context, id, sectionID string, by rss.AuditActor) error
 }
 
 // Refresher fetches a feed now and records the outcome on it;

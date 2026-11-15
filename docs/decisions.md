@@ -192,6 +192,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Refresh now is recorded after the fetch, with its outcome** (#581): the refresher records the fetch on the feed as any fetch does, and can't take an `rss.AuditActor`, so the handler records `feed.refresh` itself, the one admin action not recorded in its change's transaction; an entry that says what happened is worth more than one written before it.
   It refuses a gone feed (Clear gone first), since a successful fetch doesn't clear `gone_at`.
 - **A row of filter links too wide for a phone scrolls in its own frame** (#581), like a table, rather than wrapping: the feeds page's six filters don't fit on 320px.
+- **A feed's place in Discover is edited on its admin page, as a status panel** (#628, approved at its design checkpoint): its heading says where the feed stands ("In Discover under Food" or "Not in Discover"), like the fetching panel above it, with a section select and Save under it; the site page's feed table names each feed's section.
+  The feed page is where the choice is made because it shows what the choice needs (posting rate, health, its site); an overview of the catalog by section is #648's Discover page.
+  Rejected: a plain labelled form (it read as foreign to a page of status and figures), a button per section that saves on click (grows with the list, and a stray click saves), and the select in the page head (no room for its hint or error).
+  A gone feed can't be added, since Discover would offer a feed that no longer updates; one already in the catalog can still be taken out.
+  Breadcrumbs on the feed and site pages, which the checkpoint showed were missing, are #655.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability
@@ -320,7 +325,10 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   Following a site's "main" feed, the first its page advertised, was planned (#629) and dropped in review: a site that lists its comments or podcast feed first would make a new reader follow the wrong thing, and one bad guess is a poor first experience.
   So nothing guesses: Discover's rows are picked feeds (a newspaper's Science and Food feeds can sit in different sections), the site page keeps a Follow per feed with what helps choose (#635), and the waitlist's sites are followed only when the feed is unambiguous (#640).
   "The feed most people follow" was rejected as a way to pick, since it's cross-reader data.
-- **Sections are back, for Discover only** (#628): one per catalog feed, from a master list in code (`rss.Sections`).
+- **Sections are back, for Discover only** (#628): one per catalog feed, from a fixed list, so a typo can't create a section.
+  The list is a table (`discover_sections`), not code, changed in #628's review from the planned list in code: renaming, dropping or adding a section shouldn't need a migration of the catalog or a deploy, and the owner expects to edit them from the admin later (dropping one nobody picks, or a write-in option).
+  Feeds refer to a section by its ID, so a rename changes nothing else; a section with feeds under it can't be deleted until they're moved.
+  The migration seeds the starting list; there's no admin page for sections yet.
   They never appear on subscriptions, aren't tags and readers can't edit them, which is what made #447's topics awkward beside private tags.
 - **The catalog lives in the database, edited in the admin** (#628), not in the seed list: production data is kept now that schema changes are migrations, and bulk upload and a model's suggestions (#649) write to it, so a file would be a second source of truth.
   The seed list keeps its job of looking sites up before anyone searches for them.

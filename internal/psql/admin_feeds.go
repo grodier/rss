@@ -61,20 +61,27 @@ var adminFeedSorts = map[string]adminFeedSort{
 }
 
 // adminFeedRowColumns are the columns scanAdminFeedRow reads, for feeds f
-// joined to sites s.
-var adminFeedRowColumns = qualifiedFeedColumns + `, s.host, ` + adminSubscribers("f")
+// joined to sites s: the feed, its site's host, its subscribers and its
+// section in Discover's catalog (empty strings when it isn't in it).
+var adminFeedRowColumns = qualifiedFeedColumns + `, s.host, ` + adminSubscribers("f") + `,
+	COALESCE(fs.id::text, ''), COALESCE(fs.slug, ''), COALESCE(fs.name, '')`
+
+// adminFeedSection joins feeds f to their Discover section as fs, for
+// adminFeedRowColumns.
+const adminFeedSection = `
+	LEFT JOIN discover_feeds fd ON fd.feed_id = f.id
+	LEFT JOIN discover_sections fs ON fs.id = fd.section_id`
 
 // scanAdminFeedRow scans a row selected with adminFeedRowColumns, then
 // extra.
 func scanAdminFeedRow(row interface{ Scan(...any) error }, extra ...any) (rss.AdminFeedRow, error) {
 	var r rss.AdminFeedRow
-	var host string
-	var subscribers int
-	feed, err := scanFeed(scanTail{row: row, tail: append([]any{&host, &subscribers}, extra...)})
+	sec := &r.Section
+	feed, err := scanFeed(scanTail{row: row, tail: append([]any{&r.SiteHost, &r.Subscribers, &sec.ID, &sec.Slug, &sec.Name}, extra...)})
 	if err != nil {
 		return rss.AdminFeedRow{}, err
 	}
-	r.Feed, r.SiteHost, r.Subscribers = feed, host, subscribers
+	r.Feed = feed
 	return r, nil
 }
 
@@ -154,7 +161,7 @@ func (r *AdminFeedRepository) ListFeeds(ctx context.Context, q rss.AdminFeedQuer
 			order.key("f"), cmp, order.key("c"), len(args)))
 	}
 	stmt := `SELECT ` + adminFeedRowColumns + `
-		FROM feeds f JOIN sites s ON s.id = f.site_id
+		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY ` + order.key("f") + dir + `, f.id` + dir + `
 		LIMIT $1`
@@ -183,7 +190,7 @@ func (r *AdminFeedRepository) Feed(ctx context.Context, id string) (rss.AdminFee
 			(SELECT max(COALESCE(a.published_at, a.created_at)) FROM articles a WHERE a.feed_id = f.id),
 			(SELECT count(*) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id),
 			(SELECT min(j.created_at) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id)
-		FROM feeds f JOIN sites s ON s.id = f.site_id
+		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
 		WHERE f.id = $1`
 
 	var feed rss.AdminFeed
@@ -221,7 +228,7 @@ func (r *AdminFeedRepository) Site(ctx context.Context, id string) (rss.AdminSit
 	}
 
 	stmt := `SELECT ` + adminFeedRowColumns + `
-		FROM feeds f JOIN sites s ON s.id = f.site_id
+		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
 		WHERE f.site_id = $1
 		ORDER BY f.title, f.url`
 	rows, err := r.DB.QueryContext(ctx, stmt, id)
@@ -370,4 +377,82 @@ func (r *AdminFeedRepository) CheckForFeeds(ctx context.Context, id string, by r
 		return rss.Lookup{}, err
 	}
 	return l, tx.Commit()
+}
+
+// DiscoverSections returns Discover's sections in their default order.
+func (r *AdminFeedRepository) DiscoverSections(ctx context.Context) ([]rss.Section, error) {
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, slug, name FROM discover_sections ORDER BY position, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []rss.Section
+	for rows.Next() {
+		var sec rss.Section
+		if err := rows.Scan(&sec.ID, &sec.Slug, &sec.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, sec)
+	}
+	return out, rows.Err()
+}
+
+// SetDiscoverSection puts feed id in Discover's catalog under the section
+// sectionID, or takes it out with "", recorded as feed.discover by by with
+// the section's ID and name before and after (empty for none), so the
+// entry still reads after a rename. Setting the section it already has
+// records nothing. rss.ErrUnknownSection for a section that doesn't exist,
+// rss.ErrFeedGone to add a gone feed (taking one out is fine),
+// rss.ErrNoRecord if the feed doesn't exist.
+func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectionID string, by rss.AuditActor) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Locking the feed orders this after another change to its section.
+	var gone bool
+	var before rss.Section
+	err = tx.QueryRowContext(ctx, `SELECT f.gone_at IS NOT NULL, COALESCE(fs.id::text, ''), COALESCE(fs.name, '')
+		FROM feeds f`+adminFeedSection+`
+		WHERE f.id = $1 FOR UPDATE OF f`, id).Scan(&gone, &before.ID, &before.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.ErrNoRecord
+	}
+	if err != nil {
+		return err
+	}
+	var after rss.Section
+	if sectionID != "" {
+		// Compared as text, so an ID that isn't a UUID is unknown too.
+		err = tx.QueryRowContext(ctx, `SELECT id, name FROM discover_sections WHERE id::text = $1`, sectionID).Scan(&after.ID, &after.Name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return rss.ErrUnknownSection
+		}
+		if err != nil {
+			return err
+		}
+	}
+	switch {
+	case after.ID == before.ID:
+		return nil
+	case after.ID != "" && gone:
+		return rss.ErrFeedGone
+	case after.ID == "":
+		_, err = tx.ExecContext(ctx, `DELETE FROM discover_feeds WHERE feed_id = $1`, id)
+	default:
+		_, err = tx.ExecContext(ctx, `INSERT INTO discover_feeds (feed_id, section_id) VALUES ($1, $2)
+			ON CONFLICT (feed_id) DO UPDATE SET section_id = EXCLUDED.section_id`, id, after.ID)
+	}
+	if err != nil {
+		return err
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "feed.discover", TargetType: "feed", TargetID: id,
+		Before: map[string]any{"section_id": before.ID, "section": before.Name},
+		After:  map[string]any{"section_id": after.ID, "section": after.Name}})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }

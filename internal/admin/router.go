@@ -65,6 +65,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/feeds/{id}/refresh", s.feedRefreshHandler)
 			r.Post("/feeds/{id}/reset-backoff", s.feedResetHandler)
 			r.Post("/feeds/{id}/clear-gone", s.feedClearGoneHandler)
+			r.Post("/feeds/{id}/discover", s.feedDiscoverHandler)
 			r.Get("/sites/{id}", s.siteHandler)
 			r.Post("/sites/{id}/lookup", s.siteLookupHandler)
 			r.Post("/sites/{id}/check-icon", s.siteIconHandler)

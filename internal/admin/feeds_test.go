@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -89,6 +91,26 @@ func (f *fakeFeeds) CheckIcon(_ context.Context, id string, by rss.AuditActor) e
 
 func (f *fakeFeeds) CheckForFeeds(_ context.Context, id string, by rss.AuditActor) (rss.Lookup, error) {
 	return rss.Lookup{Status: rss.LookupPending}, f.call("lookup", id, by)
+}
+
+// testSections are the fake's Discover sections.
+var testSections = []rss.Section{
+	{ID: "40000000-0000-4000-8000-000000000001", Slug: "science", Name: "Science"},
+	{ID: "40000000-0000-4000-8000-000000000002", Slug: "food", Name: "Food"},
+	{ID: "40000000-0000-4000-8000-000000000003", Slug: "film-and-tv", Name: "Film and TV"},
+}
+
+func (f *fakeFeeds) DiscoverSections(context.Context) ([]rss.Section, error) {
+	return testSections, nil
+}
+
+// SetDiscoverSection refuses to add a gone feed, as the repository does,
+// then records the call as "discover:" and the section's ID.
+func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, sectionID string, by rss.AuditActor) error {
+	if sectionID != "" && !f.feed.GoneAt.IsZero() && f.feed.Section.ID != sectionID {
+		return rss.ErrFeedGone
+	}
+	return f.call("discover:"+sectionID, id, by)
 }
 
 // fakeRefresher returns res and err, keeping the feeds it refreshed and
@@ -600,5 +622,118 @@ func TestFeedPageStates(t *testing.T) {
 				t.Errorf("offers Clear gone = %t, want %t", got, tt.gone)
 			}
 		})
+	}
+}
+
+func TestFeedDiscoverPanel(t *testing.T) {
+	science, food := testSections[0], testSections[1]
+	inFood := testFeed()
+	inFood.Section = food
+	tests := []struct {
+		name string
+		feed rss.AdminFeed
+		want []string
+	}{
+		{"not in Discover", testFeed(), []string{
+			`<h2 id="discover-heading" class="health-title">Not in Discover</h2>`,
+			`<option value="">Not in Discover</option>`,
+		}},
+		{"in Discover", inFood, []string{
+			`<h2 id="discover-heading" class="health-title">In Discover under Food</h2>`,
+			`<option value="` + food.ID + `" selected>Food</option>`,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := feedsServer(t, &fakeFeeds{feed: tt.feed}, &fakeRefresher{}, &fakeAudit{})
+			body := b.get(t, "/feeds/"+feedID(1)).Body.String()
+			for _, want := range append(tt.want, `action="/feeds/`+feedID(1)+`/discover"`, `<option value="`+science.ID+`">Science</option>`) {
+				if !strings.Contains(body, want) {
+					t.Errorf("feed page lacks %s", want)
+				}
+			}
+			if strings.Count(body, " selected>") > 1 {
+				t.Error("feed page selects more than one section")
+			}
+		})
+	}
+
+	// The site page's feed table names each feed's section.
+	site := testSite()
+	site.Feeds[0].Section = food
+	b := feedsServer(t, &fakeFeeds{site: site}, &fakeRefresher{}, &fakeAudit{})
+	if body := b.get(t, "/sites/"+siteID(1)).Body.String(); !strings.Contains(body, `<small>example.com · Discover: Food</small>`) {
+		t.Error("site page doesn't name its feed's Discover section")
+	}
+}
+
+func TestFeedDiscover(t *testing.T) {
+	science, food := testSections[0], testSections[1]
+	gone := testFeed()
+	gone.GoneAt = testNow
+	goneInFood := gone
+	goneInFood.Section = food
+	tests := []struct {
+		name    string
+		feed    rss.AdminFeed
+		section string
+		call    string // the store's action, "" for none
+		flash   string // after the redirect; "" when the form is shown again with 422
+		error   string
+	}{
+		{"set", testFeed(), science.ID, "discover:" + science.ID, "In Discover under Science.", ""},
+		{"remove", testFeed(), "", "discover:", "Not in Discover.", ""},
+		{"unknown section", testFeed(), "40000000-0000-4000-8000-000000000099", "", "", "Choose one of the sections."},
+		{"a section's name", testFeed(), "Science", "", "", "Choose one of the sections."},
+		{"gone", gone, science.ID, "", "", "This feed is gone, so it can&#39;t be in Discover."},
+		{"gone, taken out", goneInFood, "", "discover:", "Not in Discover.", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feeds := &fakeFeeds{feed: tt.feed}
+			b := feedsServer(t, feeds, &fakeRefresher{}, &fakeAudit{})
+			path := "/feeds/" + feedID(1) + "/discover"
+
+			rr := b.post(t, path, url.Values{"section": {tt.section}})
+			if tt.flash == "" {
+				if rr.Code != http.StatusUnprocessableEntity {
+					t.Fatalf("POST %s = %d, want 422", path, rr.Code)
+				}
+				body := rr.Body.String()
+				for _, want := range []string{`<p class="error" id="section-error">` + tt.error, `aria-invalid="true"`} {
+					if !strings.Contains(body, want) {
+						t.Errorf("422 page lacks %s", want)
+					}
+				}
+			} else {
+				if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/feeds/"+feedID(1) {
+					t.Fatalf("POST %s = %d to %q, want 303 back to the feed", path, rr.Code, rr.Header().Get("Location"))
+				}
+				if body := b.get(t, "/feeds/"+feedID(1)).Body.String(); !strings.Contains(body, tt.flash) {
+					t.Errorf("feed page lacks the flash %q", tt.flash)
+				}
+			}
+			// The store records the change with who made it.
+			var calls []string
+			for _, c := range feeds.calls {
+				calls = append(calls, c.Action)
+				if c.ID != feedID(1) || c.By.AdminEmail != testEmail || c.By.Via != rss.AuditViaWeb {
+					t.Errorf("store asked %+v, want the feed by the test admin from the web", c)
+				}
+			}
+			if want := []string{tt.call}; tt.call == "" && len(calls) != 0 || tt.call != "" && !slices.Equal(calls, want) {
+				t.Errorf("store asked %v, want %q", calls, tt.call)
+			}
+		})
+	}
+
+	b := feedsServer(t, &fakeFeeds{feed: testFeed(), err: errors.New("boom")}, &fakeRefresher{}, &fakeAudit{})
+	for _, path := range []string{"/feeds/" + feedID(2) + "/discover", "/feeds/nope/discover"} {
+		if rr := b.post(t, path, url.Values{"section": {testSections[0].ID}}); rr.Code != http.StatusNotFound {
+			t.Errorf("POST %s = %d, want 404", path, rr.Code)
+		}
+	}
+	if rr := b.post(t, "/feeds/"+feedID(1)+"/discover", url.Values{"section": {testSections[0].ID}}); rr.Code != http.StatusInternalServerError {
+		t.Errorf("POST with a failing store = %d, want 500", rr.Code)
 	}
 }

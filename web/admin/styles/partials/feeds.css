@@ -79,6 +79,12 @@
     margin-block-start: 0.75rem;
   }
 
+  /* A feed's place in Discover: its state as the heading, then the
+     section to change it to. */
+  .discover-form {
+    margin-block: 0.75rem 0;
+  }
+
   /* Two sections side by side on wide screens, stacked on phones, with the
      dividers a section between sections would have. */
   .admin-pair {

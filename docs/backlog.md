@@ -613,11 +613,11 @@ Other background work (#302, #304, #306):
   *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
   *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
 - [ ] **Daily refreshes of Discover's feeds** (#632).
-  The main feed of every site with a section is fetched about once a day even with no followers, so N sectioned sites cost N fetches and their article saves a day, growing with the seed list rather than with readers.
+  Every feed in Discover's catalog is fetched about once a day even with no followers, so N catalog feeds cost N fetches and their article saves a day, growing with the catalog rather than with readers.
   *Signal:* refresh workers busy with unfollowed feeds in the admin's job metrics, or `ClaimDue`'s claim latency rising.
   *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
 - [ ] **Discover reads every section on each visit** (#633, #643).
-  The no-query page reads each section's first sites that the reader doesn't follow, their latest titles and the reader's followed count per section, in one or two statements per load.
+  The no-query page reads each section's first catalog feeds that the reader doesn't follow, their latest titles and the reader's followed count per section, in one or two statements per load, computed for each reader rather than stored.
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page, or the query in `pg_stat_statements`.
   *Fix:* cache each reader's sections for a few minutes, or precompute the per-section lists when the seed or refreshes change them.
 

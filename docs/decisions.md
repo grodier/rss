@@ -301,7 +301,7 @@ Planned in #50 (issues #51–#67).
 
 ## First run and discovery
 
-Planned in #450 (issues #628–#649), from testers' feedback that recommendations at signup were weak, over four rounds of clickable prototypes.
+Planned in #450 (issues #628–#649, tracked in #650; #629 was dropped in review), from testers' feedback that recommendations at signup were weak, over four rounds of clickable prototypes.
 Look-and-feel choices are each issue's design checkpoint; what's below is settled.
 
 - **First run isn't a mode: it's the app with nothing followed yet.** A welcome page, a setup step, a first "edition" on Home that switched off after five follows and a slice of Discover on an empty Home were all prototyped and dropped: each made the first visit unlike every later one, with no clear way back to what it showed.
@@ -309,25 +309,32 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
 - **Signup goes straight to Home, and Home only ever shows what you follow.**
   Rejected: landing on Discover (the first screen isn't where you'll live, and the next visit opens on a thin Home), and showing unfollowed sites' articles on an empty or short Home (a second kind of Home).
   Home's empty states offer ways to find sites, not samples of them (#639).
-- **Search becomes Discover, and Discover is for finding sites** (#631, #633).
-  It lists the hand-picked seed sites by section, each with its posting rate, a peek at its latest posts and Follow, and leaves out sites you follow so it keeps showing something new; its search results still include them, marked Following, so a followed site never looks missing.
+- **Search becomes Discover, and Discover is for finding what to follow** (#631, #633).
+  It lists Discover's catalog by section, each feed with its site, posting rate, a peek at its latest posts and Follow, and leaves out feeds you follow so it keeps showing something new; its search results still include followed sites, marked Following, so they never look missing.
   Articles live one level down: a section's Recent posts (#634) and the site page (#635).
   Rejected: Discover as an article stream (it read as a second Home).
-- **Sections are back, for Discover only** (#628): one per site, from a master list in `internal/seed`, set in the seed list.
+- **Readers follow feeds, and Discover's catalog lists feeds an admin picked** (#628), not sites.
+  Following a site's "main" feed, the first its page advertised, was planned (#629) and dropped in review: a site that lists its comments or podcast feed first would make a new reader follow the wrong thing, and one bad guess is a poor first experience.
+  So nothing guesses: Discover's rows are picked feeds (a newspaper's Science and Food feeds can sit in different sections), the site page keeps a Follow per feed with what helps choose (#635), and the waitlist's sites are followed only when the feed is unambiguous (#640).
+  "The feed most people follow" was rejected as a way to pick, since it's cross-reader data.
+- **Sections are back, for Discover only** (#628): one per catalog feed, from a master list in code (`rss.Sections`).
   They never appear on subscriptions, aren't tags and readers can't edit them, which is what made #447's topics awkward beside private tags.
-  Managing them from the admin, bulk upload and a model's suggestions are planned in #649.
-- **Readers follow sites: Follow follows a site's main feed** (#629): the first feed discovery kept, in the order the page advertised them, until an admin overrides it.
-  Following only another feed of a site says "Following 1 of {n} feeds" rather than offering Follow, so a tap never adds the main feed by surprise (#635).
+- **The catalog lives in the database, edited in the admin** (#628), not in the seed list: production data is kept now that schema changes are migrations, and bulk upload and a model's suggestions (#649) write to it, so a file would be a second source of truth.
+  The seed list keeps its job of looking sites up before anyone searches for them.
+  Local development marks feeds in its own admin rather than copying production, which holds people's emails and reading.
+- **The catalog is the same for everyone; each reader's Discover is computed from it on each load** (#633, #643): leaving out followed feeds and ordering sections are cheap queries over a few thousand feeds.
+  A per-reader table was considered and not taken: it would need a row per reader per catalog feed and an update on every follow, unfollow, signup and catalog edit, for no speed-up at this size.
+  Unlike `timeline_entries`, whose positions can't be recomputed, a per-reader ranking can always be rebuilt, so if scoring ever gets too slow it becomes a cache refreshed by a job; personalizing Picks and Discover from a reader's own follows, stars, saves and opens is planned together in #644.
 - **Buttons say Follow, Following and Unfollow** (#630), as the tagline does; "subscriptions" stays only for the OPML file, the word other readers use.
-- **Following keeps a row in place until the next load**, and tapping again undoes; after a reload a followed site leaves Discover's lists and Picks, and "✓ Following" is a label, with unfollowing on the site's Edit page (#424's reasoning).
+- **Following keeps a row in place until the next load**, and tapping again undoes; after a reload a followed feed leaves Discover's lists and Picks, and "✓ Following" is a label, with unfollowing on the site's Edit page (#424's reasoning).
 - **Discover's sections are ordered by what the reader follows, then what they chose on the waitlist, then the default order** (#643), computed on each load and never while the page is open; there's no settings page for it.
 - **The onboarding question is on the waitlist, not at signup** (#642): "What do you like to read?", optional, from the sections, answered while people wait, so signup stays instant.
   This reverses #566's rejection of "What do you mostly read?", which was too vague to act on; with sections the answer orders Discover.
-- **The sites people name on the waitlist are followed at signup** (#640), confident matches only (an address, or a name matching exactly one known site), with a one-time flash naming what was followed and what wasn't found.
+- **The sites people name on the waitlist are followed at signup** (#640), confident matches only (an address, or a name matching exactly one known site) and only when the feed is unambiguous (the site's only feed, or its one feed in Discover), with a one-time flash naming what was followed, what needs a choice and what wasn't found.
   They chose these sites, and an unwanted one is one tap to undo, as with import; best guesses would follow the wrong site.
-- **Picks is a timeline tab of articles from sites you don't follow yet** (#644), every account's second tab, removable and re-addable like any timeline, never shared.
+- **Picks is a timeline tab of articles from catalog feeds you don't follow yet** (#644), every account's second tab, removable and re-addable like any timeline, never shared.
   A tab rather than a feed mixed into All feeds: All feeds stays "what you follow", and a timeline is per reader, so it can become personal later.
-  What it shows, and how it may become algorithmic, is #644's to plan.
+  What it shows, and how it and Discover's order may become personal or algorithmic, is #644's to plan.
 - **Import stays in plain sight** (#636, #637, #638): a card at the top of Discover until the account has imported a file or follows 10 feeds, then a line at its end, plus Settings and the empty Home; the import page has each reader's export steps, and a pasted list of sites works like a file.
   The card has no dismiss button: what the account has done decides, so it needs no stored state.
 - **One "Getting started" guide, read like an article** (#641), pinned on All feeds for new accounts until "Done" or 14 days, and kept in Settings › Help.
@@ -338,7 +345,7 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   Rejected: a search box on each page, which makes you know where something is before you can find it.
   Saved keeps its own box for the list you're looking at.
 - **No measurement of whether new accounts follow anything**, beyond the admin's existing aggregates (the Waves table's "active after 7 days"): that would be per-person data about reading.
-- **Discover's sites are refreshed about once a day even without followers** (#632), only their main feeds, so its "Latest" dates and Picks are current; the cost grows with the seed list, not with readers.
+- **Discover's catalog feeds are refreshed about once a day even without followers** (#632), so its "Latest" dates and Picks are current; the cost grows with the catalog, not with readers.
 
 ## Feed ingestion
 

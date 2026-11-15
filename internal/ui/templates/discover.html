@@ -54,6 +54,23 @@
       </section>
       {{end}}
 
+      {{with .Import.Offer}}
+      <section class="import-card" aria-labelledby="import-card-heading">
+        <h2 id="import-card-heading">Coming from another reader?</h2>
+        <p>Import your subscriptions from Feedly, Inoreader, NetNewsWire, Reeder or any reader that exports OPML. It takes a minute.</p>
+        <a class="btn btn-primary btn-sm" href="/settings/import">Import</a>
+      </section>
+      {{end}}
+      {{with .Import.Running}}
+      <section class="import-card" aria-labelledby="import-card-heading">
+        <h2 id="import-card-heading">Importing {{.Filename}}</h2>
+        <p>{{.Done}} of {{.Total}} {{if eq .Total 1}}feed{{else}}feeds{{end}} so far. You can keep browsing; they'll show up on Home as they're added.</p>
+        {{/* A native progress bar, as a div's width would need an inline style. */}}
+        <progress value="{{.Done}}" max="{{.Total}}" aria-labelledby="import-card-heading"></progress>
+        <a href="/settings/imports/{{.ID}}">Details<span class="visually-hidden"> of this import</span></a>
+      </section>
+      {{end}}
+
       {{if and (not .Searched) .Sections}}
       <nav class="section-chips" aria-label="Sections">
         <ul role="list">
@@ -71,6 +88,10 @@
         </ul>
       </section>
       {{end}}
+      {{end}}
+
+      {{if .Import.Line}}
+      <p class="import-line">Coming from another reader? <a href="/settings/import">Import your subscriptions</a></p>
       {{end}}
 
       {{if .Searched}}

@@ -214,7 +214,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, it fetches the no-query page) | Discover, 200 | Discover's sections under the search box; with an empty catalog (or every catalog feed followed or gone), just the search box | n/a | new (#633) |
+| R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, it fetches the no-query page) | Discover, 200 | Discover's sections under the search box; with an empty catalog (or every catalog feed followed or gone), just the search box and the import card or line (#636); a store error, including reading the reader's imports or subscriptions, is a 500 (H8) | n/a | new (#633) |
 | R1a Section with nothing to show | A section with no catalog feeds, or whose feeds the reader all follows | Discover, 200 | The section and its chip are left out | n/a | new (#633) |
 | R1b Section page with no feeds | An old link to `/discover/sections/{slug}` for a section with no catalog feeds left (Discover itself leaves such a section out, R1a) | Section page, 200 | Feeds: "No feeds in {section} yet." with a link back to Discover; Recent posts: "No posts in {section} yet." | Yes, the link and the nav | new (#634) |
 | R1c Unknown section | `/discover/sections/nope`, or a section since renamed in its slug | 404 page | The 404 page | Yes, the nav | new (#634) |

@@ -135,6 +135,24 @@ func TestSubscriptionRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("Count counts only the user's subscriptions", func(t *testing.T) {
+		user := newTestUser(t, db)
+		other := newTestUser(t, db)
+		if n, err := repo.Count(ctx, user); err != nil || n != 0 {
+			t.Fatalf("Count with none = %d, %v; want 0, nil", n, err)
+		}
+		for _, s := range []struct{ user, feed string }{
+			{user, newTestFeed(t, db).ID}, {user, newTestFeed(t, db).ID}, {other, newTestFeed(t, db).ID},
+		} {
+			if err := repo.Subscribe(ctx, s.user, s.feed); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+		if n, err := repo.Count(ctx, user); err != nil || n != 2 {
+			t.Errorf("Count = %d, %v; want 2, nil", n, err)
+		}
+	})
+
 	t.Run("subscribing to a nonexistent feed returns ErrNoRecord", func(t *testing.T) {
 		user := newTestUser(t, db)
 

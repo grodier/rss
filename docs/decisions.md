@@ -449,7 +449,10 @@ Planned in #309 (issues #302, #303).
   An outline title that's empty, equals its `xmlUrl` (our export writes the URL as `text` for a feed with no title) or is over 100 characters isn't a name, and the feed is subscribed without one rather than failing.
   A failed rename is logged and doesn't fail the feed, like adding tags.
   (#442)
-- **Offered in Settings, next to Export, and on the empty timeline.**
+- **Offered in Settings, next to Export, on the empty timeline, and on Discover** (#450, #636).
+  For people switching from another reader, import is the first run, and Discover is where new readers look for sites: a card at the top of Discover with no query while the reader has never imported and follows fewer than 10 feeds, then a one-line link at the end of the page.
+  What the account has done decides, so there's no dismiss button and no stored state.
+  While an import is running, the card shows its progress on load instead, without polling, and links to the import's page, which updates in place.
 - **Files up to 1 MiB and 1,000 feeds, 5 imports per user an hour.** The upload is a multipart form with its own size cap, not `decodePostForm`'s 64 KiB.
 - **The file input has no `accept` filter.** iOS turns `accept` into system file types, has none for `.opml`, and so greys out OPML files in the picker, including our own export.
   No `accept` value both narrows the picker and lets iOS pick `.opml`, and the filter was never a safeguard: the server's size and feed caps and `opml.Parse` handle any file, and a file that isn't OPML gets the usual error.
@@ -854,6 +857,9 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   The meta line wraps between its parts, never inside one.
   Follow is a primary pill until pressed, then a quiet "Following", and its accessible name includes the feed's title, so a site's two catalog feeds aren't both "Follow Bitwise".
   Rejected: the newest title inline in place of the peek (one post stands for the whole feed, each row is a line taller, and article text in Discover's lists reads as a second Home), and a two-column grid on wide screens (the reading column is about 600 px even at 1280, so tiles broke hosts mid-word and left holes, for a second layout to maintain).
+- **Discover offers import in a bordered card above the section chips** (#636, option (a) of three at its design checkpoint): a heading, a line of copy and a primary Import pill, or, while an import runs, its progress with a bar and a Details link, in the same frame.
+  It's the one exception to "not boxes" on Discover, outlined (`--border`, `--radius-sm`) with no fill, since it's a call to action for switchers, like the email notice, not a list item; the end-of-page line is quiet centered text.
+  Rejected: a row like a site row with an upload icon (reads as one more catalog row, with no clear button) and a line under the search box (the same size as the end line, easy to miss, and no room for the progress bar).
 - **A Discover section's page has two tabs, Feeds and Recent posts** (#634, option (a) of three at its design checkpoint), each its own page, in the timeline tabs' style, under a head with "Discover" as a small link above the section's name; each section on Discover links to it as "All N ›", N counting every catalog feed in the section, followed or not, so it matches the Feeds tab.
   Feeds reuses Discover's rows, with a quiet "✓ Following" linking to the feed where Follow would be; Recent posts are article rows naming the feed as Follow does (site and feed title), with an outlined Follow before Star, Share and Save, since a filled pill on every row of an unfollowed feed outshouts the posts.
   The small "Discover" link is the only way up: no breadcrumb trail, since there's one level, and a back link is ruled out below.

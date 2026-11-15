@@ -625,6 +625,10 @@ Other background work (#302, #304, #306):
   A stored latest-article time on `feeds`, kept by `saveArticles`, would drop the probes.
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page, or the query in `pg_stat_statements`.
   *Fix:* cache each reader's sections for a few minutes, or precompute the per-section lists when the seed or refreshes change them.
+- [ ] **Discover counts the reader's latest import's feeds on each visit** (#636).
+  To decide between the import card, its progress and the end line, the no-query page reads the newest import with its feeds counted by status (`ImportRepository.ListByUser` with a limit of 1, up to 1,000 `import_feeds` rows, long after it has finished) and, for readers who have never imported, counts all their subscriptions.
+  *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page with these queries in `pg_stat_statements`.
+  *Fix:* check only whether the latest import has a pending feed (`EXISTS`), counting its feeds only then, and cap the subscription count at 10.
 
 Pages and queries:
 

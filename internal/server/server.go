@@ -178,6 +178,8 @@ type SubscriptionStore interface {
 	Unsubscribe(ctx context.Context, userID, feedID string) error
 	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error)
+	// Count returns how many feeds userID follows.
+	Count(ctx context.Context, userID string) (int, error)
 	// Get returns userID's subscription to feedID, with its feed and site.
 	// rss.ErrNoRecord if userID doesn't subscribe to feedID.
 	Get(ctx context.Context, userID, feedID string) (rss.Subscription, error)

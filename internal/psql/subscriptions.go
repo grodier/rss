@@ -176,6 +176,13 @@ func (r *SubscriptionRepository) Unsubscribe(ctx context.Context, userID, feedID
 	return err
 }
 
+// Count returns how many feeds userID follows.
+func (r *SubscriptionRepository) Count(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := r.DB.QueryRowContext(ctx, `SELECT count(*) FROM subscriptions WHERE user_id = $1`, userID).Scan(&n)
+	return n, err
+}
+
 // SubscribedFeedIDs reports which of feedIDs userID is subscribed to.
 // An empty feedIDs returns an empty map without querying.
 func (r *SubscriptionRepository) SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {

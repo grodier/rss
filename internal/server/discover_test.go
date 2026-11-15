@@ -325,8 +325,9 @@ func TestLiveSearchMarkup(t *testing.T) {
 		lookup     bool // the lookup offer is in the container
 		empty      bool // the no-results message is in the container
 		noChildren bool // the container has no elements
+		importCard bool // the container holds only the import card (an empty catalog, a new reader)
 	}{
-		{name: "no query", q: "", status: http.StatusOK}, // the import card, as TestDiscoverImportCard checks
+		{name: "no query", q: "", status: http.StatusOK, importCard: true},
 		{name: "results", q: "ex", status: http.StatusOK, results: 2},
 		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true},
 		{name: "no results", q: "zzz", status: http.StatusOK, empty: true},
@@ -377,6 +378,15 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 			if got := len(findAll(c, func(*html.Node) bool { return true })) == 0; got != tt.noChildren {
 				t.Errorf("container empty = %v, want %v", got, tt.noChildren)
+			}
+			var top []string
+			for n := c.FirstChild; n != nil; n = n.NextSibling {
+				if n.Type == html.ElementNode {
+					top = append(top, n.Data+"."+attr(n, "class"))
+				}
+			}
+			if got := slices.Equal(top, []string{"section.import-card"}); got != tt.importCard {
+				t.Errorf("container's elements = %q, want only the import card %v", top, tt.importCard)
 			}
 		})
 	}
@@ -769,6 +779,7 @@ func TestDiscoverImportCard(t *testing.T) {
 		{name: "no imports and 10 feeds", subscriptions: 10, line: true},
 		{name: "a finished import", imports: []rss.ImportSummary{finished}, line: true},
 		{name: "a running import", imports: []rss.ImportSummary{running}, subscriptions: 40, running: true},
+		{name: "a running import of one feed", imports: []rss.ImportSummary{{Import: rss.Import{ID: "imp-3", Filename: "one.opml"}, Total: 1, Pending: 1}}, running: true},
 		{name: "with a query", q: "ex", imports: []rss.ImportSummary{running}},
 		{name: "with an invalid query", q: strings.Repeat("a", 201)},
 	}
@@ -840,6 +851,12 @@ func TestDiscoverImportCard(t *testing.T) {
 			}
 			if tt.running {
 				c := cards[0]
+				if tt.imports[0].Total == 1 {
+					if got, want := text(c), "Importing one.opml 0 of 1 feed so far. You can keep browsing; they'll show up on Home as they're added. Details of this import"; got != want {
+						t.Errorf("progress = %q, want %q", got, want)
+					}
+					return
+				}
 				if got, want := text(c), "Importing feedly.opml 34 of 120 feeds so far. You can keep browsing; they'll show up on Home as they're added. Details of this import"; got != want {
 					t.Errorf("progress = %q, want %q", got, want)
 				}

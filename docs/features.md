@@ -183,7 +183,7 @@ Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; witho
 With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
 
 **Import on Discover.** With no query, Discover also says something about importing, decided by `discoverImportFor` from what the account has done, so it needs no stored state and no dismiss button.
-While the reader's latest import (`ImportRepository.ListByUser` with a limit of 1) has feeds pending or running, a card above the chips shows its progress as on load, without polling ("{done} of {total} feeds so far", a `<progress>` bar) and links to its page, which updates in place.
+While the reader's latest import (`ImportRepository.ListByUser` with a limit of 1) has feeds pending or running, a card above the chips shows its progress as on load, without polling (its feeds done out of its total, and a `<progress>` bar), and links to its page, which updates in place.
 Otherwise a reader who has never imported and follows fewer than 10 feeds (`importOfferBelow`, `SubscriptionRepository.Count`) gets a card offering import, linking to `/settings/import`; anyone else gets a one-line link at the end of the page.
 With a query, none of them shows, as live search replaces the container they're in.
 

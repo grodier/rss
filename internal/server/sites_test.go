@@ -105,6 +105,9 @@ func TestSiteHandlerNoFeeds(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "No feeds found") {
 		t.Errorf("body does not contain %q: %s", "No feeds found", rr.Body.String())
 	}
+	if strings.Contains(rr.Body.String(), "Recent posts") {
+		t.Errorf("a site without feeds has a Recent posts section: %s", rr.Body.String())
+	}
 }
 
 func TestSiteHandlerEmptyTitleShowsHost(t *testing.T) {
@@ -649,6 +652,7 @@ func TestSiteHandlerMoreFeeds(t *testing.T) {
 func TestSiteHandlerOneFeed(t *testing.T) {
 	site := rss.Site{ID: testSiteID, Host: "quiet.blog", URL: "https://quiet.blog/", Title: "Quiet Light"}
 	feeds := []rss.Feed{{ID: testFeedID, SiteID: testSiteID, Title: "Quiet Light", PostsPerWeek: 1}}
+	facts := map[string]rss.FeedFacts{testFeedID: {LatestAt: time.Now()}}
 	articles := []rss.Article{{ID: "a1", FeedID: testFeedID, Title: "A borrowed Leica"}}
 
 	for _, tt := range []struct {
@@ -660,12 +664,12 @@ func TestSiteHandlerOneFeed(t *testing.T) {
 		{"followed", true, `action="/feeds/` + testFeedID + `/unsubscribe"`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			s, _, _ := siteWithPosts(t, site, feeds, nil, articles, map[string]bool{testFeedID: tt.following})
+			s, _, _ := siteWithPosts(t, site, feeds, facts, articles, map[string]bool{testFeedID: tt.following})
 			body := serveSite(t, s, testSiteID).Body.String()
 
 			head := body[strings.Index(body, `<section class="profile">`):]
 			head = head[:strings.Index(head, "</section>")]
-			for _, want := range []string{`class="site-head-follow" id="feed-` + testFeedID + `"`, tt.want, "<span>About 1 post a week</span>"} {
+			for _, want := range []string{tt.want, `name="return_to" value="/sites/` + testSiteID + `"`, "About 1 post a week.</span>", "Latest post today.</span>"} {
 				if !strings.Contains(head, want) {
 					t.Errorf("head does not contain %q: %s", want, head)
 				}

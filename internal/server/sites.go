@@ -88,7 +88,10 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Feeds     []siteFeedRow
 		MoreFeeds []siteFeedRow
 		FeedCount int
-		Posts     []articleRow
+		// OnlyFeed is the site's feed when it has just one, whose Follow
+		// and facts are in the page's head instead of a list; else nil.
+		OnlyFeed *siteFeedRow
+		Posts    []articleRow
 		// PostsFrom names the feeds Recent posts are drawn from when
 		// they're only some of the site's live feeds; empty otherwise.
 		PostsFrom   []string
@@ -106,6 +109,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Feeds:       rows[:min(len(rows), siteFeedsShown)],
 		MoreFeeds:   rows[min(len(rows), siteFeedsShown):],
 		FeedCount:   len(rows),
+		OnlyFeed:    onlyFeed(site, rows),
 		Posts:       posts,
 		PostsFrom:   postsFrom(rows, postFeeds),
 		Live:        slices.ContainsFunc(rows, func(f siteFeedRow) bool { return !f.Gone() }),
@@ -183,6 +187,17 @@ func siteFeedRows(site rss.Site, feeds []rss.Feed, facts map[string]rss.FeedFact
 		return b.Facts.LatestAt.Compare(a.Facts.LatestAt)
 	})
 	return rows
+}
+
+// onlyFeed is rows' one feed, or nil when there are none or several. Its
+// Follow, in the page's head, sends the reader back to the page's top.
+func onlyFeed(site rss.Site, rows []siteFeedRow) *siteFeedRow {
+	if len(rows) != 1 {
+		return nil
+	}
+	f := rows[0]
+	f.Follow.ReturnTo = "/sites/" + site.ID
+	return &f
 }
 
 // shortFeedName is a feed's title on its site's page, where the site's

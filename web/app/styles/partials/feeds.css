@@ -134,31 +134,14 @@
     text-decoration: underline;
   }
 
-  /* A site with one feed: Follow and its facts in the site's head. */
-  .site-head-follow {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
-    margin-block-start: 0.875rem;
-  }
-
-  .site-head-follow .site-feed-facts {
-    margin: 0;
-  }
-
   /* "Show N more feeds", past the first few. */
   .site-more-feeds > summary {
     padding: 0.625rem 1rem;
     border-block-end: 1px solid var(--border);
-    color: var(--text-2);
+    color: var(--accent);
     font-size: 0.8125rem;
     font-weight: 600;
     cursor: pointer;
-  }
-
-  .site-more-feeds > summary:hover {
-    color: var(--text);
   }
 
   /* Which feeds Recent posts come from, when it's only some. */
@@ -176,25 +159,6 @@
     color: var(--text-3);
     font-size: 0.8125rem;
     text-align: center;
-  }
-
-  .site-recheck-button {
-    display: inline;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    text-decoration: underline;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.15em;
-    cursor: pointer;
-  }
-
-  .site-recheck-button:hover {
-    background: none;
-    text-decoration-thickness: 2px;
   }
 
   /* Only sites with two or more subscriptions get a header, so a group

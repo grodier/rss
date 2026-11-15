@@ -164,6 +164,27 @@
     color: var(--on-danger-bg);
   }
 
+  /* A button in a sentence, styled as a link. */
+  .link-button {
+    display: inline;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    white-space: normal;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
+    cursor: pointer;
+  }
+
+  .link-button:hover {
+    background: none;
+    text-decoration-thickness: 2px;
+  }
+
   .btn-sm {
     padding: 0.375rem 0.875rem;
     font-size: 0.875rem;
@@ -219,6 +240,13 @@
     margin-inline: 0;
     border: 2px solid currentColor;
     border-block-start-color: transparent;
+  }
+
+  /* A link button's spinner sits in the line before its text. */
+  .link-button .spinner.btn-spinner {
+    display: inline-block;
+    margin-inline-end: 0.375em;
+    vertical-align: -0.125em;
   }
 
   @media (prefers-reduced-motion: no-preference) {

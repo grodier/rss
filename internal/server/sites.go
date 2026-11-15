@@ -189,9 +189,9 @@ func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string
 // row names its feed.
 func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) ([]articleRow, error) {
 	var catalog, live []string
-	byID := make(map[string]rss.Feed, len(feeds))
+	byID := make(map[string]siteFeedRow, len(feeds))
 	for _, f := range feeds {
-		byID[f.Feed.ID] = f.Feed
+		byID[f.Feed.ID] = f
 		if f.Gone() {
 			continue
 		}
@@ -226,9 +226,18 @@ func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) 
 			seen[a.CanonicalURL] = true
 		}
 		row := articleRow{Article: a, ReturnTo: r.URL.RequestURI()}
+		f := byID[a.FeedID]
 		if len(feeds) > 1 {
-			row.Feed = byID[a.FeedID]
-			row.Icon = feeds[0].Icon
+			// Named as Follow names it, site and feed title, so each post
+			// says which feed it's from.
+			row.Feed = f.Feed
+			row.Feed.Title = f.Follow.Label
+			row.Icon = f.Icon
+		}
+		if !f.Follow.Following {
+			follow := f.Follow
+			follow.ReturnTo = r.URL.RequestURI() + "#article-" + a.ID
+			row.Follow = &follow
 		}
 		posts = append(posts, row)
 	}

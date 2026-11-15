@@ -136,6 +136,17 @@
     text-decoration: underline;
   }
 
+  /* PROTOTYPE (option e): no avatar, as the site's is just above. */
+  .site-feed-compact {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 0.625rem;
+  }
+
+  .tab-count {
+    color: var(--text-3);
+    font-weight: 500;
+  }
+
   .site-feed .site-feed-latest {
     margin-block-start: 0.25rem;
     font-size: 0.875rem;

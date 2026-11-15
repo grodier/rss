@@ -4,8 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Paper Round - search</title>
-  {{template "assets" "search"}}
+  <title>Paper Round - discover</title>
+  {{template "assets" "discover"}}
   {{template "app-head" .Nav}}
 </head>
 
@@ -15,10 +15,10 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Search</h1>
+        <h1>Discover</h1>
       </header>
 
-      <form class="page-search" role="search" action="/search" method="get" data-live-search>
+      <form class="page-search" role="search" action="/discover" method="get" data-live-search>
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -26,7 +26,7 @@
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search sites and feeds, or paste a URL" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Site name or address" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
           <button class="btn-primary" type="submit">Search</button>
         </div>
@@ -37,7 +37,7 @@
       {{end}}
 
       {{/* live-search.ts replaces this container's contents with the
-           same container from /search?q=… as the reader types. */}}
+           same container from /discover?q=… as the reader types. */}}
       <div id="search-results" data-search-results>
       {{if .AppLink}}
       <section class="lookup-cta">

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   {{if .InProgress}}<noscript><meta http-equiv="refresh" content="2" /></noscript>{{end}}
   <title>Paper Round - looking up {{.SiteKey}}</title>
-  {{template "assets" "search"}}
+  {{template "assets" "discover"}}
   {{template "app-head" .Nav}}
 </head>
 
@@ -30,10 +30,10 @@
         <p><a href="/lookups/{{.ID}}">Refresh</a></p>
         {{else if .Failed}}
         <p>We couldn't reach {{.SiteKey}}. Try again later.</p>
-        <p><a href="/search">Back to search</a></p>
+        <p><a href="/discover">Back to Discover</a></p>
         {{else}}
         <p>No feeds found on {{.SiteKey}}.</p>
-        <p><a href="/search">Back to search</a></p>
+        <p><a href="/discover">Back to Discover</a></p>
         {{end}}
       </section>
     </main>

@@ -293,7 +293,7 @@ func TestLookupHandlerInProgress(t *testing.T) {
 			body := rr.Body.String()
 			for _, want := range []string{
 				`<noscript><meta http-equiv="refresh" content="2" /></noscript>`,
-				`<script type="module" src="` + entryJS("search") + `"></script>`,
+				`<script type="module" src="` + entryJS("discover") + `"></script>`,
 				"data-lookup-poll",
 				"Looking for feeds on example.com",
 				`href="/lookups/` + testLookupID + `"`,
@@ -324,8 +324,8 @@ func TestLookupHandlerDoneNoFeeds(t *testing.T) {
 	if !strings.Contains(body, "No feeds found on example.com") {
 		t.Error("no-feeds message missing")
 	}
-	if !strings.Contains(body, `href="/search"`) {
-		t.Error("link back to search missing")
+	if !strings.Contains(body, `href="/discover"`) {
+		t.Error("link back to Discover missing")
 	}
 	if strings.Contains(body, `http-equiv="refresh"`) {
 		t.Error("finished lookup must not refresh")
@@ -362,7 +362,7 @@ func TestSearchOffersLookup(t *testing.T) {
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
 
-	body := searchRequest(t, s, "example.com").Body.String()
+	body := discoverRequest(t, s, "example.com").Body.String()
 	for _, want := range []string{`action="/lookups"`, `name="q" value="example.com"`, "Look up example.com"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
@@ -370,19 +370,19 @@ func TestSearchOffersLookup(t *testing.T) {
 	}
 
 	// Stray spaces are removed from the offer, but the query shows as typed.
-	body = searchRequest(t, s, "npr.%20org").Body.String()
+	body = discoverRequest(t, s, "npr.%20org").Body.String()
 	for _, want := range []string{`name="q" value="npr.org"`, "Look up npr.org", `id="q" name="q" value="npr. org"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
 	}
 
-	body = searchRequest(t, s, "http://www.example.com/blog").Body.String()
+	body = discoverRequest(t, s, "http://www.example.com/blog").Body.String()
 	if want := "Look up http://www.example.com/blog"; !strings.Contains(body, want) {
 		t.Errorf("body missing %q", want)
 	}
 
-	if body := searchRequest(t, s, "hacker+news").Body.String(); strings.Contains(body, `action="/lookups"`) {
+	if body := discoverRequest(t, s, "hacker+news").Body.String(); strings.Contains(body, `action="/lookups"`) {
 		t.Error("lookup offered for a non-URL query")
 	}
 }

@@ -781,7 +781,7 @@ func TestFeedsHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
-		assertContains(t, body, `<a href="/search">Search</a> for a site to find some.`)
+		assertContains(t, body, `Find sites to follow in <a href="/discover">Discover</a>.`)
 	})
 
 	t.Run("flash", func(t *testing.T) {

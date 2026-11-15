@@ -267,7 +267,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		body := getHome(t, s, "/", true).Body.String()
 		assertBodyContains(t, body,
 			"Your timeline is empty.",
-			`<a href="/search">Search</a>`,
+			`Find sites to follow in <a href="/discover">Discover</a>`,
 			`<a href="/settings/import">import your subscriptions</a>`,
 		)
 	})

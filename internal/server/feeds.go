@@ -105,7 +105,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Viewing a stale feed queues a background refresh, so the page doesn't
 	// wait on a fetch. GET handlers otherwise never write, since
-	// CrossOriginProtection doesn't cover GET (see searchHandler). This write
+	// CrossOriginProtection doesn't cover GET (see discoverHandler). This write
 	// is idempotent upkeep rather than a change made on the user's behalf: it
 	// can only queue a fetch of a feed that's already stale, and it changes
 	// nothing the user sees except freshness, so a forged request gains

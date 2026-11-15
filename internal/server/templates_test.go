@@ -124,7 +124,7 @@ func TestNoSignupLinks(t *testing.T) {
 }
 
 // TestAppNav checks the nav partial: there are links to /, /saved, /feeds
-// and /search in that order, the link to /feeds says My feeds, the
+// and /discover in that order, the link to /feeds says My feeds, the
 // account link goes to /settings with the user's monogram, there's no logout
 // form, and only the current section's link is marked aria-current.
 func TestAppNav(t *testing.T) {
@@ -140,7 +140,7 @@ func TestAppNav(t *testing.T) {
 		{"home", "/"},
 		{"saved", "/saved"},
 		{"feeds", "/feeds"},
-		{"search", "/search"},
+		{"discover", "/discover"},
 		{"settings", "/settings"},
 		{"", ""},
 	}
@@ -162,7 +162,7 @@ func TestAppNav(t *testing.T) {
 			for _, a := range links {
 				hrefs = append(hrefs, attr(a, "href"))
 			}
-			if want := []string{"/", "/saved", "/feeds", "/search"}; !slices.Equal(hrefs, want) {
+			if want := []string{"/", "/saved", "/feeds", "/discover"}; !slices.Equal(hrefs, want) {
 				t.Errorf("nav links = %q, want %q", hrefs, want)
 			}
 			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })

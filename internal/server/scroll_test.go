@@ -391,12 +391,12 @@ func TestBusyFormsMarkup(t *testing.T) {
 
 	page := func(name string) func(t *testing.T) string {
 		switch name {
-		case "search":
+		case "discover":
 			return func(t *testing.T) string {
 				s := newTestServerWith(t, Services{SearchService: &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 					return nil, nil
 				}}})
-				return searchRequest(t, s, "example.com").Body.String()
+				return discoverRequest(t, s, "example.com").Body.String()
 			}
 		case "site":
 			return func(t *testing.T) string {
@@ -432,7 +432,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 		group        string // the page's group, whose entry sets up busy forms
 		label, busy  string // the button's label and busy label; "" for a form that isn't busy
 	}{
-		{"search", "/lookups", "search", "Look up example.com", "Looking up example.com…"},
+		{"discover", "/lookups", "discover", "Look up example.com", "Looking up example.com…"},
 		{"site", "/lookups", "reading", "Check for new feeds", "Checking for new feeds…"},
 		{"feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
 		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},

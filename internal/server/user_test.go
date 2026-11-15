@@ -872,7 +872,7 @@ func TestReturnTo(t *testing.T) {
 		want   string
 	}{
 		{"GET", http.MethodGet, feedPath, feedPath},
-		{"GET with a query", http.MethodGet, "/search?q=go", "/search?q=go"},
+		{"GET with a query", http.MethodGet, "/discover?q=go", "/discover?q=go"},
 		{"HEAD", http.MethodHead, feedPath, feedPath},
 		{"POST isn't remembered", http.MethodPost, feedPath + "/subscribe", "/"},
 	}

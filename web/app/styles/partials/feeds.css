@@ -142,6 +142,54 @@
     padding-block: 0.625rem;
   }
 
+  /* PROTOTYPE (option f). */
+  .site-head-follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-block-start: 0.875rem;
+    font-size: 0.8125rem;
+  }
+
+  .site-head-follow .site-feed-facts {
+    color: var(--text-3);
+  }
+
+  .site-more-feeds > summary {
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .site-posts-from {
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  .site-recheck {
+    padding: 1.25rem 1rem 2rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+
+  .site-recheck-button {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
   .tab-count {
     color: var(--text-3);
     font-weight: 500;

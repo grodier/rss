@@ -62,6 +62,44 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	// PROTOTYPE (option f): posts without Follow or avatars, and what
+	// they're drawn from when that's some of the site's feeds.
+	var postsFrom string
+	if r.URL.Query().Get("layout") == "f" {
+		names := map[string]string{}
+		for _, f := range rows {
+			names[f.Feed.ID] = f.Name
+		}
+		// Each post names its feed only when they're from several.
+		distinct := map[string]bool{}
+		for _, p := range posts {
+			distinct[p.Article.FeedID] = true
+		}
+		for i := range posts {
+			if len(distinct) < 2 {
+				posts[i].Feed = rss.Feed{}
+			}
+			posts[i].Follow = nil
+			posts[i].NoAvatar = true
+			if posts[i].Feed.ID != "" {
+				posts[i].Feed.Title = names[posts[i].Feed.ID]
+			}
+		}
+		var catalog []string
+		live := 0
+		for _, f := range rows {
+			if f.Gone() {
+				continue
+			}
+			live++
+			if f.Facts.Section.ID != "" {
+				catalog = append(catalog, f.Name)
+			}
+		}
+		if len(catalog) > 0 && len(catalog) < live {
+			postsFrom = strings.Join(catalog, ", ")
+		}
+	}
 	// PROTOTYPE (option c): a tab per feed.
 	tab := r.URL.Query().Get("feed")
 	if r.URL.Query().Get("layout") == "c" && len(rows) > 0 {
@@ -104,6 +142,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Live        bool   // some feed isn't gone
 		Layout      string // PROTOTYPE
 		Tab         string // PROTOTYPE
+		PostsFrom   string // PROTOTYPE
 		LastChecked time.Time
 		Checking    bool
 		CanRecheck  bool
@@ -119,6 +158,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Live:        slices.ContainsFunc(rows, func(f siteFeedRow) bool { return !f.Gone() }),
 		Layout:      r.URL.Query().Get("layout"),
 		Tab:         tab,
+		PostsFrom:   postsFrom,
 		LastChecked: lookup.FinishedAt,
 		Checking:    lookupInProgress(lookup),
 		CanRecheck:  canRecheck(lookup, time.Now()),
@@ -138,6 +178,7 @@ const sitePostsLimit = 10
 // siteFeedRow is one of a site's feeds as its page lists it.
 type siteFeedRow struct {
 	Feed   rss.Feed
+	Name   string // PROTOTYPE: its title without the site's name (shortFeedName)
 	Facts  rss.FeedFacts
 	Site   string       // its site's name, for the avatar's letter
 	Icon   string       // its site's icon URL, or "" for its letter
@@ -156,6 +197,7 @@ func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string
 	for i, f := range feeds {
 		rows[i] = siteFeedRow{
 			Feed:  f,
+			Name:  shortFeedName(cmp.Or(f.Title, f.Url), cmp.Or(site.Title, site.Host)),
 			Facts: facts[f.ID],
 			Site:  cmp.Or(site.Title, site.Host),
 			Icon:  icon,
@@ -177,7 +219,14 @@ func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string
 			return 1
 		}
 	}
-	slices.SortStableFunc(rows, func(a, b siteFeedRow) int { return rank(a) - rank(b) })
+	// Within a group, the most recently posting first, as a section's
+	// page orders its feeds, so a capped list shows the active ones.
+	slices.SortStableFunc(rows, func(a, b siteFeedRow) int {
+		if d := rank(a) - rank(b); d != 0 {
+			return d
+		}
+		return b.Facts.Latest.FeedSortAt().Compare(a.Facts.Latest.FeedSortAt())
+	})
 	return rows
 }
 
@@ -254,6 +303,22 @@ func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) 
 	s.fillDebug(r, posts)
 	markFirstImageEager(posts)
 	return posts, nil
+}
+
+// shortFeedName is a feed's title on its site's page, where the site's
+// name is already in the head: without a leading siteName and separator
+// ("The Daily Ledger – Opinion" is "Opinion"), else the title as it is.
+func shortFeedName(title, siteName string) string {
+	rest, ok := strings.CutPrefix(title, siteName)
+	if !ok {
+		return title
+	}
+	for _, sep := range []string{" – ", " — ", " - ", ": ", " | ", " · "} {
+		if short, ok := strings.CutPrefix(rest, sep); ok && short != "" {
+			return short
+		}
+	}
+	return title
 }
 
 // siteDebug loads the site page's debug panel: the site's fields and a line

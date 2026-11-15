@@ -28,6 +28,19 @@
         {{with .Site.Description}}
         <p class="profile-desc">{{.}}</p>
         {{end}}
+        {{if and (eq .Layout "f") (eq (len .Feeds) 1)}}{{with $row := index .Feeds 0}}
+        {{/* PROTOTYPE (option f): a site with one feed follows it from its head. */}}
+        <div class="site-head-follow" id="feed-{{.Feed.ID}}">
+          {{template "follow-form" .Follow}}
+          {{if .Gone}}<p class="fetch-error">This feed no longer exists.</p>{{else}}
+          <p class="site-feed-facts">
+            {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$row.Facts.Section.Slug}}">{{$row.Facts.Section.Name}}</a> · {{end -}}
+            <span>{{postingRate .Feed.PostsPerWeek}}</span>
+            {{- with .Facts.Latest.ID}} · <span>Latest {{since $row.Facts.Latest.FeedSortAt}}</span>{{end -}}
+          </p>
+          {{end}}
+        </div>
+        {{end}}{{end}}
         {{if or (not .LastChecked.IsZero) .Checking}}
         <p class="facts">
           {{if not .LastChecked.IsZero}}
@@ -48,7 +61,9 @@
       <p class="debug-note">Runs a lookup of this site now without saving anything.</p>
       {{end}}
 
-      {{if eq .Layout "d"}}
+      {{if eq .Layout "f"}}
+      {{template "site-refined" .}}
+      {{else if eq .Layout "d"}}
       {{template "site-tabbed" .}}
       {{else if eq .Layout "e"}}
       {{template "site-compact" .}}
@@ -201,4 +216,61 @@
   </ul>
 </section>
 {{template "site-posts" .}}
+{{end}}
+
+{{/* PROTOTYPE (option f): (e) refined. */}}
+{{define "site-compact-row"}}
+<li class="feed-row site-feed site-feed-compact" id="feed-{{.Feed.ID}}">
+  <div>
+    <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{.Name}}</a>
+    {{if .Gone}}<p class="fetch-error">This feed no longer exists.</p>{{else}}
+    <p class="site-feed-facts">
+      {{- with .Facts.Section.ID}}<a class="site-feed-section" href="/discover/sections/{{$.Facts.Section.Slug}}">{{$.Facts.Section.Name}}</a> · {{end -}}
+      <span>{{postingRate .Feed.PostsPerWeek}}</span>
+      {{- with .Facts.Latest.ID}} · <span>Latest {{since $.Facts.Latest.FeedSortAt}}</span>{{end -}}
+    </p>
+    {{end}}
+  </div>
+  {{if or .Follow.Following (not .Gone)}}{{template "follow-form" .Follow}}{{end}}
+</li>
+{{end}}
+
+{{define "site-refined"}}
+{{if gt (len .Feeds) 1}}
+<section class="site-feeds">
+  <div class="list-head">
+    <h2>{{len .Feeds}} feeds</h2>
+  </div>
+  <ul role="list">
+    {{range $i, $row := .Feeds}}{{if lt $i 4}}{{template "site-compact-row" $row}}{{end}}{{end}}
+  </ul>
+  {{if gt (len .Feeds) 4}}
+  <details class="site-more-feeds">
+    <summary>Show {{len (slice .Feeds 4)}} more feeds</summary>
+    <ul role="list">
+      {{range $i, $row := .Feeds}}{{if ge $i 4}}{{template "site-compact-row" $row}}{{end}}{{end}}
+    </ul>
+  </details>
+  {{end}}
+</section>
+{{end}}
+<section class="site-posts">
+  <div class="list-head">
+    <h2>Recent posts</h2>
+  </div>
+  {{with .PostsFrom}}<p class="site-posts-from">From {{.}}, the feed Discover lists.</p>{{end}}
+  {{if .Posts}}
+  <div class="article-list">{{range .Posts}}{{template "article-row" .}}{{end}}</div>
+  {{else if .Live}}
+  <p class="empty">No posts yet.</p>
+  {{else}}
+  <p class="empty">No posts to show: this site's feeds no longer exist.</p>
+  {{end}}
+</section>
+{{if .CanRecheck}}
+<form class="site-recheck" action="/lookups" method="post" data-busy>
+  <input type="hidden" name="q" value="{{.Site.URL}}">
+  <p>Missing a feed? <button class="site-recheck-button" type="submit" data-busy-label="Checking for new feeds…"><span data-busy-text>Check {{.Site.Host}} for new feeds</span></button></p>
+</form>
+{{end}}
 {{end}}

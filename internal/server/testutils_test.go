@@ -50,6 +50,14 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.DiscoverService == nil {
 		svc.DiscoverService = emptyCatalog()
 	}
+	// Discover with no query offers import from what the reader has done; a
+	// test that doesn't care has a reader with no imports and no feeds.
+	if svc.ImportService == nil {
+		svc.ImportService = &fakeImportStore{}
+	}
+	if svc.SubscriptionService == nil {
+		svc.SubscriptionService = &fakeSubscriptionStore{}
+	}
 	// Every timeline page lists the tabs; a test that doesn't care gets none.
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}

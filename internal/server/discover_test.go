@@ -326,7 +326,7 @@ func TestLiveSearchMarkup(t *testing.T) {
 		empty      bool // the no-results message is in the container
 		noChildren bool // the container has no elements
 	}{
-		{name: "no query", q: "", status: http.StatusOK, noChildren: true},
+		{name: "no query", q: "", status: http.StatusOK}, // the import card, as TestDiscoverImportCard checks
 		{name: "results", q: "ex", status: http.StatusOK, results: 2},
 		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true},
 		{name: "no results", q: "zzz", status: http.StatusOK, empty: true},
@@ -747,6 +747,126 @@ func TestDiscoverSectionPage(t *testing.T) {
 		section.sectionFn = func(context.Context, string) (rss.Section, error) { return rss.Section{}, boom }
 		if rr := sectionRequest(t, server(section), "science"); rr.Code != http.StatusInternalServerError {
 			t.Errorf("Section error: status = %d, want 500", rr.Code)
+		}
+	})
+}
+
+func TestDiscoverImportCard(t *testing.T) {
+	finished := rss.ImportSummary{Import: rss.Import{ID: "imp-1", Filename: "feedly.opml"}, Total: 120, Failed: 3}
+	running := rss.ImportSummary{Import: rss.Import{ID: "imp-2", Filename: "feedly.opml"}, Total: 120, Pending: 86, Failed: 2}
+
+	tests := []struct {
+		name          string
+		q             string
+		imports       []rss.ImportSummary
+		subscriptions int
+		offer         bool
+		running       bool
+		line          bool
+	}{
+		{name: "no imports and no feeds", offer: true},
+		{name: "no imports and 9 feeds", subscriptions: 9, offer: true},
+		{name: "no imports and 10 feeds", subscriptions: 10, line: true},
+		{name: "a finished import", imports: []rss.ImportSummary{finished}, line: true},
+		{name: "a running import", imports: []rss.ImportSummary{running}, subscriptions: 40, running: true},
+		{name: "with a query", q: "ex", imports: []rss.ImportSummary{running}},
+		{name: "with an invalid query", q: strings.Repeat("a", 201)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotLimit int
+			imports := &fakeImportStore{listByUserFn: func(_ context.Context, userID string, limit int) ([]rss.ImportSummary, error) {
+				if userID != "user-1" {
+					t.Errorf("ListByUser for %q, want user-1", userID)
+				}
+				gotLimit = limit
+				return tt.imports, nil
+			}}
+			subs := &fakeSubscriptionStore{countFn: func(_ context.Context, userID string) (int, error) {
+				if userID != "user-1" {
+					t.Errorf("Count for %q, want user-1", userID)
+				}
+				return tt.subscriptions, nil
+			}}
+			search := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+				return nil, nil
+			}}
+			s := newTestServerWith(t, Services{SearchService: search, ImportService: imports, SubscriptionService: subs})
+			rr := discoverRequestAs(t, s, "user-1", tt.q)
+			doc, err := html.Parse(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.q == "" && gotLimit != 1 {
+				t.Errorf("ListByUser limit = %d, want 1", gotLimit)
+			}
+
+			cards := findAll(doc, func(n *html.Node) bool { return hasClass(n, "import-card") })
+			lines := findAll(doc, func(n *html.Node) bool { return hasClass(n, "import-line") })
+			if want := tt.offer || tt.running; (len(cards) == 1) != want || len(cards) > 1 {
+				t.Fatalf("%d import cards, want card %v", len(cards), want)
+			}
+			if (len(lines) == 1) != tt.line || len(lines) > 1 {
+				t.Errorf("%d import lines, want line %v", len(lines), tt.line)
+			}
+			text := func(n *html.Node) string { return strings.Join(strings.Fields(textContent(n)), " ") }
+			links := func(n *html.Node) []string {
+				var got []string
+				for _, a := range findAll(n, func(n *html.Node) bool { return n.Data == "a" }) {
+					got = append(got, attr(a, "href")+" "+text(a))
+				}
+				return got
+			}
+
+			if tt.line {
+				if got, want := text(lines[0]), "Coming from another reader? Import your subscriptions"; got != want {
+					t.Errorf("line = %q, want %q", got, want)
+				}
+				if got, want := links(lines[0]), []string{"/settings/import Import your subscriptions"}; !slices.Equal(got, want) {
+					t.Errorf("line links = %q, want %q", got, want)
+				}
+			}
+			if tt.offer {
+				c := cards[0]
+				if got, want := text(c), "Coming from another reader? Import your subscriptions from Feedly, Inoreader, NetNewsWire, Reeder or any reader that exports OPML. It takes a minute. Import"; got != want {
+					t.Errorf("offer = %q, want %q", got, want)
+				}
+				if got, want := links(c), []string{"/settings/import Import"}; !slices.Equal(got, want) {
+					t.Errorf("offer links = %q, want %q", got, want)
+				}
+				if n := len(findAll(c, func(n *html.Node) bool { return n.Data == "progress" })); n != 0 {
+					t.Errorf("offer has %d progress bars", n)
+				}
+			}
+			if tt.running {
+				c := cards[0]
+				if got, want := text(c), "Importing feedly.opml 34 of 120 feeds so far. You can keep browsing; they'll show up on Home as they're added. Details of this import"; got != want {
+					t.Errorf("progress = %q, want %q", got, want)
+				}
+				bars := findAll(c, func(n *html.Node) bool { return n.Data == "progress" })
+				if len(bars) != 1 || attr(bars[0], "value") != "34" || attr(bars[0], "max") != "120" {
+					t.Errorf("progress bar wrong: %d bars", len(bars))
+				}
+				if got, want := links(c), []string{"/settings/imports/imp-2 Details of this import"}; !slices.Equal(got, want) {
+					t.Errorf("progress links = %q, want %q", got, want)
+				}
+			}
+		})
+	}
+
+	t.Run("a failing query is a 500", func(t *testing.T) {
+		for name, svc := range map[string]Services{
+			"imports": {ImportService: &fakeImportStore{listByUserFn: func(context.Context, string, int) ([]rss.ImportSummary, error) {
+				return nil, errors.New("boom")
+			}}},
+			"subscriptions": {SubscriptionService: &fakeSubscriptionStore{countFn: func(context.Context, string) (int, error) {
+				return 0, errors.New("boom")
+			}}},
+		} {
+			rr := discoverRequestAs(t, newTestServerWith(t, svc), "user-1", "")
+			if rr.Code != http.StatusInternalServerError {
+				t.Errorf("%s: status = %d, want 500", name, rr.Code)
+			}
 		}
 	})
 }

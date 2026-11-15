@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -17,6 +18,9 @@ const (
 	searchLimit    = 20
 	// discoverPerSection is how many feeds each of Discover's sections shows.
 	discoverPerSection = 3
+	// importOfferBelow is how many feeds a reader who has never imported
+	// follows before Discover stops offering import at the top.
+	importOfferBelow = 10
 )
 
 // appLinkMessage is shown in place of a lookup for an address on the app
@@ -48,6 +52,60 @@ type discoverData struct {
 	// Sections is Discover's catalog as this reader sees it, shown when
 	// there's no query; empty when the catalog has nothing for them.
 	Sections []rss.DiscoverSection
+	// Import is what Discover says about importing, with no query.
+	Import discoverImport
+}
+
+// discoverImport is what Discover's page with no query says about importing
+// (see discoverImportFor): at most one of its fields is set.
+type discoverImport struct {
+	// Offer is the import card at the top, for a reader who has never
+	// imported and follows fewer than importOfferBelow feeds.
+	Offer bool
+	// Running is the progress of the reader's latest import while it has
+	// feeds pending or running, at the top in place of Offer.
+	Running *importProgress
+	// Line is the one-line link at the end of the page, otherwise.
+	Line bool
+}
+
+// importProgress is an import's progress, as the card on Discover shows it.
+type importProgress struct {
+	ID       string
+	Filename string
+	Done     int
+	Total    int
+}
+
+// discoverImportFor decides what Discover offers userID about importing,
+// from what the account has done, so it needs no stored state: the progress
+// of an import still running, else the card if they have never imported and
+// follow fewer than importOfferBelow feeds, else the line.
+func (s *Server) discoverImportFor(ctx context.Context, userID string) (discoverImport, error) {
+	imports, err := s.services.ImportService.ListByUser(ctx, userID, 1)
+	if err != nil {
+		return discoverImport{}, err
+	}
+	if len(imports) > 0 {
+		latest := imports[0]
+		if latest.Pending > 0 {
+			return discoverImport{Running: &importProgress{
+				ID:       latest.Import.ID,
+				Filename: latest.Import.Filename,
+				Done:     latest.Total - latest.Pending,
+				Total:    latest.Total,
+			}}, nil
+		}
+		return discoverImport{Line: true}, nil
+	}
+	n, err := s.services.SubscriptionService.Count(ctx, userID)
+	if err != nil {
+		return discoverImport{}, err
+	}
+	if n < importOfferBelow {
+		return discoverImport{Offer: true}, nil
+	}
+	return discoverImport{Line: true}, nil
 }
 
 // discoverHandler searches the database only. GET requests are not covered by
@@ -75,6 +133,11 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Sections = sections
+		data.Import, err = s.discoverImportFor(r.Context(), userID)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
 		var siteIDs []string
 		for _, sec := range sections {
 			for _, f := range sec.Feeds {

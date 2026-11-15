@@ -407,6 +407,7 @@ type fakeSubscriptionStore struct {
 	unsubscribeFn       func(ctx context.Context, userID, feedID string) error
 	subscribedFeedIDsFn func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	listByUserFn        func(ctx context.Context, userID string) ([]rss.Subscription, error)
+	countFn             func(ctx context.Context, userID string) (int, error)
 	getFn               func(ctx context.Context, userID, feedID string) (rss.Subscription, error)
 	renameFn            func(ctx context.Context, userID, feedID, title string) error
 }
@@ -437,6 +438,14 @@ func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) (
 		return nil, nil
 	}
 	return f.listByUserFn(ctx, userID)
+}
+
+// Count returns 0 when countFn is nil.
+func (f *fakeSubscriptionStore) Count(ctx context.Context, userID string) (int, error) {
+	if f.countFn == nil {
+		return 0, nil
+	}
+	return f.countFn(ctx, userID)
 }
 
 func (f *fakeSubscriptionStore) Get(ctx context.Context, userID, feedID string) (rss.Subscription, error) {

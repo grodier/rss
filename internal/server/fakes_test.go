@@ -19,6 +19,7 @@ import (
 type fakeFeedStore struct {
 	getByIDFn        func(ctx context.Context, id string) (rss.Feed, error)
 	listBySiteFn     func(ctx context.Context, siteID string) ([]rss.Feed, error)
+	siteFeedFactsFn  func(ctx context.Context, siteID string) (map[string]rss.FeedFacts, error)
 	requestRefreshFn func(ctx context.Context, id string) error
 }
 
@@ -28,6 +29,13 @@ func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error
 
 func (f *fakeFeedStore) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
 	return f.listBySiteFn(ctx, siteID)
+}
+
+func (f *fakeFeedStore) SiteFeedFacts(ctx context.Context, siteID string) (map[string]rss.FeedFacts, error) {
+	if f.siteFeedFactsFn == nil {
+		return nil, nil
+	}
+	return f.siteFeedFactsFn(ctx, siteID)
 }
 
 func (f *fakeFeedStore) RequestRefresh(ctx context.Context, id string) error {
@@ -322,6 +330,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 type fakeArticleStore struct {
 	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
+	listByFeedsFn  func(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	listSharedFn   func(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
 }
@@ -335,6 +344,13 @@ func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before
 		return nil, nil
 	}
 	return f.listByFeedFn(ctx, feedID, before, limit)
+}
+
+func (f *fakeArticleStore) ListByFeeds(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
+	if f.listByFeedsFn == nil {
+		return nil, nil
+	}
+	return f.listByFeedsFn(ctx, feedIDs, before, limit)
 }
 
 func (f *fakeArticleStore) ListTimeline(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error) {

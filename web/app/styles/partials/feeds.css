@@ -107,6 +107,50 @@
     text-decoration: underline;
   }
 
+  /* A site page's feeds: top-aligned, as a row runs to three lines, with
+     its facts and its latest post's title under the title. */
+  .site-feed {
+    align-items: start;
+    scroll-margin-block-start: 1rem;
+  }
+
+  .site-feed .site-feed-facts {
+    margin-block-start: 0.125rem;
+    color: var(--text-3);
+  }
+
+  /* Wraps between its parts, never inside one. */
+  .site-feed-facts > * {
+    white-space: nowrap;
+  }
+
+  /* The section Discover lists the feed under, so the feed an admin
+     picked stands out. */
+  .site-feed-section {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .site-feed-section:hover {
+    text-decoration: underline;
+  }
+
+  .site-feed .site-feed-latest {
+    margin-block-start: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .site-feed-latest a {
+    color: var(--text-2);
+    text-decoration: none;
+  }
+
+  .site-feed-latest a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
   /* Only sites with two or more subscriptions get a header, so a group
      ends in the nameplate's thin rule doubled: the single-feed rows after
      it don't read as part of it. */

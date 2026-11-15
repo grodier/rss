@@ -33,6 +33,15 @@ type Feed struct {
 	CreatedAt time.Time
 }
 
+// FeedFacts is what a site's page shows about one of its feeds beyond the
+// feed itself.
+type FeedFacts struct {
+	Section Section // its section in Discover's catalog; zero if it isn't there
+	// Latest is its newest article, zero if it has none: ID, the fields
+	// DisplayTitle reads, PublishedAt and CreatedAt only.
+	Latest Article
+}
+
 // Article is an item of a feed. Summary and Content are raw HTML as
 // published and must be sanitized before being rendered as HTML.
 type Article struct {

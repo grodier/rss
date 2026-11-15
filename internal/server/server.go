@@ -49,6 +49,9 @@ type Config struct {
 type FeedStore interface {
 	GetByID(ctx context.Context, id string) (rss.Feed, error)
 	ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error)
+	// SiteFeedFacts returns, by feed ID, each of the site's feeds' catalog
+	// section, if any, and newest article.
+	SiteFeedFacts(ctx context.Context, siteID string) (map[string]rss.FeedFacts, error)
 	RequestRefresh(ctx context.Context, id string) error
 }
 
@@ -157,6 +160,8 @@ type ArticleStore interface {
 	// ListByFeed returns a page of a feed's articles. Summary and Content
 	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
+	// ListByFeeds is ListByFeed over several feeds' articles together.
+	ListByFeeds(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	// ListTimeline returns a page of the user's subscriptions' articles that
 	// filter shows (the zero filter for Home), in the user's position order
 	// (see rss.ArticleWithFeed.Position). Summary and Content are left empty.

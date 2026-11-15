@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -37,6 +38,11 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	facts, err := s.services.FeedService.SiteFeedFacts(r.Context(), site.ID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
 
 	feedIDs := make([]string, len(feeds))
 	for i, f := range feeds {
@@ -47,6 +53,30 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
+	}
+
+	icons := s.pageIcons(r, []string{site.ID})
+	rows := siteFeedRows(site, icons[site.ID], feeds, facts, subscribed, r.URL.Path)
+	posts, err := s.sitePosts(r, userID, rows)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	// PROTOTYPE (option c): a tab per feed.
+	tab := r.URL.Query().Get("feed")
+	if r.URL.Query().Get("layout") == "c" && len(rows) > 0 {
+		if tab == "" {
+			tab = rows[0].Feed.ID
+		}
+		for i := range rows {
+			if rows[i].Feed.ID == tab {
+				posts, err = s.sitePosts(r, userID, rows[i:i+1])
+				if err != nil {
+					s.serverErrorHTML(w, r, err)
+					return
+				}
+			}
+		}
 	}
 
 	// No lookup for the site's key means it can be checked now.
@@ -69,8 +99,11 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Nav         navData
 		Site        rss.Site
 		Icons       map[string]string
-		Feeds       []rss.Feed
-		Subscribed  map[string]bool
+		Feeds       []siteFeedRow
+		Posts       []articleRow
+		Live        bool   // some feed isn't gone
+		Layout      string // PROTOTYPE
+		Tab         string // PROTOTYPE
 		LastChecked time.Time
 		Checking    bool
 		CanRecheck  bool
@@ -80,9 +113,12 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Nav:         s.nav(r, ""),
 		Site:        site,
-		Icons:       s.pageIcons(r, []string{site.ID}),
-		Feeds:       feeds,
-		Subscribed:  subscribed,
+		Icons:       icons,
+		Feeds:       rows,
+		Posts:       posts,
+		Live:        slices.ContainsFunc(rows, func(f siteFeedRow) bool { return !f.Gone() }),
+		Layout:      r.URL.Query().Get("layout"),
+		Tab:         tab,
 		LastChecked: lookup.FinishedAt,
 		Checking:    lookupInProgress(lookup),
 		CanRecheck:  canRecheck(lookup, time.Now()),
@@ -94,6 +130,121 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "site.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// sitePostsLimit is how many of a site's newest articles its page shows.
+const sitePostsLimit = 10
+
+// siteFeedRow is one of a site's feeds as its page lists it.
+type siteFeedRow struct {
+	Feed   rss.Feed
+	Facts  rss.FeedFacts
+	Site   string       // its site's name, for the avatar's letter
+	Icon   string       // its site's icon URL, or "" for its letter
+	Follow followButton // Follow, or Following when the reader follows it
+}
+
+// Gone is whether the feed no longer exists (it answered 410).
+func (f siteFeedRow) Gone() bool { return !f.Feed.GoneAt.IsZero() }
+
+// siteFeedRows lists a site's feeds for its page: those in Discover's
+// catalog first, as an admin picked them, then the others, and the gone
+// ones last, each group in feeds' order. Follow sends the reader back to
+// path, at the feed's row.
+func siteFeedRows(site rss.Site, icon string, feeds []rss.Feed, facts map[string]rss.FeedFacts, subscribed map[string]bool, path string) []siteFeedRow {
+	rows := make([]siteFeedRow, len(feeds))
+	for i, f := range feeds {
+		rows[i] = siteFeedRow{
+			Feed:  f,
+			Facts: facts[f.ID],
+			Site:  cmp.Or(site.Title, site.Host),
+			Icon:  icon,
+			Follow: followButton{
+				FeedID:    f.ID,
+				Label:     rss.DiscoverFeed{Feed: f, Site: site}.Label(),
+				ReturnTo:  path + "#feed-" + f.ID,
+				Following: subscribed[f.ID],
+			},
+		}
+	}
+	rank := func(r siteFeedRow) int {
+		switch {
+		case r.Gone():
+			return 2
+		case r.Facts.Section.ID != "":
+			return 0
+		default:
+			return 1
+		}
+	}
+	slices.SortStableFunc(rows, func(a, b siteFeedRow) int { return rank(a) - rank(b) })
+	return rows
+}
+
+// sitePosts returns a site's newest sitePostsLimit articles as its page's
+// Recent posts: those of its feeds in Discover's catalog, which an admin
+// picked as its best, or of all its feeds when none is, leaving out gone
+// feeds either way. A copy of an article in two of the feeds (a blog's
+// all-posts and category feeds) shows once. With more than one feed, each
+// row names its feed.
+func (s *Server) sitePosts(r *http.Request, userID string, feeds []siteFeedRow) ([]articleRow, error) {
+	var catalog, live []string
+	byID := make(map[string]rss.Feed, len(feeds))
+	for _, f := range feeds {
+		byID[f.Feed.ID] = f.Feed
+		if f.Gone() {
+			continue
+		}
+		live = append(live, f.Feed.ID)
+		if f.Facts.Section.ID != "" {
+			catalog = append(catalog, f.Feed.ID)
+		}
+	}
+	ids := live
+	if len(catalog) > 0 {
+		ids = catalog
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Twice the limit, so copies dropped below still leave a full list.
+	articles, err := s.services.ArticleService.ListByFeeds(r.Context(), ids, rss.ArticleCursor{}, 2*sitePostsLimit)
+	if err != nil {
+		return nil, err
+	}
+	posts := make([]articleRow, 0, sitePostsLimit)
+	seen := map[string]bool{}
+	for _, a := range articles {
+		if len(posts) == sitePostsLimit {
+			break
+		}
+		if a.CanonicalURL != "" {
+			if seen[a.CanonicalURL] {
+				continue
+			}
+			seen[a.CanonicalURL] = true
+		}
+		row := articleRow{Article: a, ReturnTo: r.URL.RequestURI()}
+		if len(feeds) > 1 {
+			row.Feed = byID[a.FeedID]
+			row.Icon = feeds[0].Icon
+		}
+		posts = append(posts, row)
+	}
+
+	if err := s.fillRead(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	if err := s.fillSaved(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	if err := s.fillStarred(r.Context(), userID, posts); err != nil {
+		return nil, err
+	}
+	s.fillDebug(r, posts)
+	markFirstImageEager(posts)
+	return posts, nil
 }
 
 // siteDebug loads the site page's debug panel: the site's fields and a line

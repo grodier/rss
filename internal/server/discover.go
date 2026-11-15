@@ -159,12 +159,15 @@ func newDiscoverRow(f rss.DiscoverFeed, icon, returnTo string) discoverRow {
 	return discoverRow{Feed: f, Icon: icon, ReturnTo: returnTo}
 }
 
-// followButton is Follow in an article row's foot, on a section's Recent
-// posts, for a feed the reader doesn't follow.
+// followButton is Follow (partials/discover_feed.html's follow-form): in an
+// article row's foot, on a section's Recent posts, for a feed the reader
+// doesn't follow, and on a site's page for each of its feeds.
 type followButton struct {
 	FeedID   string
 	Label    string // rss.DiscoverFeed.Label
 	ReturnTo string
+	// Following renders it pressed, as "Following", which unfollows.
+	Following bool
 }
 
 type discoverSectionData struct {

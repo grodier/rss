@@ -273,6 +273,45 @@ func (r *FeedRepository) RequestRefresh(ctx context.Context, id string) error {
 	return err
 }
 
+// SiteFeedFacts returns what a site's page shows about each of siteID's
+// feeds beyond the feed itself, by feed ID: its section in Discover's
+// catalog, if it's there, and when it last posted.
+//
+// One statement for the site's feeds (feeds_site_id_idx), each with a probe
+// of articles_feed_sort_idx for its newest article.
+func (r *FeedRepository) SiteFeedFacts(ctx context.Context, siteID string) (map[string]rss.FeedFacts, error) {
+	stmt := `SELECT f.id, sec.id, sec.slug, sec.name, newest.at
+		FROM feeds f
+		LEFT JOIN discover_feeds d ON d.feed_id = f.id
+		LEFT JOIN discover_sections sec ON sec.id = d.section_id
+		LEFT JOIN LATERAL (` + newestArticle + `) newest ON true
+		WHERE f.site_id = $1`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	facts := map[string]rss.FeedFacts{}
+	for rows.Next() {
+		var (
+			feedID               string
+			secID, slug, secName sql.NullString
+			latest               sql.NullTime
+		)
+		if err := rows.Scan(&feedID, &secID, &slug, &secName, &latest); err != nil {
+			return nil, err
+		}
+		ff := rss.FeedFacts{LatestAt: nullTime(latest)}
+		if secID.Valid {
+			ff.Section = rss.Section{ID: secID.String, Slug: slug.String, Name: secName.String}
+		}
+		facts[feedID] = ff
+	}
+	return facts, rows.Err()
+}
+
 // ListBySite returns a site's feeds ordered by title, then URL.
 func (r *FeedRepository) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
 	stmt := `SELECT ` + feedColumns + `

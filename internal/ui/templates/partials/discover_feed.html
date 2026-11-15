@@ -31,11 +31,11 @@
 </li>
 {{end}}
 
-{{/* follow-form is Follow for a feed the reader doesn't follow; its data
-     is a followButton. */}}
+{{/* follow-form is Follow for a feed, or, pressed, "Following", which
+     unfollows; its data is a followButton. */}}
 {{define "follow-form"}}
-<form class="follow-form" action="/feeds/{{.FeedID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{.Label}}" data-announce-unpressed="Unfollowed {{.Label}}">
+<form class="follow-form" action="/feeds/{{.FeedID}}/{{if .Following}}unsubscribe{{else}}subscribe{{end}}" method="post" data-toggle data-announce-pressed="Following {{.Label}}" data-announce-unpressed="Unfollowed {{.Label}}">
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="follow-button btn-sm" type="submit" aria-pressed="false" aria-label="Follow {{.Label}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
+  <button class="follow-button btn-sm" type="submit" aria-pressed="{{.Following}}" aria-label="Follow {{.Label}}"><span class="follow-off">Follow</span><span class="follow-on">Following</span></button>
 </form>
 {{end}}

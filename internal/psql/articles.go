@@ -26,9 +26,8 @@ var (
 	// qualifiedArticleColumns prefixes each column with the articles alias a,
 	// for queries that join tables with clashing column names.
 	qualifiedArticleColumns = "a." + strings.Join(articleColumnNames, ", a.")
-	// listArticleColumns and qualifiedListArticleColumns are the select lists
-	// for articles shown in a list (see articleListColumns).
-	listArticleColumns          = articleListColumns("")
+	// qualifiedListArticleColumns is the select list for articles shown in
+	// a list (see articleListColumns).
 	qualifiedListArticleColumns = articleListColumns("a.")
 )
 
@@ -89,15 +88,31 @@ func (r *ArticleRepository) GetByID(ctx context.Context, id string) (rss.Article
 // published date (else created date) then ID, starting after before (from
 // the start if before is zero). Summary and Content are left empty.
 func (r *ArticleRepository) ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
-	stmt := `SELECT ` + listArticleColumns + `
-		FROM articles
-		WHERE feed_id = $1
-			AND ($2::timestamptz IS NULL OR (COALESCE(published_at, created_at), id) < ($2, $3::uuid))
-		ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+	return r.ListByFeeds(ctx, []string{feedID}, before, limit)
+}
+
+// ListByFeeds is ListByFeed over the articles of all of feedIDs together,
+// as a site's page shows them.
+//
+// For each feed, its newest limit articles before the cursor from
+// articles_feed_sort_idx, then merged, keeping limit: the feeds bound the
+// work, not their articles.
+func (r *ArticleRepository) ListByFeeds(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
+	stmt := `SELECT ` + qualifiedListArticleColumns + `
+		FROM unnest($1::uuid[]) AS f(id)
+		CROSS JOIN LATERAL (
+			SELECT ` + qualifiedListArticleColumns + `
+			FROM articles a
+			WHERE a.feed_id = f.id
+				AND ($2::timestamptz IS NULL OR (COALESCE(a.published_at, a.created_at), a.id) < ($2, $3::uuid))
+			ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
+			LIMIT $4
+		) a
+		ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
 		LIMIT $4`
 
 	at, id := cursorArgs(before)
-	rows, err := r.DB.QueryContext(ctx, stmt, feedID, at, id, limit)
+	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(feedIDs), at, id, limit)
 	if err != nil {
 		return nil, err
 	}

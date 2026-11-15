@@ -1,7 +1,7 @@
 import { announce } from "../../shared/lib/announce";
 import { busyDelay } from "../../shared/lib/busy-delay";
 
-// Save, Star and Discover's Follow buttons: form[data-toggle] posts to
+// Save, Star and Follow buttons (Discover's and a site's page's): form[data-toggle] posts to
 // /articles/{id}/save, /unsave, /star or /unstar, or /feeds/{id}/subscribe
 // or /unsubscribe. Post it with fetch instead, then flip aria-pressed (the
 // stylesheet swaps the icon or the label) and the action, so the page

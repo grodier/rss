@@ -202,11 +202,6 @@ Each with when it pays off:
 
 ## Subscriptions
 
-- [ ] **Feed tabs on the site page.**
-  Show a site's articles one feed at a time, as tabs that are sub-routes of the site page (e.g. `/sites/{id}/feeds/{feedID}`).
-  This is for browsing a site's feeds in context.
-  It isn't a way to organise subscriptions (no folders or pinned feeds).
-  Open question: how it relates to the standalone feed page.
 - [ ] **Newsletters by email (needs planning).**
   Each user gets an address that turns the newsletters sent to it into a feed they subscribe to, as Feedbin and Inoreader do.
   Needs receiving email (an inbound webhook from the email provider, or Email Routing to a worker), a way to create feeds that discovery didn't find, spam and size limits, and sanitizing email HTML, which is messier than feed HTML.
@@ -640,8 +635,9 @@ Pages and queries:
 - [ ] **Site pages and search results load all of a site's feeds.**
   `ListBySite` and the second search query have no limit.
   Platform hosts and category-heavy sites can have hundreds of feeds.
+  Since #635 a site page also probes `articles_feed_sort_idx` once per feed for its newest article (`SiteFeedFacts`), and, when none of its feeds is in Discover, reads 20 index rows per live feed for Recent posts (`ListByFeeds`); it shows 4 feeds and hides the rest, so the cost isn't visible on the page.
   *Signal:* a site page or search response with hundreds of feeds, or slow ones in the logs.
-  *Fix:* limit feeds per site in search (with a "more" link to the site page) and paginate the site page.
+  *Fix:* limit feeds per site in search (with a "more" link to the site page); on the site page, store `latest_article_at` on `feeds` (as for My feeds) and load the hidden feeds' rows on demand.
 - [ ] **Debug panels count a feed's articles on every view** (#327).
   `FeedDebug` runs `count(*)` and `max()` over a feed's articles, for every feed on a site page, while debug mode is on.
   Only allowed accounts pay for it.

@@ -26,11 +26,6 @@
     font-size: 0.8125rem;
   }
 
-  .feed-row .feed-desc {
-    margin-block-start: 0.125rem;
-    font-size: 0.875rem;
-  }
-
   .feed-row .feed-url {
     margin-block-start: 0.125rem;
     overflow: hidden;
@@ -105,6 +100,65 @@
   .feed-row .feed-site a:hover {
     color: var(--text);
     text-decoration: underline;
+  }
+
+  /* A site page's feeds: a compact list without avatars, as the site's
+     is in the head just above, so a site's few feeds fit on a phone's
+     first screen with its posts. */
+  .site-feed {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 0.625rem;
+    scroll-margin-block-start: 1rem;
+  }
+
+  .site-feed-facts {
+    margin-block-start: 0.125rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  /* Wraps between its parts, never inside one. */
+  .site-feed-facts > * {
+    white-space: nowrap;
+  }
+
+  /* The section Discover lists the feed under, so the feed an admin
+     picked stands out. */
+  .site-feed-section {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .site-feed-section:hover {
+    text-decoration: underline;
+  }
+
+  /* "Show N more feeds", past the first few. */
+  .site-more-feeds > summary {
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Which feeds Recent posts come from, when it's only some. */
+  .site-posts-from {
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  /* The page's foot: when its feeds were last looked for, and a quiet
+     button to look again. */
+  .site-recheck {
+    padding: 1.25rem 1rem 2rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    text-align: center;
   }
 
   /* Only sites with two or more subscriptions get a header, so a group

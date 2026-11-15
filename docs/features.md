@@ -153,7 +153,7 @@ Either way the page then shows the link once, since only its hash is stored.
 With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
-With JavaScript, Look up and the site page's "Check for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
+With JavaScript, Look up and the site page's "Check {host} for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
 While it runs, `lookup-status.ts` fetches the page's own URL 2 s after each answer, only while the page is visible: a redirect to the site page replaces the lookup page (`location.replace`, so Back skips it), any other redirect (Log in) is followed, and a finished page's message replaces the spinner and is announced in the polite live region; without JavaScript, a `<meta http-equiv="refresh">` in `<noscript>` reloads the page instead.
@@ -165,7 +165,7 @@ Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
 `Discover` refuses with `ErrAppLink` an address on the app's own site (`Discoverer.AppSiteKey`) before fetching it, and a result that ended up there (a redirect, or a feed naming it as its site), so lookups, imports and the debug inspector never save one.
 `Result.Checked` records every candidate and its outcome, for the debug inspector; if the deadline ends the checking, `Discover` returns what it has alongside the error, and the runners ignore the result on any error.
 The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
-The site page lists the feeds with subscribe buttons and offers "Check for new feeds" once the last lookup's TTL has passed.
+The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed.
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 
 **The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
@@ -187,6 +187,15 @@ Feeds lists every catalog feed in the section that isn't gone, followed or not (
 Recent posts, `GET /discover/sections/{slug}/posts` (`discoverSectionPostsHandler`), is those feeds' articles, newest first, as article rows paged like a feed page (`SectionPosts`, one `articles_feed_sort_idx` scan per feed, merged; "Older posts" with infinite scroll); each row names its feed by `DiscoverFeed.Label` and has Follow in its foot, beside Star, Share and Save, when the reader doesn't follow the feed (`articleRow.Follow`).
 Follow works as on Discover, with `return_to` the page and the row's anchor.
 
+**A site's page.** `GET /sites/{id}` (`siteHandler`) is where a reader picks which of a site's feeds to follow; Discover's rows, a section's page, search results and lookups all lead there.
+Its head is the site's avatar, name, host and description.
+Then its feeds (`ListBySite`), each with its catalog section and newest article's time (`FeedRepository.SiteFeedFacts`, one statement with a probe of `articles_feed_sort_idx` per feed), ordered by `siteFeedRows`: Discover's feeds first, then the others, then gone ones, each group most recently posting first.
+Each row shows the feed's title without the site's name (`shortFeedName`), "{Section} · About N posts a week · Latest {when}" (`postingRate`, `since`), and Follow, or a pressed "Following" that unfollows (`follow-form` with `followButton.Following`); `save-star.ts` toggles it without a reload, and without JavaScript it redirects back to the row with a flash.
+The page lists the first 4 feeds (`siteFeedsShown`) and puts the rest in a "Show N more feeds" `<details>`; a site with a single feed shows its Follow and facts in the head instead, as a feed's page does, and a site with none just says so.
+Recent posts are the newest 10 (`sitePostsLimit`) of the site's live feeds in Discover's catalog, or of all its live feeds when none is (`sitePostFeeds`), read by `ArticleRepository.ListByFeeds` (the feed page's query over several feeds: one `articles_feed_sort_idx` scan per feed, merged), with the reader's read, saved and starred state; a copy in two of the feeds (same canonical URL) shows once, so the query asks for twice the limit.
+Posts name their feed (without an avatar, `articleRow.NoAvatar`) only when they come from more than one, and when they're from only some of the live feeds a line says which ("From Harbor Works, the feed Discover lists.").
+The foot says when the site's feeds were last looked for and offers to look again.
+
 **Start at:**
 
 1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
@@ -195,9 +204,9 @@ Follow works as on Discover, with `return_to` the page and the row's anchor.
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
 4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`) and `normalize.go` (`ParseInput`, `SiteKey`, `CanonicalFeedURL`).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
-6. `internal/server/sites.go` (`siteHandler`).
+6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 
-**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`.
+**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
 **Why:** "Feed discovery" in decisions.md.
 

@@ -131,6 +131,9 @@ type DiscoverStore interface {
 	// perSection of its catalog feeds userID doesn't follow; see
 	// psql.DiscoverRepository.Sections.
 	Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error)
+	// ListSections returns Discover's sections, without their feeds, in
+	// their default order.
+	ListSections(ctx context.Context) ([]rss.Section, error)
 	// Section returns the section with slug, or rss.ErrNoRecord.
 	Section(ctx context.Context, slug string) (rss.Section, error)
 	// SectionFeeds returns every catalog feed in the section, the most

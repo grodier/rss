@@ -292,6 +292,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
 - **`server_errors`** is capped by count, not age: every instance's housekeeper keeps the newest 1,000 (`Trim`), so a quiet month keeps its errors and a burst can't grow the table past an hour's worth.
 - **`waitlist`:** one row per address (`citext`), with one link token's hash that both confirms the entry and leaves the list; joining again while unconfirmed replaces the row's details and hash in the same `INSERT … ON CONFLICT`, and a confirmed row is left alone.
   An entry counts once `confirmed_at` is set; leaving deletes the row.
+  Its `sections`, like `users.sections`, is an array of `discover_sections` IDs, so it has no foreign key: whatever reads it joins to the sections that still exist, in their order.
   Nothing joins it to `users`: the join handler checks for an account by address before inserting, and signing up deletes the account's entry.
 - **`invites`:** one row per invite, with its token's hash; `email` is set for a bound invite and must be the signup's address.
   Redeeming is one `UPDATE … WHERE` the invite is unredeemed, unrevoked and unexpired, in the same transaction as the user's insert, so an invite makes at most one account and a failed signup leaves it usable.

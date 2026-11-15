@@ -21,32 +21,44 @@ func NewWaitlistRepository(db *sql.DB) *WaitlistRepository {
 	return &WaitlistRepository{DB: db}
 }
 
-const waitlistColumns = `id, email, name, sites, source, confirmed_at, created_at`
+const waitlistColumns = `id, email, name, sites, ` + waitlistSectionColumns + `, source, confirmed_at, created_at`
+
+// waitlistSectionColumns are an entry's sections, then the names of those
+// that still exist, in the sections' order. sections is unqualified so it
+// works with the table aliased (w) or not (RETURNING).
+const waitlistSectionColumns = `sections::text[],
+	ARRAY(SELECT ds.name FROM discover_sections ds WHERE ds.id = ANY(sections) ORDER BY ds.position, ds.name)`
 
 func scanWaitlistEntry(row interface{ Scan(...any) error }) (rss.WaitlistEntry, error) {
 	var e rss.WaitlistEntry
 	var confirmedAt sql.NullTime
-	err := row.Scan(&e.ID, &e.Email, &e.Name, &e.Sites, &e.Source, &confirmedAt, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.Email, &e.Name, &e.Sites, pq.Array(&e.Sections), pq.Array(&e.SectionNames), &e.Source, &confirmedAt, &e.CreatedAt)
 	e.ConfirmedAt = confirmedAt.Time
 	return e, err
 }
 
-// Join adds e to the waitlist, unconfirmed, with the link token tokenHash.
-// An unconfirmed entry with the same address gets e's name, sites and
-// source and the new hash, so only the newest link works; it keeps its
-// created_at. rss.ErrDuplicateEmail if the address is already confirmed.
+// Join adds e to the waitlist, unconfirmed, with the link token tokenHash;
+// e.Sections must be IDs of discover_sections. An unconfirmed entry with
+// the same address gets e's name, sites, sections and source and the new
+// hash, so only the newest link works; it keeps its created_at.
+// rss.ErrDuplicateEmail if the address is already confirmed.
 func (r *WaitlistRepository) Join(ctx context.Context, e rss.WaitlistEntry, tokenHash []byte) (rss.WaitlistEntry, error) {
-	stmt := `INSERT INTO waitlist (email, name, sites, source, token_hash)
-		VALUES ($1, $2, $3, $4, $5)
+	stmt := `INSERT INTO waitlist (email, name, sites, sections, source, token_hash)
+		VALUES ($1, $2, $3, $4::uuid[], $5, $6)
 		ON CONFLICT (email) DO UPDATE SET
 			name = EXCLUDED.name,
 			sites = EXCLUDED.sites,
+			sections = EXCLUDED.sections,
 			source = EXCLUDED.source,
 			token_hash = EXCLUDED.token_hash
 		WHERE waitlist.confirmed_at IS NULL
 		RETURNING ` + waitlistColumns
 
-	row := r.DB.QueryRowContext(ctx, stmt, e.Email, e.Name, e.Sites, e.Source, tokenHash)
+	sections := e.Sections
+	if sections == nil {
+		sections = []string{} // pq.Array(nil) is NULL
+	}
+	row := r.DB.QueryRowContext(ctx, stmt, e.Email, e.Name, e.Sites, pq.Array(sections), e.Source, tokenHash)
 	got, err := scanWaitlistEntry(row)
 	if err != nil {
 		// The conflict's WHERE skipped the update: the address is confirmed.
@@ -155,7 +167,7 @@ func (r *WaitlistRepository) List(ctx context.Context, tab string, limit, offset
 	if !ok {
 		return nil, fmt.Errorf("unknown waitlist tab %q", tab)
 	}
-	stmt := `SELECT w.id, w.email, w.name, w.sites, w.source, w.confirmed_at, w.created_at,
+	stmt := `SELECT w.id, w.email, w.name, w.sites, ` + waitlistSectionColumns + `, w.source, w.confirmed_at, w.created_at,
 			coalesce(i.id::text, ''), coalesce(i.wave, ''), i.expires_at, i.redeemed_at, i.revoked_at, i.created_at
 		FROM waitlist w
 		LEFT JOIN LATERAL (
@@ -175,7 +187,7 @@ func (r *WaitlistRepository) List(ctx context.Context, tab string, limit, offset
 	for rows.Next() {
 		var row rss.WaitlistRow
 		var confirmedAt, expiresAt, redeemedAt, revokedAt, invitedAt sql.NullTime
-		err := rows.Scan(&row.ID, &row.Email, &row.Name, &row.Sites, &row.Source, &confirmedAt, &row.CreatedAt,
+		err := rows.Scan(&row.ID, &row.Email, &row.Name, &row.Sites, pq.Array(&row.Sections), pq.Array(&row.SectionNames), &row.Source, &confirmedAt, &row.CreatedAt,
 			&row.Invite.ID, &row.Invite.Wave, &expiresAt, &redeemedAt, &revokedAt, &invitedAt)
 		if err != nil {
 			return nil, err

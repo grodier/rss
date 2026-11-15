@@ -13,7 +13,7 @@ User-facing strings, CSS classes and every helper's name live in the code and te
 Without a token the page says the app is invite-only and links to the waitlist; an expired, used, revoked or unknown invite gets a page that says which, with no form (410; `renderInviteUnusable`).
 The page with a token, and the POST, send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, like the email links.
 `signupFormHandler` checks the per-IP limit, then the invite again, takes a bound invite's email whatever was submitted, checks the name, email and password with `validator.CheckNewAccount`, and calls `UserRepository.CreateFromInvite`.
-That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, and deletes the account's waitlist entry.
+That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, copies the sections of the invite's waitlist entry to the account (`users.sections`, for Discover's order, #643), and deletes the account's waitlist entry.
 A taken email rolls it all back, so the invite stays usable, and gets an error on the email field with links to log in or reset the password.
 A bound invite's account starts confirmed, so only an open invite's signup sends the confirmation email.
 Login checks the per-IP limit, then counts the attempt against the submitted email *before* checking the password (refunded unless the password was wrong), so parallel guesses can't slip past the limit.
@@ -114,6 +114,7 @@ A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field 
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
 `WaitlistRepository.Join` inserts the entry unconfirmed in one statement: an unconfirmed entry with the same address is refreshed with the new details and token, so only the newest link works, and a confirmed one is `rss.ErrDuplicateEmail`.
 The optional sites answer is kept as typed, for the owner to add to the seed list and to check discovery against before inviting; nothing reads it automatically.
+The optional "What do you like to read?" offers Discover's sections as check pills, like the timeline form's tags (`DiscoverRepository.ListSections`, read for every logged-out `/` and every join); the handler keeps only the IDs of sections that exist, once each, in the sections' order (`chosenSections`), and stores them on the entry, replaced like the other answers when joining again.
 The handler then queues `waitlist_confirm`, keeps the address in the session as `waitlistJoinedTo` and redirects to `/waitlist/joined`.
 Log in links to the form for people who arrive there without an account.
 
@@ -135,6 +136,7 @@ Each row offers what its status allows, posting to `POST /invites/{id}/resend` (
 Resending (`inviteResendHandler`) renders a new email with a new token, expiring 14 days from now, through the same `newInviteEmail` as a wave, and `InviteRepository.Resend` replaces the invite's token and expiry, gives its entry a new link token if it still has one, and queues the email, checked against the limits under the same lock; the old link stops working.
 `GET, POST /invites/new` (`newInviteFormHandler`) invites someone by hand: with an email, it must be a confirmed waitlist entry with no pending invite, and `SendInvite` sends it like a wave of one; without, `Create` makes an open invite.
 Either way the page then shows the link once, since only its hash is stored.
+The Waitlist and review tables show each entry's sections by name, read with the entry, so a section dropped since is left out.
 
 **Start at:**
 
@@ -143,7 +145,7 @@ Either way the page then shows the link once, since only its hash is stored.
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
 4. The admin's side: `internal/admin/waitlist.go`, `invites.go` and `limits.go`, `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
+**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 

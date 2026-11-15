@@ -49,6 +49,8 @@ var templateFuncs = template.FuncMap{
 		return map[string]any{"Name": name, "Column": column, "Rows": rows, "Share": share}
 	},
 	"lower": strings.ToLower,
+	// join joins a list of names with ", ".
+	"join": func(names []string) string { return strings.Join(names, ", ") },
 	// date formats t as a UTC date.
 	"date": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 	// stamp formats t as a UTC date and time to the minute, "—" when zero.

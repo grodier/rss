@@ -61,8 +61,9 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string, by 
 // CreateFromInvite makes an account, like Create, with the invite whose token
 // hashes to tokenHash, and redeems it, in one transaction. A bound invite's
 // account starts confirmed, since its address was confirmed joining the
-// waitlist, and email must be the invite's. The account's waitlist entry, by
-// the invite's waitlist_id or the account's address, is deleted.
+// waitlist, and email must be the invite's. The account gets the sections
+// of the invite's waitlist entry (waitlist_id); then its waitlist entry, by
+// that ID or the account's address, is deleted.
 // rss.ErrInviteUnusable if the invite is unknown, expired, revoked or used,
 // or email isn't a bound invite's; rss.ErrDuplicateEmail if the email is
 // taken. On either, nothing changes, and the invite stays usable.
@@ -105,6 +106,15 @@ func (r *UserRepository) CreateFromInvite(ctx context.Context, tokenHash []byte,
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE invites SET user_id = $2 WHERE id = $1`, inviteID, id); err != nil {
 		return "", err
+	}
+	// The invite's waitlist entry answered "What do you like to read?":
+	// Discover reads the answer from the account, once the entry is gone.
+	// An open invite has no entry, so its account chose none.
+	if waitlistID.Valid {
+		stmt := `UPDATE users SET sections = w.sections FROM waitlist w WHERE users.id = $1 AND w.id = $2`
+		if _, err := tx.ExecContext(ctx, stmt, id, waitlistID); err != nil {
+			return "", err
+		}
 	}
 	// Whoever has an account no longer waits, as the privacy policy says.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM waitlist WHERE id = $1 OR email = $2`, waitlistID, email); err != nil {

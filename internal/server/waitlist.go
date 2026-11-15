@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/grodier/rss/internal/clientip"
@@ -32,6 +33,9 @@ type waitlistForm struct {
 	// addresses, for the seed list and to check discovery finds their feeds
 	// before their wave is invited.
 	Sites string `form:"sites"`
+	// Sections are the IDs of the Discover sections they'd like to read
+	// (checkboxes), to show those first in Discover.
+	Sections []string `form:"sections"`
 	// Source is the hosting page's ?ref=, carried in a hidden field.
 	Source string `form:"source"`
 	// Website is the honeypot: hidden from people, so only bots fill it in.
@@ -43,12 +47,32 @@ type waitlistForm struct {
 // hosts the partial embeds it in its own data.
 type waitlistFormData struct {
 	Form waitlistForm
+	// Sections are Discover's sections, in order, for "What do you like to
+	// read?"; the question isn't shown without any.
+	Sections []rss.Section
 	// AccountExists adds a link to /login under the email field's error.
 	AccountExists bool
 }
 
-func newWaitlistFormData(form waitlistForm) waitlistFormData {
-	return waitlistFormData{Form: form}
+func newWaitlistFormData(form waitlistForm, sections []rss.Section) waitlistFormData {
+	return waitlistFormData{Form: form, Sections: sections}
+}
+
+// Chosen reports whether the form has the section with id checked.
+func (d waitlistFormData) Chosen(id string) bool {
+	return slices.Contains(d.Form.Sections, id)
+}
+
+// chosenSections returns the IDs among chosen that are sections' IDs, once
+// each, in the sections' order: a form can post anything.
+func chosenSections(sections []rss.Section, chosen []string) []string {
+	var out []string
+	for _, sec := range sections {
+		if slices.Contains(chosen, sec.ID) {
+			out = append(out, sec.ID)
+		}
+	}
+	return out
 }
 
 // homePage is the logged-out home page's data. It hosts the waitlist form.
@@ -104,10 +128,17 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sections, err := s.services.DiscoverService.ListSections(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	form.Sections = chosenSections(sections, form.Sections)
+
 	if ok, retryAfter := s.waitlistLimiter.AllowWithRetry(clientip.RateLimitKey(s.clientIP(r))); !ok {
 		ratelimit.SetRetryAfter(w, retryAfter)
 		form.AddNonFieldError(ratelimit.TooManyAttemptsMessage(retryAfter))
-		s.renderWaitlistHost(w, r, http.StatusTooManyRequests, newWaitlistFormData(form))
+		s.renderWaitlistHost(w, r, http.StatusTooManyRequests, newWaitlistFormData(form, sections))
 		return
 	}
 
@@ -119,15 +150,15 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 	form.CheckName(form.Name)
 	form.CheckField(validator.MaxChars(form.Sites, 500), "sites", "Keep this under 500 characters")
 	if !form.Valid() {
-		s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, newWaitlistFormData(form))
+		s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, newWaitlistFormData(form, sections))
 		return
 	}
 
-	_, err := s.services.UserService.GetByEmail(r.Context(), form.Email)
+	_, err = s.services.UserService.GetByEmail(r.Context(), form.Email)
 	switch {
 	case err == nil:
 		form.AddFieldError("email", "There's already an account with this email.")
-		data := newWaitlistFormData(form)
+		data := newWaitlistFormData(form, sections)
 		data.AccountExists = true
 		s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, data)
 		return
@@ -142,15 +173,16 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, err := s.services.WaitlistService.Join(r.Context(), rss.WaitlistEntry{
-		Email:  form.Email,
-		Name:   form.Name,
-		Sites:  form.Sites,
-		Source: form.Source,
+		Email:    form.Email,
+		Name:     form.Name,
+		Sites:    form.Sites,
+		Sections: form.Sections,
+		Source:   form.Source,
 	}, hash)
 	if err != nil {
 		if errors.Is(err, rss.ErrDuplicateEmail) {
 			form.AddFieldError("email", "You're already on the waitlist.")
-			s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, newWaitlistFormData(form))
+			s.renderWaitlistHost(w, r, http.StatusUnprocessableEntity, newWaitlistFormData(form, sections))
 			return
 		}
 		s.serverErrorHTML(w, r, err)

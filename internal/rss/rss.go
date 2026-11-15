@@ -543,13 +543,18 @@ const (
 // WaitlistEntry is someone waiting for an invite (a waitlist row). It
 // counts once its address is confirmed.
 type WaitlistEntry struct {
-	ID          string
-	Email       string
-	Name        string
-	Sites       string    // sites they'd like to follow, as typed, at most 500 characters; "" if not answered
-	Source      string    // the ?ref= of the page they joined from; "" if none
-	ConfirmedAt time.Time // zero until the address is confirmed
-	CreatedAt   time.Time
+	ID    string
+	Email string
+	Name  string
+	Sites string // sites they'd like to follow, as typed, at most 500 characters; "" if not answered
+	// Sections are the IDs of the Discover sections they'd like to read, in
+	// the sections' order; none if not answered. SectionNames are the names
+	// of those that still exist, in the same order, read for the admin.
+	Sections     []string
+	SectionNames []string
+	Source       string    // the ?ref= of the page they joined from; "" if none
+	ConfirmedAt  time.Time // zero until the address is confirmed
+	CreatedAt    time.Time
 }
 
 // The admin's waitlist tabs: confirmed entries with no pending invite

@@ -86,6 +86,30 @@ func (r *DiscoverRepository) Sections(ctx context.Context, userID string, perSec
 	return out, rows.Err()
 }
 
+// ListSections returns Discover's sections, without their feeds, in their
+// default order.
+func (r *DiscoverRepository) ListSections(ctx context.Context) ([]rss.Section, error) {
+	return listSections(ctx, r.DB)
+}
+
+// listSections returns every discover_sections row in the default order.
+func listSections(ctx context.Context, db *sql.DB) ([]rss.Section, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, slug, name FROM discover_sections ORDER BY position, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []rss.Section
+	for rows.Next() {
+		var sec rss.Section
+		if err := rows.Scan(&sec.ID, &sec.Slug, &sec.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, sec)
+	}
+	return out, rows.Err()
+}
+
 // Section returns the section with slug, or rss.ErrNoRecord.
 func (r *DiscoverRepository) Section(ctx context.Context, slug string) (rss.Section, error) {
 	var sec rss.Section

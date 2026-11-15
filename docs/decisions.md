@@ -260,6 +260,7 @@ Planned in #50 (issues #51–#67).
   Results can shift under the box as you type, but only after a pause.
 - **Today's Search page is Discover, at `/discover`** (#450, #631): the fourth tab, labelled Discover, with no redirect from `/search`, which pre-alpha needs none of and which returns as the whole-app search (#645).
   Discover's box finds sites as Search's did; its placeholder is "Site name or address", short enough for a 320 px phone.
+  Its icon is a compass (approved at #631's design checkpoint): it reads as "explore" and stays distinct from the magnifier the whole-app search will use; a sparkle was rejected because stars already mean starred articles, and a grid of squares as too generic.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
   #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.

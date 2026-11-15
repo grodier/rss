@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
@@ -110,6 +112,15 @@ func TestDiscoverNoQuery(t *testing.T) {
 		}
 		if want := []string{"#section-food Food", "#section-film-and-tv Film and TV"}; !slices.Equal(chips, want) {
 			t.Errorf("chips = %q, want %q", chips, want)
+		}
+		var all []string
+		for _, a := range findAll(c, func(n *html.Node) bool {
+			return n.Data == "a" && strings.HasPrefix(attr(n, "href"), "/discover/sections/")
+		}) {
+			all = append(all, attr(a, "href")+" "+strings.Join(strings.Fields(textContent(a)), " "))
+		}
+		if want := []string{"/discover/sections/food All 5 Food feeds ›", "/discover/sections/film-and-tv All 1 Film and TV feeds ›"}; !slices.Equal(all, want) {
+			t.Errorf("All N links = %q, want %q", all, want)
 		}
 		for _, id := range []string{"section-food", "section-film-and-tv"} {
 			if len(findAll(c, func(n *html.Node) bool { return n.Data == "section" && attr(n, "id") == id })) != 1 {
@@ -563,5 +574,174 @@ func TestSearchSiteIcons(t *testing.T) {
 			t.Fatalf("status = %d", rr.Code)
 		}
 		return rr.Body.String()
+	})
+}
+
+// sectionRequest gets a section's page, path relative to
+// /discover/sections/, through the router, logged in as user-1.
+func sectionRequest(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/discover/sections/"+path, nil)
+	ctx, err := s.sessionManager.Load(req.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
+	rctx := chi.NewRouteContext()
+	slug, rest, _ := strings.Cut(strings.SplitN(path, "?", 2)[0], "/")
+	rctx.URLParams.Add("slug", slug)
+	req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	if rest == "posts" {
+		s.discoverSectionPostsHandler(rr, req)
+	} else {
+		s.discoverSectionHandler(rr, req)
+	}
+	return rr
+}
+
+func TestDiscoverSectionPage(t *testing.T) {
+	science := rss.Section{ID: "sec-1", Slug: "science", Name: "Science"}
+	feeds := []rss.DiscoverFeed{
+		{Feed: rss.Feed{ID: "feed-1", Title: "Orbit", PostsPerWeek: 2}, Site: rss.Site{ID: "site-1", Host: "orbit.example", Title: "Orbit"}},
+		{Feed: rss.Feed{ID: "feed-2", Title: "Cells", PostsPerWeek: 5}, Site: rss.Site{ID: "site-2", Host: "cells.example", Title: "Bench"}, Following: true},
+	}
+	posts := func(n int) []rss.SectionPost {
+		var out []rss.SectionPost
+		for i := range n {
+			f := feeds[i%2]
+			out = append(out, rss.SectionPost{
+				Article: rss.Article{ID: fmt.Sprintf("art-%d", i), FeedID: f.Feed.ID, Title: fmt.Sprintf("Post %d", i), PublishedAt: time.Now().Add(-time.Duration(i) * time.Hour)},
+				Feed:    f,
+			})
+		}
+		return out
+	}
+	store := func(posted []rss.SectionPost, err error) *fakeDiscoverStore {
+		return &fakeDiscoverStore{
+			sectionFn: func(_ context.Context, slug string) (rss.Section, error) {
+				if slug != "science" {
+					return rss.Section{}, rss.ErrNoRecord
+				}
+				return science, nil
+			},
+			sectionFeedsFn: func(_ context.Context, userID, sectionID string) ([]rss.DiscoverFeed, error) {
+				if userID != "user-1" || sectionID != "sec-1" {
+					t.Errorf("SectionFeeds(%q, %q); want user-1, sec-1", userID, sectionID)
+				}
+				return feeds, err
+			},
+			sectionPostsFn: func(_ context.Context, userID, sectionID string, _ rss.ArticleCursor, limit int) ([]rss.SectionPost, error) {
+				if userID != "user-1" || sectionID != "sec-1" || limit != sectionPageSize+1 {
+					t.Errorf("SectionPosts(%q, %q, %d); want user-1, sec-1, %d", userID, sectionID, limit, sectionPageSize+1)
+				}
+				return posted, err
+			},
+		}
+	}
+	server := func(d *fakeDiscoverStore) *Server {
+		return newTestServerWith(t, Services{DiscoverService: d, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
+	}
+	parse := func(t *testing.T, rr *httptest.ResponseRecorder) *html.Node {
+		t.Helper()
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		doc, err := html.Parse(rr.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc
+	}
+	currentTab := func(doc *html.Node) string {
+		tabs := findAll(doc, func(n *html.Node) bool { return n.Data == "nav" && hasClass(n, "section-tabs") })
+		if len(tabs) != 1 {
+			return ""
+		}
+		cur := findAll(tabs[0], func(n *html.Node) bool { return n.Data == "a" && attr(n, "aria-current") == "page" })
+		if len(cur) != 1 {
+			return ""
+		}
+		return attr(cur[0], "href")
+	}
+
+	t.Run("feeds", func(t *testing.T) {
+		doc := parse(t, sectionRequest(t, server(store(nil, nil)), "science"))
+		if got := textContent(findAll(doc, func(n *html.Node) bool { return n.Data == "h1" })[0]); got != "Science" {
+			t.Errorf("h1 = %q, want Science", got)
+		}
+		if got := currentTab(doc); got != "/discover/sections/science" {
+			t.Errorf("current tab = %q, want the Feeds tab", got)
+		}
+		// feed-1 has Follow, returning to its row; followed feed-2 links to its page.
+		forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })
+		if len(forms) != 1 || attr(forms[0], "action") != "/feeds/feed-1/subscribe" {
+			t.Fatalf("Follow forms = %d; want one, for feed-1", len(forms))
+		}
+		ret := findAll(forms[0], func(n *html.Node) bool { return attr(n, "name") == "return_to" })
+		if len(ret) != 1 || attr(ret[0], "value") != "/discover/sections/science#feed-feed-1" {
+			t.Errorf("return_to = %v; want /discover/sections/science#feed-feed-1", ret)
+		}
+		label := findAll(doc, func(n *html.Node) bool { return hasClass(n, "following-label") })
+		if len(label) != 1 || attr(label[0], "href") != "/feeds/feed-2" || !strings.Contains(textContent(label[0]), "Following") {
+			t.Errorf("followed feed's label = %v; want one linking to /feeds/feed-2", label)
+		}
+	})
+
+	t.Run("recent posts", func(t *testing.T) {
+		doc := parse(t, sectionRequest(t, server(store(posts(sectionPageSize+1), nil)), "science/posts"))
+		if got := currentTab(doc); got != "/discover/sections/science/posts" {
+			t.Errorf("current tab = %q, want the Recent posts tab", got)
+		}
+		rows := findAll(doc, func(n *html.Node) bool { return n.Data == "article" && hasClass(n, "article-row") })
+		if len(rows) != sectionPageSize {
+			t.Fatalf("%d rows, want %d", len(rows), sectionPageSize)
+		}
+		// Even rows are feed-1's (not followed): Follow; odd are feed-2's: none.
+		for i, row := range rows[:2] {
+			forms := findAll(row, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })
+			if want := 1 - i; len(forms) != want {
+				t.Errorf("row %d has %d Follow forms, want %d", i, len(forms), want)
+			}
+		}
+		next := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && attr(n, "rel") == "next" })
+		if len(next) != 1 || !strings.HasPrefix(attr(next[0], "href"), "/discover/sections/science/posts?before=") {
+			t.Errorf("Older posts link = %v", next)
+		}
+	})
+
+	t.Run("no posts", func(t *testing.T) {
+		rr := sectionRequest(t, server(store(nil, nil)), "science/posts")
+		if body := rr.Body.String(); rr.Code != http.StatusOK || !strings.Contains(body, "No posts in Science yet.") {
+			t.Errorf("status %d; want 200 with the empty state", rr.Code)
+		}
+	})
+
+	t.Run("unknown slug", func(t *testing.T) {
+		for _, path := range []string{"nope", "nope/posts"} {
+			if rr := sectionRequest(t, server(store(nil, nil)), path); rr.Code != http.StatusNotFound {
+				t.Errorf("%s: status = %d, want 404", path, rr.Code)
+			}
+		}
+	})
+
+	t.Run("bad cursor", func(t *testing.T) {
+		if rr := sectionRequest(t, server(store(nil, nil)), "science/posts?before=zzz"); rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		boom := errors.New("boom")
+		for _, path := range []string{"science", "science/posts"} {
+			if rr := sectionRequest(t, server(store(nil, boom)), path); rr.Code != http.StatusInternalServerError {
+				t.Errorf("%s: status = %d, want 500", path, rr.Code)
+			}
+		}
+		section := store(nil, nil)
+		section.sectionFn = func(context.Context, string) (rss.Section, error) { return rss.Section{}, boom }
+		if rr := sectionRequest(t, server(section), "science"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("Section error: status = %d, want 500", rr.Code)
+		}
 	})
 }

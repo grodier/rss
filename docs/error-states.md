@@ -214,6 +214,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | --- | --- | --- | --- | --- | --- |
 | R1 Empty query | `/discover` or `/discover?q=`, or clear the box (with JavaScript, it fetches the no-query page) | Discover, 200 | Discover's sections under the search box; with an empty catalog (or every catalog feed followed or gone), just the search box | n/a | new (#633) |
 | R1a Section with nothing to show | A section with no catalog feeds, or whose feeds the reader all follows | Discover, 200 | The section and its chip are left out | n/a | new (#633) |
+| R1b Section page with no feeds | An old link to `/discover/sections/{slug}` for a section with no catalog feeds left (Discover itself leaves such a section out, R1a) | Section page, 200 | Feeds: "No feeds in {section} yet." with a link back to Discover; Recent posts: "No posts in {section} yet." | Yes, the link and the nav | new (#634) |
+| R1c Unknown section | `/discover/sections/nope`, or a section since renamed in its slug | 404 page | The 404 page | Yes, the nav | new (#634) |
+| R1d Bad paging link | `/discover/sections/{slug}/posts?before=zzz` | 400 page | "That link to older posts isn't valid." | Yes, the tabs and the nav | new (#634) |
 | R2 No results | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Discover, 200 | "No sites or feeds match “zzzz”."; live search announces "No sites" | Yes (L1) | ok |
 | R3 Special characters | `/discover?q=%25`, `_`, `"<script>\` | Discover, 200 | As R2; matched literally and escaped | Yes | ok |
 | R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, above the search box | "Search must be 200 characters or fewer"; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |

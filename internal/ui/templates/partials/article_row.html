@@ -21,6 +21,7 @@
     </div>
     <div class="article-foot">
       {{with .AlsoIn}}<p class="article-also-in">Also in: {{range $i, $f := .}}{{if $i}}, {{end}}<a href="/feeds/{{$f.ID}}">{{or $f.Title $f.Url}}</a>{{end}}</p>{{end}}
+      {{with .Follow}}{{template "follow-form" .}}{{end}}
       {{template "article-actions" .}}
     </div>
     {{with .Debug}}<p class="debug-line">{{.ShortID}} · {{.Timeline}} {{.TimelineAt}}{{with .Position}} (yours {{.}}){{end}} · published {{or .PublishedAt "—"}} · title: {{.Title}} · image: {{.Image}} · <a href="/articles/{{$.Article.ID}}?debug=1#debug">debug</a></p>{{end}}

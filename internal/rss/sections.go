@@ -19,7 +19,7 @@ type Section struct {
 // its catalog feeds the reader doesn't follow.
 type DiscoverSection struct {
 	Name, Slug string
-	Total      int // catalog feeds in the section the reader doesn't follow
+	Total      int // catalog feeds in the section, followed or not: its page lists them all
 	Feeds      []DiscoverFeed
 }
 
@@ -30,6 +30,16 @@ type DiscoverFeed struct {
 	// Latest is its newest articles, at most 3, newest first: ID, the
 	// fields DisplayTitle reads, PublishedAt and CreatedAt only.
 	Latest []Article
+	// Following is whether the reader follows it; only a section's page
+	// sets it, as Discover's sections leave followed feeds out.
+	Following bool
+}
+
+// SectionPost is an article of a section's catalog feed, as the section's
+// Recent posts show it.
+type SectionPost struct {
+	Article Article
+	Feed    DiscoverFeed // without Latest
 }
 
 // LatestAt is when its newest article was published (or saved, if

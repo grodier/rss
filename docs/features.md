@@ -176,15 +176,20 @@ The command logs the sites it retried and those that failed too recently to retr
 **Discover's catalog.** The feeds picked for Discover, each under one of Discover's sections (`discover_sections`, seeded by its migration), are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
 The seed list gets sites and their feeds into the database; the catalog is which of those feeds Discover shows.
 
-**Discover's sections.** With no query, `discoverHandler` reads `DiscoverRepository.Sections` with 3 feeds a section (`discoverPerSection`), in one statement for every section: the catalog's feeds the reader doesn't follow and that aren't gone, each section's first 3 by their newest article (one probe of `articles_feed_sort_idx` per feed), how many the section has (`Total`, for #634's "All N"), and each kept feed's 3 newest articles.
+**Discover's sections.** With no query, `discoverHandler` reads `DiscoverRepository.Sections` with 3 feeds a section (`discoverPerSection`), in one statement for every section: the catalog's feeds the reader doesn't follow and that aren't gone, each section's first 3 by their newest article (one probe of `articles_feed_sort_idx` per feed), how many catalog feeds the section has, followed or not (`Total`, for "All N"), and each kept feed's 3 newest articles.
 A section with none of them is left out, chip and all; an empty catalog leaves the search box alone.
 The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest {when}" (`postingRate`, `since`), a "Latest posts" disclosure with the 3 titles, and Follow.
 Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
 With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
 
+**A section's page.** Each section's head on Discover links "All {Total} ›" to its page, `GET /discover/sections/{slug}` (`discoverSectionHandler`), whose head has "Discover" as a small link above the section's name, then two tabs, Feeds and Recent posts, each its own page with `aria-current`, in the timeline tabs' style (`timeline-tabs.ts` slides the underline between them); an unknown slug is a 404 (`DiscoverRepository.Section`).
+Feeds lists every catalog feed in the section that isn't gone, followed or not (`SectionFeeds`), the most recently posting first, as Discover's rows (the `discover-feed` partial, shared with Discover); a feed the reader follows shows "✓ Following" linking to its page in place of Follow, since the page answers "what's in this section", not "what's new to me".
+Recent posts, `GET /discover/sections/{slug}/posts` (`discoverSectionPostsHandler`), is those feeds' articles, newest first, as article rows paged like a feed page (`SectionPosts`, one `articles_feed_sort_idx` scan per feed, merged; "Older posts" with infinite scroll); each row names its feed by `DiscoverFeed.Label` and has Follow in its foot, beside Star, Share and Save, when the reader doesn't follow the feed (`articleRow.Follow`).
+Follow works as on Discover, with `return_to` the page and the row's anchor.
+
 **Start at:**
 
-1. `internal/server/discover.go`, `internal/psql/search.go` and `discover.go` (`Sections`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
+1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).

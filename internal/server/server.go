@@ -128,6 +128,14 @@ type DiscoverStore interface {
 	// perSection of its catalog feeds userID doesn't follow; see
 	// psql.DiscoverRepository.Sections.
 	Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error)
+	// Section returns the section with slug, or rss.ErrNoRecord.
+	Section(ctx context.Context, slug string) (rss.Section, error)
+	// SectionFeeds returns every catalog feed in the section, the most
+	// recently posting first, with whether userID follows it.
+	SectionFeeds(ctx context.Context, userID, sectionID string) ([]rss.DiscoverFeed, error)
+	// SectionPosts returns a page of the section's catalog feeds' articles,
+	// newest first, after before, like a feed page.
+	SectionPosts(ctx context.Context, userID, sectionID string, before rss.ArticleCursor, limit int) ([]rss.SectionPost, error)
 }
 
 // LookupStore queues and reads site lookups.

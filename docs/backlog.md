@@ -363,6 +363,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
+- [ ] **A Discover section's tabs share the timeline tabs' motion** (#634).
+  They reuse `.tab-indicator`, so going from a section page to Home or a timeline slides the underline from the section's tab to the timeline's, across unrelated rows, instead of fading with the page; and `timeline-tabs.ts` hands the section row's scroll (0) to the next page, so a timeline's row restores to its start before it scrolls its current tab into view.
+  Fix: give the section row its own view-transition name and saved-scroll key, or save and restore only between rows of the same kind.
 - [ ] **Flash messages push the page down (needs planning).**
   A flash is in the column above the page's content, so a page that gains one after a redirect lays its content out about 40 px lower than the page before it; the page crossfade (#513) blends the two, so everything below shows twice, offset, for its 150 ms (unsubscribing on a feed page shows it best).
   An entrance animation (#516; its PR, #551, was closed) made it worse: the content landed before the flash appeared in its empty space, so the page seemed pushed down by nothing.

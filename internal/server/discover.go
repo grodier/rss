@@ -239,7 +239,9 @@ func (s *Server) discoverSectionPostsHandler(w http.ResponseWriter, r *http.Requ
 		feed.Title = p.Feed.Label() // the site's name with the feed's, as on the Feeds tab
 		rows[i] = articleRow{Article: p.Article, Feed: feed, ReturnTo: r.URL.RequestURI()}
 		if !p.Feed.Following {
-			rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI()}
+			// Back to the row, as on the Feeds tab, so following without
+			// JavaScript doesn't lose the reader's place.
+			rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI() + "#article-" + p.Article.ID}
 		}
 		siteIDs[i] = p.Feed.Site.ID
 	}

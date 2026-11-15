@@ -704,6 +704,11 @@ func TestDiscoverSectionPage(t *testing.T) {
 				t.Errorf("row %d has %d Follow forms, want %d", i, len(forms), want)
 			}
 		}
+		follow := findAll(rows[0], func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })[0]
+		ret := findAll(follow, func(n *html.Node) bool { return attr(n, "name") == "return_to" })
+		if want := "/discover/sections/science/posts#article-art-0"; len(ret) != 1 || attr(ret[0], "value") != want {
+			t.Errorf("Follow's return_to = %v; want %q", ret, want)
+		}
 		next := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && attr(n, "rel") == "next" })
 		if len(next) != 1 || !strings.HasPrefix(attr(next[0], "href"), "/discover/sections/science/posts?before=") {
 			t.Errorf("Older posts link = %v", next)

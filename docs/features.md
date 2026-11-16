@@ -468,10 +468,12 @@ So above the line is everything that arrived since you last looked at that timel
 With motion, `divider-draw.ts` draws the line in the first time at least half of it is in view on a page load (on dividers infinite scroll appends too), once, by marking it `data-draw` for `rows.css`; without the script or under reduced motion it's simply there.
 A store error renders the page without the line.
 
-**Home's empty and short states.** An empty first page of Home tells two cases apart (`homeFollowing`): following nothing shows the ways in, Discover and import; following feeds means none of them has an article yet, since every article of a followed feed is on Home, so it says it's getting the latest from two of them by name.
-That state is short-lived, as a lookup or import saves a feed's articles with it (`DiscoveryRepository.Save`) and a feed never fetched is due at once, so nothing is requested from the GET.
-The page checks again: `home-fetching.ts` refetches it every 3 s while it's visible, for about a minute, and swaps in its rows (setting up the list-wide enhancements then); without JavaScript a `<noscript>` meta refresh reloads it every 5 s.
-The last page of Home, for every account, ends with a line counting the feeds the reader follows and linking to Discover; other timelines have none.
+**Home's empty and short states.** Every article of a followed feed is on Home, so an empty first page means the reader follows nothing, or only feeds with no articles; `SubscriptionRepository.Following` tells them apart in one statement (`homeFollowing`).
+Following feeds never fetched yet (no attempt at all), it says it's getting the latest from two of them by name; any other empty Home, following nothing or only feeds that were fetched and had nothing or failed, offers the ways in, Discover and import, so it never waits on a feed that won't fill it.
+Waiting is short-lived, as a lookup or import saves a feed's articles with it (`DiscoveryRepository.Save`) and a feed never fetched is due at once, so nothing is requested from the GET.
+The page checks again: `home-fetching.ts` fetches Home's own address (not `/`, which shows whichever tab the tab cookie names) every 3 s while it's visible, swaps in its rows (setting up the list-wide enhancements then) and announces them; after about a minute it stops and takes the spinner away.
+Without JavaScript a `<noscript>` meta refresh reloads it every 5 s.
+The last page of Home, for every account, ends with a line counting the sites the reader follows and linking to Discover; other timelines have none, and on a store error it's left out, since it's decoration.
 
 **Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager, or, from Home's last page, its end line.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.

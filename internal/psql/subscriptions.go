@@ -184,6 +184,33 @@ func (r *SubscriptionRepository) Count(ctx context.Context, userID string) (int,
 	return n, err
 }
 
+// Following returns what Home says about what userID follows: the number
+// of distinct sites, and the feeds no fetch was ever attempted for (a feed
+// saved by a lookup or import was fetched with its articles), up to limit
+// of their names (the user's, else the feed's, site's or host) in
+// ListByUser's order, and how many there are. One statement over the
+// user's subscriptions (their primary key) and their feeds and sites.
+func (r *SubscriptionRepository) Following(ctx context.Context, userID string, limit int) (rss.Following, error) {
+	stmt := `SELECT count(DISTINCT f.site_id),
+			count(*) FILTER (WHERE f.last_attempt_at IS NULL),
+			(array_agg(COALESCE(NULLIF(sub.title, ''), NULLIF(f.title, ''), NULLIF(s.title, ''), s.host)
+				ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host,
+					lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url)
+				FILTER (WHERE f.last_attempt_at IS NULL))[1:$2]
+		FROM subscriptions sub
+		JOIN feeds f ON f.id = sub.feed_id
+		JOIN sites s ON s.id = f.site_id
+		WHERE sub.user_id = $1`
+
+	var fo rss.Following
+	var names []string
+	if err := r.DB.QueryRowContext(ctx, stmt, userID, limit).Scan(&fo.Sites, &fo.UnfetchedTotal, pq.Array(&names)); err != nil {
+		return rss.Following{}, err
+	}
+	fo.Unfetched = names
+	return fo, nil
+}
+
 // SubscribedFeedIDs reports which of feedIDs userID is subscribed to.
 // An empty feedIDs returns an empty map without querying.
 func (r *SubscriptionRepository) SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error) {

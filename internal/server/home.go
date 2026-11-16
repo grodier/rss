@@ -1,7 +1,6 @@
 package server
 
 import (
-	"cmp"
 	"errors"
 	"net/http"
 	"time"
@@ -168,12 +167,20 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 	filter := current.Filter
 
 	var following homeFollowing
-	if home && (len(rows) == 0 && before.IsZero() || len(rows) > 0 && next == "") {
-		following, err = s.homeFollowing(r, userID, len(rows) == 0)
-		if err != nil {
+	switch {
+	case home && len(rows) == 0 && before.IsZero():
+		// Which empty state it is depends on it, so an error fails the page.
+		if following, err = s.homeFollowing(r, userID); err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
+	case home && len(rows) > 0 && next == "":
+		// The end line is decoration: on a store error the page has none.
+		// Only its count of sites: the page has rows, so nothing is awaited.
+		if following, err = s.homeFollowing(r, userID); err != nil {
+			s.logError(r, err)
+		}
+		following = homeFollowing{rss.Following{Sites: following.Sites}}
 	}
 
 	data := struct {
@@ -222,40 +229,31 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 	}
 }
 
-// homeFollowing is what Home says about the feeds the reader follows, on
-// the pages that say it: the first page when it's empty, where Count tells
-// "Nothing on Home yet" (0) from "Getting the latest…", and the last page
-// of a timeline that has rows, whose end line counts them.
+// homeFollowingNames is how many never-fetched feeds "Getting the latest
+// from …" names.
+const homeFollowingNames = 2
+
+// homeFollowing is what Home says about what the reader follows, on the
+// pages that say it: its empty first page and the last page of a Home with
+// rows. Home is empty when the reader follows nothing, or follows only feeds
+// with no articles: every article of a followed feed is on Home. Only feeds
+// never fetched yet are "getting the latest" (a lookup or import saves a
+// feed's articles with it, and a feed never fetched is due at once); an
+// empty Home of feeds that were fetched and had nothing, or failed, offers
+// Discover and import like following nothing, so it never waits forever.
 type homeFollowing struct {
-	Count    int      // how many feeds the reader follows
-	Fetching []string // on an empty Home, the names of up to two of them
+	rss.Following
 }
 
-// More is how many followed feeds Fetching doesn't name.
+// More is how many never-fetched feeds Unfetched doesn't name.
 func (f homeFollowing) More() int {
-	return f.Count - len(f.Fetching)
+	return f.UnfetchedTotal - len(f.Unfetched)
 }
 
-// homeFollowing reads homeFollowing for userID: the count, and, when names
-// is true (Home has no rows), up to two of the feeds' names. An empty Home
-// that follows feeds follows only feeds with no articles yet: every
-// article of a followed feed is on Home. That's rare and short-lived (a
-// lookup or import saves a feed's articles with it, and a feed never
-// fetched is due at once), so listing the follows to name two is cheap.
-func (s *Server) homeFollowing(r *http.Request, userID string, names bool) (homeFollowing, error) {
-	if !names {
-		n, err := s.services.SubscriptionService.Count(r.Context(), userID)
-		return homeFollowing{Count: n}, err
-	}
-	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
-	if err != nil {
-		return homeFollowing{}, err
-	}
-	f := homeFollowing{Count: len(subs)}
-	for _, sub := range subs[:min(2, len(subs))] {
-		f.Fetching = append(f.Fetching, cmp.Or(sub.Title, sub.Feed.Title, sub.Site.Title, sub.Site.Host))
-	}
-	return f, nil
+// homeFollowing reads homeFollowing for userID.
+func (s *Server) homeFollowing(r *http.Request, userID string) (homeFollowing, error) {
+	fo, err := s.services.SubscriptionService.Following(r.Context(), userID, homeFollowingNames)
+	return homeFollowing{fo}, err
 }
 
 // timelineDivider returns where the "You were here" line goes on userID's

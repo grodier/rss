@@ -712,6 +712,10 @@ Pages and queries:
   The tab row adds one small indexed query (`TimelineRepository.List`) to `/` and each timeline page.
   *Signal:* it shows up in `pg_stat_statements` totals.
   *Fix:* keep the tab list in the session until a timeline changes.
+- [ ] **Home's last page reads the reader's subscriptions** (#639).
+  For the end line, the last page of Home (every first page of an account with fewer than 30 articles) runs `SubscriptionRepository.Following`, one aggregate over the reader's subscriptions joined to their feeds and sites, as does an empty Home on each check while it's getting the latest (every 3 s for a minute).
+  *Signal:* `Following` in `pg_stat_statements` totals, or Home's p95 rising for readers with hundreds of feeds.
+  *Fix:* count sites only for the end line (`count(DISTINCT f.site_id)`, no names), or keep the count in the session until a subscription changes.
 - [ ] **Tag page checklist is unpaginated** (#351, #356).
   A tag's page, and also the timeline form, list all of a user's subscriptions as checkboxes, like My feeds.
   Saving a tag posts every ticked feed's ID (43 bytes each), so past about 1,500 ticked feeds the form outgrows `decodePostForm`'s 64 KiB and gets a 413.

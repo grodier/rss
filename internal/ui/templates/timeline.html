@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  {{if .Following.Fetching}}<noscript><meta http-equiv="refresh" content="5" /></noscript>{{end}}
+  {{if .Following.Unfetched}}<noscript><meta http-equiv="refresh" content="5" /></noscript>{{end}}
   <title>Paper Round - {{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</title>
   {{template "assets" "reading"}}
   {{template "app-head" .Nav}}
@@ -56,13 +56,13 @@
       <p class="empty">When a feed you follow posts at most {{with .Timeline.Filter.MaxPostsPerWeek}}{{if eq . 1}}once{{else}}{{.}} times{{end}}{{end}} a week, its articles show up here, so busy feeds never bury them.</p>
       {{else if not .Home}}
       <p class="empty">Nothing in this timeline yet.</p>
-      {{else if .Following.Fetching}}
-      {{/* Following only feeds with no articles yet: home-fetching.ts
-           checks again and swaps in the rows (the meta refresh without
-           JavaScript). */}}
-      <div class="empty home-empty" data-home-fetching>
+      {{else if .Following.Unfetched}}
+      {{/* Following feeds never fetched yet: home-fetching.ts checks
+           again and swaps in the rows (the meta refresh without
+           JavaScript). Any other empty Home offers the ways in below. */}}
+      <div class="empty home-empty" data-home-fetching="{{.Path}}">
         <div class="spinner"></div>
-        <p class="home-empty-lead">Getting the latest from {{with .Following}}{{index .Fetching 0}}{{if gt .More 0}}, {{index .Fetching 1}} and {{.More}} more{{else if eq (len .Fetching) 2}} and {{index .Fetching 1}}{{end}}{{end}}…</p>
+        <p class="home-empty-lead">Getting the latest from {{with .Following}}{{index .Unfetched 0}}{{if gt .More 0}}, {{index .Unfetched 1}} and {{.More}} more{{else if eq (len .Unfetched) 2}} and {{index .Unfetched 1}}{{end}}{{end}}…</p>
         <p>Their newest articles will show up here in a moment.</p>
       </div>
       {{else}}
@@ -79,10 +79,10 @@
 
       {{if .Next}}
       <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}">Older articles</a></nav>
-      {{else if and .Home .Rows .Following.Count}}
+      {{else if and .Home .Rows .Following.Sites}}
       {{/* The end of All feeds, for every account; infinite-scroll.ts
            appends it with the last page. */}}
-      <p class="timeline-end">That's everything from your {{.Following.Count}} {{if eq .Following.Count 1}}site{{else}}sites{{end}}. <a href="/discover">Find more in Discover</a></p>
+      <p class="timeline-end">That's everything from your {{.Following.Sites}} {{if eq .Following.Sites 1}}site{{else}}sites{{end}}. <a href="/discover">Find more in Discover</a></p>
       {{end}}
     </main>
   </div>

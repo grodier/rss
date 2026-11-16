@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -383,89 +384,97 @@ func TestHomeHandlerTimeline(t *testing.T) {
 }
 
 // TestHomeEmpty checks Home's states when it's empty or short: following
-// nothing, following feeds with no articles yet, and the end of All feeds,
+// nothing, following feeds never fetched yet, and the end of All feeds,
 // which only Home shows.
 func TestHomeEmpty(t *testing.T) {
 	const aiID = "11111111-1111-4111-8111-111111111111"
-	subs := func(names ...string) []rss.Subscription {
-		out := make([]rss.Subscription, len(names))
-		for i, n := range names {
-			out[i] = rss.Subscription{Feed: rss.Feed{ID: fmt.Sprintf("feed-%d", i), Title: n}}
-		}
-		return out
-	}
 	const (
 		nothing   = "Nothing on Home yet."
 		discover  = `<a class="btn btn-primary" href="/discover">Find sites in Discover</a>`
 		importBtn = `<a class="btn" href="/settings/import">Import from another reader</a>`
-		fetching  = "data-home-fetching"
+		fetching  = `data-home-fetching="/timelines/all"`
 		refresh   = `<noscript><meta http-equiv="refresh" content="5" /></noscript>`
 		endLine   = `class="timeline-end"`
 	)
+	older := "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: fmt.Sprintf(timelineUUID, 0)})
+	unfetched := func(sites int, names ...string) rss.Following {
+		return rss.Following{Sites: sites, Unfetched: names[:min(2, len(names))], UnfetchedTotal: len(names)}
+	}
+	boom := errors.New("boom")
 
 	tests := []struct {
-		name      string
-		target    string
-		cookie    string // the tab cookie, "" for none
-		rows      int
-		subs      []rss.Subscription
-		count     int
-		want      []string
-		wantNot   []string
-		wantCount bool // whether the page counts subscriptions
-		wantList  bool // whether it lists them
+		name       string
+		target     string
+		cookie     string // the tab cookie, "" for none
+		rows       int
+		following  rss.Following
+		storeErr   error
+		wantStatus int // 0 for 200
+		want       []string
+		wantNot    []string
+		wantAsked  bool // whether the page asks the store
 	}{
 		{
 			name: "following nothing", target: "/",
-			want:     []string{nothing, "Follow sites and their new articles show up here.", discover, importBtn},
-			wantNot:  []string{fetching, refresh, endLine},
-			wantList: true,
+			want:      []string{nothing, "Follow sites and their new articles show up here.", discover, importBtn},
+			wantNot:   []string{fetching, refresh, endLine},
+			wantAsked: true,
 		},
 		{
-			name: "following one feed with no articles", target: "/", subs: subs("Alpha"),
-			want:     []string{fetching, refresh, "Getting the latest from Alpha…", "Their newest articles will show up here in a moment."},
-			wantNot:  []string{nothing, discover, endLine},
-			wantList: true,
+			name: "following only feeds that were fetched and had nothing", target: "/", following: rss.Following{Sites: 2},
+			want:      []string{nothing, discover, importBtn},
+			wantNot:   []string{fetching, refresh, endLine},
+			wantAsked: true,
 		},
 		{
-			name: "following two", target: "/", subs: subs("Alpha", "Beta"),
-			want:     []string{"Getting the latest from Alpha and Beta…"},
-			wantList: true,
+			name: "one feed never fetched", target: "/", following: unfetched(1, "Alpha"),
+			want:      []string{fetching, refresh, "Getting the latest from Alpha…", "Their newest articles will show up here in a moment."},
+			wantNot:   []string{nothing, discover, endLine},
+			wantAsked: true,
 		},
 		{
-			name: "following five", target: "/", subs: subs("Alpha", "Beta", "Gamma", "Delta", "Epsilon"),
-			want:     []string{"Getting the latest from Alpha, Beta and 3 more…"},
-			wantList: true,
+			name: "two", target: "/", following: unfetched(2, "Alpha", "Beta"),
+			want:      []string{"Getting the latest from Alpha and Beta…"},
+			wantAsked: true,
 		},
 		{
-			name: "a subscription's own name", target: "/",
-			subs:     []rss.Subscription{{Title: "Mine", Feed: rss.Feed{Title: "Theirs"}}},
-			want:     []string{"Getting the latest from Mine…"},
-			wantList: true,
+			name: "five", target: "/", following: unfetched(4, "Alpha", "Beta", "Gamma", "Delta", "Epsilon"),
+			want:      []string{"Getting the latest from Alpha, Beta and 3 more…"},
+			wantAsked: true,
 		},
 		{
-			name: "a short Home", target: "/", rows: 3, count: 7,
+			name: "a store error on an empty Home", target: "/", storeErr: boom,
+			wantStatus: http.StatusInternalServerError, wantAsked: true,
+		},
+		{
+			name: "a short Home", target: "/", rows: 3, following: unfetched(7, "Alpha"),
 			want:      []string{endLine + `>That's everything from your 7 sites. <a href="/discover">Find more in Discover</a></p>`},
 			wantNot:   []string{nothing, fetching, refresh},
-			wantCount: true,
+			wantAsked: true,
 		},
 		{
-			name: "one site", target: "/", rows: 1, count: 1,
+			name: "one site", target: "/", rows: 1, following: rss.Following{Sites: 1},
 			want:      []string{"That's everything from your 1 site."},
-			wantCount: true,
+			wantAsked: true,
 		},
 		{
-			name: "the last of older pages", target: "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: fmt.Sprintf(timelineUUID, 0)}), rows: 2, count: 4,
+			name: "the last of older pages", target: older, rows: 2, following: rss.Following{Sites: 4},
 			want:      []string{"That's everything from your 4 sites."},
-			wantCount: true,
+			wantAsked: true,
 		},
 		{
-			name: "a next page", target: "/", rows: 31, count: 7,
+			name: "a store error on a short Home", target: "/", rows: 3, storeErr: boom,
+			want:      []string{"Article 2"},
+			wantNot:   []string{endLine},
+			wantAsked: true,
+		},
+		{
+			name: "a next page", target: "/", rows: 31,
 			want:    []string{`rel="next"`},
 			wantNot: []string{endLine},
 		},
 		{
-			name: "no older articles", target: "/timelines/all?before=" + encodeCursor(rss.ArticleCursor{At: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), ID: fmt.Sprintf(timelineUUID, 0)}),
+			name: "no older articles", target: older,
 			want:    []string{"No older articles."},
 			wantNot: []string{nothing, fetching, endLine},
 		},
@@ -475,28 +484,25 @@ func TestHomeEmpty(t *testing.T) {
 			wantNot: []string{nothing, fetching, refresh, endLine},
 		},
 		{
-			name: "another tab, short", target: "/", cookie: aiID, rows: 3, count: 7,
+			name: "another tab, short", target: "/", cookie: aiID, rows: 3,
 			wantNot: []string{endLine},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var counted, listed bool
+			asked := false
 			s := newTestServerWith(t, Services{
 				ReadService: &fakeReadStore{},
 				ArticleService: &fakeArticleStore{listTimelineFn: func(context.Context, string, rss.TimelineFilter, rss.ArticleCursor, int) ([]rss.ArticleWithFeed, error) {
 					return timelineItems(tt.rows), nil
 				}},
-				SubscriptionService: &fakeSubscriptionStore{
-					countFn: func(ctx context.Context, userID string) (int, error) {
-						counted = true
-						return tt.count, nil
-					},
-					listByUserFn: func(ctx context.Context, userID string) ([]rss.Subscription, error) {
-						listed = true
-						return tt.subs, nil
-					},
-				},
+				SubscriptionService: &fakeSubscriptionStore{followingFn: func(ctx context.Context, userID string, limit int) (rss.Following, error) {
+					asked = true
+					if userID != "user-1" || limit != 2 {
+						t.Errorf("Following(%q, %d), want (user-1, 2)", userID, limit)
+					}
+					return tt.following, tt.storeErr
+				}},
 				TimelineService: &fakeTimelineStore{
 					listFn: func(context.Context, string) ([]rss.Timeline, error) {
 						return []rss.Timeline{{}, {ID: aiID, Name: "AI"}}, nil
@@ -513,8 +519,8 @@ func TestHomeEmpty(t *testing.T) {
 			}
 			rr := httptest.NewRecorder()
 			s.router().ServeHTTP(rr, req)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d", rr.Code)
+			if want := cmp.Or(tt.wantStatus, http.StatusOK); rr.Code != want {
+				t.Fatalf("status = %d, want %d", rr.Code, want)
 			}
 			body := rr.Body.String()
 			assertBodyContains(t, body, tt.want...)
@@ -523,24 +529,11 @@ func TestHomeEmpty(t *testing.T) {
 					t.Errorf("body contains %q", no)
 				}
 			}
-			if counted != tt.wantCount || listed != tt.wantList {
-				t.Errorf("counted, listed = %v, %v; want %v, %v", counted, listed, tt.wantCount, tt.wantList)
+			if asked != tt.wantAsked {
+				t.Errorf("asked the store = %v, want %v", asked, tt.wantAsked)
 			}
 		})
 	}
-
-	t.Run("a store error", func(t *testing.T) {
-		s := newTestServerWith(t, Services{
-			ReadService:    &fakeReadStore{},
-			ArticleService: &fakeArticleStore{},
-			SubscriptionService: &fakeSubscriptionStore{listByUserFn: func(context.Context, string) ([]rss.Subscription, error) {
-				return nil, errors.New("boom")
-			}},
-		})
-		if rr := getHome(t, s, "/", true); rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want 500", rr.Code)
-		}
-	})
 }
 
 func TestHomeHandlerSiteIcons(t *testing.T) {

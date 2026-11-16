@@ -3,6 +3,16 @@ import { enhanceDivider } from "./divider-draw";
 import { enhancePings } from "./read-pings";
 import { enhanceShare } from "./share";
 
+// enhanceRows sets up the article rows in root that arrived after the page
+// loaded, as the reading entry's setups do at load: local times, read pings
+// and Share. Infinite scroll calls it on each row it appends, and
+// home-fetching.ts on the list it swaps in.
+export function enhanceRows(root: ParentNode): void {
+  localizeTimes(root);
+  enhancePings(root);
+  enhanceShare(root);
+}
+
 // Infinite scroll: when the "Older articles" link (.pager a[rel=next])
 // nears the viewport, fetch the page it links to and append its rows to
 // .article-list, and, from the last page, All feeds' end line
@@ -81,9 +91,7 @@ export function init(): void {
           continue;
         }
         el.dataset.pageUrl = pageUrl;
-        localizeTimes(el);
-        enhancePings(el);
-        enhanceShare(el);
+        enhanceRows(el);
         rows.observe(el);
       }
       const pager = link.closest(".pager")!;

@@ -520,16 +520,25 @@ type User struct {
 	Name             string
 	Email            string
 	EmailConfirmedAt time.Time // zero until the email is confirmed
-	Theme            string    // ThemeSystem, ThemeLight or ThemeDark; only a Session's User has it
+	Theme            string    // one of the Theme constants; only a Session's User has it
+	Layout           string    // LayoutHeadlines or LayoutCards; only a Session's User has it
 	CreatedAt        time.Time
 }
 
 // Themes a user can choose (users.theme). ThemeSystem follows the device's
-// light or dark setting.
+// light or dark setting; ThemePaper is a warm light theme.
 const (
 	ThemeSystem = "system"
 	ThemeLight  = "light"
+	ThemePaper  = "paper"
 	ThemeDark   = "dark"
+)
+
+// Layouts of article rows a user can choose (users.layout): a headline with
+// its picture beside it, or a preview card under the feed's avatar.
+const (
+	LayoutHeadlines = "headlines"
+	LayoutCards     = "cards"
 )
 
 // Token is a one-time email link (a user_tokens row).

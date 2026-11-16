@@ -1,4 +1,4 @@
-/* The tokens every rule uses by name: colors (light, then dark), font
+/* The tokens every rule uses by name: colors (light, Paper, then dark), font
    stacks, and the motion curves and durations. */
 @layer base {
   /* Colors are tokens so a theme can redefine them in one place.
@@ -46,8 +46,14 @@
     --avatar-icon-bg: #fff;
     --debug-bg: #fffbea;
     --debug-border: #c99a06;
-    --radius: 16px;
-    --radius-sm: 10px;
+    /* What sits behind the reading column; only Paper tells it apart. */
+    --bg-page: var(--bg);
+    /* Corners are barely rounded, like cut paper: --radius for frames and
+       pictures, --radius-sm for small things, --radius-control for buttons
+       and fields. */
+    --radius: 6px;
+    --radius-sm: 4px;
+    --radius-control: 6px;
     --column: 40rem;
     --blur: saturate(180%) blur(14px);
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -96,11 +102,26 @@
     --delay-busy: 300ms;
   }
 
+  /* Paper: a warm light theme, chosen in Settings (never by the system).
+     Light with the page and its greys warmed: the column is nearly white on
+     a page a shade darker, and color keeps its meaning. */
+  :root[data-theme="paper"] {
+    --bg: #fffefc;
+    --bg-page: #faf9f5;
+    --bg-glass: rgb(255 254 252 / 0.86);
+    --surface: #f6f3ec;
+    --read-bg: #f7f5ef;
+    --border: #e9e5db;
+    --border-strong: #8f8775;
+    --info-bg: #f6f3ec;
+  }
+
   /* The dark theme: the same tokens, when the device is dark and the user
-     hasn't chosen light, or when they chose dark (data-theme on <html>, from
-     Settings). The two blocks hold the same values; change them together. */
+     hasn't chosen light or Paper, or when they chose dark (data-theme on
+     <html>, from Settings). The two blocks hold the same values; change
+     them together. */
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
+    :root:not([data-theme="light"], [data-theme="paper"]) {
       color-scheme: dark;
       --bg: #0f1626;
       --bg-glass: rgb(15 22 38 / 0.82);

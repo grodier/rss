@@ -104,6 +104,38 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
+	// Only the card opens the article, so nothing else pressable is inside
+	// it: the source link and the actions are in the foot under it.
+	t.Run("a row's card holds only the article's link", func(t *testing.T) {
+		result, storeErr = timelineItems(2), nil
+		result[0].Article.Authors = []string{"Ada"}
+		result[0].Article.URL = "https://example.com/a"
+		doc, err := html.Parse(strings.NewReader(getHome(t, s, "/", true).Body.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cards := findAll(doc, func(n *html.Node) bool { return hasClass(n, "article-card") })
+		if len(cards) != 2 {
+			t.Fatalf("%d article cards, want 2", len(cards))
+		}
+		for _, card := range cards {
+			pressable := findAll(card, func(n *html.Node) bool { return n.Data == "a" || n.Data == "button" })
+			if len(pressable) != 1 || pressable[0].Parent == nil || !hasClass(pressable[0].Parent, "article-title") {
+				t.Errorf("a card has %d links and buttons, want only its title's link", len(pressable))
+			}
+		}
+		for _, class := range []string{"article-source", "article-actions"} {
+			for _, n := range findAll(doc, func(n *html.Node) bool { return hasClass(n, class) }) {
+				if !hasClassAncestor(n, "article-foot") {
+					t.Errorf("a .%s is outside its row's foot", class)
+				}
+			}
+		}
+		if got := len(findAll(doc, func(n *html.Node) bool { return hasClass(n, "article-source") })); got != 1 {
+			t.Errorf("%d source links, want 1", got)
+		}
+	})
+
 	t.Run("nav shows the user's monogram", func(t *testing.T) {
 		result, storeErr = timelineItems(1), nil
 		sess := rss.Session{ID: "session-1", User: rss.User{ID: "user-1", Name: "zoë"}}
@@ -115,7 +147,7 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
-	t.Run("authors in the card", func(t *testing.T) {
+	t.Run("authors in the row's foot", func(t *testing.T) {
 		result, storeErr = timelineItems(3), nil
 		result[0].Article.Authors = []string{"Ada"}
 		result[1].Article.Authors = []string{"Ada", "Grace", "Linus"}

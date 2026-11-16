@@ -497,7 +497,8 @@ Planned in #163 (issues #147–#162).
 - **A timeline, not an inbox.** Read state is recorded but only shown as a quiet marker on read rows (tinted card, dimmed text and image).
   No unread counts, badges, "N new" indicators, "mark all read", or manual mark read/unread.
   No unread filter for now.
-- **Hovering a card never looks like reading it** (#421): hover never tints a card, on unread or read cards, in either theme, so the quiet read marker stays unambiguous.
+- **Hovering a card never looks like reading it** (#421): in the Cards layout hover never tints a card, on unread or read cards, in any theme, so the quiet read marker, a tint there, stays unambiguous.
+  The Headlines layout (#PRNUM) marks read without a tint (a dimmed headline, kicker and picture), so there the hover is a tint; see "Design".
   Instead the border firms up and the title takes the link color (`--accent`), the opposite of a read card's dimmed title, so a read card being reconsidered gets the same clear feedback as an unread one.
   Rejected: the border alone (too faint for a card that is all link), an underlined title (heavy on two-line Bricolage headlines) and a shadow (unused elsewhere, and invisible in dark).
   Hover styles apply only under `(hover: hover)`, so a tap on a phone doesn't leave a card looking hovered.
@@ -557,8 +558,9 @@ Planned in #163 (issues #147–#162).
 - **Word filters will use a full-text index, not trigrams** (#388).
   On #388's seed a `pg_trgm` index was 127 MB (a quarter of `articles`) and didn't help common words, while a `simple` full-text index was 26 MB and took a rare-word timeline from ~0.9 s to ~50 ms.
   The exact word match stays as the final check, so results don't change.
-- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title, two-line excerpt and a small link to the original.
+- **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title and two-line excerpt.
   The whole card links to the in-app article page.
+  Since #PRNUM this is the Cards layout, one of two, and the byline and the link to the original are under the card, not in it; see "Article rows have two layouts" under "Design".
   Feed pages leave out the avatar and name.
   Untitled articles use the start of the excerpt.
   (#181) The image, title and excerpt are the feed's, else the article page's (see "Enrichment", #307); the feed's own values always win.
@@ -846,7 +848,26 @@ Planned in #309 (issues #298, #306, #307).
 
 ## Design
 
-A modern, minimal look modelled on social timelines, from the redesign in #181.
+A modern, minimal look modelled on social timelines, from the redesign in #181, moved toward a newspaper's in #PRNUM, since beside Bluesky the app looked like it.
+
+- **Article rows have two layouts, Headlines (the default) and Cards, chosen in Settings → Reading** (#PRNUM, the owner's pick of three options after three rounds).
+  Headlines: the feed's small icon and name as a kicker with the time, then a large headline and the excerpt with the picture beside them, and no frame; on phones the picture goes full width between the headline and the excerpt.
+  Cards: the layout from #181, the feed's avatar in a column of its own and a framed preview card under its name.
+  Headlines is the default because the avatar column and the framed card were what made a row read as a social post, on phones above all, where every app has the same bars and the row is what's left; it also shows about twice the articles per desktop screen.
+  Cards stays, as a setting, because a framed card reads as one thing to press without hovering, and gives pictures more room; it isn't a compatibility path, and both are designed for.
+  Every change to article rows is designed, built and screenshotted in both.
+  Rejected for Headlines: a thumbnail beside the headline on phones too (denser, but cramped), a frame around each article (clearest to press, but on a phone it was the card again), serif headlines (further from the app's own voice), and a masthead across the top in place of the rail (nothing on phones, and two sticky bars cost height).
+- **Only the card opens the article, and nothing else pressable is inside it** (#PRNUM, the owner): the byline, the link to the original, Follow and Star, Share and Save are on a line under it, in both layouts, so a press never has two candidates.
+  Before, the link to the original sat inside the card, raised above the card's link.
+  In Headlines the frameless card shows itself by tinting when hovered or pressed; on a phone at rest nothing outlines it, which the owner accepted over a frame.
+- **Corners are barely rounded and buttons are soft rectangles** (#PRNUM): 6 px on frames, pictures and controls and 4 px on small things, where cards had 16 px and buttons were pills.
+  Rounded pills and big radii were part of the social look; older entries here that say "pill" mean the same controls in their new shape.
+  The current section in the rail has a sunrise-colored edge, and the timeline tabs are set in the display face with a thicker sunrise underline.
+  The admin keeps its rounder shape: its design was approved on its own (#562).
+- **Paper is a theme, beside Light and Dark** (#PRNUM, the owner): Light stays white and the default; Paper warms the page, the borders and the tints, with the column nearly white on a page a shade darker.
+  A first version with a stronger paper tone read as muddy, and a warm look as the only light theme was turned down, so it's a choice.
+  System never picks it, since devices only say light or dark.
+  Feed names in the Headlines kicker are in the text color, not the sunrise: a colored label on every row was part of the muddiness.
 
 - **One centered column, nav on the left.** A rail with icons and labels on wide screens, icons only on medium ones, and a top bar (logo, logout) with a bottom tab bar on phones.
   CSS only; no JavaScript.
@@ -876,6 +897,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Logged-out and error pages always follow the system, since they don't know the user, and the installed app's splash stays light, since the manifest can't vary.
   The browser bar (`theme-color`) follows the user's choice on logged-in pages, so a dark page doesn't sit under a white bar; the issue had accepted the system's, but the page knows the choice, so it costs one argument per page.
 - **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), the sky tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
+  That is the Cards layout; in Headlines a read row dims its headline, kicker and picture instead (#PRNUM), having no card to tint.
 - **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.
 - **Reading text is a little heavier in dark** (#413): Newsreader at weight 440 rather than 400, since light text on dark reads thinner.
   Pure white text is avoided, since it glares.

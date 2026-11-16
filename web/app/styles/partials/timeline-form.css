@@ -44,7 +44,7 @@
 
   .timeline-summary-feeds li {
     padding: 0.125rem 0.625rem;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     background: var(--bg);
     font-size: 0.8125rem;
   }
@@ -84,14 +84,14 @@
     gap: 0.25rem;
     padding: 0.25rem;
     border: 1px solid var(--border-strong);
-    border-radius: 999px;
+    border-radius: var(--radius-control);
   }
 
   .segmented label {
     position: relative;
     margin: 0;
     padding: 0.4375rem 1rem;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     color: var(--text-2);
     font-size: 0.9375rem;
     font-weight: 600;

@@ -13,6 +13,8 @@
   {{- $theme := ""}}{{with .}}{{$theme = .Theme}}{{end}}
   {{- if eq $theme "dark"}}
   <meta name="theme-color" content="#0f1626" />
+  {{- else if eq $theme "paper"}}
+  <meta name="theme-color" content="#fffefc" />
   {{- else if eq $theme "light"}}
   <meta name="theme-color" content="#ffffff" />
   {{- else}}
@@ -21,9 +23,11 @@
   {{- end}}
   <meta name="apple-mobile-web-app-title" content="Paper Round" />{{end}}
 
-{{/* html-theme is the data-theme attribute of a logged-in page's <html>,
-     from its navData: the user's theme, or nothing to follow the system. */}}
-{{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}}{{end}}
+{{/* html-theme is the reading settings of a logged-in page's <html>, from
+     its navData: data-theme, the user's theme, or nothing to follow the
+     system, and data-layout="cards" when they chose Cards, or nothing for
+     Headlines (rows.css draws both from the one article-row). */}}
+{{define "html-theme"}}{{with .Theme}} data-theme="{{.}}"{{end}}{{with .Layout}} data-layout="{{.}}"{{end}}{{end}}
 
 {{/* assets loads a page group's stylesheets and scripts, in the head:
      {{template "assets" "<group>"}}, once per page (see assetTags). */}}

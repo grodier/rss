@@ -198,13 +198,14 @@ func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error 
 	return nil
 }
 
-// UpdateTheme sets the theme of the user with id: rss.ThemeSystem,
-// rss.ThemeLight or rss.ThemeDark (the column's CHECK rejects anything else).
+// UpdateReading sets the reading settings of the user with id: theme is one
+// of the rss.Theme constants and layout rss.LayoutHeadlines or
+// rss.LayoutCards (the columns' CHECKs reject anything else).
 // It returns rss.ErrNoRecord if there is no such user.
-func (r *UserRepository) UpdateTheme(ctx context.Context, id, theme string) error {
-	stmt := `UPDATE users SET theme = $2 WHERE id = $1`
+func (r *UserRepository) UpdateReading(ctx context.Context, id, theme, layout string) error {
+	stmt := `UPDATE users SET theme = $2, layout = $3 WHERE id = $1`
 
-	res, err := r.DB.ExecContext(ctx, stmt, id, theme)
+	res, err := r.DB.ExecContext(ctx, stmt, id, theme, layout)
 	if err != nil {
 		return err
 	}

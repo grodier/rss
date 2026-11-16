@@ -42,7 +42,9 @@ Creating and revoking are recorded in the admin's audit log (see "Audit log" und
 Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
 Account (`settingsAccountHandler`) has rows that each open a small page with one form (Name, Email, Password), "Log them out" for other devices, and Delete account at its foot.
 Name trims and checks the name (`CheckName`, also used by signup).
-Reading (`settingsReadingHandler`) is itself the form: Theme offers System, Light or Dark as radio buttons; `UserRepository.UpdateTheme` stores it in `users.theme`, which `authenticate` loads with the session, so every logged-in page then renders it as `data-theme` on `<html>` (see "Frontend" in [architecture.md](architecture.md)).
+Reading (`settingsReadingHandler`) is itself the form, two sets of radio buttons saved together: Theme offers System, Light, Paper or Dark, and Article layout offers Headlines or Cards.
+`UserRepository.UpdateReading` stores them in `users.theme` and `users.layout`, which `authenticate` loads with the session, so every logged-in page then renders them as `data-theme` and `data-layout` on `<html>` (see "Themes" and "Article layouts" under "Frontend" in [architecture.md](architecture.md)).
+The layout changes how article rows are drawn on every page that lists articles, not what they hold or do.
 The Settings home's account row and Account's Email row show "Not confirmed" until the address is confirmed (see "Changing email").
 Password asks for the current and the new password; `UserRepository.ChangePassword` verifies the current one before starting a transaction (Argon2 is slow), then in one transaction stores the new hash and deletes the user's other sessions, keeping this device's.
 The handler queues the `password_changed` email, logging rather than failing if it can't.

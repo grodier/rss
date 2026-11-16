@@ -204,7 +204,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `POST /lookups`, `GET /lookups/{id}` | yes | Queue a site lookup; its status page |
 | `GET /settings` | yes | The Settings home: the account and the other categories |
 | `GET /settings/account`, `/reading`, `/data`, `/help` | yes | Settings' category pages |
-| `POST /settings/reading` | yes | Save the reading preferences (the theme) |
+| `POST /settings/reading` | yes | Save the reading preferences (the theme and the article layout) |
 | `GET, POST /settings/name`, `/password`, `/email`, `/delete` | yes | Account's one-form pages |
 | `POST /settings/log-out-others`, `/settings/debug` | yes | Log out other devices; turn debug mode on or off |
 | `GET /settings/export`, `GET /settings/subscriptions.opml` | yes | OPML export |
@@ -502,9 +502,16 @@ Beyond those:
 - **Press states** (#510): the last partial, `press.css`, holds the `:active` styles that give touch, mouse and keyboard presses feedback, since hover is limited to devices that hover.
   Colors apply always; the scales sit in the `prefers-reduced-motion: no-preference` block.
   The browser's tap highlight is turned off.
-- **Themes:** `tokens.css` (`web/shared/styles`) defines the color tokens on `:root` (light), then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme="light"])`, and for `:root[data-theme="dark"]`.
-  A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
-  The dark values are written twice (system and chosen), and `web/css_test.go` fails if the two differ or a color token has no dark value.
+- **Themes:** `tokens.css` (`web/shared/styles`) defines the color tokens on `:root` (light), then Paper's for `:root[data-theme="paper"]`, which redefines only the tokens it warms, then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for a `:root` that chose neither Light nor Paper, and for `:root[data-theme="dark"]`.
+  A logged-in page's `<html>` gets `data-theme="light"`, `"paper"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
+  The dark values are written twice (system and chosen), and `web/css_test.go` fails if the two differ, a color token has no dark value, or Paper defines a color token light doesn't have.
+  Only Paper tells the page behind the reading column (`--bg-page`) from the column (`--bg`).
+- **Article layouts:** article rows have one markup (`partials/article_row.html`) and two layouts, Headlines and Cards, both drawn by `rows.css`.
+  `html-theme` also writes `navData.Layout()` as `data-layout="cards"` when the user chose Cards (`users.layout`), and nothing for Headlines, which the rules select with `:root:not([data-layout="cards"])`; so a page that doesn't know the user gets Headlines.
+  Rules without a layout selector are shared by both.
+  In both, a row's `.article-card` holds only the link that opens the article; the byline, the source link, Follow and the actions are in `.article-foot` under it.
+- **Shape:** corners come from three tokens in `tokens.css`: `--radius` (frames and pictures), `--radius-sm` (small things) and `--radius-control` (buttons, fields and other controls).
+  The admin sets its own values for them (`web/admin/styles/partials/shell.css`), so the reader's shape isn't the admin's.
   Logged-out and error pages have no user, so they always follow the system.
 - **Motion:** the easing curves and durations are tokens on `:root` in `tokens.css`, next to the colors, and every animation and moving transition is written inside `@media (prefers-reduced-motion: no-preference)`; `web/css_test.go` (`TestMotionIsOptIn`, over every partial) fails on motion outside it.
 - **View transitions** (#513): navigating from page to page crossfades (`@view-transition` in `shell.css`, inside the reduced-motion opt-in), for links and form posts that redirect, but not reloads.

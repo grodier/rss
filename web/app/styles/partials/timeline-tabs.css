@@ -40,7 +40,7 @@
     min-inline-size: 0;
   }
 
-  /* The tabs fade out before the Edit pill, so a row that overflows reads
+  /* The tabs fade out before the Edit button, so a row that overflows reads
      as one that scrolls, and the end padding lets the last tab scroll clear
      of the fade. Only the mask's alpha counts, so any opaque token does. */
   .timeline-tabs ul {
@@ -80,8 +80,9 @@
     padding: 1rem 0 calc(0.875rem + 2px);
     overflow: hidden;
     color: var(--text-2);
+    font-family: var(--font-display);
     font-size: 1rem;
-    font-weight: 650;
+    font-weight: 700;
     text-decoration: none;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -113,7 +114,7 @@
     position: absolute;
     inset-inline: 0;
     inset-block-end: 0;
-    border-block-end: 2px solid var(--brand-strong);
+    border-block-end: 3px solid var(--brand);
   }
 
   /* Tab to tab (#521): the underline is named, so between two tab pages

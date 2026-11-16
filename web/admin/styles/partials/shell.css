@@ -6,6 +6,13 @@
     scrollbar-gutter: stable;
   }
 
+  /* The admin keeps its own rounder shape: the reader's corners
+     (tokens.css) are its design's, not a shared one. */
+  :root {
+    --radius-sm: 10px;
+    --radius-control: 999px;
+  }
+
   /* The sidebar's color runs the page's full height, however long. */
   .admin {
     display: grid;

@@ -11,10 +11,14 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* An article card's own link pressed (not its source link or actions):
-     the border firms as on hover. Never a tint, since that is the read
-     marker. */
-  .article-card:has(.article-title a:active) {
+  /* An article card's own link pressed: as on hover (rows.css), Headlines
+     tints the card and Cards firms its border, never a tint there, since
+     that is its read marker. */
+  :root:not([data-layout="cards"]) .article-card:has(.article-title a:active) {
+    background: var(--surface);
+  }
+
+  :root[data-layout="cards"] .article-card:has(.article-title a:active) {
     border-color: color-mix(in srgb, var(--text) 40%, transparent);
   }
 
@@ -84,6 +88,7 @@
 
     .article-card {
       transition:
+        background-color var(--duration-quick) var(--ease-out),
         border-color var(--duration-quick) var(--ease-out),
         transform var(--duration-quick) var(--ease-out);
     }

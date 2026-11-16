@@ -158,29 +158,34 @@ func TestUserRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("UpdateTheme saves each theme", func(t *testing.T) {
-		for _, theme := range []string{rss.ThemeDark, rss.ThemeLight, rss.ThemeSystem} {
-			if err := repo.UpdateTheme(t.Context(), id, theme); err != nil {
-				t.Fatalf("UpdateTheme(%q): %v", theme, err)
-			}
-			var got string
-			if err := db.QueryRow(`SELECT theme FROM users WHERE id = $1`, id).Scan(&got); err != nil {
-				t.Fatal(err)
-			}
-			if got != theme {
-				t.Errorf("theme = %q; want %q", got, theme)
+	t.Run("UpdateReading saves each theme and layout", func(t *testing.T) {
+		for _, theme := range []string{rss.ThemeDark, rss.ThemeLight, rss.ThemePaper, rss.ThemeSystem} {
+			for _, layout := range []string{rss.LayoutCards, rss.LayoutHeadlines} {
+				if err := repo.UpdateReading(t.Context(), id, theme, layout); err != nil {
+					t.Fatalf("UpdateReading(%q, %q): %v", theme, layout, err)
+				}
+				var gotTheme, gotLayout string
+				if err := db.QueryRow(`SELECT theme, layout FROM users WHERE id = $1`, id).Scan(&gotTheme, &gotLayout); err != nil {
+					t.Fatal(err)
+				}
+				if gotTheme != theme || gotLayout != layout {
+					t.Errorf("theme, layout = %q, %q; want %q, %q", gotTheme, gotLayout, theme, layout)
+				}
 			}
 		}
 	})
 
-	t.Run("UpdateTheme rejects another value", func(t *testing.T) {
-		if err := repo.UpdateTheme(t.Context(), id, "sepia"); err == nil {
-			t.Error("UpdateTheme(sepia) succeeded; want the CHECK to reject it")
+	t.Run("UpdateReading rejects another value", func(t *testing.T) {
+		if err := repo.UpdateReading(t.Context(), id, "sepia", rss.LayoutHeadlines); err == nil {
+			t.Error("UpdateReading(sepia) succeeded; want the CHECK to reject it")
+		}
+		if err := repo.UpdateReading(t.Context(), id, rss.ThemeDark, "grid"); err == nil {
+			t.Error("UpdateReading(grid) succeeded; want the CHECK to reject it")
 		}
 	})
 
-	t.Run("UpdateTheme with unknown id", func(t *testing.T) {
-		err := repo.UpdateTheme(t.Context(), "00000000-0000-4000-8000-000000000000", rss.ThemeDark)
+	t.Run("UpdateReading with unknown id", func(t *testing.T) {
+		err := repo.UpdateReading(t.Context(), "00000000-0000-4000-8000-000000000000", rss.ThemeDark, rss.LayoutCards)
 		if !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("err = %v; want %v", err, rss.ErrNoRecord)
 		}

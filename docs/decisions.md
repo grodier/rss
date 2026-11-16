@@ -851,7 +851,7 @@ Planned in #309 (issues #298, #306, #307).
 A modern, minimal look modelled on social timelines, from the redesign in #181, moved toward a newspaper's in #680, since beside Bluesky the app looked like it.
 
 - **Article rows have two layouts, Headlines (the default) and Cards, chosen in Settings → Reading** (#680, the owner's pick of three options after three rounds).
-  Headlines: the feed's small icon and name as a kicker with the time, then a large headline and the excerpt with the picture beside them, and no frame; on phones the picture goes full width between the headline and the excerpt.
+  Headlines: the feed's avatar and name as a kicker with the time, then a large headline and the excerpt with the picture beside them, and no frame; on phones the picture goes full width between the headline and the excerpt.
   Cards: the layout from #181, the feed's avatar in a column of its own and a framed preview card under its name.
   Headlines is the default because the avatar column and the framed card were what made a row read as a social post, on phones above all, where every app has the same bars and the row is what's left; it also shows about twice the articles per desktop screen.
   Cards stays, as a setting, because a framed card reads as one thing to press without hovering, and gives pictures more room; it isn't a compatibility path, and both are designed for.
@@ -868,6 +868,10 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   A first version with a stronger paper tone read as muddy, and a warm look as the only light theme was turned down, so it's a choice.
   System never picks it, since devices only say light or dark.
   Feed names in the Headlines kicker are in the text color, not the sunrise: a colored label on every row was part of the muddiness.
+- **In Headlines the feed's name is set as a name, and on phones it sits over the time** (#PRNUM, the owner's pick of three options after using #680): the avatar at 28 px beside the name in sentence case, bold, at body size, on one line with the time; on phones a 36 px avatar with the name over the time.
+  #680's kicker, a 20 px icon and the name in small capitals, made the feed too faint, on phones above all, where who published a thing is half of what a reader scans for.
+  A phone's line can't hold a name at this size beside the full date, so there it stacks rather than cutting names; on wide screens there's room, and one line keeps the row compact, cutting only a very long name.
+  Rejected: the same small capitals a size up (still faint, and cut names on phones) and the stacked form everywhere (about 18 px more per row on desktop, for nothing it needed).
 
 - **One centered column, nav on the left.** A rail with icons and labels on wide screens, icons only on medium ones, and a top bar (logo, logout) with a bottom tab bar on phones.
   CSS only; no JavaScript.

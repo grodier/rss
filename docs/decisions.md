@@ -283,7 +283,7 @@ Planned in #50 (issues #51–#67).
 - **Decided at #664's checkpoint for later issues:**
   - While typing, suggestions instead of results: one list of up to 6 feeds with a quiet "✓ Following" and no buttons, and "Search everything" last; Enter shows the results (#666).
     Buttons while typing were rejected (Choose repeated the row, and Follow was a second filled button beside the box's), as was a small "+" (a new Follow control).
-  - Recent searches, kept on the device only and never sent to the server, which reverses #645's first "No recent searches are stored" while keeping the rule against per-person reading data on the server (#667).
+  - Recent searches, kept on the device only and never sent to the server, which reverses #645's first "No recent searches are stored" while keeping the rule against per-person reading data on the server; built in #667, which shows them while the box is focused and empty, as on X, and forgets them on the logged-out pages, for shared devices.
   - "/" opens the search from anywhere, and tapping Discover again focuses its box (#646), in place of #646's first plan of scope chips, "All {n}" and a link from Discover to Search.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.

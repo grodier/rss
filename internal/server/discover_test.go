@@ -269,16 +269,18 @@ func TestLiveSearchMarkup(t *testing.T) {
 	tests := []struct {
 		name, q    string
 		status     int
-		results    int  // result rows in the container
-		lookup     bool // the lookup offer is in the container
-		empty      bool // the no-results message is in the container
-		noChildren bool // the container has no elements
-		importCard bool // the container holds only the import card (an empty catalog, a new reader)
+		results    int    // result rows in the container
+		lookup     bool   // the lookup offer is in the container
+		empty      bool   // the no-results message is in the container
+		noChildren bool   // the container has no elements
+		importCard bool   // the container holds only the import card (an empty catalog, a new reader)
+		recent     string // the container's data-recent-query, "" for none
 	}{
 		{name: "no query", q: "", status: http.StatusOK, importCard: true},
-		{name: "results", q: "ex", status: http.StatusOK, results: 2},
-		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true},
-		{name: "no results", q: "zzz", status: http.StatusOK, empty: true},
+		{name: "results", q: "ex", status: http.StatusOK, results: 2, recent: "ex"},
+		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true, recent: "npr.org"},
+		{name: "no results", q: "zzz", status: http.StatusOK, empty: true, recent: "zzz"},
+		{name: "trimmed", q: url.QueryEscape("  ex "), status: http.StatusOK, results: 2, recent: "ex"},
 		{name: "invalid query", q: strings.Repeat("a", 201), status: http.StatusUnprocessableEntity, noChildren: true},
 	}
 	for _, tt := range tests {
@@ -315,6 +317,26 @@ func TestLiveSearchMarkup(t *testing.T) {
 				t.Fatalf("found %d [data-search-results], want 1", len(containers))
 			}
 			c := containers[0]
+			if got := attr(c, "data-recent-query"); got != tt.recent || hasAttr(c, "data-recent-query") != (tt.recent != "") {
+				t.Errorf("container's data-recent-query = %q (set %v), want %q", got, hasAttr(c, "data-recent-query"), tt.recent)
+			}
+
+			// recent-searches.ts clones the template's list and its first
+			// row, filling the row's link and data-recent-text.
+			templates := findAll(doc, func(n *html.Node) bool { return n.Data == "template" && hasAttr(n, "data-recent-template") })
+			if len(templates) != 1 {
+				t.Fatalf("found %d template[data-recent-template], want 1", len(templates))
+			}
+			tpl := templates[0]
+			if n := len(findAll(tpl, func(n *html.Node) bool { return n.Data == "button" && hasAttr(n, "data-recent-clear") })); n != 1 {
+				t.Errorf("template has %d Clear buttons, want 1", n)
+			}
+			if n := len(findAll(tpl, func(n *html.Node) bool {
+				return n.Data == "li" && len(findAll(n, func(n *html.Node) bool { return n.Data == "a" })) == 1 &&
+					len(findAll(n, func(n *html.Node) bool { return hasAttr(n, "data-recent-text") })) == 1
+			})); n != 1 {
+				t.Errorf("template has %d rows with a link and data-recent-text, want 1", n)
+			}
 			if n := len(findAll(c, func(n *html.Node) bool {
 				return n.Data == "li" && hasClass(n, "search-result") && !hasClass(n, "search-lookup")
 			})); n != tt.results {

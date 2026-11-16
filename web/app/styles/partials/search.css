@@ -166,6 +166,14 @@
     color: var(--text);
   }
 
+  /* Why the sections aren't in the default order: a quiet line under the
+     chips. */
+  .section-order-note {
+    padding: 0.25rem 1rem 0;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
   /* A section page's head: "Discover", small, above the section's name. */
   .page-head .head-kicker {
     display: block;

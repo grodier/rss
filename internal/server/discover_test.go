@@ -887,3 +887,55 @@ func TestDiscoverImportCard(t *testing.T) {
 		}
 	})
 }
+
+func TestDiscoverSectionOrderNote(t *testing.T) {
+	const note = `<p class="section-order-note">Sections you follow most come first.</p>`
+	section := func(name string, position int) rss.DiscoverSection {
+		slug := strings.ToLower(name)
+		return rss.DiscoverSection{Name: name, Slug: slug, Position: position, Total: 1, Feeds: []rss.DiscoverFeed{
+			{Feed: rss.Feed{ID: "feed-" + slug}, Site: rss.Site{ID: "site-" + slug, Host: slug + ".example"}},
+		}}
+	}
+	tests := []struct {
+		name     string
+		sections []rss.DiscoverSection
+		wantNote bool
+	}{
+		{"the default order", []rss.DiscoverSection{section("News", 1), section("Food", 9), section("Travel", 15)}, false},
+		{"one section", []rss.DiscoverSection{section("Food", 9)}, false},
+		{"a section moved up", []rss.DiscoverSection{section("Food", 9), section("News", 1), section("Travel", 15)}, true},
+		{"sections sharing a position", []rss.DiscoverSection{section("Food", 9), section("Baking", 9)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeDiscoverStore{sectionsFn: func(context.Context, string, int) ([]rss.DiscoverSection, error) {
+				return tt.sections, nil
+			}}
+			s := newTestServerWith(t, Services{SearchService: failingSearchStore(t), DiscoverService: store})
+			body := discoverRequestAs(t, s, "user-1", "").Body.String()
+			if got := strings.Contains(body, note); got != tt.wantNote {
+				t.Errorf("note shown = %v, want %v", got, tt.wantNote)
+			}
+			if tt.wantNote && !strings.Contains(body, "</nav>\n      "+note) {
+				t.Error("the note isn't right under the chips")
+			}
+			// The chips follow the sections' order.
+			last := -1
+			for _, sec := range tt.sections {
+				i := strings.Index(body, `<a class="chip" href="#section-`+sec.Slug+`">`)
+				if i < last {
+					t.Errorf("the %s chip is out of order", sec.Name)
+				}
+				last = i
+			}
+		})
+	}
+
+	t.Run("not with a query", func(t *testing.T) {
+		store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) { return nil, nil }}
+		s := newTestServerWith(t, Services{SearchService: store, DiscoverService: failingDiscoverStore(t)})
+		if body := discoverRequestAs(t, s, "user-1", "food").Body.String(); strings.Contains(body, "section-order-note") {
+			t.Error("the note is shown with a query")
+		}
+	})
+}

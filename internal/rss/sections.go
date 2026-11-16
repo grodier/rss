@@ -19,6 +19,7 @@ type Section struct {
 // its catalog feeds the reader doesn't follow.
 type DiscoverSection struct {
 	Name, Slug string
+	Position   int // its place in the default order
 	Total      int // catalog feeds in the section, followed or not: its page lists them all
 	Feeds      []DiscoverFeed
 }

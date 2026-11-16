@@ -1,10 +1,12 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -52,6 +54,10 @@ type discoverData struct {
 	// Sections is Discover's catalog as this reader sees it, shown when
 	// there's no query; empty when the catalog has nothing for them.
 	Sections []rss.DiscoverSection
+	// Reordered says Sections aren't in the default order: the reader's
+	// follows or waitlist answer moved one, and a line under the chips says
+	// why.
+	Reordered bool
 	// Import is what Discover says about importing, with no query.
 	Import discoverImport
 }
@@ -108,6 +114,15 @@ func (s *Server) discoverImportFor(ctx context.Context, userID string) (discover
 	return discoverImport{Line: true}, nil
 }
 
+// inDefaultOrder reports whether sections are in Discover's default order,
+// by position. Sections sharing a position count as in order either way:
+// the database orders their names by its collation, not Go's.
+func inDefaultOrder(sections []rss.DiscoverSection) bool {
+	return slices.IsSortedFunc(sections, func(a, b rss.DiscoverSection) int {
+		return cmp.Compare(a.Position, b.Position)
+	})
+}
+
 // discoverHandler searches the database only. GET requests are not covered by
 // CrossOriginProtection, so GET handlers never fetch user-supplied URLs or make
 // changes on the user's behalf; at most they do idempotent, bounded upkeep
@@ -133,6 +148,7 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Sections = sections
+		data.Reordered = !inDefaultOrder(sections)
 		data.Import, err = s.discoverImportFor(r.Context(), userID)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)

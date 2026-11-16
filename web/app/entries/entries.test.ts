@@ -55,6 +55,7 @@ const entries: Record<string, string[]> = {
     "infinite-scroll",
   ],
   discover: ["rum", "local-times", "back-forward", "save-star", "busy-forms", "live-search", "lookup-status"],
+  search: ["rum", "local-times", "back-forward", "busy-forms", "live-search"],
   timelines: ["rum", "back-forward", "timeline-form", "reorder"],
   account: ["rum", "local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
   login: ["rum", "back-forward", "busy-forms", "password-toggle"],

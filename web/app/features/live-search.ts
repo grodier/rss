@@ -11,8 +11,9 @@ import { enhanceShare } from "./share";
 // Nothing is fetched under 2 characters; emptying the box fetches the
 // no-query page at once, so Discover's sections come back as they are now
 // (without the feeds followed meanwhile). The URL follows the query, so a
-// reload or Back shows the same results, and the number of sites a query
-// found is announced in the polite live region; focus never moves. A swap also
+// reload or Back shows the same results, and the new container's
+// data-announce (what the query found, worded by the server: "2 sites",
+// "No results") is announced in the polite live region; focus never moves. A swap also
 // removes the form's error, left from a page rendered as a 422, since the
 // new query is valid. On any failure (a non-200, a redirect to the login
 // page, a network error) the page is left as it is: submitting the form
@@ -74,9 +75,8 @@ export function init(): void {
       const container = doc.querySelector("[data-search-results]");
       if (!container || controller.signal.aborted) return;
       show(q, container);
-      if (!q) return;
-      const n = results.querySelectorAll(".result").length;
-      announce(n === 0 ? "No sites" : n === 1 ? "1 site" : `${n} sites`);
+      const said = container.getAttribute("data-announce");
+      if (q && said) announce(said);
     } catch {
       // Aborted, failed or not the page: leave the page as it is.
     } finally {

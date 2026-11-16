@@ -5,8 +5,8 @@ isolate();
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-const page = (results: number) =>
-  `<main><div data-search-results>${'<div class="result">Site</div>'.repeat(results)}</div></main>`;
+const page = (results: number, said = `${results} sites`) =>
+  `<main><div data-search-results data-announce="${said}">${'<div class="result">Site</div>'.repeat(results)}</div></main>`;
 
 beforeEach(async () => {
   vi.useFakeTimers();
@@ -86,12 +86,22 @@ describe("live-search", () => {
 
   it.each([
     [0, "No sites"],
-    [1, "1 site"],
-  ])("announces %d results as %s", async (n, said) => {
-    fetchMock.mockImplementation(async () => new Response(page(n), { status: 200 }));
+    [3, "3 results"],
+  ])("announces the results' data-announce, with %d results: %s", async (n, said) => {
+    fetchMock.mockImplementation(async () => new Response(page(n, said), { status: 200 }));
     type("load");
     await vi.advanceTimersByTimeAsync(300);
     expect(liveRegion()).toBe(said);
+  });
+
+  it("announces nothing when the results have no data-announce", async () => {
+    fetchMock.mockImplementation(
+      async () => new Response(`<main><div data-search-results><p>Results</p></div></main>`, { status: 200 }),
+    );
+    type("load");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(results().textContent).toContain("Results");
+    expect(liveRegion()).toBe("");
   });
 
   it("brings the no-query page back at once when the box is emptied, without announcing", async () => {

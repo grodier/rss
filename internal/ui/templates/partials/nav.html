@@ -5,9 +5,11 @@
 {{/* app-nav is the logged-in navigation: a rail on wide screens, a top bar
      and tab bar on narrow ones, with an account entry (the user's avatar,
      labelled Settings) at the bottom of the rail or the right of the top
-     bar. Its data is a navData: the current section ("home", "saved",
-     "feeds", "discover", "settings", or "" on pages outside them), the user,
-     and whether debug mode is on (a badge after the brand). */}}
+     bar. Search is a rail item on wide screens and an icon in the top bar
+     on phones, beside the account entry; the tab bar keeps four tabs. Its
+     data is a navData: the current section ("home", "saved", "feeds",
+     "discover", "search", "settings", or "" on pages outside them), the
+     user, and whether debug mode is on (a badge after the brand). */}}
 {{define "app-nav"}}
 <header class="rail">
   {{template "brand"}}
@@ -18,8 +20,10 @@
       <li><a href="/saved"{{if eq .Section "saved"}} aria-current="page"{{end}}>{{template "icon-bookmark"}}<span>Saved</span></a></li>
       <li><a href="/feeds"{{if eq .Section "feeds"}} aria-current="page"{{end}}>{{template "icon-feeds"}}<span>My feeds</span></a></li>
       <li><a href="/discover"{{if eq .Section "discover"}} aria-current="page"{{end}}>{{template "icon-compass"}}<span>Discover</span></a></li>
+      {{if ne .SearchEntry "c"}}<li class="rail-search-item{{if eq .SearchEntry "b"}} rail-search-tab{{end}}"><a href="/search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>{{end}}
     </ul>
   </nav>
+  {{if not (or (eq .SearchEntry "b") (eq .SearchEntry "c"))}}<a class="rail-search" href="/search" aria-label="Search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}</a>{{end}}
   <a class="rail-account" href="/settings"{{if eq .Section "settings"}} aria-current="page"{{end}}>
     <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
   </a>

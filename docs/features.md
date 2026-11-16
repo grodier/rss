@@ -219,6 +219,26 @@ The foot says when the site's feeds were last looked for and offers to look agai
 
 **Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 
+## Search
+
+**Flow.** Search (`GET /search`, `searchHandler`) searches the whole app, so finding something doesn't depend on knowing where it was; it's opened from the rail on wide screens and an icon in the phone's top bar (`partials/nav.html`).
+With no query it says what it covers, and its box takes focus.
+With one (up to 200 characters, as Discover's), it reads three groups in turn, each limited to its first 3 (`searchPerGroup`), and shows those that found something, in order:
+Your feeds is `SubscriptionRepository.Search`, the reader's subscriptions whose name (theirs, else the feed's title), feed title, site title or host contains `q`, as My feeds' rows (the `my-feed` partial, shared with My feeds);
+Saved is `SaveRepository.ListSaved`, Saved's own search, as compact rows of the title, feed and date saved;
+New sites is `searchSites`, Discover's site search (`SearchRepository.Search`, with which result feeds the reader follows, marked "Following"), as Discover's results (the `site-result` partial).
+When `q` is an address, Look up is offered above the groups (the `lookup-offer` partial, as on Discover), and when every group is empty a line says there are no results.
+Live search works as on Discover (see "Discover, site lookups and discovery"), announcing how many results came in (`searchPageData.Announce`).
+
+**Start at:**
+
+1. `internal/server/search.go` (`searchHandler`) and `discover.go` (`searchSites`), and `internal/ui/templates/search.html`.
+2. `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`ListSaved`).
+
+**Tests:** `internal/server/search_test.go` (`TestSearchPage`), `templates_test.go` (`TestAppNav`); `internal/psql/subscriptions_test.go` (`TestSubscriptionRepositorySearch`); `web/app/features/live-search.test.ts`.
+
+**Why:** "Feed discovery" and "First run and discovery" in decisions.md.
+
 ## Feed ingestion and background refresh
 
 **Flow.** Three things fetch a feed's articles: discovery (the first save, above), the Refresh button, and the refresh workers.

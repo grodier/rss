@@ -1,0 +1,30 @@
+{{/* my-feed is a followed feed's row, on My feeds and Search; its data is a
+     myFeedRow: the feed's name, its site's when it's not under the site's
+     heading, its tags, its latest article and posting rate, whether it's
+     gone or failing, and Edit. */}}
+{{define "my-feed"}}
+{{$name := .Name}}
+<li class="feed-row my-feed">
+  {{template "avatar" (avatar .Sub.Feed.SiteID $name .Icon)}}
+  <div>
+    <a class="feed-row-title" href="/feeds/{{.Sub.Feed.ID}}">{{$name}}</a>
+    {{with .Site}}
+    <p class="feed-site">From <a href="/sites/{{$.Sub.Site.ID}}">{{.}}</a></p>
+    {{end}}
+    {{with .Sub.Tags}}
+    <p class="feed-tags">{{range .}}<a href="/tags/{{.ID}}">{{.Name}}</a>{{end}}</p>
+    {{end}}
+    {{if .Sub.LatestArticleAt.IsZero}}
+    <p>No articles yet.</p>
+    {{else}}
+    <p>Latest article {{template "local-date" .Sub.LatestArticleAt}} · {{postingRate .Sub.Feed.PostsPerWeek}}</p>
+    {{end}}
+    {{if not .Sub.Feed.GoneAt.IsZero}}
+    <p class="fetch-error">This feed no longer exists.</p>
+    {{else if .Failing}}
+    <p class="fetch-error">This feed is failing to update.</p>
+    {{end}}
+  </div>
+  <a class="row-icon-btn" href="/feeds/{{.Sub.Feed.ID}}/edit?return_to={{.ReturnTo}}" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
+</li>
+{{end}}

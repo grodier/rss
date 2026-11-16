@@ -259,13 +259,19 @@ Planned in #50 (issues #51–#67).
   The URL follows the query (`history.replaceState`), so reload and Back show the same results.
   There's no rate limit: debouncing bounds each reader's requests, and the `ILIKE` scan's cost is on the watchlist.
   GET handlers still never fetch user-supplied URLs, so looking up an address still takes a click on Look up, which appears as you type.
-  The number of sites is announced in a polite live region rather than making the results a live region, which would read every result out.
+  What the results hold is announced in a polite live region rather than making the results a live region, which would read every result out: the number of sites on Discover, of results on Search (#645), worded by the server in the results container's `data-announce`, so each page counts its own results.
 - **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the page already is the results, so updating it adds no new widget, keeps each result's feeds, "Following" marker and the Look up button in view, and leaves keyboard and screen-reader behavior as it was.
   A dropdown of up to 5 site names was the alternative; it's a new ARIA combobox (arrow keys, Enter, Escape) to get right, and hides the results it duplicates.
   Results can shift under the box as you type, but only after a pause.
 - **Today's Search page is Discover, at `/discover`** (#450, #631): the fourth tab, labelled Discover, with no redirect from `/search`, which pre-alpha needs none of and which returns as the whole-app search (#645).
   Discover's box finds sites as Search's did; its placeholder is "Site name or address", short enough for a 320 px phone.
   Its icon is a compass (approved at #631's design checkpoint): it reads as "explore" and stays distinct from the magnifier the whole-app search will use; a sparkle was rejected because stars already mean starred articles, and a grid of squares as too generic.
+- **`/search` is the whole-app search** (#450, #645), opened from a rail item on wide screens and an icon in the phone's top bar, beside the account entry, so the tab bar keeps its four tabs.
+  Its results come in groups, each showing its first 3: Your feeds (a name, feed title, site title or host matches), Saved, and New sites, in that order, with empty groups left out; Articles in your feeds (#647) is planned between Your feeds and Saved.
+  New sites is Discover's site search, so a site you follow shows there marked "Following", and pasting an address offers Look up above the groups, as on Discover.
+  Saved keeps its own search box: searching the list you're looking at works well, and Search covers saved too.
+  No recent searches are stored, and the box takes focus when Search opens, since opening it is the intent.
+  Your feeds also matches the site's title, which the issue left out, so a site's feeds are found by the site's name when their own titles differ.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
   #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.

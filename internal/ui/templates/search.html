@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - search</title>
+  {{template "assets" "search"}}
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Search</h1>
+      </header>
+
+      {{/* The box takes focus: opening Search is the intent to type. It
+           searches names, addresses and article titles, so it turns off
+           autocorrect as Discover's does (see "Feed discovery" in
+           docs/decisions.md). */}}
+      <form class="page-search" role="search" action="/search" method="get" data-live-search>
+        <label class="visually-hidden" for="q">Search</label>
+        {{with .Form.FieldErrors.q}}
+        <span class="error">{{.}}</span>
+        {{end}}
+        <div class="search-row">
+          <div class="search-field">
+            {{template "icon-search"}}
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Articles or sites" autofocus autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+          </div>
+          <button class="btn-primary" type="submit">Search</button>
+        </div>
+      </form>
+
+      {{/* live-search.ts replaces this container's contents with the
+           same container from /search?q=… as the reader types. */}}
+      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Announce}}"{{end}}>
+      {{if .Searched}}
+      {{template "lookup-offer" .Found}}
+
+      {{with .Feeds}}
+      <section class="search-group" aria-labelledby="search-feeds">
+        <div class="list-head"><h2 id="search-feeds">Your feeds</h2></div>
+        <ul role="list">
+          {{range .}}{{template "my-feed" .}}{{end}}
+        </ul>
+      </section>
+      {{end}}
+
+      {{with .Saved}}
+      <section class="search-group" aria-labelledby="search-saved">
+        <div class="list-head"><h2 id="search-saved">Saved</h2></div>
+        <ul class="search-articles" role="list">
+          {{range .}}
+          <li class="search-article">
+            <a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>
+            <p>{{.Feed.Title}} · Saved {{template "local-date" .SavedAt}}</p>
+          </li>
+          {{end}}
+        </ul>
+      </section>
+      {{end}}
+
+      {{with .Found.Sites}}
+      <section class="search-group" aria-labelledby="search-sites">
+        <div class="list-head"><h2 id="search-sites">New sites</h2></div>
+        {{range .}}{{template "site-result" (siteResult . (index $.Found.Icons .Site.ID) $.Found.Subscribed)}}{{end}}
+      </section>
+      {{end}}
+
+      {{if .Empty}}
+      <p class="empty">No results for “{{.Form.Q}}”.</p>
+      {{end}}
+      {{else if not .Form.FieldErrors}}
+      <div class="search-intro">
+        <p>Search the sites you follow, what you've saved, and new sites to follow.</p>
+        <p>Paste a site's address to follow it.</p>
+      </div>
+      {{end}}
+      </div>
+    </main>
+  </div>
+</body>
+
+</html>

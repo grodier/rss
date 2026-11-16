@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -37,19 +38,10 @@ type searchForm struct {
 type discoverData struct {
 	Nav      navData
 	Form     searchForm
-	Sites    []rss.SiteWithFeeds
 	Searched bool
+	Found    foundSites // with a query
 	Flash    string
-	// LookupQ is the address to offer as a site lookup (see lookupAddress),
-	// or "" if q doesn't look like a website address.
-	LookupQ string
-	// AppLink is set instead of LookupQ when q is an address on the app
-	// itself, such as a shared timeline's link, which is never looked up.
-	AppLink bool
-	// Subscribed holds the IDs of the result feeds the user follows.
-	Subscribed map[string]bool
-	// Icons holds the icon URLs of the result sites, or of the sections'
-	// sites, that have one.
+	// Icons holds the icon URLs of the sections' sites that have one.
 	Icons map[string]string
 	// Sections is Discover's catalog as this reader sees it, shown when
 	// there's no query; empty when the catalog has nothing for them.
@@ -164,46 +156,104 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 			data.Icons = s.pageIcons(r, siteIDs)
 		}
 	default:
-		var siteKey string
-		if u, err := discovery.ParseInput(data.Form.Q); err == nil {
-			siteKey = discovery.SiteKey(u)
-			if s.isAppLink(u) {
-				data.AppLink = true
-			} else {
-				data.LookupQ = lookupAddress(u)
-			}
-		}
-		sites, err := s.services.SearchService.Search(r.Context(), data.Form.Q, siteKey, searchLimit)
+		found, err := s.searchSites(r, data.Form.Q, searchLimit)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		data.Sites = sites
+		data.Found = found
 		data.Searched = true
-
-		var feedIDs, siteIDs []string
-		for _, site := range sites {
-			siteIDs = append(siteIDs, site.Site.ID)
-			for _, f := range site.Feeds {
-				feedIDs = append(feedIDs, f.ID)
-			}
-		}
-		if len(feedIDs) > 0 {
-			userID, _ := s.authenticatedUserID(r)
-			data.Subscribed, err = s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
-			if err != nil {
-				s.serverErrorHTML(w, r, err)
-				return
-			}
-		}
-		if len(siteIDs) > 0 {
-			data.Icons = s.pageIcons(r, siteIDs)
-		}
 	}
 
 	if err := s.renderHTML(w, status, "discover.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// foundSites is a site search's results, as Discover and Search show them.
+type foundSites struct {
+	Sites []rss.SiteWithFeeds
+	// LookupQ is the address to offer as a site lookup (see lookupAddress),
+	// or "" if q doesn't look like a website address.
+	LookupQ string
+	// AppLink is set instead of LookupQ when q is an address on the app
+	// itself, such as a shared timeline's link, which is never looked up.
+	AppLink bool
+	// Subscribed holds the IDs of the result feeds the user follows.
+	Subscribed map[string]bool
+	// Icons holds the icon URLs of the result sites that have one.
+	Icons map[string]string
+}
+
+// Announce is what live search says when these results come in: how many
+// sites were found.
+func (f foundSites) Announce() string {
+	return countOf(len(f.Sites), "site", "sites")
+}
+
+// countOf says how many of something there are, for a screen reader:
+// "No sites", "1 site", "3 sites".
+func countOf(n int, one, many string) string {
+	switch n {
+	case 0:
+		return "No " + many
+	case 1:
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// searchSites finds up to limit sites for q, a valid, non-empty query,
+// with which of their feeds the user follows and their icons, and what to
+// offer when q is an address.
+func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, error) {
+	var found foundSites
+	var siteKey string
+	if u, err := discovery.ParseInput(q); err == nil {
+		siteKey = discovery.SiteKey(u)
+		if s.isAppLink(u) {
+			found.AppLink = true
+		} else {
+			found.LookupQ = lookupAddress(u)
+		}
+	}
+	sites, err := s.services.SearchService.Search(r.Context(), q, siteKey, limit)
+	if err != nil {
+		return foundSites{}, err
+	}
+	found.Sites = sites
+
+	var feedIDs, siteIDs []string
+	for _, site := range sites {
+		siteIDs = append(siteIDs, site.Site.ID)
+		for _, f := range site.Feeds {
+			feedIDs = append(feedIDs, f.ID)
+		}
+	}
+	if len(feedIDs) > 0 {
+		userID, _ := s.authenticatedUserID(r)
+		found.Subscribed, err = s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
+		if err != nil {
+			return foundSites{}, err
+		}
+	}
+	if len(siteIDs) > 0 {
+		found.Icons = s.pageIcons(r, siteIDs)
+	}
+	return found, nil
+}
+
+// siteResult is a site search's result (partials/site_result.html), on
+// Discover and Search: the site, with its feeds, each marked Following when
+// the user follows it.
+type siteResult struct {
+	Site       rss.SiteWithFeeds
+	Icon       string // the site's icon URL, or "" for its letter
+	Subscribed map[string]bool
+}
+
+func newSiteResult(site rss.SiteWithFeeds, icon string, subscribed map[string]bool) siteResult {
+	return siteResult{Site: site, Icon: icon, Subscribed: subscribed}
 }
 
 // isAppLink reports whether u (from discovery.ParseInput) is on the app's own

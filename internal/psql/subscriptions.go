@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
@@ -265,7 +266,17 @@ func (r *SubscriptionRepository) Rename(ctx context.Context, userID, feedID, tit
 // then feed name (the user's, else the feed's title) and URL.
 func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error) {
 	stmt := `SELECT ` + qualifiedFeedColumns + `, ` + subscriptionColumns + `, latest.at
-		FROM subscriptions sub
+		` + subscriptionsFrom + `
+		WHERE sub.user_id = $1
+		ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host,
+			lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url`
+
+	return r.list(ctx, userID, stmt, userID)
+}
+
+// subscriptionsFrom is the FROM clause of ListByUser and Search: the
+// subscriptions with their feeds, sites and latest article's time.
+const subscriptionsFrom = `FROM subscriptions sub
 		JOIN feeds f ON f.id = sub.feed_id
 		JOIN sites s ON s.id = f.site_id
 		LEFT JOIN LATERAL (
@@ -274,12 +285,34 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 			WHERE a.feed_id = f.id
 			ORDER BY COALESCE(a.published_at, a.created_at) DESC
 			LIMIT 1
-		) latest ON true
-		WHERE sub.user_id = $1
-		ORDER BY lower(COALESCE(NULLIF(s.title, ''), s.host)), s.host,
-			lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url`
+		) latest ON true`
 
-	rows, err := r.DB.QueryContext(ctx, stmt, userID)
+// Search returns up to limit of userID's subscriptions whose name (the
+// user's, else the feed's title), feed title, site title or site host
+// contains q, ignoring case, ordered by name, with their tags and latest
+// article's time like ListByUser's. An empty q returns none.
+func (r *SubscriptionRepository) Search(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	// A scan of the reader's subscriptions, filtered with ILIKE: they're a
+	// few hundred at most (see the Performance watchlist in docs/backlog.md).
+	stmt := `SELECT ` + qualifiedFeedColumns + `, ` + subscriptionColumns + `, latest.at
+		` + subscriptionsFrom + `
+		WHERE sub.user_id = $1
+		  AND (sub.title ILIKE $2 ESCAPE '\' OR f.title ILIKE $2 ESCAPE '\'
+		       OR s.title ILIKE $2 ESCAPE '\' OR s.host ILIKE $2 ESCAPE '\')
+		ORDER BY lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url
+		LIMIT $3`
+
+	return r.list(ctx, userID, stmt, userID, likePattern(q), limit)
+}
+
+// list runs stmt, which selects userID's subscriptions as scanSubscription
+// reads them, with args, and adds their tags.
+func (r *SubscriptionRepository) list(ctx context.Context, userID, stmt string, args ...any) ([]rss.Subscription, error) {
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -295,6 +328,9 @@ func (r *SubscriptionRepository) ListByUser(ctx context.Context, userID string) 
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
 	}
 
 	tags, err := r.tagsByFeed(ctx, userID, sql.NullString{})

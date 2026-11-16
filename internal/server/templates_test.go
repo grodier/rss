@@ -141,6 +141,7 @@ func TestAppNav(t *testing.T) {
 		{"saved", "/saved"},
 		{"feeds", "/feeds"},
 		{"discover", "/discover"},
+		{"search", "/search"},
 		{"settings", "/settings"},
 		{"", ""},
 	}
@@ -155,15 +156,30 @@ func TestAppNav(t *testing.T) {
 				t.Fatal(err)
 			}
 			links := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && n.Parent != nil && n.Parent.Data == "li" })
-			if len(links) != 4 {
-				t.Fatalf("found %d nav links, want 4", len(links))
+			if len(links) != 5 {
+				t.Fatalf("found %d nav links, want 5", len(links))
 			}
 			var hrefs []string
 			for _, a := range links {
 				hrefs = append(hrefs, attr(a, "href"))
 			}
-			if want := []string{"/", "/saved", "/feeds", "/discover"}; !slices.Equal(hrefs, want) {
+			if want := []string{"/", "/saved", "/feeds", "/discover", "/search"}; !slices.Equal(hrefs, want) {
 				t.Errorf("nav links = %q, want %q", hrefs, want)
+			}
+			// Search's top-bar icon, for phones, whose tab bar hides the
+			// rail's Search item.
+			searches := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-search") })
+			if len(searches) != 1 {
+				t.Fatalf("found %d top-bar search links, want 1", len(searches))
+			}
+			if got := attr(searches[0], "href"); got != "/search" {
+				t.Errorf("top-bar search link href = %q, want /search", got)
+			}
+			if got := attr(searches[0], "aria-label"); got != "Search" {
+				t.Errorf("top-bar search link aria-label = %q, want Search", got)
+			}
+			if got, want := attr(searches[0], "aria-current") == "page", tt.section == "search"; got != want {
+				t.Errorf("top-bar search link current = %v, want %v", got, want)
 			}
 			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })
 			if len(accounts) != 1 {

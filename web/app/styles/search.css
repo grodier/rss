@@ -1,0 +1,9 @@
+/* Search: the reader's feeds, saved articles and new sites. In the
+   partials' order (see base.css). */
+@import "./partials/profiles.css";
+@import "./partials/feeds.css";
+@import "./partials/search.css";
+@import "./partials/spinner.css";
+@import "./partials/phone.css";
+@import "./partials/debug.css";
+@import "./partials/press.css";

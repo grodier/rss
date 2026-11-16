@@ -1,5 +1,5 @@
 /* Discover: the import card, its sections of catalog feeds, and search
-   results. */
+   results; Search's groups of results. */
 @layer components {
   /* Search results: a site, with its feeds grouped in a box. */
   .lookup-cta {
@@ -274,5 +274,55 @@
     color: var(--text-3);
     font-size: 0.75rem;
     white-space: nowrap;
+  }
+
+  /* Search, before typing: what it covers. */
+  .search-intro {
+    padding: 2.5rem 1.5rem;
+    color: var(--text-2);
+    text-align: center;
+  }
+
+  .search-intro > * + * {
+    margin-block-start: 0.5rem;
+  }
+
+  .search-intro p + p {
+    color: var(--text-3);
+    font-size: 0.875rem;
+  }
+
+  /* Search's saved articles: compact rows, the title over its feed and
+     when it was saved. */
+  .search-article {
+    position: relative;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .search-article:hover {
+    background: var(--surface);
+  }
+
+  .search-article a {
+    color: var(--text);
+    font-family: var(--font-display);
+    font-weight: 650;
+    line-height: 1.3;
+    text-decoration: none;
+  }
+
+  /* The whole row opens the article, as My feeds' rows open the feed. */
+  .search-article a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .search-article p {
+    margin-block-start: 0.125rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
   }
 }

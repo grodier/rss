@@ -103,6 +103,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/articles/{id}/star", s.articleStarHandler)
 			r.Post("/articles/{id}/unstar", s.articleUnstarHandler)
 			r.Get("/sites/{id}", s.siteHandler)
+			r.Get("/search", s.searchHandler)
 			r.Get("/discover", s.discoverHandler)
 			r.Get("/discover/sections/{slug}", s.discoverSectionHandler)
 			r.Get("/discover/sections/{slug}/posts", s.discoverSectionPostsHandler)

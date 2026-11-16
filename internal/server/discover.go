@@ -136,7 +136,7 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := discoverData{
-		IA: ia,
+		IA:    ia,
 		Nav:   s.nav(r, "discover"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),

@@ -65,7 +65,7 @@
           <li class="import-row" data-position="{{.Position}}">
             <p class="import-title">{{.Title}}</p>
             <p class="import-url">{{.URL}}</p>
-            <p>{{.Reason}}{{with .Host}} <a href="/discover?q={{.}}">Search for {{.}}</a>{{end}}</p>
+            <p>{{.Reason}}{{with .Host}} <a href="/discover?q={{.}}&amp;scope=top">Search for {{.}}</a>{{end}}</p>
           </li>
           {{end}}
         </ul>

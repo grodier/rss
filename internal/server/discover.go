@@ -37,9 +37,14 @@ type discoverData struct {
 	Nav      navData
 	Form     searchForm
 	Searched bool
-	// Results are the search's, with a query (discover_search.go).
+	// Results are the search's, with a query and ?scope=, which only a
+	// submit sends (discover_search.go).
 	Results discoverResults
-	Flash   string
+	// Suggesting says the page has a query but no ?scope=: live search's
+	// fetch as the reader types, which gets Suggestions instead (#666).
+	Suggesting  bool
+	Suggestions discoverSuggestions
+	Flash       string
 	// Icons holds the icon URLs of the sections' sites that have one.
 	Icons map[string]string
 	// Sections is Discover's catalog as this reader sees it, shown when
@@ -51,6 +56,15 @@ type discoverData struct {
 	Reordered bool
 	// Import is what Discover says about importing, with no query.
 	Import discoverImport
+}
+
+// Scope is the form's hidden scope field, which only a submit sends: the
+// tab shown, so editing the query and pressing Enter keeps it, else Top.
+func (d discoverData) Scope() string {
+	if d.Searched {
+		return d.Results.Scope
+	}
+	return "top"
 }
 
 // discoverImport is what Discover's page with no query says about importing
@@ -154,6 +168,14 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 		if len(siteIDs) > 0 {
 			data.Icons = s.pageIcons(r, siteIDs)
 		}
+	case !r.URL.Query().Has("scope"):
+		suggestions, err := s.discoverSuggest(r, data.Form.Q)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+		data.Suggestions = suggestions
+		data.Suggesting = true
 	default:
 		results, err := s.discoverSearch(r, data.Form.Q)
 		if err != nil {

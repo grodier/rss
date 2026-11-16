@@ -379,3 +379,129 @@ func savedResult(a rss.SavedArticle, icon, q string, now time.Time) searchResult
 	res.Score = searchScore(matchRank(title, q), true, boostSaved, now.Sub(a.SavedAt) < recentWithin)
 	return res
 }
+
+// Discover's suggestions (#666): while the reader types, live search
+// fetches /discover?q=… without ?scope=, which only a submit sends, and
+// gets one list of feeds to go to instead of the results. See "Feed
+// discovery" in docs/decisions.md.
+const (
+	// suggestLimit is how many feeds the suggestions list.
+	suggestLimit = 6
+	// suggestSubsLimit and suggestSitesLimit are how many subscriptions
+	// and sites they read: more sites, since some are left out as fully
+	// followed.
+	suggestSubsLimit  = 6
+	suggestSitesLimit = 12
+)
+
+// discoverSuggestions is what Discover shows while the reader types.
+type discoverSuggestions struct {
+	// Rows are up to suggestLimit feeds, followed or not, ranked as the
+	// Feeds tab; a followed one has Following set, and none has Follow.
+	Rows []searchResult
+	// LookupQ and AppLink are as the results' (discoverResults).
+	LookupQ string
+	AppLink bool
+	// Q is the query, and SearchHref its results' Top tab, for the last
+	// row, "Search everything".
+	Q          string
+	SearchHref string
+}
+
+// Announce is what live search says when these suggestions come in.
+func (d discoverSuggestions) Announce() string {
+	return countOf(len(d.Rows), "feed", "feeds")
+}
+
+// discoverSuggest reads and ranks Discover's suggestions for q, a valid,
+// non-empty query: only the reader's subscriptions and the site search,
+// as saved articles wait for Enter. It only reads.
+func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions, error) {
+	userID, _ := s.authenticatedUserID(r)
+	now := time.Now()
+
+	subs, err := s.services.SubscriptionService.Search(r.Context(), userID, q, suggestSubsLimit)
+	if err != nil {
+		return discoverSuggestions{}, err
+	}
+	found, siteKey, err := s.searchSites(r, q, suggestSitesLimit)
+	if err != nil {
+		return discoverSuggestions{}, err
+	}
+
+	var siteIDs []string
+	for _, sub := range subs {
+		siteIDs = append(siteIDs, sub.Site.ID)
+	}
+	for _, site := range found.Sites {
+		siteIDs = append(siteIDs, site.Site.ID)
+	}
+	var icons map[string]string
+	if len(siteIDs) > 0 {
+		icons = s.pageIcons(r, siteIDs)
+	}
+
+	var rows []searchResult
+	for _, sub := range subs {
+		rows = append(rows, followedFeedSuggestion(sub, icons[sub.Site.ID], q, now))
+	}
+	known := false
+	for _, site := range found.Sites {
+		if siteKey != "" && site.Site.Host == siteKey {
+			known = true
+		}
+		if res, ok := siteSuggestion(site, found.Subscribed, icons[site.Site.ID], q); ok {
+			rows = append(rows, res)
+		}
+	}
+	rankResults(rows)
+
+	res := discoverSuggestions{Rows: rows[:min(len(rows), suggestLimit)], Q: q, SearchHref: discoverSearchURL(q, "top")}
+	if !known {
+		res.LookupQ, res.AppLink = found.LookupQ, found.AppLink
+	}
+	return res, nil
+}
+
+// followedFeedSuggestion is a feed the reader follows as a suggestion: as
+// its result, with only its site's name when it differs and its latest
+// article as facts.
+func followedFeedSuggestion(sub rss.Subscription, icon, q string, now time.Time) searchResult {
+	res := followedFeedResult(sub, icon, q, now)
+	res.Facts, res.Warning = nil, ""
+	if site := cmp.Or(sub.Site.Title, sub.Site.Host); site != res.Title {
+		res.Facts = append(res.Facts, "From "+site)
+	}
+	if !sub.LatestArticleAt.IsZero() {
+		res.Facts = append(res.Facts, "Latest "+since(sub.LatestArticleAt, now))
+	}
+	return res
+}
+
+// siteSuggestion is a found site as a suggestion, unless the reader follows
+// all its feeds: as its result, without its tagline or Follow. As there, a
+// site is the feeds the reader doesn't follow yet: one's own title when it
+// isn't the site's name, then the host; or the host and how many.
+func siteSuggestion(site rss.SiteWithFeeds, subscribed map[string]bool, icon, q string) (searchResult, bool) {
+	res, ok := siteResult(site, subscribed, icon, q, "")
+	if !ok {
+		return searchResult{}, false
+	}
+	var open []rss.Feed
+	for _, f := range site.Feeds {
+		if !subscribed[f.ID] {
+			open = append(open, f)
+		}
+	}
+	res.Desc, res.Follow, res.Facts = "", nil, nil
+	if len(open) == 1 {
+		if t := (rss.DiscoverFeed{Site: site.Site, Feed: open[0]}).FeedTitle(); t != "" {
+			res.Facts = append(res.Facts, t)
+		}
+	}
+	res.Facts = append(res.Facts, site.Site.Host)
+	if len(open) > 1 {
+		res.Facts = append(res.Facts, fmt.Sprintf("%d feeds", len(open)))
+	}
+	return res, true
+}

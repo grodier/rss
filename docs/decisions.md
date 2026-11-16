@@ -253,14 +253,19 @@ Planned in #50 (issues #51–#67).
   The input has `autocapitalize="none" autocorrect="off" spellcheck="false"` and `enterkeyhint="search"`, and keeps `type="search"`; the Saved page's search box keeps spellcheck, since it searches article text.
   Only whitespace next to `.`, `/` or `:` is removed (`npr. org`, `https: //npr.org`); any other whitespace still means the query isn't an address, so free text such as `news on npr.org` isn't glued into one.
   The query shown back stays as typed; only the lookup offer and the site-key match use the cleaned-up address.
-- **Search updates as you type by fetching the page itself** (#449): no new route; `live-search.ts` fetches `/discover?q=…` and swaps in the page's results, as infinite scroll does with the next page, so the results markup lives in one template.
+- **Search updates as you type by fetching the page itself** (#449): no new route; `live-search.ts` fetches `/discover?q=…` and swaps in the page's results container, as infinite scroll does with the next page, so its markup lives in one template.
   The cost is a heavier response than a list of names (3–14 KB with about 1,300 sites and feeds locally; timings are in the watchlist's "Search scans with `ILIKE`").
   A request goes out about 250 ms after the last keystroke, from 2 characters, aborting any still in flight; an empty box shows the empty page without a request.
   The URL follows the query (`history.replaceState`), so reload and Back show the same results.
   There's no rate limit: debouncing bounds each reader's requests, and the `ILIKE` scan's cost is on the watchlist.
   GET handlers still never fetch user-supplied URLs, so looking up an address still takes a click on Look up, which appears as you type.
   What came in is announced in a polite live region rather than making the results a live region, which would read every result out: since #645, the server words it in the results container's `data-announce` ("7 results"), so the module needn't know the markup.
-  #666 (planned at #664's design checkpoint) changes what typing shows: suggestions, with the results on Enter.
+- **Typing shows suggestions, Enter the results** (#666, decided at #664's design checkpoint, rounds 4, 6 and 7), as on X, Bluesky and LinkedIn: typing is usually going somewhere (a feed you follow, a site you know), while Enter wants everything.
+  This partly reverses #449's entry above: live search still fetches the page itself and swaps its container in place (still no dropdown, so #476's reasons hold), but while typing what it swaps in is suggestions, so the tabs and counts no longer change under your fingers.
+  A hidden `scope` field in the form tells them apart: only a submit sends it, and live search fetches the form's action with `q` alone, so the server shows suggestions for `q` without `scope` and results with it; without JavaScript every submit has `scope`.
+  The field holds the tab shown (Top on any other page), so editing the query on a results page shows suggestions until Enter, which keeps that tab.
+  Suggestions read only the reader's subscriptions (6) and the site search (12, as some sites are left out as fully followed); saved articles wait for Enter.
+  Live search announces "{n} feeds" for them.
 - **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the page already is the results, so updating it adds no new widget, keeps the results, their state and the Look up row in view, and leaves keyboard and screen-reader behavior as it was.
   A dropdown of up to 5 site names was the alternative; it's a new ARIA combobox (arrow keys, Enter, Escape) to get right, and hides the results it duplicates.
   Results can shift under the box as you type, but only after a pause.
@@ -281,8 +286,8 @@ Planned in #50 (issues #51–#67).
   Each source orders by the same match quality in SQL (`matchOrder`), so its best matches are within its 51 rows.
   It's a deliberately simple, explainable order until #451 (sites) and #647 (articles) plan real matching; cross-reader signals are out, as "The feed most people follow" was (#628).
 - **Decided at #664's checkpoint for later issues:**
-  - While typing, suggestions instead of results: one list of up to 6 feeds with a quiet "✓ Following" and no buttons, and "Search everything" last; Enter shows the results (#666).
-    Buttons while typing were rejected (Choose repeated the row, and Follow was a second filled button beside the box's), as was a small "+" (a new Follow control).
+  - While typing, one list of up to 6 feeds, followed or not, ranked as the Feeds tab, with no sections or headings (#666): compact rows (a 2 rem avatar, the name and one line of facts), a quiet "✓ Following" the only state, a pasted address's Look up row at the top, and "Search everything for “{q}”" last, with an Enter hint where there's a keyboard; it's last because Enter already does it, and the top is for the feed you're looking for.
+    Buttons while typing were rejected (Choose repeated the row, and Follow was a second filled button beside the box's), as was a small "+" (a new Follow control); Follow lives on the results and the site page.
   - Recent searches, kept on the device only and never sent to the server, which reverses #645's first "No recent searches are stored" while keeping the rule against per-person reading data on the server; built in #667, which shows them while the box is focused and empty, as on X, and forgets them on the logged-out pages, for shared devices.
   - "/" opens the search from anywhere, and tapping Discover again focuses its box (#646), in place of #646's first plan of scope chips, "All {n}" and a link from Discover to Search.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.

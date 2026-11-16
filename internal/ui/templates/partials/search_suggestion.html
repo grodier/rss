@@ -1,0 +1,29 @@
+{{/* search-suggestions is what Discover shows while the reader types
+     (#666); its data is a discoverSuggestions: a pasted address's Look up
+     row, compact, then up to 6 feeds, then "Search everything", a link to
+     the results, which Enter also shows. With no feeds, only the last row.
+     There are no headings and no buttons but Look up. */}}
+{{define "search-suggestions"}}
+<ul class="search-results search-suggestions" role="list">
+  {{template "search-lookup" .}}
+  {{range .Rows}}{{template "search-suggestion" .}}{{end}}
+  <li class="search-everything">
+    <a href="{{.SearchHref}}">{{template "icon-search"}}<span class="search-everything-text">Search everything for “{{.Q}}”</span><kbd aria-hidden="true">Enter</kbd></a>
+  </li>
+</ul>
+{{end}}
+
+{{/* search-suggestion is a feed among Discover's suggestions; its data is
+     a searchResult: a compact row with a small avatar, the name, one line of
+     facts and, on a feed the reader follows, a quiet "✓ Following". The
+     whole row opens the feed, or the site's page. */}}
+{{define "search-suggestion"}}
+<li class="search-result search-suggestion">
+  {{template "avatar" .Avatar}}
+  <div class="search-result-main">
+    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
+    {{with .Facts}}<p class="search-result-facts">{{range .}}<span>{{.}}</span>{{end}}</p>{{end}}
+  </div>
+  {{if .Following}}<span class="following-label search-following">✓ Following</span>{{end}}
+</li>
+{{end}}

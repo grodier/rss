@@ -1,7 +1,6 @@
 package server
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -39,38 +38,6 @@ type siteSubscriptions struct {
 	Subs []rss.Subscription
 }
 
-// myFeedRow is a followed feed's row (partials/my_feed.html), on My feeds
-// and Search.
-type myFeedRow struct {
-	Sub  rss.Subscription
-	Icon string // its site's icon URL, or "" for its letter
-	// Site is its site's name, shown under the feed's as "From …", or "" when
-	// the row is under its site's heading or the names are the same.
-	Site     string
-	ReturnTo string // where Edit returns to
-}
-
-// newMyFeedRow builds sub's row; underSite says it's under its site's
-// heading, on My feeds.
-func newMyFeedRow(sub rss.Subscription, icon string, underSite bool, returnTo string) myFeedRow {
-	row := myFeedRow{Sub: sub, Icon: icon, ReturnTo: returnTo}
-	if site := cmp.Or(sub.Site.Title, sub.Site.Host); !underSite && site != row.Name() {
-		row.Site = site
-	}
-	return row
-}
-
-// Name is the feed's name: the reader's, else its title, else its URL.
-func (r myFeedRow) Name() string {
-	return cmp.Or(r.Sub.Title, r.Sub.Feed.Title, r.Sub.Feed.Url)
-}
-
-// Failing reports whether the feed has failed often enough in a row to warn
-// about it.
-func (r myFeedRow) Failing() bool {
-	return r.Sub.Feed.ConsecutiveFailures >= failingThreshold
-}
-
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
 	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
@@ -95,15 +62,17 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Nav   navData
-		Sites []siteSubscriptions
-		Icons map[string]string
-		Flash string
+		Nav              navData
+		Sites            []siteSubscriptions
+		Icons            map[string]string
+		Flash            string
+		FailingThreshold int
 	}{
-		Nav:   s.nav(r, "feeds"),
-		Sites: sites,
-		Icons: s.pageIcons(r, siteIDs),
-		Flash: s.sessionManager.PopString(r.Context(), "flash"),
+		Nav:              s.nav(r, "feeds"),
+		Sites:            sites,
+		Icons:            s.pageIcons(r, siteIDs),
+		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
+		FailingThreshold: failingThreshold,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {

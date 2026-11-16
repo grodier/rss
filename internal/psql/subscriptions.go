@@ -289,8 +289,9 @@ const subscriptionsFrom = `FROM subscriptions sub
 
 // Search returns up to limit of userID's subscriptions whose name (the
 // user's, else the feed's title), feed title, site title or site host
-// contains q, ignoring case, ordered by name, with their tags and latest
-// article's time like ListByUser's. An empty q returns none.
+// contains q, ignoring case, the best matches of the name first
+// (matchOrder), then by name, with their tags and latest article's time
+// like ListByUser's. An empty q returns none.
 func (r *SubscriptionRepository) Search(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -303,10 +304,11 @@ func (r *SubscriptionRepository) Search(ctx context.Context, userID, q string, l
 		WHERE sub.user_id = $1
 		  AND (sub.title ILIKE $2 ESCAPE '\' OR f.title ILIKE $2 ESCAPE '\'
 		       OR s.title ILIKE $2 ESCAPE '\' OR s.host ILIKE $2 ESCAPE '\')
-		ORDER BY lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url
+		ORDER BY ` + matchOrder(`COALESCE(NULLIF(sub.title, ''), f.title)`, 4) + `,
+			lower(COALESCE(NULLIF(sub.title, ''), f.title)), f.url
 		LIMIT $3`
 
-	return r.list(ctx, userID, stmt, userID, likePattern(q), limit)
+	return r.list(ctx, userID, stmt, userID, likePattern(q), limit, q, prefixPattern(q), wordPattern(q))
 }
 
 // list runs stmt, which selects userID's subscriptions as scanSubscription

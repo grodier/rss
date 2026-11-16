@@ -247,7 +247,7 @@ Planned in #50 (issues #51–#67).
   Every feed belongs to a site, and feeds are only created by discovery.
   (#61)
 - **Search only reads the database** (site title, host and description, feed title, URL and description).
-  Results are sites, each with its feeds.
+  Sites are found with their feeds; Discover's search shows a site as one row, with Follow when it has one feed the reader doesn't follow, or opening its page to choose when it has several (#645).
   Descriptions were added with search as you type (#449), so a site can be found by what it's about, not only by its name or address.
 - **The search box is for names and addresses, not prose** (#441): it turns off autocorrect, auto-capitalization and spellcheck, which on phones broke addresses ("npr. org"), and an address typed with stray spaces is still offered as a lookup.
   The input has `autocapitalize="none" autocorrect="off" spellcheck="false"` and `enterkeyhint="search"`, and keeps `type="search"`; the Saved page's search box keeps spellcheck, since it searches article text.
@@ -259,19 +259,33 @@ Planned in #50 (issues #51–#67).
   The URL follows the query (`history.replaceState`), so reload and Back show the same results.
   There's no rate limit: debouncing bounds each reader's requests, and the `ILIKE` scan's cost is on the watchlist.
   GET handlers still never fetch user-supplied URLs, so looking up an address still takes a click on Look up, which appears as you type.
-  What the results hold is announced in a polite live region rather than making the results a live region, which would read every result out: the number of sites on Discover, of results on Search (#645), worded by the server in the results container's `data-announce`, so each page counts its own results.
-- **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the page already is the results, so updating it adds no new widget, keeps each result's feeds, "Following" marker and the Look up button in view, and leaves keyboard and screen-reader behavior as it was.
+  What came in is announced in a polite live region rather than making the results a live region, which would read every result out: since #645, the server words it in the results container's `data-announce` ("7 results"), so the module needn't know the markup.
+  #666 (planned at #664's design checkpoint) changes what typing shows: suggestions, with the results on Enter.
+- **Results update in place under the search box, not in a dropdown** (#449, approved at the design checkpoint in #476): the page already is the results, so updating it adds no new widget, keeps the results, their state and the Look up row in view, and leaves keyboard and screen-reader behavior as it was.
   A dropdown of up to 5 site names was the alternative; it's a new ARIA combobox (arrow keys, Enter, Escape) to get right, and hides the results it duplicates.
   Results can shift under the box as you type, but only after a pause.
-- **Today's Search page is Discover, at `/discover`** (#450, #631): the fourth tab, labelled Discover, with no redirect from `/search`, which pre-alpha needs none of and which returns as the whole-app search (#645).
-  Discover's box finds sites as Search's did; its placeholder is "Site name or address", short enough for a 320 px phone.
-  Its icon is a compass (approved at #631's design checkpoint): it reads as "explore" and stays distinct from the magnifier the whole-app search will use; a sparkle was rejected because stars already mean starred articles, and a grid of squares as too generic.
-- **`/search` is the whole-app search** (#450, #645), opened from a rail item on wide screens and an icon in the phone's top bar, beside the account entry, so the tab bar keeps its four tabs.
-  Its results come in groups, each showing its first 3: Your feeds (a name, feed title, site title or host matches), Saved, and New sites, in that order, with empty groups left out; Articles in your feeds (#647) is planned between Your feeds and Saved.
-  New sites is Discover's site search, so a site you follow shows there marked "Following", and pasting an address offers Look up above the groups, as on Discover.
-  Saved keeps its own search box: searching the list you're looking at works well, and Search covers saved too.
-  No recent searches are stored, and the box takes focus when Search opens, since opening it is the intent.
-  Your feeds also matches the site's title, which the issue left out, so a site's feeds are found by the site's name when their own titles differ.
+- **Today's Search page is Discover, at `/discover`** (#450, #631): the fourth tab, labelled Discover, with no redirect from `/search`, which pre-alpha needs none of.
+  #631 gave it a compass, to keep the magnifier for a separate whole-app search; #645's design checkpoint (#664) made Discover that search instead, so it took the magnifier (below).
+- **Discover is the one search place** (#450, #645, decided at #664's design checkpoint over seven rounds), as X's and Bluesky's Explore are: its box searches the reader's feeds, their saved articles and sites to follow, and before typing it shows Discover's sections, so first run is unchanged.
+  There's no `/search` page and no other entry: a separate Search page, opened from a top-bar icon (approved in #664's first round), was dropped because two boxes did one job (finding a site) differently, and two nav entries led to search.
+  The tab keeps the label Discover, since first-run copy across the app sends readers there by name; its placeholder is "Search or paste a link", short enough for 320 px.
+- **Results come in tabs by kind: Top, Feeds and Saved** (#645), each tab its own URL (`?scope=`), so they're navigation in the timeline tabs' style; #647's Articles tab goes between Feeds and Saved.
+  Top mixes the kinds, ranked, up to 10, then links the tabs with more; Feeds and Saved list up to 50.
+  The tabs depend on the account, not the query: a reader who has saved nothing gets none, since Top would be Feeds, so tabs never appear or vanish while typing.
+  Rejected: groups each showing their first 3 (the page grew to screens and hid most of each group), one mixed list without tabs (it reads as ranked when the ranking is only a substring match), status tabs such as "Following" and "New" ("New" read as recently added, and any status split makes you check two lists), and scope chips (they look multi-select).
+- **Following is a state on each feed row, not a kind of result** (#645), as Follow is on X's and Bluesky's people results: "✓ Following" on a feed the reader follows, Discover's Follow on a site's one feed they don't, and nothing on a site with several, whose row opens its page to choose (nothing guesses which, #629).
+  A site whose feeds the reader all follows isn't listed as a site: its followed feeds are.
+- **A pasted address gets a Look up row at the top of the results** (#645), in place of the old card's "Not what you're looking for?", which said nothing useful when nothing matched; it's left out when the address's site was found, whose own row (with Follow) is there.
+- **Matches aren't highlighted** (#664): marking the typed text read like a page's find, and none of the references does it; a saved article's excerpt and a site's tagline show why a row matched instead.
+- **The ranking uses only the reader's own data** (#645): how well the title matches (all of it, its start, the start of a word, anywhere), a match only elsewhere below any title match, then +3 for a feed the reader follows and +2 for a saved article, then +1 for something posted or saved in the last 14 days.
+  Each source orders by the same match quality in SQL (`matchOrder`), so its best matches are within its 51 rows.
+  It's a deliberately simple, explainable order until #451 (sites) and #647 (articles) plan real matching; cross-reader signals are out, as "The feed most people follow" was (#628).
+- **Decided at #664's checkpoint for later issues:**
+  - While typing, suggestions instead of results: one list of up to 6 feeds with a quiet "✓ Following" and no buttons, and "Search everything" last; Enter shows the results (#666).
+    Buttons while typing were rejected (Choose repeated the row, and Follow was a second filled button beside the box's), as was a small "+" (a new Follow control).
+  - Recent searches, kept on the device only and never sent to the server, which reverses #645's first "No recent searches are stored" while keeping the rule against per-person reading data on the server (#667).
+  - The field's magnifier submits, without a Search button, on Discover's and Saved's boxes (#665).
+  - "/" opens the search from anywhere, and tapping Discover again focuses its box (#646), in place of #646's first plan of scope chips, "All {n}" and a link from Discover to Search.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
   #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.
@@ -361,7 +375,7 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   Rejected: tours and tips (research on onboarding tutorials finds people skip them and they don't help).
   A Paper Round blog that new accounts follow by default, with its welcome post, is the later version (backlog).
 - **At most one notice above the first article**: the confirm-email notice waits for a page without a flash (#640).
-- **One search for the whole app** (#645, #646), with results grouped as your feeds, articles in your feeds (#647 plans it), saved and new sites, from a top-bar icon on phones and a rail item on desktop.
+- **One search for the whole app** (#645, #646), on Discover (#664's design checkpoint): your feeds, saved articles and sites to follow, with articles in your feeds planned (#647); see "Feed discovery".
   Rejected: a search box on each page, which makes you know where something is before you can find it.
   Saved keeps its own box for the list you're looking at.
 - **No measurement of whether new accounts follow anything**, beyond the admin's existing aggregates (the Waves table's "active after 7 days"): that would be per-person data about reading.
@@ -880,8 +894,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   "Check for new feeds" is a quiet line at the page's foot, a `.link-button` in a sentence, with when the feeds were last checked, as the rarest action on the page.
   Rejected: posts first with the feeds below them (the choice is below the fold on phones), feeds with their latest post first (the writing is below the fold), a tab per feed (one feed's facts at a time, and messy), Recent posts and Feeds tabs as on a section's page (choosing a feed takes a tap first, and posts can't show a feed's rate or section), and the compact list with Follow on every post (a dozen identical buttons).
   Rejected: one page with the feeds above the posts (on a phone the posts start screens down, and paging them reloads the list), and posts first under a sideways strip of feed cards (the strip shows two or three feeds without what helps choose, and it's a second feed-row layout).
-- **Search opens from a rail item on wide screens and a magnifier in the phone's top bar, beside the account entry** (#645, option (a) of three at its design checkpoint): the tab bar keeps four evenly spaced tabs, and Search is one tap from every page.
-  Rejected: a fifth tab (five labels crowd a 320 px tab bar, and Search reads as a place beside Home rather than a way to things) and a field at the top of Home (it pushes the timeline down on every visit, and leaves every other page without a way in).
+- **Discover's nav entry takes the magnifier, and its search results are rows of one shape under timeline-style tabs** (#645, approved at #664's design checkpoint, rounds 5–7).
+  The magnifier says "search" where the compass said "explore"; #664's first round had approved a separate magnifier in the phone's top bar for a Search page, which went with the page.
+  A result is an avatar, the title, one line of tagline (a site) or two of excerpt (a saved article, in the reading font, its title in the headline font), and a facts line, with "✓ Following" or Follow at the end; a saved article's facts lead with Saved's bookmark, which is enough to tell it from a feed, so Top has no "kind" label.
+  Tab counts follow Feeds and Saved, dimmed when 0 and hidden under 360 px so the three tabs fit; a pasted address's row has a link icon in the avatar's place and a filled Look up.
+  Rejected: each group in its own page's rows (My feeds' and Discover's), three shapes on one page; compact one-line rows after Enter (too little to choose by); and a small "kind" line above every title (redundant once each row shows its state).
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).

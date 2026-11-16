@@ -32,16 +32,8 @@ var templateFuncs = template.FuncMap{
 	},
 	"homeName":    func() string { return homeName },
 	"monogram":    monogram,
-	"myFeedRow":   newMyFeedRow,
 	"postingRate": postingRate,
-	"searchResultRow": func(r searchResult, mode string) any {
-		return struct {
-			Result searchResult
-			Mode   string // a searchOptions.Typing, or "results"
-		}{r, mode}
-	},
-	"since":      func(t time.Time) string { return since(t, time.Now()) },
-	"siteResult": newSiteResult,
+	"since":       func(t time.Time) string { return since(t, time.Now()) },
 }
 
 // since says how long before now t was, by whole days, for "Latest {when}":
@@ -106,13 +98,9 @@ func monogram(name string) string {
 // navData is what the app-nav partial shows: the current section, the
 // logged-in user, and whether debug mode is on.
 type navData struct {
-	Section string // "home", "saved", "feeds", "discover", "search", "settings" or ""
+	Section string // "home", "saved", "feeds", "discover", "settings" or ""
 	User    rss.User
 	Debug   bool
-	// IA is the design checkpoint's ?ia= (#645): with "e", Discover is the
-	// search place, so it takes the magnifier and Search's entries go.
-	// Temporary.
-	IA string
 }
 
 // Theme is the data-theme attribute of the page's <html>: "light" or "dark"
@@ -129,7 +117,7 @@ func (n navData) Theme() string {
 // authenticatedSession.
 func (s *Server) nav(r *http.Request, section string) navData {
 	sess, _ := s.authenticatedSession(r)
-	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r), IA: searchIA(r)}
+	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r)}
 }
 
 // parseTemplates parses the page templates once per process: they're

@@ -388,6 +388,21 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 		}
 	})
 
+	t.Run("ordered by how well the name matches, then by name", func(t *testing.T) {
+		user := newTestUser(t, db)
+		w := "mq" + tag
+		site := newSite(t, fmt.Sprintf("order-%d.example.com", time.Now().UnixNano()), "")
+		inside, word, prefix, exact := newFeed(t, site, "A"+w+"x"), newFeed(t, site, "B "+w), newFeed(t, site, w+" Z"), newFeed(t, site, strings.ToUpper(w))
+		subscribe(t, user, inside, word, prefix, exact)
+		if got, want := search(t, user, w, 10), []string{exact, prefix, word, inside}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("Search = %v; want exact, prefix, word start, inside: %v", got, want)
+		}
+		// The limit keeps the best matches.
+		if got, want := search(t, user, w, 2), []string{exact, prefix}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("Search(limit 2) = %v; want %v", got, want)
+		}
+	})
+
 	t.Run("a renamed feed's old title still matches", func(t *testing.T) {
 		user := newTestUser(t, db)
 		feed := newFeed(t, newSite(t, "renamed-"+tag+".example.com", ""), "Original "+tag)

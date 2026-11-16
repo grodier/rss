@@ -111,12 +111,6 @@
     outline-offset: 2px;
   }
 
-  /* Search's icon in the phone's top bar, beside the account entry; wide
-     screens have Search in the rail instead. */
-  .rail-search {
-    display: none;
-  }
-
   /* Page heads end in the logo's nameplate rule: a thick line over a thin
      one. */
   .page-head {
@@ -284,23 +278,6 @@
     .rail-account {
       margin: 0;
       padding: 0.375rem;
-    }
-
-    /* The tab bar keeps four tabs: Search is in the top bar. */
-    .rail-search-item {
-      display: none;
-    }
-
-    .rail-search {
-      display: flex;
-      margin-inline-start: auto;
-      padding: 0.5rem;
-      border-radius: 999px;
-      color: var(--text);
-    }
-
-    .rail-search[aria-current="page"] .icon {
-      stroke-width: 2.4;
     }
 
     .column {

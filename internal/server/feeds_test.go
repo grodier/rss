@@ -739,7 +739,7 @@ func TestFeedsHandler(t *testing.T) {
 		for _, id := range []string{testFeedID, otherID} {
 			assertContains(t, body,
 				`<a class="feed-row-title" href="/feeds/`+id+`">`,
-				`href="/feeds/`+id+`/edit?return_to=%2ffeeds"`,
+				`href="/feeds/`+id+`/edit?return_to=/feeds"`,
 			)
 		}
 		// Unsubscribe is on Edit subscription and the feed page.
@@ -750,7 +750,7 @@ func TestFeedsHandler(t *testing.T) {
 		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Title: "My Name", Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
 		assertContains(t, body,
 			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">My Name</a>`,
-			`<a class="row-icon-btn" href="/feeds/`+testFeedID+`/edit?return_to=%2ffeeds" aria-label="Edit My Name" title="Edit">`,
+			`<a class="row-icon-btn" href="/feeds/`+testFeedID+`/edit?return_to=/feeds" aria-label="Edit My Name" title="Edit">`,
 		)
 		assertNotContains(t, body, ">One<")
 	})

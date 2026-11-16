@@ -508,6 +508,7 @@ type fakeSaveStore struct {
 	unsaveFn          func(ctx context.Context, userID, articleID string) error
 	savedArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 	listSavedFn       func(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
+	hasSavesFn        func(ctx context.Context, userID string) (bool, error)
 }
 
 func (f *fakeSaveStore) Save(ctx context.Context, userID, articleID string) error {
@@ -536,6 +537,14 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 		return nil, nil
 	}
 	return f.listSavedFn(ctx, userID, q, before, limit)
+}
+
+// HasSaves returns false when hasSavesFn is nil.
+func (f *fakeSaveStore) HasSaves(ctx context.Context, userID string) (bool, error) {
+	if f.hasSavesFn == nil {
+		return false, nil
+	}
+	return f.hasSavesFn(ctx, userID)
 }
 
 type fakeStarStore struct {

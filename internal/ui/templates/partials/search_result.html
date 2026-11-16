@@ -1,78 +1,66 @@
-{{/* search-state is a feed's state at the end of a search row (design
-     checkpoint, #645); its data is the row's searchResult and Mode. Every
-     mode shows a quiet "✓ Following" on a feed the reader follows. After
-     Enter ("results"), a site's one feed they don't follow has Discover's
-     Follow. While typing, "tag" shows nothing more; "plus" a small icon to
-     follow that feed; "buttons" Follow, or Choose for a site with several
-     feeds. Tapping the row opens the feed or the site either way. */}}
-{{define "search-state"}}
-{{$r := .Result}}
-{{if $r.Following}}<span class="following-label search-following">✓ Following</span>
-{{else if and $r.Follow (or (eq .Mode "results") (eq .Mode "buttons"))}}{{template "follow-form" $r.Follow}}
-{{else if and $r.Follow (eq .Mode "plus")}}{{template "follow-icon-form" $r.Follow}}
-{{else if and $r.Choose (eq .Mode "buttons")}}<a class="btn btn-sm search-choose" href="{{$r.Href}}" aria-label="Choose a feed from {{$r.Title}}">Choose</a>{{end}}
+{{/* search-results is Discover's search results (#645); its data is a
+     discoverData with a query. The tabs (Top, Feeds, Saved; none for a
+     reader who has saved nothing) are each their own URL, so they're
+     navigation, links with aria-current, as the timeline tabs and a
+     section's tabs are; timeline-tabs.css draws them. Then a pasted
+     address's Look up row, the current tab's rows, Top's "More in" line,
+     and the no-results line. */}}
+{{define "search-results"}}
+{{$r := .Results}}
+{{with $r.Tabs}}
+<nav class="timeline-tabs section-tabs search-tabs" aria-label="Search results">
+  <ul role="list">
+    {{range .}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}{{if and (ne .ID "top") (eq .Count 0)}} class="search-tab-empty"{{end}}>{{.Name}}{{if ne .ID "top"}} <span class="search-tab-count">{{.CountText}}</span>{{end}}{{if .Current}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
+  </ul>
+</nav>
+{{end}}
+{{if or $r.Rows $r.LookupQ $r.AppLink}}
+<ul class="search-results" role="list">
+  {{if ne $r.Scope "saved"}}{{template "search-lookup" $r}}{{end}}
+  {{range $r.Rows}}{{template "search-result" .}}{{end}}
+</ul>
+{{end}}
+{{with $r.More}}
+<p class="search-more">More in {{range $i, $t := .}}{{if $i}} · {{end}}<a href="{{$t.Href}}">{{$t.Name}} ({{$t.CountText}})</a>{{end}}</p>
+{{end}}
+{{with $r.Empty}}<p class="empty">{{.}}</p>{{end}}
 {{end}}
 
-{{/* follow-icon-form is Follow as a small icon button (design checkpoint
-     option, #645): a plus, or a check once pressed; its data is a
-     followButton. save-star.ts toggles it as it does Follow. */}}
-{{define "follow-icon-form"}}
-<form class="follow-form" action="/feeds/{{.FeedID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{.Label}}" data-announce-unpressed="Unfollowed {{.Label}}">
-  <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="follow-button search-follow-icon" type="submit" aria-pressed="false" aria-label="Follow {{.Label}}"><span class="follow-off">{{template "icon-plus"}}</span><span class="follow-on">{{template "icon-check"}}</span></button>
-</form>
-{{end}}
-
-{{/* search-result is a suggestion while typing on Search (design
-     checkpoint, #645); its data is a searchRow: a small avatar, the name, a
-     line of facts, and the feed's state. The whole row opens the result;
-     the state's button sits above it. */}}
+{{/* search-result is a row of Discover's search; its data is a
+     searchResult: the avatar, the title (a saved article's in the headline
+     font, on two lines), a site's tagline or an article's excerpt, its
+     facts (a saved article's led by Saved's bookmark), and a feed's state:
+     a quiet "✓ Following", or Discover's Follow for a site's one feed the
+     reader doesn't follow yet. The whole row opens the result; Follow sits
+     above the row's link. */}}
 {{define "search-result"}}
-{{$r := .Result}}
-<li class="search-result">
-  {{template "avatar" $r.Avatar}}
+<li class="search-result{{if .Saved}} search-result-saved{{end}}">
+  {{template "avatar" .Avatar}}
   <div class="search-result-main">
-    <a class="search-result-title" href="{{$r.Href}}">{{$r.Title}}</a>
-    <p class="search-result-meta">{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
+    {{with .Desc}}<p class="search-result-desc">{{.}}</p>{{end}}
+    <p class="search-result-facts">{{if .Saved}}{{template "icon-bookmark"}}{{end}}{{range .Facts}}<span>{{.}}</span>{{end}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
-  {{template "search-state" .}}
+  {{if .Following}}<span class="following-label search-following">✓ Following</span>
+  {{else if .Follow}}{{template "follow-form" .Follow}}{{end}}
 </li>
 {{end}}
 
-{{/* search-hit is a result after Enter (design checkpoint, #645); its data
-     is a searchRow. A saved article shows its title in the headline font,
-     its excerpt and when it was saved, with Saved's bookmark; a feed its
-     site's tagline and its state. The whole row opens the result; the
-     state's button sits above it. */}}
-{{define "search-hit"}}
-{{$r := .Result}}
-<li class="search-hit search-hit-{{$r.Kind}}">
-  {{template "avatar" $r.Avatar}}
-  <div class="search-hit-main">
-    <a class="search-hit-title" href="{{$r.Href}}">{{$r.Title}}</a>
-    {{with $r.Desc}}<p class="search-hit-desc">{{.}}</p>{{end}}
-    <p class="search-hit-meta">{{if eq $r.Kind "saved"}}{{template "icon-bookmark"}}{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
-  </div>
-  {{template "search-state" .}}
-</li>
-{{end}}
-
-{{/* search-lookup is the row a pasted address gets at the top of Search's
-     lists (design checkpoint, #645), in place of Discover's Look up card;
-     its data is a foundSites: the address, what Look up does, and Look up,
-     or why a link to the app itself isn't looked up. Nothing when the query
-     isn't an address. */}}
+{{/* search-lookup is a pasted address's row at the top of Discover's
+     search results; its data is a discoverResults: the address, what Look
+     up does, and Look up, or why a link to the app itself isn't looked up.
+     Nothing when the query isn't an address, or its site was found. */}}
 {{define "search-lookup"}}
 {{with .LookupQ}}
 <li class="search-result search-lookup">
   <span class="avatar search-lookup-icon" aria-hidden="true">{{template "icon-link"}}</span>
   <div class="search-result-main">
     <p class="search-result-title">{{.}}</p>
-    <p class="search-result-meta">Find the feeds this site publishes</p>
+    <p class="search-result-facts">Find the feeds this site publishes</p>
   </div>
   <form action="/lookups" method="post" data-busy>
     <input type="hidden" name="q" value="{{.}}">
-    <button class="btn-sm btn-primary" type="submit" data-busy-label="Looking up {{.}}…" aria-label="Look up {{.}}"><span data-busy-text>Look up</span></button>
+    <button class="btn-sm btn-primary" type="submit" aria-label="Look up {{.}}" data-busy-label="Looking up {{.}}…"><span data-busy-text>Look up</span></button>
   </form>
 </li>
 {{end}}
@@ -80,25 +68,8 @@
 <li class="search-result search-lookup">
   <span class="avatar search-lookup-icon" aria-hidden="true">{{template "icon-link"}}</span>
   <div class="search-result-main">
-    <p class="search-result-meta search-lookup-note">That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader.</p>
+    <p class="search-result-note">That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader.</p>
   </div>
 </li>
 {{end}}
-{{end}}
-
-{{/* search-box is the search field's row (design checkpoint, #645); its
-     data is a searchBox. "lead": the field's magnifier is the submit
-     button; "trail": an arrow button at the field's end; "round": a round
-     icon button beside the field; "text": the Search button. Each submits
-     without JavaScript, as does Enter. */}}
-{{define "search-box"}}
-<div class="search-row search-box-{{.Box}}">
-  <div class="search-field">
-    {{if eq .Box "lead"}}<button class="search-submit" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-search"}}</button>{{else}}{{template "icon-search"}}{{end}}
-    <input type="search" id="q" name="q" value="{{.Q}}" placeholder="{{.Placeholder}}"{{if .Autofocus}} autofocus{{end}} autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
-    {{if eq .Box "trail"}}<button class="search-submit search-submit-trail" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-chevron"}}</button>{{end}}
-  </div>
-  {{if eq .Box "round"}}<button class="btn-primary search-submit-round" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-search"}}</button>{{end}}
-  {{if eq .Box "text"}}<button class="btn-primary" type="submit"{{with .SubmitAction}} formaction="{{.}}"{{end}}>Search</button>{{end}}
-</div>
 {{end}}

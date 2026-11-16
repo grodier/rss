@@ -219,20 +219,13 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | R1b Section page with no feeds | An old link to `/discover/sections/{slug}` for a section with no catalog feeds left (Discover itself leaves such a section out, R1a) | Section page, 200 | Feeds: "No feeds in {section} yet." with a link back to Discover; Recent posts: "No posts in {section} yet." | Yes, the link and the nav | new (#634) |
 | R1c Unknown section | `/discover/sections/nope`, or a section since renamed in its slug | 404 page | The 404 page | Yes, the nav | new (#634) |
 | R1d Bad paging link | `/discover/sections/{slug}/posts?before=zzz` | 400 page | "That link to older posts isn't valid." | Yes, the tabs and the nav | new (#634) |
-| R2 No results | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Discover, 200 | "No sites or feeds match “zzzz”."; live search announces "No sites" | Yes (L1) | ok |
+| R2 No results | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, results update as you type) | Discover, 200 | "No results for “zzzz”." (Top, or no tabs); live search announces "No results" | Yes (L1) | new (#645) |
+| R2a An empty tab | `/discover?q=…&scope=feeds` or `&scope=saved` for a query matching only the other kind | Discover, 200 | "No feeds match “{q}”." or "No saved articles match “{q}”.", the tab dimmed with its 0 | Yes, the other tabs | new (#645) |
+| R2b A pasted address | `/discover?q=newsite.example` | Discover, 200 | A row "newsite.example", "Find the feeds this site publishes", Look up, above the results (or above R2's line); none on the Saved tab, or when the site was found (its row has Follow) | Yes, Look up | new (#645) |
+| R2c A link to the app itself | As L2a | Discover, 200 | The Look up row's place: "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader." | Yes | new (#645) |
+| R2d A store error | Any of the search's reads fails | 500 page | As H8 | As H8 | new (#645) |
 | R3 Special characters | `/discover?q=%25`, `_`, `"<script>\` | Discover, 200 | As R2; matched literally and escaped | Yes | ok |
 | R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, above the search box | "Search must be 200 characters or fewer"; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept | needs work: the error isn't tied to the input (no `aria-invalid`, `aria-describedby` or focus) and isn't announced |
-
-## Search
-
-| State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| S1 Before typing | `/search` or `/search?q=`, or clear the box | Search, 200 | "Search the sites you follow, what you've saved, and new sites to follow." and "Paste a site's address to follow it.", with the box focused | n/a | new (#645) |
-| S2 No results | `/search?q=zzzz`, or type `zzzz` | Search, 200 | "No results for “zzzz”."; live search announces "No results" | Yes, Discover and the nav | new (#645) |
-| S3 No results for an address | `/search?q=newsite.example` | Search, 200 | Look up above "No results for “newsite.example”.", as on Discover (L1–L2a) | Yes, Look up | new (#645) |
-| S4 A group with nothing | A query matching only saved articles, say | Search, 200 | The empty groups are left out | n/a | new (#645) |
-| S5 Query over 200 characters | `/search?q=` + 201 letters | Search, 422, above the search box | As R4 | As R4 | needs work, as R4 |
-| S6 Store error | Any of the three searches fails | 500 page | As H8 | As H8 | new (#645) |
 
 ## Empty states
 

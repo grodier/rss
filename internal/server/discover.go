@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -18,7 +17,6 @@ import (
 
 const (
 	searchMaxChars = 200
-	searchLimit    = 20
 	// discoverPerSection is how many feeds each of Discover's sections shows.
 	discoverPerSection = 3
 	// importOfferBelow is how many feeds a reader who has never imported
@@ -39,8 +37,9 @@ type discoverData struct {
 	Nav      navData
 	Form     searchForm
 	Searched bool
-	Found    foundSites // with a query
-	Flash    string
+	// Results are the search's, with a query (discover_search.go).
+	Results discoverResults
+	Flash   string
 	// Icons holds the icon URLs of the sections' sites that have one.
 	Icons map[string]string
 	// Sections is Discover's catalog as this reader sees it, shown when
@@ -52,18 +51,6 @@ type discoverData struct {
 	Reordered bool
 	// Import is what Discover says about importing, with no query.
 	Import discoverImport
-
-	// IA is the design checkpoint's ?ia= (#645, search_options.go): its box
-	// is Search's. Recent is ?ia=e's recent searches, shown in place of the
-	// sections while the box is focused (mocked with ?focused=1).
-	// Temporary.
-	IA     string
-	Recent []searchScope
-	Box    searchBox
-	// FormAction and Hidden are the box's action, which live search
-	// fetches, and its hidden fields, which only a submit sends.
-	FormAction string
-	Hidden     map[string]string
 }
 
 // discoverImport is what Discover's page with no query says about importing
@@ -132,16 +119,7 @@ func inDefaultOrder(sections []rss.DiscoverSection) bool {
 // changes on the user's behalf; at most they do idempotent, bounded upkeep
 // (see feedHandler's RequestRefresh).
 func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
-	// Design checkpoint (#645): with ?ia=, Discover's box is Search's, so a
-	// query shows Search's page here: its suggestions while typing, and with
-	// ?ia=e its results too. Temporary.
-	ia := searchIA(r)
-	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" && (ia == "e" || ia == "f" && r.URL.Query().Get("scope") == "") {
-		s.searchPage(w, r, "discover")
-		return
-	}
 	data := discoverData{
-		IA:    ia,
 		Nav:   s.nav(r, "discover"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
@@ -177,30 +155,13 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 			data.Icons = s.pageIcons(r, siteIDs)
 		}
 	default:
-		found, err := s.searchSites(r, data.Form.Q, searchLimit)
+		results, err := s.discoverSearch(r, data.Form.Q)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		data.Found = found
+		data.Results = results
 		data.Searched = true
-	}
-
-	if ia == "e" && r.URL.Query().Get("focused") == "1" {
-		data.Recent = mockRecent(r)
-	}
-	if ia != "" {
-		submit := ""
-		if ia == "f" {
-			submit = "/search"
-		}
-		data.Box = newSearchBox(r, data.Form.Q, "Search or paste a link", submit, data.Recent != nil)
-		_, v := searchBase(r)
-		data.FormAction = "/discover?" + v.Encode()
-		data.Hidden = map[string]string{"scope": "top"}
-		for k := range v {
-			data.Hidden[k] = v.Get(k)
-		}
 	}
 
 	if err := s.renderHTML(w, status, "discover.html", data); err != nil {
@@ -208,7 +169,7 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// foundSites is a site search's results, as Discover and Search show them.
+// foundSites is a site search's results.
 type foundSites struct {
 	Sites []rss.SiteWithFeeds
 	// LookupQ is the address to offer as a site lookup (see lookupAddress),
@@ -219,42 +180,30 @@ type foundSites struct {
 	AppLink bool
 	// Subscribed holds the IDs of the result feeds the user follows.
 	Subscribed map[string]bool
-	// Icons holds the icon URLs of the result sites that have one.
-	Icons map[string]string
-}
-
-// Announce is what live search says when these results come in: how many
-// sites were found.
-func (f foundSites) Announce() string {
-	return countOf(len(f.Sites), "site", "sites")
-}
-
-// countOf says how many of something there are, for a screen reader:
-// "No sites", "1 site", "3 sites".
-func countOf(n int, one, many string) string {
-	switch n {
-	case 0:
-		return "No " + many
-	case 1:
-		return "1 " + one
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 // searchSites finds up to limit sites for q, a valid, non-empty query,
-// with which of their feeds the user follows and their icons, and what to
-// offer when q is an address.
-func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, error) {
-	found, siteKey := s.addressOffer(q)
+// with which of their feeds the user follows, and what to offer when q is
+// an address, whose site key it returns ("" otherwise).
+func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, string, error) {
+	var found foundSites
+	var siteKey string
+	if u, err := discovery.ParseInput(q); err == nil {
+		siteKey = discovery.SiteKey(u)
+		if s.isAppLink(u) {
+			found.AppLink = true
+		} else {
+			found.LookupQ = lookupAddress(u)
+		}
+	}
 	sites, err := s.services.SearchService.Search(r.Context(), q, siteKey, limit)
 	if err != nil {
-		return foundSites{}, err
+		return foundSites{}, "", err
 	}
 	found.Sites = sites
 
-	var feedIDs, siteIDs []string
+	var feedIDs []string
 	for _, site := range sites {
-		siteIDs = append(siteIDs, site.Site.ID)
 		for _, f := range site.Feeds {
 			feedIDs = append(feedIDs, f.ID)
 		}
@@ -263,42 +212,10 @@ func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, 
 		userID, _ := s.authenticatedUserID(r)
 		found.Subscribed, err = s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
 		if err != nil {
-			return foundSites{}, err
+			return foundSites{}, "", err
 		}
 	}
-	if len(siteIDs) > 0 {
-		found.Icons = s.pageIcons(r, siteIDs)
-	}
-	return found, nil
-}
-
-// addressOffer is what a search offers when q is a website address: Look
-// up, or, for the app's own address, why not; with q's site key. Both are
-// zero when q isn't an address.
-func (s *Server) addressOffer(q string) (found foundSites, siteKey string) {
-	u, err := discovery.ParseInput(q)
-	if err != nil {
-		return foundSites{}, ""
-	}
-	if s.isAppLink(u) {
-		found.AppLink = true
-	} else {
-		found.LookupQ = lookupAddress(u)
-	}
-	return found, discovery.SiteKey(u)
-}
-
-// siteResult is a site search's result (partials/site_result.html), on
-// Discover and Search: the site, with its feeds, each marked Following when
-// the user follows it.
-type siteResult struct {
-	Site       rss.SiteWithFeeds
-	Icon       string // the site's icon URL, or "" for its letter
-	Subscribed map[string]bool
-}
-
-func newSiteResult(site rss.SiteWithFeeds, icon string, subscribed map[string]bool) siteResult {
-	return siteResult{Site: site, Icon: icon, Subscribed: subscribed}
+	return found, siteKey, nil
 }
 
 // isAppLink reports whether u (from discovery.ParseInput) is on the app's own

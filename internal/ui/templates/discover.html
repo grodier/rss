@@ -18,24 +18,18 @@
         <h1>Discover</h1>
       </header>
 
-      <form class="page-search" role="search" action="{{or .FormAction "/discover"}}" method="get" data-live-search>
-        {{/* Design checkpoint (#645): Search's box. Temporary. */}}
-        {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+      <form class="page-search" role="search" action="/discover" method="get" data-live-search>
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
         {{end}}
-        {{if .IA}}
-        {{template "search-box" .Box}}
-        {{else}}
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="{{if .IA}}Search or paste a link{{else}}Site name or address{{end}}"{{if .Recent}} autofocus{{end}} autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search or paste a link" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
-          <button class="btn-primary" type="submit"{{if eq .IA "f"}} formaction="/search"{{end}}>Search</button>
+          <button class="btn-primary" type="submit">Search</button>
         </div>
-        {{end}}
       </form>
 
       {{with .Flash}}
@@ -43,19 +37,9 @@
       {{end}}
 
       {{/* live-search.ts replaces this container's contents with the
-           same container from /discover?q=… as the reader types. */}}
-      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Found.Announce}}"{{end}}>
-      {{template "lookup-offer" .Found}}
-
-      {{with .Recent}}
-      <section class="search-recent" aria-labelledby="search-recent">
-        <div class="list-head"><h2 id="search-recent">Recent searches</h2><button class="link-button" type="button">Clear</button></div>
-        <ul role="list">
-          {{range .}}<li><a href="{{.Href}}">{{template "icon-clock"}}{{.Name}}</a></li>{{end}}
-        </ul>
-        <p class="search-recent-note">Kept on this device only.</p>
-      </section>
-      {{else}}
+           same container from /discover?q=… as the reader types, and
+           announces its data-announce. */}}
+      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}"{{end}}>
       {{with .Import.Offer}}
       <section class="import-card" aria-labelledby="import-card-heading">
         <h2 id="import-card-heading">Coming from another reader?</h2>
@@ -96,14 +80,9 @@
       {{if .Import.Line}}
       <p class="import-line">Coming from another reader? <a href="/settings/import">Import your subscriptions</a></p>
       {{end}}
-      {{end}}
 
       {{if .Searched}}
-      {{range .Found.Sites}}
-      {{template "site-result" (siteResult . (index $.Found.Icons .Site.ID) $.Found.Subscribed)}}
-      {{else}}
-      <p class="empty">No sites or feeds match “{{.Form.Q}}”.</p>
-      {{end}}
+      {{template "search-results" .}}
       {{end}}
       </div>
     </main>

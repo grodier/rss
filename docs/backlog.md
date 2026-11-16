@@ -656,8 +656,8 @@ Pages and queries:
 - [ ] **Search scans with `ILIKE`.**
   Sites and feeds are matched with `%q%`, which can't use a b-tree index, and the seed list (#447) can add thousands of sites to scan.
   Search as you type (#449) runs it once per pause in typing, not once per search, and also matches site and feed descriptions, which are longer to scan than titles.
-  *Measured 2026-11-01* (#449, on a dev container with about 1,300 sites and feeds): 5–11 ms per `/search` request while typing, 3–8 ms of it the query.
-  *Signal:* search latency growing with the number of sites and feeds, or `/search` requests while typing taking over 100 ms.
+  *Measured 2026-11-01* (#449, on a dev container with about 1,300 sites and feeds): 5–11 ms per search request while typing, 3–8 ms of it the query.
+  *Signal:* search latency growing with the number of sites and feeds, or `/discover?q=` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
 - [ ] **Infinite scroll keeps every page in the DOM** (#155, #159).
   A long read appends a page of rows at a time and never removes any, so style, layout and memory grow with every page, and phones feel it first; the motion batch (#507) adds animations to those pages.
@@ -755,10 +755,10 @@ Pages and queries:
   Fine for hundreds of saves.
   *Signal:* `/saved?q=` latency rising for users with thousands of saves.
   *Fix:* `pg_trgm` or full-text search, chosen with the site search's (#451).
-- [ ] **Search runs several searches per keystroke** (#645, #646).
-  The whole-app search runs your feeds (an `ILIKE` scan of the reader's subscriptions), saved (the scan above) and new sites (the "Search scans with `ILIKE`" entry) on each pause in typing, and Discover's search counts the first two for its link to Search.
-  *Signal:* `/search` p95 rising on the admin's endpoints page, or any of its queries in `pg_stat_statements`.
-  *Fix:* indexes chosen by #451 and #647, or a shorter list of groups while typing and the rest on Enter.
+- [ ] **Discover's search runs four queries per pause in typing** (#645).
+  Each pause reads the reader's subscriptions (an `ILIKE` scan of them), their saves (the scan above) and the sites (the "Search scans with `ILIKE`" entry), up to 51 rows each, ordered by match quality, plus whether they've saved anything (an index probe).
+  *Signal:* `/discover?q=` p95 rising on the admin's endpoints page, or any of its queries in `pg_stat_statements`.
+  *Fix:* #666 makes typing read only the subscriptions and the sites (suggestions), with the full search on Enter; then indexes chosen by #451 and #647.
 - [ ] **Site icons served from Postgres** (#305).
   Each icon request that misses the browser's cache reads its `bytea` row.
   URLs carry the icon's hash and are cached for a year, so repeat views cost nothing, but every new visitor's first timeline asks for up to 30 icons.

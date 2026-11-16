@@ -141,7 +141,6 @@ func TestAppNav(t *testing.T) {
 		{"saved", "/saved"},
 		{"feeds", "/feeds"},
 		{"discover", "/discover"},
-		{"search", "/search"},
 		{"settings", "/settings"},
 		{"", ""},
 	}
@@ -156,30 +155,35 @@ func TestAppNav(t *testing.T) {
 				t.Fatal(err)
 			}
 			links := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && n.Parent != nil && n.Parent.Data == "li" })
-			if len(links) != 5 {
-				t.Fatalf("found %d nav links, want 5", len(links))
+			if len(links) != 4 {
+				t.Fatalf("found %d nav links, want 4", len(links))
 			}
 			var hrefs []string
 			for _, a := range links {
 				hrefs = append(hrefs, attr(a, "href"))
 			}
-			if want := []string{"/", "/saved", "/feeds", "/discover", "/search"}; !slices.Equal(hrefs, want) {
+			if want := []string{"/", "/saved", "/feeds", "/discover"}; !slices.Equal(hrefs, want) {
 				t.Errorf("nav links = %q, want %q", hrefs, want)
 			}
-			// Search's top-bar icon, for phones, whose tab bar hides the
-			// rail's Search item.
-			searches := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-search") })
-			if len(searches) != 1 {
-				t.Fatalf("found %d top-bar search links, want 1", len(searches))
+			// Discover is the search place (#645): its icon is the
+			// magnifier.
+			var icon, link bytes.Buffer
+			if err := ts["timeline.html"].ExecuteTemplate(&icon, "icon-search", nil); err != nil {
+				t.Fatal(err)
 			}
-			if got := attr(searches[0], "href"); got != "/search" {
-				t.Errorf("top-bar search link href = %q, want /search", got)
+			if err := html.Render(&link, links[3]); err != nil {
+				t.Fatal(err)
 			}
-			if got := attr(searches[0], "aria-label"); got != "Search" {
-				t.Errorf("top-bar search link aria-label = %q, want Search", got)
+			wantIcon, err := html.Parse(&icon)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if got, want := attr(searches[0], "aria-current") == "page", tt.section == "search"; got != want {
-				t.Errorf("top-bar search link current = %v, want %v", got, want)
+			var iconHTML bytes.Buffer
+			for _, svg := range findAll(wantIcon, func(n *html.Node) bool { return n.Data == "svg" }) {
+				html.Render(&iconHTML, svg)
+			}
+			if !strings.Contains(link.String(), iconHTML.String()) {
+				t.Errorf("Discover's link doesn't use the search icon: %s", link.String())
 			}
 			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })
 			if len(accounts) != 1 {

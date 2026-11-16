@@ -29,8 +29,9 @@
     background: var(--surface);
   }
 
-  .result li a:active {
-    text-decoration: underline;
+  /* A search result pressed through its own link, not its Follow. */
+  .search-result:has(a.search-result-title:active) {
+    background: var(--surface);
   }
 
   :is(button, .btn):not(.btn-primary, .btn-danger):active:not(:disabled, [aria-disabled="true"]) {

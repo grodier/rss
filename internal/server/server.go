@@ -182,7 +182,8 @@ type SubscriptionStore interface {
 	SubscribedFeedIDs(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	ListByUser(ctx context.Context, userID string) ([]rss.Subscription, error)
 	// Search returns up to limit of userID's subscriptions whose name, feed
-	// title, site title or host contains q, ignoring case, ordered by name.
+	// title, site title or host contains q, ignoring case, the best matches
+	// first.
 	Search(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error)
 	// Count returns how many feeds userID follows.
 	Count(ctx context.Context, userID string) (int, error)
@@ -216,6 +217,8 @@ type SaveStore interface {
 	// (every one if q is ""), newest saved first. Summary and Content are
 	// left empty.
 	ListSaved(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
+	// HasSaves reports whether the user has saved anything.
+	HasSaves(ctx context.Context, userID string) (bool, error)
 }
 
 // StarStore records and lists which articles a user has starred.

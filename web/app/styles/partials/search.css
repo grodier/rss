@@ -1,80 +1,156 @@
-/* Discover: the import card, its sections of catalog feeds, and search
-   results; Search's groups of results. */
+/* Discover: the import card, its sections of catalog feeds, and its
+   search's results. */
 @layer components {
-  /* Search results: a site, with its feeds grouped in a box. */
-  .lookup-cta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem 1rem;
-    margin: 0.75rem 1rem 0;
-    padding: 0.875rem 1rem;
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius);
+  /* Discover's search (#645): the tabs' counts, an empty tab dimmed so the
+     row never moves; under 360 px the counts go, so the three tabs fit. */
+  .search-tabs .search-tab-count {
+    margin-inline-start: 0.125rem;
+    color: var(--text-3);
+    font-weight: 500;
   }
 
-  .lookup-cta p {
+  .search-tabs a.search-tab-empty {
+    color: var(--text-3);
+  }
+
+  @media (max-width: 22.49rem) {
+    .search-tabs .search-tab-count {
+      display: none;
+    }
+  }
+
+  /* A result: an avatar, the title, a tagline or excerpt, and a line of
+     facts, then a feed's state. The whole row opens the result, through
+     its title link's ::after; Follow sits above it. */
+  .search-result {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.25rem 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .search-result:has(.search-result-title:hover) {
+    background: var(--surface);
+  }
+
+  .search-result-main {
+    display: grid;
+    gap: 0.125rem;
+    min-inline-size: 0;
+  }
+
+  .search-result-title {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 650;
+    line-height: 1.3;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  a.search-result-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .search-result-saved .search-result-title {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+  }
+
+  /* A site's tagline, on one line; a saved article's excerpt, on two, in
+     the reading font. */
+  .search-result-desc {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-saved .search-result-desc {
+    display: -webkit-box;
+    font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
+    font-size: 0.9375rem;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .search-result-facts {
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-facts > span + span::before {
+    content: " · ";
+  }
+
+  .search-result-facts .fetch-error {
+    color: var(--danger);
+  }
+
+  /* A saved article's facts start with Saved's bookmark. */
+  .search-result-facts > .icon {
+    display: inline-block;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-inline-end: 0.25rem;
+    vertical-align: -0.125rem;
+    stroke-width: 2.25;
+  }
+
+  .search-result :is(.follow-form, .search-following, form) {
+    position: relative;
+    z-index: 1;
+    align-self: center;
+  }
+
+  /* A pasted address's row: a link icon in the avatar's place, what Look
+     up does, and Look up. */
+  .search-lookup {
+    align-items: center;
+  }
+
+  .search-lookup .search-result-facts {
+    white-space: normal;
+  }
+
+  .search-lookup-icon {
+    color: var(--accent);
+  }
+
+  .search-lookup-icon .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+  }
+
+  .search-result-note {
     color: var(--text-2);
     font-size: 0.875rem;
   }
 
-  .result {
+  /* After Top's list: the tabs with more than it showed. */
+  .search-more {
     padding: 1rem;
-    border-block-end: 1px solid var(--border);
-  }
-
-  .result-head {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .result-head h2 {
-    font-family: var(--font-display);
-    font-size: 1rem;
-  }
-
-  .result-head h2 a {
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .result-head h2 a:hover {
-    text-decoration: underline;
-  }
-
-  .result-head p {
-    color: var(--text-3);
-    font-size: 0.8125rem;
-  }
-
-  .result ul {
-    margin-block-start: 0.625rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-  }
-
-  .result li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-  }
-
-  .result li + li {
-    border-block-start: 1px solid var(--border);
-  }
-
-  .result li a {
-    color: var(--text);
-    font-weight: 500;
-    text-decoration: none;
-  }
-
-  .result li a:hover {
-    text-decoration: underline;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    text-align: center;
   }
 
   /* Discover's import offer, or an import's progress: a card, as the one
@@ -274,439 +350,5 @@
     color: var(--text-3);
     font-size: 0.75rem;
     white-space: nowrap;
-  }
-
-  /* Search, before typing: what it covers. */
-  .search-intro {
-    padding: 2.5rem 1.5rem;
-    color: var(--text-2);
-    text-align: center;
-  }
-
-  .search-intro > * + * {
-    margin-block-start: 0.5rem;
-  }
-
-  .search-intro p + p {
-    color: var(--text-3);
-    font-size: 0.875rem;
-  }
-
-  /* Search's saved articles: compact rows, the title over its feed and
-     when it was saved. */
-  .search-article {
-    position: relative;
-    padding: 0.75rem 1rem;
-    border-block-end: 1px solid var(--border);
-    transition: background-color var(--duration-quick) var(--ease-out);
-  }
-
-  .search-article:hover {
-    background: var(--surface);
-  }
-
-  .search-article a {
-    color: var(--text);
-    font-family: var(--font-display);
-    font-weight: 650;
-    line-height: 1.3;
-    text-decoration: none;
-  }
-
-  /* The whole row opens the article, as My feeds' rows open the feed. */
-  .search-article a::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-  }
-
-  .search-article p {
-    margin-block-start: 0.125rem;
-    color: var(--text-3);
-    font-size: 0.8125rem;
-  }
-
-  /* Design checkpoint (#645): a suggestion while typing, compact: a small
-     avatar, the name and a line of facts. The whole row opens it. */
-  .search-result {
-    position: relative;
-    display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    border-block-end: 1px solid var(--border);
-    transition: background-color var(--duration-quick) var(--ease-out);
-  }
-
-  .search-result:hover {
-    background: var(--surface);
-  }
-
-  .search-result .avatar {
-    inline-size: 2rem;
-    block-size: 2rem;
-    font-size: 0.875rem;
-  }
-
-  .search-result-title {
-    display: block;
-    overflow: hidden;
-    color: var(--text);
-    font-weight: 650;
-    text-decoration: none;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .search-result-title::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-  }
-
-  .search-result-meta,
-  .search-hit-meta {
-    overflow: hidden;
-    color: var(--text-3);
-    font-size: 0.8125rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  :is(.search-result-meta, .search-hit-meta) > span + span::before {
-    content: " · ";
-  }
-
-  :is(.search-result-meta, .search-hit-meta) .fetch-error {
-    color: var(--danger);
-  }
-
-  /* A result after Enter, roomier: the title wraps to two lines, a saved
-     article's excerpt or a new site's description under it, and Follow or
-     Choose at the end, above the whole-row link. */
-  .search-hit {
-    position: relative;
-    display: grid;
-    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 0.25rem 0.75rem;
-    padding: 0.75rem 1rem;
-    border-block-end: 1px solid var(--border);
-    transition: background-color var(--duration-quick) var(--ease-out);
-  }
-
-  .search-hit:hover {
-    background: var(--surface);
-  }
-
-  .search-hit-main {
-    display: grid;
-    gap: 0.125rem;
-    min-inline-size: 0;
-  }
-
-  .search-hit-title {
-    display: -webkit-box;
-    overflow: hidden;
-    color: var(--text);
-    font-weight: 650;
-    line-height: 1.3;
-    text-decoration: none;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
-  .search-hit-saved .search-hit-title {
-    font-family: var(--font-display);
-    font-size: 1.0625rem;
-  }
-
-  .search-hit-title::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-  }
-
-  .search-hit-desc {
-    display: -webkit-box;
-    overflow: hidden;
-    color: var(--text-2);
-    font-size: 0.875rem;
-    line-height: 1.4;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-  }
-
-  /* A site's description is a tagline: one line is enough to tell sites
-     apart. */
-  .search-hit-feed .search-hit-desc {
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
-  }
-
-  .search-hit-saved .search-hit-desc {
-    font-family: var(--font-reading);
-    font-weight: var(--font-reading-weight);
-    font-size: 0.9375rem;
-  }
-
-  /* A feed's state, above the whole-row link: Discover's "✓ Following",
-     Follow, or Choose. */
-  :is(.search-result, .search-hit) :is(.follow-form, .search-choose, .search-following) {
-    position: relative;
-    z-index: 1;
-    align-self: center;
-  }
-
-  /* A saved article's facts start with Saved's bookmark. */
-  .search-hit-meta > .icon {
-    display: inline-block;
-    inline-size: 0.875rem;
-    block-size: 0.875rem;
-    margin-inline-end: 0.25rem;
-    vertical-align: -0.125rem;
-    stroke-width: 2.25;
-  }
-
-  /* A pasted address's row: the address, what Look up does, and Look up. */
-  .search-lookup-icon {
-    color: var(--accent);
-  }
-
-  .search-lookup-icon .icon {
-    inline-size: 1.125rem;
-    block-size: 1.125rem;
-  }
-
-  .search-hits .search-lookup {
-    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-    padding-block: 0.75rem;
-  }
-
-  .search-hits .search-lookup .avatar {
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
-  }
-
-  .search-lookup form {
-    position: relative;
-    z-index: 1;
-  }
-
-  .search-lookup-note {
-    white-space: normal;
-  }
-
-  /* ?typing=plus: Follow as a small outlined icon, a plus, then a check. */
-  .follow-button.search-follow-icon {
-    display: grid;
-    place-items: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    background: none;
-    color: var(--text);
-  }
-
-  .follow-button.search-follow-icon[aria-pressed="false"] {
-    border-color: var(--border-strong);
-    background: none;
-    color: var(--text);
-  }
-
-  .search-follow-icon .icon {
-    inline-size: 1rem;
-    block-size: 1rem;
-    stroke-width: 2.25;
-  }
-
-  .search-follow-icon[aria-pressed="true"] {
-    color: var(--text-2);
-  }
-
-  /* Design checkpoint (#645): how the box submits (?box=). "lead": the
-     field's magnifier is the submit button, in the same place. */
-  .search-field .search-submit {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    z-index: 1;
-    inline-size: 2.625rem;
-    padding: 0;
-    border: 0;
-    border-radius: 999px 0 0 999px;
-    background: none;
-    color: var(--text-3);
-    cursor: pointer;
-  }
-
-  .search-field .search-submit .icon {
-    color: inherit;
-  }
-
-  .search-field .search-submit:hover {
-    color: var(--text);
-  }
-
-  .search-field .search-submit:focus-visible {
-    outline-offset: -3px;
-  }
-
-  /* "trail": an arrow in a small filled circle at the field's end. */
-  .search-field .search-submit-trail {
-    inset-block: 0.375rem;
-    inset-inline: auto 0.375rem;
-    inline-size: auto;
-    aspect-ratio: 1;
-    border-radius: 999px;
-    background: var(--text);
-    color: var(--bg);
-  }
-
-  .search-field .search-submit-trail .icon {
-    inset-inline-start: 50%;
-    translate: -50% -50%;
-    stroke-width: 2.5;
-  }
-
-  .search-field .search-submit-trail:hover {
-    color: var(--bg);
-    opacity: 0.86;
-  }
-
-  .search-box-trail input:not([type="hidden"]) {
-    padding-inline-end: 3rem;
-  }
-
-  /* "round": a round icon button beside the field. */
-  .search-submit-round {
-    display: grid;
-    flex: none;
-    place-items: center;
-    inline-size: 2.875rem;
-    padding: 0;
-  }
-
-  .search-submit-round .icon {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    stroke-width: 2.25;
-  }
-
-  /* The tabs: the timeline tabs' underline, with each scope's count; an
-     empty scope stays, dimmed, so the row never moves. */
-  .search-tabs .search-tab-count {
-    margin-inline-start: 0.125rem;
-    color: var(--text-3);
-    font-weight: 500;
-  }
-
-  .search-tabs a.search-tab-empty {
-    color: var(--text-3);
-  }
-
-  /* Under 360 px the four tabs and their counts don't fit; the counts go,
-     and an empty scope still reads as empty, dimmed. */
-  @media (max-width: 22.49rem) {
-    .search-tabs .search-tab-count {
-      display: none;
-    }
-  }
-
-  /* After Top's list: the scopes with more than it showed. */
-  .search-more {
-    padding: 1rem;
-    color: var(--text-2);
-    font-size: 0.875rem;
-    text-align: center;
-  }
-
-  /* The type-ahead option (#645): while typing, a row that runs the full
-     search, then the reader's feeds that match. */
-  .search-everything {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.875rem 1rem;
-    border-block-end: 1px solid var(--border);
-    color: var(--text);
-    text-decoration: none;
-    transition: background-color var(--duration-quick) var(--ease-out);
-  }
-
-  .search-everything:hover {
-    background: var(--surface);
-  }
-
-  .search-everything .icon {
-    inline-size: 2.25rem;
-    block-size: 1.25rem;
-    color: var(--text-3);
-  }
-
-  .search-everything span {
-    flex: 1;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .search-everything kbd {
-    padding: 0.0625rem 0.375rem;
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    color: var(--text-3);
-    font-family: inherit;
-    font-size: 0.75rem;
-  }
-
-  /* Phones' keyboards have their own Search key. */
-  @media (pointer: coarse) {
-    .search-everything kbd {
-      display: none;
-    }
-  }
-
-  .search-suggest-none {
-    padding: 1rem;
-    color: var(--text-2);
-    font-size: 0.875rem;
-  }
-
-  /* Recent searches, before typing: kept on the device only. */
-  .search-recent li a {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    border-block-end: 1px solid var(--border);
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .search-recent li a:hover {
-    background: var(--surface);
-  }
-
-  .search-recent .icon {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    color: var(--text-3);
-  }
-
-  .search-recent .list-head .link-button {
-    font-size: 0.8125rem;
-  }
-
-  .search-recent-note {
-    padding: 0.5rem 1rem 0;
-    color: var(--text-3);
-    font-size: 0.75rem;
   }
 }

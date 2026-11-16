@@ -432,7 +432,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 		group        string // the page's group, whose entry sets up busy forms
 		label, busy  string // the button's label and busy label; "" for a form that isn't busy
 	}{
-		{"discover", "/lookups", "discover", "Look up example.com", "Looking up example.com…"},
+		{"discover", "/lookups", "discover", "Look up", "Looking up example.com…"},
 		{"site", "/lookups", "reading", "Check example.com for new feeds", "Checking example.com for new feeds…"},
 		{"feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},
 		{"subscribed feed", "/feeds/" + testFeedID + "/refresh", "reading", "Refresh", "Refreshing…"},

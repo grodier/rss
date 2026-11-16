@@ -500,15 +500,102 @@
     white-space: normal;
   }
 
-  /* ?typing=labels: the state as text leading the facts. */
-  .search-label-following {
-    color: var(--text-2);
-    font-weight: 600;
+  /* ?typing=plus: Follow as a small outlined icon, a plus, then a check. */
+  .follow-button.search-follow-icon {
+    display: grid;
+    place-items: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: none;
+    color: var(--text);
   }
 
-  .search-label-other {
-    color: var(--accent);
-    font-weight: 600;
+  .follow-button.search-follow-icon[aria-pressed="false"] {
+    border-color: var(--border-strong);
+    background: none;
+    color: var(--text);
+  }
+
+  .search-follow-icon .icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    stroke-width: 2.25;
+  }
+
+  .search-follow-icon[aria-pressed="true"] {
+    color: var(--text-2);
+  }
+
+  /* Design checkpoint (#645): how the box submits (?box=). "lead": the
+     field's magnifier is the submit button, in the same place. */
+  .search-field .search-submit {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 1;
+    inline-size: 2.625rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px 0 0 999px;
+    background: none;
+    color: var(--text-3);
+    cursor: pointer;
+  }
+
+  .search-field .search-submit .icon {
+    color: inherit;
+  }
+
+  .search-field .search-submit:hover {
+    color: var(--text);
+  }
+
+  .search-field .search-submit:focus-visible {
+    outline-offset: -3px;
+  }
+
+  /* "trail": an arrow in a small filled circle at the field's end. */
+  .search-field .search-submit-trail {
+    inset-block: 0.375rem;
+    inset-inline: auto 0.375rem;
+    inline-size: auto;
+    aspect-ratio: 1;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  .search-field .search-submit-trail .icon {
+    inset-inline-start: 50%;
+    translate: -50% -50%;
+    stroke-width: 2.5;
+  }
+
+  .search-field .search-submit-trail:hover {
+    color: var(--bg);
+    opacity: 0.86;
+  }
+
+  .search-box-trail input:not([type="hidden"]) {
+    padding-inline-end: 3rem;
+  }
+
+  /* "round": a round icon button beside the field. */
+  .search-submit-round {
+    display: grid;
+    flex: none;
+    place-items: center;
+    inline-size: 2.875rem;
+    padding: 0;
+  }
+
+  .search-submit-round .icon {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    stroke-width: 2.25;
   }
 
   /* The tabs: the timeline tabs' underline, with each scope's count; an

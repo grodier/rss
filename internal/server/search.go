@@ -35,6 +35,8 @@ type searchPageData struct {
 	Hidden     map[string]string
 	// SubmitAction is where Enter goes, when not FormAction.
 	SubmitAction string
+	// Box is the search field's row (design checkpoint, temporary).
+	Box searchBox
 }
 
 // Empty reports whether a search found nothing in any group.
@@ -76,7 +78,7 @@ func (s *Server) searchPage(w http.ResponseWriter, r *http.Request, host string)
 		data.FormAction = base + "?" + v.Encode()
 		if host == "discover" && v.Get("ia") == "f" {
 			// Typing stays on Discover; Enter goes to Search.
-			data.FormAction, data.SubmitAction = "/discover?ia=f", "/search"
+			data.FormAction, data.SubmitAction = "/discover?"+v.Encode(), "/search"
 		}
 		data.Hidden = map[string]string{"scope": cmp.Or(r.URL.Query().Get("scope"), "top")}
 		for k := range v {
@@ -148,6 +150,8 @@ func (s *Server) searchPage(w http.ResponseWriter, r *http.Request, host string)
 			data.Options = s.newSearchOptions(r, data, len(any) > 0)
 		}
 	}
+
+	data.Box = newSearchBox(r, data.Form.Q, "Search or paste a link", data.SubmitAction, true)
 
 	if !data.Searched && data.Layout != "full" {
 		data.Options.Recent = mockRecent(r)

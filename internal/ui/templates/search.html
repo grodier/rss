@@ -30,6 +30,7 @@
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
         {{end}}
+        {{if eq .Layout "full"}}
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
@@ -37,6 +38,9 @@
           </div>
           <button class="btn-primary" type="submit"{{with .SubmitAction}} formaction="{{.}}"{{end}}>Search</button>
         </div>
+        {{else}}
+        {{template "search-box" .Box}}
+        {{end}}
       </form>
 
       {{/* live-search.ts replaces this container's contents with the
@@ -116,7 +120,7 @@
 {{if $o.Suggest}}
 <ul class="search-results" role="list">
   {{if not $o.KnownSite}}{{template "search-lookup" .Found}}{{end}}
-  {{range $o.Shown}}{{template "search-result" (searchResultRow . $o.Labels)}}{{end}}
+  {{range $o.Shown}}{{template "search-result" (searchResultRow . $o.Typing)}}{{end}}
 </ul>
 <a class="search-everything" href="{{$o.Everything}}">{{template "icon-search"}}<span>Search everything for “<strong>{{.Form.Q}}</strong>”</span><kbd>Enter</kbd></a>
 {{else}}
@@ -130,7 +134,7 @@
 {{if or $o.Shown (and $o.Lookup (not $o.KnownSite) (or .Found.LookupQ .Found.AppLink))}}
 <ul class="search-hits" role="list">
   {{if and $o.Lookup (not $o.KnownSite)}}{{template "search-lookup" .Found}}{{end}}
-  {{range $o.Shown}}{{template "search-hit" (searchResultRow . false)}}{{end}}
+  {{range $o.Shown}}{{template "search-hit" (searchResultRow . "results")}}{{end}}
 </ul>
 {{end}}
 {{with $o.More}}

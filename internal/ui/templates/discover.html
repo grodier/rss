@@ -18,13 +18,16 @@
         <h1>Discover</h1>
       </header>
 
-      <form class="page-search" role="search" action="/discover{{with .IA}}?ia={{.}}{{end}}" method="get" data-live-search>
+      <form class="page-search" role="search" action="{{or .FormAction "/discover"}}" method="get" data-live-search>
         {{/* Design checkpoint (#645): Search's box. Temporary. */}}
-        {{with .IA}}<input type="hidden" name="ia" value="{{.}}"><input type="hidden" name="scope" value="top">{{end}}
+        {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
         {{end}}
+        {{if .IA}}
+        {{template "search-box" .Box}}
+        {{else}}
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
@@ -32,6 +35,7 @@
           </div>
           <button class="btn-primary" type="submit"{{if eq .IA "f"}} formaction="/search"{{end}}>Search</button>
         </div>
+        {{end}}
       </form>
 
       {{with .Flash}}

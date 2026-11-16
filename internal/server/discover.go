@@ -59,6 +59,11 @@ type discoverData struct {
 	// Temporary.
 	IA     string
 	Recent []searchScope
+	Box    searchBox
+	// FormAction and Hidden are the box's action, which live search
+	// fetches, and its hidden fields, which only a submit sends.
+	FormAction string
+	Hidden     map[string]string
 }
 
 // discoverImport is what Discover's page with no query says about importing
@@ -183,6 +188,19 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 
 	if ia == "e" && r.URL.Query().Get("focused") == "1" {
 		data.Recent = mockRecent(r)
+	}
+	if ia != "" {
+		submit := ""
+		if ia == "f" {
+			submit = "/search"
+		}
+		data.Box = newSearchBox(r, data.Form.Q, "Search or paste a link", submit, data.Recent != nil)
+		_, v := searchBase(r)
+		data.FormAction = "/discover?" + v.Encode()
+		data.Hidden = map[string]string{"scope": "top"}
+		for k := range v {
+			data.Hidden[k] = v.Get(k)
+		}
 	}
 
 	if err := s.renderHTML(w, status, "discover.html", data); err != nil {

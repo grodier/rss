@@ -1,15 +1,26 @@
 {{/* search-state is a feed's state at the end of a search row (design
-     checkpoint, #645), as Discover's rows show it: a quiet "✓ Following",
-     Follow for a site's one feed the reader doesn't follow yet, or Choose,
-     to its page, for a site with several. With labels, the state is text in
-     the facts line instead (?typing=labels). Its data is the row's
-     searchResult and whether to use labels. */}}
+     checkpoint, #645); its data is the row's searchResult and Mode. Every
+     mode shows a quiet "✓ Following" on a feed the reader follows. After
+     Enter ("results"), a site's one feed they don't follow has Discover's
+     Follow. While typing, "tag" shows nothing more; "plus" a small icon to
+     follow that feed; "buttons" Follow, or Choose for a site with several
+     feeds. Tapping the row opens the feed or the site either way. */}}
 {{define "search-state"}}
-{{if not .Labels}}
-{{if .Result.Following}}<span class="following-label search-following">✓ Following</span>
-{{else if .Result.Follow}}{{template "follow-form" .Result.Follow}}
-{{else if .Result.Choose}}<a class="btn btn-sm search-choose" href="{{.Result.Href}}" aria-label="Choose a feed from {{.Result.Title}}">Choose</a>{{end}}
+{{$r := .Result}}
+{{if $r.Following}}<span class="following-label search-following">✓ Following</span>
+{{else if and $r.Follow (or (eq .Mode "results") (eq .Mode "buttons"))}}{{template "follow-form" $r.Follow}}
+{{else if and $r.Follow (eq .Mode "plus")}}{{template "follow-icon-form" $r.Follow}}
+{{else if and $r.Choose (eq .Mode "buttons")}}<a class="btn btn-sm search-choose" href="{{$r.Href}}" aria-label="Choose a feed from {{$r.Title}}">Choose</a>{{end}}
 {{end}}
+
+{{/* follow-icon-form is Follow as a small icon button (design checkpoint
+     option, #645): a plus, or a check once pressed; its data is a
+     followButton. save-star.ts toggles it as it does Follow. */}}
+{{define "follow-icon-form"}}
+<form class="follow-form" action="/feeds/{{.FeedID}}/subscribe" method="post" data-toggle data-announce-pressed="Following {{.Label}}" data-announce-unpressed="Unfollowed {{.Label}}">
+  <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+  <button class="follow-button search-follow-icon" type="submit" aria-pressed="false" aria-label="Follow {{.Label}}"><span class="follow-off">{{template "icon-plus"}}</span><span class="follow-on">{{template "icon-check"}}</span></button>
+</form>
 {{end}}
 
 {{/* search-result is a suggestion while typing on Search (design
@@ -22,7 +33,7 @@
   {{template "avatar" $r.Avatar}}
   <div class="search-result-main">
     <a class="search-result-title" href="{{$r.Href}}">{{$r.Title}}</a>
-    <p class="search-result-meta">{{if .Labels}}{{if $r.Following}}<span class="search-label-following">✓ Following</span>{{else}}<span class="search-label-other">Not following</span>{{end}}{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <p class="search-result-meta">{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
   {{template "search-state" .}}
 </li>
@@ -73,4 +84,21 @@
   </div>
 </li>
 {{end}}
+{{end}}
+
+{{/* search-box is the search field's row (design checkpoint, #645); its
+     data is a searchBox. "lead": the field's magnifier is the submit
+     button; "trail": an arrow button at the field's end; "round": a round
+     icon button beside the field; "text": the Search button. Each submits
+     without JavaScript, as does Enter. */}}
+{{define "search-box"}}
+<div class="search-row search-box-{{.Box}}">
+  <div class="search-field">
+    {{if eq .Box "lead"}}<button class="search-submit" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-search"}}</button>{{else}}{{template "icon-search"}}{{end}}
+    <input type="search" id="q" name="q" value="{{.Q}}" placeholder="{{.Placeholder}}"{{if .Autofocus}} autofocus{{end}} autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+    {{if eq .Box "trail"}}<button class="search-submit search-submit-trail" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-chevron"}}</button>{{end}}
+  </div>
+  {{if eq .Box "round"}}<button class="btn-primary search-submit-round" type="submit" aria-label="Search"{{with .SubmitAction}} formaction="{{.}}"{{end}}>{{template "icon-search"}}</button>{{end}}
+  {{if eq .Box "text"}}<button class="btn-primary" type="submit"{{with .SubmitAction}} formaction="{{.}}"{{end}}>Search</button>{{end}}
+</div>
 {{end}}

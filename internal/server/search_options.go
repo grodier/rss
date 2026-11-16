@@ -9,8 +9,9 @@ package server
 //
 //   - While typing, one list of feeds that match, followed or not, each
 //     with its state as Discover's rows show it: "✓ Following", or Follow
-//     (Choose when a site has several feeds). ?typing=labels shows the
-//     state as text instead of buttons.
+//     (Choose when a site has several feeds). Round 7: ?typing=tag (only
+//     "✓ Following"), plus (that and a small follow icon), or buttons.
+//     ?box=lead|trail|round|text: how the box submits.
 //   - On Enter, tabs by kind: Top (ranked, mixed) · Feeds · Saved, with
 //     following as each feed row's state rather than a tab. A reader with
 //     nothing saved gets no tabs: Top would be Feeds. ?tabs=status splits
@@ -75,7 +76,7 @@ func searchBase(r *http.Request) (string, url.Values) {
 	case "f":
 		v = url.Values{"ia": {"f"}}
 	}
-	for _, k := range []string{"tabs", "typing"} {
+	for _, k := range []string{"tabs", "typing", "box"} {
 		if x := r.URL.Query().Get(k); x != "" {
 			v.Set(k, x)
 		}
@@ -116,8 +117,10 @@ type searchOptions struct {
 	// URL).
 	Suggest    bool
 	Everything string
-	// Labels shows a feed's state as text, not buttons (?typing=labels).
-	Labels bool
+	// Typing is how a suggestion shows a feed's state (?typing=): "tag",
+	// "✓ Following" on followed feeds only; "plus", that and a small icon to
+	// follow a site's one feed; "buttons", Discover's Follow and Choose.
+	Typing string
 
 	// Scopes are the tabs; none when the reader has only one kind.
 	Scopes []searchScope
@@ -343,7 +346,10 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData, hasSaves bo
 			}
 		}
 	}
-	o.Labels = r.URL.Query().Get("typing") == "labels"
+	o.Typing = r.URL.Query().Get("typing")
+	if o.Typing != "plus" && o.Typing != "buttons" {
+		o.Typing = "tag"
+	}
 	if suggest {
 		o.Suggest, o.Everything, o.Lookup = true, searchHref(r, q, "top"), true
 		o.Shown = feeds[:min(len(feeds), suggestFeeds)]
@@ -400,4 +406,22 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData, hasSaves bo
 		o.Empty = ""
 	}
 	return o
+}
+
+// searchBox is the search field's row (partials/search_result.html's
+// search-box), as the design checkpoint's ?box= draws it (#645, round 7):
+// "lead", the field's magnifier is the submit button; "trail", an arrow
+// button at the field's end; "round", a round icon button beside it;
+// "text", the Search button as it is.
+type searchBox struct {
+	Q, Placeholder, Box, SubmitAction string
+	Autofocus                         bool
+}
+
+func newSearchBox(r *http.Request, q, placeholder, submitAction string, autofocus bool) searchBox {
+	b := r.URL.Query().Get("box")
+	if b != "trail" && b != "round" && b != "text" {
+		b = "lead"
+	}
+	return searchBox{Q: q, Placeholder: placeholder, Box: b, SubmitAction: submitAction, Autofocus: autofocus}
 }

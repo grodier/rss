@@ -869,7 +869,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
 - **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.
 - **Reading text is a little heavier in dark** (#413): Newsreader at weight 440 rather than 400, since light text on dark reads thinner.
   Pure white text is avoided, since it glares.
-- **The logo stays as it is in dark** (#413): its ink outline disappears, but the white page still reads as the mark; the favicon stays too, since browser tabs have their own background.
+- **The logo is one drawing in both themes:** its ink ground has a ring in the link blue, which closes the circle on the dark background and all but disappears against the ink on white and on tomato.
+  A second drawing for dark (a paper-colored or blue ground), a blue ground in both themes, a drop shadow and a glow were the alternatives; the owner preferred ink on white and tomato, and one file serves the rail, the favicon and the install icon.
   Site icons keep a light tile in dark, softened to the text color, since many are drawn for white.
 - **Images in articles are left as they are in dark** (#413), even transparent diagrams and logos with black text, since a white tile behind every image looks worse for the common case; revisit if testers report them.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
@@ -904,10 +905,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   Rejected: hiding the text button when scripting is on (the magnifier would do nothing, and a script that failed to load would leave no visible way to submit), an arrow button at the field's end (crowded beside the browser's clear ×), and a round icon button beside the field (two magnifiers side by side).
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
-- **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).
-  It was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
-  The favicon (`web/app/public/img/favicon.svg`, plus 32 px and Apple touch PNGs) is the same page without the small text lines, so it reads at 16 px.
-  The P is outlined in both files, so they don't depend on the font loading.
+- **The logo is a round sunrise:** a circle in which the sun rises over an ink ground, whose two white lines, thick over thin like the nameplate rule, read as the sun's reflection and as lines of text (`web/app/public/img/logo.svg`).
+  It's flat, with no outlines, and five shapes, so it reads at 16 px and the favicon is the same file.
+  It replaced a front page (a newspaper with a P nameplate and the sunrise as its lead photo), whose dozen thin-stroked parts blurred at the rail's size.
+  A flat redrawing of that front page (needed a second drawing for dark) and a P monogram of an ink bar and a tomato half-disc (lost the sunrise) were the alternatives; left-aligning the lines as a headline was dropped for its asymmetry.
+  The first logo was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
 - **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
   Green and gold, maroon and an orange box were tried and dropped.
 - **Tomato is the one accent, used sparingly** (#414): the active timeline tab, starred articles (so Star no longer looks like Saved's blue) and the "You were here" marker.
@@ -1005,8 +1007,8 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
   A late `app.js` leaves the row where CSS put it rather than restore the reader's scroll under them; on a slow device a far switch can then crossfade the labels between two scroll positions, but the line always moves between tabs that are in view.
   An underline scrolled out of the row on the page being left isn't named, since its snapshot isn't clipped by the row and would slide in from outside it; the new underline fades in with the page, as it does to and from a page without the row.
   Tapping the current tab moves nothing, and at rest the underline looks as before; in forced colors it's a border, so only the current tab is underlined (the old transparent borders on every tab were forced visible).
-- **The sunrise** (#523, approved at its design checkpoint): on the landing page and Log in, once per load, the logo's sun rises into place from 7 units lower (of the 64-unit drawing, so its top just shows) over 900 ms on `--ease-out`, after a 200 ms pause so the page has settled.
-  It's clipped to the sky, so it never paints over the water.
+- **The sunrise** (#523, approved at its design checkpoint): on the landing page and Log in, once per load, the logo's sun rises into place from 14 units lower (of the 64-unit drawing, so its top just shows) over 900 ms on `--ease-out`, after a 200 ms pause so the page has settled.
+  The ground is drawn over it, so it never paints over the water.
   The sky brightens with it, a deeper blue fading to the logo's own over the same time, so it reads as dawn rather than a shape sliding up; the deeper blue is an overlay whose opacity fades, so only opacity and transform animate and `main.css` names no color.
   The logo is drawn inline on those two pages only (the rail and the other logged-out pages keep the `<img>`), and it's still under reduced motion and in forced colors.
 - **"You were here" draws itself in** (#522, the issue's current thinking, taken without a design checkpoint at the owner's word): the first time at least half of the divider is in view on a page load, its two rules grow outward from the label (scaled along the line from 0, the left from its right end and the right from its left end) over `--duration-flourish` on `--ease-out`; the label never moves or hides, so the words read on every frame.
@@ -1067,8 +1069,8 @@ Planned in #395, from a discussion of what would stop people switching to the ap
 - **The app is installed on its final domain only**: an installed app belongs to the origin it was installed from, so #394 waits for the domain move (#389).
 - **One install icon on every platform: the logo on tomato, lit softly from the top-left corner** (#445).
   iOS ignores the manifest's icons, so `apple-touch-icon.png` is rendered from `app-icon.svg` like the others; it used to be the favicon's page on white, which a tester found dull next to other apps.
-  The highlight is a radial gradient about 8% lighter than tomato, fading to flat by the middle, and touches only the background so the logo stays flat with its ink outlines; a 4% version and flat tomato were the alternatives.
-  The favicon keeps the page on white, which reads better at 16 px.
+  The highlight is a radial gradient about 8% lighter than tomato, fading to flat by the middle, and touches only the background so the logo stays flat; a 4% version and flat tomato were the alternatives.
+  The favicon is the logo on no background, since browser tabs have their own.
 - **The manifest repeats the light theme's background color** (`theme_color`, `background_color`), since it can't read CSS custom properties; the pages add a dark `theme-color` (#394, #413).
 - **No third-party client API at launch** (Google Reader API, Fever), so apps such as Reeder or NetNewsWire can't read from the app.
   People reading through them would get an unread-count inbox, not the timeline, timelines or cards that make the app different, and the API costs client-specific bugs, support and a second interface to secure.

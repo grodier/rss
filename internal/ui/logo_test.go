@@ -16,11 +16,11 @@ import (
 var templateAction = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 
 // shapeAttrs are the attributes of a shape that decide how it's drawn.
-var shapeAttrs = []string{"d", "x", "y", "width", "height", "rx", "fill", "stroke", "stroke-width"}
+var shapeAttrs = []string{"d", "x", "y", "width", "height", "rx", "cx", "cy", "r", "fill", "stroke", "stroke-width"}
 
 // logoShapes returns each shape drawn in the SVG document in r, in order, as
-// its element name and shapeAttrs. Shapes inside <defs> (the clip) and the
-// dusk, which the inline logo adds for the sunrise, are left out.
+// its element name and shapeAttrs. Shapes inside <defs> and the dusk, which
+// the inline logo adds for the sunrise, are left out.
 func logoShapes(t *testing.T, r io.Reader) []string {
 	t.Helper()
 	var (

@@ -396,6 +396,32 @@
     flex: 1;
   }
 
+  /* The field's magnifier is its submit button (#665): it covers the icon's
+     spot at the field's start, drawn as the bare icon. It's positioned, so
+     it paints over the input; live search's spinner, appended after it,
+     paints over it and lets clicks through. */
+  .search-submit {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: 2.625rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-3);
+  }
+
+  .search-submit:hover {
+    background: none;
+    color: var(--text);
+  }
+
+  .search-submit:focus-visible {
+    outline-offset: -3px;
+    border-radius: 999px;
+  }
+
   .search-field .icon {
     position: absolute;
     inset-block-start: 50%;
@@ -403,7 +429,6 @@
     translate: 0 -50%;
     inline-size: 1.125rem;
     block-size: 1.125rem;
-    color: var(--text-3);
     pointer-events: none;
   }
 
@@ -419,8 +444,8 @@
     background: var(--bg);
   }
 
-  /* The search on the Search and Saved pages, under the page head; Clear sits
-     under the row. The top padding clears the page head's box-shadow rule,
+  /* The search on the Discover and Saved pages, under the page head; Clear
+     sits under the row. The top padding clears the page head's box-shadow rule,
      which takes no layout space. */
   .page-search {
     padding: 0.75rem 1rem;

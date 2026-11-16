@@ -284,7 +284,6 @@ Planned in #50 (issues #51–#67).
   - While typing, suggestions instead of results: one list of up to 6 feeds with a quiet "✓ Following" and no buttons, and "Search everything" last; Enter shows the results (#666).
     Buttons while typing were rejected (Choose repeated the row, and Follow was a second filled button beside the box's), as was a small "+" (a new Follow control).
   - Recent searches, kept on the device only and never sent to the server, which reverses #645's first "No recent searches are stored" while keeping the rule against per-person reading data on the server (#667).
-  - The field's magnifier submits, without a Search button, on Discover's and Saved's boxes (#665).
   - "/" opens the search from anywhere, and tapping Discover again focuses its box (#646), in place of #646's first plan of scope chips, "All {n}" and a link from Discover to Search.
 - **A query that is an address also matches its site key exactly** (#441), and that site comes first, so pasting `https://www.npr.org/news` finds npr.org: a substring match on the whole string never matches `sites.host`.
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
@@ -899,6 +898,10 @@ A modern, minimal look modelled on social timelines, from the redesign in #181.
   A result is an avatar, the title, one line of tagline (a site) or two of excerpt (a saved article, in the reading font, its title in the headline font), and a facts line, with "✓ Following" or Follow at the end; a saved article's facts lead with Saved's bookmark, which is enough to tell it from a feed, so Top has no "kind" label.
   Tab counts follow Feeds and Saved, dimmed when 0 and hidden under 360 px so the three tabs fit; a pasted address's row has a link icon in the avatar's place and a filled Look up.
   Rejected: each group in its own page's rows (My feeds' and Discover's), three shapes on one page; compact one-line rows after Enter (too little to choose by); and a small "kind" line above every title (redundant once each row shows its state).
+- **A search box submits from the magnifier at the field's start, with no Search button beside it** (#665, approved at #664's design checkpoint, round 7), on Discover's and Saved's boxes alike.
+  The text button took about 110 px from the field on a phone, cutting off Discover's placeholder at 320 px, and was a second filled button beside Follow; X, Bluesky and LinkedIn have none.
+  The magnifier is a labelled submit button drawn as the bare icon, so it works without JavaScript and adds nothing to the screen; Enter and a phone keyboard's Search key submit too, and with JavaScript Discover's "Search everything" row (#666) is the visible, labelled way.
+  Rejected: hiding the text button when scripting is on (the magnifier would do nothing, and a script that failed to load would leave no visible way to submit), an arrow button at the field's end (crowded beside the browser's clear ×), and a round icon button beside the field (two magnifiers side by side).
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
 - **The logo is a front page:** a newspaper whose nameplate is a P over a double rule, with a sunrise as the lead photo, drawn with ink outlines (`web/app/public/img/logo.svg`).

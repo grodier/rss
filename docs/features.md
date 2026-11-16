@@ -152,6 +152,7 @@ The Waitlist and review tables show each entry's sections by name, read with the
 ## Discover, site lookups and discovery
 
 **Flow.** Discover (`GET /discover`, the fourth tab, with the magnifier) shows Discover's catalog by section when there's no query, and is the whole app's search when there is one (`?q=…`; see "Discover's search" below).
+The box submits from the magnifier at its start, with Enter, or with a phone keyboard's Search key; there's no Search button.
 With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses, swaps in its results container (`data-search-results`) and announces its `data-announce`, with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
 When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the site search also matches its site key exactly and ranks that site first, and unless that site was found the results start with a Look up row, which posts the cleaned-up address to `/lookups`.
@@ -497,7 +498,7 @@ It never talks to the server: nothing about a share is recorded.
 
 **Saved page** (`/saved`). Modelled on the timeline: `ListSaved` returns the user's saves newest first, paged by `(saved_at, article_id)` (served by `saves_user_saved_at_idx`), and left-joins the user's subscriptions so a named feed shows its name.
 Unsaving from the page keeps the row until reload when JavaScript is on, so an accidental unsave can be undone in place.
-Search (`/saved?q=…`) trims `q` and cuts it to 200 runes, then matches it with `ILIKE` (`likePattern` escapes the wildcards) against the article's title, page title and excerpt, the feed's title and the user's name for it.
+Search (`/saved?q=…`, submitted by Enter or the box's magnifier, as on Discover) trims `q` and cuts it to 200 runes, then matches it with `ILIKE` (`likePattern` escapes the wildcards) against the article's title, page title and excerpt, the feed's title and the user's name for it.
 There's no count anywhere.
 
 **Start at:**

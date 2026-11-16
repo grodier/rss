@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -772,4 +773,87 @@ func TestDiscoverSectionOrderNote(t *testing.T) {
 			t.Error("the note is shown with a query")
 		}
 	})
+}
+
+// TestSearchBoxSubmit checks Discover's and Saved's search boxes submit from
+// the field's magnifier, with no text Search button beside it (#665).
+func TestSearchBoxSubmit(t *testing.T) {
+	ts, err := parseTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var icon bytes.Buffer
+	if err := ts["discover.html"].ExecuteTemplate(&icon, "icon-search", nil); err != nil {
+		t.Fatal(err)
+	}
+	iconDoc, err := html.Parse(&icon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svgs := findAll(iconDoc, func(n *html.Node) bool { return n.Data == "svg" })
+	if len(svgs) != 1 {
+		t.Fatalf("icon-search has %d svgs, want 1", len(svgs))
+	}
+	var wantIcon bytes.Buffer
+	if err := html.Render(&wantIcon, svgs[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	search := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}}}, nil
+	}}
+	saves := &fakeSaveStore{listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
+		return savedItems(2), nil
+	}}
+	s := newTestServerWith(t, Services{SearchService: search, SaveService: saves, ReadService: &fakeReadStore{}})
+
+	tests := []struct {
+		name   string
+		render func(t *testing.T) *httptest.ResponseRecorder
+	}{
+		{"discover without a query", func(t *testing.T) *httptest.ResponseRecorder { return discoverRequest(t, s, "") }},
+		{"discover with a query", func(t *testing.T) *httptest.ResponseRecorder { return discoverRequest(t, s, "ex") }},
+		{"saved", func(t *testing.T) *httptest.ResponseRecorder { return getSaved(t, s, "/saved") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := tt.render(t)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rr.Code)
+			}
+			doc, err := html.Parse(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "page-search") })
+			if len(forms) != 1 {
+				t.Fatalf("found %d search forms, want 1", len(forms))
+			}
+			submits := findAll(forms[0], func(n *html.Node) bool {
+				return (n.Data == "button" && attr(n, "type") != "button") || (n.Data == "input" && attr(n, "type") == "submit")
+			})
+			if len(submits) != 1 {
+				t.Fatalf("found %d submit buttons, want 1", len(submits))
+			}
+			b := submits[0]
+			if b.Parent == nil || !hasClass(b.Parent, "search-field") {
+				t.Error("the submit button isn't in .search-field")
+			}
+			if got := attr(b, "aria-label"); got != "Search" {
+				t.Errorf("aria-label = %q, want Search", got)
+			}
+			if got := strings.TrimSpace(textContent(b)); got != "" {
+				t.Errorf("the submit button has text %q, want only the icon", got)
+			}
+			var got bytes.Buffer
+			for c := b.FirstChild; c != nil; c = c.NextSibling {
+				if err := html.Render(&got, c); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got.String() != wantIcon.String() {
+				t.Errorf("the submit button holds %s, want the search icon %s", got.String(), wantIcon.String())
+			}
+		})
+	}
 }

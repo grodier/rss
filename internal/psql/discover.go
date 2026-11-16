@@ -23,26 +23,33 @@ func NewDiscoverRepository(db *sql.DB) *DiscoverRepository {
 	return &DiscoverRepository{DB: db}
 }
 
-// Sections returns Discover's sections in their order (position), each with
-// up to perSection of its catalog feeds that userID doesn't follow, the most
+// Sections returns Discover's sections in userID's order, each with up to
+// perSection of its catalog feeds that userID doesn't follow, the most
 // recently posting first, and the number of catalog feeds it has, followed
 // or not (Total, for "All N", which the section's page lists). A section
 // with no feed the reader doesn't follow is left out, as are gone feeds.
 // Each feed comes with its site and its DiscoverLatest newest articles.
 //
+// The reader's order: the sections with the most catalog feeds they follow
+// first, then, among equals, the sections they chose on the waitlist
+// (users.sections, in its order), then the default order (position).
+//
 // One statement for every section: the catalog's feeds, each with its
-// newest article's time (an index probe on articles_feed_sort_idx), counted
+// newest article's time (an index probe on articles_feed_sort_idx) and
+// whether the reader follows it (a probe of the subscriptions key), counted
 // per section, then those the reader doesn't follow numbered per section,
 // then the first perSection of each with their newest articles.
 func (r *DiscoverRepository) Sections(ctx context.Context, userID string, perSection int) ([]rss.DiscoverSection, error) {
 	stmt := `WITH catalog AS (
 			SELECT d.section_id, f.id, f.site_id, f.url, f.title, f.posts_per_week,
 				s.host, s.url AS site_url, s.title AS site_title, newest.at,
-				EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.user_id = $1 AND sub.feed_id = f.id) AS following,
-				count(*) OVER (PARTITION BY d.section_id) AS total
+				sub.feed_id IS NOT NULL AS following,
+				count(*) OVER (PARTITION BY d.section_id) AS total,
+				count(sub.feed_id) OVER (PARTITION BY d.section_id) AS followed
 			FROM discover_feeds d
 			JOIN feeds f ON f.id = d.feed_id
 			JOIN sites s ON s.id = f.site_id
+			LEFT JOIN subscriptions sub ON sub.user_id = $1 AND sub.feed_id = f.id
 			LEFT JOIN LATERAL (` + newestArticle + `) newest ON true
 			WHERE f.gone_at IS NULL
 		), visible AS (
@@ -50,14 +57,16 @@ func (r *DiscoverRepository) Sections(ctx context.Context, userID string, perSec
 			FROM catalog c
 			WHERE NOT c.following
 		)
-		SELECT sec.slug, sec.name, v.total, v.id, v.site_id, v.url, v.title, v.posts_per_week,
+		SELECT sec.slug, sec.name, sec.position, v.total, v.id, v.site_id, v.url, v.title, v.posts_per_week,
 			v.host, v.site_url, v.site_title,
 			` + latestColumns + `
 		FROM visible v
 		JOIN discover_sections sec ON sec.id = v.section_id
+		LEFT JOIN users u ON u.id = $1
 		LEFT JOIN LATERAL (` + latestArticles("v.id", "$3") + `) l ON true
 		WHERE v.n <= $2
-		ORDER BY sec.position, sec.name, v.n, COALESCE(l.published_at, l.created_at) DESC, l.id DESC`
+		ORDER BY v.followed DESC, array_position(u.sections, sec.id) NULLS LAST, sec.position, sec.name,
+			v.n, COALESCE(l.published_at, l.created_at) DESC, l.id DESC`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, userID, perSection, DiscoverLatest)
 	if err != nil {
@@ -68,17 +77,17 @@ func (r *DiscoverRepository) Sections(ctx context.Context, userID string, perSec
 	var out []rss.DiscoverSection
 	for rows.Next() {
 		var (
-			slug, name string
-			total      int
-			f          rss.DiscoverFeed
-			l          latestArticle
+			slug, name      string
+			position, total int
+			f               rss.DiscoverFeed
+			l               latestArticle
 		)
-		dests := append([]any{&slug, &name, &total}, discoverFeedDests(&f)...)
+		dests := append([]any{&slug, &name, &position, &total}, discoverFeedDests(&f)...)
 		if err := rows.Scan(append(dests, l.dests()...)...); err != nil {
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].Slug != slug {
-			out = append(out, rss.DiscoverSection{Name: name, Slug: slug, Total: total})
+			out = append(out, rss.DiscoverSection{Name: name, Slug: slug, Position: position, Total: total})
 		}
 		sec := &out[len(out)-1]
 		sec.Feeds = appendLatest(sec.Feeds, f, l)

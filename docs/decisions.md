@@ -339,6 +339,9 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
 - **Buttons say Follow, Following and Unfollow** (#630), as the tagline does; "subscriptions" stays only for the OPML file, the word other readers use.
 - **Following keeps a row in place until the next load**, and tapping again undoes; after a reload a followed feed leaves Discover's lists and Picks, and "✓ Following" is a label, with unfollowing on the site's Edit page (#424's reasoning).
 - **Discover's sections are ordered by what the reader follows, then what they chose on the waitlist, then the default order** (#643), computed on each load and never while the page is open; there's no settings page for it.
+  What they follow is how many of a section's catalog feeds they follow, gone feeds aside, so a section stays put however many other feeds of its sites they follow.
+  The order is part of `DiscoverRepository.Sections`' one statement, not a query of its own; on `make db/loadseed`'s data it cost nothing measurable.
+  A line under the chips, "Sections you follow most come first.", says why whenever a section is out of its default place, whichever rule moved it; sections sharing a position never count as moved, since the database orders their names by its own collation.
 - **The onboarding question is on the waitlist, not at signup** (#642): "What do you like to read?", optional, from the sections, answered while people wait, so signup stays instant.
   This reverses #566's rejection of "What do you mostly read?", which was too vague to act on; with sections the answer orders Discover.
 - **The sites people name on the waitlist are followed at signup** (#640), confident matches only (an address, or a name matching exactly one known site) and only when the feed is unambiguous (the site's only feed, or its one feed in Discover), with a one-time flash naming what was followed, what needs a choice and what wasn't found.

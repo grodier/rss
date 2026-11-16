@@ -10,6 +10,7 @@ import (
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 // newTestSection inserts a Discover section after every other one and
@@ -173,6 +174,80 @@ func TestDiscoverRepositorySections(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestDiscoverRepositorySectionsOrder(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewDiscoverRepository(db)
+	subs := NewSubscriptionRepository(db)
+
+	// Four sections in this default order, each with three catalog feeds,
+	// so following one or two never empties a section.
+	secs := make([]rss.Section, 4)
+	feeds := map[string][]rss.Feed{}
+	for i := range secs {
+		secs[i] = newTestSection(t, db, fmt.Sprintf("Order %d", i), 10+i)
+		for range 3 {
+			feeds[secs[i].ID] = append(feeds[secs[i].ID], newCatalogFeed(t, db, secs[i]))
+		}
+	}
+	a, b, c, d := secs[0], secs[1], secs[2], secs[3]
+
+	tests := []struct {
+		name   string
+		follow map[rss.Section]int // how many of the section's feeds the reader follows
+		chosen []rss.Section       // users.sections
+		want   []rss.Section
+	}{
+		{"no follows and no choices: the default order", nil, nil, []rss.Section{a, b, c, d}},
+		{"chosen sections first, in their order", nil, []rss.Section{d, b}, []rss.Section{d, b, a, c}},
+		{"followed counts beat choices", map[rss.Section]int{c: 2, a: 1}, []rss.Section{d, b}, []rss.Section{c, a, d, b}},
+		{"ties keep the chosen order, then the default", map[rss.Section]int{a: 1, d: 1}, []rss.Section{d, c}, []rss.Section{d, a, c, b}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userID := newTestUser(t, db)
+			for sec, n := range tt.follow {
+				for _, f := range feeds[sec.ID][:n] {
+					if err := subs.Subscribe(t.Context(), userID, f.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			var chosen []string
+			for _, sec := range tt.chosen {
+				chosen = append(chosen, sec.ID)
+			}
+			if _, err := db.Exec(`UPDATE users SET sections = $2::uuid[] WHERE id = $1`, userID, pq.Array(append([]string{}, chosen...))); err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := repo.Sections(t.Context(), userID, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Other tests' and the seeded sections may come between; keep
+			// this test's.
+			var order, want []string
+			for _, s := range got {
+				for i, sec := range secs {
+					if s.Slug == sec.Slug {
+						order = append(order, s.Name)
+						if s.Position != 1_000_000+10+i {
+							t.Errorf("%s's Position = %d, want %d", s.Name, s.Position, 1_000_000+10+i)
+						}
+					}
+				}
+			}
+			for _, sec := range tt.want {
+				want = append(want, sec.Name)
+			}
+			if !slices.Equal(order, want) {
+				t.Errorf("order = %q, want %q", order, want)
+			}
+		})
+	}
 }
 
 // Requires a migrated database; see psqltest.NewDB.

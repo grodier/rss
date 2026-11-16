@@ -235,27 +235,6 @@ func TestDiscoverNoQuery(t *testing.T) {
 	})
 }
 
-func TestDiscoverQuery(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}}}, nil
-	}}
-	subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-		return map[string]bool{"feed-1": true}, nil
-	}}
-	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: subs, DiscoverService: failingDiscoverStore(t)})
-	rr := discoverRequestAs(t, s, "user-1", "one")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	body := rr.Body.String()
-	if !strings.Contains(body, `class="result"`) || !strings.Contains(body, `<span class="subscribed">Following</span>`) {
-		t.Error("want the result, marked Following")
-	}
-	if strings.Contains(body, "section-chips") || strings.Contains(body, "discover-section") {
-		t.Error("sections shown with a query")
-	}
-}
-
 func TestSearchTooLong(t *testing.T) {
 	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
 	rr := discoverRequest(t, s, strings.Repeat("a", 201))
@@ -267,45 +246,13 @@ func TestSearchTooLong(t *testing.T) {
 	}
 }
 
-func TestSearchResults(t *testing.T) {
-	var gotQ, gotKey string
-	var gotLimit int
-	store := &fakeSearchStore{searchFn: func(_ context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
-		gotQ, gotKey, gotLimit = q, siteKey, limit
-		return []rss.SiteWithFeeds{
-			{Site: rss.Site{ID: "site-1", Host: "one.example", Title: "One"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}, {ID: "feed-2", Title: "F2"}}},
-			{Site: rss.Site{ID: "site-2", Host: "two.example"}},
-		}, nil
-	}}
-	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
-	rr := discoverRequest(t, s, "ex")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	if gotQ != "ex" || gotKey != "" || gotLimit != 20 {
-		t.Errorf("Search called with %q, %q, %d", gotQ, gotKey, gotLimit)
-	}
-	body := rr.Body.String()
-	for _, want := range []string{`href="/sites/site-1"`, `href="/sites/site-2"`, `href="/feeds/feed-1"`, `href="/feeds/feed-2"`, ">two.example</a>"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body missing %q", want)
-		}
-	}
-
-	// An address is also matched by its site key; the query stays as typed.
-	discoverRequest(t, s, "https://www.NPR.org/news")
-	if gotQ != "https://www.NPR.org/news" || gotKey != "npr.org" {
-		t.Errorf("Search called with %q, %q; want the query as typed and site key npr.org", gotQ, gotKey)
-	}
-}
-
 // TestLiveSearchMarkup checks the markup live-search.ts relies on, in
 // every state of the page, since a page in any state can be typed into: the
 // app entry's script, a GET
 // form[data-live-search] to /discover with a q input, and one
-// [data-search-results] container holding the lookup offer, the results
-// (.result) and the no-results message, and, with no query, Discover's
-// sections (empty here, with an empty catalog).
+// [data-search-results] container holding the Look up row, the results
+// (li.search-result) and the no-results message, and, with no query,
+// Discover's sections (empty here, with an empty catalog).
 func TestLiveSearchMarkup(t *testing.T) {
 	store := &fakeSearchStore{searchFn: func(_ context.Context, q, _ string, _ int) ([]rss.SiteWithFeeds, error) {
 		if q == "zzz" {
@@ -321,7 +268,7 @@ func TestLiveSearchMarkup(t *testing.T) {
 	tests := []struct {
 		name, q    string
 		status     int
-		results    int  // .result sections in the container
+		results    int  // result rows in the container
 		lookup     bool // the lookup offer is in the container
 		empty      bool // the no-results message is in the container
 		noChildren bool // the container has no elements
@@ -367,10 +314,12 @@ func TestLiveSearchMarkup(t *testing.T) {
 				t.Fatalf("found %d [data-search-results], want 1", len(containers))
 			}
 			c := containers[0]
-			if n := len(findAll(c, func(n *html.Node) bool { return n.Data == "section" && hasClass(n, "result") })); n != tt.results {
-				t.Errorf("container has %d .result sections, want %d", n, tt.results)
+			if n := len(findAll(c, func(n *html.Node) bool {
+				return n.Data == "li" && hasClass(n, "search-result") && !hasClass(n, "search-lookup")
+			})); n != tt.results {
+				t.Errorf("container has %d result rows, want %d", n, tt.results)
 			}
-			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "lookup-cta") })) == 1; got != tt.lookup {
+			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "search-lookup") })) == 1; got != tt.lookup {
 				t.Errorf("lookup offer in container = %v, want %v", got, tt.lookup)
 			}
 			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "empty") })) == 1; got != tt.empty {
@@ -436,40 +385,6 @@ func TestSearchInputAttributes(t *testing.T) {
 	}
 }
 
-func TestSearchNoResults(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return nil, nil
-	}}
-	s := newTestServerWith(t, Services{SearchService: store})
-	rr := discoverRequest(t, s, "zzz")
-	if !strings.Contains(rr.Body.String(), "No sites or feeds match") {
-		t.Error("empty-state message missing")
-	}
-}
-
-func TestSearchEmptyFeedTitleShowsURL(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return []rss.SiteWithFeeds{{
-			Site: rss.Site{ID: "site-1", Host: "one.example"},
-			Feeds: []rss.Feed{
-				{ID: "feed-1", Title: "Titled", Url: "https://one.example/a.xml"},
-				{ID: "feed-2", Url: "https://one.example/b.xml"},
-			},
-		}}, nil
-	}}
-	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
-	body := discoverRequest(t, s, "one").Body.String()
-
-	for _, want := range []string{
-		`<a href="/feeds/feed-1">Titled</a>`,
-		`<a href="/feeds/feed-2">https://one.example/b.xml</a>`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("body does not contain %q: %s", want, body)
-		}
-	}
-}
-
 func TestSearchStoreError(t *testing.T) {
 	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
 		return nil, errors.New("boom")
@@ -490,87 +405,6 @@ func TestSearchEscapesQuery(t *testing.T) {
 	if strings.Contains(rr.Body.String(), "<script>") {
 		t.Error("query rendered unescaped")
 	}
-}
-
-func TestSearchHandlerSubscribedMarker(t *testing.T) {
-	results := []rss.SiteWithFeeds{
-		{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}, {ID: "feed-2", Title: "F2"}}},
-		{Site: rss.Site{ID: "site-2", Host: "two.example"}, Feeds: []rss.Feed{{ID: "feed-3", Title: "F3"}}},
-	}
-	search := func(sites []rss.SiteWithFeeds) *fakeSearchStore {
-		return &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-			return sites, nil
-		}}
-	}
-	// get searches as user-1.
-	get := func(t *testing.T, s *Server) *httptest.ResponseRecorder {
-		t.Helper()
-		req := httptest.NewRequest(http.MethodGet, "/discover?q=ex", nil)
-		ctx, err := s.sessionManager.Load(req.Context(), "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
-		rr := httptest.NewRecorder()
-		s.discoverHandler(rr, req.WithContext(ctx))
-		return rr
-	}
-
-	t.Run("marks subscribed feeds only", func(t *testing.T) {
-		var gotUser string
-		var gotIDs []string
-		subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(_ context.Context, userID string, feedIDs []string) (map[string]bool, error) {
-			gotUser, gotIDs = userID, feedIDs
-			return map[string]bool{"feed-2": true}, nil
-		}}
-		s := newTestServerWith(t, Services{SearchService: search(results), SubscriptionService: subs})
-		rr := get(t, s)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rr.Code)
-		}
-		if gotUser != "user-1" {
-			t.Errorf("SubscribedFeedIDs user = %q, want user-1", gotUser)
-		}
-		if strings.Join(gotIDs, ",") != "feed-1,feed-2,feed-3" {
-			t.Errorf("SubscribedFeedIDs ids = %v, want [feed-1 feed-2 feed-3]", gotIDs)
-		}
-		body := rr.Body.String()
-		if n := strings.Count(body, `class="subscribed"`); n != 1 {
-			t.Errorf("found %d Subscribed markers, want 1", n)
-		}
-		if !strings.Contains(body, `F2</a> <span class="subscribed">Following</span>`) {
-			t.Error("subscribed feed F2 missing its marker")
-		}
-	})
-
-	for _, tc := range []struct {
-		name  string
-		sites []rss.SiteWithFeeds
-	}{
-		{"no results", nil},
-		{"no feeds", []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-				t.Error("SubscribedFeedIDs must not be called")
-				return nil, nil
-			}}
-			s := newTestServerWith(t, Services{SearchService: search(tc.sites), SubscriptionService: subs})
-			if rr := get(t, s); rr.Code != http.StatusOK {
-				t.Errorf("status = %d, want 200", rr.Code)
-			}
-		})
-	}
-
-	t.Run("store error", func(t *testing.T) {
-		subs := &fakeSubscriptionStore{subscribedFeedIDsFn: func(context.Context, string, []string) (map[string]bool, error) {
-			return nil, errors.New("boom")
-		}}
-		s := newTestServerWith(t, Services{SearchService: search(results), SubscriptionService: subs})
-		if rr := get(t, s); rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want 500", rr.Code)
-		}
-	})
 }
 
 func TestSearchSiteIcons(t *testing.T) {

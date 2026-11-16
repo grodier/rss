@@ -3,6 +3,7 @@ package psql
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"github.com/lib/pq"
@@ -25,10 +26,32 @@ func likePattern(q string) string {
 	return "%" + likeEscaper.Replace(q) + "%"
 }
 
+// prefixPattern escapes LIKE wildcards in q for a match at the start.
+func prefixPattern(q string) string {
+	return likeEscaper.Replace(q) + "%"
+}
+
+// wordPattern escapes LIKE wildcards in q for a match at the start of a
+// word: after a space, in a text with a space put in front of it.
+func wordPattern(q string) string {
+	return "% " + likeEscaper.Replace(q) + "%"
+}
+
+// matchOrder is an ORDER BY's terms ranking name by how well it matches a
+// query: all of it ($n), its start ($n+1, a prefixPattern), the start of a
+// word in it ($n+2, a wordPattern), then the rest. It is the order of
+// server.matchRank, so a search's best matches are within its limit.
+func matchOrder(name string, n int) string {
+	return fmt.Sprintf(`lower(%[1]s) = lower($%[2]d) DESC,
+		%[1]s ILIKE $%[3]d ESCAPE '\' DESC,
+		(' ' || %[1]s) ILIKE $%[4]d ESCAPE '\' DESC`, name, n, n+1, n+2)
+}
+
 // Search matches q (case-insensitive substring) against site title, host and
 // description and feed title, URL and description, and siteKey (discovery.SiteKey of q when q is a web
-// address, else "") against site host exactly; that site comes first. It
-// returns at most limit sites, each with all of its feeds.
+// address, else "") against site host exactly; that site comes first, then
+// the sites whose name (title, else host) matches best (matchOrder), then by
+// title. It returns at most limit sites, each with all of its feeds.
 func (r *SearchRepository) Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -42,10 +65,11 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey string, limit 
 		   OR EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id
 		              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'
 		                   OR f.description ILIKE $1 ESCAPE '\'))
-		ORDER BY (s.host = $2) DESC, lower(s.title), s.host
+		ORDER BY (s.host = $2) DESC, ` + matchOrder(`COALESCE(NULLIF(s.title, ''), s.host)`, 4) + `,
+			lower(s.title), s.host
 		LIMIT $3`
 
-	rows, err := r.DB.QueryContext(ctx, stmt, likePattern(q), siteKey, limit)
+	rows, err := r.DB.QueryContext(ctx, stmt, likePattern(q), siteKey, limit, q, prefixPattern(q), wordPattern(q))
 	if err != nil {
 		return nil, err
 	}

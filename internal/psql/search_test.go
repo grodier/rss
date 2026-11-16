@@ -185,6 +185,18 @@ func TestSearchRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("ordered by how well the name matches, then by title", func(t *testing.T) {
+		w := "mq" + tok
+		inside := addSiteHost(t, addSite, "o1-"+tok+".example", "A"+w+"x")
+		word := addSiteHost(t, addSite, "o2-"+tok+".example", "B "+w)
+		prefix := addSiteHost(t, addSite, "o3-"+tok+".example", w+" Z")
+		exact := addSiteHost(t, addSite, "o4-"+tok+".example", strings.ToUpper(w))
+		got := siteHosts(search(w, 10))
+		if want := []string{exact, prefix, word, inside}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("got %v; want exact, prefix, word start, inside: %v", got, want)
+		}
+	})
+
 	t.Run("limit", func(t *testing.T) {
 		if res := search(tok, 1); len(res) != 1 {
 			t.Errorf("got %d sites; want 1", len(res))
@@ -198,4 +210,20 @@ func TestSearchRepository(t *testing.T) {
 			}
 		}
 	})
+}
+
+// addSiteHost adds a site with addSite and returns its host.
+func addSiteHost(t *testing.T, addSite func(host, title string) string, host, title string) string {
+	t.Helper()
+	addSite(host, title)
+	return host
+}
+
+func TestMatchPatterns(t *testing.T) {
+	if got, want := prefixPattern(`50%_off`), `50\%\_off%`; got != want {
+		t.Errorf("prefixPattern = %q; want %q", got, want)
+	}
+	if got, want := wordPattern(`50%_off`), `% 50\%\_off%`; got != want {
+		t.Errorf("wordPattern = %q; want %q", got, want)
+	}
 }

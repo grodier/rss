@@ -125,6 +125,13 @@ func (r *SaveRepository) SavedArticleIDs(ctx context.Context, userID string, art
 	return saved, nil
 }
 
+// HasSaves reports whether userID has saved anything.
+func (r *SaveRepository) HasSaves(ctx context.Context, userID string) (bool, error) {
+	var has bool
+	err := r.DB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM saves WHERE user_id = $1)`, userID).Scan(&has)
+	return has, err
+}
+
 // ListSaved returns up to limit of userID's saved articles whose title,
 // page title, excerpt, feed title or the user's name for the feed contains q
 // (ignoring case; every saved article if q is ""), newest saved first

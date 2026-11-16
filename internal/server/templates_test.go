@@ -165,6 +165,26 @@ func TestAppNav(t *testing.T) {
 			if want := []string{"/", "/saved", "/feeds", "/discover"}; !slices.Equal(hrefs, want) {
 				t.Errorf("nav links = %q, want %q", hrefs, want)
 			}
+			// Discover is the search place (#645): its icon is the
+			// magnifier.
+			var icon, link bytes.Buffer
+			if err := ts["timeline.html"].ExecuteTemplate(&icon, "icon-search", nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := html.Render(&link, links[3]); err != nil {
+				t.Fatal(err)
+			}
+			wantIcon, err := html.Parse(&icon)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var iconHTML bytes.Buffer
+			for _, svg := range findAll(wantIcon, func(n *html.Node) bool { return n.Data == "svg" }) {
+				html.Render(&iconHTML, svg)
+			}
+			if !strings.Contains(link.String(), iconHTML.String()) {
+				t.Errorf("Discover's link doesn't use the search icon: %s", link.String())
+			}
 			accounts := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && hasClass(n, "rail-account") })
 			if len(accounts) != 1 {
 				t.Fatalf("found %d account links, want 1", len(accounts))

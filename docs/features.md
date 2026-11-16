@@ -151,10 +151,10 @@ The Waitlist and review tables show each entry's sections by name, read with the
 
 ## Discover, site lookups and discovery
 
-**Flow.** Discover (`GET /discover`, the fourth tab) shows Discover's catalog by section when there's no query, and searches the database when there is one (`?q=…`): sites whose title, host or description, or one of whose feeds' title, URL or description, contains `q`.
-With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses and swaps in its results container (`data-search-results`), with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
+**Flow.** Discover (`GET /discover`, the fourth tab, with the magnifier) shows Discover's catalog by section when there's no query, and is the whole app's search when there is one (`?q=…`; see "Discover's search" below).
+With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses, swaps in its results container (`data-search-results`) and announces its `data-announce`, with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
-When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the search also matches its site key exactly and ranks that site first, and the page offers a Look up button, which posts the cleaned-up address to `/lookups`.
+When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the site search also matches its site key exactly and ranks that site first, and unless that site was found the results start with a Look up row, which posts the cleaned-up address to `/lookups`.
 With JavaScript, Look up and the site page's "Check {host} for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
@@ -169,6 +169,13 @@ Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
 The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
 The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed.
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
+
+**Discover's search.** With a query, `discoverSearch` reads, in turn, the reader's subscriptions that match (`SubscriptionRepository.Search`: their name, feed title, site title or host), their saved articles that match (`ListSaved`, Saved's own search), the sites that match (`searchSites`: `SearchRepository.Search` and which of their feeds the reader follows), and whether they've saved anything at all (`HasSaves`).
+Each source returns up to 51 rows, ordered by how well the name matches (`matchOrder` in `internal/psql/search.go`), so the best are within the limit and 51 tells a tab's "50+" from 50.
+They become rows (`searchResult`): a followed feed with "✓ Following", a site with Follow for its one feed the reader doesn't follow or with its feed count when there are several (a site whose feeds they all follow is left out, its followed feeds being there), and a saved article with its excerpt.
+`rankResults` orders the feeds, and Top's mix of feeds and saved articles, by `matchRank` (the same order as `matchOrder`), the reader's own things, recency, then title (`searchScore`).
+The tabs, Top, Feeds and Saved (`?scope=`), are links in the timeline tabs' markup; a reader with no saves gets none and sees the feeds; Top shows 10 and links the tabs with more.
+Follow works as on Discover's rows (`save-star.ts`), returning to the results.
 
 **The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
 `www seed`, and `www migrate -seed` (production's pre-deploy command), run `seed.Run`: `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
@@ -208,6 +215,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 **Start at:**
 
 1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
+   The search: `internal/server/discover_search.go` (`discoverSearch`, `matchRank`, `rankResults`), `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`HasSaves`), and `partials/search_result.html`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
@@ -215,7 +223,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 
-**Tests:** `internal/server/discover_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
+**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
 **Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 

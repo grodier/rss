@@ -1,80 +1,156 @@
-/* Discover: the import card, its sections of catalog feeds, and search
-   results. */
+/* Discover: the import card, its sections of catalog feeds, and its
+   search's results. */
 @layer components {
-  /* Search results: a site, with its feeds grouped in a box. */
-  .lookup-cta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem 1rem;
-    margin: 0.75rem 1rem 0;
-    padding: 0.875rem 1rem;
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius);
+  /* Discover's search (#645): the tabs' counts, an empty tab dimmed so the
+     row never moves; under 360 px the counts go, so the three tabs fit. */
+  .search-tabs .search-tab-count {
+    margin-inline-start: 0.125rem;
+    color: var(--text-3);
+    font-weight: 500;
   }
 
-  .lookup-cta p {
+  .search-tabs a.search-tab-empty {
+    color: var(--text-3);
+  }
+
+  @media (max-width: 22.49rem) {
+    .search-tabs .search-tab-count {
+      display: none;
+    }
+  }
+
+  /* A result: an avatar, the title, a tagline or excerpt, and a line of
+     facts, then a feed's state. The whole row opens the result, through
+     its title link's ::after; Follow sits above it. */
+  .search-result {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.25rem 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .search-result:has(.search-result-title:hover) {
+    background: var(--surface);
+  }
+
+  .search-result-main {
+    display: grid;
+    gap: 0.125rem;
+    min-inline-size: 0;
+  }
+
+  .search-result-title {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 650;
+    line-height: 1.3;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  a.search-result-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .search-result-saved .search-result-title {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+  }
+
+  /* A site's tagline, on one line; a saved article's excerpt, on two, in
+     the reading font. */
+  .search-result-desc {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-saved .search-result-desc {
+    display: -webkit-box;
+    font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
+    font-size: 0.9375rem;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .search-result-facts {
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-facts > span + span::before {
+    content: " · ";
+  }
+
+  .search-result-facts .fetch-error {
+    color: var(--danger);
+  }
+
+  /* A saved article's facts start with Saved's bookmark. */
+  .search-result-facts > .icon {
+    display: inline-block;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-inline-end: 0.25rem;
+    vertical-align: -0.125rem;
+    stroke-width: 2.25;
+  }
+
+  .search-result :is(.follow-form, .search-following, form) {
+    position: relative;
+    z-index: 1;
+    align-self: center;
+  }
+
+  /* A pasted address's row: a link icon in the avatar's place, what Look
+     up does, and Look up. */
+  .search-lookup {
+    align-items: center;
+  }
+
+  .search-lookup .search-result-facts {
+    white-space: normal;
+  }
+
+  .search-lookup-icon {
+    color: var(--accent);
+  }
+
+  .search-lookup-icon .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+  }
+
+  .search-result-note {
     color: var(--text-2);
     font-size: 0.875rem;
   }
 
-  .result {
+  /* After Top's list: the tabs with more than it showed. */
+  .search-more {
     padding: 1rem;
-    border-block-end: 1px solid var(--border);
-  }
-
-  .result-head {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .result-head h2 {
-    font-family: var(--font-display);
-    font-size: 1rem;
-  }
-
-  .result-head h2 a {
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .result-head h2 a:hover {
-    text-decoration: underline;
-  }
-
-  .result-head p {
-    color: var(--text-3);
-    font-size: 0.8125rem;
-  }
-
-  .result ul {
-    margin-block-start: 0.625rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-  }
-
-  .result li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-  }
-
-  .result li + li {
-    border-block-start: 1px solid var(--border);
-  }
-
-  .result li a {
-    color: var(--text);
-    font-weight: 500;
-    text-decoration: none;
-  }
-
-  .result li a:hover {
-    text-decoration: underline;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    text-align: center;
   }
 
   /* Discover's import offer, or an import's progress: a card, as the one

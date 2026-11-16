@@ -26,7 +26,7 @@
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Site name or address" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search or paste a link" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
           <button class="btn-primary" type="submit">Search</button>
         </div>
@@ -37,23 +37,9 @@
       {{end}}
 
       {{/* live-search.ts replaces this container's contents with the
-           same container from /discover?q=… as the reader types. */}}
-      <div id="search-results" data-search-results>
-      {{if .AppLink}}
-      <section class="lookup-cta">
-        <p>That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader.</p>
-      </section>
-      {{end}}
-      {{with .LookupQ}}
-      <section class="lookup-cta">
-        <p>Not what you're looking for? Find the feeds a website publishes.</p>
-        <form action="/lookups" method="post" data-busy>
-          <input type="hidden" name="q" value="{{.}}">
-          <button class="btn-sm" type="submit" data-busy-label="Looking up {{.}}…"><span data-busy-text>Look up {{.}}</span></button>
-        </form>
-      </section>
-      {{end}}
-
+           same container from /discover?q=… as the reader types, and
+           announces its data-announce. */}}
+      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}"{{end}}>
       {{with .Import.Offer}}
       <section class="import-card" aria-labelledby="import-card-heading">
         <h2 id="import-card-heading">Coming from another reader?</h2>
@@ -96,26 +82,7 @@
       {{end}}
 
       {{if .Searched}}
-      {{range .Sites}}
-      <section class="result">
-        <div class="result-head">
-          {{template "avatar" (avatar .Site.ID (or .Site.Title .Site.Host) (index $.Icons .Site.ID))}}
-          <div>
-            <h2><a href="/sites/{{.Site.ID}}">{{if .Site.Title}}{{.Site.Title}}{{else}}{{.Site.Host}}{{end}}</a></h2>
-            <p>{{.Site.Host}}</p>
-          </div>
-        </div>
-        {{if .Feeds}}
-        <ul role="list">
-          {{range .Feeds}}
-          <li><a href="/feeds/{{.ID}}">{{or .Title .Url}}</a>{{if index $.Subscribed .ID}} <span class="subscribed">Following</span>{{end}}</li>
-          {{end}}
-        </ul>
-        {{end}}
-      </section>
-      {{else}}
-      <p class="empty">No sites or feeds match “{{.Form.Q}}”.</p>
-      {{end}}
+      {{template "search-results" .}}
       {{end}}
       </div>
     </main>

@@ -58,6 +58,11 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.SubscriptionService == nil {
 		svc.SubscriptionService = &fakeSubscriptionStore{}
 	}
+	// Discover's search reads saved articles; a test that doesn't care gets
+	// a reader with none.
+	if svc.SaveService == nil {
+		svc.SaveService = &fakeSaveStore{}
+	}
 	// Every timeline page lists the tabs; a test that doesn't care gets none.
 	if svc.TimelineService == nil {
 		svc.TimelineService = &fakeTimelineStore{}

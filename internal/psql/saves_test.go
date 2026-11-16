@@ -182,6 +182,27 @@ func TestSaveRepository(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestSaveRepositoryHasSaves(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSaveRepository(db)
+	ctx := t.Context()
+	user := newTestUser(t, db)
+
+	if has, err := repo.HasSaves(ctx, user); err != nil || has {
+		t.Fatalf("HasSaves before saving = %v, %v; want false", has, err)
+	}
+	if err := repo.Save(ctx, user, newTestArticles(t, db, 1)[0]); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if has, err := repo.HasSaves(ctx, user); err != nil || !has {
+		t.Errorf("HasSaves after saving = %v, %v; want true", has, err)
+	}
+	if has, err := repo.HasSaves(ctx, newTestUser(t, db)); err != nil || has {
+		t.Errorf("another user's HasSaves = %v, %v; want false", has, err)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestListSaved(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)

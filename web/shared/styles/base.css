@@ -263,8 +263,7 @@
     }
   }
 
-  .chip,
-  .subscribed {
+  .chip {
     display: inline-flex;
     align-items: center;
     padding: 0.125rem 0.5rem;

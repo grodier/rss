@@ -415,6 +415,7 @@ type fakeSubscriptionStore struct {
 	unsubscribeFn       func(ctx context.Context, userID, feedID string) error
 	subscribedFeedIDsFn func(ctx context.Context, userID string, feedIDs []string) (map[string]bool, error)
 	listByUserFn        func(ctx context.Context, userID string) ([]rss.Subscription, error)
+	searchFn            func(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error)
 	countFn             func(ctx context.Context, userID string) (int, error)
 	getFn               func(ctx context.Context, userID, feedID string) (rss.Subscription, error)
 	renameFn            func(ctx context.Context, userID, feedID, title string) error
@@ -446,6 +447,13 @@ func (f *fakeSubscriptionStore) ListByUser(ctx context.Context, userID string) (
 		return nil, nil
 	}
 	return f.listByUserFn(ctx, userID)
+}
+
+func (f *fakeSubscriptionStore) Search(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error) {
+	if f.searchFn == nil {
+		return nil, nil
+	}
+	return f.searchFn(ctx, userID, q, limit)
 }
 
 // Count returns 0 when countFn is nil.
@@ -500,6 +508,7 @@ type fakeSaveStore struct {
 	unsaveFn          func(ctx context.Context, userID, articleID string) error
 	savedArticleIDsFn func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error)
 	listSavedFn       func(ctx context.Context, userID, q string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error)
+	hasSavesFn        func(ctx context.Context, userID string) (bool, error)
 }
 
 func (f *fakeSaveStore) Save(ctx context.Context, userID, articleID string) error {
@@ -528,6 +537,14 @@ func (f *fakeSaveStore) ListSaved(ctx context.Context, userID, q string, before 
 		return nil, nil
 	}
 	return f.listSavedFn(ctx, userID, q, before, limit)
+}
+
+// HasSaves returns false when hasSavesFn is nil.
+func (f *fakeSaveStore) HasSaves(ctx context.Context, userID string) (bool, error) {
+	if f.hasSavesFn == nil {
+		return false, nil
+	}
+	return f.hasSavesFn(ctx, userID)
 }
 
 type fakeStarStore struct {

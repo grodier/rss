@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -313,6 +314,177 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 		}
 		if len(got) != 0 {
 			t.Errorf("got %v, want none", got)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSubscriptionRepositorySearch(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSubscriptionRepository(db)
+	ctx := t.Context()
+
+	// Hosts and titles carry a unique tag, so only this test's rows match.
+	tag := fmt.Sprintf("srch%d", time.Now().UnixNano())
+	newSite := func(t *testing.T, host, title string) string {
+		t.Helper()
+		id, err := NewSiteRepository(db).Upsert(ctx, rss.Site{Host: host, URL: "https://" + host + "/", Title: title})
+		if err != nil {
+			t.Fatalf("Upsert site: %v", err)
+		}
+		t.Cleanup(func() { db.Exec(`DELETE FROM sites WHERE id = $1`, id) })
+		return id
+	}
+	newFeed := func(t *testing.T, siteID, title string) string {
+		t.Helper()
+		id, err := NewFeedRepository(db).Upsert(ctx, rss.Feed{
+			SiteID: siteID, Title: title, NextFetch: time.Now().Add(time.Hour),
+			Url: fmt.Sprintf("https://example.com/search-%d.xml", time.Now().UnixNano()),
+		})
+		if err != nil {
+			t.Fatalf("Upsert feed: %v", err)
+		}
+		return id
+	}
+	subscribe := func(t *testing.T, user string, feeds ...string) {
+		t.Helper()
+		for _, f := range feeds {
+			if err := repo.Subscribe(ctx, user, f); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+	}
+	search := func(t *testing.T, user, q string, limit int) []string {
+		t.Helper()
+		got, err := repo.Search(ctx, user, q, limit)
+		if err != nil {
+			t.Fatalf("Search(%q): %v", q, err)
+		}
+		var ids []string
+		for _, s := range got {
+			ids = append(ids, s.Feed.ID)
+		}
+		return ids
+	}
+
+	t.Run("matches the name, feed title, site title and host, ordered by name", func(t *testing.T) {
+		user := newTestUser(t, db)
+		plain := newSite(t, fmt.Sprintf("plain-%d.example.com", time.Now().UnixNano()), "Plain")
+		byFeedTitle := newFeed(t, plain, "Bravo "+tag)
+		byName := newFeed(t, plain, "Unrelated")
+		subscribe(t, user, byName)
+		if err := repo.Rename(ctx, user, byName, "Alpha "+tag); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		byHost := newFeed(t, newSite(t, tag+"-host.example.com", ""), "Delta")
+		bySiteTitle := newFeed(t, newSite(t, fmt.Sprintf("titled-%d.example.com", time.Now().UnixNano()), "Site "+tag), "Charlie")
+		unmatched := newFeed(t, plain, "Nothing")
+		subscribe(t, user, byFeedTitle, byHost, bySiteTitle, unmatched)
+
+		got := search(t, user, strings.ToUpper(tag), 10)
+		want := []string{byName, byFeedTitle, bySiteTitle, byHost}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("Search = %v, want %v (Alpha, Bravo, Charlie, Delta)", got, want)
+		}
+	})
+
+	t.Run("ordered by how well the name matches, then by name", func(t *testing.T) {
+		user := newTestUser(t, db)
+		w := "mq" + tag
+		site := newSite(t, fmt.Sprintf("order-%d.example.com", time.Now().UnixNano()), "")
+		inside, word, prefix, exact := newFeed(t, site, "A"+w+"x"), newFeed(t, site, "B "+w), newFeed(t, site, w+" Z"), newFeed(t, site, strings.ToUpper(w))
+		subscribe(t, user, inside, word, prefix, exact)
+		if got, want := search(t, user, w, 10), []string{exact, prefix, word, inside}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("Search = %v; want exact, prefix, word start, inside: %v", got, want)
+		}
+		// The limit keeps the best matches.
+		if got, want := search(t, user, w, 2), []string{exact, prefix}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("Search(limit 2) = %v; want %v", got, want)
+		}
+	})
+
+	t.Run("a renamed feed's old title still matches", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newFeed(t, newSite(t, "renamed-"+tag+".example.com", ""), "Original "+tag)
+		subscribe(t, user, feed)
+		if err := repo.Rename(ctx, user, feed, "Mine"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		got, err := repo.Search(ctx, user, "original "+tag, 10)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if len(got) != 1 || got[0].Feed.ID != feed || got[0].Title != "Mine" {
+			t.Errorf("Search = %+v, want %s named Mine", got, feed)
+		}
+	})
+
+	t.Run("only the user's subscriptions", func(t *testing.T) {
+		user, other := newTestUser(t, db), newTestUser(t, db)
+		site := newSite(t, "own-"+tag+".example.com", "")
+		mine, theirs := newFeed(t, site, "Mine"), newFeed(t, site, "Theirs")
+		subscribe(t, user, mine)
+		subscribe(t, other, theirs)
+		if got := search(t, user, "own-"+tag, 10); fmt.Sprint(got) != fmt.Sprint([]string{mine}) {
+			t.Errorf("Search = %v, want only %s", got, mine)
+		}
+	})
+
+	t.Run("at most limit", func(t *testing.T) {
+		user := newTestUser(t, db)
+		site := newSite(t, "limit-"+tag+".example.com", "")
+		a, b, c := newFeed(t, site, "A"), newFeed(t, site, "B"), newFeed(t, site, "C")
+		subscribe(t, user, a, b, c)
+		if got := search(t, user, "limit-"+tag, 2); fmt.Sprint(got) != fmt.Sprint([]string{a, b}) {
+			t.Errorf("Search = %v, want %v", got, []string{a, b})
+		}
+	})
+
+	t.Run("% and _ match themselves", func(t *testing.T) {
+		user := newTestUser(t, db)
+		site := newSite(t, "esc-"+tag+".example.com", "")
+		percent, under, neither := newFeed(t, site, "50% "+tag), newFeed(t, site, "a_b "+tag), newFeed(t, site, "50x axb "+tag)
+		subscribe(t, user, percent, under, neither)
+		if got := search(t, user, "50%", 10); fmt.Sprint(got) != fmt.Sprint([]string{percent}) {
+			t.Errorf(`Search("50%%") = %v, want only %s`, got, percent)
+		}
+		if got := search(t, user, "a_b", 10); fmt.Sprint(got) != fmt.Sprint([]string{under}) {
+			t.Errorf(`Search("a_b") = %v, want only %s`, got, under)
+		}
+	})
+
+	t.Run("returns tags and the latest article's time", func(t *testing.T) {
+		user := newTestUser(t, db)
+		feed := newFeed(t, newSite(t, "facts-"+tag+".example.com", ""), "Facts")
+		subscribe(t, user, feed)
+		if _, err := db.Exec(`INSERT INTO articles (feed_id, external_id, published_at, timeline_at) VALUES ($1, 'x', '2021-06-01T00:00:00Z', now())`, feed); err != nil {
+			t.Fatalf("insert article: %v", err)
+		}
+		if err := NewTagRepository(db).SetForSubscription(ctx, user, feed, nil, []string{"news"}); err != nil {
+			t.Fatalf("SetForSubscription: %v", err)
+		}
+		got, err := repo.Search(ctx, user, "facts-"+tag, 10)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("got %d subscriptions, want 1", len(got))
+		}
+		if want := time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC); !got[0].LatestArticleAt.Equal(want) {
+			t.Errorf("LatestArticleAt = %v, want %v", got[0].LatestArticleAt, want)
+		}
+		if len(got[0].Tags) != 1 || got[0].Tags[0].Name != "news" {
+			t.Errorf("Tags = %+v, want news", got[0].Tags)
+		}
+	})
+
+	t.Run("no match or an empty query is an empty result", func(t *testing.T) {
+		user := newTestUser(t, db)
+		subscribe(t, user, newFeed(t, newSite(t, "none-"+tag+".example.com", ""), "None"))
+		for _, q := range []string{"zz-no-such-" + tag, "", "  "} {
+			if got := search(t, user, q, 10); len(got) != 0 {
+				t.Errorf("Search(%q) = %v, want none", q, got)
+			}
 		}
 	})
 }

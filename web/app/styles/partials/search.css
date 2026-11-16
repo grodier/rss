@@ -325,4 +325,84 @@
     color: var(--text-3);
     font-size: 0.8125rem;
   }
+
+  /* Design checkpoint (#645): compact result rows of one shape for every
+     group, an avatar, the title and a line of facts, with the whole row
+     opening the result. */
+  .search-result {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    border-block-end: 1px solid var(--border);
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .search-result:hover {
+    background: var(--surface);
+  }
+
+  .search-result .avatar {
+    inline-size: 2rem;
+    block-size: 2rem;
+    font-size: 0.875rem;
+  }
+
+  .search-result-title {
+    display: block;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 650;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .search-result-meta {
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-result-meta > span + span::before {
+    content: " · ";
+  }
+
+  .search-result-meta .fetch-error {
+    color: var(--danger);
+  }
+
+  /* The mixed list's kind of result, leading the facts. */
+  .search-result-kind {
+    color: var(--text-2);
+    font-weight: 600;
+  }
+
+  .search-scopes {
+    border-block-end: 1px solid var(--border);
+  }
+
+  .search-scopes ul {
+    padding-block-end: 0.75rem;
+  }
+
+  .search-scopes .chip[aria-current="page"] {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  .search-scope-count {
+    margin-inline-start: 0.25rem;
+    opacity: 0.7;
+  }
 }

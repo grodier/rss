@@ -303,16 +303,6 @@
       stroke-width: 2.4;
     }
 
-    /* Design checkpoint option (b) (#645): Search as a fifth tab.
-       Temporary. */
-    .rail-links:has(.rail-search-tab) {
-      grid-template-columns: repeat(5, 1fr);
-    }
-
-    .rail-search-item.rail-search-tab {
-      display: revert;
-    }
-
     .column {
       padding-block-end: calc(4.5rem + env(safe-area-inset-bottom));
       border: 0;

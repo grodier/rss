@@ -1,0 +1,14 @@
+{{/* search-result is a compact search result, on Search; its data is a
+     searchRow: an avatar, the title linking to the result (the whole row
+     opens it), and a line of facts, led by the result's kind in the mixed
+     list. */}}
+{{define "search-result"}}
+<li class="search-result">
+  {{template "avatar" .Avatar}}
+  <div class="search-result-main">
+    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
+    <p class="search-result-meta">{{with .Kind}}<span class="search-result-kind">{{.}}</span>{{end}}{{range .Meta}}<span>{{.}}</span>{{end}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+  </div>
+  {{if .Following}}<span class="subscribed">Following</span>{{end}}
+</li>
+{{end}}

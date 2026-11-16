@@ -21,20 +21,6 @@
         <h1 class="visually-hidden">{{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</h1>
         {{template "timeline-tabs" .Tabs}}
       </header>
-      {{/* Design checkpoint option (c) (#645): Search from a field at the
-           top of Home. Temporary. */}}
-      {{if and .Home (eq .Nav.SearchEntry "c") (not .Before)}}
-      <form class="page-search" role="search" action="/search" method="get">
-        <label class="visually-hidden" for="home-q">Search</label>
-        <div class="search-row">
-          <div class="search-field">
-            {{template "icon-search"}}
-            <input type="search" id="home-q" name="q" placeholder="Articles or sites" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
-          </div>
-          <button class="btn-primary" type="submit">Search</button>
-        </div>
-      </form>
-      {{end}}
       {{/* The description, and Back to newest on older pages: no row
            without them, so switching tabs doesn't move the articles. */}}
       {{if or .Timeline.Description .Before}}

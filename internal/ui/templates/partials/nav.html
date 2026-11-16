@@ -20,10 +20,10 @@
       <li><a href="/saved"{{if eq .Section "saved"}} aria-current="page"{{end}}>{{template "icon-bookmark"}}<span>Saved</span></a></li>
       <li><a href="/feeds"{{if eq .Section "feeds"}} aria-current="page"{{end}}>{{template "icon-feeds"}}<span>My feeds</span></a></li>
       <li><a href="/discover"{{if eq .Section "discover"}} aria-current="page"{{end}}>{{template "icon-compass"}}<span>Discover</span></a></li>
-      {{if ne .SearchEntry "c"}}<li class="rail-search-item{{if eq .SearchEntry "b"}} rail-search-tab{{end}}"><a href="/search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>{{end}}
+      <li class="rail-search-item"><a href="/search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>
     </ul>
   </nav>
-  {{if not (or (eq .SearchEntry "b") (eq .SearchEntry "c"))}}<a class="rail-search" href="/search" aria-label="Search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}</a>{{end}}
+  <a class="rail-search" href="/search" aria-label="Search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}</a>
   <a class="rail-account" href="/settings"{{if eq .Section "settings"}} aria-current="page"{{end}}>
     <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
   </a>

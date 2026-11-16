@@ -22,7 +22,9 @@
            searches names, addresses and article titles, so it turns off
            autocorrect as Discover's does (see "Feed discovery" in
            docs/decisions.md). */}}
-      <form class="page-search" role="search" action="/search" method="get" data-live-search>
+      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{end}}" method="get" data-live-search>
+        {{/* Design checkpoint (#645): the layout option. Temporary. */}}
+        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -42,6 +44,27 @@
       {{if .Searched}}
       {{template "lookup-offer" .Found}}
 
+      {{if eq .Layout "compact"}}
+      {{range .Groups}}
+      <section class="search-group" aria-labelledby="search-{{.ID}}">
+        <div class="list-head"><h2 id="search-{{.ID}}">{{.Name}}</h2></div>
+        <ul class="search-results" role="list">{{range .Rows}}{{template "search-result" .}}{{end}}</ul>
+      </section>
+      {{end}}
+      {{else if eq .Layout "mixed"}}
+      {{with .Mixed}}
+      <ul class="search-results" role="list">{{range .}}{{template "search-result" .}}{{end}}</ul>
+      {{end}}
+      {{else if eq .Layout "scopes"}}
+      {{if .Groups}}
+      <nav class="section-chips search-scopes" aria-label="Results">
+        <ul role="list">
+          {{range .Groups}}<li><a class="chip" href="{{.Href}}"{{if eq .ID $.Scope}} aria-current="page"{{end}}>{{.Name}} <span class="search-scope-count">{{len .Rows}}</span></a></li>{{end}}
+        </ul>
+      </nav>
+      <ul class="search-results" role="list">{{range .Shown.Rows}}{{template "search-result" .}}{{end}}</ul>
+      {{end}}
+      {{else}}
       {{with .Feeds}}
       <section class="search-group" aria-labelledby="search-feeds">
         <div class="list-head"><h2 id="search-feeds">Your feeds</h2></div>
@@ -70,6 +93,7 @@
         <div class="list-head"><h2 id="search-sites">New sites</h2></div>
         {{range .}}{{template "site-result" (siteResult . (index $.Found.Icons .Site.ID) $.Found.Subscribed)}}{{end}}
       </section>
+      {{end}}
       {{end}}
 
       {{if .Empty}}

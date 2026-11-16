@@ -868,7 +868,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   A first version with a stronger paper tone read as muddy, and a warm look as the only light theme was turned down, so it's a choice.
   System never picks it, since devices only say light or dark.
   Feed names in the Headlines kicker are in the text color, not the sunrise: a colored label on every row was part of the muddiness.
-- **In Headlines the feed's name is set as a name, and on phones it sits over the time** (#PRNUM, the owner's pick of three options after using #680): the avatar at 28 px beside the name in sentence case, bold, at body size, on one line with the time; on phones a 36 px avatar with the name over the time.
+- **In Headlines the feed's name is set as a name, and on phones it sits over the time** (#681, the owner's pick of three options after using #680): the avatar at 28 px beside the name in sentence case, bold, at body size, on one line with the time; on phones a 36 px avatar with the name over the time.
   #680's kicker, a 20 px icon and the name in small capitals, made the feed too faint, on phones above all, where who published a thing is half of what a reader scans for.
   A phone's line can't hold a name at this size beside the full date, so there it stacks rather than cutting names; on wide screens there's room, and one line keeps the row compact, cutting only a very long name.
   Rejected: the same small capitals a size up (still faint, and cut names on phones) and the stacked form everywhere (about 18 px more per row on desktop, for nothing it needed).

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,6 +28,14 @@ type searchPageData struct {
 	// results unfold, from ?layout= (search_options.go). Temporary.
 	Layout  string
 	Options searchOptions
+	// Host is the page the box is on: "search", or "discover" (?ia=e).
+	Host string
+	// FormAction is the box's action, which live search fetches, and
+	// Hidden its hidden fields, which only a submit sends.
+	FormAction string
+	Hidden     map[string]string
+	// SubmitAction is where Enter goes, when not FormAction.
+	SubmitAction string
 }
 
 // Empty reports whether a search found nothing in any group.
@@ -38,12 +47,11 @@ func (d searchPageData) Empty() bool {
 // results there are across the groups.
 func (d searchPageData) Announce() string {
 	if d.Options.Suggest {
-		switch n := len(d.Options.Shown); n {
-		case 0:
-			return "None of your feeds"
-		default:
-			return fmt.Sprintf("%d of your feeds", n)
+		feeds := "None of your feeds"
+		if n := len(d.Options.Shown); n > 0 {
+			feeds = fmt.Sprintf("%d of your feeds", n)
 		}
+		return feeds + ", " + strings.ToLower(countOf(len(d.Options.Fresh), "new site", "new sites"))
 	}
 	if d.Layout != "full" {
 		return countOf(len(d.Options.Shown), "result", "results")
@@ -55,10 +63,30 @@ func (d searchPageData) Announce() string {
 // articles and new sites, the first searchPerGroup of each. Like
 // discoverHandler it only reads.
 func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
+	s.searchPage(w, r, "search")
+}
+
+// searchPage renders Search's page on host: "search", or "discover" when
+// Discover is the search place (?ia=e, temporary).
+func (s *Server) searchPage(w http.ResponseWriter, r *http.Request, host string) {
 	data := searchPageData{
-		Nav:    s.nav(r, "search"),
-		Form:   searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
-		Layout: searchLayout(r),
+		Nav:        s.nav(r, host),
+		Form:       searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
+		Layout:     searchLayout(r),
+		Host:       host,
+		FormAction: "/search",
+	}
+	if data.Layout != "full" {
+		base, v := searchBase(r)
+		data.FormAction = base + "?" + v.Encode()
+		if host == "discover" && v.Get("ia") == "f" {
+			// Typing stays on Discover; Enter goes to Search.
+			data.FormAction, data.SubmitAction = "/discover?ia=f", "/search"
+		}
+		data.Hidden = map[string]string{"scope": cmp.Or(r.URL.Query().Get("scope"), "top")}
+		for k := range v {
+			data.Hidden[k] = v.Get(k)
+		}
 	}
 	perGroup := searchPerGroup
 	if data.Layout != "full" {
@@ -78,8 +106,10 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		// While typing, the type-ahead option reads only the reader's feeds
 		// (design checkpoint, temporary).
 		suggest := suggesting(r, data.Layout)
+		siteLimit := perGroup
 		if suggest {
-			perGroup = suggestLimit
+			// Some found sites are all followed, and left out of New.
+			perGroup, siteLimit = suggestFeeds, suggestSites*2
 		}
 		subs, err := s.services.SubscriptionService.Search(r.Context(), userID, q, perGroup)
 		if err != nil {
@@ -87,20 +117,17 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var saved []rss.SavedArticle
-		var found foundSites
-		if suggest {
-			found, _ = s.addressOffer(q)
-		} else {
+		if !suggest {
 			saved, err = s.services.SaveService.ListSaved(r.Context(), userID, q, rss.ArticleCursor{}, perGroup)
 			if err != nil {
 				s.serverErrorHTML(w, r, err)
 				return
 			}
-			found, err = s.searchSites(r, q, perGroup)
-			if err != nil {
-				s.serverErrorHTML(w, r, err)
-				return
-			}
+		}
+		found, err := s.searchSites(r, q, siteLimit)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
 		}
 
 		siteIDs := make([]string, len(subs))
@@ -120,8 +147,8 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !data.Searched {
-		data.Options.Recent = mockRecent(r, data.Layout)
+	if !data.Searched && data.Layout != "full" {
+		data.Options.Recent = mockRecent(r)
 	}
 
 	if err := s.renderHTML(w, status, "search.html", data); err != nil {

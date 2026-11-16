@@ -52,6 +52,13 @@ type discoverData struct {
 	Reordered bool
 	// Import is what Discover says about importing, with no query.
 	Import discoverImport
+
+	// IA is the design checkpoint's ?ia= (#645, search_options.go): its box
+	// is Search's. Recent is ?ia=e's recent searches, shown in place of the
+	// sections while the box is focused (mocked with ?focused=1).
+	// Temporary.
+	IA     string
+	Recent []searchScope
 }
 
 // discoverImport is what Discover's page with no query says about importing
@@ -120,7 +127,16 @@ func inDefaultOrder(sections []rss.DiscoverSection) bool {
 // changes on the user's behalf; at most they do idempotent, bounded upkeep
 // (see feedHandler's RequestRefresh).
 func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
+	// Design checkpoint (#645): with ?ia=, Discover's box is Search's, so a
+	// query shows Search's page here: its suggestions while typing, and with
+	// ?ia=e its results too. Temporary.
+	ia := searchIA(r)
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" && (ia == "e" || ia == "f" && r.URL.Query().Get("scope") == "") {
+		s.searchPage(w, r, "discover")
+		return
+	}
 	data := discoverData{
+		IA: ia,
 		Nav:   s.nav(r, "discover"),
 		Form:  searchForm{Q: strings.TrimSpace(r.URL.Query().Get("q"))},
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
@@ -163,6 +179,10 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Found = found
 		data.Searched = true
+	}
+
+	if ia == "e" && r.URL.Query().Get("focused") == "1" {
+		data.Recent = mockRecent(r)
 	}
 
 	if err := s.renderHTML(w, status, "discover.html", data); err != nil {

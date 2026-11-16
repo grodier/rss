@@ -1,15 +1,34 @@
-{{/* search-result is a result row on Search (design checkpoint, #645);
-     its data is a searchResult with whether the list mixes kinds: an
-     avatar, the title with the query's first match marked, and a line of
-     facts, led in a mixed list by the result's kind with the nav's icon for
-     it (My feeds' for Following, Saved's, Discover's for New). The whole
-     row opens the result. */}}
+{{/* search-result is a suggestion while typing on Search (design
+     checkpoint, #645); its data is a searchResult: a small avatar, the
+     name, and a line of facts. The whole row opens the result. */}}
 {{define "search-result"}}
-<li class="search-result search-result-{{.Result.Kind}}">
-  {{template "avatar" .Result.Avatar}}
+<li class="search-result">
+  {{template "avatar" .Avatar}}
   <div class="search-result-main">
-    <a class="search-result-title" href="{{.Result.Href}}">{{.Result.Title.Before}}{{with .Result.Title.Match}}<mark>{{.}}</mark>{{end}}{{.Result.Title.After}}</a>
-    <p class="search-result-meta">{{if .Mixed}}<span class="search-result-kind">{{if eq .Result.Kind "following"}}{{template "icon-feeds"}}{{else if eq .Result.Kind "saved"}}{{template "icon-bookmark"}}{{else}}{{template "icon-compass"}}{{end}}{{.Result.KindLabel}}</span>{{end}}{{range .Result.Meta}}<span>{{.}}</span>{{end}}{{with .Result.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
+    <p class="search-result-meta">{{range .Meta}}<span>{{.}}</span>{{end}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
+</li>
+{{end}}
+
+{{/* search-hit is a result after Enter (design checkpoint, #645); its data
+     is a searchResult with whether the list mixes kinds. In a mixed list
+     (Top) a small line above the title says what it is, with the nav's icon
+     for it. A saved article shows its excerpt and a new site its
+     description, which also show why it matched when its title doesn't. A
+     new site's one feed the reader doesn't follow has Follow in place; a
+     site with several to choose from links to its page to choose. The
+     whole row opens the result; Follow and Choose sit above it. */}}
+{{define "search-hit"}}
+{{$r := .Result}}
+<li class="search-hit search-hit-{{$r.Kind}}">
+  {{template "avatar" $r.Avatar}}
+  <div class="search-hit-main">
+    {{if .Mixed}}<p class="search-hit-kind">{{if eq $r.Kind "following"}}{{template "icon-feeds"}}{{else if eq $r.Kind "saved"}}{{template "icon-bookmark"}}{{else}}{{template "icon-compass"}}{{end}}{{$r.KindLabel}}</p>{{end}}
+    <a class="search-hit-title" href="{{$r.Href}}">{{$r.Title}}</a>
+    {{with $r.Desc}}<p class="search-hit-desc">{{.}}</p>{{end}}
+    <p class="search-hit-meta">{{with $r.Sub}}<span>{{.}}</span>{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+  </div>
+  {{if $r.Follow}}{{template "follow-form" $r.Follow}}{{else if $r.Choose}}<a class="btn btn-sm search-hit-choose" href="{{$r.Href}}" aria-label="Choose a feed from {{$r.Title}}">Choose</a>{{end}}
 </li>
 {{end}}

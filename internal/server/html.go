@@ -109,6 +109,10 @@ type navData struct {
 	Section string // "home", "saved", "feeds", "discover", "search", "settings" or ""
 	User    rss.User
 	Debug   bool
+	// IA is the design checkpoint's ?ia= (#645): with "e", Discover is the
+	// search place, so it takes the magnifier and Search's entries go.
+	// Temporary.
+	IA string
 }
 
 // Theme is the data-theme attribute of the page's <html>: "light" or "dark"
@@ -125,7 +129,7 @@ func (n navData) Theme() string {
 // authenticatedSession.
 func (s *Server) nav(r *http.Request, section string) navData {
 	sess, _ := s.authenticatedSession(r)
-	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r)}
+	return navData{Section: section, User: sess.User, Debug: s.debugEnabled(r), IA: searchIA(r)}
 }
 
 // parseTemplates parses the page templates once per process: they're

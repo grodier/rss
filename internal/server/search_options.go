@@ -1,8 +1,20 @@
 package server
 
-// The design checkpoint's options for how Search's results unfold (#645),
-// switched with ?layout=. Temporary: the option picked moves into
-// search.go, and this file goes.
+// The design checkpoint's options for how Search unfolds (#645), switched
+// with ?layout=typeahead and ?ia=. Temporary: the option picked moves into
+// search.go and discover.go, and this file goes.
+//
+// Round 5 (typeahead): while typing, compact suggestions (the reader's
+// feeds, then new sites); on Enter, tabs: Top (ranked, mixed) · Following ·
+// Saved · New, with roomier rows and Follow in place.
+//
+// ?ia= is where the box lives:
+//
+//	e: Discover is the search place, as X's and Bluesky's Explore: its box
+//	   searches everything and shows the results in place of the sections;
+//	   the nav's Discover takes the magnifier, and Search's own entries go
+//	f: the same box on Discover and on Search, as LinkedIn's on every page;
+//	   results on Search
 
 import (
 	"cmp"
@@ -14,84 +26,109 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/grodier/rss/internal/rss"
 )
 
-// searchOptionsLimit is how many results a scope lists in the options.
+// searchOptionsLimit is how many results a scope lists.
 const searchOptionsLimit = 50
 
-// searchAllLimit is how many results All lists, ranked.
-const searchAllLimit = 10
+// searchTopLimit is how many results Top lists, ranked.
+const searchTopLimit = 10
 
-// The options' layouts:
-//
-//	full: the groups, each in its own page's rows, as first built
-//	tabs: All (ranked, mixed) · Following · Saved · New as underline tabs
-//	segmented: the same scopes as a segmented control under the box
-//	split: Yours (Following and Saved, ranked) · New, as underline tabs
-//	typeahead: while typing, only the reader's feeds that match and a row to
-//	  search everything; on Enter (?scope=), the tabs layout
-var searchLayoutNames = []string{"full", "tabs", "segmented", "split", "typeahead"}
-
-// suggestLimit is how many feeds the type-ahead option suggests.
-const suggestLimit = 5
-
-// suggesting reports whether the type-ahead option is suggesting: a query
-// typed, not yet submitted. Submitting sends the form's scope (All, or the
-// tab the reader was on); live search fetches the form's action, which
-// has none.
-func suggesting(r *http.Request, layout string) bool {
-	return layout == "typeahead" && r.URL.Query().Get("scope") == ""
-}
-
-// mockRecent is the type-ahead option's recent searches, from ?recent=
-// (comma-separated). A mock for the screenshots: the real list would live
-// in the browser's storage, never on the server.
-func mockRecent(r *http.Request, layout string) []searchScope {
-	if layout != "typeahead" || r.URL.Query().Get("recent") == "" {
-		return nil
-	}
-	var recent []searchScope
-	for _, q := range strings.Split(r.URL.Query().Get("recent"), ",") {
-		v := url.Values{"q": {q}, "layout": {layout}, "scope": {"all"}}
-		recent = append(recent, searchScope{Name: q, Href: "/search?" + v.Encode()})
-	}
-	return recent
-}
+// suggestFeeds and suggestSites are how many of the reader's feeds and of
+// new sites the suggestions show while typing.
+const (
+	suggestFeeds = 4
+	suggestSites = 3
+)
 
 func searchLayout(r *http.Request) string {
-	if l := r.URL.Query().Get("layout"); slices.Contains(searchLayoutNames, l) {
-		return l
+	if r.URL.Query().Get("layout") == "typeahead" || searchIA(r) != "" {
+		return "typeahead"
 	}
 	return "full"
 }
 
-// searchOptions is what the tabs, segmented and split layouts show.
+// searchIA is ?ia=: "e", "f", or "" for neither (round 4's Search page).
+func searchIA(r *http.Request) string {
+	if ia := r.URL.Query().Get("ia"); ia == "e" || ia == "f" {
+		return ia
+	}
+	return ""
+}
+
+// suggesting reports whether a query is being typed, not yet submitted:
+// submitting sends the form's scope; live search fetches the form's action,
+// which has none.
+func suggesting(r *http.Request, layout string) bool {
+	return layout == "typeahead" && r.URL.Query().Get("scope") == ""
+}
+
+// searchBase is the page the box's results live on, and the parameters its
+// links keep.
+func searchBase(r *http.Request) (string, url.Values) {
+	switch searchIA(r) {
+	case "e":
+		return "/discover", url.Values{"ia": {"e"}}
+	case "f":
+		return "/search", url.Values{"ia": {"f"}}
+	}
+	return "/search", url.Values{"layout": {"typeahead"}}
+}
+
+// searchHref is the results page for q in scope ("" while typing).
+func searchHref(r *http.Request, q, scope string) string {
+	base, v := searchBase(r)
+	if q != "" {
+		v.Set("q", q)
+	}
+	if scope != "" {
+		v.Set("scope", scope)
+	}
+	return base + "?" + v.Encode()
+}
+
+// mockRecent is the recent searches, from ?recent= (comma-separated). A
+// mock for the screenshots: the real list would live in the browser's
+// storage, never on the server.
+func mockRecent(r *http.Request) []searchScope {
+	if r.URL.Query().Get("recent") == "" {
+		return nil
+	}
+	var recent []searchScope
+	for _, q := range strings.Split(r.URL.Query().Get("recent"), ",") {
+		recent = append(recent, searchScope{Name: q, Href: searchHref(r, q, "top")})
+	}
+	return recent
+}
+
+// searchOptions is what the typeahead layout shows.
 type searchOptions struct {
+	// Suggest says a query is being typed: Shown is the reader's feeds
+	// that match and Fresh new sites, under a row to search everything
+	// (Everything, Top's URL).
+	Suggest    bool
+	Everything string
+	Fresh      []searchResult
+
 	Scopes []searchScope
 	Scope  string // the current scope's ID
-	// Shown is the current scope's results.
+	// Shown is the current scope's results, or the suggested feeds.
 	Shown []searchResult
 	// Mixed says the current scope mixes kinds, so each row shows its own.
 	Mixed bool
-	// More links the scopes with results All left out, after All's list.
+	// More links the scopes with results Top left out, after Top's list.
 	More []searchScope
-	// Lookup says the current scope offers Look up for an address: All,
-	// New and Yours' neighbour New.
+	// Lookup says the current view offers Look up for an address.
 	Lookup bool
 	// Empty is the current scope's no-results line, when it found nothing.
 	Empty string
-
-	// Suggest says the type-ahead option is suggesting: Shown is the
-	// reader's feeds that match, under a row to search everything
-	// (Everything, the All tab's URL).
-	Suggest    bool
-	Everything string
-	// Recent is the type-ahead option's recent searches, before typing
-	// (mockRecent).
+	// Recent is the recent searches, before typing (mockRecent).
 	Recent []searchScope
 }
 
-// searchScope is one of the scopes: a tab or segment.
+// searchScope is one of the tabs, or a recent search.
 type searchScope struct {
 	ID    string
 	Name  string
@@ -108,34 +145,24 @@ func (sc searchScope) CountText() string {
 	return fmt.Sprint(sc.Count)
 }
 
-// searchResult is one row: what it is, how well it matched, and what it
-// shows.
+// searchResult is one result: what it is, how well it matched, and what
+// its row shows.
 type searchResult struct {
 	Kind      string // "following", "saved" or "new"
 	KindLabel string // "Following", "Saved" or "New"
 	Href      string
-	Title     titleMatch
+	Title     string
+	Sub       string // a new feed's own title, under its site's name
+	Desc      string // a saved article's excerpt, a new site's description
 	Avatar    avatarView
 	Meta      []string
 	Warning   string
-	Score     int
-}
-
-// titleMatch is a title split around the first match of the query, so the
-// match can be marked.
-type titleMatch struct {
-	Before, Match, After string
-}
-
-func splitMatch(title, q string) titleMatch {
-	lt, lq := strings.ToLower(title), strings.ToLower(q)
-	i := strings.Index(lt, lq)
-	// Lowering can change a string's length in bytes; then the offsets
-	// don't carry over, so mark nothing.
-	if i < 0 || lq == "" || len(lt) != len(title) {
-		return titleMatch{Before: title}
-	}
-	return titleMatch{Before: title[:i], Match: title[i : i+len(q)], After: title[i+len(q):]}
+	// Follow is a new site's one feed the reader doesn't follow yet, which
+	// they can follow in place; nil when there's no feed, or a choice of
+	// several (Choose).
+	Follow *followButton
+	Choose bool
+	Score  int
 }
 
 // matchRank is how well text matches q, ignoring case: 4 all of it, 3 its
@@ -158,11 +185,11 @@ func matchRank(text, q string) int {
 	return 1
 }
 
-// The ranking of a mixed scope (All, Yours): how well the title matches
-// first, a match elsewhere (a site, host, feed or description) well below
-// any title match; then the reader's own things before new ones; then
-// something recent. Only the reader's own data, never other readers'
-// ("The feed most people follow" was rejected as cross-reader data, #628).
+// The ranking of Top: how well the title matches first, a match elsewhere
+// (a site, host, feed, excerpt or description) well below any title match;
+// then the reader's own things before new ones; then something recent.
+// Only the reader's own data, never other readers' ("The feed most people
+// follow" was rejected as cross-reader data, #628).
 const (
 	scoreTitle     = 10 // per point of the title's matchRank
 	scoreElsewhere = 5  // matched only outside the title
@@ -192,14 +219,14 @@ func ranked(results []searchResult) []searchResult {
 		return cmp.Or(
 			cmp.Compare(b.Score, a.Score),
 			cmp.Compare(kindOrder[a.Kind], kindOrder[b.Kind]),
-			strings.Compare(strings.ToLower(a.Title.Before+a.Title.Match+a.Title.After), strings.ToLower(b.Title.Before+b.Title.Match+b.Title.After)),
+			strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title)),
 		)
 	})
 	return out
 }
 
-// newSearchOptions builds the options' scopes and results from the
-// groups' results (each fetched up to searchOptionsLimit+1).
+// newSearchOptions builds the suggestions, or the tabs and their results,
+// from the groups' results.
 func (s *Server) newSearchOptions(r *http.Request, d searchPageData) searchOptions {
 	now := time.Now()
 	q := d.Form.Q
@@ -207,13 +234,14 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData) searchOptio
 
 	for _, f := range d.Feeds {
 		name := f.Name()
-		res := searchResult{Kind: "following", KindLabel: "Following", Href: "/feeds/" + f.Sub.Feed.ID, Title: splitMatch(name, q), Avatar: avatar(f.Sub.Feed.SiteID, name, f.Icon)}
+		res := searchResult{Kind: "following", KindLabel: "Following", Href: "/feeds/" + f.Sub.Feed.ID, Title: name, Avatar: avatar(f.Sub.Feed.SiteID, name, f.Icon)}
 		if f.Site != "" {
 			res.Meta = append(res.Meta, "From "+f.Site)
 		}
-		if f.Sub.LatestArticleAt.IsZero() {
-			res.Meta = append(res.Meta, "No articles yet")
-		} else {
+		if !suggesting(r, d.Layout) {
+			res.Meta = append(res.Meta, postingRate(f.Sub.Feed.PostsPerWeek))
+		}
+		if !f.Sub.LatestArticleAt.IsZero() {
 			res.Meta = append(res.Meta, "Latest "+since(f.Sub.LatestArticleAt, now))
 		}
 		switch {
@@ -236,7 +264,8 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData) searchOptio
 		for _, a := range d.Saved {
 			title := a.Article.DisplayTitle()
 			res := searchResult{
-				Kind: "saved", KindLabel: "Saved", Href: "/articles/" + a.Article.ID, Title: splitMatch(title, q),
+				Kind: "saved", KindLabel: "Saved", Href: "/articles/" + a.Article.ID, Title: title,
+				Desc:   a.Article.DisplayExcerpt(),
 				Avatar: avatar(a.Feed.SiteID, a.Feed.Title, icons[a.Feed.SiteID]),
 				Meta:   []string{a.Feed.Title, "Saved " + since(a.SavedAt, now)},
 			}
@@ -245,101 +274,95 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData) searchOptio
 		}
 	}
 
-	// New is sites with a feed the reader doesn't follow yet: a site whose
-	// feeds they all follow is in Following already, so it isn't new.
+	// New is what the reader can follow: a site's one feed they don't
+	// follow yet, with Follow in place, or a site with several to choose
+	// from on its page (nothing guesses which, #629). A site whose feeds
+	// they all follow is in Following already.
+	returnTo := r.URL.RequestURI()
 	for _, site := range d.Found.Sites {
-		followed := 0
+		var open []rss.Feed
 		for _, f := range site.Feeds {
-			if d.Found.Subscribed[f.ID] {
-				followed++
+			if !d.Found.Subscribed[f.ID] {
+				open = append(open, f)
 			}
 		}
-		if len(site.Feeds) > 0 && followed == len(site.Feeds) {
+		if len(site.Feeds) > 0 && len(open) == 0 {
 			continue
 		}
-		name := cmp.Or(site.Site.Title, site.Site.Host)
-		res := searchResult{Kind: "new", KindLabel: "New", Href: "/sites/" + site.Site.ID, Title: splitMatch(name, q), Avatar: avatar(site.Site.ID, name, d.Found.Icons[site.Site.ID])}
+		followed := len(site.Feeds) - len(open)
+		df := rss.DiscoverFeed{Site: site.Site}
+		name := df.Name()
+		res := searchResult{Kind: "new", KindLabel: "New", Href: "/sites/" + site.Site.ID, Title: name, Desc: site.Site.Description, Avatar: avatar(site.Site.ID, name, d.Found.Icons[site.Site.ID])}
 		res.Meta = append(res.Meta, site.Site.Host)
-		switch n := len(site.Feeds); {
-		case followed > 0:
-			res.Meta = append(res.Meta, fmt.Sprintf("Following %d of %d feeds", followed, n))
-		case n == 1:
-			res.Meta = append(res.Meta, "1 feed")
-		case n > 1:
-			res.Meta = append(res.Meta, fmt.Sprintf("%d feeds", n))
+		switch {
+		case len(open) == 1:
+			df.Feed = open[0]
+			res.Sub = df.FeedTitle()
+			res.Follow = &followButton{FeedID: df.Feed.ID, Label: df.Label(), ReturnTo: returnTo}
+			if followed > 0 {
+				res.Meta = append(res.Meta, map[bool]string{true: "You follow its other feed", false: fmt.Sprintf("You follow its other %d feeds", followed)}[followed == 1])
+			}
+		case len(open) > 1:
+			res.Choose = true
+			if followed > 0 {
+				res.Meta = append(res.Meta, fmt.Sprintf("Following %d of %d feeds", followed, len(site.Feeds)))
+			} else {
+				res.Meta = append(res.Meta, fmt.Sprintf("%d feeds", len(open)))
+			}
+		default:
+			res.Meta = append(res.Meta, "No feeds found yet")
 		}
 		res.Score = score(matchRank(name, q), true, 0, false)
 		fresh = append(fresh, res)
 	}
 
-	scope := func(id, name string, results []searchResult) searchScope {
-		sc := searchScope{ID: id, Name: name, Count: min(len(results), searchOptionsLimit), Over: len(results) > searchOptionsLimit}
-		v := url.Values{"q": {q}, "layout": {d.Layout}, "scope": {id}}
-		sc.Href = "/search?" + v.Encode()
-		return sc
-	}
-	cut := func(results []searchResult) []searchResult { return results[:min(len(results), searchOptionsLimit)] }
-	following, saved, fresh = cut(following), cut(saved), cut(fresh)
-
 	var o searchOptions
-	current := r.URL.Query().Get("scope")
 	if suggesting(r, d.Layout) {
-		v := url.Values{"q": {q}, "layout": {d.Layout}, "scope": {"all"}}
-		o.Suggest, o.Everything, o.Shown, o.Lookup = true, "/search?"+v.Encode(), following, true
+		o.Suggest, o.Everything, o.Lookup = true, searchHref(r, q, "top"), true
+		o.Shown = following[:min(len(following), suggestFeeds)]
+		o.Fresh = fresh[:min(len(fresh), suggestSites)]
 		return o
 	}
-	if d.Layout == "split" {
-		yours := ranked(append(slices.Clone(following), saved...))
-		o.Scopes = []searchScope{scope("yours", "Yours", yours), scope("new", "New", fresh)}
-		if current != "yours" && current != "new" {
-			current = "yours"
-			if len(yours) == 0 && len(fresh) > 0 {
-				current = "new"
+
+	cut := func(results []searchResult) []searchResult { return results[:min(len(results), searchOptionsLimit)] }
+	following, saved, fresh = cut(following), cut(saved), cut(fresh)
+	scope := func(id, name string, results []searchResult) searchScope {
+		return searchScope{ID: id, Name: name, Count: min(len(results), searchOptionsLimit), Over: len(results) > searchOptionsLimit, Href: searchHref(r, q, id)}
+	}
+	top := ranked(append(append(slices.Clone(following), saved...), fresh...))
+	topScope := scope("top", "Top", top)
+	topScope.Count, topScope.Over = len(following)+len(saved)+len(fresh), false
+	o.Scopes = []searchScope{topScope, scope("following", "Following", following), scope("saved", "Saved", saved), scope("new", "New", fresh)}
+
+	current := r.URL.Query().Get("scope")
+	if !slices.ContainsFunc(o.Scopes, func(sc searchScope) bool { return sc.ID == current }) {
+		current = "top"
+	}
+	o.Scope = current
+	switch current {
+	case "top":
+		o.Shown, o.Mixed, o.Lookup = top[:min(len(top), searchTopLimit)], true, true
+		o.Empty = "No results for “" + q + "”."
+		if len(top) > searchTopLimit {
+			shown := map[string]int{}
+			for _, res := range o.Shown {
+				shown[res.Kind]++
 			}
-		}
-		o.Scope = current
-		switch current {
-		case "yours":
-			o.Shown, o.Mixed = yours, true
-			o.Empty = "Nothing of yours matches “" + q + "”."
-		default:
-			o.Shown, o.Lookup = fresh, true
-			o.Empty = "No new sites match “" + q + "”."
-		}
-	} else {
-		all := ranked(append(append(slices.Clone(following), saved...), fresh...))
-		allScope := scope("all", "All", all)
-		allScope.Count = len(following) + len(saved) + len(fresh)
-		o.Scopes = []searchScope{allScope, scope("following", "Following", following), scope("saved", "Saved", saved), scope("new", "New", fresh)}
-		if !slices.ContainsFunc(o.Scopes, func(sc searchScope) bool { return sc.ID == current }) {
-			current = "all"
-		}
-		o.Scope = current
-		switch current {
-		case "all":
-			o.Shown, o.Mixed, o.Lookup = all[:min(len(all), searchAllLimit)], true, true
-			o.Empty = "No results for “" + q + "”."
-			if len(all) > searchAllLimit {
-				shown := map[string]int{}
-				for _, res := range o.Shown {
-					shown[res.Kind]++
-				}
-				for _, sc := range o.Scopes[1:] {
-					if sc.Count > shown[sc.ID] {
-						o.More = append(o.More, sc)
-					}
+			for _, sc := range o.Scopes[1:] {
+				if sc.Count > shown[sc.ID] {
+					o.More = append(o.More, sc)
 				}
 			}
-		case "following":
-			o.Shown = following
-			o.Empty = "None of the feeds you follow match “" + q + "”."
-		case "saved":
-			o.Shown = saved
-			o.Empty = "No saved articles match “" + q + "”."
-		case "new":
-			o.Shown, o.Lookup = fresh, true
-			o.Empty = "No new sites match “" + q + "”."
 		}
+	case "following":
+		o.Shown = following
+		o.Empty = "None of the feeds you follow match “" + q + "”."
+	case "saved":
+		o.Shown = saved
+		o.Empty = "No saved articles match “" + q + "”."
+	case "new":
+		o.Shown, o.Lookup = fresh, true
+		o.Empty = "No new sites match “" + q + "”."
 	}
 	if len(o.Shown) > 0 {
 		o.Empty = ""

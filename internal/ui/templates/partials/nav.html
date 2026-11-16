@@ -19,11 +19,16 @@
       <li><a href="/"{{if eq .Section "home"}} aria-current="page"{{end}}>{{template "icon-home"}}<span>Home</span></a></li>
       <li><a href="/saved"{{if eq .Section "saved"}} aria-current="page"{{end}}>{{template "icon-bookmark"}}<span>Saved</span></a></li>
       <li><a href="/feeds"{{if eq .Section "feeds"}} aria-current="page"{{end}}>{{template "icon-feeds"}}<span>My feeds</span></a></li>
-      <li><a href="/discover"{{if eq .Section "discover"}} aria-current="page"{{end}}>{{template "icon-compass"}}<span>Discover</span></a></li>
-      <li class="rail-search-item"><a href="/search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>
+      {{if eq .IA "e"}}
+      {{/* Design checkpoint (#645): Discover is the search place. Temporary. */}}
+      <li><a href="/discover?ia=e"{{if eq .Section "discover"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Discover</span></a></li>
+      {{else}}
+      <li><a href="/discover{{with .IA}}?ia={{.}}{{end}}"{{if eq .Section "discover"}} aria-current="page"{{end}}>{{template "icon-compass"}}<span>Discover</span></a></li>
+      <li class="rail-search-item"><a href="/search{{with .IA}}?ia={{.}}{{end}}"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}<span>Search</span></a></li>
+      {{end}}
     </ul>
   </nav>
-  <a class="rail-search" href="/search" aria-label="Search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}</a>
+  {{if ne .IA "e"}}<a class="rail-search" href="/search{{with .IA}}?ia={{.}}{{end}}" aria-label="Search"{{if eq .Section "search"}} aria-current="page"{{end}}>{{template "icon-search"}}</a>{{end}}
   <a class="rail-account" href="/settings"{{if eq .Section "settings"}} aria-current="page"{{end}}>
     <span class="avatar avatar-person tone-{{avatarTone .User.ID}}" aria-hidden="true">{{monogram .User.Name}}</span><span>Settings</span>
   </a>

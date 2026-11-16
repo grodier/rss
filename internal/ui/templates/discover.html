@@ -18,7 +18,9 @@
         <h1>Discover</h1>
       </header>
 
-      <form class="page-search" role="search" action="/discover" method="get" data-live-search>
+      <form class="page-search" role="search" action="/discover{{with .IA}}?ia={{.}}{{end}}" method="get" data-live-search>
+        {{/* Design checkpoint (#645): Search's box. Temporary. */}}
+        {{with .IA}}<input type="hidden" name="ia" value="{{.}}"><input type="hidden" name="scope" value="top">{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -26,9 +28,9 @@
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Site name or address" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="{{if .IA}}Search or paste a link{{else}}Site name or address{{end}}"{{if .Recent}} autofocus{{end}} autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
-          <button class="btn-primary" type="submit">Search</button>
+          <button class="btn-primary" type="submit"{{if eq .IA "f"}} formaction="/search"{{end}}>Search</button>
         </div>
       </form>
 
@@ -41,6 +43,15 @@
       <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Found.Announce}}"{{end}}>
       {{template "lookup-offer" .Found}}
 
+      {{with .Recent}}
+      <section class="search-recent" aria-labelledby="search-recent">
+        <div class="list-head"><h2 id="search-recent">Recent searches</h2><button class="link-button" type="button">Clear</button></div>
+        <ul role="list">
+          {{range .}}<li><a href="{{.Href}}">{{template "icon-clock"}}{{.Name}}</a></li>{{end}}
+        </ul>
+        <p class="search-recent-note">Kept on this device only.</p>
+      </section>
+      {{else}}
       {{with .Import.Offer}}
       <section class="import-card" aria-labelledby="import-card-heading">
         <h2 id="import-card-heading">Coming from another reader?</h2>
@@ -80,6 +91,7 @@
 
       {{if .Import.Line}}
       <p class="import-line">Coming from another reader? <a href="/settings/import">Import your subscriptions</a></p>
+      {{end}}
       {{end}}
 
       {{if .Searched}}

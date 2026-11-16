@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Paper Round - search</title>
+  <title>Paper Round - {{.Host}}</title>
   {{template "assets" "search"}}
   {{template "app-head" .Nav}}
 </head>
@@ -15,16 +15,17 @@
 
     <main class="column">
       <header class="page-head">
-        <h1>Search</h1>
+        <h1>{{if eq .Host "discover"}}Discover{{else}}Search{{end}}</h1>
       </header>
 
       {{/* The box takes focus: opening Search is the intent to type. It
            searches names, addresses and article titles, so it turns off
            autocorrect as Discover's does (see "Feed discovery" in
            docs/decisions.md). */}}
-      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{if ne .Layout "typeahead"}}{{with .Options.Scope}}&amp;scope={{.}}{{end}}{{end}}{{end}}" method="get" data-live-search>
-        {{/* Design checkpoint (#645): the layout option. Temporary. */}}
-        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{if eq .Layout "typeahead"}}<input type="hidden" name="scope" value="{{or .Options.Scope "all"}}">{{else}}{{with .Options.Scope}}<input type="hidden" name="scope" value="{{.}}">{{end}}{{end}}{{end}}
+      <form class="page-search" role="search" action="{{.FormAction}}" method="get" data-live-search>
+        {{/* Design checkpoint (#645): the option's fields, which only a
+             submit sends. Temporary. */}}
+        {{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -32,9 +33,9 @@
         <div class="search-row">
           <div class="search-field">
             {{template "icon-search"}}
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Articles or sites" autofocus autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="{{if eq .Layout "full"}}Articles or sites{{else}}Search or paste a link{{end}}" autofocus autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
-          <button class="btn-primary" type="submit">Search</button>
+          <button class="btn-primary" type="submit"{{with .SubmitAction}} formaction="{{.}}"{{end}}>Search</button>
         </div>
       </form>
 
@@ -103,41 +104,39 @@
 
 </html>
 
-{{/* search-options is the results of the design checkpoint's tabs,
-     segmented and split layouts (#645): the scopes, then the current one's
-     results. Each scope is its own URL, so the scopes are navigation (links
-     with aria-current), as the timeline tabs are. Temporary. */}}
+{{/* search-options is the design checkpoint's typeahead layout (#645):
+     while typing, compact suggestions (the reader's feeds, then new sites)
+     under a row that searches everything; after Enter, the tabs and the
+     current one's results in roomier rows. Each tab is its own URL, so the
+     tabs are navigation (links with aria-current), as the timeline tabs
+     are. Temporary. */}}
 {{define "search-options"}}
 {{$o := .Options}}
 {{if $o.Suggest}}
 {{template "lookup-offer" .Found}}
 <a class="search-everything" href="{{$o.Everything}}">{{template "icon-search"}}<span>Search everything for “<strong>{{.Form.Q}}</strong>”</span><kbd>Enter</kbd></a>
 {{with $o.Shown}}
-<div class="list-head"><h2>Your feeds</h2></div>
+<div class="list-head"><h2>Following</h2></div>
 <ul class="search-results" role="list">
-  {{range .}}{{template "search-result" (searchResultRow . false)}}{{end}}
+  {{range .}}{{template "search-result" .}}{{end}}
 </ul>
-{{else}}
-<p class="search-suggest-none">None of your feeds match. Search everything to look in what you've saved and in new sites.</p>
 {{end}}
-{{else}}
-{{if eq .Layout "segmented"}}
-<nav class="search-segments" aria-label="Results">
-  <ul role="list">
-    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}>{{.Name}}</a></li>{{end}}
-  </ul>
-</nav>
+{{with $o.Fresh}}
+<div class="list-head"><h2>New</h2></div>
+<ul class="search-results" role="list">
+  {{range .}}{{template "search-result" .}}{{end}}
+</ul>
+{{end}}
 {{else}}
 <nav class="timeline-tabs section-tabs search-tabs" aria-label="Results">
   <ul role="list">
-    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}{{if eq .Count 0}} class="search-tab-empty"{{end}}>{{.Name}} <span class="search-tab-count">{{.CountText}}</span>{{if eq .ID $o.Scope}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
+    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}{{if eq .Count 0}} class="search-tab-empty"{{end}}>{{.Name}}{{if ne .ID "top"}} <span class="search-tab-count">{{.CountText}}</span>{{end}}{{if eq .ID $o.Scope}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
   </ul>
 </nav>
-{{end}}
 {{if $o.Lookup}}{{template "lookup-offer" .Found}}{{end}}
 {{with $o.Shown}}
-<ul class="search-results" role="list">
-  {{range .}}{{template "search-result" (searchResultRow . $o.Mixed)}}{{end}}
+<ul class="search-hits" role="list">
+  {{range .}}{{template "search-hit" (searchResultRow . $o.Mixed)}}{{end}}
 </ul>
 {{end}}
 {{with $o.More}}

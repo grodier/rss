@@ -326,17 +326,15 @@
     font-size: 0.8125rem;
   }
 
-  /* Design checkpoint (#645): a result row, one shape for every kind: an
-     avatar, the title with the query's match marked, and a line of facts,
-     led in a mixed list by the kind, with its nav icon. The whole row opens
-     the result. */
+  /* Design checkpoint (#645): a suggestion while typing, compact: a small
+     avatar, the name and a line of facts. The whole row opens it. */
   .search-result {
     position: relative;
     display: grid;
-    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-columns: 2rem minmax(0, 1fr);
     align-items: center;
     gap: 0.75rem;
-    padding: 0.625rem 1rem;
+    padding: 0.5rem 1rem;
     border-block-end: 1px solid var(--border);
     transition: background-color var(--duration-quick) var(--ease-out);
   }
@@ -346,9 +344,9 @@
   }
 
   .search-result .avatar {
-    inline-size: 2.25rem;
-    block-size: 2.25rem;
-    font-size: 0.9375rem;
+    inline-size: 2rem;
+    block-size: 2rem;
+    font-size: 0.875rem;
   }
 
   .search-result-title {
@@ -367,13 +365,8 @@
     inset: 0;
   }
 
-  .search-result-title mark {
-    border-radius: 3px;
-    background: var(--selection);
-    color: inherit;
-  }
-
-  .search-result-meta {
+  .search-result-meta,
+  .search-hit-meta {
     overflow: hidden;
     color: var(--text-3);
     font-size: 0.8125rem;
@@ -381,42 +374,116 @@
     white-space: nowrap;
   }
 
-  .search-result-meta > span + span::before {
+  :is(.search-result-meta, .search-hit-meta) > span + span::before {
     content: " · ";
   }
 
-  .search-result-meta .fetch-error {
+  :is(.search-result-meta, .search-hit-meta) .fetch-error {
     color: var(--danger);
   }
 
-  /* A mixed list's kind of result: the nav's icon for it and its name. */
-  .search-result-kind {
-    color: var(--text-2);
-    font-weight: 600;
+  /* A result after Enter, roomier: the title wraps to two lines, a saved
+     article's excerpt or a new site's description under it, and Follow or
+     Choose at the end, above the whole-row link. */
+  .search-hit {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.25rem 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    transition: background-color var(--duration-quick) var(--ease-out);
   }
 
-  .search-result-kind .icon {
+  .search-hit:hover {
+    background: var(--surface);
+  }
+
+  .search-hit-main {
+    display: grid;
+    gap: 0.125rem;
+    min-inline-size: 0;
+  }
+
+  .search-hit-title {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 650;
+    line-height: 1.3;
+    text-decoration: none;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .search-hit-saved .search-hit-title {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+  }
+
+  .search-hit-title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .search-hit-desc {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* A site's description is a tagline: one line is enough to tell sites
+     apart. */
+  .search-hit-new .search-hit-desc {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .search-hit-saved .search-hit-desc {
+    font-family: var(--font-reading);
+    font-weight: var(--font-reading-weight);
+    font-size: 0.9375rem;
+  }
+
+  /* In Top, what the result is: a small line above its title, with the
+     nav's icon for it; New in the accent, the reader's own things quiet. */
+  .search-hit-kind {
+    margin-block-end: -0.0625rem;
+    color: var(--text-3);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .search-hit-kind .icon {
     display: inline-block;
     inline-size: 0.875rem;
     block-size: 0.875rem;
-    margin-inline-end: 0.25rem;
+    margin-inline-end: 0.3125rem;
     vertical-align: -0.125rem;
     stroke-width: 2.25;
   }
 
-  /* The reader's own things (Following, Saved) in the quieter text color, New in
-     the accent, so "yours" and "new" read apart at a glance. */
-  .search-result-following .search-result-kind,
-  .search-result-saved .search-result-kind {
-    color: var(--text-2);
-  }
-
-  .search-result-new .search-result-kind {
+  .search-hit-new .search-hit-kind {
     color: var(--accent);
   }
 
-  /* The scopes as tabs: the timeline tabs' underline, with each scope's
-     count; an empty scope stays, dimmed, so the row never moves. */
+  .search-hit :is(.follow-form, .search-hit-choose) {
+    position: relative;
+    z-index: 1;
+    align-self: center;
+  }
+
+  /* The tabs: the timeline tabs' underline, with each scope's count; an
+     empty scope stays, dimmed, so the row never moves. */
   .search-tabs .search-tab-count {
     margin-inline-start: 0.125rem;
     color: var(--text-3);
@@ -427,7 +494,7 @@
     color: var(--text-3);
   }
 
-  /* Under 360 px the four scopes and their counts don't fit; the counts go,
+  /* Under 360 px the four tabs and their counts don't fit; the counts go,
      and an empty scope still reads as empty, dimmed. */
   @media (max-width: 22.49rem) {
     .search-tabs .search-tab-count {
@@ -435,42 +502,7 @@
     }
   }
 
-  /* The scopes as a segmented control: one choice of a few, equal widths,
-     the current one raised. */
-  .search-segments ul {
-    display: grid;
-    grid-auto-columns: 1fr;
-    grid-auto-flow: column;
-    gap: 0.125rem;
-    margin: 0 1rem 0.75rem;
-    padding: 0.1875rem;
-    border-radius: 999px;
-    background: var(--surface);
-  }
-
-  .search-segments a {
-    display: block;
-    padding: 0.4375rem 0.25rem;
-    border-radius: 999px;
-    color: var(--text-2);
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-align: center;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .search-segments a[aria-current="page"] {
-    background: var(--bg);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 16%, transparent);
-    color: var(--text);
-  }
-
-  .search-segments + * {
-    border-block-start: 1px solid var(--border);
-  }
-
-  /* After All's list: the scopes with more than it showed. */
+  /* After Top's list: the scopes with more than it showed. */
   .search-more {
     padding: 1rem;
     color: var(--text-2);

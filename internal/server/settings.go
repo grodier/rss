@@ -145,8 +145,9 @@ func (s *Server) settingsNameFormHandler(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, "/settings/account", http.StatusSeeOther)
 }
 
-type themeForm struct {
+type readingForm struct {
 	Theme               string `form:"theme"`
+	Layout              string `form:"layout"`
 	validator.Validator `form:"-"`
 }
 
@@ -156,11 +157,11 @@ type themeForm struct {
 type settingsReadingPage struct {
 	Nav   navData
 	Flash string
-	Form  themeForm
+	Form  readingForm
 }
 
 // renderSettingsReading renders settings_reading.html with status.
-func (s *Server) renderSettingsReading(w http.ResponseWriter, r *http.Request, status int, form themeForm) {
+func (s *Server) renderSettingsReading(w http.ResponseWriter, r *http.Request, status int, form readingForm) {
 	data := settingsReadingPage{
 		Nav:   s.nav(r, "settings"),
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
@@ -173,29 +174,30 @@ func (s *Server) renderSettingsReading(w http.ResponseWriter, r *http.Request, s
 
 func (s *Server) settingsReadingHandler(w http.ResponseWriter, r *http.Request) {
 	sess, _ := s.authenticatedSession(r)
-	s.renderSettingsReading(w, r, http.StatusOK, themeForm{Theme: sess.User.Theme})
+	s.renderSettingsReading(w, r, http.StatusOK, readingForm{Theme: sess.User.Theme, Layout: sess.User.Layout})
 }
 
 func (s *Server) settingsReadingFormHandler(w http.ResponseWriter, r *http.Request) {
-	var form themeForm
+	var form readingForm
 	if err := s.decodePostForm(w, r, &form); err != nil {
 		s.formErrorResponse(w, r, err)
 		return
 	}
 
-	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light or Dark.")
+	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemePaper, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light, Paper or Dark.")
+	form.CheckField(slices.Contains([]string{rss.LayoutHeadlines, rss.LayoutCards}, form.Layout), "layout", "Choose Headlines or Cards.")
 	if !form.Valid() {
 		s.renderSettingsReading(w, r, http.StatusUnprocessableEntity, form)
 		return
 	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.services.UserService.UpdateTheme(r.Context(), userID, form.Theme); err != nil {
+	if err := s.services.UserService.UpdateReading(r.Context(), userID, form.Theme, form.Layout); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	s.sessionManager.Put(r.Context(), "flash", "Your theme was updated.")
+	s.sessionManager.Put(r.Context(), "flash", "Your reading settings were updated.")
 	http.Redirect(w, r, "/settings/reading", http.StatusSeeOther)
 }
 

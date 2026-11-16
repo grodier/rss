@@ -67,7 +67,10 @@ func TestDiscoverRepositorySections(t *testing.T) {
 	repo := NewDiscoverRepository(db)
 	subs := NewSubscriptionRepository(db)
 	userID := newTestUser(t, db)
-	day := func(n int) time.Time { return time.Now().Add(-time.Duration(n) * 24 * time.Hour).Truncate(time.Second) }
+	// One clock reading for the whole test: day(n) is written to the database
+	// and compared with what comes back, so it must not move between calls.
+	now := time.Now().Truncate(time.Second)
+	day := func(n int) time.Time { return now.Add(-time.Duration(n) * 24 * time.Hour) }
 
 	first := newTestSection(t, db, "First", 1)
 	second := newTestSection(t, db, "Second", 2)
@@ -270,7 +273,10 @@ func TestDiscoverRepositorySectionFeeds(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewDiscoverRepository(db)
 	userID := newTestUser(t, db)
-	day := func(n int) time.Time { return time.Now().Add(-time.Duration(n) * 24 * time.Hour).Truncate(time.Second) }
+	// One clock reading for the whole test: day(n) is written to the database
+	// and compared with what comes back, so it must not move between calls.
+	now := time.Now().Truncate(time.Second)
+	day := func(n int) time.Time { return now.Add(-time.Duration(n) * 24 * time.Hour) }
 
 	sec := newTestSection(t, db, "Section", 1)
 	other := newTestSection(t, db, "Other", 2)

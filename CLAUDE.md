@@ -8,6 +8,9 @@ Pre-alpha (see "Prototype stage"); `docs/features.md` describes what works.
 Reading is a timeline, not an inbox: read state is recorded but shown only as a quiet marker on read articles.
 Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/decisions.md` for the decisions behind this.
 
+It looks like a paper, not a social app: headline-led article rows, barely rounded corners, and the logo's ink, sky and sunrise.
+Readers choose a theme (System, Light, Paper or Dark) and an article layout (Headlines or Cards) in Settings → Reading, and every page has to look right in each; see "Design" in `docs/decisions.md`.
+
 ## Prototype stage
 
 The app is pre-alpha, but its production data is kept: schema changes are new migrations, never a reset (see "Pre-alpha testing" in `docs/decisions.md`).
@@ -150,7 +153,12 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - The admin (`internal/admin`, `internal/ui/admin`, `web/admin`) follows these conventions with its own files: routes in `internal/admin/router.go`, pages in its layout with `{{template "admin-nav" .Nav}}` and `Nav: s.nav(r, "<section>")`, partials in `internal/ui/admin/partials`, and its stylesheet partials' order in `web/admin/styles/base.css`.
   Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`), shared styles in `web/shared`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
-  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so themes can be added later.
+  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so every theme (Light, Paper, Dark) gets them: a new color token needs a dark value, and a Paper value if the warm page changes it.
+  Corners use the radius tokens there, never literal radii or pills: `--radius` for frames and pictures, `--radius-sm` for small things, `--radius-control` for buttons, fields and other controls.
+- Article rows have one markup (`partials/article_row.html`) and two layouts, Headlines (the default) and Cards, both in `web/app/styles/partials/rows.css`: Cards under `:root[data-layout="cards"]`, Headlines under `:root:not([data-layout="cards"])`, and what they share with no layout selector.
+  A change to article rows, or to anything inside one, is made for both layouts and checked in both, on every kind of page that lists articles (a timeline, a feed, a site, Saved, a Discover section's Recent posts), at desktop and phone widths; neither is the legacy one.
+  Only a row's `.article-card` opens the article, and it holds no other link or button: the byline, the source link, Follow and the actions go in `.article-foot`.
+  Logged-in pages carry the reader's theme and layout on `<html>` through `{{template "html-theme" .Nav}}`.
   Rules go in the partial for their area (`web/app/styles/partials`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block.
   The partials have one order, listed in `web/app/styles/base.css`: a sheet imports the partials its pages use in that order, with `press.css` last, and a new partial goes in the list and in the sheets of every page it styles.
   Where a property has a standard name, write only that and let the build add the vendor prefixes (see "Frontend assets" in `docs/decisions.md`).
@@ -217,6 +225,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Suggest a split only if it makes sense: each part merges on its own, with its tests and docs, and leaves `main` working; don't cut one change into pieces that can't be reviewed apart.
 - Update the docs the change affects in the same PR (see "Docs").
 - A PR that changes how the app looks shows its options first, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
+  Screenshots of pages with article rows show both layouts, Headlines and Cards, and a change to colors shows Light, Paper and Dark.
   Every checkpoint shows several options that differ in approach, not variations of one idea, each with a justification, and recommends one.
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository.
@@ -238,7 +247,7 @@ Issues are written for an implementer with no context from the planning conversa
 
 - Size each issue for one PR that can be reviewed in one sitting; plan a bigger change as several issues, in order, each of which stands on its own.
 - Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
-  An issue that changes how the app looks adds "Design checkpoint": several starting options that differ in approach, the preferred one, and the pages and states the screenshots must show; or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
+  An issue that changes how the app looks adds "Design checkpoint": several starting options that differ in approach, the preferred one, and the pages and states the screenshots must show (both article layouts for anything in an article row, and each theme for anything about color); or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
 - State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them; the planning work also records them in `docs/decisions.md`.
   Look-and-feel choices not yet approved go under "Current thinking" instead, with the instruction to record the approved ones in `docs/decisions.md` in the implementation PR.

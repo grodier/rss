@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -65,13 +64,15 @@ func TestSettingsHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("Reading shows the current theme", func(t *testing.T) {
-		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemeDark: "Dark"} {
-			s := newTestServer(t)
-			sess := settingsSession
-			sess.User.Theme = theme
-			assertBodyContains(t, serveSettingsPage(t, s, s.settingsHandler, sess).Body.String(),
-				`<span class="hint">Theme: `+want+`</span>`)
+	t.Run("Reading shows the current theme and layout", func(t *testing.T) {
+		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemePaper: "Paper", rss.ThemeDark: "Dark"} {
+			for layout, wantLayout := range map[string]string{rss.LayoutHeadlines: "Headlines", rss.LayoutCards: "Cards"} {
+				s := newTestServer(t)
+				sess := settingsSession
+				sess.User.Theme, sess.User.Layout = theme, layout
+				assertBodyContains(t, serveSettingsPage(t, s, s.settingsHandler, sess).Body.String(),
+					`<span class="hint">Theme: `+want+` · Layout: `+wantLayout+`</span>`)
+			}
 		}
 	})
 
@@ -273,11 +274,11 @@ func TestSettingsNameForm(t *testing.T) {
 	})
 }
 
-// postSettingsReading posts theme to POST /settings/reading as sess. It returns
-// the response and the flash message left in the session.
-func postSettingsReading(t *testing.T, s *Server, sess rss.Session, theme string) (*httptest.ResponseRecorder, string) {
+// postSettingsReading posts theme and layout to POST /settings/reading as
+// sess. It returns the response and the flash message left in the session.
+func postSettingsReading(t *testing.T, s *Server, sess rss.Session, theme, layout string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
-	form := url.Values{"theme": {theme}}
+	form := url.Values{"theme": {theme}, "layout": {layout}}
 	req := httptest.NewRequest(http.MethodPost, "/settings/reading", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = req.WithContext(requestWithSession(sess).Context())
@@ -291,78 +292,105 @@ func postSettingsReading(t *testing.T, s *Server, sess rss.Session, theme string
 }
 
 func TestSettingsReading(t *testing.T) {
-	for _, theme := range []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark} {
-		t.Run("GET checks "+theme, func(t *testing.T) {
-			s := newTestServer(t)
-			sess := settingsSession
-			sess.User.Theme = theme
-			rr := httptest.NewRecorder()
-			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsReadingHandler)).ServeHTTP(rr, requestWithSession(sess))
+	themes := []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemePaper, rss.ThemeDark}
+	layouts := []string{rss.LayoutHeadlines, rss.LayoutCards}
+	for _, theme := range themes {
+		for _, layout := range layouts {
+			t.Run("GET checks "+theme+" and "+layout, func(t *testing.T) {
+				s := newTestServer(t)
+				sess := settingsSession
+				sess.User.Theme, sess.User.Layout = theme, layout
+				rr := httptest.NewRecorder()
+				s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsReadingHandler)).ServeHTTP(rr, requestWithSession(sess))
 
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
-			}
-			body := rr.Body.String()
-			if got := strings.Count(body, " checked"); got != 1 {
-				t.Errorf("%d checked choices, want 1", got)
-			}
-			assertBodyContains(t, body,
-				"<h1>Reading</h1>",
-				`<form class="reading-form" action="/settings/reading" method="post">`,
-				"<legend>Theme</legend>",
-				`value="`+theme+`" checked`,
-			)
-			if strings.Contains(body, "autofocus") {
-				t.Error("the form has autofocus without an error")
-			}
-		})
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+				}
+				body := rr.Body.String()
+				if got := strings.Count(body, " checked"); got != 2 {
+					t.Errorf("%d checked choices, want 2 (a theme and a layout)", got)
+				}
+				assertBodyContains(t, body,
+					"<h1>Reading</h1>",
+					`<form class="reading-form" action="/settings/reading" method="post">`,
+					"<legend>Theme</legend>",
+					`name="theme" value="`+theme+`" checked`,
+					"<legend>Article layout</legend>",
+					`name="layout" value="`+layout+`" checked`,
+				)
+				if strings.Contains(body, "autofocus") {
+					t.Error("the form has autofocus without an error")
+				}
+			})
+		}
 	}
 
-	for _, theme := range []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark} {
-		t.Run("POST saves "+theme, func(t *testing.T) {
-			var gotID, gotTheme string
-			s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-				updateThemeFn: func(ctx context.Context, id, theme string) error {
-					gotID, gotTheme = id, theme
-					return nil
-				},
-			}})
+	for _, theme := range themes {
+		for _, layout := range layouts {
+			t.Run("POST saves "+theme+" and "+layout, func(t *testing.T) {
+				var gotID, gotTheme, gotLayout string
+				s := newTestServerWith(t, Services{UserService: &fakeUserStore{
+					updateReadingFn: func(ctx context.Context, id, theme, layout string) error {
+						gotID, gotTheme, gotLayout = id, theme, layout
+						return nil
+					},
+				}})
 
-			rr, flash := postSettingsReading(t, s, settingsSession, theme)
+				rr, flash := postSettingsReading(t, s, settingsSession, theme, layout)
 
-			assertRedirect(t, rr, "/settings/reading")
-			if gotID != settingsSession.User.ID || gotTheme != theme {
-				t.Errorf("UpdateTheme(%q, %q), want (%q, %q)", gotID, gotTheme, settingsSession.User.ID, theme)
-			}
-			if want := "Your theme was updated."; flash != want {
-				t.Errorf("flash = %q, want %q", flash, want)
-			}
-		})
+				assertRedirect(t, rr, "/settings/reading")
+				if gotID != settingsSession.User.ID || gotTheme != theme || gotLayout != layout {
+					t.Errorf("UpdateReading(%q, %q, %q), want (%q, %q, %q)", gotID, gotTheme, gotLayout, settingsSession.User.ID, theme, layout)
+				}
+				if want := "Your reading settings were updated."; flash != want {
+					t.Errorf("flash = %q, want %q", flash, want)
+				}
+			})
+		}
 	}
 
-	for _, theme := range []string{"", "sepia", "Dark"} {
-		t.Run(fmt.Sprintf("POST %q is rejected", theme), func(t *testing.T) {
+	rejected := []struct {
+		name, theme, layout string
+		want                []string // in the re-rendered form
+	}{
+		{"no theme", "", rss.LayoutCards, []string{
+			`<p class="error" id="theme-error">Choose System, Light, Paper or Dark.</p>`,
+			`aria-describedby="theme-hint theme-error"`,
+			`name="layout" value="cards" checked`,
+		}},
+		{"an unknown theme", "sepia", rss.LayoutHeadlines, []string{`id="theme-error"`}},
+		{"a theme in another case", "Dark", rss.LayoutHeadlines, []string{`id="theme-error"`}},
+		{"no layout", rss.ThemePaper, "", []string{
+			`<p class="error" id="layout-error">Choose Headlines or Cards.</p>`,
+			`aria-describedby="layout-hint layout-error"`,
+			`name="theme" value="paper" checked`,
+		}},
+		{"an unknown layout", rss.ThemeDark, "grid", []string{`id="layout-error"`}},
+		{"neither", "", "", []string{`id="theme-error"`, `id="layout-error"`}},
+	}
+	for _, tt := range rejected {
+		t.Run("POST with "+tt.name+" is rejected", func(t *testing.T) {
 			calls := 0
 			s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-				updateThemeFn: func(context.Context, string, string) error {
+				updateReadingFn: func(context.Context, string, string, string) error {
 					calls++
 					return nil
 				},
 			}})
 
-			rr, flash := postSettingsReading(t, s, settingsSession, theme)
+			rr, flash := postSettingsReading(t, s, settingsSession, tt.theme, tt.layout)
 
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
 			}
-			assertBodyContains(t, rr.Body.String(),
-				`<p class="error" id="theme-error">Choose System, Light or Dark.</p>`,
-				`aria-describedby="theme-hint theme-error"`,
-				`aria-invalid="true"`,
-				"autofocus",
-			)
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want...)
+			assertBodyContains(t, body, `aria-invalid="true"`)
+			if got := strings.Count(body, "autofocus"); got != 1 {
+				t.Errorf("%d autofocus attributes, want 1 (the first invalid field)", got)
+			}
 			if calls != 0 {
-				t.Errorf("UpdateTheme called %d times, want 0", calls)
+				t.Errorf("UpdateReading called %d times, want 0", calls)
 			}
 			if flash != "" {
 				t.Errorf("flash = %q, want none", flash)
@@ -374,27 +402,27 @@ func TestSettingsReading(t *testing.T) {
 		other := rss.Session{ID: "123e4567-e89b-12d3-a456-426614174098", User: rss.User{ID: "123e4567-e89b-12d3-a456-426614174002", Name: "Grace"}}
 		var gotIDs []string
 		s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-			updateThemeFn: func(ctx context.Context, id, theme string) error {
+			updateReadingFn: func(ctx context.Context, id, theme, layout string) error {
 				gotIDs = append(gotIDs, id)
 				return nil
 			},
 		}})
 
-		postSettingsReading(t, s, other, rss.ThemeDark)
+		postSettingsReading(t, s, other, rss.ThemeDark, rss.LayoutCards)
 
 		if want := []string{other.User.ID}; !reflect.DeepEqual(gotIDs, want) {
-			t.Errorf("UpdateTheme ids = %q, want %q", gotIDs, want)
+			t.Errorf("UpdateReading ids = %q, want %q", gotIDs, want)
 		}
 	})
 
 	t.Run("store error", func(t *testing.T) {
 		s := newTestServerWith(t, Services{UserService: &fakeUserStore{
-			updateThemeFn: func(context.Context, string, string) error {
+			updateReadingFn: func(context.Context, string, string, string) error {
 				return errors.New("boom")
 			},
 		}})
 
-		rr, flash := postSettingsReading(t, s, settingsSession, rss.ThemeDark)
+		rr, flash := postSettingsReading(t, s, settingsSession, rss.ThemeDark, rss.LayoutCards)
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
@@ -415,6 +443,7 @@ func TestThemeAttribute(t *testing.T) {
 	}{
 		{rss.ThemeDark, `<html lang="en" data-theme="dark">`, `<meta name="theme-color" content="#0f1626" />`},
 		{rss.ThemeLight, `<html lang="en" data-theme="light">`, `<meta name="theme-color" content="#ffffff" />`},
+		{rss.ThemePaper, `<html lang="en" data-theme="paper">`, `<meta name="theme-color" content="#fffefc" />`},
 		{rss.ThemeSystem, `<html lang="en">`, systemColors},
 	}
 	for _, tt := range tests {
@@ -448,8 +477,24 @@ func TestThemeAttribute(t *testing.T) {
 		}
 	})
 
-	// Every logged-in page must carry the user's theme, or it would show
-	// the system's.
+	// The layout rides on the same tag: Cards is an attribute, Headlines the
+	// stylesheets' default, so it has none.
+	for layout, want := range map[string]string{
+		rss.LayoutCards:     `<html lang="en" data-theme="paper" data-layout="cards">`,
+		rss.LayoutHeadlines: `<html lang="en" data-theme="paper">`,
+	} {
+		t.Run("layout "+layout, func(t *testing.T) {
+			s := newTestServer(t)
+			sess := settingsSession
+			sess.User.Theme, sess.User.Layout = rss.ThemePaper, layout
+			rr := httptest.NewRecorder()
+			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(sess))
+			assertBodyContains(t, rr.Body.String(), want)
+		})
+	}
+
+	// Every logged-in page must carry the user's theme and layout, or it
+	// would show the system's theme and Headlines.
 	t.Run("every logged-in page has the attribute", func(t *testing.T) {
 		files, err := fs.Glob(ui.Templates, "templates/*.html")
 		if err != nil {

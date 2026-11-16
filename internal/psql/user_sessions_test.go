@@ -81,6 +81,9 @@ func TestUserSessionRepository(t *testing.T) {
 		if u.Theme != rss.ThemeSystem {
 			t.Errorf("Theme = %q, want %q", u.Theme, rss.ThemeSystem)
 		}
+		if u.Layout != rss.LayoutHeadlines {
+			t.Errorf("Layout = %q, want %q", u.Layout, rss.LayoutHeadlines)
+		}
 		if u.CreatedAt.IsZero() {
 			t.Error("CreatedAt is zero")
 		}

@@ -103,12 +103,23 @@ type navData struct {
 	Debug   bool
 }
 
-// Theme is the data-theme attribute of the page's <html>: "light" or "dark"
-// if the user chose one, "" to follow the system.
+// Theme is the data-theme attribute of the page's <html>: "light", "paper"
+// or "dark" if the user chose one, "" to follow the system.
 func (n navData) Theme() string {
 	switch n.User.Theme {
-	case rss.ThemeLight, rss.ThemeDark:
+	case rss.ThemeLight, rss.ThemePaper, rss.ThemeDark:
 		return n.User.Theme
+	}
+	return ""
+}
+
+// Layout is the data-layout attribute of the page's <html>: "cards" if the
+// user chose Cards, "" for Headlines, which the stylesheets draw without the
+// attribute (so pages that don't know the user, like a shared timeline, get
+// it too).
+func (n navData) Layout() string {
+	if n.User.Layout == rss.LayoutCards {
+		return rss.LayoutCards
 	}
 	return ""
 }

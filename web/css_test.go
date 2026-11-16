@@ -47,8 +47,8 @@ func colorTokens(decls []string) []string {
 }
 
 // The dark theme's values are written twice in tokens.css, for the system
-// setting and for the user's choice, so they must stay the same; and every
-// color token needs a dark value.
+// setting and for the user's choice, so they must stay the same; every
+// color token needs a dark value; and Paper only warms tokens light has.
 func TestDarkThemeTokens(t *testing.T) {
 	b, err := os.ReadFile("shared/styles/tokens.css")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestDarkThemeTokens(t *testing.T) {
 	}
 	css := string(b)
 
-	system := cssBlock(t, css, `:root:not([data-theme="light"])`)
+	system := cssBlock(t, css, `:root:not([data-theme="light"], [data-theme="paper"])`)
 	chosen := cssBlock(t, css, `:root[data-theme="dark"]`)
 	if !slices.Equal(system, chosen) {
 		t.Errorf("the dark theme's two blocks differ:\nsystem: %q\nchosen: %q", system, chosen)
@@ -69,6 +69,14 @@ func TestDarkThemeTokens(t *testing.T) {
 	}
 	if !slices.Equal(light, dark) {
 		t.Errorf("light and dark define different color tokens:\nlight: %q\ndark:  %q", light, dark)
+	}
+
+	// Paper is light with some tokens warmed, so it only redefines tokens
+	// light has (and the page behind the column, which only it sets apart).
+	for _, name := range colorTokens(cssBlock(t, css, `:root[data-theme="paper"]`)) {
+		if name != "--bg-page" && !slices.Contains(light, name) {
+			t.Errorf("the Paper theme defines %s, which isn't one of light's color tokens", name)
+		}
 	}
 }
 

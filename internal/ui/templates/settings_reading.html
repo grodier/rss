@@ -22,14 +22,14 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{$focus := .Form.FirstError "theme"}}
+      {{$focus := .Form.FirstError "theme" "layout"}}
       <form class="reading-form" action="/settings/reading" method="post">
         {{range .Form.NonFieldErrors}}
         <div class="error" role="alert">{{.}}</div>
         {{end}}
         <fieldset aria-describedby="theme-hint{{if .Form.FieldErrors.theme}} theme-error{{end}}">
           <legend>Theme</legend>
-          <p class="hint" id="theme-hint">System matches your device's light or dark setting.</p>
+          <p class="hint" id="theme-hint">System matches your device's light or dark setting. Paper is a warmer light.</p>
           <label class="choice">
             <input type="radio" name="theme" value="system"{{if eq .Form.Theme "system"}} checked{{end}}
               {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}}
@@ -42,11 +42,32 @@
             Light
           </label>
           <label class="choice">
+            <input type="radio" name="theme" value="paper"{{if eq .Form.Theme "paper"}} checked{{end}}
+              {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
+            Paper
+          </label>
+          <label class="choice">
             <input type="radio" name="theme" value="dark"{{if eq .Form.Theme "dark"}} checked{{end}}
               {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
             Dark
           </label>
           {{with .Form.FieldErrors.theme}}<p class="error" id="theme-error">{{.}}</p>{{end}}
+        </fieldset>
+        <fieldset aria-describedby="layout-hint{{if .Form.FieldErrors.layout}} layout-error{{end}}">
+          <legend>Article layout</legend>
+          <p class="hint" id="layout-hint">How articles are listed. Headlines puts each picture beside its headline; Cards shows a larger preview under the feed's name.</p>
+          <label class="choice">
+            <input type="radio" name="layout" value="headlines"{{if eq .Form.Layout "headlines"}} checked{{end}}
+              {{with .Form.FieldErrors.layout}}aria-invalid="true"{{end}}
+              {{if eq $focus "layout"}}autofocus{{end}} />
+            Headlines
+          </label>
+          <label class="choice">
+            <input type="radio" name="layout" value="cards"{{if eq .Form.Layout "cards"}} checked{{end}}
+              {{with .Form.FieldErrors.layout}}aria-invalid="true"{{end}} />
+            Cards
+          </label>
+          {{with .Form.FieldErrors.layout}}<p class="error" id="layout-error">{{.}}</p>{{end}}
         </fieldset>
         <div class="form-actions">
           <button class="btn-primary" type="submit">Save</button>

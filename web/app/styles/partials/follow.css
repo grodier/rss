@@ -18,7 +18,7 @@
   }
 
   /* Follow in an article row's foot, on a section's Recent posts: an
-     outlined pill, as a page of posts repeats it on every row of a feed,
+     outlined button, as a page of posts repeats it on every row of a feed,
      where a filled one would outshout the posts. */
   .article-foot .follow-form {
     margin-inline-start: auto;
@@ -34,7 +34,7 @@
     margin-inline-start: 0;
   }
 
-  /* Follow: a primary pill until pressed, then a quiet "Following". */
+  /* Follow: a primary button until pressed, then a quiet "Following". */
   .follow-button[aria-pressed="false"] {
     border-color: var(--text);
     background: var(--text);

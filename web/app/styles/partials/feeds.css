@@ -175,7 +175,7 @@
     justify-content: center;
     inline-size: 2.25rem;
     block-size: 2.25rem;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     color: var(--text-3);
     transition:
       background-color var(--duration-quick) var(--ease-out),

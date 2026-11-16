@@ -344,6 +344,14 @@ The decisions are under "Filtering and timelines" in decisions.md.
 
 ## Design
 
+- [ ] **Decide whether both article layouts stay.**
+  Headlines and Cards are both supported (#680), so every change to article rows is designed twice.
+  Once testers have used both, look at how many chose Cards and whether it earns that cost; "Article rows have two layouts" in [decisions.md](decisions.md) has why both exist.
+- [ ] **A dateline where the day changes in a timeline.**
+  Mocked during #680 and liked, not built: a labelled rule ("Today · Monday 16 November") between days, so each row shows only its time.
+  It marks time, not unread articles, so it fits "Reading"; it needs the reader's time zone, which only the browser knows, so it would be an enhancement like the local times.
+- [ ] **Whether the admin takes the reader's shape.**
+  #680 made the reader's corners nearly square and left the admin's as they were (it overrides the radius tokens); decide if the two should match.
 - [ ] **Generated avatars for sites without a usable icon.**
   Sites whose only icon is a small favicon keep their letter (#304).
   Explore generating something better, possibly with AI: the site's colors on the tile, an upscaled or redrawn logo.

@@ -1,22 +1,18 @@
 /* Article rows, the "You were here" line, Home's empty states and the end
    of All feeds, and the rows' actions: Save, Star and Share (with its
-   copied pill). */
+   copied label). Rows have two layouts, Headlines and Cards. */
 @layer components {
-  /* Article rows: a divided section per article, with a preview card
-     inside. The avatar column is empty on a feed's own page. */
+  /* Article rows: a divided section per article. One markup
+     (partials/article_row.html), two layouts, chosen in Settings > Reading:
+     Headlines, the default, and Cards, drawn when <html> has
+     data-layout="cards". Rules without a layout selector are shared; a
+     change to a row is made, and looked at, in both layouts. In both, only
+     .article-card opens the article: the byline, the source link and the
+     actions sit under it, in .article-foot. */
   .article-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    padding: 0.875rem 1rem 1rem;
     border-block-end: 1px solid var(--border);
-  }
-
-  .article-row > .avatar {
-    margin-inline-end: 0.75rem;
-  }
-
-  .article-main {
-    grid-column: 2;
   }
 
   .article-meta {
@@ -29,15 +25,8 @@
     line-height: 1.3;
   }
 
-  .avatar + .article-main .article-meta {
-    align-content: center;
-    min-block-size: 2.5rem;
-  }
-
   .article-feed {
     color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 650;
     text-decoration: none;
   }
 
@@ -47,12 +36,10 @@
 
   .article-card {
     position: relative;
-    margin-block-start: 0.375rem;
-    overflow: hidden;
-    border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--bg);
-    transition: border-color var(--duration-quick) var(--ease-out);
+    transition:
+      background-color var(--duration-quick) var(--ease-out),
+      border-color var(--duration-quick) var(--ease-out);
   }
 
   .article-card:has(.article-title a:focus-visible) {
@@ -61,23 +48,13 @@
   }
 
   .article-image {
-    inline-size: 100%;
-    aspect-ratio: 1.91 / 1;
+    display: block;
     object-fit: cover;
-    border-block-end: 1px solid var(--border);
     background: var(--surface);
-  }
-
-  .article-text {
-    padding: 0.75rem 0.875rem 0.8125rem;
   }
 
   .article-title {
     font-family: var(--font-display);
-    font-size: 1.125rem;
-    font-weight: 700;
-    line-height: 1.3;
-    letter-spacing: -0.01em;
   }
 
   .article-title a {
@@ -85,7 +62,7 @@
     text-decoration: none;
   }
 
-  /* The whole card opens the article; the source link sits above it. */
+  /* The whole card opens the article. */
   .article-title a::after {
     content: "";
     position: absolute;
@@ -99,7 +76,6 @@
   /* A grotesque headline over a serif excerpt, like a front page. */
   .article-excerpt {
     display: -webkit-box;
-    margin-block-start: 0.3125rem;
     overflow: hidden;
     color: var(--text-2);
     font-family: var(--font-reading);
@@ -111,13 +87,176 @@
     line-clamp: 2;
   }
 
-  /* The authors and the source link, under the excerpt. */
+  /* Headlines: the feed's icon and name are a kicker line, then the
+     headline and excerpt with the picture beside them. No frame: the card
+     shows itself when hovered or pressed (below, and press.css). */
+  :root:not([data-layout="cards"]) .article-row {
+    padding: 1rem 1rem 0.5rem;
+  }
+
+  :root:not([data-layout="cards"]) .article-main {
+    display: contents;
+  }
+
+  :root:not([data-layout="cards"]) .article-main > * {
+    grid-column: 1 / -1;
+  }
+
+  :root:not([data-layout="cards"]) .article-row > .avatar {
+    grid-row: 1;
+    align-self: center;
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    margin-inline-end: 0.5rem;
+    font-size: 0.6875rem;
+  }
+
+  :root:not([data-layout="cards"]) .article-meta {
+    grid-row: 1;
+    grid-column: 2;
+    align-items: center;
+    font-size: 0.8125rem;
+  }
+
+  :root:not([data-layout="cards"]) .article-feed {
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  /* The card's padding is hung outside the column, so its text lines up
+     with the kicker and its hover tint has room around it. */
+  :root:not([data-layout="cards"]) .article-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1.25rem;
+    align-items: start;
+    margin: 0.25rem -0.5rem 0;
+    padding: 0.375rem 0.5rem 0.5rem;
+  }
+
+  :root:not([data-layout="cards"]) .article-text {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  :root:not([data-layout="cards"]) .article-image {
+    grid-row: 1;
+    grid-column: 2;
+    inline-size: 10.5rem;
+    aspect-ratio: 3 / 2;
+    border-radius: var(--radius-sm);
+  }
+
+  :root:not([data-layout="cards"]) .article-title {
+    font-size: 1.375rem;
+    font-weight: 750;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  :root:not([data-layout="cards"]) .article-excerpt {
+    margin-block-start: 0.375rem;
+  }
+
+  /* On phones the picture goes full width between the headline and the
+     excerpt, so a row has the room a card has. */
+  @media (max-width: 42.99rem) {
+    :root:not([data-layout="cards"]) .article-row {
+      padding: 1.125rem 1rem 0.625rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-card {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    :root:not([data-layout="cards"]) .article-text {
+      display: contents;
+    }
+
+    :root:not([data-layout="cards"]) .article-title {
+      grid-row: 1;
+      font-size: 1.25rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-image {
+      grid-row: 2;
+      grid-column: 1;
+      inline-size: 100%;
+      aspect-ratio: 1.91 / 1;
+      margin-block-start: 0.625rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-excerpt {
+      grid-row: 3;
+      margin-block-start: 0.625rem;
+    }
+  }
+
+  /* Cards: the feed's avatar in a column of its own, and a framed preview
+     card under the feed's name. The avatar column is empty on a feed's own
+     page. */
+  :root[data-layout="cards"] .article-row {
+    padding: 0.875rem 1rem 1rem;
+  }
+
+  :root[data-layout="cards"] .article-row > .avatar {
+    margin-inline-end: 0.75rem;
+  }
+
+  :root[data-layout="cards"] .article-main {
+    grid-column: 2;
+  }
+
+  :root[data-layout="cards"] .avatar + .article-main .article-meta {
+    align-content: center;
+    min-block-size: 2.5rem;
+  }
+
+  :root[data-layout="cards"] .article-feed {
+    font-size: 0.9375rem;
+    font-weight: 650;
+  }
+
+  :root[data-layout="cards"] .article-card {
+    margin-block-start: 0.375rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  :root[data-layout="cards"] .article-image {
+    inline-size: 100%;
+    aspect-ratio: 1.91 / 1;
+    border-block-end: 1px solid var(--border);
+  }
+
+  :root[data-layout="cards"] .article-text {
+    padding: 0.75rem 0.875rem 0.8125rem;
+  }
+
+  :root[data-layout="cards"] .article-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+
+  :root[data-layout="cards"] .article-excerpt {
+    margin-block-start: 0.3125rem;
+  }
+
+  /* The authors and the source link, at the start of the foot. */
   .article-source-line {
     display: flex;
+    flex: 1;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0 0.375rem;
-    margin-block-start: 0.5rem;
+    min-inline-size: 0;
     color: var(--text-3);
     font-size: 0.8125rem;
   }
@@ -127,8 +266,6 @@
   }
 
   .article-source {
-    position: relative;
-    z-index: 1;
     color: var(--text-3);
     text-decoration: none;
   }
@@ -136,30 +273,6 @@
   .article-source:hover {
     color: var(--text-2);
     text-decoration: underline;
-  }
-
-  /* Home's empty states: a lead line in the text color over the muted
-     explanation, and, when following nothing, the two ways in. */
-  .home-empty .home-empty-lead {
-    color: var(--text);
-    font-size: 1.0625rem;
-    font-weight: 600;
-  }
-
-  .home-empty .home-empty-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.625rem;
-    margin-block-start: 1.25rem;
-  }
-
-  /* The end of All feeds, after its last row. */
-  .timeline-end {
-    padding: 1.5rem 1rem 2rem;
-    color: var(--text-3);
-    font-size: 0.875rem;
-    text-align: center;
   }
 
   /* "You were here": a labelled rule between two rows, where the
@@ -213,16 +326,29 @@
     }
   }
 
-  /* Read rows: a tinted card, quieter text and image. Still a timeline, not an
-     inbox. The tint is darker than the page in both themes, so read cards
-     always recede. */
-  .article-row.read .article-card {
-    background: var(--read-bg);
-  }
-
+  /* Read rows are quieter: still a timeline, not an inbox. Both layouts dim
+     the title, excerpt and picture; Headlines dims the kicker too, and
+     Cards tints the card, darker than the page in both themes, so read
+     cards always recede. */
   .article-row.read .article-title a {
     color: var(--text-2);
+  }
+
+  :root:not([data-layout="cards"]) .article-row.read .article-title a {
+    color: var(--text-3);
+    font-weight: 600;
+  }
+
+  :root:not([data-layout="cards"]) .article-row.read .article-feed {
+    color: var(--text-3);
+  }
+
+  :root[data-layout="cards"] .article-row.read .article-title a {
     font-weight: 550;
+  }
+
+  :root[data-layout="cards"] .article-row.read .article-card {
+    background: var(--read-bg);
   }
 
   .article-row.read .article-excerpt {
@@ -234,23 +360,29 @@
     filter: saturate(0.6);
   }
 
-  /* Hovering a card never tints it: the tint is the read marker, so it has
-     to stay unambiguous. Instead the border firms up and the title takes the
-     link color, the opposite of a read card's dimmed title. Only on devices
-     that really hover, so a tap on a phone doesn't leave a card looking
-     hovered. After the read rules, so hover wins on read cards too. */
+  /* Hover, only on devices that really hover, so a tap on a phone doesn't
+     leave a card looking hovered, and after the read rules, so it wins on
+     read cards too. The title takes the link color, the opposite of a read
+     card's dimmed title. Headlines tints the card, which is how its
+     frameless card shows what a click opens. Cards never tints (there the
+     tint is the read marker, and has to stay unambiguous): its border firms
+     up instead. */
   @media (hover: hover) {
-    .article-card:hover {
+    :root:not([data-layout="cards"]) .article-card:hover {
+      background: var(--surface);
+    }
+
+    :root[data-layout="cards"] .article-card:hover {
       border-color: color-mix(in srgb, var(--text) 40%, transparent);
     }
 
-    .article-card:hover .article-title a {
+    .article-row .article-card:hover .article-title a {
       color: var(--accent);
     }
   }
 
   .article-also-in {
-    margin-block-start: 0.625rem;
+    margin-block-start: 0.5rem;
     color: var(--text-3);
     font-size: 0.8125rem;
   }
@@ -281,7 +413,7 @@
     gap: 0.375rem;
     padding: 0.375rem 0.625rem 0.375rem 0.375rem;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     background: none;
     color: var(--text-3);
     font: inherit;
@@ -352,7 +484,7 @@
     color: var(--accent);
   }
 
-  /* A copy's outcome (share.ts's showCopied): a pill centered 6 px above the
+  /* A copy's outcome (share.ts's showCopied): a label centered 6 px above the
      button, so nothing in the row moves. It fades out over --duration-quick,
      keeping its text while it fades, and is hidden once it has. */
   .share-button {
@@ -365,7 +497,7 @@
     inset-inline-start: 50%;
     transform: translateX(-50%);
     padding: 0.125rem 0.5rem;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     background: var(--text);
     color: var(--bg);
     font-size: 0.75rem;
@@ -565,20 +697,36 @@
 
   /* The row's foot, under the card: "Also in" on the left, the actions on
      the right. */
+  /* A row's foot, under its card: the byline and source link, then Follow
+     (on a section's Recent posts) and the actions at the end. On phones the
+     byline takes a line of its own. */
   .article-foot {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-block-start: 0.375rem;
+    margin-block-start: 0.25rem;
   }
 
-  .article-foot .article-also-in {
-    flex: 1;
-    min-inline-size: 0;
-    margin-block-start: 0;
+  :root[data-layout="cards"] .article-foot {
+    margin-block-start: 0.375rem;
   }
 
   .article-foot .article-actions {
     margin-inline: auto -0.375rem;
+  }
+
+  @media (max-width: 42.99rem) {
+    .article-foot {
+      flex-wrap: wrap;
+      row-gap: 0.125rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-foot {
+      margin-block-start: 0.5rem;
+    }
+
+    .article-foot .article-source-line {
+      flex-basis: 100%;
+    }
   }
 }

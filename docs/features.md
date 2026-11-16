@@ -632,7 +632,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview, Feeds and sites, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, the Seed list and Discover's catalog, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
    `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `feeds`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
@@ -703,6 +703,25 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 3. `internal/ui/admin/feeds.html`, `feed.html`, `site.html` and `partials/feeds.html`.
 
 **Tests:** `internal/admin/feeds_test.go`; `internal/psql/admin_feeds_test.go`.
+
+### Seed list and Discover's catalog
+
+`GET /seed` (`seedHandler`) shows how each seed list entry's lookup went, and `GET /discover` (`catalogHandler`) what Discover's catalog holds, so the owner sees a failed entry without reading the deploy log and the catalog as a whole rather than a feed at a time.
+
+1. **The entries.** `cmd/admin`'s wiring passes the embedded list (`seed.Entries()`) in `Config.SeedList`, and `AdminFeedRepository.SeedList` joins its site keys, in the file's order (`unnest … WITH ORDINALITY`), to `lookups` by site key, the site that lookup found (`lookups.site_id`), that site's feeds and how many of them are in `discover_feeds`.
+2. **States and filters.** `rss.AdminSeedEntry.State` splits the lookup's status: found (done with a site), failed, no feeds (done without one), running, and waiting (pending, or no lookup yet, which the next deploy's `www seed` queues).
+   The filters (`seedFilters`: All, the default; Not found, failed or no feeds; Waiting, waiting or running; Found but not in Discover) and their counts are worked out in Go over the whole list, which is read on every view; each row says its state in the feeds' Problem style (`seedStatus`), a failure's error cut to one line, and links the site found to its page.
+3. **Look up again.** A failed or no-feeds entry has the button: one whose lookup found a site posts to that site's `POST /sites/{id}/lookup` (Check for new feeds, `site.lookup`, back to the site's page); one without posts its site key to `POST /seed/lookup` (`seedLookupHandler`), which looks the key up in `Config.SeedList` (404 when it isn't on the list) and has `AdminFeedRepository.QueueSeedLookup` queue the entry's address at a reader's priority with no time-to-live (`requestLookup`, as `CheckForFeeds` does), recorded as `seed.lookup` on target `seed` with the site key, then goes back to the list under the same filter.
+4. **The catalog.** `AdminFeedRepository.Catalog` returns every Discover section in its order with its feeds by title (site, posts a week, latest article, subscribers as a count), empty sections included; the page offers a filter link per section with its count, and All, the default, adds a Section column.
+   Each feed links to its admin page, whose Discover panel (above) puts it in a section or takes it out.
+
+**Start at:**
+
+1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`) and `catalog.go`.
+2. `internal/psql/admin_feeds.go` (`SeedList`, `QueueSeedLookup`, `Catalog`).
+3. `internal/ui/admin/seed.html` and `discover.html`.
+
+**Tests:** `internal/admin/seed_test.go`; `internal/psql/admin_seed_test.go`.
 
 ### Web performance
 

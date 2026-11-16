@@ -67,7 +67,7 @@ var templateFuncs = template.FuncMap{
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", "waitlist", "feeds", "service", "webperf", "audit", or ""
+// ("overview", "waitlist", "feeds", "seed", "discover", "service", "webperf", "audit", or ""
 // on pages outside the sections) and the logged-in admin's email, "" when
 // no one is logged in, which hides the sections and Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {

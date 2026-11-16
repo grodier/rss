@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/seed"
 )
 
 // AdminFeedRepository reads the admin's feeds and sites pages and makes
@@ -442,4 +445,111 @@ func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectio
 		return err
 	}
 	return tx.Commit()
+}
+
+// SeedList returns the seed list's entries, in their order, each with its
+// site key's lookup, the site that lookup found, that site's feeds and how
+// many of them are in Discover's catalog. An entry whose site key has no
+// lookup has a Lookup with ID "".
+func (r *AdminFeedRepository) SeedList(ctx context.Context, entries []seed.Entry) ([]rss.AdminSeedEntry, error) {
+	keys := make([]string, len(entries))
+	for i, e := range entries {
+		keys[i] = e.SiteKey
+	}
+	stmt := `SELECT t.site_key, COALESCE(l.id::text, ''), COALESCE(l.url, ''), COALESCE(l.status, ''),
+			COALESCE(l.site_id::text, ''), COALESCE(l.error, ''), COALESCE(l.attempts, 0),
+			l.requested_at, l.started_at, l.finished_at, COALESCE(s.host, ''),
+			(SELECT count(*) FROM feeds f WHERE f.site_id = s.id),
+			(SELECT count(*) FROM feeds f JOIN discover_feeds d ON d.feed_id = f.id WHERE f.site_id = s.id)
+		FROM unnest($1::text[]) WITH ORDINALITY AS t(site_key, ord)
+		LEFT JOIN lookups l ON l.site_key = t.site_key
+		LEFT JOIN sites s ON s.id = l.site_id
+		ORDER BY t.ord`
+	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(keys))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]rss.AdminSeedEntry, 0, len(entries))
+	for i := 0; rows.Next(); i++ {
+		var e rss.AdminSeedEntry
+		l := &e.Lookup
+		var requested, started, finished sql.NullTime
+		if err := rows.Scan(&e.SiteKey, &l.ID, &l.URL, &l.Status, &l.SiteID, &l.Error, &l.Attempts,
+			&requested, &started, &finished, &e.SiteHost, &e.Feeds, &e.InDiscover); err != nil {
+			return nil, err
+		}
+		e.URL = entries[i].URL
+		if l.ID != "" {
+			l.SiteKey = e.SiteKey
+		}
+		l.RequestedAt, l.StartedAt, l.FinishedAt = requested.Time, started.Time, finished.Time
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// QueueSeedLookup queues a lookup of the seed list's entry e at a reader's
+// priority, as CheckForFeeds does for a site, however recently it last
+// ran, and returns it; a lookup already pending or running is returned as
+// it is. It's recorded as seed.lookup by by, with the entry's address and
+// the lookup's ID and status.
+func (r *AdminFeedRepository) QueueSeedLookup(ctx context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.Lookup{}, err
+	}
+	defer tx.Rollback()
+
+	// No time-to-live, so a finished lookup always runs again.
+	l, err := requestLookup(ctx, tx, e.SiteKey, e.URL, false, 0, 0)
+	if err != nil {
+		return rss.Lookup{}, err
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "seed.lookup", TargetType: "seed", TargetID: e.SiteKey,
+		After: map[string]any{"url": e.URL, "lookup_id": l.ID, "status": l.Status}})
+	if err != nil {
+		return rss.Lookup{}, err
+	}
+	return l, tx.Commit()
+}
+
+// Catalog returns Discover's sections in their default order, each with
+// its catalog feeds by title, empty sections included. The catalog is
+// small, edited by hand, so each feed's latest article and subscribers are
+// counted per row.
+func (r *AdminFeedRepository) Catalog(ctx context.Context) ([]rss.AdminCatalogSection, error) {
+	stmt := `SELECT ds.id, ds.slug, ds.name, COALESCE(f.id::text, ''), COALESCE(f.title, ''), COALESCE(f.url, ''),
+			COALESCE(s.id::text, ''), COALESCE(s.host, ''), COALESCE(f.posts_per_week, 0),
+			(SELECT max(COALESCE(a.published_at, a.created_at)) FROM articles a WHERE a.feed_id = f.id),
+			CASE WHEN f.id IS NULL THEN 0 ELSE ` + adminSubscribers("f") + ` END
+		FROM discover_sections ds
+		LEFT JOIN discover_feeds d ON d.section_id = ds.id
+		LEFT JOIN feeds f ON f.id = d.feed_id
+		LEFT JOIN sites s ON s.id = f.site_id
+		ORDER BY ds.position, ds.name, lower(f.title), f.url`
+	rows, err := r.DB.QueryContext(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []rss.AdminCatalogSection
+	for rows.Next() {
+		var sec rss.Section
+		var f rss.AdminCatalogFeed
+		var latest sql.NullTime
+		if err := rows.Scan(&sec.ID, &sec.Slug, &sec.Name, &f.ID, &f.Title, &f.URL,
+			&f.SiteID, &f.SiteHost, &f.PostsPerWeek, &latest, &f.Subscribers); err != nil {
+			return nil, err
+		}
+		if n := len(out); n == 0 || out[n-1].ID != sec.ID {
+			out = append(out, rss.AdminCatalogSection{Section: sec})
+		}
+		if f.ID != "" {
+			f.LatestPost = latest.Time
+			last := &out[len(out)-1]
+			last.Feeds = append(last.Feeds, f)
+		}
+	}
+	return out, rows.Err()
 }

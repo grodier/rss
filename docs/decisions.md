@@ -194,6 +194,8 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **A row of filter links too wide for a phone scrolls in its own frame** (#581), like a table, rather than wrapping: the feeds page's six filters don't fit on 320px.
 - **A feed's place in Discover is edited on its admin page, as a status panel** (#628, approved at its design checkpoint): its heading says where the feed stands ("In Discover under Food" or "Not in Discover"), like the fetching panel above it, with a section select and Save under it; the site page's feed table names each feed's section.
   The feed page is where the choice is made because it shows what the choice needs (posting rate, health, its site); an overview of the catalog by section is #648's Discover page.
+- **The seed list's status is a page that reads the file, not a table** (#648, from #450's plan): the embedded list joined to `lookups` by site key, so the owner sees failed entries without the deploy log, and the file stays the list's source until #649 decides otherwise.
+  Its one action, Look up again, reuses a site's Check for new feeds when the entry's lookup found a site, and otherwise queues the entry's own address (`seed.lookup`), at a reader's priority so it runs now rather than behind the seed.
   Rejected: a plain labelled form (it read as foreign to a page of status and figures), a button per section that saves on click (grows with the list, and a stray click saves), and the select in the page head (no room for its hint or error).
   A gone feed can't be added, since Discover would offer a feed that no longer updates; one already in the catalog can still be taken out.
   Breadcrumbs on the feed and site pages, which the checkpoint showed were missing, are #655.

@@ -250,10 +250,12 @@ func TestSearchTooLong(t *testing.T) {
 // TestLiveSearchMarkup checks the markup live-search.ts relies on, in
 // every state of the page, since a page in any state can be typed into: the
 // app entry's script, a GET
-// form[data-live-search] to /discover with a q input, and one
-// [data-search-results] container holding the Look up row, the results
-// (li.search-result) and the no-results message, and, with no query,
-// Discover's sections (empty here, with an empty catalog).
+// form[data-live-search] to /discover (without scope in its action, which
+// live search fetches with q alone) with a q input and a hidden scope, which
+// only a submit sends, and one [data-search-results] container holding the
+// Look up row, the suggestions or results (li.search-result) and the
+// no-results message, and, with no query, Discover's sections (empty here,
+// with an empty catalog).
 func TestLiveSearchMarkup(t *testing.T) {
 	store := &fakeSearchStore{searchFn: func(_ context.Context, q, _ string, _ int) ([]rss.SiteWithFeeds, error) {
 		if q == "zzz" {
@@ -275,13 +277,19 @@ func TestLiveSearchMarkup(t *testing.T) {
 		noChildren bool   // the container has no elements
 		importCard bool   // the container holds only the import card (an empty catalog, a new reader)
 		recent     string // the container's data-recent-query, "" for none
+		everything bool   // the suggestions' "Search everything" row is in the container
+		scope      string // the form's hidden scope
 	}{
-		{name: "no query", q: "", status: http.StatusOK, importCard: true},
-		{name: "results", q: "ex", status: http.StatusOK, results: 2, recent: "ex"},
-		{name: "address", q: "npr.org", status: http.StatusOK, results: 2, lookup: true, recent: "npr.org"},
-		{name: "no results", q: "zzz", status: http.StatusOK, empty: true, recent: "zzz"},
-		{name: "trimmed", q: url.QueryEscape("  ex "), status: http.StatusOK, results: 2, recent: "ex"},
-		{name: "invalid query", q: strings.Repeat("a", 201), status: http.StatusUnprocessableEntity, noChildren: true},
+		{name: "no query", q: "", status: http.StatusOK, importCard: true, scope: "top"},
+		{name: "suggestions", q: "ex", status: http.StatusOK, results: 2, everything: true, scope: "top"},
+		{name: "address suggestions", q: "npr.org", status: http.StatusOK, results: 2, lookup: true, everything: true, scope: "top"},
+		{name: "no suggestions", q: "zzz", status: http.StatusOK, everything: true, scope: "top"},
+		// A reader who has saved nothing gets the Feeds tab's rows, without tabs.
+		{name: "results", q: "ex&scope=top", status: http.StatusOK, results: 2, recent: "ex", scope: "feeds"},
+		{name: "address results", q: "npr.org&scope=top", status: http.StatusOK, results: 2, lookup: true, recent: "npr.org", scope: "feeds"},
+		{name: "no results", q: "zzz&scope=top", status: http.StatusOK, empty: true, recent: "zzz", scope: "feeds"},
+		{name: "trimmed", q: url.QueryEscape("  ex ") + "&scope=top", status: http.StatusOK, results: 2, recent: "ex", scope: "feeds"},
+		{name: "invalid query", q: strings.Repeat("a", 201), status: http.StatusUnprocessableEntity, noChildren: true, scope: "top"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -310,6 +318,10 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 			if qs := findAll(forms[0], func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "q" }); len(qs) != 1 {
 				t.Errorf("live search form has %d q inputs, want 1", len(qs))
+			}
+			scopes := findAll(forms[0], func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "scope" })
+			if len(scopes) != 1 || attr(scopes[0], "type") != "hidden" || attr(scopes[0], "value") != tt.scope {
+				t.Errorf("live search form's scope inputs = %d, want 1 hidden with value %q", len(scopes), tt.scope)
 			}
 
 			containers := findAll(doc, func(n *html.Node) bool { return hasAttr(n, "data-search-results") })
@@ -347,6 +359,9 @@ func TestLiveSearchMarkup(t *testing.T) {
 			}
 			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "empty") })) == 1; got != tt.empty {
 				t.Errorf("no-results message in container = %v, want %v", got, tt.empty)
+			}
+			if got := len(findAll(c, func(n *html.Node) bool { return hasClass(n, "search-everything") })) == 1; got != tt.everything {
+				t.Errorf("Search everything in container = %v, want %v", got, tt.everything)
 			}
 			if got := len(findAll(c, func(*html.Node) bool { return true })) == 0; got != tt.noChildren {
 				t.Errorf("container empty = %v, want %v", got, tt.noChildren)

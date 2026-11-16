@@ -153,9 +153,10 @@ The Waitlist and review tables show each entry's sections by name, read with the
 
 **Flow.** Discover (`GET /discover`, the fourth tab, with the magnifier) shows Discover's catalog by section when there's no query, and is the whole app's search when there is one (`?q=…`; see "Discover's search" below).
 The box submits from the magnifier at its start, with Enter, or with a phone keyboard's Search key; there's no Search button.
-With JavaScript, results update as you type: live search (`live-search.ts`) fetches the same page once typing pauses, swaps in its results container (`data-search-results`) and announces its `data-announce`, with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
+With JavaScript, suggestions update as you type: live search (`live-search.ts`) fetches the same page with `q` alone once typing pauses, swaps in its results container (`data-search-results`) and announces its `data-announce`, with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
+Enter (or the magnifier) submits the form with its hidden `scope`, the tab shown, and gets the results (see "Discover's search" below).
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
-When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the site search also matches its site key exactly and ranks that site first, and unless that site was found the results start with a Look up row, which posts the cleaned-up address to `/lookups`.
+When `q` is a website address (`discovery.ParseInput`, which drops whitespace next to `.`, `/` or `:` so `npr. org` counts), the site search also matches its site key exactly and ranks that site first, and unless that site was found the suggestions and the results start with a Look up row, which posts the cleaned-up address to `/lookups`.
 With JavaScript, Look up and the site page's "Check {host} for new feeds" show they're working while the post waits for the lookup (busy forms (`form[data-busy]`, `busy-forms.ts`)).
 That handler normalizes the input (`discovery.ParseInput`), applies the per-user limit, and calls `LookupRepository.Request`, which returns the site key's lookup, creating it or re-queuing it if its result is older than its TTL (24 h when it found a site, 1 h when it failed or found no feeds), or at once when the address differs from the one it ran on, unless it found a site and the address is that site's home page.
 It then waits up to 3 s for the row and redirects to the site page if the lookup found one; otherwise to `/lookups/{id}`, which shows a spinner while the lookup runs, then redirects to the site or says what went wrong.
@@ -171,7 +172,10 @@ The worker turns each feed's items into articles (`ingest.Articles`) and saves t
 The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed.
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 
-**Discover's search.** With a query, `discoverSearch` reads, in turn, the reader's subscriptions that match (`SubscriptionRepository.Search`: their name, feed title, site title or host), their saved articles that match (`ListSaved`, Saved's own search), the sites that match (`searchSites`: `SearchRepository.Search` and which of their feeds the reader follows), and whether they've saved anything at all (`HasSaves`).
+**Discover's suggestions.** With a query but no `scope` (live search's fetch, or a reload of the URL it left), `discoverSuggest` reads only the reader's subscriptions that match (6) and the sites (`searchSites`, 12, as fully followed ones are left out), and builds the same rows as the Feeds tab below, compacted (`followedFeedSuggestion`, `siteSuggestion`: one line of facts, no tagline, no Follow), ranked by `rankResults` and cut to 6.
+After them comes "Search everything", a link to the results' Top tab; with no feeds it's the only row (with Look up, for an address).
+
+**Discover's search.** With a query and `scope`, `discoverSearch` reads, in turn, the reader's subscriptions that match (`SubscriptionRepository.Search`: their name, feed title, site title or host), their saved articles that match (`ListSaved`, Saved's own search), the sites that match (`searchSites`: `SearchRepository.Search` and which of their feeds the reader follows), and whether they've saved anything at all (`HasSaves`).
 Each source returns up to 51 rows, ordered by how well the name matches (`matchOrder` in `internal/psql/search.go`), so the best are within the limit and 51 tells a tab's "50+" from 50.
 They become rows (`searchResult`): a followed feed with "✓ Following", a site with Follow for its one feed the reader doesn't follow or with its feed count when there are several (a site whose feeds they all follow is left out, its followed feeds being there), and a saved article with its excerpt.
 `rankResults` orders the feeds, and Top's mix of feeds and saved articles, by `matchRank` (the same order as `matchOrder`), the reader's own things, recency, then title (`searchScore`).
@@ -179,7 +183,7 @@ The tabs, Top, Feeds and Saved (`?scope=`), are links in the timeline tabs' mark
 Follow works as on Discover's rows (`save-star.ts`), returning to the results.
 
 **Recent searches.** They're kept only in the browser, never on the server: `recent-searches.ts` keeps up to 5 queries, newest first, in `localStorage` (`paperround.recentSearches`), a repeat (ignoring case) moving to the top.
-A page of results records its query, which the server puts on the results container as `data-recent-query`; typing records nothing, as live search swaps only the container's contents, but a reload of the URL it left does.
+A page of results records its query, which the server puts on the results container as `data-recent-query`; suggestions record nothing, so neither typing nor a reload of the URL it left does.
 While the box is focused and empty, the list (from `<template data-recent-template>` in `discover.html`, as the CSP allows no inline script) takes the place of the container's contents, each row linking to its query's Top tab; the contents come back on a press or focus outside the box and the list, on Escape, or when the reader types.
 Clear empties the list, and the logged-out pages' entry (`login.ts`: Log in, where logging out lands, Sign up, Reset password and the landing page) clears it too, whatever the reason for being logged out, so the next person on a shared device doesn't see it.
 Without JavaScript, or with storage blocked, there are no recent searches.
@@ -221,7 +225,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 
 **Start at:**
 
-1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, recent searches `recent-searches.ts`, Follow's toggle `save-star.ts`.
+1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `discover_search.go` (`discoverSuggest`, `discoverSearch`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, recent searches `recent-searches.ts`, Follow's toggle `save-star.ts`.
    The search: `internal/server/discover_search.go` (`discoverSearch`, `matchRank`, `rankResults`), `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`HasSaves`), and `partials/search_result.html`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).

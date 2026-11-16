@@ -1,5 +1,5 @@
 /* Discover: the import card, its sections of catalog feeds, and its
-   search's results. */
+   search's suggestions and results. */
 @layer components {
   /* Discover's search (#645): the tabs' counts, an empty tab dimmed so the
      row never moves; under 360 px the counts go, so the three tabs fit. */
@@ -177,6 +177,71 @@
   .search-result-note {
     color: var(--text-2);
     font-size: 0.875rem;
+  }
+
+  /* Discover's suggestions while typing (#666): compact rows, with a
+     2 rem avatar, the name on one line and one line of facts. */
+  .search-suggestions .search-result {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    align-items: center;
+    padding-block: 0.5rem;
+  }
+
+  .search-suggestions .avatar {
+    inline-size: 2rem;
+    block-size: 2rem;
+    font-size: 0.875rem;
+  }
+
+  .search-suggestion .search-result-title {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  /* The last row: "Search everything", with Enter's hint where there's a
+     keyboard; phones have their keyboard's Search key. */
+  .search-everything a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .search-everything a:hover {
+    background: var(--surface);
+  }
+
+  .search-everything .icon {
+    flex: none;
+    inline-size: 2rem;
+    block-size: 1.25rem;
+  }
+
+  .search-everything-text {
+    flex: 1;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .search-everything kbd {
+    flex: none;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  @media (pointer: coarse) {
+    .search-everything kbd {
+      display: none;
+    }
   }
 
   /* After Top's list: the tabs with more than it showed. */

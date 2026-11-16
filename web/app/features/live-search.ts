@@ -7,13 +7,16 @@ import { enhanceShare } from "./share";
 // Live search: as the reader types in form[data-live-search]'s q, fetch
 // the form's page for the query about 250 ms after the last keystroke
 // (aborting any request still in flight) and swap its
-// [data-search-results] into this page's, so results update in place.
+// [data-search-results] into this page's, so what it shows updates in place.
+// It fetches the action with q alone, without the form's hidden scope,
+// which only a submit sends, so on Discover typing gets suggestions and
+// Enter the results (#666).
 // Nothing is fetched under 2 characters; emptying the box fetches the
 // no-query page at once, so Discover's sections come back as they are now
 // (without the feeds followed meanwhile). The URL follows the query, so a
 // reload or Back shows the same results, and the new container's
-// data-announce (what the query found, worded by the server: "2 sites",
-// "No results") is announced in the polite live region; focus never moves. A swap also
+// data-announce (what the query found, worded by the server: "2 feeds",
+// "No feeds") is announced in the polite live region; focus never moves. A swap also
 // removes the form's error, left from a page rendered as a 422, since the
 // new query is valid. On any failure (a non-200, a redirect to the login
 // page, a network error) the page is left as it is: submitting the form

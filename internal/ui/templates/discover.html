@@ -29,6 +29,10 @@
             <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search or paste a link" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
         </div>
+        {{/* Only a submit sends this, so live search, which fetches the
+             form's action with q alone, gets suggestions, and Enter the
+             results, in the tab shown (#666). */}}
+        <input type="hidden" name="scope" value="{{.Scope}}" />
       </form>
 
       {{with .Flash}}
@@ -54,9 +58,9 @@
       </template>
 
       {{/* live-search.ts replaces this container's contents with the
-           same container from /discover?q=… as the reader types, and
-           announces its data-announce. */}}
-      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}" data-recent-query="{{.Form.Q}}"{{end}}>
+           same container from /discover?q=… as the reader types (the
+           suggestions), and announces its data-announce. */}}
+      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}" data-recent-query="{{.Form.Q}}"{{else if .Suggesting}} data-announce="{{.Suggestions.Announce}}"{{end}}>
       {{with .Import.Offer}}
       <section class="import-card" aria-labelledby="import-card-heading">
         <h2 id="import-card-heading">Coming from another reader?</h2>
@@ -74,7 +78,7 @@
       </section>
       {{end}}
 
-      {{if and (not .Searched) .Sections}}
+      {{if .Sections}}
       <nav class="section-chips" aria-label="Sections">
         <ul role="list">
           {{range .Sections}}<li><a class="chip" href="#section-{{.Slug}}">{{.Name}}</a></li>{{end}}
@@ -100,6 +104,8 @@
 
       {{if .Searched}}
       {{template "search-results" .}}
+      {{else if .Suggesting}}
+      {{template "search-suggestions" .Suggestions}}
       {{end}}
       </div>
     </main>

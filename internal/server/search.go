@@ -2,7 +2,6 @@ package server
 
 import (
 	"cmp"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -47,11 +46,7 @@ func (d searchPageData) Empty() bool {
 // results there are across the groups.
 func (d searchPageData) Announce() string {
 	if d.Options.Suggest {
-		feeds := "None of your feeds"
-		if n := len(d.Options.Shown); n > 0 {
-			feeds = fmt.Sprintf("%d of your feeds", n)
-		}
-		return feeds + ", " + strings.ToLower(countOf(len(d.Options.Fresh), "new site", "new sites"))
+		return countOf(len(d.Options.Shown), "feed", "feeds")
 	}
 	if d.Layout != "full" {
 		return countOf(len(d.Options.Shown), "result", "results")
@@ -143,7 +138,14 @@ func (s *Server) searchPage(w http.ResponseWriter, r *http.Request, host string)
 		data.Found = found
 		data.Searched = true
 		if data.Layout != "full" {
-			data.Options = s.newSearchOptions(r, data)
+			// Whether the reader has saved anything decides the tabs
+			// (temporary: a real build would count saves cheaply).
+			any, err := s.services.SaveService.ListSaved(r.Context(), userID, "", rss.ArticleCursor{}, 1)
+			if err != nil {
+				s.serverErrorHTML(w, r, err)
+				return
+			}
+			data.Options = s.newSearchOptions(r, data, len(any) > 0)
 		}
 	}
 

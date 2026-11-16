@@ -1,34 +1,76 @@
+{{/* search-state is a feed's state at the end of a search row (design
+     checkpoint, #645), as Discover's rows show it: a quiet "✓ Following",
+     Follow for a site's one feed the reader doesn't follow yet, or Choose,
+     to its page, for a site with several. With labels, the state is text in
+     the facts line instead (?typing=labels). Its data is the row's
+     searchResult and whether to use labels. */}}
+{{define "search-state"}}
+{{if not .Labels}}
+{{if .Result.Following}}<span class="following-label search-following">✓ Following</span>
+{{else if .Result.Follow}}{{template "follow-form" .Result.Follow}}
+{{else if .Result.Choose}}<a class="btn btn-sm search-choose" href="{{.Result.Href}}" aria-label="Choose a feed from {{.Result.Title}}">Choose</a>{{end}}
+{{end}}
+{{end}}
+
 {{/* search-result is a suggestion while typing on Search (design
-     checkpoint, #645); its data is a searchResult: a small avatar, the
-     name, and a line of facts. The whole row opens the result. */}}
+     checkpoint, #645); its data is a searchRow: a small avatar, the name, a
+     line of facts, and the feed's state. The whole row opens the result;
+     the state's button sits above it. */}}
 {{define "search-result"}}
+{{$r := .Result}}
 <li class="search-result">
-  {{template "avatar" .Avatar}}
+  {{template "avatar" $r.Avatar}}
   <div class="search-result-main">
-    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
-    <p class="search-result-meta">{{range .Meta}}<span>{{.}}</span>{{end}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <a class="search-result-title" href="{{$r.Href}}">{{$r.Title}}</a>
+    <p class="search-result-meta">{{if .Labels}}{{if $r.Following}}<span class="search-label-following">✓ Following</span>{{else}}<span class="search-label-other">Not following</span>{{end}}{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
+  {{template "search-state" .}}
 </li>
 {{end}}
 
 {{/* search-hit is a result after Enter (design checkpoint, #645); its data
-     is a searchResult with whether the list mixes kinds. In a mixed list
-     (Top) a small line above the title says what it is, with the nav's icon
-     for it. A saved article shows its excerpt and a new site its
-     description, which also show why it matched when its title doesn't. A
-     new site's one feed the reader doesn't follow has Follow in place; a
-     site with several to choose from links to its page to choose. The
-     whole row opens the result; Follow and Choose sit above it. */}}
+     is a searchRow. A saved article shows its title in the headline font,
+     its excerpt and when it was saved, with Saved's bookmark; a feed its
+     site's tagline and its state. The whole row opens the result; the
+     state's button sits above it. */}}
 {{define "search-hit"}}
 {{$r := .Result}}
 <li class="search-hit search-hit-{{$r.Kind}}">
   {{template "avatar" $r.Avatar}}
   <div class="search-hit-main">
-    {{if .Mixed}}<p class="search-hit-kind">{{if eq $r.Kind "following"}}{{template "icon-feeds"}}{{else if eq $r.Kind "saved"}}{{template "icon-bookmark"}}{{else}}{{template "icon-compass"}}{{end}}{{$r.KindLabel}}</p>{{end}}
     <a class="search-hit-title" href="{{$r.Href}}">{{$r.Title}}</a>
     {{with $r.Desc}}<p class="search-hit-desc">{{.}}</p>{{end}}
-    <p class="search-hit-meta">{{with $r.Sub}}<span>{{.}}</span>{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <p class="search-hit-meta">{{if eq $r.Kind "saved"}}{{template "icon-bookmark"}}{{end}}{{range $r.Meta}}<span>{{.}}</span>{{end}}{{with $r.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
-  {{if $r.Follow}}{{template "follow-form" $r.Follow}}{{else if $r.Choose}}<a class="btn btn-sm search-hit-choose" href="{{$r.Href}}" aria-label="Choose a feed from {{$r.Title}}">Choose</a>{{end}}
+  {{template "search-state" .}}
 </li>
+{{end}}
+
+{{/* search-lookup is the row a pasted address gets at the top of Search's
+     lists (design checkpoint, #645), in place of Discover's Look up card;
+     its data is a foundSites: the address, what Look up does, and Look up,
+     or why a link to the app itself isn't looked up. Nothing when the query
+     isn't an address. */}}
+{{define "search-lookup"}}
+{{with .LookupQ}}
+<li class="search-result search-lookup">
+  <span class="avatar search-lookup-icon" aria-hidden="true">{{template "icon-link"}}</span>
+  <div class="search-result-main">
+    <p class="search-result-title">{{.}}</p>
+    <p class="search-result-meta">Find the feeds this site publishes</p>
+  </div>
+  <form action="/lookups" method="post" data-busy>
+    <input type="hidden" name="q" value="{{.}}">
+    <button class="btn-sm btn-primary" type="submit" data-busy-label="Looking up {{.}}…" aria-label="Look up {{.}}"><span data-busy-text>Look up</span></button>
+  </form>
+</li>
+{{end}}
+{{if .AppLink}}
+<li class="search-result search-lookup">
+  <span class="avatar search-lookup-icon" aria-hidden="true">{{template "icon-link"}}</span>
+  <div class="search-result-main">
+    <p class="search-result-meta search-lookup-note">That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader.</p>
+  </div>
+</li>
+{{end}}
 {{end}}

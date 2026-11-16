@@ -331,7 +331,7 @@
   .search-result {
     position: relative;
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr);
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 1rem;
@@ -442,7 +442,7 @@
 
   /* A site's description is a tagline: one line is enough to tell sites
      apart. */
-  .search-hit-new .search-hit-desc {
+  .search-hit-feed .search-hit-desc {
     -webkit-line-clamp: 1;
     line-clamp: 1;
   }
@@ -453,33 +453,62 @@
     font-size: 0.9375rem;
   }
 
-  /* In Top, what the result is: a small line above its title, with the
-     nav's icon for it; New in the accent, the reader's own things quiet. */
-  .search-hit-kind {
-    margin-block-end: -0.0625rem;
-    color: var(--text-3);
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1.2;
+  /* A feed's state, above the whole-row link: Discover's "✓ Following",
+     Follow, or Choose. */
+  :is(.search-result, .search-hit) :is(.follow-form, .search-choose, .search-following) {
+    position: relative;
+    z-index: 1;
+    align-self: center;
   }
 
-  .search-hit-kind .icon {
+  /* A saved article's facts start with Saved's bookmark. */
+  .search-hit-meta > .icon {
     display: inline-block;
     inline-size: 0.875rem;
     block-size: 0.875rem;
-    margin-inline-end: 0.3125rem;
+    margin-inline-end: 0.25rem;
     vertical-align: -0.125rem;
     stroke-width: 2.25;
   }
 
-  .search-hit-new .search-hit-kind {
+  /* A pasted address's row: the address, what Look up does, and Look up. */
+  .search-lookup-icon {
     color: var(--accent);
   }
 
-  .search-hit :is(.follow-form, .search-hit-choose) {
+  .search-lookup-icon .icon {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+  }
+
+  .search-hits .search-lookup {
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    padding-block: 0.75rem;
+  }
+
+  .search-hits .search-lookup .avatar {
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+  }
+
+  .search-lookup form {
     position: relative;
     z-index: 1;
-    align-self: center;
+  }
+
+  .search-lookup-note {
+    white-space: normal;
+  }
+
+  /* ?typing=labels: the state as text leading the facts. */
+  .search-label-following {
+    color: var(--text-2);
+    font-weight: 600;
+  }
+
+  .search-label-other {
+    color: var(--accent);
+    font-weight: 600;
   }
 
   /* The tabs: the timeline tabs' underline, with each scope's count; an

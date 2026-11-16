@@ -105,38 +105,32 @@
 </html>
 
 {{/* search-options is the design checkpoint's typeahead layout (#645):
-     while typing, compact suggestions (the reader's feeds, then new sites)
-     under a row that searches everything; after Enter, the tabs and the
-     current one's results in roomier rows. Each tab is its own URL, so the
-     tabs are navigation (links with aria-current), as the timeline tabs
-     are. Temporary. */}}
+     while typing, one list of the feeds that match, followed or not, each
+     with its state, under a row that searches everything; after Enter, tabs
+     by kind (or none, for a reader with one kind) and the current one's
+     results in roomier rows. Each tab is its own URL, so the tabs are
+     navigation (links with aria-current), as the timeline tabs are.
+     Temporary. */}}
 {{define "search-options"}}
 {{$o := .Options}}
 {{if $o.Suggest}}
-{{template "lookup-offer" .Found}}
+<ul class="search-results" role="list">
+  {{if not $o.KnownSite}}{{template "search-lookup" .Found}}{{end}}
+  {{range $o.Shown}}{{template "search-result" (searchResultRow . $o.Labels)}}{{end}}
+</ul>
 <a class="search-everything" href="{{$o.Everything}}">{{template "icon-search"}}<span>Search everything for “<strong>{{.Form.Q}}</strong>”</span><kbd>Enter</kbd></a>
-{{with $o.Shown}}
-<div class="list-head"><h2>Following</h2></div>
-<ul class="search-results" role="list">
-  {{range .}}{{template "search-result" .}}{{end}}
-</ul>
-{{end}}
-{{with $o.Fresh}}
-<div class="list-head"><h2>New</h2></div>
-<ul class="search-results" role="list">
-  {{range .}}{{template "search-result" .}}{{end}}
-</ul>
-{{end}}
 {{else}}
+{{with $o.Scopes}}
 <nav class="timeline-tabs section-tabs search-tabs" aria-label="Results">
   <ul role="list">
-    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}{{if eq .Count 0}} class="search-tab-empty"{{end}}>{{.Name}}{{if ne .ID "top"}} <span class="search-tab-count">{{.CountText}}</span>{{end}}{{if eq .ID $o.Scope}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
+    {{range .}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}{{if eq .Count 0}} class="search-tab-empty"{{end}}>{{.Name}}{{if ne .ID "top"}} <span class="search-tab-count">{{.CountText}}</span>{{end}}{{if eq .ID $o.Scope}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
   </ul>
 </nav>
-{{if $o.Lookup}}{{template "lookup-offer" .Found}}{{end}}
-{{with $o.Shown}}
+{{end}}
+{{if or $o.Shown (and $o.Lookup (not $o.KnownSite) (or .Found.LookupQ .Found.AppLink))}}
 <ul class="search-hits" role="list">
-  {{range .}}{{template "search-hit" (searchResultRow . $o.Mixed)}}{{end}}
+  {{if and $o.Lookup (not $o.KnownSite)}}{{template "search-lookup" .Found}}{{end}}
+  {{range $o.Shown}}{{template "search-hit" (searchResultRow . false)}}{{end}}
 </ul>
 {{end}}
 {{with $o.More}}

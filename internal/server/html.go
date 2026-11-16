@@ -34,11 +34,11 @@ var templateFuncs = template.FuncMap{
 	"monogram":    monogram,
 	"myFeedRow":   newMyFeedRow,
 	"postingRate": postingRate,
-	"searchResultRow": func(r searchResult, mixed bool) any {
+	"searchResultRow": func(r searchResult, labels bool) any {
 		return struct {
 			Result searchResult
-			Mixed  bool
-		}{r, mixed}
+			Labels bool
+		}{r, labels}
 	},
 	"since":      func(t time.Time) string { return since(t, time.Now()) },
 	"siteResult": newSiteResult,

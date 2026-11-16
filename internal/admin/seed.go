@@ -55,12 +55,11 @@ func seedHref(filter string) string {
 }
 
 // seedRow is a seed list entry as the page shows it: where it stands, in
-// the feeds' Problem style, and where its Look up again posts, "" when it
-// has none.
+// the feeds' Problem style, and whether it offers Look up again.
 type seedRow struct {
 	rss.AdminSeedEntry
 	Status feedProblem
-	Retry  string
+	Retry  bool
 }
 
 // seedStatus says where e stands: found with its feeds' count, failed with
@@ -85,17 +84,10 @@ func seedStatus(e rss.AdminSeedEntry) feedProblem {
 	return feedProblem{Text: "Waiting"}
 }
 
-// seedRetry is where e's Look up again posts: its site's lookup when its
-// lookup found one, else the seed list's own, and "" unless it failed or
-// found no feeds.
-func seedRetry(e rss.AdminSeedEntry) string {
-	switch {
-	case e.State() != rss.SeedFailed && e.State() != rss.SeedNoFeeds:
-		return ""
-	case e.Lookup.SiteID != "":
-		return "/sites/" + e.Lookup.SiteID + "/lookup"
-	}
-	return "/seed/lookup"
+// seedRetry reports whether e offers Look up again: when its lookup
+// failed or found no feeds.
+func seedRetry(e rss.AdminSeedEntry) bool {
+	return e.State() == rss.SeedFailed || e.State() == rss.SeedNoFeeds
 }
 
 // seedPage is the seed list page's data.
@@ -149,10 +141,11 @@ type seedLookupForm struct {
 	validator.Validator `form:"-"`
 }
 
-// seedLookupHandler queues a lookup of the posted seed list entry, for an
-// entry whose lookup found no site (one that did is looked up again from
-// its site, siteLookupHandler). It's recorded as seed.lookup. A site key
-// that isn't on the list is 404.
+// seedLookupHandler queues a lookup of the posted seed list entry's own
+// address, even when an earlier lookup found a site, since a site's
+// lookup (siteLookupHandler) fetches its home page, which isn't the
+// entry's when the entry is a feed. It's recorded as seed.lookup. A site
+// key that isn't on the list is 404.
 func (s *Server) seedLookupHandler(w http.ResponseWriter, r *http.Request) {
 	var form seedLookupForm
 	if err := s.decodePostForm(w, r, &form); err != nil {

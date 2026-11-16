@@ -87,9 +87,9 @@ func TestSeedPage(t *testing.T) {
 		`<td class="num">2</td>`,
 		// An entry that isn't a home page shows its address.
 		`feeds.example<small>https://feeds.example/rss.xml</small>`,
-		// Look up again: from its site when it found one, else the seed
-		// list's own, keeping the filter.
-		`<form action="/sites/` + siteID(3) + `/lookup" method="post">`,
+		// Look up again posts the entry, even one whose lookup found a
+		// site.
+		`<input type="hidden" name="site_key" value="refailed.example" />`,
 		`<input type="hidden" name="site_key" value="failed.example" />`,
 		`<input type="hidden" name="site_key" value="empty.example" />`,
 	} {

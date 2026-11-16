@@ -49,9 +49,9 @@
                 <td>
                   {{if .Retry}}
                   <div class="row-actions">
-                    <form action="{{.Retry}}" method="post">
-                      {{if not .Lookup.SiteID}}<input type="hidden" name="site_key" value="{{.SiteKey}}" />
-                      <input type="hidden" name="filter" value="{{$.Filter}}" />{{end}}
+                    <form action="/seed/lookup" method="post">
+                      <input type="hidden" name="site_key" value="{{.SiteKey}}" />
+                      <input type="hidden" name="filter" value="{{$.Filter}}" />
                       <button class="btn btn-sm" type="submit">Look up again</button>
                     </form>
                   </div>

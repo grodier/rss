@@ -178,6 +178,12 @@ They become rows (`searchResult`): a followed feed with "✓ Following", a site 
 The tabs, Top, Feeds and Saved (`?scope=`), are links in the timeline tabs' markup; a reader with no saves gets none and sees the feeds; Top shows 10 and links the tabs with more.
 Follow works as on Discover's rows (`save-star.ts`), returning to the results.
 
+**Recent searches.** They're kept only in the browser, never on the server: `recent-searches.ts` keeps up to 5 queries, newest first, in `localStorage` (`paperround.recentSearches`), a repeat (ignoring case) moving to the top.
+A page of results records its query, which the server puts on the results container as `data-recent-query`; typing records nothing, as live search swaps only the container's contents, but a reload of the URL it left does.
+While the box is focused and empty, the list (from `<template data-recent-template>` in `discover.html`, as the CSP allows no inline script) takes the place of the container's contents, each row linking to its query's Top tab; the contents come back on a press or focus outside the box and the list, on Escape, or when the reader types.
+Clear empties the list, and the logged-out pages' entry (`login.ts`: Log in, where logging out lands, Sign up, Reset password and the landing page) clears it too, whatever the reason for being logged out, so the next person on a shared device doesn't see it.
+Without JavaScript, or with storage blocked, there are no recent searches.
+
 **The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
 `www seed`, and `www migrate -seed` (production's pre-deploy command), run `seed.Run`: `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
 A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
@@ -215,7 +221,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 
 **Start at:**
 
-1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, Follow's toggle `save-star.ts`.
+1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, recent searches `recent-searches.ts`, Follow's toggle `save-star.ts`.
    The search: `internal/server/discover_search.go` (`discoverSearch`, `matchRank`, `rankResults`), `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`HasSaves`), and `partials/search_result.html`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
@@ -224,7 +230,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 
-**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
+**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `recent-searches.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
 **Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 

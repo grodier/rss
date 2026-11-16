@@ -35,10 +35,28 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
+      {{/* recent-searches.ts shows this in place of the results
+           container's contents while the box is focused and empty, with a
+           row per query kept in this browser, cloned from the list's first
+           row; it records data-recent-query, a search's query. Nothing is
+           sent to the server. */}}
+      <template data-recent-template>
+        <section class="recent-searches" aria-labelledby="recent-searches-heading">
+          <div class="list-head">
+            <h2 id="recent-searches-heading">Recent searches</h2>
+            <button class="link-button" type="button" data-recent-clear>Clear</button>
+          </div>
+          <ul class="recent-search-list" role="list">
+            <li><a class="recent-search" href="/discover">{{template "icon-clock"}}<span data-recent-text></span></a></li>
+          </ul>
+          <p class="recent-searches-note">Kept on this device only.</p>
+        </section>
+      </template>
+
       {{/* live-search.ts replaces this container's contents with the
            same container from /discover?q=… as the reader types, and
            announces its data-announce. */}}
-      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}"{{end}}>
+      <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Results.Announce}}" data-recent-query="{{.Form.Q}}"{{end}}>
       {{with .Import.Offer}}
       <section class="import-card" aria-labelledby="import-card-heading">
         <h2 id="import-card-heading">Coming from another reader?</h2>

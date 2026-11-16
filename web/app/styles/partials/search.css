@@ -19,6 +19,40 @@
     }
   }
 
+  /* Recent searches (#667), in place of Discover's contents while the box
+     is focused and empty: a row per query, its clock quiet, then a note
+     under them. */
+  .recent-searches .list-head .link-button {
+    font-size: 0.8125rem;
+  }
+
+  .recent-search {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .recent-search:hover {
+    background: var(--surface);
+  }
+
+  .recent-search .icon {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    color: var(--text-3);
+  }
+
+  .recent-searches-note {
+    padding: 0.75rem 1rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
   /* A result: an avatar, the title, a tagline or excerpt, and a line of
      facts, then a feed's state. The whole row opens the result, through
      its title link's ::after; Follow sits above it. */

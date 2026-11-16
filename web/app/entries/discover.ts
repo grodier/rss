@@ -5,6 +5,7 @@ import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
 import * as liveSearch from "../features/live-search";
 import * as lookupStatus from "../features/lookup-status";
+import * as recentSearches from "../features/recent-searches";
 import * as saveStar from "../features/save-star";
 import { setupRUM } from "../features/rum";
 
@@ -14,4 +15,5 @@ backForward.init();
 saveStar.init();
 busyForms.init();
 liveSearch.init();
+recentSearches.init();
 lookupStatus.init();

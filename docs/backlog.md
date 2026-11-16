@@ -531,6 +531,10 @@ Admin and observability:
   On `make db/loadseed`'s 1,000 feeds, a page took about 3 ms by posts, failures or last success and 20 ms by subscribers (35 ms past the first page); a feed's page about 11 ms, counting a busy feed's 36,000 articles.
   *Signal:* feeds pass about 50,000, or `/feeds` takes over 200ms.
   *Fix:* a `subscribers` count column on `feeds`, kept by subscribing and unsubscribing, with indexes on the orders the page uses.
+- [ ] **The admin's seed list page reads every entry on each view** (#648).
+  `AdminFeedRepository.SeedList` joins the whole embedded list to `lookups` and counts each found site's feeds and catalog feeds, and the page filters and counts in Go, with no paging; the list is meant to grow to thousands of sites.
+  *Signal:* the list passes about 5,000 entries, or `/seed` takes over 200ms.
+  *Fix:* page the table (the filters' counts can stay one pass), and count feeds per site with one grouped query rather than per row.
 - [ ] **The invites page sums every wave on each view** (#607).
   `InviteRepository.Waves` groups every invite with a wave and checks each signed-up one's sessions, on every view of `/invites`.
   *Signal:* invites pass about 50,000, or `/invites` takes over 200ms.

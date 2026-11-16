@@ -22,6 +22,7 @@ import (
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/psql"
+	"github.com/grodier/rss/internal/seed"
 )
 
 // runServe runs "admin serve [flags]": the admin site, until SIGINT or
@@ -103,6 +104,7 @@ func serve(cfg config, logger *slog.Logger) error {
 		MailLimits:   cfg.mailLimits,
 
 		AppInternalURL: cfg.appInternalURL,
+		SeedList:       seed.Entries(),
 	}, services, sessions)
 	if err != nil {
 		return err

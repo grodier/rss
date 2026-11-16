@@ -15,6 +15,7 @@ import (
 
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/seed"
 )
 
 // feedID and siteID are the UUIDs of the nth test feed and site.
@@ -34,6 +35,11 @@ type fakeFeeds struct {
 	site    rss.AdminSite
 	err     error
 	calls   []feedCall
+	// seed is what SeedList returns, and catalog Catalog.
+	seed    []rss.AdminSeedEntry
+	catalog []rss.AdminCatalogSection
+	// seedStatus is the status of the lookup QueueSeedLookup returns.
+	seedStatus rss.LookupStatus
 }
 
 // feedCall is one action the store was asked to make.
@@ -111,6 +117,24 @@ func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, sectionID string, 
 		return rss.ErrFeedGone
 	}
 	return f.call("discover:"+sectionID, id, by)
+}
+
+func (f *fakeFeeds) SeedList(context.Context, []seed.Entry) ([]rss.AdminSeedEntry, error) {
+	return f.seed, f.err
+}
+
+// QueueSeedLookup records the call as "seed-lookup" with the entry's site
+// key, and returns a lookup with seedStatus, pending by default.
+func (f *fakeFeeds) QueueSeedLookup(_ context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error) {
+	status := f.seedStatus
+	if status == "" {
+		status = rss.LookupPending
+	}
+	return rss.Lookup{Status: status}, f.call("seed-lookup", e.SiteKey, by)
+}
+
+func (f *fakeFeeds) Catalog(context.Context) ([]rss.AdminCatalogSection, error) {
+	return f.catalog, f.err
 }
 
 // fakeRefresher returns res and err, keeping the feeds it refreshed and

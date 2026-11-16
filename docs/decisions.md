@@ -197,6 +197,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   Rejected: a plain labelled form (it read as foreign to a page of status and figures), a button per section that saves on click (grows with the list, and a stray click saves), and the select in the page head (no room for its hint or error).
   A gone feed can't be added, since Discover would offer a feed that no longer updates; one already in the catalog can still be taken out.
   Breadcrumbs on the feed and site pages, which the checkpoint showed were missing, are #655.
+- **The seed list's status is a page that reads the file, not a table** (#648, from #450's plan): the embedded list joined to `lookups` by site key, so the owner sees failed entries without the deploy log, and the file stays the list's source until #649 decides otherwise.
+  Its one action, Look up again, is offered on entries not found (failed or no feeds) and always queues the entry's own address (`seed.lookup`), at a reader's priority so it runs now rather than behind the seed.
+  It doesn't reuse a site's Check for new feeds, as #648 first planned: that fetches the site's home page, which isn't the entry's address when the entry is a feed (#678).
+- **The seed list and the catalog are two pages after Feeds, each one table with filter links like the feeds list** (#648, approved at its design checkpoint in #678): the seed list's filters are All (the default), Not found, Waiting and Found but not in Discover; the catalog's are All, which adds a Section column, and one per section in Discover's order, empty ones included with their count.
+  Rejected: the catalog grouped under a heading per section (long and mostly empty while the catalog is small, its tables' columns not lining up), and both on one page with tabs (two rows of filter links, for two questions asked apart).
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability

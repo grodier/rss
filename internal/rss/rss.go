@@ -1036,3 +1036,62 @@ type AdminSite struct {
 	Lookup Lookup
 	Feeds  []AdminFeedRow
 }
+
+// A seed list entry's state on the admin's seed list page
+// (AdminSeedEntry.State).
+const (
+	SeedWaiting = "waiting"  // never looked up, or its lookup is queued
+	SeedRunning = "running"  // its lookup is running
+	SeedFailed  = "failed"   // its lookup failed
+	SeedNoFeeds = "no-feeds" // its lookup finished and found no feeds
+	SeedFound   = "found"    // its lookup found a site with feeds
+)
+
+// AdminSeedEntry is a seed list entry as the admin lists it: its address
+// and site key, its site key's lookup (ID "" when it has none), and the
+// site that lookup found (SiteHost "" when none) with how many feeds the
+// site has and how many of them are in Discover's catalog.
+type AdminSeedEntry struct {
+	URL, SiteKey string
+	Lookup       Lookup
+	SiteHost     string
+	Feeds        int
+	InDiscover   int
+}
+
+// State is where e stands: its lookup's status, with a finished one split
+// by whether it found a site.
+func (e AdminSeedEntry) State() string {
+	switch e.Lookup.Status {
+	case LookupRunning:
+		return SeedRunning
+	case LookupFailed:
+		return SeedFailed
+	case LookupDone:
+		if e.Lookup.SiteID == "" {
+			return SeedNoFeeds
+		}
+		return SeedFound
+	}
+	return SeedWaiting
+}
+
+// AdminCatalogSection is a Discover section with its catalog feeds, as the
+// admin lists them.
+type AdminCatalogSection struct {
+	Section
+	Feeds []AdminCatalogFeed
+}
+
+// AdminCatalogFeed is a feed in Discover's catalog as the admin lists it:
+// its site, posting rate, latest article's date (zero with none),
+// subscribers (a count, never who) and when it answered 410 Gone (zero if
+// it hasn't), since Discover hides a gone feed still in the catalog.
+type AdminCatalogFeed struct {
+	ID, Title, URL   string
+	SiteID, SiteHost string
+	PostsPerWeek     float64
+	LatestPost       time.Time
+	Subscribers      int
+	GoneAt           time.Time
+}

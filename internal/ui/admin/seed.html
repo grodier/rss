@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Seed list - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Seed list</h1>
+        <p>Each site in <code>internal/seed/sites.txt</code>, in the file’s order, with what its lookup found. Edit the list in a PR: each deploy looks up its new sites, and retries after an hour those never found. One found before whose later lookup failed waits for Look up again.</p>
+      </header>
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      <div class="segments">
+        {{template "segmented" (segmented "Show" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="seed-heading">
+        <h2 id="seed-heading" class="visually-hidden">Entries</h2>
+        {{if .Rows}}
+        <div class="table-wrap">
+          <table class="data feeds">
+            <thead>
+              <tr>
+                <th scope="col">Entry</th>
+                <th scope="col">Lookup</th>
+                <th scope="col">Site</th>
+                <th scope="col" class="num">In Discover</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Rows}}
+              <tr>
+                <td class="wrap feed-name">{{.SiteKey}}{{if ne .URL (print "https://" .SiteKey "/")}}<small>{{.URL}}</small>{{end}}</td>
+                <td class="feed-problem">{{template "problem-text" .Status}}</td>
+                <td>{{if .SiteHost}}<a href="/sites/{{.Lookup.SiteID}}">{{.SiteHost}}</a>{{else}}—{{end}}</td>
+                <td class="num">{{if .SiteHost}}{{count .InDiscover}}{{else}}—{{end}}</td>
+                <td>
+                  {{if .Retry}}
+                  <div class="row-actions">
+                    <form action="/seed/lookup" method="post">
+                      <input type="hidden" name="site_key" value="{{.SiteKey}}" />
+                      <input type="hidden" name="filter" value="{{$.Filter}}" />
+                      <button class="btn btn-sm" type="submit">Look up again</button>
+                    </form>
+                  </div>
+                  {{end}}
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else if .Total}}
+        <p class="empty">No entries here.</p>
+        {{else}}
+        <p class="empty">The seed list is empty.</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

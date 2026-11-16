@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Discover - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Discover</h1>
+        <p>The feeds in Discover’s catalog, by section, in Discover’s order. A feed’s page puts it in a section or takes it out; Discover hides a gone feed until it’s taken out or cleared.</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Section" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="catalog-heading">
+        <h2 id="catalog-heading" class="visually-hidden">{{if .Section}}{{.Section}}{{else}}Every section{{end}}</h2>
+        {{if .Rows}}
+        {{$now := .Now}}
+        {{$every := .Every}}
+        <div class="table-wrap">
+          <table class="data feeds">
+            <thead>
+              <tr>
+                <th scope="col">Feed</th>
+                {{if $every}}<th scope="col">Section</th>{{end}}
+                <th scope="col" class="num">Posts a week</th>
+                <th scope="col">Latest post</th>
+                <th scope="col" class="num">Subscribers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Rows}}
+              <tr>
+                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a><small>{{.SiteHost}}{{if not .GoneAt.IsZero}} · <span class="problem problem-bad"><strong>Gone: hidden from Discover</strong></span>{{end}}</small></td>
+                {{if $every}}<td>{{.Section}}</td>{{end}}
+                <td class="num">{{perWeek .PostsPerWeek}}</td>
+                <td>{{if .LatestPost.IsZero}}—{{else}}<time datetime="{{.LatestPost.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .LatestPost}} UTC">{{ago $now .LatestPost}}</time>{{end}}</td>
+                <td class="num">{{count .Subscribers}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else if .Section}}
+        <p class="empty">No feeds in {{.Section}} yet.</p>
+        {{else}}
+        <p class="empty">Discover’s catalog is empty: put a feed in a section from its page.</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

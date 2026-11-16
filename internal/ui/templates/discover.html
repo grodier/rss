@@ -25,10 +25,9 @@
         {{end}}
         <div class="search-row">
           <div class="search-field">
-            {{template "icon-search"}}
+            <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
             <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search or paste a link" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
           </div>
-          <button class="btn-primary" type="submit">Search</button>
         </div>
       </form>
 

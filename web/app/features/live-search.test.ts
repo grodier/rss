@@ -14,7 +14,7 @@ beforeEach(async () => {
   document.body.innerHTML = `
     <form action="/discover" method="get" data-live-search>
       <span class="error">Type at least 2 characters.</span>
-      <div class="search-field"><svg class="icon"></svg><input type="search" name="q"></div>
+      <div class="search-field"><button class="search-submit" type="submit" aria-label="Search"><svg class="icon"></svg></button><input type="search" name="q"></div>
     </form>
     <div data-search-results><p>Earlier results</p></div>`;
   fetchMock = vi.fn(async () => new Response(page(2), { status: 200 }));

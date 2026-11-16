@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  {{if .Following.Fetching}}<noscript><meta http-equiv="refresh" content="5" /></noscript>{{end}}
   <title>Paper Round - {{if .Home}}{{homeName}}{{else}}{{.Timeline.Name}}{{end}}</title>
   {{template "assets" "reading"}}
   {{template "app-head" .Nav}}
@@ -55,15 +56,33 @@
       <p class="empty">When a feed you follow posts at most {{with .Timeline.Filter.MaxPostsPerWeek}}{{if eq . 1}}once{{else}}{{.}} times{{end}}{{end}} a week, its articles show up here, so busy feeds never bury them.</p>
       {{else if not .Home}}
       <p class="empty">Nothing in this timeline yet.</p>
+      {{else if .Following.Fetching}}
+      {{/* Following only feeds with no articles yet: home-fetching.ts
+           checks again and swaps in the rows (the meta refresh without
+           JavaScript). */}}
+      <div class="empty home-empty" data-home-fetching>
+        <div class="spinner"></div>
+        <p class="home-empty-lead">Getting the latest from {{with .Following}}{{index .Fetching 0}}{{if gt .More 0}}, {{index .Fetching 1}} and {{.More}} more{{else if eq (len .Fetching) 2}} and {{index .Fetching 1}}{{end}}{{end}}…</p>
+        <p>Their newest articles will show up here in a moment.</p>
+      </div>
       {{else}}
-      <div class="empty">
+      <div class="empty home-empty">
         {{template "icon-rss"}}
-        <p>Your timeline is empty. Find sites to follow in <a href="/discover">Discover</a>, or <a href="/settings/import">import your subscriptions</a> from another reader; their articles will show up here.</p>
+        <p class="home-empty-lead">Nothing on Home yet.</p>
+        <p>Follow sites and their new articles show up here.</p>
+        <div class="home-empty-actions">
+          <a class="btn btn-primary" href="/discover">Find sites in Discover</a>
+          <a class="btn" href="/settings/import">Import from another reader</a>
+        </div>
       </div>
       {{end}}
 
       {{if .Next}}
       <nav class="pager"><a class="btn" rel="next" href="{{.Path}}?before={{.Next}}">Older articles</a></nav>
+      {{else if and .Home .Rows .Following.Count}}
+      {{/* The end of All feeds, for every account; infinite-scroll.ts
+           appends it with the last page. */}}
+      <p class="timeline-end">That's everything from your {{.Following.Count}} {{if eq .Following.Count 1}}site{{else}}sites{{end}}. <a href="/discover">Find more in Discover</a></p>
       {{end}}
     </main>
   </div>

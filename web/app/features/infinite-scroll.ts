@@ -5,9 +5,11 @@ import { enhanceShare } from "./share";
 
 // Infinite scroll: when the "Older articles" link (.pager a[rel=next])
 // nears the viewport, fetch the page it links to and append its rows to
-// .article-list. The link stays the source of truth: on any failure it is
-// left in place to be clicked. The URL follows the topmost visible row, so
-// a reload or Back renders that row's page anchored on the row.
+// .article-list, and, from the last page, All feeds' end line
+// (.timeline-end) in the link's place. The link stays the source of truth:
+// on any failure it is left in place to be clicked. The URL follows the
+// topmost visible row, so a reload or Back renders that row's page
+// anchored on the row.
 export function init(): void {
   const list = document.querySelector(".article-list");
   if (!list || !("IntersectionObserver" in window)) return;
@@ -85,7 +87,8 @@ export function init(): void {
         rows.observe(el);
       }
       const pager = link.closest(".pager")!;
-      const next = doc.querySelector(".pager");
+      // The last page has no pager, and, on All feeds, the end line.
+      const next = doc.querySelector(".pager") ?? doc.querySelector(".timeline-end");
       if (next) pager.replaceWith(next);
       else pager.remove();
       loading = false;

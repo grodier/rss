@@ -6,6 +6,7 @@ import * as busyForms from "../../shared/lib/busy-forms";
 import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
 import * as dividerDraw from "../features/divider-draw";
+import * as homeFetching from "../features/home-fetching";
 import * as infiniteScroll from "../features/infinite-scroll";
 import { enhancePings } from "../features/read-pings";
 import { setupRUM } from "../features/rum";
@@ -27,3 +28,4 @@ timelineTabs.init(); // after backForward, as both listen for pageswap and pager
 seenBeacon.init();
 dividerDraw.init(); // before infiniteScroll, which draws the dividers it appends
 infiniteScroll.init();
+homeFetching.init(); // after dividerDraw: it draws the dividers it swaps in

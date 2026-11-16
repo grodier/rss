@@ -468,7 +468,12 @@ So above the line is everything that arrived since you last looked at that timel
 With motion, `divider-draw.ts` draws the line in the first time at least half of it is in view on a page load (on dividers infinite scroll appends too), once, by marking it `data-draw` for `rows.css`; without the script or under reduced motion it's simply there.
 A store error renders the page without the line.
 
-**Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager.
+**Home's empty and short states.** An empty first page of Home tells two cases apart (`homeFollowing`): following nothing shows the ways in, Discover and import; following feeds means none of them has an article yet, since every article of a followed feed is on Home, so it says it's getting the latest from two of them by name.
+That state is short-lived, as a lookup or import saves a feed's articles with it (`DiscoveryRepository.Save`) and a feed never fetched is due at once, so nothing is requested from the GET.
+The page checks again: `home-fetching.ts` refetches it every 3 s while it's visible, for about a minute, and swaps in its rows (setting up the list-wide enhancements then); without JavaScript a `<noscript>` meta refresh reloads it every 5 s.
+The last page of Home, for every account, ends with a line counting the feeds the reader follows and linking to Discover; other timelines have none.
+
+**Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager, or, from Home's last page, its end line.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
 Without JavaScript the link just works.
 
@@ -478,9 +483,9 @@ Without JavaScript the link just works.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
-5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts` and `read-pings.ts` in `web/app/features`.
+5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts` and `read-pings.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 

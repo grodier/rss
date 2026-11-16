@@ -3,16 +3,26 @@ export interface PollSelfOptions {
   onPage: (doc: Document) => boolean;
   // onRedirect gets the URL a redirect led to (default: location.assign).
   onRedirect?: (url: string) => void;
+  // interval is the wait in ms after each answer (default 2000).
+  interval?: number;
+  // maxPolls stops polling after that many requests (default: no limit).
+  maxPolls?: number;
 }
 
-// pollSelf fetches location.href 2 s after the previous answer arrived
-// (never overlapping), only while the page is visible. A redirect calls
-// onRedirect(url) (default: location.assign) and stops; a 200 calls
-// onPage(doc) with the parsed page, which returns true to stop; anything
-// else, or a network error, polls again. It's what the lookup and import
-// pages use instead of the meta refresh they use without JavaScript.
-export function pollSelf({ onPage, onRedirect = (url) => location.assign(url) }: PollSelfOptions): void {
-  const interval = 2000;
+// pollSelf fetches location.href interval ms after the previous answer
+// arrived (never overlapping), only while the page is visible, up to
+// maxPolls times. A redirect calls onRedirect(url) (default:
+// location.assign) and stops; a 200 calls onPage(doc) with the parsed page,
+// which returns true to stop; anything else, or a network error, polls
+// again. It's what the lookup, import and Home pages use instead of the
+// meta refresh they use without JavaScript.
+export function pollSelf({
+  onPage,
+  onRedirect = (url) => location.assign(url),
+  interval = 2000,
+  maxPolls = Infinity,
+}: PollSelfOptions): void {
+  let polls = 0;
   let timer = 0;
   let inFlight = false;
   let finished = false;
@@ -21,6 +31,7 @@ export function pollSelf({ onPage, onRedirect = (url) => location.assign(url) }:
     // Hidden: stop; visibilitychange polls again when it's shown.
     if (document.hidden) return;
     inFlight = true;
+    polls++;
     try {
       const res = await fetch(location.href, { credentials: "same-origin" });
       if (res.redirected) {
@@ -35,6 +46,7 @@ export function pollSelf({ onPage, onRedirect = (url) => location.assign(url) }:
       // Network error: try again at the same interval.
     } finally {
       inFlight = false;
+      if (polls >= maxPolls) finished = true;
       if (!finished) timer = setTimeout(poll, interval);
     }
   };

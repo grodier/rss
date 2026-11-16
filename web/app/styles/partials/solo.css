@@ -205,12 +205,12 @@
 
   /* The sunrise (#523), on the inline logo of the landing page and Log in
      (partials/logo.html): once per load, after a pause so the page has
-     settled, the sun rises 7 units into place from behind the horizon while
+     settled, the sun rises 14 units into place from behind the horizon while
      a deeper sky fades to the logo's own. It's the one motion that plays
      without an action and, at 900 ms, the one longer than
      --duration-flourish ("Motion and feedback" in docs/decisions.md). The
-     sun's clip keeps it out of the water. Decoration, so it's still in
-     forced colors. */
+     ground is drawn over the sun, so it hides what's below the horizon.
+     Decoration, so it's still in forced colors. */
   @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
     .logo-sun {
       animation: sun-rise 900ms var(--ease-out) 200ms backwards;
@@ -221,10 +221,10 @@
     }
   }
 
-  /* 7 user units of the 64-unit drawing: the sun's top just shows. */
+  /* 14 user units of the 64-unit drawing: the sun's top just shows. */
   @keyframes sun-rise {
     from {
-      transform: translateY(7px);
+      transform: translateY(14px);
     }
   }
 

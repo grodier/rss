@@ -755,10 +755,11 @@ Pages and queries:
   Fine for hundreds of saves.
   *Signal:* `/saved?q=` latency rising for users with thousands of saves.
   *Fix:* `pg_trgm` or full-text search, chosen with the site search's (#451).
-- [ ] **Discover's search runs four queries per pause in typing** (#645).
-  Each pause reads the reader's subscriptions (an `ILIKE` scan of them), their saves (the scan above) and the sites (the "Search scans with `ILIKE`" entry), up to 51 rows each, ordered by match quality, plus whether they've saved anything (an index probe).
+- [ ] **Discover's search reads per pause in typing** (#645, #666).
+  Each pause reads the reader's subscriptions (an `ILIKE` scan of them, up to 6) and the sites (the "Search scans with `ILIKE`" entry, up to 12), ordered by match quality: the suggestions.
+  Enter runs the full search: those two with up to 51 rows each, their saves (the scan above, 51), and whether they've saved anything (an index probe).
   *Signal:* `/discover?q=` p95 rising on the admin's endpoints page, or any of its queries in `pg_stat_statements`.
-  *Fix:* #666 makes typing read only the subscriptions and the sites (suggestions), with the full search on Enter; then indexes chosen by #451 and #647.
+  *Fix:* indexes chosen by #451 and #647.
 - [ ] **Site icons served from Postgres** (#305).
   Each icon request that misses the browser's cache reads its `bytea` row.
   URLs carry the icon's hash and are cached for a year, so repeat views cost nothing, but every new visitor's first timeline asks for up to 30 icons.

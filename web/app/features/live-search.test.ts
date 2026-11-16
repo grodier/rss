@@ -15,6 +15,7 @@ beforeEach(async () => {
     <form action="/discover" method="get" data-live-search>
       <span class="error">Type at least 2 characters.</span>
       <div class="search-field"><button class="search-submit" type="submit" aria-label="Search"><svg class="icon"></svg></button><input type="search" name="q"></div>
+      <input type="hidden" name="scope" value="feeds">
     </form>
     <div data-search-results><p>Earlier results</p></div>`;
   fetchMock = vi.fn(async () => new Response(page(2), { status: 200 }));
@@ -49,6 +50,8 @@ describe("live-search", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // The fetch has q alone, never the form's hidden scope, which only a
+  // submit sends: Discover answers it with suggestions (#666).
   it("fetches once, about 250 ms after the last keystroke", async () => {
     type("lo");
     await vi.advanceTimersByTimeAsync(200);

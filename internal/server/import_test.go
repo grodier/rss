@@ -457,9 +457,9 @@ func TestImportHandler(t *testing.T) {
 			"Not a valid web address.",
 			`<p class="import-title">https://example.com/feed</p>`,
 			"Couldn&#39;t reach the site.",
-			`<a href="/discover?q=example.com">Search for example.com</a>`,
+			`<a href="/discover?q=example.com&amp;scope=top">Search for example.com</a>`,
 			"There&#39;s no feed at this address.",
-			`<a href="/discover?q=d.example">Search for d.example</a>`,
+			`<a href="/discover?q=d.example&amp;scope=top">Search for d.example</a>`,
 			`<p class="import-title">Picks</p>`,
 			"A Paper Round link. Follow it in another feed reader.",
 		)

@@ -2,6 +2,7 @@
    partials' order (see base.css). */
 @import "./partials/profiles.css";
 @import "./partials/feeds.css";
+@import "./partials/timeline-tabs.css";
 @import "./partials/search.css";
 @import "./partials/spinner.css";
 @import "./partials/phone.css";

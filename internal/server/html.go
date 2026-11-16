@@ -34,8 +34,14 @@ var templateFuncs = template.FuncMap{
 	"monogram":    monogram,
 	"myFeedRow":   newMyFeedRow,
 	"postingRate": postingRate,
-	"since":       func(t time.Time) string { return since(t, time.Now()) },
-	"siteResult":  newSiteResult,
+	"searchResultRow": func(r searchResult, mixed bool) any {
+		return struct {
+			Result searchResult
+			Mixed  bool
+		}{r, mixed}
+	},
+	"since":      func(t time.Time) string { return since(t, time.Now()) },
+	"siteResult": newSiteResult,
 }
 
 // since says how long before now t was, by whole days, for "Latest {when}":

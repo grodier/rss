@@ -326,13 +326,14 @@
     font-size: 0.8125rem;
   }
 
-  /* Design checkpoint (#645): compact result rows of one shape for every
-     group, an avatar, the title and a line of facts, with the whole row
-     opening the result. */
+  /* Design checkpoint (#645): a result row, one shape for every kind: an
+     avatar, the title with the query's match marked, and a line of facts,
+     led in a mixed list by the kind, with its nav icon. The whole row opens
+     the result. */
   .search-result {
     position: relative;
     display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
     align-items: center;
     gap: 0.75rem;
     padding: 0.625rem 1rem;
@@ -345,9 +346,9 @@
   }
 
   .search-result .avatar {
-    inline-size: 2rem;
-    block-size: 2rem;
-    font-size: 0.875rem;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    font-size: 0.9375rem;
   }
 
   .search-result-title {
@@ -366,6 +367,12 @@
     inset: 0;
   }
 
+  .search-result-title mark {
+    border-radius: 3px;
+    background: var(--selection);
+    color: inherit;
+  }
+
   .search-result-meta {
     overflow: hidden;
     color: var(--text-3);
@@ -382,27 +389,92 @@
     color: var(--danger);
   }
 
-  /* The mixed list's kind of result, leading the facts. */
+  /* A mixed list's kind of result: the nav's icon for it and its name. */
   .search-result-kind {
     color: var(--text-2);
     font-weight: 600;
   }
 
-  .search-scopes {
-    border-block-end: 1px solid var(--border);
+  .search-result-kind .icon {
+    display: inline-block;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-inline-end: 0.25rem;
+    vertical-align: -0.125rem;
+    stroke-width: 2.25;
   }
 
-  .search-scopes ul {
-    padding-block-end: 0.75rem;
+  /* The reader's own things (Following, Saved) in the quieter text color, New in
+     the accent, so "yours" and "new" read apart at a glance. */
+  .search-result-following .search-result-kind,
+  .search-result-saved .search-result-kind {
+    color: var(--text-2);
   }
 
-  .search-scopes .chip[aria-current="page"] {
-    background: var(--text);
-    color: var(--bg);
+  .search-result-new .search-result-kind {
+    color: var(--accent);
   }
 
-  .search-scope-count {
-    margin-inline-start: 0.25rem;
-    opacity: 0.7;
+  /* The scopes as tabs: the timeline tabs' underline, with each scope's
+     count; an empty scope stays, dimmed, so the row never moves. */
+  .search-tabs .search-tab-count {
+    margin-inline-start: 0.125rem;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+
+  .search-tabs a.search-tab-empty {
+    color: var(--text-3);
+  }
+
+  /* Under 360 px the four scopes and their counts don't fit; the counts go,
+     and an empty scope still reads as empty, dimmed. */
+  @media (max-width: 22.49rem) {
+    .search-tabs .search-tab-count {
+      display: none;
+    }
+  }
+
+  /* The scopes as a segmented control: one choice of a few, equal widths,
+     the current one raised. */
+  .search-segments ul {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 0.125rem;
+    margin: 0 1rem 0.75rem;
+    padding: 0.1875rem;
+    border-radius: 999px;
+    background: var(--surface);
+  }
+
+  .search-segments a {
+    display: block;
+    padding: 0.4375rem 0.25rem;
+    border-radius: 999px;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .search-segments a[aria-current="page"] {
+    background: var(--bg);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 16%, transparent);
+    color: var(--text);
+  }
+
+  .search-segments + * {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* After All's list: the scopes with more than it showed. */
+  .search-more {
+    padding: 1rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    text-align: center;
   }
 }

@@ -1,14 +1,15 @@
-{{/* search-result is a compact search result, on Search; its data is a
-     searchRow: an avatar, the title linking to the result (the whole row
-     opens it), and a line of facts, led by the result's kind in the mixed
-     list. */}}
+{{/* search-result is a result row on Search (design checkpoint, #645);
+     its data is a searchResult with whether the list mixes kinds: an
+     avatar, the title with the query's first match marked, and a line of
+     facts, led in a mixed list by the result's kind with the nav's icon for
+     it (My feeds' for Following, Saved's, Discover's for New). The whole
+     row opens the result. */}}
 {{define "search-result"}}
-<li class="search-result">
-  {{template "avatar" .Avatar}}
+<li class="search-result search-result-{{.Result.Kind}}">
+  {{template "avatar" .Result.Avatar}}
   <div class="search-result-main">
-    <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
-    <p class="search-result-meta">{{with .Kind}}<span class="search-result-kind">{{.}}</span>{{end}}{{range .Meta}}<span>{{.}}</span>{{end}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <a class="search-result-title" href="{{.Result.Href}}">{{.Result.Title.Before}}{{with .Result.Title.Match}}<mark>{{.}}</mark>{{end}}{{.Result.Title.After}}</a>
+    <p class="search-result-meta">{{if .Mixed}}<span class="search-result-kind">{{if eq .Result.Kind "following"}}{{template "icon-feeds"}}{{else if eq .Result.Kind "saved"}}{{template "icon-bookmark"}}{{else}}{{template "icon-compass"}}{{end}}{{.Result.KindLabel}}</span>{{end}}{{range .Result.Meta}}<span>{{.}}</span>{{end}}{{with .Result.Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
-  {{if .Following}}<span class="subscribed">Following</span>{{end}}
 </li>
 {{end}}

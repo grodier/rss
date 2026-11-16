@@ -22,9 +22,9 @@
            searches names, addresses and article titles, so it turns off
            autocorrect as Discover's does (see "Feed discovery" in
            docs/decisions.md). */}}
-      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{end}}" method="get" data-live-search>
+      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{with .Options.Scope}}&amp;scope={{.}}{{end}}{{end}}" method="get" data-live-search>
         {{/* Design checkpoint (#645): the layout option. Temporary. */}}
-        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{end}}
+        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{with .Options.Scope}}<input type="hidden" name="scope" value="{{.}}">{{end}}{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -42,28 +42,10 @@
            same container from /search?q=… as the reader types. */}}
       <div id="search-results" data-search-results{{if .Searched}} data-announce="{{.Announce}}"{{end}}>
       {{if .Searched}}
-      {{template "lookup-offer" .Found}}
+      {{if eq .Layout "full"}}{{template "lookup-offer" .Found}}{{end}}
 
-      {{if eq .Layout "compact"}}
-      {{range .Groups}}
-      <section class="search-group" aria-labelledby="search-{{.ID}}">
-        <div class="list-head"><h2 id="search-{{.ID}}">{{.Name}}</h2></div>
-        <ul class="search-results" role="list">{{range .Rows}}{{template "search-result" .}}{{end}}</ul>
-      </section>
-      {{end}}
-      {{else if eq .Layout "mixed"}}
-      {{with .Mixed}}
-      <ul class="search-results" role="list">{{range .}}{{template "search-result" .}}{{end}}</ul>
-      {{end}}
-      {{else if eq .Layout "scopes"}}
-      {{if .Groups}}
-      <nav class="section-chips search-scopes" aria-label="Results">
-        <ul role="list">
-          {{range .Groups}}<li><a class="chip" href="{{.Href}}"{{if eq .ID $.Scope}} aria-current="page"{{end}}>{{.Name}} <span class="search-scope-count">{{len .Rows}}</span></a></li>{{end}}
-        </ul>
-      </nav>
-      <ul class="search-results" role="list">{{range .Shown.Rows}}{{template "search-result" .}}{{end}}</ul>
-      {{end}}
+      {{if ne .Layout "full"}}
+      {{template "search-options" .}}
       {{else}}
       {{with .Feeds}}
       <section class="search-group" aria-labelledby="search-feeds">
@@ -96,7 +78,7 @@
       {{end}}
       {{end}}
 
-      {{if .Empty}}
+      {{if and (eq .Layout "full") .Empty}}
       <p class="empty">No results for “{{.Form.Q}}”.</p>
       {{end}}
       {{else if not .Form.FieldErrors}}
@@ -111,3 +93,34 @@
 </body>
 
 </html>
+
+{{/* search-options is the results of the design checkpoint's tabs,
+     segmented and split layouts (#645): the scopes, then the current one's
+     results. Each scope is its own URL, so the scopes are navigation (links
+     with aria-current), as the timeline tabs are. Temporary. */}}
+{{define "search-options"}}
+{{$o := .Options}}
+{{if eq .Layout "segmented"}}
+<nav class="search-segments" aria-label="Results">
+  <ul role="list">
+    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}>{{.Name}}</a></li>{{end}}
+  </ul>
+</nav>
+{{else}}
+<nav class="timeline-tabs section-tabs search-tabs" aria-label="Results">
+  <ul role="list">
+    {{range $o.Scopes}}<li><a href="{{.Href}}"{{if eq .ID $o.Scope}} aria-current="page"{{end}}{{if eq .Count 0}} class="search-tab-empty"{{end}}>{{.Name}} <span class="search-tab-count">{{.CountText}}</span>{{if eq .ID $o.Scope}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
+  </ul>
+</nav>
+{{end}}
+{{if $o.Lookup}}{{template "lookup-offer" .Found}}{{end}}
+{{with $o.Shown}}
+<ul class="search-results" role="list">
+  {{range .}}{{template "search-result" (searchResultRow . $o.Mixed)}}{{end}}
+</ul>
+{{end}}
+{{with $o.More}}
+<p class="search-more">More in {{range $i, $sc := .}}{{if $i}} · {{end}}<a href="{{$sc.Href}}">{{$sc.Name}} ({{$sc.CountText}})</a>{{end}}</p>
+{{end}}
+{{with $o.Empty}}<p class="empty">{{.}}</p>{{end}}
+{{end}}

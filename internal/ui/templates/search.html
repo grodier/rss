@@ -22,9 +22,9 @@
            searches names, addresses and article titles, so it turns off
            autocorrect as Discover's does (see "Feed discovery" in
            docs/decisions.md). */}}
-      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{with .Options.Scope}}&amp;scope={{.}}{{end}}{{end}}" method="get" data-live-search>
+      <form class="page-search" role="search" action="/search{{if ne .Layout "full"}}?layout={{.Layout}}{{if ne .Layout "typeahead"}}{{with .Options.Scope}}&amp;scope={{.}}{{end}}{{end}}{{end}}" method="get" data-live-search>
         {{/* Design checkpoint (#645): the layout option. Temporary. */}}
-        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{with .Options.Scope}}<input type="hidden" name="scope" value="{{.}}">{{end}}{{end}}
+        {{if ne .Layout "full"}}<input type="hidden" name="layout" value="{{.Layout}}">{{if eq .Layout "typeahead"}}<input type="hidden" name="scope" value="{{or .Options.Scope "all"}}">{{else}}{{with .Options.Scope}}<input type="hidden" name="scope" value="{{.}}">{{end}}{{end}}{{end}}
         <label class="visually-hidden" for="q">Search</label>
         {{with .Form.FieldErrors.q}}
         <span class="error">{{.}}</span>
@@ -82,6 +82,15 @@
       <p class="empty">No results for “{{.Form.Q}}”.</p>
       {{end}}
       {{else if not .Form.FieldErrors}}
+      {{with .Options.Recent}}
+      <section class="search-recent" aria-labelledby="search-recent">
+        <div class="list-head"><h2 id="search-recent">Recent searches</h2><button class="link-button" type="button">Clear</button></div>
+        <ul role="list">
+          {{range .}}<li><a href="{{.Href}}">{{template "icon-clock"}}{{.Name}}</a></li>{{end}}
+        </ul>
+        <p class="search-recent-note">Kept on this device only.</p>
+      </section>
+      {{end}}
       <div class="search-intro">
         <p>Search the sites you follow, what you've saved, and new sites to follow.</p>
         <p>Paste a site's address to follow it.</p>
@@ -100,6 +109,18 @@
      with aria-current), as the timeline tabs are. Temporary. */}}
 {{define "search-options"}}
 {{$o := .Options}}
+{{if $o.Suggest}}
+{{template "lookup-offer" .Found}}
+<a class="search-everything" href="{{$o.Everything}}">{{template "icon-search"}}<span>Search everything for “<strong>{{.Form.Q}}</strong>”</span><kbd>Enter</kbd></a>
+{{with $o.Shown}}
+<div class="list-head"><h2>Your feeds</h2></div>
+<ul class="search-results" role="list">
+  {{range .}}{{template "search-result" (searchResultRow . false)}}{{end}}
+</ul>
+{{else}}
+<p class="search-suggest-none">None of your feeds match. Search everything to look in what you've saved and in new sites.</p>
+{{end}}
+{{else}}
 {{if eq .Layout "segmented"}}
 <nav class="search-segments" aria-label="Results">
   <ul role="list">
@@ -123,4 +144,5 @@
 <p class="search-more">More in {{range $i, $sc := .}}{{if $i}} · {{end}}<a href="{{$sc.Href}}">{{$sc.Name}} ({{$sc.CountText}})</a>{{end}}</p>
 {{end}}
 {{with $o.Empty}}<p class="empty">{{.}}</p>{{end}}
+{{end}}
 {{end}}

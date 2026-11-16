@@ -28,7 +28,35 @@ const searchAllLimit = 10
 //	tabs: All (ranked, mixed) · Following · Saved · New as underline tabs
 //	segmented: the same scopes as a segmented control under the box
 //	split: Yours (Following and Saved, ranked) · New, as underline tabs
-var searchLayoutNames = []string{"full", "tabs", "segmented", "split"}
+//	typeahead: while typing, only the reader's feeds that match and a row to
+//	  search everything; on Enter (?scope=), the tabs layout
+var searchLayoutNames = []string{"full", "tabs", "segmented", "split", "typeahead"}
+
+// suggestLimit is how many feeds the type-ahead option suggests.
+const suggestLimit = 5
+
+// suggesting reports whether the type-ahead option is suggesting: a query
+// typed, not yet submitted. Submitting sends the form's scope (All, or the
+// tab the reader was on); live search fetches the form's action, which
+// has none.
+func suggesting(r *http.Request, layout string) bool {
+	return layout == "typeahead" && r.URL.Query().Get("scope") == ""
+}
+
+// mockRecent is the type-ahead option's recent searches, from ?recent=
+// (comma-separated). A mock for the screenshots: the real list would live
+// in the browser's storage, never on the server.
+func mockRecent(r *http.Request, layout string) []searchScope {
+	if layout != "typeahead" || r.URL.Query().Get("recent") == "" {
+		return nil
+	}
+	var recent []searchScope
+	for _, q := range strings.Split(r.URL.Query().Get("recent"), ",") {
+		v := url.Values{"q": {q}, "layout": {layout}, "scope": {"all"}}
+		recent = append(recent, searchScope{Name: q, Href: "/search?" + v.Encode()})
+	}
+	return recent
+}
 
 func searchLayout(r *http.Request) string {
 	if l := r.URL.Query().Get("layout"); slices.Contains(searchLayoutNames, l) {
@@ -52,6 +80,15 @@ type searchOptions struct {
 	Lookup bool
 	// Empty is the current scope's no-results line, when it found nothing.
 	Empty string
+
+	// Suggest says the type-ahead option is suggesting: Shown is the
+	// reader's feeds that match, under a row to search everything
+	// (Everything, the All tab's URL).
+	Suggest    bool
+	Everything string
+	// Recent is the type-ahead option's recent searches, before typing
+	// (mockRecent).
+	Recent []searchScope
 }
 
 // searchScope is one of the scopes: a tab or segment.
@@ -246,6 +283,11 @@ func (s *Server) newSearchOptions(r *http.Request, d searchPageData) searchOptio
 
 	var o searchOptions
 	current := r.URL.Query().Get("scope")
+	if suggesting(r, d.Layout) {
+		v := url.Values{"q": {q}, "layout": {d.Layout}, "scope": {"all"}}
+		o.Suggest, o.Everything, o.Shown, o.Lookup = true, "/search?"+v.Encode(), following, true
+		return o
+	}
 	if d.Layout == "split" {
 		yours := ranked(append(slices.Clone(following), saved...))
 		o.Scopes = []searchScope{scope("yours", "Yours", yours), scope("new", "New", fresh)}

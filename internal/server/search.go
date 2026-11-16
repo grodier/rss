@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -36,6 +37,14 @@ func (d searchPageData) Empty() bool {
 // Announce is what live search says when these results come in: how many
 // results there are across the groups.
 func (d searchPageData) Announce() string {
+	if d.Options.Suggest {
+		switch n := len(d.Options.Shown); n {
+		case 0:
+			return "None of your feeds"
+		default:
+			return fmt.Sprintf("%d of your feeds", n)
+		}
+	}
 	if d.Layout != "full" {
 		return countOf(len(d.Options.Shown), "result", "results")
 	}
@@ -66,20 +75,32 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		userID, _ := s.authenticatedUserID(r)
 		q := data.Form.Q
 
+		// While typing, the type-ahead option reads only the reader's feeds
+		// (design checkpoint, temporary).
+		suggest := suggesting(r, data.Layout)
+		if suggest {
+			perGroup = suggestLimit
+		}
 		subs, err := s.services.SubscriptionService.Search(r.Context(), userID, q, perGroup)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		saved, err := s.services.SaveService.ListSaved(r.Context(), userID, q, rss.ArticleCursor{}, perGroup)
-		if err != nil {
-			s.serverErrorHTML(w, r, err)
-			return
-		}
-		found, err := s.searchSites(r, q, perGroup)
-		if err != nil {
-			s.serverErrorHTML(w, r, err)
-			return
+		var saved []rss.SavedArticle
+		var found foundSites
+		if suggest {
+			found, _ = s.addressOffer(q)
+		} else {
+			saved, err = s.services.SaveService.ListSaved(r.Context(), userID, q, rss.ArticleCursor{}, perGroup)
+			if err != nil {
+				s.serverErrorHTML(w, r, err)
+				return
+			}
+			found, err = s.searchSites(r, q, perGroup)
+			if err != nil {
+				s.serverErrorHTML(w, r, err)
+				return
+			}
 		}
 
 		siteIDs := make([]string, len(subs))
@@ -97,6 +118,10 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		if data.Layout != "full" {
 			data.Options = s.newSearchOptions(r, data)
 		}
+	}
+
+	if !data.Searched {
+		data.Options.Recent = mockRecent(r, data.Layout)
 	}
 
 	if err := s.renderHTML(w, status, "search.html", data); err != nil {

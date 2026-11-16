@@ -477,4 +477,88 @@
     font-size: 0.875rem;
     text-align: center;
   }
+
+  /* The type-ahead option (#645): while typing, a row that runs the full
+     search, then the reader's feeds that match. */
+  .search-everything {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    transition: background-color var(--duration-quick) var(--ease-out);
+  }
+
+  .search-everything:hover {
+    background: var(--surface);
+  }
+
+  .search-everything .icon {
+    inline-size: 2.25rem;
+    block-size: 1.25rem;
+    color: var(--text-3);
+  }
+
+  .search-everything span {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-everything kbd {
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 0.75rem;
+  }
+
+  /* Phones' keyboards have their own Search key. */
+  @media (pointer: coarse) {
+    .search-everything kbd {
+      display: none;
+    }
+  }
+
+  .search-suggest-none {
+    padding: 1rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  /* Recent searches, before typing: kept on the device only. */
+  .search-recent li a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .search-recent li a:hover {
+    background: var(--surface);
+  }
+
+  .search-recent .icon {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    color: var(--text-3);
+  }
+
+  .search-recent .list-head .link-button {
+    font-size: 0.8125rem;
+  }
+
+  .search-recent-note {
+    padding: 0.5rem 1rem 0;
+    color: var(--text-3);
+    font-size: 0.75rem;
+  }
 }

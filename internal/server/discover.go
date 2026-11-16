@@ -207,16 +207,7 @@ func countOf(n int, one, many string) string {
 // with which of their feeds the user follows and their icons, and what to
 // offer when q is an address.
 func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, error) {
-	var found foundSites
-	var siteKey string
-	if u, err := discovery.ParseInput(q); err == nil {
-		siteKey = discovery.SiteKey(u)
-		if s.isAppLink(u) {
-			found.AppLink = true
-		} else {
-			found.LookupQ = lookupAddress(u)
-		}
-	}
+	found, siteKey := s.addressOffer(q)
 	sites, err := s.services.SearchService.Search(r.Context(), q, siteKey, limit)
 	if err != nil {
 		return foundSites{}, err
@@ -241,6 +232,22 @@ func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, 
 		found.Icons = s.pageIcons(r, siteIDs)
 	}
 	return found, nil
+}
+
+// addressOffer is what a search offers when q is a website address: Look
+// up, or, for the app's own address, why not; with q's site key. Both are
+// zero when q isn't an address.
+func (s *Server) addressOffer(q string) (found foundSites, siteKey string) {
+	u, err := discovery.ParseInput(q)
+	if err != nil {
+		return foundSites{}, ""
+	}
+	if s.isAppLink(u) {
+		found.AppLink = true
+	} else {
+		found.LookupQ = lookupAddress(u)
+	}
+	return found, discovery.SiteKey(u)
 }
 
 // siteResult is a site search's result (partials/site_result.html), on

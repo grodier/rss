@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -162,14 +161,14 @@ func (s *Server) seedLookupHandler(w http.ResponseWriter, r *http.Request) {
 		s.notFoundResponse(w, r)
 		return
 	}
-	_, err := s.services.Feeds.QueueSeedLookup(r.Context(), entry, s.actor(r))
-	switch {
-	case errors.Is(err, rss.ErrNoRecord):
-		s.notFoundResponse(w, r)
-		return
-	case err != nil:
+	l, err := s.services.Feeds.QueueSeedLookup(r.Context(), entry, s.actor(r))
+	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	s.backTo(w, r, seedHref(seedFilter(form.Filter)), "Queued a lookup of "+entry.SiteKey+": refresh this page to see how it went.")
+	msg := "Queued a lookup of " + entry.SiteKey + ": refresh this page to see how it went."
+	if l.Status == rss.LookupRunning {
+		msg = "A lookup of " + entry.SiteKey + " is already running: refresh this page to see how it went."
+	}
+	s.backTo(w, r, seedHref(seedFilter(form.Filter)), msg)
 }

@@ -38,6 +38,8 @@ type fakeFeeds struct {
 	// seed is what SeedList returns, and catalog Catalog.
 	seed    []rss.AdminSeedEntry
 	catalog []rss.AdminCatalogSection
+	// seedStatus is the status of the lookup QueueSeedLookup returns.
+	seedStatus rss.LookupStatus
 }
 
 // feedCall is one action the store was asked to make.
@@ -118,17 +120,21 @@ func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, sectionID string, 
 }
 
 func (f *fakeFeeds) SeedList(context.Context, []seed.Entry) ([]rss.AdminSeedEntry, error) {
-	return f.seed, nil
+	return f.seed, f.err
 }
 
 // QueueSeedLookup records the call as "seed-lookup" with the entry's site
-// key.
+// key, and returns a lookup with seedStatus, pending by default.
 func (f *fakeFeeds) QueueSeedLookup(_ context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error) {
-	return rss.Lookup{Status: rss.LookupPending}, f.call("seed-lookup", e.SiteKey, by)
+	status := f.seedStatus
+	if status == "" {
+		status = rss.LookupPending
+	}
+	return rss.Lookup{Status: status}, f.call("seed-lookup", e.SiteKey, by)
 }
 
 func (f *fakeFeeds) Catalog(context.Context) ([]rss.AdminCatalogSection, error) {
-	return f.catalog, nil
+	return f.catalog, f.err
 }
 
 // fakeRefresher returns res and err, keeping the feeds it refreshed and

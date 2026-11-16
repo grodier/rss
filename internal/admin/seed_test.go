@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"html"
 	"net/http"
 	"net/url"
@@ -100,7 +101,7 @@ func TestSeedPage(t *testing.T) {
 	if strings.Contains(body, `<script>alert("seed")`) {
 		t.Error("seed page renders a lookup's error as markup")
 	}
-	if n := strings.Count(body, "Look up again"); n != 3 {
+	if n := strings.Count(body, ">Look up again</button>"); n != 3 {
 		t.Errorf("seed page has %d Look up again buttons, want 3 (the failed and no-feeds entries)", n)
 	}
 }
@@ -166,6 +167,14 @@ func TestSeedLookup(t *testing.T) {
 		t.Error("seed page doesn't flash the lookup")
 	}
 
+	// A lookup already running is left to finish.
+	feeds.seedStatus = rss.LookupRunning
+	b.post(t, "/seed/lookup", url.Values{"site_key": {"feeds.example"}})
+	if body := html.UnescapeString(b.get(t, "/seed").Body.String()); !strings.Contains(body, "A lookup of feeds.example is already running") {
+		t.Error("seed page doesn't say the lookup was already running")
+	}
+	feeds.seedStatus = ""
+
 	// A filter the page doesn't offer goes back to All.
 	if rr := b.post(t, "/seed/lookup", url.Values{"site_key": {"found.example"}, "filter": {"bogus"}}); rr.Header().Get("Location") != "/seed" {
 		t.Errorf("POST /seed/lookup with a bogus filter goes to %q, want /seed", rr.Header().Get("Location"))
@@ -177,8 +186,13 @@ func TestSeedLookup(t *testing.T) {
 			t.Errorf("POST /seed/lookup %q = %d, want 404", key, rr.Code)
 		}
 	}
-	if len(feeds.calls) != 2 {
-		t.Errorf("calls = %+v, want only the two seed list entries'", feeds.calls)
+	if len(feeds.calls) != 3 {
+		t.Errorf("calls = %+v, want only the three seed list entries'", feeds.calls)
+	}
+
+	feeds.err = errors.New("db down")
+	if rr := b.post(t, "/seed/lookup", url.Values{"site_key": {"found.example"}}); rr.Code != http.StatusInternalServerError {
+		t.Errorf("POST /seed/lookup failing = %d, want 500", rr.Code)
 	}
 }
 
@@ -201,7 +215,7 @@ func testCatalog() []rss.AdminCatalogSection {
 	return []rss.AdminCatalogSection{
 		{Section: testSections[0], Feeds: []rss.AdminCatalogFeed{
 			{ID: feedID(1), Title: "Quanta", SiteHost: "quanta.example", PostsPerWeek: 4.25, LatestPost: testNow.Add(-3 * time.Hour), Subscribers: 1234},
-			{ID: feedID(2), Title: `<b>Nautilus</b>`, SiteHost: "nautilus.example"},
+			{ID: feedID(2), Title: `<b>Nautilus</b>`, SiteHost: "nautilus.example", GoneAt: testNow.Add(-24 * time.Hour)},
 		}},
 		{Section: testSections[1]},
 		{Section: testSections[2], Feeds: []rss.AdminCatalogFeed{{ID: feedID(3), URL: "https://film.example/feed", SiteHost: "film.example"}}},
@@ -230,10 +244,15 @@ func TestDiscoverPage(t *testing.T) {
 		// Untitled, it's its URL; titles are escaped.
 		`<a href="/feeds/` + feedID(3) + `">https://film.example/feed</a>`,
 		`&lt;b&gt;Nautilus&lt;/b&gt;`,
+		// A gone feed says Discover hides it.
+		`nautilus.example · <span class="problem problem-bad"><strong>Gone: hidden from Discover</strong></span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("discover page lacks %s", want)
 		}
+	}
+	if n := strings.Count(body, "Gone: hidden from Discover"); n != 1 {
+		t.Errorf("discover page marks %d feeds gone, want 1", n)
 	}
 	if strings.Index(body, "Quanta") > strings.Index(body, "film.example/feed") {
 		t.Error("discover page doesn't list the sections in their order")
@@ -258,5 +277,16 @@ func TestDiscoverPage(t *testing.T) {
 	b = seedServer(t, &fakeFeeds{catalog: []rss.AdminCatalogSection{{Section: testSections[0]}}})
 	if body := b.get(t, "/discover").Body.String(); !strings.Contains(body, "Discover’s catalog is empty") {
 		t.Error("an empty catalog doesn't say so")
+	}
+}
+
+// TestSeedAndDiscoverPagesFail checks both pages answer 500 when their
+// store fails.
+func TestSeedAndDiscoverPagesFail(t *testing.T) {
+	b := seedServer(t, &fakeFeeds{err: errors.New("db down")})
+	for _, path := range []string{"/seed", "/discover"} {
+		if rr := b.get(t, path); rr.Code != http.StatusInternalServerError {
+			t.Errorf("GET %s failing = %d, want 500", path, rr.Code)
+		}
 	}
 }

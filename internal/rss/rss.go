@@ -1084,12 +1084,14 @@ type AdminCatalogSection struct {
 }
 
 // AdminCatalogFeed is a feed in Discover's catalog as the admin lists it:
-// its site, posting rate, latest article's date (zero with none) and
-// subscribers (a count, never who).
+// its site, posting rate, latest article's date (zero with none),
+// subscribers (a count, never who) and when it answered 410 Gone (zero if
+// it hasn't), since Discover hides a gone feed still in the catalog.
 type AdminCatalogFeed struct {
 	ID, Title, URL   string
 	SiteID, SiteHost string
 	PostsPerWeek     float64
 	LatestPost       time.Time
 	Subscribers      int
+	GoneAt           time.Time
 }

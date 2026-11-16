@@ -164,6 +164,9 @@ func TestAdminFeedRepositoryCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := newCatalogFeed(t, db, second)
+	if _, err := db.Exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := repo.Catalog(t.Context())
 	if err != nil {
@@ -185,8 +188,9 @@ func TestAdminFeedRepositoryCatalog(t *testing.T) {
 	if n := len(mine[2].Feeds); n != 0 {
 		t.Errorf("Empty has %d feeds, want 0", n)
 	}
-	if len(mine[1].Feeds) != 1 || mine[1].Feeds[0].ID != c.ID {
-		t.Errorf("Second's feeds = %+v, want %s", mine[1].Feeds, c.ID)
+	// A gone feed is listed, marked, though Discover hides it.
+	if len(mine[1].Feeds) != 1 || mine[1].Feeds[0].ID != c.ID || mine[1].Feeds[0].GoneAt.IsZero() {
+		t.Errorf("Second's feeds = %+v, want %s, gone", mine[1].Feeds, c.ID)
 	}
 
 	// By title, any case.
@@ -194,7 +198,7 @@ func TestAdminFeedRepositoryCatalog(t *testing.T) {
 	if len(fs) != 2 || fs[0].ID != a.ID || fs[1].ID != b.ID {
 		t.Fatalf("First's feeds = %+v, want A feed, b feed", fs)
 	}
-	if !fs[0].LatestPost.IsZero() || fs[0].Subscribers != 0 {
+	if !fs[0].LatestPost.IsZero() || fs[0].Subscribers != 0 || !fs[0].GoneAt.IsZero() {
 		t.Errorf("A feed = %+v, want no post, no subscribers", fs[0])
 	}
 	f := fs[1]

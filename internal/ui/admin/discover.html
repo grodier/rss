@@ -15,7 +15,7 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Discover</h1>
-        <p>The feeds Discover shows, by section, in Discover’s order. A feed’s page puts it in a section or takes it out.</p>
+        <p>The feeds in Discover’s catalog, by section, in Discover’s order. A feed’s page puts it in a section or takes it out; Discover hides a gone feed until it’s taken out or cleared.</p>
       </header>
 
       <div class="segments">
@@ -41,7 +41,7 @@
             <tbody>
               {{range .Rows}}
               <tr>
-                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a><small>{{.SiteHost}}</small></td>
+                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a><small>{{.SiteHost}}{{if not .GoneAt.IsZero}} · <span class="problem problem-bad"><strong>Gone: hidden from Discover</strong></span>{{end}}</small></td>
                 {{if $every}}<td>{{.Section}}</td>{{end}}
                 <td class="num">{{perWeek .PostsPerWeek}}</td>
                 <td>{{if .LatestPost.IsZero}}—{{else}}<time datetime="{{.LatestPost.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .LatestPost}} UTC">{{ago $now .LatestPost}}</time>{{end}}</td>

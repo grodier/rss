@@ -78,7 +78,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | Package | Role | Depends on |
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
-| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
+| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `seed`, `ui`, `validator` |
 | `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites pages, the seed list's and Discover's catalog's pages, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `seed`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |

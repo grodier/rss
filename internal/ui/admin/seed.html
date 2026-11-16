@@ -15,7 +15,7 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Seed list</h1>
-        <p>Each site in <code>internal/seed/sites.txt</code>, in the file’s order, with what its lookup found. Edit the list in a PR; each deploy looks up its new sites, and retries those not found after an hour.</p>
+        <p>Each site in <code>internal/seed/sites.txt</code>, in the file’s order, with what its lookup found. Edit the list in a PR: each deploy looks up its new sites, and retries after an hour those never found. One found before whose later lookup failed waits for Look up again.</p>
       </header>
       {{with .Flash}}
       <div class="flash" role="status">{{.}}</div>

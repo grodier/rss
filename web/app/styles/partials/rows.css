@@ -87,7 +87,8 @@
     line-clamp: 2;
   }
 
-  /* Headlines: the feed's icon and name are a kicker line, then the
+  /* Headlines: the feed's avatar and name with the time (on one line, or
+     the name over the time on phones) are a kicker, then the
      headline and excerpt with the picture beside them. No frame: the card
      shows itself when hovered or pressed (below, and press.css). */
   :root:not([data-layout="cards"]) .article-row {
@@ -105,25 +106,34 @@
   :root:not([data-layout="cards"]) .article-row > .avatar {
     grid-row: 1;
     align-self: center;
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    margin-inline-end: 0.5rem;
-    font-size: 0.6875rem;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    margin-inline-end: 0.625rem;
+    font-size: 0.875rem;
   }
 
+  /* One line: a long feed name is cut, never the time. */
   :root:not([data-layout="cards"]) .article-meta {
     grid-row: 1;
     grid-column: 2;
+    flex-wrap: nowrap;
     align-items: center;
     font-size: 0.8125rem;
   }
 
+  :root:not([data-layout="cards"]) .article-meta > :not(.article-feed) {
+    flex: none;
+  }
+
   :root:not([data-layout="cards"]) .article-feed {
+    min-inline-size: 0;
+    overflow: hidden;
     font-family: var(--font-display);
-    font-size: 0.75rem;
-    font-weight: 750;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The card's padding is hung outside the column, so its text lines up
@@ -133,7 +143,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 1.25rem;
     align-items: start;
-    margin: 0.25rem -0.5rem 0;
+    margin: 0.375rem -0.5rem 0;
     padding: 0.375rem 0.5rem 0.5rem;
   }
 
@@ -167,6 +177,34 @@
   @media (max-width: 42.99rem) {
     :root:not([data-layout="cards"]) .article-row {
       padding: 1.125rem 1rem 0.625rem;
+    }
+
+    /* A phone's line can't hold a feed's name at this size beside the
+       time, so the name goes over the time, beside a larger avatar. */
+    :root:not([data-layout="cards"]) .article-row > .avatar {
+      inline-size: 2.25rem;
+      block-size: 2.25rem;
+      font-size: 1rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-meta {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.0625rem;
+    }
+
+    :root:not([data-layout="cards"]) .article-meta > span[aria-hidden] {
+      display: none;
+    }
+
+    :root:not([data-layout="cards"]) .article-feed {
+      max-inline-size: 100%;
+      font-size: 0.9375rem;
+      letter-spacing: 0;
+    }
+
+    :root:not([data-layout="cards"]) .article-card {
+      margin-block-start: 0.5rem;
     }
 
     :root:not([data-layout="cards"]) .article-card {

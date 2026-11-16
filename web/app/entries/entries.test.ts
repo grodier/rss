@@ -13,6 +13,7 @@ const modules: Record<string, string[]> = {
   "../../shared/lib/password-toggle": ["init"],
   "../features/back-forward": ["init"],
   "../features/divider-draw": ["init"],
+  "../features/home-fetching": ["init"],
   "../features/import-status": ["init"],
   "../features/infinite-scroll": ["init"],
   "../features/live-search": ["init"],
@@ -44,6 +45,7 @@ const entries: Record<string, string[]> = {
     "seen-beacon",
     "divider-draw",
     "infinite-scroll",
+    "home-fetching",
   ],
   section: [
     "rum",

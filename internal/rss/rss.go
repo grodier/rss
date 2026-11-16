@@ -291,6 +291,14 @@ type Subscription struct {
 	Tags            []Tag     // ordered by name, ignoring case; Feeds left zero
 }
 
+// Following is what Home says about what a reader follows: how many sites,
+// and the followed feeds never fetched yet ("Getting the latest from …").
+type Following struct {
+	Sites          int      // distinct sites of the reader's subscriptions
+	Unfetched      []string // names of up to the asked-for number of never-attempted feeds, in My feeds' order
+	UnfetchedTotal int      // how many followed feeds were never attempted
+}
+
 // Tag is a user's label for their subscriptions.
 type Tag struct {
 	ID    string

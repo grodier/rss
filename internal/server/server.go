@@ -187,6 +187,10 @@ type SubscriptionStore interface {
 	Search(ctx context.Context, userID, q string, limit int) ([]rss.Subscription, error)
 	// Count returns how many feeds userID follows.
 	Count(ctx context.Context, userID string) (int, error)
+	// Following returns how many sites userID follows and the followed
+	// feeds never fetched yet, up to limit of their names; see
+	// psql.SubscriptionRepository.Following.
+	Following(ctx context.Context, userID string, limit int) (rss.Following, error)
 	// Get returns userID's subscription to feedID, with its feed and site.
 	// rss.ErrNoRecord if userID doesn't subscribe to feedID.
 	Get(ctx context.Context, userID, feedID string) (rss.Subscription, error)

@@ -154,6 +154,57 @@ func TestSubscriptionRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("Following counts sites and names the feeds never fetched", func(t *testing.T) {
+		user := newTestUser(t, db)
+		if fo, err := repo.Following(ctx, user, 2); err != nil || fo.Sites != 0 || fo.UnfetchedTotal != 0 || len(fo.Unfetched) != 0 {
+			t.Fatalf("Following with none = %+v, %v; want zero", fo, err)
+		}
+
+		// Two feeds of one site, never fetched; a feed of another site,
+		// fetched; and a third site's feed, never fetched, renamed.
+		site := newTestSite(t, db)
+		b := newTestFeedOn(t, db, site)
+		a := newTestFeedOn(t, db, site)
+		fetched := newTestFeed(t, db)
+		renamed := newTestFeed(t, db)
+		for _, f := range []rss.Feed{a, b, fetched, renamed} {
+			if err := repo.Subscribe(ctx, user, f.ID); err != nil {
+				t.Fatalf("Subscribe: %v", err)
+			}
+		}
+		for id, title := range map[string]string{a.ID: "Alpha", b.ID: "Beta"} {
+			if _, err := db.Exec(`UPDATE feeds SET title = $2 WHERE id = $1`, id, title); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := db.Exec(`UPDATE feeds SET last_attempt_at = now() WHERE id = $1`, fetched.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE sites SET title = 'Zed' WHERE id = $1`, renamed.SiteID); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Rename(ctx, user, renamed.ID, "Mine"); err != nil {
+			t.Fatalf("Rename: %v", err)
+		}
+		// Another reader's follows don't count.
+		if err := repo.Subscribe(ctx, newTestUser(t, db), newTestFeed(t, db).ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+
+		fo, err := repo.Following(ctx, user, 2)
+		if err != nil {
+			t.Fatalf("Following: %v", err)
+		}
+		// The shared site sorts by its host, before "Zed".
+		want := rss.Following{Sites: 3, Unfetched: []string{"Alpha", "Beta"}, UnfetchedTotal: 3}
+		if fo.Sites != want.Sites || fo.UnfetchedTotal != want.UnfetchedTotal || !slices.Equal(fo.Unfetched, want.Unfetched) {
+			t.Errorf("Following = %+v, want %+v", fo, want)
+		}
+		if fo, err := repo.Following(ctx, user, 5); err != nil || !slices.Equal(fo.Unfetched, []string{"Alpha", "Beta", "Mine"}) {
+			t.Errorf("Following(5) = %+v, %v; want Alpha, Beta, Mine", fo, err)
+		}
+	})
+
 	t.Run("subscribing to a nonexistent feed returns ErrNoRecord", func(t *testing.T) {
 		user := newTestUser(t, db)
 

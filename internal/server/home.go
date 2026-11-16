@@ -166,6 +166,23 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 	path := "/timelines/" + tabID(current)
 	filter := current.Filter
 
+	var following homeFollowing
+	switch {
+	case home && len(rows) == 0 && before.IsZero():
+		// Which empty state it is depends on it, so an error fails the page.
+		if following, err = s.homeFollowing(r, userID); err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	case home && len(rows) > 0 && next == "":
+		// The end line is decoration: on a store error the page has none.
+		// Only its count of sites: the page has rows, so nothing is awaited.
+		if following, err = s.homeFollowing(r, userID); err != nil {
+			s.logError(r, err)
+		}
+		following = homeFollowing{rss.Following{Sites: following.Sites}}
+	}
+
 	data := struct {
 		Nav           navData
 		Flash         string
@@ -176,6 +193,7 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		TabID         string // the timeline the beacon reports for: homeTabID or its ID
 		Path          string // the timeline's URL, for the pager
 		NoSources     bool   // it shows only some feeds but has none to show
+		Following     homeFollowing
 		Rows          []articleRow
 		Before        bool
 		Next          string
@@ -188,6 +206,7 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		TabID:         tabID(current),
 		Path:          path,
 		NoSources:     filter.OnlyIncluded && len(filter.IncludeTagIDs) == 0 && len(filter.IncludeFeedIDs) == 0,
+		Following:     following,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
 		ConfirmNotice: s.confirmNotice(r),
 		Rows:          rows,
@@ -208,6 +227,33 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 	if err := s.renderHTML(w, http.StatusOK, "timeline.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// homeFollowingNames is how many never-fetched feeds "Getting the latest
+// from …" names.
+const homeFollowingNames = 2
+
+// homeFollowing is what Home says about what the reader follows, on the
+// pages that say it: its empty first page and the last page of a Home with
+// rows. Home is empty when the reader follows nothing, or follows only feeds
+// with no articles: every article of a followed feed is on Home. Only feeds
+// never fetched yet are "getting the latest" (a lookup or import saves a
+// feed's articles with it, and a feed never fetched is due at once); an
+// empty Home of feeds that were fetched and had nothing, or failed, offers
+// Discover and import like following nothing, so it never waits forever.
+type homeFollowing struct {
+	rss.Following
+}
+
+// More is how many never-fetched feeds Unfetched doesn't name.
+func (f homeFollowing) More() int {
+	return f.UnfetchedTotal - len(f.Unfetched)
+}
+
+// homeFollowing reads homeFollowing for userID.
+func (s *Server) homeFollowing(r *http.Request, userID string) (homeFollowing, error) {
+	fo, err := s.services.SubscriptionService.Following(r.Context(), userID, homeFollowingNames)
+	return homeFollowing{fo}, err
 }
 
 // timelineDivider returns where the "You were here" line goes on userID's

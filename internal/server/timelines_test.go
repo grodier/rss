@@ -742,7 +742,7 @@ func TestTimelineHandler(t *testing.T) {
 		result = nil
 		body := get(t, "/timelines/"+testTimelineID, testTimelineID).Body.String()
 		assertBodyContains(t, body, "Nothing in this timeline yet.")
-		if strings.Contains(body, "Your timeline is empty") || strings.Contains(body, "no feeds to show") {
+		if strings.Contains(body, "Nothing on Home yet") || strings.Contains(body, "no feeds to show") {
 			t.Errorf("wrong empty state: %s", body)
 		}
 	})

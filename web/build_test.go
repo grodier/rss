@@ -134,7 +134,7 @@ type manifestEntry struct {
 
 // The reading pages' budgets, gzipped: their JavaScript (the reading entry
 // and the chunks it imports) and their CSS (base.css, reading.css and the
-// entry's CSS). Each is what was last measured plus 10%: the CSS by #PRNUM,
+// entry's CSS). Each is what was last measured plus 10%: the CSS by #680,
 // whose second article layout (Headlines beside Cards, in rows.css) added
 // about 1,100 bytes, the JavaScript by #639, which brought pollSelf into the reading entry for
 // Home's "Getting the latest…" (#565 had added the real-user metrics,

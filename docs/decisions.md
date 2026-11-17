@@ -421,6 +421,8 @@ Planned in #126, with issues #128–#133.
   An item without authors doesn't inherit the feed's: on a single-author blog that only repeats the feed's name on every row.
   Rows name them in the kicker, after the time ("Feed · Nov 14, 9:16 AM · Jane Doe"), shortened past two to "Jane Doe and 4 others" and cut with an ellipsis rather than wrapped, so no row grows taller (#688, the owner, from the review #685 tracks).
   They're left out when the only author is the feed's name the kicker already shows, as on a personal blog's own posts.
+  On a one-line kicker long authors are cut first, and the feed's name only past 70% of the line, since it says whose the row is; the time never is.
+  On phones the feed's name goes over the time and the authors in both layouts (below 34rem in Headlines, 43rem in Cards), since the three don't fit on one line and a wrapped line left a separator dangling.
   The article page names them all in a dateline under the title ("By … · date"), and its line above the title keeps only the feed, like a newspaper.
   First picked from layouts compared at 0, 1, 2 and 5 authors over authors in the meta line, which wrapped on phones, and a byline under a row's title, which made cards with authors taller.
   #688 moved them to the meta line after all: since #681 the phone kicker puts the feed's name over the time, and the authors share the time's line, cut rather than wrapped; that leaves the foot one line, where on phones the byline had a line of its own and pushed the actions to a second.

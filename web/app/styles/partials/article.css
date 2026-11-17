@@ -146,11 +146,6 @@
     .article-body img[data-image="loaded"] {
       animation: image-in var(--duration-base) var(--ease-out);
     }
-
-    :root[data-image-fade="develop"] .reader-image[data-image="loaded"],
-    :root[data-image-fade="develop"] .article-body img[data-image="loaded"] {
-      animation: image-develop var(--duration-move) var(--ease-out);
-    }
   }
 
   .article-body figcaption {

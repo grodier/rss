@@ -435,6 +435,7 @@ Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and
 The page's values come from enrichment and only fill gaps.
 An image that fails to load in the browser (a 404, or a host without working https) doesn't show as a broken box: `image-fallback.ts` tries its `data-fallback-src` (`CardImageFallbackURL`, the page's image when the feed's is the one shown; the article page's lead image gets it only if the content doesn't show it), then removes the image, and in an article's body what only held it (its link, paragraph or figure).
 Without JavaScript the broken box stays.
+An image still loading when the page's script runs fades in once it loads (`image-fade.ts`); one already loaded shows at once.
 Card images are lazy except one: on a list's first page (timeline, Saved, a feed), `markFirstImageEager` makes the first row with an image load at once with `fetchpriority="high"`, since it's usually a phone's largest first-screen element; the article page's lead image is eager and high priority too.
 
 **Timeline position.** `timelineAt` sets `timeline_at` once, when an article is first saved.
@@ -489,9 +490,9 @@ Without JavaScript the link just works.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`).
-5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts` and `image-fallback.ts` in `web/app/features`.
+5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `image-fade.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `image-fade.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 

@@ -8,13 +8,7 @@
 // nothing stays invisible.
 import { IMAGES } from "./image-fallback";
 
-// Design checkpoint switch (#525): "fade", an opacity fade, or "develop", a
-// top-down reveal. Removed, with the other option's styles, once one is
-// picked.
-const STYLE: "fade" | "develop" = "fade";
-
 export function init(): void {
-  document.documentElement.dataset.imageFade = STYLE;
   const settle = (e: Event) => {
     const img = e.target;
     if (!(img instanceof HTMLImageElement) || img.dataset.image !== "loading") return;

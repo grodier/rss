@@ -851,12 +851,17 @@ Planned in #309 (issues #298, #306, #307).
 A modern, minimal look modelled on social timelines, from the redesign in #181, moved toward a newspaper's in #680, since beside Bluesky the app looked like it.
 
 - **Article rows have two layouts, Headlines (the default) and Cards, chosen in Settings → Reading** (#680, the owner's pick of three options after three rounds).
-  Headlines: the feed's avatar and name as a kicker with the time, then a large headline and the excerpt with the picture beside them, and no frame; on phones the picture goes full width between the headline and the excerpt.
+  Headlines: the feed's avatar and name as a kicker with the time, then a large headline and the excerpt with the picture beside them, and no frame; below 34rem (phones) the picture goes full width between the headline and the excerpt (#687).
   Cards: the layout from #181, the feed's avatar in a column of its own and a framed preview card under its name.
   Headlines is the default because the avatar column and the framed card were what made a row read as a social post, on phones above all, where every app has the same bars and the row is what's left; it also shows about twice the articles per desktop screen.
   Cards stays, as a setting, because a framed card reads as one thing to press without hovering, and gives pictures more room; it isn't a compatibility path, and both are designed for.
   Every change to article rows is designed, built and screenshotted in both.
   Rejected for Headlines: a thumbnail beside the headline on phones too (denser, but cramped), a frame around each article (clearest to press, but on a phone it was the card again), serif headlines (further from the app's own voice), and a masthead across the top in place of the rail (nothing on phones, and two sticky bars cost height).
+- **In Headlines the picture is a social card's shape, with three lines of excerpt beside it** (#687, the owner's pick from mockups in the review #685 tracks): 1.91:1 at 12rem, where it was 3:2 at 10.5rem, and a 24px headline, where it was 22px.
+  Most articles' pictures are Open Graph cards (1200 × 630), which a 3:2 box cropped by about 10% a side, cutting the text many of them carry; the new box is about the same area.
+  Two lines beside the picture showed no more of the excerpt than a phone does; a third fits beside the picture without making the row taller, about 75% more than a phone's two.
+  The picture sits beside the text from 34rem, not 43rem, at up to 36% of the card's width, so small tablets and split screens don't get a full-width picture that swamps a short excerpt; phones keep theirs, and their two lines.
+  Rejected: letterboxing (bands around social cards and squares), the new shape at the old width (a smaller picture), a wider picture with two lines (the text narrowed until desktop showed what a phone does), and text running around the picture (whole excerpts, but taller, uneven rows that can't be clamped with an ellipsis).
 - **Only the card opens the article, and nothing else pressable is inside it** (#680, the owner): the byline, the link to the original, Follow and Star, Share and Save are on a line under it, in both layouts, so a press never has two candidates.
   Before, the link to the original sat inside the card, raised above the card's link.
   In Headlines the frameless card shows itself by tinting when hovered or pressed; on a phone at rest nothing outlines it, which the owner accepted over a frame.

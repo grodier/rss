@@ -89,9 +89,11 @@
     margin-block-end: 1rem;
   }
 
-  /* The privacy policy and terms: a column of text in a solo page. */
+  /* The privacy policy and terms: a column of text in a solo page. It
+     keeps 40rem where the reading column widens: with no rail to line up
+     with, the narrower measure costs nothing. */
   .solo-panel.prose {
-    inline-size: min(100%, var(--column));
+    inline-size: min(100%, 40rem);
     line-height: 1.6;
   }
 

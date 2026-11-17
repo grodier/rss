@@ -75,6 +75,15 @@
     line-height: 1.6;
   }
 
+  /* In the wider column (tokens.css), larger text keeps the lines about as
+     long as in the narrower one, instead of a shorter measure that would
+     leave a gap beside the text. */
+  @media (min-width: 80rem) {
+    .article-body {
+      font-size: 1.375rem;
+    }
+  }
+
   /* Feeds often wrap the whole article in a <div>, <section> or <article>
      (and the reset zeroes <p> margins), so space the blocks inside those
      wrappers like top-level ones. */

@@ -209,4 +209,12 @@
     --debug-border: #e1b75c;
     --font-reading-weight: 440;
   }
+
+  /* On screens 80rem and wider the column widens a little, on every page,
+     so it keeps its width between pages (and through the crossfade). */
+  @media (min-width: 80rem) {
+    :root {
+      --column: 44rem;
+    }
+  }
 }

@@ -509,7 +509,7 @@ Beyond those:
 - **Article layouts:** article rows have one markup (`partials/article_row.html`) and two layouts, Headlines and Cards, both drawn by `rows.css`.
   `html-theme` also writes `navData.Layout()` as `data-layout="cards"` when the user chose Cards (`users.layout`), and nothing for Headlines, which the rules select with `:root:not([data-layout="cards"])`; so a page that doesn't know the user gets Headlines.
   Rules without a layout selector are shared by both.
-  In both, a row's `.article-card` holds only the link that opens the article; the byline, the source link, Follow and the actions are in `.article-foot` under it.
+  In both, a row's `.article-card` holds only the link that opens the article; the source link, Follow and the actions are in `.article-foot` under it, and the authors in the kicker above it.
 - **Shape:** corners come from three tokens in `tokens.css`: `--radius` (frames and pictures), `--radius-sm` (small things) and `--radius-control` (buttons, fields and other controls).
   The admin sets its own values for them (`web/admin/styles/partials/shell.css`), so the reader's shape isn't the admin's.
   Logged-out and error pages have no user, so they always follow the system.

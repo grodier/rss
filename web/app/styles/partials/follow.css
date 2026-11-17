@@ -21,6 +21,7 @@
      outlined button, as a page of posts repeats it on every row of a feed,
      where a filled one would outshout the posts. */
   .article-foot .follow-form {
+    flex: none;
     margin-inline-start: auto;
   }
 

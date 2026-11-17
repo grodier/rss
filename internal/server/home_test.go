@@ -204,7 +204,11 @@ func TestHomeHandlerTimeline(t *testing.T) {
 				t.Errorf("missing %s in: %s", want, body)
 			}
 		}
-		for _, bad := range []string{"other.jpg", "Other title", "Other description"} {
+		// The page's image is only the fallback for the feed's.
+		if !strings.Contains(body, `data-fallback-src="https://example.com/other.jpg"`) {
+			t.Errorf("page image isn't the feed image's fallback: %s", body)
+		}
+		for _, bad := range []string{` src="https://example.com/other.jpg"`, "Other title", "Other description"} {
 			if strings.Contains(body, bad) {
 				t.Errorf("page value %q shown over the feed's: %s", bad, body)
 			}

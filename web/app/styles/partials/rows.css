@@ -398,6 +398,46 @@
     filter: saturate(0.6);
   }
 
+  /* Image fades (image-fade.ts): a card image still loading waits unseen
+     in its reserved space, then fades in to its own opacity, a read card's
+     dimmed one included. Under reduced motion, a quick opacity transition
+     instead, which isn't motion. article.css uses image-in for the article page. */
+  .article-image[data-image="loading"],
+  .article-row.read .article-image[data-image="loading"] {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .article-image {
+      transition: opacity var(--duration-quick) var(--ease-out);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .article-image[data-image="loaded"] {
+      animation: image-in var(--duration-base) var(--ease-out);
+    }
+
+    /* Checkpoint option "develop": the picture is revealed from the top
+       down, like a print coming off the press. Motion, so only here. */
+    :root[data-image-fade="develop"] .article-image[data-image="loaded"] {
+      animation: image-develop var(--duration-move) var(--ease-out);
+    }
+  }
+
+  @keyframes image-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes image-develop {
+    from {
+      opacity: 0.2;
+      clip-path: inset(0 0 100% 0);
+    }
+  }
+
   /* Hover, only on devices that really hover, so a tap on a phone doesn't
      leave a card looking hovered, and after the read rules, so it wins on
      read cards too. The title takes the link color, the opposite of a read

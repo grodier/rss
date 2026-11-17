@@ -269,6 +269,7 @@ Each with when it pays off:
   Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times.
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
+  It would also know when a publisher's image fails, so it could fall back or drop it on the server, without the broken-image box readers without JavaScript still see; `image-fallback.ts` and `data-fallback-src` (#525) could then go.
   It would also cut the timeline's heaviest bytes: publishers' card images are usually full-size (1200×630 or larger), and could be resized and re-encoded (WebP or AVIF) for the card's width (noted while planning #540–#547).
 - [ ] **Keyboard shortcuts.**
   E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.

@@ -7,6 +7,8 @@ import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
 import * as dividerDraw from "../features/divider-draw";
 import * as homeFetching from "../features/home-fetching";
+import * as imageFade from "../features/image-fade";
+import * as imageFallback from "../features/image-fallback";
 import * as infiniteScroll from "../features/infinite-scroll";
 import { enhancePings } from "../features/read-pings";
 import { setupRUM } from "../features/rum";
@@ -24,6 +26,8 @@ saveStar.init();
 share.init();
 busyForms.init(); // after saveStar: it skips the submits saveStar takes over
 videoEmbeds.init();
+imageFallback.init();
+imageFade.init(); // after imageFallback: an image trying its fallback keeps waiting
 timelineTabs.init(); // after backForward, as both listen for pageswap and pagereveal
 seenBeacon.init();
 dividerDraw.init(); // before infiniteScroll, which draws the dividers it appends

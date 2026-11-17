@@ -866,6 +866,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   Two lines beside the picture showed no more of the excerpt than a phone does; a third fits beside the picture without making the row taller, about 75% more than a phone's two.
   The picture sits beside the text from 34rem, not 43rem, at up to 36% of the card's width, so small tablets and split screens don't get a full-width picture that swamps a short excerpt; phones keep theirs, and their two lines.
   Rejected: letterboxing (bands around social cards and squares), the new shape at the old width (a smaller picture), a wider picture with two lines (the text narrowed until desktop showed what a phone does), and text running around the picture (whole excerpts, but taller, uneven rows that can't be clamped with an ellipsis).
+- **The reading column is 44rem on screens 80rem (1280px) and wider, and 40rem below** (#689, the owner's pick at its checkpoint, from the review #685 tracks): on a large screen the extra space sat beside the column.
+  It widens on every page that has the rail, so the rail never moves between pages; in Headlines the extra width goes to the picture (13.5rem), and the excerpt keeps its three lines.
+  On the article page the text grows from 20px to 22px there, which keeps lines at about 73 characters, as in the narrower column; uncapped they ran to about 84.
+  Rejected: capping the article text at today's width (a gap beside it), wider even margins on the article page and a 42rem column (both about 80 characters, giving back most of the width).
+  The privacy policy and terms keep 40rem: they have no rail to line up with.
 - **Only the card opens the article, and nothing else pressable is inside it** (#680, the owner): the link to the original, Follow and Star, Share and Save are on a line under it, in both layouts, so a press never has two candidates; the authors are in the kicker above it (#688).
   Before, the link to the original sat inside the card, raised above the card's link.
   In Headlines the frameless card shows itself by tinting when hovered or pressed; on a phone at rest nothing outlines it, which the owner accepted over a frame.

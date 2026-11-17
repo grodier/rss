@@ -167,6 +167,13 @@
     border-radius: var(--radius-sm);
   }
 
+  /* In the wider column, the extra width goes to the picture. */
+  @media (min-width: 80rem) {
+    :root:not([data-layout="cards"]) .article-image {
+      inline-size: min(13.5rem, 36cqi);
+    }
+  }
+
   :root:not([data-layout="cards"]) .article-title {
     font-size: 1.5rem;
     font-weight: 750;

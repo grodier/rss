@@ -6,9 +6,9 @@
 // box stays, as before. Rows added later need nothing: error is listened
 // for on document, in the capture phase, since it doesn't bubble.
 
-// The images covered here and by image-fade: publishers' pictures, not
-// avatars or site icons, which we serve.
-export const IMAGES = ".article-image, .reader-image, .article-body img";
+// The images covered: publishers' pictures, not avatars or site icons,
+// which we serve.
+const IMAGES = ".article-image, .reader-image, .article-body img";
 
 export function init(): void {
   document.addEventListener(

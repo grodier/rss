@@ -127,27 +127,6 @@
     border-radius: var(--radius-sm);
   }
 
-  /* Image fades (image-fade.ts), as for card images (rows.css, which has
-     the keyframes and which reading.css imports too). */
-  .reader-image[data-image="loading"],
-  .article-body img[data-image="loading"] {
-    opacity: 0;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .reader-image,
-    .article-body img {
-      transition: opacity var(--duration-quick) var(--ease-out);
-    }
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .reader-image[data-image="loaded"],
-    .article-body img[data-image="loaded"] {
-      animation: image-in var(--duration-base) var(--ease-out);
-    }
-  }
-
   .article-body figcaption {
     margin-block-start: 0.5rem;
     color: var(--text-2);

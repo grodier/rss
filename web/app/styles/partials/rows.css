@@ -164,6 +164,10 @@
     font-weight: 750;
     line-height: 1.2;
     letter-spacing: -0.02em;
+    /* Browsers without pretty (Firefox) drop it and keep wrap, rather than
+       the headings' balance from reset.css, which halves a two-line
+       headline. */
+    text-wrap: wrap;
     text-wrap: pretty;
   }
 

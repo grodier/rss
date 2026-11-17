@@ -157,7 +157,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Corners use the radius tokens there, never literal radii or pills: `--radius` for frames and pictures, `--radius-sm` for small things, `--radius-control` for buttons, fields and other controls.
 - Article rows have one markup (`partials/article_row.html`) and two layouts, Headlines (the default) and Cards, both in `web/app/styles/partials/rows.css`: Cards under `:root[data-layout="cards"]`, Headlines under `:root:not([data-layout="cards"])`, and what they share with no layout selector.
   A change to article rows, or to anything inside one, is made for both layouts and checked in both, on every kind of page that lists articles (a timeline, a feed, a site, Saved, a Discover section's Recent posts), at desktop and phone widths; neither is the legacy one.
-  Only a row's `.article-card` opens the article, and it holds no other link or button: the byline, the source link, Follow and the actions go in `.article-foot`.
+  Only a row's `.article-card` opens the article, and it holds no other link or button: the source link, Follow and the actions go in `.article-foot`, and the authors in the kicker.
   Logged-in pages carry the reader's theme and layout on `<html>` through `{{template "html-theme" .Nav}}`.
   Rules go in the partial for their area (`web/app/styles/partials`, or `web/shared/styles` for what isn't about the reader), inside their cascade layer's block.
   The partials have one order, listed in `web/app/styles/base.css`: a sheet imports the partials its pages use in that order, with `press.css` last, and a new partial goes in the list and in the sheets of every page it styles.

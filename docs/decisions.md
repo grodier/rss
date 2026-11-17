@@ -419,9 +419,11 @@ Planned in #126, with issues #128–#133.
   RSS's `<author>` is an email address by spec, often a placeholder (`noreply@blogger.com (Unknown)`), so only the name in it is kept, and "Unknown" is dropped.
   For RSS every `dc:creator` is read, since that's how multi-author posts list their authors; otherwise the first source with an author wins, as in gofeed.
   An item without authors doesn't inherit the feed's: on a single-author blog that only repeats the feed's name on every row.
-  Rows name them in the card, before the link to the original ("Jane Doe · example.com ↗"), shortened past two to "Jane Doe and 4 others", so no row grows taller or pushes its date to a second line on phones.
+  Rows name them in the kicker, after the time ("Feed · Nov 14, 9:16 AM · Jane Doe"), shortened past two to "Jane Doe and 4 others" and cut with an ellipsis rather than wrapped, so no row grows taller (#688, the owner, from the review #685 tracks).
+  They're left out when the only author is the feed's name the kicker already shows, as on a personal blog's own posts.
   The article page names them all in a dateline under the title ("By … · date"), and its line above the title keeps only the feed, like a newspaper.
-  Picked from layouts compared at 0, 1, 2 and 5 authors over authors in the meta line, which wrapped on phones, and a byline under a row's title, which made cards with authors taller.
+  First picked from layouts compared at 0, 1, 2 and 5 authors over authors in the meta line, which wrapped on phones, and a byline under a row's title, which made cards with authors taller.
+  #688 moved them to the meta line after all: since #681 the phone kicker puts the feed's name over the time, and the authors share the time's line, cut rather than wrapped; that leaves the foot one line, where on phones the byline had a line of its own and pushed the actions to a second.
   At most 10 per article.
 
 ## Subscriptions
@@ -560,7 +562,7 @@ Planned in #163 (issues #147–#162).
   The exact word match stays as the final check, so results don't change.
 - **Rows are divided sections with a preview card**, one design for the timeline and feed pages: the feed's avatar and name with the time, then a card with the optional image, title and two-line excerpt.
   The whole card links to the in-app article page.
-  Since #680 this is the Cards layout, one of two, and the byline and the link to the original are under the card, not in it; see "Article rows have two layouts" under "Design".
+  Since #680 this is the Cards layout, one of two, and the link to the original is under the card, not in it (the authors are in the kicker, #688); see "Article rows have two layouts" under "Design".
   Feed pages leave out the avatar and name.
   Untitled articles use the start of the excerpt.
   (#181) The image, title and excerpt are the feed's, else the article page's (see "Enrichment", #307); the feed's own values always win.
@@ -862,7 +864,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   Two lines beside the picture showed no more of the excerpt than a phone does; a third fits beside the picture without making the row taller, about 75% more than a phone's two.
   The picture sits beside the text from 34rem, not 43rem, at up to 36% of the card's width, so small tablets and split screens don't get a full-width picture that swamps a short excerpt; phones keep theirs, and their two lines.
   Rejected: letterboxing (bands around social cards and squares), the new shape at the old width (a smaller picture), a wider picture with two lines (the text narrowed until desktop showed what a phone does), and text running around the picture (whole excerpts, but taller, uneven rows that can't be clamped with an ellipsis).
-- **Only the card opens the article, and nothing else pressable is inside it** (#680, the owner): the byline, the link to the original, Follow and Star, Share and Save are on a line under it, in both layouts, so a press never has two candidates.
+- **Only the card opens the article, and nothing else pressable is inside it** (#680, the owner): the link to the original, Follow and Star, Share and Save are on a line under it, in both layouts, so a press never has two candidates; the authors are in the kicker above it (#688).
   Before, the link to the original sat inside the card, raised above the card's link.
   In Headlines the frameless card shows itself by tinting when hovered or pressed; on a phone at rest nothing outlines it, which the owner accepted over a frame.
 - **Corners are barely rounded and buttons are soft rectangles** (#680): 6 px on frames, pictures and controls and 4 px on small things, where cards had 16 px and buttons were pills.

@@ -284,6 +284,17 @@ type articleRow struct {
 	NoAvatar bool             // name Feed without its avatar; a site's page, whose head has the site's
 }
 
+// Byline returns the row's authors for its kicker (rss.Article.ShortByline),
+// or "" when the article's only author is the feed's name the kicker
+// already shows.
+func (r articleRow) Byline() string {
+	authors := r.Article.Authors
+	if r.Feed.ID != "" && len(authors) == 1 && strings.EqualFold(strings.TrimSpace(authors[0]), strings.TrimSpace(r.Feed.Title)) {
+		return ""
+	}
+	return r.Article.ShortByline()
+}
+
 // markFirstImageEager sets Eager on the first row with a card image. Call it
 // only for a list's first page: rows on later pages (before) are appended by
 // infinite scroll, below the fold by definition. On a phone that first image

@@ -431,7 +431,7 @@ List queries never load `summary` or `content`.
 Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials).
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
-`Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) before the source link.
+`Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) in the kicker after the time, through `articleRow.Byline`, which leaves them out when the only author is the feed's name the kicker shows.
 The page's values come from enrichment and only fill gaps.
 An image that fails to load in the browser (a 404, or a host without working https) doesn't show as a broken box: `image-fallback.ts` tries its `data-fallback-src` (`CardImageFallbackURL`, the page's image when the feed's is the one shown; the article page's lead image gets it only if the content doesn't show it), then removes the image, and in an article's body what only held it (its link, paragraph or figure).
 Without JavaScript the broken box stays.

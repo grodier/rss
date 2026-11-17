@@ -147,22 +147,29 @@ func TestHomeHandlerTimeline(t *testing.T) {
 		}
 	})
 
-	t.Run("authors in the row's foot", func(t *testing.T) {
-		result, storeErr = timelineItems(3), nil
+	t.Run("authors in the row's kicker", func(t *testing.T) {
+		result, storeErr = timelineItems(4), nil
 		result[0].Article.Authors = []string{"Ada"}
 		result[1].Article.Authors = []string{"Ada", "Grace", "Linus"}
+		result[2].Article.Authors = []string{"Feed One"} // the feed's own name
 		body := getHome(t, s, "/", true).Body.String()
-		// No URL, so no source link or separator.
+		// Undated, so the authors are alone after the feed's name.
 		assertBodyContains(t, body,
-			`<p class="article-source-line"><span class="article-author">Ada</span></p>`,
-			`<p class="article-source-line"><span class="article-author" title="Ada, Grace and Linus">Ada and 2 others</span></p>`,
+			`<span class="article-when"><span class="article-author">Ada</span></span>`,
+			`<span class="article-when"><span class="article-author" title="Ada, Grace and Linus">Ada and 2 others</span></span>`,
 		)
-		if got := strings.Count(body, "article-source-line"); got != 2 {
-			t.Errorf("article-source-line appears %d times, want 2 (only the rows with authors)", got)
+		metas := regexp.MustCompile(`(?s)<p class="article-meta">.*?</p>`).FindAllString(body, -1)
+		if len(metas) != 4 {
+			t.Fatalf("%d kickers, want 4", len(metas))
 		}
-		for _, meta := range regexp.MustCompile(`(?s)<p class="article-meta">.*?</p>`).FindAllString(body, -1) {
-			if strings.Contains(meta, "article-author") {
-				t.Errorf("authors in the meta line: %s", meta)
+		for i, want := range []bool{true, true, false, false} {
+			if got := strings.Contains(metas[i], "article-author"); got != want {
+				t.Errorf("row %d's kicker has authors = %v, want %v: %s", i, got, want, metas[i])
+			}
+		}
+		for _, foot := range regexp.MustCompile(`(?s)<div class="article-foot">.*?</div>`).FindAllString(body, -1) {
+			if strings.Contains(foot, "article-author") {
+				t.Errorf("authors in the foot: %s", foot)
 			}
 		}
 	})

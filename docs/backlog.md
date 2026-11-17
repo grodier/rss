@@ -271,6 +271,7 @@ Each with when it pays off:
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
   It would also know when a publisher's image fails, so it could fall back or drop it on the server, without the broken-image box readers without JavaScript still see; `image-fallback.ts` and `data-fallback-src` (#525) could then go.
   It would also cut the timeline's heaviest bytes: publishers' card images are usually full-size (1200×630 or larger), and could be resized and re-encoded (WebP or AVIF) for the card's width (noted while planning #540–#547).
+  Once the fade is gone (#686), card images draw as they download, so resizing them is the main way left to make them show sooner.
 - [ ] **Keyboard shortcuts.**
   E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.
   Single-key shortcuts must be possible to turn off (WCAG 2.1.4: they collide with screen readers and speech input), so plan an off switch in Settings, a typed column on `users`.
@@ -351,6 +352,14 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **A dateline where the day changes in a timeline.**
   Mocked during #680 and liked, not built: a labelled rule ("Today · Monday 16 November") between days, so each row shows only its time.
   It marks time, not unread articles, so it fits "Reading"; it needs the reader's time zone, which only the browser knows, so it would be an enhancement like the local times.
+- [ ] **Headlines: let the excerpt run around the picture.**
+  Mocked in the review that filed #686–#689 (#685): the picture floated into the text, which continues full width below it, like a photo set into a newspaper column.
+  It showed whole excerpts, about 2.7 times a phone's two lines, but rows were about 20% taller and uneven, and it can't be clamped with an ellipsis, since a box that clamps stops text flowing around a float.
+  Try it if three lines (#687) still feel thin.
+- [ ] **Headlines: raise the picture to the kicker's line.**
+  Mocked in the same review: rows with a picture were about 40px shorter and the picture more prominent.
+  But its top sits outside the card, so it would need its own hit area and would miss the hover tint, and the kicker narrows on rows with a picture, cutting feed names sooner.
+  Revisit after #687–#689.
 - [ ] **Whether the admin takes the reader's shape.**
   #680 made the reader's corners nearly square and left the admin's as they were (it overrides the radius tokens); decide if the two should match.
 - [ ] **Generated avatars for sites without a usable icon.**

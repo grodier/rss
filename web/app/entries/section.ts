@@ -4,7 +4,6 @@
 // them.
 import { localizeTimes } from "../../shared/lib/local-times";
 import * as backForward from "../features/back-forward";
-import * as imageFade from "../features/image-fade";
 import * as imageFallback from "../features/image-fallback";
 import * as infiniteScroll from "../features/infinite-scroll";
 import { enhancePings } from "../features/read-pings";
@@ -20,6 +19,5 @@ backForward.init();
 saveStar.init();
 share.init();
 imageFallback.init();
-imageFade.init(); // after imageFallback: an image trying its fallback keeps waiting
 timelineTabs.init(); // after backForward, as both listen for pageswap and pagereveal
 infiniteScroll.init();

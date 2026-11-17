@@ -100,7 +100,7 @@
 
   /* Headlines: the feed's avatar and name with the time (on one line, or
      the name over the time on phones) are a kicker, then the
-     headline and excerpt with the picture beside them. No frame: the card
+     headline, and the excerpt with the picture beside it. No frame: the card
      shows itself when hovered or pressed (below, and press.css). */
   :root:not([data-layout="cards"]) .article-row {
     padding: 1rem 1rem 0.5rem;
@@ -139,8 +139,10 @@
 
   /* The card's padding is hung outside the column, so its text lines up
      with the kicker and its hover tint has room around it. It's a size
-     container so the picture can take a share of its width where 12rem
-     would crowd the text. */
+     container so the picture can take a share of its width where 16rem
+     would crowd the excerpt. The headline runs across the card, like a
+     front page's over its columns, and the excerpt and the picture share
+     the line under it. */
   :root:not([data-layout="cards"]) .article-card {
     container-type: inline-size;
     display: grid;
@@ -152,29 +154,12 @@
   }
 
   :root:not([data-layout="cards"]) .article-text {
-    grid-row: 1;
-    grid-column: 1;
-  }
-
-  /* The picture is the shape of the Open Graph cards most articles have
-     (1200 × 630), so they aren't cropped; beside it the excerpt has room
-     for three lines without making the row taller. */
-  :root:not([data-layout="cards"]) .article-image {
-    grid-row: 1;
-    grid-column: 2;
-    inline-size: min(12rem, 36cqi);
-    aspect-ratio: 1.91 / 1;
-    border-radius: var(--radius-sm);
-  }
-
-  /* In the wider column, the extra width goes to the picture. */
-  @media (min-width: 80rem) {
-    :root:not([data-layout="cards"]) .article-image {
-      inline-size: min(13.5rem, 36cqi);
-    }
+    display: contents;
   }
 
   :root:not([data-layout="cards"]) .article-title {
+    grid-row: 1;
+    grid-column: 1 / -1;
     font-size: 1.5rem;
     font-weight: 750;
     line-height: 1.2;
@@ -182,15 +167,54 @@
     text-wrap: pretty;
   }
 
+  /* The picture is the shape of the Open Graph cards most articles have
+     (1200 × 630), so they aren't cropped, and about as tall as the five
+     lines of excerpt beside it. */
+  :root:not([data-layout="cards"]) .article-image {
+    grid-row: 2;
+    grid-column: 2;
+    inline-size: min(16rem, 42cqi);
+    aspect-ratio: 1.91 / 1;
+    margin-block-start: 0.625rem;
+    border-radius: var(--radius-sm);
+  }
+
+  /* In the wider column, the extra width goes to the picture. */
+  @media (min-width: 80rem) {
+    :root:not([data-layout="cards"]) .article-image {
+      inline-size: min(17rem, 42cqi);
+    }
+  }
+
   :root:not([data-layout="cards"]) .article-excerpt {
-    margin-block-start: 0.375rem;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    grid-row: 2;
+    grid-column: 1;
+    margin-block-start: 0.625rem;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+  }
+
+  /* With no picture the excerpt takes the whole line; with no excerpt the
+     picture goes up beside the headline, rather than under an empty
+     column. */
+  :root:not([data-layout="cards"]) .article-card:not(:has(.article-image)) .article-excerpt {
+    grid-column: 1 / -1;
+  }
+
+  @media (min-width: 34rem) {
+    :root:not([data-layout="cards"]) .article-card:not(:has(.article-excerpt)) .article-title {
+      grid-column: 1;
+    }
+
+    :root:not([data-layout="cards"]) .article-card:not(:has(.article-excerpt)) .article-image {
+      grid-row: 1;
+      margin-block-start: 0;
+    }
   }
 
   /* On phones the picture goes full width between the headline and the
      excerpt, so a row has the room a card has. From 34rem (small tablets,
-     split screen, phones on their side) it sits beside the text, as on
+     split screen, phones on their side) it sits beside the excerpt, as on
      desktop: a full-width picture there would swamp a short excerpt. */
   @media (max-width: 33.99rem) {
     :root:not([data-layout="cards"]) .article-row {
@@ -229,26 +253,17 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
-    :root:not([data-layout="cards"]) .article-text {
-      display: contents;
-    }
-
     :root:not([data-layout="cards"]) .article-title {
-      grid-row: 1;
       font-size: 1.25rem;
     }
 
     :root:not([data-layout="cards"]) .article-image {
-      grid-row: 2;
       grid-column: 1;
       inline-size: 100%;
-      aspect-ratio: 1.91 / 1;
-      margin-block-start: 0.625rem;
     }
 
     :root:not([data-layout="cards"]) .article-excerpt {
       grid-row: 3;
-      margin-block-start: 0.625rem;
       -webkit-line-clamp: 2;
       line-clamp: 2;
     }

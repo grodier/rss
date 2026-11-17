@@ -447,7 +447,7 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 	s := feedServerWithArticles(t, nil, &fakeArticleStore{
 		listByFeedFn: func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {
 			return []rss.Article{
-				{ID: "art-1", Title: "With image", ImageURL: "https://example.com/pic.jpg"},
+				{ID: "art-1", Title: "With image", ImageURL: "https://example.com/pic.jpg", PageImageURL: "https://example.com/page.jpg"},
 				{ID: "art-2", Title: "Without image"},
 			}, nil
 		},
@@ -460,6 +460,7 @@ func TestFeedHandlerArticleImages(t *testing.T) {
 	}
 	for _, want := range []string{
 		`src="https://example.com/pic.jpg"`,
+		`data-fallback-src="https://example.com/page.jpg"`,
 		`referrerpolicy="no-referrer"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -526,7 +527,11 @@ func TestFeedHandlerPageMetadata(t *testing.T) {
 			t.Errorf("row with feed values does not contain %q: %s", want, second)
 		}
 	}
-	for _, bad := range []string{"other.jpg", "Other title", "Other description"} {
+	// The page's image is only the fallback for the feed's.
+	if !strings.Contains(body, `data-fallback-src="https://example.com/other.jpg"`) {
+		t.Errorf("page image isn't the feed image's fallback: %s", body)
+	}
+	for _, bad := range []string{` src="https://example.com/other.jpg"`, "Other title", "Other description"} {
 		if strings.Contains(body, bad) {
 			t.Errorf("page value %q shown over the feed's: %s", bad, body)
 		}

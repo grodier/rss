@@ -218,6 +218,32 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 	}
 }
 
+// TestArticleHandlerLeadImageFallback checks the lead image carries the page
+// image as its fallback, unless the content already shows that one.
+func TestArticleHandlerLeadImageFallback(t *testing.T) {
+	const feedImage, pageImage = "https://example.com/feed.jpg", "https://example.com/page.jpg"
+	tests := []struct {
+		name    string
+		article rss.Article
+		want    string // the lead image's data-fallback-src, or "" for none
+	}{
+		{name: "page image", article: rss.Article{Title: "T", ImageURL: feedImage, PageImageURL: pageImage, Content: "<p>Text</p>"}, want: pageImage},
+		{name: "content shows the page image", article: rss.Article{Title: "T", ImageURL: feedImage, PageImageURL: pageImage, Content: `<p>Text</p><p>More</p><img src="/page.jpg">`}, want: ""},
+		{name: "no page image", article: rss.Article{Title: "T", ImageURL: feedImage, Content: "<p>Text</p>"}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := serveArticle(t, articleServer(t, tt.article, nil, nil, nil), testArticleID)
+			body := rr.Body.String()
+			if tt.want == "" {
+				assertBodyContains(t, body, `<img class="reader-image" src="`+feedImage+`" alt=""`)
+				return
+			}
+			assertBodyContains(t, body, `<img class="reader-image" src="`+feedImage+`" data-fallback-src="`+tt.want+`" alt=""`)
+		})
+	}
+}
+
 // TestArticleLeadImageHighPriority checks the lead image, the article page's
 // largest, is fetched ahead of other images: fetchpriority="high", not lazy.
 func TestArticleLeadImageHighPriority(t *testing.T) {

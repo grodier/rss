@@ -155,10 +155,27 @@ func (a Article) ShortByline() string {
 // https: images (sanitize.HTML does the same for images in article HTML);
 // "" if neither. A change here updates server.articleProvenance too.
 func (a Article) CardImageURL() string {
-	img := a.ImageURL
-	if img == "" {
-		img = a.PageImageURL
+	if a.ImageURL != "" {
+		return httpsImage(a.ImageURL)
 	}
+	return httpsImage(a.PageImageURL)
+}
+
+// CardImageFallbackURL returns the image to try when CardImageURL fails to
+// load in the browser: the web page's image, over https, when the feed's
+// image is the one shown and the page's is a different one; else "".
+func (a Article) CardImageFallbackURL() string {
+	if a.ImageURL == "" || a.PageImageURL == "" {
+		return ""
+	}
+	if fb := httpsImage(a.PageImageURL); fb != a.CardImageURL() {
+		return fb
+	}
+	return ""
+}
+
+// httpsImage returns img with https for an http scheme, else unchanged.
+func httpsImage(img string) string {
 	u, err := url.Parse(img)
 	if err != nil || u.Scheme != "http" {
 		return img

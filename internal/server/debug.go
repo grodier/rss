@@ -737,6 +737,7 @@ func articleDebugFields(a rss.Article, d rss.ArticleDebug, now time.Time) []debu
 		debugField{Name: "shown title", Value: a.DisplayTitle(), Note: "from: " + prov.Title},
 		debugField{Name: "shown excerpt", Value: a.DisplayExcerpt(), Note: excerptNote},
 		debugField{Name: "shown image", Value: a.CardImageURL(), Note: "from: " + prov.Image},
+		debugField{Name: "fallback image", Value: a.CardImageFallbackURL(), Note: "tried if the shown image fails to load"},
 		debugField{Name: "timeline placement", Value: prov.Timeline},
 		debugField{Name: "external_id kind", Value: prov.ExternalID},
 	)

@@ -83,9 +83,13 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The card image goes above the text unless the text already shows it.
-	var leadImage string
+	// Its fallback, for when it fails to load, has to pass the same test.
+	var leadImage, leadImageFallback string
 	if img := article.CardImageURL(); img != "" && !sanitize.ShowsImage(raw, base, img) {
 		leadImage = img
+		if fb := article.CardImageFallbackURL(); fb != "" && !sanitize.ShowsImage(raw, base, fb) {
+			leadImageFallback = fb
+		}
 	}
 
 	body := sanitize.HTML(raw, base)
@@ -114,31 +118,33 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Nav       navData
-		Article   rss.Article
-		Feed      rss.Feed
-		Site      rss.Site
-		ReadOn    string
-		Icons     map[string]string
-		LeadImage string
-		Body      template.HTML
-		Saved     bool
-		Starred   bool
-		ReturnTo  string
-		Debug     *articleDebugView
+		Nav               navData
+		Article           rss.Article
+		Feed              rss.Feed
+		Site              rss.Site
+		ReadOn            string
+		Icons             map[string]string
+		LeadImage         string
+		LeadImageFallback string
+		Body              template.HTML
+		Saved             bool
+		Starred           bool
+		ReturnTo          string
+		Debug             *articleDebugView
 	}{
-		Nav:       s.nav(r, ""),
-		Article:   article,
-		Feed:      feed,
-		Site:      site,
-		ReadOn:    readOnLabel(article, site, name),
-		Icons:     s.pageIcons(r, []string{site.ID}),
-		LeadImage: leadImage,
-		Body:      body,
-		Saved:     saved[article.ID],
-		Starred:   starred[article.ID],
-		ReturnTo:  r.URL.RequestURI(),
-		Debug:     debug,
+		Nav:               s.nav(r, ""),
+		Article:           article,
+		Feed:              feed,
+		Site:              site,
+		ReadOn:            readOnLabel(article, site, name),
+		Icons:             s.pageIcons(r, []string{site.ID}),
+		LeadImage:         leadImage,
+		LeadImageFallback: leadImageFallback,
+		Body:              body,
+		Saved:             saved[article.ID],
+		Starred:           starred[article.ID],
+		ReturnTo:          r.URL.RequestURI(),
+		Debug:             debug,
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {

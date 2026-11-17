@@ -180,14 +180,6 @@
     line-clamp: 3;
   }
 
-  /* Below the desktop width, the text beside the picture is narrower, so
-     the headline is smaller. */
-  @media (max-width: 42.99rem) {
-    :root:not([data-layout="cards"]) .article-title {
-      font-size: 1.375rem;
-    }
-  }
-
   /* On phones the picture goes full width between the headline and the
      excerpt, so a row has the room a card has. From 34rem (small tablets,
      split screen, phones on their side) it sits beside the text, as on

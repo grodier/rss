@@ -543,11 +543,10 @@ type User struct {
 }
 
 // Themes a user can choose (users.theme). ThemeSystem follows the device's
-// light or dark setting; ThemePaper is a warm light theme.
+// light or dark setting.
 const (
 	ThemeSystem = "system"
 	ThemeLight  = "light"
-	ThemePaper  = "paper"
 	ThemeDark   = "dark"
 )
 

@@ -65,7 +65,7 @@ func TestSettingsHandler(t *testing.T) {
 	})
 
 	t.Run("Reading shows the current theme and layout", func(t *testing.T) {
-		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemePaper: "Paper", rss.ThemeDark: "Dark"} {
+		for theme, want := range map[string]string{rss.ThemeSystem: "System", rss.ThemeLight: "Light", rss.ThemeDark: "Dark"} {
 			for layout, wantLayout := range map[string]string{rss.LayoutHeadlines: "Headlines", rss.LayoutCards: "Cards"} {
 				s := newTestServer(t)
 				sess := settingsSession
@@ -292,7 +292,7 @@ func postSettingsReading(t *testing.T, s *Server, sess rss.Session, theme, layou
 }
 
 func TestSettingsReading(t *testing.T) {
-	themes := []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemePaper, rss.ThemeDark}
+	themes := []string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark}
 	layouts := []string{rss.LayoutHeadlines, rss.LayoutCards}
 	for _, theme := range themes {
 		for _, layout := range layouts {
@@ -354,16 +354,16 @@ func TestSettingsReading(t *testing.T) {
 		want                []string // in the re-rendered form
 	}{
 		{"no theme", "", rss.LayoutCards, []string{
-			`<p class="error" id="theme-error">Choose System, Light, Paper or Dark.</p>`,
+			`<p class="error" id="theme-error">Choose System, Light or Dark.</p>`,
 			`aria-describedby="theme-hint theme-error"`,
 			`name="layout" value="cards" checked`,
 		}},
 		{"an unknown theme", "sepia", rss.LayoutHeadlines, []string{`id="theme-error"`}},
 		{"a theme in another case", "Dark", rss.LayoutHeadlines, []string{`id="theme-error"`}},
-		{"no layout", rss.ThemePaper, "", []string{
+		{"no layout", rss.ThemeLight, "", []string{
 			`<p class="error" id="layout-error">Choose Headlines or Cards.</p>`,
 			`aria-describedby="layout-hint layout-error"`,
-			`name="theme" value="paper" checked`,
+			`name="theme" value="light" checked`,
 		}},
 		{"an unknown layout", rss.ThemeDark, "grid", []string{`id="layout-error"`}},
 		{"neither", "", "", []string{`id="theme-error"`, `id="layout-error"`}},
@@ -434,7 +434,7 @@ func TestSettingsReading(t *testing.T) {
 }
 
 func TestThemeAttribute(t *testing.T) {
-	const systemColors = `<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+	const systemColors = `<meta name="theme-color" content="#fffefc" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#171a20" media="(prefers-color-scheme: dark)" />`
 	tests := []struct {
 		theme      string
@@ -442,8 +442,7 @@ func TestThemeAttribute(t *testing.T) {
 		themeColor string // the theme-color metas
 	}{
 		{rss.ThemeDark, `<html lang="en" data-theme="dark">`, `<meta name="theme-color" content="#171a20" />`},
-		{rss.ThemeLight, `<html lang="en" data-theme="light">`, `<meta name="theme-color" content="#ffffff" />`},
-		{rss.ThemePaper, `<html lang="en" data-theme="paper">`, `<meta name="theme-color" content="#fffefc" />`},
+		{rss.ThemeLight, `<html lang="en" data-theme="light">`, `<meta name="theme-color" content="#fffefc" />`},
 		{rss.ThemeSystem, `<html lang="en">`, systemColors},
 	}
 	for _, tt := range tests {
@@ -480,13 +479,13 @@ func TestThemeAttribute(t *testing.T) {
 	// The layout rides on the same tag: Cards is an attribute, Headlines the
 	// stylesheets' default, so it has none.
 	for layout, want := range map[string]string{
-		rss.LayoutCards:     `<html lang="en" data-theme="paper" data-layout="cards">`,
-		rss.LayoutHeadlines: `<html lang="en" data-theme="paper">`,
+		rss.LayoutCards:     `<html lang="en" data-theme="light" data-layout="cards">`,
+		rss.LayoutHeadlines: `<html lang="en" data-theme="light">`,
 	} {
 		t.Run("layout "+layout, func(t *testing.T) {
 			s := newTestServer(t)
 			sess := settingsSession
-			sess.User.Theme, sess.User.Layout = rss.ThemePaper, layout
+			sess.User.Theme, sess.User.Layout = rss.ThemeLight, layout
 			rr := httptest.NewRecorder()
 			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsHandler)).ServeHTTP(rr, requestWithSession(sess))
 			assertBodyContains(t, rr.Body.String(), want)

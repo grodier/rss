@@ -9,7 +9,7 @@ Reading is a timeline, not an inbox: read state is recorded but shown only as a 
 Don't add unread counts, badges, "N new" indicators or "mark all read"; see "Reading" in `docs/decisions.md` for the decisions behind this.
 
 It looks like a paper, not a social app: headline-led article rows, barely rounded corners, and the logo's ink, sky and sunrise.
-Readers choose a theme (System, Light, Paper or Dark) and an article layout (Headlines or Cards) in Settings → Reading, and every page has to look right in each; see "Design" in `docs/decisions.md`.
+Readers choose a theme (System, Light or Dark; Light is Paper's warm palette, Dark is Graphite) and an article layout (Headlines or Cards) in Settings → Reading, and every page has to look right in each; see "Design" in `docs/decisions.md`.
 
 ## Prototype stage
 
@@ -153,7 +153,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - The admin (`internal/admin`, `internal/ui/admin`, `web/admin`) follows these conventions with its own files: routes in `internal/admin/router.go`, pages in its layout with `{{template "admin-nav" .Nav}}` and `Nav: s.nav(r, "<section>")`, partials in `internal/ui/admin/partials`, and its stylesheet partials' order in `web/admin/styles/base.css`.
   Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`), shared styles in `web/shared`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
-  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so every theme (Light, Paper, Dark) gets them: a new color token needs a dark value, and a Paper value if the warm page changes it.
+  Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so both themes (Light and Dark) get them: a new color token needs a dark value.
   Corners use the radius tokens there, never literal radii or pills: `--radius` for frames and pictures, `--radius-sm` for small things, `--radius-control` for buttons, fields and other controls.
 - Article rows have one markup (`partials/article_row.html`) and two layouts, Headlines (the default) and Cards, both in `web/app/styles/partials/rows.css`: Cards under `:root[data-layout="cards"]`, Headlines under `:root:not([data-layout="cards"])`, and what they share with no layout selector.
   A change to article rows, or to anything inside one, is made for both layouts and checked in both, on every kind of page that lists articles (a timeline, a feed, a site, Saved, a Discover section's Recent posts), at desktop and phone widths; neither is the legacy one.
@@ -225,7 +225,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Suggest a split only if it makes sense: each part merges on its own, with its tests and docs, and leaves `main` working; don't cut one change into pieces that can't be reviewed apart.
 - Update the docs the change affects in the same PR (see "Docs").
 - A PR that changes how the app looks shows its options first, in a draft PR with screenshots at desktop and phone widths, and stops until the owner picks one; skip this only when its issue says the change needs no design checkpoint (see "Design" in `docs/decisions.md`).
-  Screenshots of pages with article rows show both layouts, Headlines and Cards, and a change to colors shows Light, Paper and Dark.
+  Screenshots of pages with article rows show both layouts, Headlines and Cards, and a change to colors shows Light and Dark.
   Every checkpoint shows several options that differ in approach, not variations of one idea, each with a justification, and recommends one.
 - PR description: what changed and why, how it was verified (commands run; anything that couldn't be run, e.g. no Docker), and `Closes #N`.
 - **No session links.** This is a public repository.

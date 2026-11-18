@@ -502,10 +502,10 @@ Beyond those:
 - **Press states** (#510): the last partial, `press.css`, holds the `:active` styles that give touch, mouse and keyboard presses feedback, since hover is limited to devices that hover.
   Colors apply always; the scales sit in the `prefers-reduced-motion: no-preference` block.
   The browser's tap highlight is turned off.
-- **Themes:** `tokens.css` (`web/shared/styles`) defines the color tokens on `:root` (light), then Paper's for `:root[data-theme="paper"]`, which redefines only the tokens it warms, then the dark values twice with the same content: under `@media (prefers-color-scheme: dark)` for a `:root` that chose neither Light nor Paper, and for `:root[data-theme="dark"]`.
-  A logged-in page's `<html>` gets `data-theme="light"`, `"paper"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
-  The dark values are written twice (system and chosen), and `web/css_test.go` fails if the two differ, a color token has no dark value, or Paper defines a color token light doesn't have.
-  Paper and dark tell the page behind the reading column (`--bg-page`) from the column (`--bg`); light keeps them the same.
+- **Themes:** `tokens.css` (`web/shared/styles`) defines the color tokens on `:root` (light, Paper's palette), then the dark values (Graphite) twice with the same content: under `@media (prefers-color-scheme: dark)` for a `:root` that didn't choose Light, and for `:root[data-theme="dark"]`.
+  A logged-in page's `<html>` gets `data-theme="light"` or `"dark"` from the user's choice in Settings (`users.theme`, loaded with the session): each page opens with `<html lang="en"{{template "html-theme" .Nav}}>`, which writes `navData.Theme()`, nothing for System, and includes `{{template "app-head" .Nav}}`; a test fails for a page with the nav but without them.
+  The dark values are written twice (system and chosen), and `web/css_test.go` fails if the two differ or a color token has no dark value.
+  Both themes set the page behind the reading column (`--bg-page`) a shade darker than the column (`--bg`); pages without a column (`.solo`) and phones, where the column fills the screen, paint `--bg`.
 - **Article layouts:** article rows have one markup (`partials/article_row.html`) and two layouts, Headlines and Cards, both drawn by `rows.css`.
   `html-theme` also writes `navData.Layout()` as `data-layout="cards"` when the user chose Cards (`users.layout`), and nothing for Headlines, which the rules select with `:root:not([data-layout="cards"])`; so a page that doesn't know the user gets Headlines.
   Rules without a layout selector are shared by both.

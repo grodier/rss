@@ -103,11 +103,11 @@ type navData struct {
 	Debug   bool
 }
 
-// Theme is the data-theme attribute of the page's <html>: "light", "paper"
-// or "dark" if the user chose one, "" to follow the system.
+// Theme is the data-theme attribute of the page's <html>: "light" or "dark"
+// if the user chose one, "" to follow the system.
 func (n navData) Theme() string {
 	switch n.User.Theme {
-	case rss.ThemeLight, rss.ThemePaper, rss.ThemeDark:
+	case rss.ThemeLight, rss.ThemeDark:
 		return n.User.Theme
 	}
 	return ""

@@ -2,8 +2,8 @@
    landing page and the logo's sunrise. */
 @layer components {
   /* Logged-out pages and errors: a centered panel, no nav, and no column,
-     so the page is the column's color (dark sets the two apart), which the
-     browser bar's theme-color repeats. */
+     so they paint the column's color (--bg), which the browser bar's
+     theme-color repeats. */
   body:has(.solo) {
     background: var(--bg);
   }

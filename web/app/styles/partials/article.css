@@ -336,7 +336,8 @@
   }
 
   /* The network's logo, drawn in the text color from its "on X" label,
-     which stays for screen readers. */
+     which stays for screen readers. The logos are from Simple Icons
+     (simpleicons.org, CC0). */
   .article-body .social-post .social-network {
     grid-column: 2;
     grid-row: 1;

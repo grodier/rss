@@ -589,6 +589,11 @@ Planned in #163 (issues #147–#162).
   - YouTube and Vimeo iframes become click-to-play previews (#296): nothing loads from them but YouTube's thumbnail until the reader clicks, then a sandboxed player from `youtube-nocookie.com` or `player.vimeo.com` (the CSP's only `frame-src` hosts).
     Without JavaScript the preview links to the video.
     Every other iframe stays a link; more embed types wait for the measurements in backlog.md.
+  - Posts embedded from X become a post card (#698): the blockquote X's embed code leaves (and X's embed iframes) is read for the post's text, author, handle and link, and nothing loads from X, since X's script would track every reader and isn't allowed by the CSP.
+    Nothing is fetched from X either: its API is paid, and the endpoint some readers scrape is undocumented and against its terms.
+    The link is built from the validated handle and ID, which drops X's `ref_src` tracking; the time comes from the ID (X's IDs have encoded it since November 2010), so even a link-only embed has one; a picture link (`pic.twitter.com/…`) is dropped from the text and changes the card's link to "See the full post on X".
+    Markup that isn't recognized stays a plain blockquote, never dropped.
+    How the card looks is under "Design".
 - **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the article page gets better defaults first: wide tables scroll inside the column, styled code, lists and rules (#295).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.
   No player yet.
@@ -898,6 +903,14 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
 - **320 px is the narrowest width we support:** no page scrolls sideways at 320 px or wider (#431).
   A followed feed page shows Edit and Unfollow without a "Following" chip, since the red Unfollow already says you're following and the chip pushed the row off narrow phones; wrapping the buttons beside the avatar looked ragged, and moving them under the heading pushed the feed's facts down.
 - **Lists are sections separated by dividers, not boxes.** A card is only for a preview of something elsewhere: an article now, Open Graph data later.
+- **Posts from other networks are a card in the shape of the network's own embed** (#698, the owner's pick at its checkpoint, over four rounds), and Bluesky's (#699) and any later network's follow it:
+  - A framed card (`--border`, `--radius`, like the Cards layout's) at most 34rem wide, about X's own embed's 550px, centered in the column; full width on phones.
+    At the column's full width it read as a framed section, not a card.
+  - The author's name over their handle, and the network's logo at the top right, with its "on X" text kept for screen readers; the text in the interface's face, not the article's serif, so it can't pass for the author's own words.
+  - Under a rule, the time in the app's own format (`local-times.ts`), and one link to the post, whose words say what the card leaves out: "Read on X ↗", "Watch on X ↗" for a video, "See the full post on X ↗" when the embed left out a picture, video or other attachment, after "Read on <site> ↗" on the article page.
+  - Only what the embed's markup holds: no made-up avatar (a letter avatar is the app's own, and isn't what's on X), no box standing in for a picture we can't show, and no counts.
+  - The logo is a file the stylesheet uses as a mask in the text color, not inline SVG or a `data:` URL, which the CSP blocks (see "Frontend assets"); X's and Bluesky's are the app's only third-party logos, as video previews name their site in words.
+  - Rejected: an attributed pull quote in the article's own blockquote style (it looked like the author's own quote, the problem being fixed), click-to-load of X's own embed (it lets X track the reader once clicked, needs a frame host in the CSP and a script, and X's hosts couldn't be tested), a letter avatar and a picture placeholder (above), the card at the column's start (a ragged gap beside it) and a tinted panel without a border (it read as an aside, and nearly vanished in Dark).
 - **Avatars are letters on a tint chosen by site** (`avatarTone`), so a site's feeds share a color, for sites without a usable icon (below).
 - **Site icons replace the letter where a site has a usable one** (planned in #309, issues #304, #305):
   - We keep our own copy and serve it from `/sites/{id}/icon?v={hash}`, rather than loading it from the publisher: publishers don't see who's reading, hotlink blocking doesn't break it, and we have to download it anyway to know its real size.
@@ -1182,6 +1195,8 @@ Planned with #540–#547, from a review of how the app serves its assets: the fo
   - **Chunks get their own folder, `assets/chunks/`** (#547), so an outdated chunk's name can't be taken for an outdated entry's, which gets the current file.
   - **The Newsreader preload stays a page's own include, `{{template "reading-font"}}`, not part of its group** (#547; planning had it in the `reading` group's partial): the pages with reading text on their first screen aren't a group (the timeline form has it, the debug inspectors don't), and a preload a page doesn't use costs a download and a console warning.
 - **No lazy-loaded or inlined CSS**: both need inline code the CSP blocks, lazy CSS flashes unstyled content, and inlining defeats caching; a small, cached stylesheet that blocks rendering is the better trade.
+- **No assets inlined as `data:` URLs** (`assetsInlineLimit: 0`, #698): the CSP's `img-src` doesn't allow them, so a small image a stylesheet uses, like a network's logo, would be blocked; emitted, it's one small request, cached for a year.
+  Adding `data:` to the CSP was rejected: the CSP is the backstop for untrusted article HTML.
 - **No prefetching of assets, on load or on intent**: the article page shares the reading pages' bundle, so nothing article-specific is left to fetch, and other pages' bundles are small; prefetching the next page itself belongs to "Instant navigation" in backlog.md.
 - **The first card image on a list's first page isn't lazy** (#542) and gets `fetchpriority="high"`: it's usually the largest thing on a phone's first screen, and a lazy image only starts after layout; the rest stay lazy.
 - **Font preloads use the build's URLs** (#546), or the font downloads twice; how text looks while the fonts load is under "Design".

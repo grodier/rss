@@ -4,7 +4,9 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -19,8 +21,10 @@ type socialPost struct {
 	Name    string     // the author's display name as published; may be empty
 	Handle  string     // without "@"; may be empty
 	Text    *html.Node // the embed's first <p>, with its children; nil for a link-only embed
-	Date    string     // the date as published (the status link's text); may be empty
-	Media   bool       // the post had a picture or video the embed's markup left out
+	Time    time.Time  // when it was posted, from its ID; zero if the ID doesn't say
+	Date    string     // the date as published (the status link's text), for when Time is zero; may be empty
+	Media   bool       // the post had a picture, video or other attachment the embed's markup left out
+	Video   bool       // the embed says the post is a video
 }
 
 // networkNames are the networks' names in a card's labels.
@@ -52,10 +56,8 @@ func xPost(n *html.Node) (post socialPost, ok bool) {
 	if link == nil {
 		return socialPost{}, false
 	}
-	post = socialPost{Network: "x", Handle: handle, URL: "https://x.com/i/web/status/" + id}
-	if handle != "" {
-		post.URL = "https://x.com/" + handle + "/status/" + id
-	}
+	post = xPostFromID(handle, id)
+	post.Video = hasClass(n, "twitter-video")
 
 	var p *html.Node
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
@@ -92,6 +94,40 @@ func xPost(n *html.Node) (post socialPost, ok bool) {
 	return post, true
 }
 
+// xPostFromID returns the post on X with the author's handle (empty if
+// unknown) and ID: its URL and, from the ID, its time.
+func xPostFromID(handle, id string) socialPost {
+	post := socialPost{Network: "x", Handle: handle, URL: "https://x.com/i/web/status/" + id, Time: xTime(id)}
+	if handle != "" {
+		post.URL = "https://x.com/" + handle + "/status/" + id
+	}
+	return post
+}
+
+// xEpoch is the moment X's post IDs count from, in milliseconds since the
+// Unix epoch, and xFirstSnowflake the first ID that does: older IDs were a
+// plain sequence.
+const (
+	xEpoch          = 1288834974657
+	xFirstSnowflake = 29700859248
+)
+
+// xTime returns when the post with ID id was made. Since November 2010 an
+// ID's top bits are milliseconds since xEpoch (X's "snowflake" IDs); it
+// returns the zero time for an older ID, one that doesn't parse, or one
+// that would be more than a day from now.
+func xTime(id string) time.Time {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil || n < xFirstSnowflake {
+		return time.Time{}
+	}
+	t := time.UnixMilli(int64(n>>22) + xEpoch).UTC()
+	if t.After(time.Now().Add(24 * time.Hour)) {
+		return time.Time{}
+	}
+	return t
+}
+
 // xStatusLink returns the last <a> under n that links to a post on X, with
 // the post's author's handle (empty for /i/web/status/ID) and ID, or nil.
 func xStatusLink(n *html.Node) (link *html.Node, handle, id string) {
@@ -113,7 +149,8 @@ func xStatusLink(n *html.Node) (link *html.Node, handle, id string) {
 }
 
 // xFramePost reads a post from an X embed iframe
-// (https://platform.twitter.com/embed/Tweet.html?id=ID); it has only a URL.
+// (https://platform.twitter.com/embed/Tweet.html?id=ID); it has only a URL
+// and a time.
 func xFramePost(iframe *html.Node) (post socialPost, ok bool) {
 	src, _ := attr(iframe, "src")
 	u, err := url.Parse(strings.TrimSpace(src))
@@ -125,26 +162,27 @@ func xFramePost(iframe *html.Node) (post socialPost, ok bool) {
 	if !xFrameID.MatchString(id) {
 		return socialPost{}, false
 	}
-	return socialPost{Network: "x", URL: "https://x.com/i/web/status/" + id}, true
+	return xPostFromID("", id), true
 }
 
-// socialCard returns the markup for post:
+// socialCard returns the markup for post, a framed card in the shape of the
+// network's own embed ("Posts from other networks" in docs/decisions.md):
 //
 //	<figure class="social-post" data-social="x">
-//	  <blockquote cite="URL">
-//	    <p lang="en" dir="ltr">TEXT</p>
-//	    <p class="social-media"><a href="URL">View media on X</a></p>
-//	  </blockquote>
 //	  <figcaption>
-//	    <span class="social-name">NAME</span> <span class="social-handle">@HANDLE</span>
-//	    <span class="social-network">on X</span> · <a href="URL">DATE</a>
+//	    <span class="social-name">NAME</span>
+//	    <span class="social-handle">@HANDLE</span>
+//	    <span class="social-network">on X</span>
 //	  </figcaption>
+//	  <blockquote cite="URL"><p lang="en" dir="ltr">TEXT</p></blockquote>
+//	  <p class="social-foot"><time data-local datetime="T">T in UTC</time> <a href="URL">Read on X ↗</a></p>
 //	</figure>
 //
-// The media line is there only when Media is set; a missing name, handle or
-// date is left out, the link then reading "View on X". A post with neither
-// text nor media (a link-only embed) has no blockquote, and its caption is
-// the handle and "View post on X".
+// A missing name or handle is left out. Without text, the blockquote is
+// <p class="social-missing">This post's text isn't in the article.</p>.
+// Without a time, the foot shows the date as published, if any. The link
+// says what the card leaves out: "Watch on X" for a video, "See the full
+// post on X" for a post with other media.
 func socialCard(post socialPost) *html.Node {
 	network := networkNames[post.Network]
 	figure := newElement(atom.Figure)
@@ -153,27 +191,8 @@ func socialCard(post socialPost) *html.Node {
 		{Key: "data-social", Val: post.Network},
 	}
 
-	quote := post.Text != nil || post.Media
-	if quote {
-		bq := newElement(atom.Blockquote)
-		bq.Attr = []html.Attribute{{Key: "cite", Val: post.URL}}
-		if t := post.Text; t != nil {
-			if t.Parent != nil {
-				t.Parent.RemoveChild(t)
-			}
-			bq.AppendChild(t)
-		}
-		if post.Media {
-			p := newElement(atom.P)
-			p.Attr = []html.Attribute{{Key: "class", Val: "social-media"}}
-			p.AppendChild(link(post.URL, "View media on "+network))
-			bq.AppendChild(p)
-		}
-		figure.AppendChild(bq)
-	}
-
 	caption := newElement(atom.Figcaption)
-	if quote && post.Name != "" {
+	if post.Name != "" {
 		caption.AppendChild(span("social-name", post.Name))
 		caption.AppendChild(text(" "))
 	}
@@ -181,22 +200,51 @@ func socialCard(post socialPost) *html.Node {
 		caption.AppendChild(span("social-handle", "@"+post.Handle))
 		caption.AppendChild(text(" "))
 	}
-	switch {
-	case !quote:
-		if post.Handle != "" {
-			caption.AppendChild(text("· "))
-		}
-		caption.AppendChild(link(post.URL, "View post on "+network))
-	case post.Date != "":
-		caption.AppendChild(span("social-network", "on "+network))
-		caption.AppendChild(text(" · "))
-		caption.AppendChild(link(post.URL, post.Date))
-	default:
-		caption.AppendChild(span("social-network", "on "+network))
-		caption.AppendChild(text(" · "))
-		caption.AppendChild(link(post.URL, "View on "+network))
-	}
+	caption.AppendChild(span("social-network", "on "+network))
 	figure.AppendChild(caption)
+
+	if t := post.Text; t != nil {
+		bq := newElement(atom.Blockquote)
+		bq.Attr = []html.Attribute{{Key: "cite", Val: post.URL}}
+		if t.Parent != nil {
+			t.Parent.RemoveChild(t)
+		}
+		bq.AppendChild(t)
+		figure.AppendChild(bq)
+	} else {
+		p := newElement(atom.P)
+		p.Attr = []html.Attribute{{Key: "class", Val: "social-missing"}}
+		p.AppendChild(text("This post's text isn't in the article."))
+		figure.AppendChild(p)
+	}
+
+	foot := newElement(atom.P)
+	foot.Attr = []html.Attribute{{Key: "class", Val: "social-foot"}}
+	switch {
+	case !post.Time.IsZero():
+		// The local-time partial's markup, which local-times.ts shows in
+		// the reader's time zone.
+		tm := newElement(atom.Time)
+		tm.Attr = []html.Attribute{
+			{Key: "data-local", Val: ""},
+			{Key: "datetime", Val: post.Time.Format(time.RFC3339)},
+		}
+		tm.AppendChild(text(post.Time.Format("2 Jan 2006 15:04 UTC")))
+		foot.AppendChild(tm)
+		foot.AppendChild(text(" "))
+	case post.Date != "":
+		foot.AppendChild(span("", post.Date))
+		foot.AppendChild(text(" "))
+	}
+	label := "Read on " + network + " ↗"
+	switch {
+	case post.Video:
+		label = "Watch on " + network + " ↗"
+	case post.Media:
+		label = "See the full post on " + network + " ↗"
+	}
+	foot.AppendChild(link(post.URL, label))
+	figure.AppendChild(foot)
 	return figure
 }
 
@@ -264,9 +312,13 @@ func text(s string) *html.Node {
 	return &html.Node{Type: html.TextNode, Data: s}
 }
 
+// span returns <span class="CLASS">S</span>, without the class if it's
+// empty.
 func span(class, s string) *html.Node {
 	sp := newElement(atom.Span)
-	sp.Attr = []html.Attribute{{Key: "class", Val: class}}
+	if class != "" {
+		sp.Attr = []html.Attribute{{Key: "class", Val: class}}
+	}
 	sp.AppendChild(text(s))
 	return sp
 }

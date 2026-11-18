@@ -230,69 +230,71 @@ func TestHTML(t *testing.T) {
 		{
 			name: "X embed becomes a post card",
 			raw:  xEmbed,
-			want: ptr(`<figure class="social-post" data-social="x"><blockquote cite="https://x.com/jane/status/1234567890">` +
-				`<p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw" rel="nofollow noreferrer noopener" target="_blank">@bob</a>` +
-				` see <a href="https://t.co/xyz" rel="nofollow noreferrer noopener" target="_blank">example.com/page</a></p>` +
-				`<p class="social-media"><a href="https://x.com/jane/status/1234567890" rel="nofollow noreferrer noopener" target="_blank">View media on X</a></p></blockquote>` +
-				`<figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane</span> <span class="social-network">on X</span>` +
-				` · <a href="https://x.com/jane/status/1234567890" rel="nofollow noreferrer noopener" target="_blank">January 1, 2024</a></figcaption></figure> `),
-			hasNot: []string{"pic.twitter.com", "twitter-tweet", "widgets.js", "<script"},
+			want: ptr(`<figure class="social-post" data-social="x"><figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane</span> <span class="social-network">on X</span></figcaption>` +
+				`<blockquote cite="https://x.com/jane/status/1745101186790326273"><p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw" rel="nofollow noreferrer noopener" target="_blank">@bob</a>` +
+				` see <a href="https://t.co/xyz" rel="nofollow noreferrer noopener" target="_blank">example.com/page</a></p></blockquote>` +
+				`<p class="social-foot"><time data-local="" datetime="2024-01-10T15:12:00Z">10 Jan 2024 15:12 UTC</time>` +
+				` <a href="https://x.com/jane/status/1745101186790326273" rel="nofollow noreferrer noopener" target="_blank">See the full post on X ↗</a></p></figure> `),
+			hasNot: []string{"pic.twitter.com", "twitter-tweet", "widgets.js", "<script", "January 10, 2024"},
 		},
 		{
 			name:   "X embed on x.com with extra classes and attributes",
-			raw:    `<blockquote class="twitter-tweet tw-align-center" data-dnt="true" data-theme="dark"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1?ref_src=twsrc%5Etfw">May 2, 2025</a></blockquote>`,
-			has:    []string{`<figure class="social-post" data-social="x">`, `<p>Hi</p>`, `href="https://x.com/jane/status/1"`},
+			raw:    `<blockquote class="twitter-tweet tw-align-center" data-dnt="true" data-theme="dark"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1745101186790326273?ref_src=twsrc%5Etfw">January 10, 2024</a></blockquote>`,
+			has:    []string{`<figure class="social-post" data-social="x">`, `<p>Hi</p>`, `href="https://x.com/jane/status/1745101186790326273"`, "Read on X ↗"},
 			hasNot: []string{"ref_src", "data-dnt", "data-theme", "tw-align-center"},
 		},
 		{
-			name: "X video embed becomes a post card",
-			raw:  `<blockquote class="twitter-video"><p>Watch</p>&mdash; Jane (@jane) <a href="https://twitter.com/jane/status/1">May 2, 2025</a></blockquote>`,
-			has:  []string{`data-social="x"`, `<p>Watch</p>`},
+			name: "X video embed links to watch it",
+			raw:  `<blockquote class="twitter-video"><p>Watch <a href="https://t.co/v">pic.twitter.com/v</a></p>&mdash; Jane (@jane) <a href="https://twitter.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:  []string{`data-social="x"`, `<p>Watch</p>`, "Watch on X ↗"},
 		},
 		{
-			name:   "X picture on pic.x.com becomes the media line",
+			name:   "X picture on pic.x.com links to the full post",
 			raw:    `<blockquote class="twitter-tweet"><p>Look <a href="https://t.co/a">pic.x.com/a</a></p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
-			has:    []string{`<p>Look</p>`, `class="social-media"`},
+			has:    []string{`<p>Look</p>`, "See the full post on X ↗"},
 			hasNot: []string{"pic.x.com"},
 		},
 		{
-			name:   "X post without a picture has no media line",
-			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
-			hasNot: []string{"social-media"},
+			name:   "X post with an ID older than snowflakes shows its date as published",
+			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2010</a></blockquote>`,
+			has:    []string{`<p class="social-foot"><span>May 2, 2010</span> <a href="https://x.com/jane/status/1" rel="nofollow noreferrer noopener" target="_blank">Read on X ↗</a></p>`},
+			hasNot: []string{"<time"},
 		},
 		{
-			name: "lazy X embed becomes a link-only card",
-			raw:  `<blockquote class="twitter-tweet" data-tweet-id="123"><a href="https://x.com/jane/status/123"></a></blockquote>`,
-			want: ptr(`<figure class="social-post" data-social="x"><figcaption><span class="social-handle">@jane</span> · ` +
-				`<a href="https://x.com/jane/status/123" rel="nofollow noreferrer noopener" target="_blank">View post on X</a></figcaption></figure>`),
+			name: "lazy X embed becomes a card without text",
+			raw:  `<blockquote class="twitter-tweet" data-tweet-id="1745159068185526275"><a href="https://x.com/jane/status/1745159068185526275"></a></blockquote>`,
+			want: ptr(`<figure class="social-post" data-social="x"><figcaption><span class="social-handle">@jane</span> <span class="social-network">on X</span></figcaption>` +
+				`<p class="social-missing">This post&#39;s text isn&#39;t in the article.</p>` +
+				`<p class="social-foot"><time data-local="" datetime="2024-01-10T19:02:00Z">10 Jan 2024 19:02 UTC</time>` +
+				` <a href="https://x.com/jane/status/1745159068185526275" rel="nofollow noreferrer noopener" target="_blank">Read on X ↗</a></p></figure>`),
 		},
 		{
 			name:   "lazy X embed whose link text is the URL",
 			raw:    `<blockquote class="twitter-tweet"><a href="https://twitter.com/jane/status/123">https://twitter.com/jane/status/123</a></blockquote>`,
-			has:    []string{"View post on X"},
+			has:    []string{"social-missing", "Read on X ↗"},
 			hasNot: []string{"<blockquote", ">https://twitter.com"},
 		},
 		{
 			name:   "X /i/web/status link has no handle",
 			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/i/web/status/123"></a></blockquote>`,
-			has:    []string{`href="https://x.com/i/web/status/123"`, "View post on X"},
+			has:    []string{`href="https://x.com/i/web/status/123"`, `<figcaption><span class="social-network">on X</span></figcaption>`},
 			hasNot: []string{"social-handle"},
 		},
 		{
 			name: "X embed in a WordPress wrapper",
 			raw:  `<figure class="wp-block-embed is-type-rich is-provider-twitter wp-block-embed-twitter"><div class="wp-block-embed__wrapper">` + xEmbed + `</div></figure>`,
-			has:  []string{`<figure><div><figure class="social-post" data-social="x">`, `>January 1, 2024</a>`},
+			has:  []string{`<figure><div><figure class="social-post" data-social="x">`, `datetime="2024-01-10T15:12:00Z"`},
 		},
 		{
-			name:   "X embed iframe becomes a link-only card",
-			raw:    `<iframe src="https://platform.twitter.com/embed/Tweet.html?id=123&dnt=true"></iframe>`,
-			has:    []string{`<figure class="social-post" data-social="x"><figcaption><a href="https://x.com/i/web/status/123"`, "View post on X"},
+			name:   "X embed iframe becomes a card without text",
+			raw:    `<iframe src="https://platform.twitter.com/embed/Tweet.html?id=1745159068185526275&dnt=true"></iframe>`,
+			has:    []string{`<figure class="social-post" data-social="x">`, "social-missing", `datetime="2024-01-10T19:02:00Z"`, `href="https://x.com/i/web/status/1745159068185526275"`},
 			hasNot: []string{"Open embedded content"},
 		},
 		{
 			name:   "X embed with an unmatched byline takes the handle from the link",
 			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane Doe <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
-			has:    []string{`<span class="social-handle">@jane</span>`, ">May 2, 2025</a>"},
+			has:    []string{`<span class="social-handle">@jane</span>`, "<span>May 2, 2025</span>"},
 			hasNot: []string{"social-name"},
 		},
 		{
@@ -348,9 +350,9 @@ func TestHTML(t *testing.T) {
 			want: ptr(`<figure class="social-post">x</figure>`),
 		},
 		{
-			name: "feed-written post card span with another class loses it",
-			raw:  `<span class="social-name evil">x</span><p class="social-media">y</p>`,
-			want: ptr(`<span>x</span><p class="social-media">y</p>`),
+			name: "feed-written post card classes and data-local with a value are dropped",
+			raw:  `<span class="social-name evil">x</span><p class="social-foot">y</p><time data-local="date" datetime="2024-01-01">z</time>`,
+			want: ptr(`<span>x</span><p class="social-foot">y</p><time datetime="2024-01-01">z</time>`),
 		},
 		{
 			name: "nested relative iframe resolved and replaced",
@@ -516,7 +518,7 @@ func ptr(s string) *string { return &s }
 
 // xEmbed is a post embedded from X, as X's publish tool writes it, with a
 // picture.
-const xEmbed = `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw">@bob</a> see <a href="https://t.co/xyz">example.com/page</a> <a href="https://t.co/abc">pic.twitter.com/abc</a></p>&mdash; Jane Doe (@jane) <a href="https://twitter.com/jane/status/1234567890?ref_src=twsrc%5Etfw">January 1, 2024</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
+const xEmbed = `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw">@bob</a> see <a href="https://t.co/xyz">example.com/page</a> <a href="https://t.co/abc">pic.twitter.com/abc</a></p>&mdash; Jane Doe (@jane) <a href="https://twitter.com/jane/status/1745101186790326273?ref_src=twsrc%5Etfw">January 10, 2024</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
 
 func TestShowsImage(t *testing.T) {
 	base, err := url.Parse("https://example.com/posts/1")

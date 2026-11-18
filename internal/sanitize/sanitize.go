@@ -27,8 +27,9 @@ func newPolicy() *bluemonday.Policy {
 	p.AllowAttrs("referrerpolicy").Matching(regexp.MustCompile(`^no-referrer$`)).OnElements("img")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^(embed|social-post)$`)).OnElements("figure")
 	p.AllowAttrs("data-social").Matching(regexp.MustCompile(`^x$`)).OnElements("figure")
-	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-media$`)).OnElements("p")
+	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-(foot|missing)$`)).OnElements("p")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-(name|handle|network)$`)).OnElements("span")
+	p.AllowAttrs("data-local").Matching(regexp.MustCompile(`^$`)).OnElements("time")
 	p.AllowAttrs("data-embed").Matching(regexp.MustCompile(`^(youtube|vimeo)$`)).OnElements("figure")
 	p.AllowAttrs("data-embed-id").Matching(regexp.MustCompile(`^[A-Za-z0-9_-]{1,20}$`)).OnElements("figure")
 	return p

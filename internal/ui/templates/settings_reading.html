@@ -29,7 +29,7 @@
         {{end}}
         <fieldset aria-describedby="theme-hint{{if .Form.FieldErrors.theme}} theme-error{{end}}">
           <legend>Theme</legend>
-          <p class="hint" id="theme-hint">System matches your device's light or dark setting. Paper is a warmer light.</p>
+          <p class="hint" id="theme-hint">System matches your device's light or dark setting.</p>
           <label class="choice">
             <input type="radio" name="theme" value="system"{{if eq .Form.Theme "system"}} checked{{end}}
               {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}}
@@ -40,11 +40,6 @@
             <input type="radio" name="theme" value="light"{{if eq .Form.Theme "light"}} checked{{end}}
               {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
             Light
-          </label>
-          <label class="choice">
-            <input type="radio" name="theme" value="paper"{{if eq .Form.Theme "paper"}} checked{{end}}
-              {{with .Form.FieldErrors.theme}}aria-invalid="true"{{end}} />
-            Paper
           </label>
           <label class="choice">
             <input type="radio" name="theme" value="dark"{{if eq .Form.Theme "dark"}} checked{{end}}

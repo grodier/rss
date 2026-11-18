@@ -184,7 +184,7 @@ func (s *Server) settingsReadingFormHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemePaper, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light, Paper or Dark.")
+	form.CheckField(slices.Contains([]string{rss.ThemeSystem, rss.ThemeLight, rss.ThemeDark}, form.Theme), "theme", "Choose System, Light or Dark.")
 	form.CheckField(slices.Contains([]string{rss.LayoutHeadlines, rss.LayoutCards}, form.Layout), "layout", "Choose Headlines or Cards.")
 	if !form.Valid() {
 		s.renderSettingsReading(w, r, http.StatusUnprocessableEntity, form)

@@ -42,7 +42,7 @@ Creating and revoking are recorded in the admin's audit log (see "Audit log" und
 Each opens its category page (`/settings/account`, `/reading`, `/data`, `/help`), and a form that saves redirects with a flash to the category it belongs to.
 Account (`settingsAccountHandler`) has rows that each open a small page with one form (Name, Email, Password), "Log them out" for other devices, and Delete account at its foot.
 Name trims and checks the name (`CheckName`, also used by signup).
-Reading (`settingsReadingHandler`) is itself the form, two sets of radio buttons saved together: Theme offers System, Light, Paper or Dark, and Article layout offers Headlines or Cards.
+Reading (`settingsReadingHandler`) is itself the form, two sets of radio buttons saved together: Theme offers System, Light or Dark, and Article layout offers Headlines or Cards.
 `UserRepository.UpdateReading` stores them in `users.theme` and `users.layout`, which `authenticate` loads with the session, so every logged-in page then renders them as `data-theme` and `data-layout` on `<html>` (see "Themes" and "Article layouts" under "Frontend" in [architecture.md](architecture.md)).
 The layout changes how article rows are drawn on every page that lists articles, not what they hold or do.
 The Settings home's account row and Account's Email row show "Not confirmed" until the address is confirmed (see "Changing email").

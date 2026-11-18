@@ -328,7 +328,8 @@ func tidTime(key string) time.Time {
 //	  <p class="social-foot"><time data-local datetime="T">T in UTC</time> <a href="URL">Read on X ↗</a></p>
 //	</figure>
 //
-// A missing name or handle is left out. Without text, the blockquote is
+// A missing name or handle is left out; with neither, the caption reads
+// "A post on X". Without text, the blockquote is
 // <p class="social-missing">This post's text isn't in the article.</p>.
 // Without a time, the foot shows the date as published, if any. The link
 // says what the card leaves out: "Watch on X" for a video, "See the full
@@ -347,10 +348,16 @@ func socialCard(post socialPost) *html.Node {
 		caption.AppendChild(text(" "))
 	}
 	if post.Handle != "" {
-		caption.AppendChild(span("social-handle", "@"+post.Handle))
+		caption.AppendChild(handleSpan(post.Handle))
 		caption.AppendChild(text(" "))
 	}
-	caption.AppendChild(span("social-network", "on "+network))
+	// The network's name, for screen readers beside its logo; when the embed
+	// names no author, the caption's only words.
+	if post.Name == "" && post.Handle == "" {
+		caption.AppendChild(span("social-network", "A post on "+network))
+	} else {
+		caption.AppendChild(span("social-network", "on "+network))
+	}
 	figure.AppendChild(caption)
 
 	if t := post.Text; t != nil {
@@ -487,6 +494,22 @@ func span(class, s string) *html.Node {
 		sp.Attr = []html.Attribute{{Key: "class", Val: class}}
 	}
 	sp.AppendChild(text(s))
+	return sp
+}
+
+// handleSpan returns <span class="social-handle">@HANDLE</span> with a <wbr>
+// before each dot, so a long handle (Bluesky's are domain names) wraps at a
+// dot, like a web address, rather than anywhere.
+func handleSpan(handle string) *html.Node {
+	sp := newElement(atom.Span)
+	sp.Attr = []html.Attribute{{Key: "class", Val: "social-handle"}}
+	for i, part := range strings.Split("@"+handle, ".") {
+		if i > 0 {
+			sp.AppendChild(newElement(atom.Wbr))
+			part = "." + part
+		}
+		sp.AppendChild(text(part))
+	}
 	return sp
 }
 

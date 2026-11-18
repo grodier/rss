@@ -277,7 +277,7 @@ func TestHTML(t *testing.T) {
 		{
 			name:   "X /i/web/status link has no handle",
 			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/i/web/status/123"></a></blockquote>`,
-			has:    []string{`href="https://x.com/i/web/status/123"`, `<figcaption><span class="social-network">on X</span></figcaption>`},
+			has:    []string{`href="https://x.com/i/web/status/123"`, `<figcaption><span class="social-network">A post on X</span></figcaption>`},
 			hasNot: []string{"social-handle"},
 		},
 		{
@@ -288,7 +288,7 @@ func TestHTML(t *testing.T) {
 		{
 			name:   "X embed iframe becomes a card without text",
 			raw:    `<iframe src="https://platform.twitter.com/embed/Tweet.html?id=1745159068185526275&dnt=true"></iframe>`,
-			has:    []string{`<figure class="social-post" data-social="x">`, "social-missing", `datetime="2024-01-10T19:02:00Z"`, `href="https://x.com/i/web/status/1745159068185526275"`},
+			has:    []string{`<figure class="social-post" data-social="x"><figcaption><span class="social-network">A post on X</span></figcaption>`, "social-missing", `datetime="2024-01-10T19:02:00Z"`, `href="https://x.com/i/web/status/1745159068185526275"`},
 			hasNot: []string{"Open embedded content"},
 		},
 		{
@@ -347,7 +347,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "Bluesky embed becomes a post card",
 			raw:  blueskyEmbed,
-			want: ptr(`<figure class="social-post" data-social="bluesky"><figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane.bsky.social</span> <span class="social-network">on Bluesky</span></figcaption>` +
+			want: ptr(`<figure class="social-post" data-social="bluesky"><figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane<wbr/>.bsky<wbr/>.social</span> <span class="social-network">on Bluesky</span></figcaption>` +
 				`<blockquote cite="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227"><p lang="en">The post&#39;s text</p></blockquote>` +
 				`<p class="social-foot"><time data-local="" datetime="2025-01-01T15:00:00Z">1 Jan 2025 15:00 UTC</time>` +
 				` <a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227" rel="nofollow noreferrer noopener" target="_blank">See the full post on Bluesky ↗</a></p></figure>`),
@@ -367,7 +367,7 @@ func TestHTML(t *testing.T) {
 		{
 			name: "Bluesky embed found by its post link",
 			raw:  `<blockquote class="bluesky-embed"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/jane.example.com">@jane.example.com</a>) <a href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227?ref_src=embed">January 1, 2025</a></blockquote>`,
-			has:  []string{`data-social="bluesky"`, `>@jane.example.com<`, `href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227"`},
+			has:  []string{`data-social="bluesky"`, `<span class="social-handle">@jane<wbr/>.example<wbr/>.com</span>`, `href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227"`},
 		},
 		{
 			name:   "Bluesky embed iframe becomes a card without text",
@@ -378,7 +378,7 @@ func TestHTML(t *testing.T) {
 		{
 			name:   "Bluesky byline that doesn't match shows no DID",
 			raw:    `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p><a href="https://bsky.app/profile/did:plc:abc123">did:plc:abc123</a></blockquote>`,
-			has:    []string{`<figcaption><span class="social-network">on Bluesky</span></figcaption>`},
+			has:    []string{`<figcaption><span class="social-network">A post on Bluesky</span></figcaption>`},
 			hasNot: []string{"social-name", "social-handle", ">did:plc"},
 		},
 		{

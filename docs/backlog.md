@@ -345,6 +345,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
 
 ## Design
 
+- [ ] **Paper and Graphite as the light and dark themes (needs planning).**
+  The owner is considering dropping Light and today's Dark in favor of Paper by day and Graphite (now the Dark theme's palette) by night, so System picks between them.
+  It would change "Paper is a theme" and the theme choice in Settings → Reading ("Design" in decisions.md), and need a migration of `users.theme` for readers who chose Light.
 - [ ] **Decide whether both article layouts stay.**
   Headlines and Cards are both supported (#680), so every change to article rows is designed twice.
   Once testers have used both, look at how many chose Cards and whether it earns that cost; "Article rows have two layouts" in [decisions.md](decisions.md) has why both exist.

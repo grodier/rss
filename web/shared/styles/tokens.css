@@ -46,7 +46,7 @@
     --avatar-icon-bg: #fff;
     --debug-bg: #fffbea;
     --debug-border: #c99a06;
-    /* What sits behind the reading column; only Paper tells it apart. */
+    /* What sits behind the reading column; Paper and dark tell it apart. */
     --bg-page: var(--bg);
     /* Corners are barely rounded, like cut paper: --radius for frames and
        pictures, --radius-sm for small things, --radius-control for buttons
@@ -118,31 +118,33 @@
 
   /* The dark theme: the same tokens, when the device is dark and the user
      hasn't chosen light or Paper, or when they chose dark (data-theme on
-     <html>, from Settings). The two blocks hold the same values; change
-     them together. */
+     <html>, from Settings). Graphite: near-neutral greys with a hint of the
+     logo's ink, and, like Paper, the column a shade lighter than the page.
+     The two blocks hold the same values; change them together. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"], [data-theme="paper"]) {
       color-scheme: dark;
-      --bg: #0f1626;
-      --bg-glass: rgb(15 22 38 / 0.82);
-      --surface: #18233a;
-      --read-bg: #0a101c;
-      --border: #26324a;
-      --border-strong: #56647f;
-      --text: #e8edf5;
-      --text-2: #b3bdcc;
-      --text-3: #98a3b5;
+      --bg: #171a20;
+      --bg-page: #0f1115;
+      --bg-glass: rgb(23 26 32 / 0.86);
+      --surface: #1f232b;
+      --read-bg: #121418;
+      --border: #2a2f38;
+      --border-strong: #5f6776;
+      --text: #e6e9ef;
+      --text-2: #b4bac5;
+      --text-3: #a0a7b3;
       --accent: #71bfff;
       --brand: #ff6a3d;
       --brand-strong: #ff7a52;
-      --selection: #1d487c;
+      --selection: #24426a;
       --danger: #ff8a80;
-      --embed-bg: #222e47;
+      --embed-bg: #242832;
       --on-embed: #fff;
       --embed-play: rgb(0 0 0 / 0.7);
       --danger-bg: #742e2b;
       --on-danger-bg: #ffe7e4;
-      --info-bg: #203e64;
+      --info-bg: #1e3350;
       --tone-1: #ffecdd;
       --tone-1-bg: #7d3f17;
       --tone-2: #e2f9e6;
@@ -158,7 +160,7 @@
       --series-3: #6fcf8f;
       --good: #7fd49b;
       --needs-improvement: #f2b65a;
-      --avatar-icon-bg: #e8edf5;
+      --avatar-icon-bg: #e6e9ef;
       --debug-bg: #473506;
       --debug-border: #e1b75c;
       /* Light text on dark reads thinner, so the reading font gets a
@@ -169,26 +171,27 @@
 
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #0f1626;
-    --bg-glass: rgb(15 22 38 / 0.82);
-    --surface: #18233a;
-    --read-bg: #0a101c;
-    --border: #26324a;
-    --border-strong: #56647f;
-    --text: #e8edf5;
-    --text-2: #b3bdcc;
-    --text-3: #98a3b5;
+    --bg: #171a20;
+    --bg-page: #0f1115;
+    --bg-glass: rgb(23 26 32 / 0.86);
+    --surface: #1f232b;
+    --read-bg: #121418;
+    --border: #2a2f38;
+    --border-strong: #5f6776;
+    --text: #e6e9ef;
+    --text-2: #b4bac5;
+    --text-3: #a0a7b3;
     --accent: #71bfff;
     --brand: #ff6a3d;
     --brand-strong: #ff7a52;
-    --selection: #1d487c;
+    --selection: #24426a;
     --danger: #ff8a80;
-    --embed-bg: #222e47;
+    --embed-bg: #242832;
     --on-embed: #fff;
     --embed-play: rgb(0 0 0 / 0.7);
     --danger-bg: #742e2b;
     --on-danger-bg: #ffe7e4;
-    --info-bg: #203e64;
+    --info-bg: #1e3350;
     --tone-1: #ffecdd;
     --tone-1-bg: #7d3f17;
     --tone-2: #e2f9e6;
@@ -204,7 +207,7 @@
     --series-3: #6fcf8f;
     --good: #7fd49b;
     --needs-improvement: #f2b65a;
-    --avatar-icon-bg: #e8edf5;
+    --avatar-icon-bg: #e6e9ef;
     --debug-bg: #473506;
     --debug-border: #e1b75c;
     --font-reading-weight: 440;

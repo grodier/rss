@@ -912,8 +912,12 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
 - **Colors are custom properties on `:root` in `main.css`, so a theme redefines them in one place.**
   Icons are inline SVG partials (`templates/partials/icons.html`), not an icon font or library.
 - **A dark theme follows the system, with a choice of System, Light or Dark in Settings** (#413).
-  The dark palette is the light one's, darkened: the logo's ink, darkened, for the background, its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more.
+  The dark palette keeps the light one's colors where they mean something: its sky for links and a lighter tomato (`--brand-strong`), with text at 7:1 or more; its greys are Graphite (below).
   The values live in one block per theme (repeated once for the media query and once for the explicit choice), so another theme is one more block.
+- **Dark is Graphite: near-neutral greys with a hint of the logo's ink, and the column a shade lighter than the page, as in Paper** (the owner's pick of three options, after #413's navy).
+  #413's dark used the ink, darkened, for the page and the column alike, which looked right on phones but was a wall of navy on desktop; the column now sits on a page about 1.1:1 darker, a little more than Paper's step since the eye sees steps less well in the dark, and phones, where the column fills the screen, only lose the navy.
+  Rejected: keeping the navy and only darkening the page (the smallest change, still navy) and a warm charcoal as Paper's night side (read as brown).
+  Graphite was also picked as the dark half of a possible Paper and Graphite pair (backlog.md).
 - **Dark keeps the light theme's color where color means something, and stays calm everywhere else** (#413).
   Avatars are mid-tone colored tiles with near-white letters, the dark counterpart of light's pastel tiles; the error, flash and debug boxes are mid-tone tints with light text (`--on-danger-bg` for errors); the sky accent is saturated.
   The page, cards, text and images stay low-chroma, since saturated large areas glare at night.

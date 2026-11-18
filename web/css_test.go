@@ -62,8 +62,10 @@ func TestDarkThemeTokens(t *testing.T) {
 		t.Errorf("the dark theme's two blocks differ:\nsystem: %q\nchosen: %q", system, chosen)
 	}
 
+	// Light's page behind the column is its --bg (a var(), not a color), so
+	// it isn't one of light's color tokens; Paper and dark set it apart.
 	light := colorTokens(cssBlock(t, css, ":root"))
-	dark := colorTokens(chosen)
+	dark := slices.DeleteFunc(colorTokens(chosen), func(name string) bool { return name == "--bg-page" })
 	if len(light) == 0 {
 		t.Fatal("found no color tokens on :root")
 	}
@@ -72,7 +74,7 @@ func TestDarkThemeTokens(t *testing.T) {
 	}
 
 	// Paper is light with some tokens warmed, so it only redefines tokens
-	// light has (and the page behind the column, which only it sets apart).
+	// light has (and the page behind the column).
 	for _, name := range colorTokens(cssBlock(t, css, `:root[data-theme="paper"]`)) {
 		if name != "--bg-page" && !slices.Contains(light, name) {
 			t.Errorf("the Paper theme defines %s, which isn't one of light's color tokens", name)

@@ -435,13 +435,13 @@ func TestSettingsReading(t *testing.T) {
 
 func TestThemeAttribute(t *testing.T) {
 	const systemColors = `<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#0f1626" media="(prefers-color-scheme: dark)" />`
+  <meta name="theme-color" content="#171a20" media="(prefers-color-scheme: dark)" />`
 	tests := []struct {
 		theme      string
 		want       string // the <html> tag
 		themeColor string // the theme-color metas
 	}{
-		{rss.ThemeDark, `<html lang="en" data-theme="dark">`, `<meta name="theme-color" content="#0f1626" />`},
+		{rss.ThemeDark, `<html lang="en" data-theme="dark">`, `<meta name="theme-color" content="#171a20" />`},
 		{rss.ThemeLight, `<html lang="en" data-theme="light">`, `<meta name="theme-color" content="#ffffff" />`},
 		{rss.ThemePaper, `<html lang="en" data-theme="paper">`, `<meta name="theme-color" content="#fffefc" />`},
 		{rss.ThemeSystem, `<html lang="en">`, systemColors},

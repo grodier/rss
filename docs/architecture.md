@@ -384,7 +384,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   The CSP is `default-src 'self'; img-src 'self' https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com`: no inline scripts or styles, images from any `https:` host.
   `http:` image URLs would be blocked, so `CardImageURL` and `sanitize.HTML` rewrite them to `https:` when rendering; the database keeps the publisher's URLs.
   YouTube and Vimeo iframes become click-to-play previews; the players load only from the two `frame-src` hosts, sandboxed, with URLs `video-embeds.ts` builds from the validated video ID.
-  X's embeds (its blockquote and its iframes) become a post card built from the article's own markup; nothing loads from X, and the post's link is built from its validated handle and ID.
+  X's and Bluesky's embeds (their blockquotes and their iframes) become a post card built from the article's own markup; nothing loads from either, and the post's link is built from its validated parts.
   Every other iframe becomes a link.
 - **The admin** (`internal/admin`, `commonHeaders`) sends its own headers on every response: `Content-Security-Policy: default-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (static files set their own), `nosniff`, `X-Frame-Options: deny`, and HSTS in production.
   It's on its own origin (`admin.paperround.app`), so `CrossOriginProtection` refuses form posts from the reader's pages, which are same-site but not same-origin.

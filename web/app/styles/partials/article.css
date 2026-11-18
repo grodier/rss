@@ -331,34 +331,54 @@
     font-weight: 650;
   }
 
-  .article-body .social-post :is(.social-name, .social-handle) {
+  .article-body .social-post :is(.social-name, .social-handle, .social-network) {
     grid-column: 1;
   }
 
-  /* The network's logo, drawn in the text color from its "on X" label,
-     which stays for screen readers. The logos are from Simple Icons
-     (simpleicons.org, CC0). */
-  .article-body .social-post .social-network {
+  /* The network's logo, top right, drawn in the text color. The logos are
+     from Simple Icons (simpleicons.org, CC0). */
+  .article-body .social-post[data-social="x"] {
+    --social-logo: url("../../images/networks/x.svg");
+  }
+
+  .article-body .social-post[data-social="bluesky"] {
+    --social-logo: url("../../images/networks/bluesky.svg");
+  }
+
+  .article-body .social-post figcaption::after {
+    content: "";
     grid-column: 2;
     grid-row: 1;
     inline-size: 1.25rem;
     block-size: 1.25rem;
-    overflow: hidden;
     background: var(--text);
-    white-space: nowrap;
-    text-indent: 2rem;
-    mask: center / contain no-repeat;
-  }
-
-  .article-body .social-post[data-social="x"] .social-network {
-    mask-image: url("../../images/networks/x.svg");
+    mask: var(--social-logo) center / contain no-repeat;
   }
 
   @media (forced-colors: active) {
-    .article-body .social-post .social-network {
+    .article-body .social-post figcaption::after {
       forced-color-adjust: none;
       background: CanvasText;
     }
+  }
+
+  /* The network's name ("on X") is for screen readers, beside the logo
+     (.visually-hidden's rules); it shows only when the embed names no
+     author ("A post on X"). */
+  .article-body .social-post .social-network:not(:only-child) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .article-body .social-post .social-network:only-child {
+    align-self: center;
   }
 
   .article-body .social-post blockquote {

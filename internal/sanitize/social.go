@@ -13,10 +13,10 @@ import (
 )
 
 // socialPost is a post from a social network embedded in an article, read
-// from the markup its embed code leaves (see xPost). Nothing in it is
+// from the markup its embed code leaves (see xPost and blueskyPost). Nothing in it is
 // fetched: a network's script would fill in the rest, and we never run it.
 type socialPost struct {
-	Network string     // "x"; data-social, and the network's name in labels
+	Network string     // "x" or "bluesky"; data-social, and the network's name in labels
 	URL     string     // the post's address, built from validated parts
 	Name    string     // the author's display name as published; may be empty
 	Handle  string     // without "@"; may be empty
@@ -28,7 +28,7 @@ type socialPost struct {
 }
 
 // networkNames are the networks' names in a card's labels.
-var networkNames = map[string]string{"x": "X"}
+var networkNames = map[string]string{"x": "X", "bluesky": "Bluesky"}
 
 var (
 	xHosts      = []string{"twitter.com", "www.twitter.com", "mobile.twitter.com", "x.com", "www.x.com"}
@@ -70,6 +70,7 @@ func xPost(n *html.Node) (post socialPost, ok bool) {
 		post.Media = removeLinks(p, func(text string) bool {
 			return strings.HasPrefix(text, "pic.twitter.com/") || strings.HasPrefix(text, "pic.x.com/")
 		})
+		trimEnd(p)
 		if !isBlank(p) {
 			post.Text = p
 		}
@@ -165,6 +166,155 @@ func xFramePost(iframe *html.Node) (post socialPost, ok bool) {
 	return xPostFromID("", id), true
 }
 
+var (
+	blueskyDID         = `did:(?:plc|web):[A-Za-z0-9._:%-]{1,253}`
+	blueskyKey         = `[A-Za-z0-9._~:-]{1,512}`
+	blueskyURI         = regexp.MustCompile(`^at://(` + blueskyDID + `)/app\.bsky\.feed\.post/(` + blueskyKey + `)$`)
+	blueskyPostPath    = regexp.MustCompile(`^/profile/([A-Za-z0-9._:%-]{1,253})/post/(` + blueskyKey + `)/?$`)
+	blueskyProfilePath = regexp.MustCompile(`^/profile/[A-Za-z0-9._:%-]{1,253}/?$`)
+	blueskyFramePath   = regexp.MustCompile(`^/embed/(` + blueskyDID + `)/app\.bsky\.feed\.post/(` + blueskyKey + `)$`)
+	blueskyHandle      = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
+	blueskyByline      = regexp.MustCompile(`^\s*[—–-]\s*(.+?)\s*\(\s*$`)
+)
+
+// blueskyPost reads a post from a Bluesky embed: a <blockquote> whose class
+// has the token bluesky-embed, as embed.bsky.app writes it:
+//
+//	<blockquote class="bluesky-embed" data-bluesky-uri="at://DID/app.bsky.feed.post/KEY">
+//	<p lang="en">TEXT<br><br><a href="POST">[image or embed]</a></p>&mdash; NAME
+//	(<a href="https://bsky.app/profile/DID">@HANDLE</a>) <a href="POST">DATE</a></blockquote>
+//
+// The post is named by data-bluesky-uri, else by a link to it. ok is false
+// if n isn't one or names no valid post. It removes the "[image or embed]"
+// link that stands for the post's pictures, video, link card or quoted
+// post, setting Media.
+func blueskyPost(n *html.Node) (post socialPost, ok bool) {
+	if n.Type != html.ElementNode || n.DataAtom != atom.Blockquote || !hasClass(n, "bluesky-embed") {
+		return socialPost{}, false
+	}
+	var profile, key string
+	uri, _ := attr(n, "data-bluesky-uri")
+	if m := blueskyURI.FindStringSubmatch(strings.TrimSpace(uri)); m != nil {
+		profile, key = m[1], m[2]
+	} else {
+		links := elements(n, atom.A)
+		for i := len(links) - 1; i >= 0 && profile == ""; i-- {
+			if m := blueskyPath(links[i], blueskyPostPath); m != nil {
+				profile, key = m[1], m[2]
+			}
+		}
+	}
+	if profile == "" {
+		return socialPost{}, false
+	}
+	post = socialPost{
+		Network: "bluesky",
+		URL:     "https://bsky.app/profile/" + profile + "/post/" + key,
+		Time:    tidTime(key),
+	}
+
+	var p *html.Node
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && c.DataAtom == atom.P {
+			p = c
+			break
+		}
+	}
+	if p == nil {
+		return post, true
+	}
+	post.Media = removeLinks(p, func(text string) bool { return text == "[image or embed]" })
+	trimEnd(p)
+	if !isBlank(p) {
+		post.Text = p
+	}
+
+	// The byline and date are the blockquote's own children after the
+	// text: "— NAME (<a>@HANDLE</a>) <a>DATE</a>".
+	var byline strings.Builder
+	var date *html.Node
+	for c := p.NextSibling; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == html.TextNode && post.Handle == "" && date == nil:
+			byline.WriteString(c.Data)
+		case c.Type == html.ElementNode && c.DataAtom == atom.A:
+			if blueskyPath(c, blueskyProfilePath) != nil && post.Handle == "" {
+				if h := strings.TrimPrefix(strings.TrimSpace(textOf(c)), "@"); blueskyHandle.MatchString(h) {
+					post.Handle = h
+				}
+				if m := blueskyByline.FindStringSubmatch(byline.String()); m != nil {
+					post.Name = m[1]
+				}
+			}
+			if m := blueskyPath(c, blueskyPostPath); m != nil && m[2] == key {
+				date = c
+			}
+		}
+	}
+	if date != nil {
+		if d := strings.TrimSpace(textOf(date)); !strings.HasPrefix(d, "http") {
+			post.Date = d
+		}
+	}
+	return post, true
+}
+
+// blueskyPath returns path's submatches for the href of the link a, if it's
+// an http(s) link to bsky.app, or nil.
+func blueskyPath(a *html.Node, path *regexp.Regexp) []string {
+	href, _ := attr(a, "href")
+	u, err := url.Parse(strings.TrimSpace(href))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || strings.ToLower(u.Hostname()) != "bsky.app" {
+		return nil
+	}
+	return path.FindStringSubmatch(u.Path)
+}
+
+// blueskyFramePost reads a post from a Bluesky embed iframe
+// (https://embed.bsky.app/embed/DID/app.bsky.feed.post/KEY); it has only a
+// URL and, if its key is a TID, a time.
+func blueskyFramePost(iframe *html.Node) (post socialPost, ok bool) {
+	src, _ := attr(iframe, "src")
+	u, err := url.Parse(strings.TrimSpace(src))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || strings.ToLower(u.Hostname()) != "embed.bsky.app" {
+		return socialPost{}, false
+	}
+	m := blueskyFramePath.FindStringSubmatch(u.Path)
+	if m == nil {
+		return socialPost{}, false
+	}
+	return socialPost{
+		Network: "bluesky",
+		URL:     "https://bsky.app/profile/" + m[1] + "/post/" + m[2],
+		Time:    tidTime(m[2]),
+	}, true
+}
+
+// tidAlphabet is the base32 of TIDs, in sort order, and tidKey a record key
+// that is a TID: 13 of its characters, the first leaving the top bit 0.
+const tidAlphabet = "234567abcdefghijklmnopqrstuvwxyz"
+
+var tidKey = regexp.MustCompile(`^[234567abcdefghij][234567abcdefghijklmnopqrstuvwxyz]{12}$`)
+
+// tidTime returns the time in the record key key if it's a TID (Bluesky's
+// timestamp IDs, which its app gives every post): a 64-bit number whose
+// bits above the lowest 10 are microseconds since the Unix epoch. It returns
+// the zero time for any other key, or one more than a day from now.
+func tidTime(key string) time.Time {
+	if !tidKey.MatchString(key) {
+		return time.Time{}
+	}
+	var n uint64
+	for _, c := range key {
+		n = n<<5 | uint64(strings.IndexRune(tidAlphabet, c))
+	}
+	t := time.UnixMicro(int64(n >> 10)).UTC()
+	if t.After(time.Now().Add(24 * time.Hour)) {
+		return time.Time{}
+	}
+	return t
+}
+
 // socialCard returns the markup for post, a framed card in the shape of the
 // network's own embed ("Posts from other networks" in docs/decisions.md):
 //
@@ -178,7 +328,8 @@ func xFramePost(iframe *html.Node) (post socialPost, ok bool) {
 //	  <p class="social-foot"><time data-local datetime="T">T in UTC</time> <a href="URL">Read on X ↗</a></p>
 //	</figure>
 //
-// A missing name or handle is left out. Without text, the blockquote is
+// A missing name or handle is left out; with neither, the caption reads
+// "A post on X". Without text, the blockquote is
 // <p class="social-missing">This post's text isn't in the article.</p>.
 // Without a time, the foot shows the date as published, if any. The link
 // says what the card leaves out: "Watch on X" for a video, "See the full
@@ -197,10 +348,16 @@ func socialCard(post socialPost) *html.Node {
 		caption.AppendChild(text(" "))
 	}
 	if post.Handle != "" {
-		caption.AppendChild(span("social-handle", "@"+post.Handle))
+		caption.AppendChild(handleSpan(post.Handle))
 		caption.AppendChild(text(" "))
 	}
-	caption.AppendChild(span("social-network", "on "+network))
+	// The network's name, for screen readers beside its logo; when the embed
+	// names no author, the caption's only words.
+	if post.Name == "" && post.Handle == "" {
+		caption.AppendChild(span("social-network", "A post on "+network))
+	} else {
+		caption.AppendChild(span("social-network", "on "+network))
+	}
 	figure.AppendChild(caption)
 
 	if t := post.Text; t != nil {
@@ -246,6 +403,23 @@ func socialCard(post socialPost) *html.Node {
 	foot.AppendChild(link(post.URL, label))
 	figure.AppendChild(foot)
 	return figure
+}
+
+// trimEnd removes the <br> elements and whitespace at the end of n, left
+// where removeLinks took a link away.
+func trimEnd(n *html.Node) {
+	for c := n.LastChild; c != nil; c = n.LastChild {
+		switch {
+		case c.Type == html.ElementNode && c.DataAtom == atom.Br:
+		case c.Type == html.TextNode && strings.Trim(c.Data, htmlSpace) == "":
+		case c.Type == html.TextNode:
+			c.Data = strings.TrimRight(c.Data, htmlSpace)
+			return
+		default:
+			return
+		}
+		n.RemoveChild(c)
+	}
 }
 
 // removeLinks removes the <a> elements under n whose trimmed text matches,
@@ -320,6 +494,22 @@ func span(class, s string) *html.Node {
 		sp.Attr = []html.Attribute{{Key: "class", Val: class}}
 	}
 	sp.AppendChild(text(s))
+	return sp
+}
+
+// handleSpan returns <span class="social-handle">@HANDLE</span> with a <wbr>
+// before each dot, so a long handle (Bluesky's are domain names) wraps at a
+// dot, like a web address, rather than anywhere.
+func handleSpan(handle string) *html.Node {
+	sp := newElement(atom.Span)
+	sp.Attr = []html.Attribute{{Key: "class", Val: "social-handle"}}
+	for i, part := range strings.Split("@"+handle, ".") {
+		if i > 0 {
+			sp.AppendChild(newElement(atom.Wbr))
+			part = "." + part
+		}
+		sp.AppendChild(text(part))
+	}
 	return sp
 }
 

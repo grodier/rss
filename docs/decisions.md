@@ -594,6 +594,9 @@ Planned in #163 (issues #147–#162).
     The link is built from the validated handle and ID, which drops X's `ref_src` tracking; the time comes from the ID (X's IDs have encoded it since November 2010), so even a link-only embed has one; a picture link (`pic.twitter.com/…`) is dropped from the text and changes the card's link to "See the full post on X".
     Markup that isn't recognized stays a plain blockquote, never dropped.
     How the card looks is under "Design".
+  - Posts embedded from Bluesky become the same card (#699), from the blockquote `embed.bsky.app` writes and its iframes, on the same terms: nothing loads from Bluesky, and the link is built from the post's validated DID (or handle) and record key.
+    The time comes from the record key when it's a TID, as Bluesky's app makes every post's; otherwise the date as published.
+    Bluesky's markup writes "[image or embed]" for a picture, a video, a link card or a quoted post alike, so it changes the link to "See the full post on Bluesky" and is never "Watch on".
 - **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the article page gets better defaults first: wide tables scroll inside the column, styled code, lists and rules (#295).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.
   No player yet.
@@ -907,6 +910,8 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   - A framed card (`--border`, `--radius`, like the Cards layout's) at most 34rem wide, about X's own embed's 550px, centered in the column; full width on phones.
     At the column's full width it read as a framed section, not a card.
   - The author's name over their handle, and the network's logo at the top right, with its "on X" text kept for screen readers; the text in the interface's face, not the article's serif, so it can't pass for the author's own words.
+    When the embed names no author (an iframe, a link-only embed with an unknown handle), the header reads "A post on X" beside the logo, rather than leaving the logo alone (#699).
+    A handle wraps only before a dot, like a web address, since Bluesky's are domain names that can be wider than a phone's card (#699).
   - Under a rule, the time in the app's own format (`local-times.ts`), and one link to the post, whose words say what the card leaves out: "Read on X ↗", "Watch on X ↗" for a video, "See the full post on X ↗" when the embed left out a picture, video or other attachment, after "Read on <site> ↗" on the article page.
   - Only what the embed's markup holds: no made-up avatar (a letter avatar is the app's own, and isn't what's on X), no box standing in for a picture we can't show, and no counts.
   - The logo is a file the stylesheet uses as a mask in the text color, not inline SVG or a `data:` URL, which the CSP blocks (see "Frontend assets"); X's and Bluesky's are the app's only third-party logos, as video previews name their site in words.

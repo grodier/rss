@@ -202,6 +202,12 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   It doesn't reuse a site's Check for new feeds, as #648 first planned: that fetches the site's home page, which isn't the entry's address when the entry is a feed (#678).
 - **The seed list and the catalog are two pages after Feeds, each one table with filter links like the feeds list** (#648, approved at its design checkpoint in #678): the seed list's filters are All (the default), Not found, Waiting and Found but not in Discover; the catalog's are All, which adds a Section column, and one per section in Discover's order, empty ones included with their count.
   Rejected: the catalog grouped under a heading per section (long and mostly empty while the catalog is small, its tables' columns not lining up), and both on one page with tabs (two rows of filter links, for two questions asked apart).
+- **Sites are their own section in the admin, above their feeds** (#706, found while looking for a site's icon): a Sites list after Feeds, a site's page under Sites in the sidebar, and each host in the feed tables linking to its site, since a site's page was reachable only by opening one of its feeds and going up.
+  The list follows the Feeds list's pattern (filter links with counts, a search, sortable headers, a keyset cursor); its look is #706's design checkpoint.
+  Rejected: only linking hosts from the Feeds list (sites stay reachable only through their feeds), and grouping the Feeds list by site (it's triage first, and grouping buries failing feeds under healthy sites).
+  Breadcrumbs (#655) follow where a page sits, not how it was reached: `Sites › host` and `Sites › host › feed`.
+- **Check the icon again works on any site** (#705): it clears `icon_checked_at` as well as making the check due, so the runner takes the site as if it were new, subscribed or not.
+  Rejected: dropping the runner's subscriber condition (it would recheck thousands of unfollowed seed sites every 30 days) and a column for a requested check (a migration for what "never checked" already says); the cost is that the site's page loses "none found {when}" until the check runs, seconds later.
 - **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
 
 ## Observability

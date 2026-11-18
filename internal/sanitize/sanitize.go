@@ -26,7 +26,7 @@ func newPolicy() *bluemonday.Policy {
 	p.AllowAttrs("loading").Matching(regexp.MustCompile(`^lazy$`)).OnElements("img")
 	p.AllowAttrs("referrerpolicy").Matching(regexp.MustCompile(`^no-referrer$`)).OnElements("img")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^(embed|social-post)$`)).OnElements("figure")
-	p.AllowAttrs("data-social").Matching(regexp.MustCompile(`^x$`)).OnElements("figure")
+	p.AllowAttrs("data-social").Matching(regexp.MustCompile(`^(x|bluesky)$`)).OnElements("figure")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-(foot|missing)$`)).OnElements("p")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-(name|handle|network)$`)).OnElements("span")
 	p.AllowAttrs("data-local").Matching(regexp.MustCompile(`^$`)).OnElements("time")
@@ -37,8 +37,8 @@ func newPolicy() *bluemonday.Policy {
 
 // HTML returns raw as HTML that is safe to render: relative URLs in href and
 // src are resolved against base (left as is if base is nil), http images
-// load over https (see httpsImage), posts embedded from X become a post card
-// (see xPost and socialCard), YouTube and
+// load over https (see httpsImage), posts embedded from X and Bluesky become
+// post cards (see xPost, blueskyPost and socialCard), YouTube and
 // Vimeo iframes become click-to-play previews (see videoEmbed), every other
 // <iframe> with an http(s) src is replaced by <p><a href="SRC">Open embedded
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
@@ -248,11 +248,16 @@ func rewrite(n *html.Node, base *url.URL) {
 				if post, ok := xPost(c); ok {
 					n.InsertBefore(socialCard(post), c)
 					n.RemoveChild(c)
+				} else if post, ok := blueskyPost(c); ok {
+					n.InsertBefore(socialCard(post), c)
+					n.RemoveChild(c)
 				}
 				c = next
 				continue
 			case atom.Iframe:
 				if post, ok := xFramePost(c); ok {
+					n.InsertBefore(socialCard(post), c)
+				} else if post, ok := blueskyFramePost(c); ok {
 					n.InsertBefore(socialCard(post), c)
 				} else if video := videoEmbed(c); video != nil {
 					n.InsertBefore(video, c)

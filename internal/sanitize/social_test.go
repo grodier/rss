@@ -164,6 +164,149 @@ func TestXTime(t *testing.T) {
 	}
 }
 
+func TestBlueskyPost(t *testing.T) {
+	jan1 := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		raw  string
+		ok   bool
+		want socialPost
+		text string
+	}{
+		{
+			name: "full embed",
+			raw:  blueskyEmbed,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227", Name: "Jane Doe", Handle: "jane.bsky.social", Time: jan1, Date: "January 1, 2025 at 3:00 PM", Media: true},
+			text: `<p lang="en">The post&#39;s text</p>`,
+		},
+		{
+			name: "media only",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p lang="en"><a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227">[image or embed]</a></p></blockquote>`,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227", Time: jan1, Media: true},
+		},
+		{
+			name: "did:web and a key that isn't a TID",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:web:example.com/app.bsky.feed.post/self"><p>Hi</p>&mdash; Example (<a href="https://bsky.app/profile/example.com">@example.com</a>) <a href="https://bsky.app/profile/did:web:example.com/post/self">May 2, 2025</a></blockquote>`,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/did:web:example.com/post/self", Name: "Example", Handle: "example.com", Date: "May 2, 2025"},
+			text: `<p>Hi</p>`,
+		},
+		{
+			name: "found by its post link, with a handle",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="nonsense"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/jane.example.com">@jane.example.com</a>) <a href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227?ref_src=embed">January 1, 2025</a></blockquote>`,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/jane.example.com/post/3leotaf7z2227", Name: "Jane", Handle: "jane.example.com", Time: jan1, Date: "January 1, 2025"},
+			text: `<p>Hi</p>`,
+		},
+		{
+			name: "date linking to another post is no date",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/did:plc:abc123">@jane.bsky.social</a>) <a href="https://bsky.app/profile/did:plc:abc123/post/3leqrb7wpk22b">May 2, 2025</a></blockquote>`,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227", Name: "Jane", Handle: "jane.bsky.social", Time: jan1},
+			text: `<p>Hi</p>`,
+		},
+		{
+			name: "a DID as the handle is no handle",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/did:plc:abc123">@did:plc:abc123</a>) <a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227">May 2, 2025</a></blockquote>`,
+			ok:   true,
+			want: socialPost{Network: "bluesky", URL: "https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227", Name: "Jane", Time: jan1, Date: "May 2, 2025"},
+			text: `<p>Hi</p>`,
+		},
+		{name: "another record type", raw: `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.like/3leotaf7z2227"><p>Hi</p></blockquote>`},
+		{name: "a DID method we don't know", raw: `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:key:abc/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p></blockquote>`},
+		{name: "a post link on another host", raw: `<blockquote class="bluesky-embed"><a href="https://evil.example/profile/jane/post/3leotaf7z2227">x</a></blockquote>`},
+		{name: "a relative post link", raw: `<blockquote class="bluesky-embed"><a href="/profile/jane/post/3leotaf7z2227">x</a></blockquote>`},
+		{name: "no class", raw: `<blockquote data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p></blockquote>`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, err := parse(tt.raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			post, ok := blueskyPost(root.FirstChild)
+			if ok != tt.ok {
+				t.Fatalf("ok = %v, want %v", ok, tt.ok)
+			}
+			text := renderNode(t, post.Text)
+			post.Text = nil
+			if !post.Time.Equal(tt.want.Time) {
+				t.Errorf("Time = %v, want %v", post.Time, tt.want.Time)
+			}
+			post.Time, tt.want.Time = time.Time{}, time.Time{}
+			if post != tt.want {
+				t.Errorf("post = %+v\nwant   %+v", post, tt.want)
+			}
+			if text != tt.text {
+				t.Errorf("Text = %s\nwant   %s", text, tt.text)
+			}
+		})
+	}
+}
+
+func TestBlueskyFramePost(t *testing.T) {
+	tests := []struct {
+		src  string
+		ok   bool
+		want string
+	}{
+		{"https://embed.bsky.app/embed/did:plc:abc123/app.bsky.feed.post/3leotaf7z2227", true, "https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227"},
+		{"https://embed.bsky.app/embed/did:web:example.com/app.bsky.feed.post/self?id=1", true, "https://bsky.app/profile/did:web:example.com/post/self"},
+		{"https://embed.bsky.app/embed/jane.bsky.social/app.bsky.feed.post/3leotaf7z2227", false, ""},
+		{"https://embed.bsky.app/embed/did:plc:abc123/app.bsky.feed.like/3leotaf7z2227", false, ""},
+		{"https://evil.example/embed/did:plc:abc123/app.bsky.feed.post/3leotaf7z2227", false, ""},
+		{"javascript:alert(1)", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			root, err := parse(`<iframe src="` + tt.src + `"></iframe>`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			post, ok := blueskyFramePost(root.FirstChild)
+			if ok != tt.ok || post.URL != tt.want {
+				t.Errorf("blueskyFramePost = %+v, %v; want URL %q, %v", post, ok, tt.want, tt.ok)
+			}
+			if ok && (post.Network != "bluesky" || post.Text != nil || post.Handle != "" || post.Name != "" || post.Date != "" || post.Media || post.Video) {
+				t.Errorf("blueskyFramePost = %+v; want only Network, URL and Time", post)
+			}
+			if want := tidTime(tt.want[strings.LastIndex(tt.want, "/")+1:]); ok && !post.Time.Equal(want) {
+				t.Errorf("blueskyFramePost Time = %v; want %v, the key's", post.Time, want)
+			}
+		})
+	}
+}
+
+func TestTIDTime(t *testing.T) {
+	tests := []struct {
+		key  string
+		want time.Time
+	}{
+		{"3leotaf7z2227", time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)},
+		// The example in the AT Protocol's spec.
+		{"3jzfcijpj2z2a", time.Date(2023, 6, 30, 15, 3, 1, 887007000, time.UTC)},
+		{"3leotaf7z222", time.Time{}},
+		{"3leotaf7z22277", time.Time{}},
+		// The first character would set the top bit.
+		{"kleotaf7z2227", time.Time{}},
+		// Characters outside the alphabet.
+		{"3leotaf7z2221", time.Time{}},
+		{"3LEOTAF7Z2227", time.Time{}},
+		{"self", time.Time{}},
+		{"", time.Time{}},
+		// The largest TID is in the year 2570.
+		{"jzzzzzzzzzzzz", time.Time{}},
+	}
+	for _, tt := range tests {
+		if got := tidTime(tt.key); !got.Equal(tt.want) {
+			t.Errorf("tidTime(%q) = %v, want %v", tt.key, got, tt.want)
+		}
+	}
+}
+
 func renderNode(t *testing.T, n *html.Node) string {
 	t.Helper()
 	if n == nil {

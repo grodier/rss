@@ -354,6 +354,10 @@
     mask-image: url("../../images/networks/x.svg");
   }
 
+  .article-body .social-post[data-social="bluesky"] .social-network {
+    mask-image: url("../../images/networks/bluesky.svg");
+  }
+
   @media (forced-colors: active) {
     .article-body .social-post .social-network {
       forced-color-adjust: none;

@@ -594,6 +594,9 @@ Planned in #163 (issues #147–#162).
     The link is built from the validated handle and ID, which drops X's `ref_src` tracking; the time comes from the ID (X's IDs have encoded it since November 2010), so even a link-only embed has one; a picture link (`pic.twitter.com/…`) is dropped from the text and changes the card's link to "See the full post on X".
     Markup that isn't recognized stays a plain blockquote, never dropped.
     How the card looks is under "Design".
+  - Posts embedded from Bluesky become the same card (#699), from the blockquote `embed.bsky.app` writes and its iframes, on the same terms: nothing loads from Bluesky, and the link is built from the post's validated DID (or handle) and record key.
+    The time comes from the record key when it's a TID, as Bluesky's app makes every post's; otherwise the date as published.
+    Bluesky's markup writes "[image or embed]" for a picture, a video, a link card or a quoted post alike, so it changes the link to "See the full post on Bluesky" and is never "Watch on".
 - **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the article page gets better defaults first: wide tables scroll inside the column, styled code, lists and rules (#295).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.
   No player yet.

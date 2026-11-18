@@ -345,6 +345,58 @@ func TestHTML(t *testing.T) {
 			hasNot: []string{"javascript"},
 		},
 		{
+			name: "Bluesky embed becomes a post card",
+			raw:  blueskyEmbed,
+			want: ptr(`<figure class="social-post" data-social="bluesky"><figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane.bsky.social</span> <span class="social-network">on Bluesky</span></figcaption>` +
+				`<blockquote cite="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227"><p lang="en">The post&#39;s text</p></blockquote>` +
+				`<p class="social-foot"><time data-local="" datetime="2025-01-01T15:00:00Z">1 Jan 2025 15:00 UTC</time>` +
+				` <a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227" rel="nofollow noreferrer noopener" target="_blank">See the full post on Bluesky ↗</a></p></figure>`),
+			hasNot: []string{"[image or embed]", "ref_src", "bluesky-embed", "embed.js", "<script", "<br"},
+		},
+		{
+			name:   "Bluesky post without media keeps its line breaks",
+			raw:    `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>One<br><br>Two</p>&mdash; Jane (<a href="https://bsky.app/profile/did:plc:abc123">@jane.bsky.social</a>) <a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227">January 1, 2025 at 3:00 PM</a></blockquote>`,
+			has:    []string{"<p>One<br/><br/>Two</p>", "Read on Bluesky ↗"},
+			hasNot: []string{"Watch on"},
+		},
+		{
+			name: "Bluesky post whose key isn't a TID shows its date as published",
+			raw:  `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/self"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/did:plc:abc123">@jane.bsky.social</a>) <a href="https://bsky.app/profile/did:plc:abc123/post/self">January 1, 2025 at 3:00 PM</a></blockquote>`,
+			has:  []string{`<span>January 1, 2025 at 3:00 PM</span>`},
+		},
+		{
+			name: "Bluesky embed found by its post link",
+			raw:  `<blockquote class="bluesky-embed"><p>Hi</p>&mdash; Jane (<a href="https://bsky.app/profile/jane.example.com">@jane.example.com</a>) <a href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227?ref_src=embed">January 1, 2025</a></blockquote>`,
+			has:  []string{`data-social="bluesky"`, `>@jane.example.com<`, `href="https://bsky.app/profile/jane.example.com/post/3leotaf7z2227"`},
+		},
+		{
+			name:   "Bluesky embed iframe becomes a card without text",
+			raw:    `<iframe src="https://embed.bsky.app/embed/did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"></iframe>`,
+			has:    []string{`data-social="bluesky"`, "social-missing", `datetime="2025-01-01T15:00:00Z"`, `href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227"`},
+			hasNot: []string{"Open embedded content"},
+		},
+		{
+			name:   "Bluesky byline that doesn't match shows no DID",
+			raw:    `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227"><p>Hi</p><a href="https://bsky.app/profile/did:plc:abc123">did:plc:abc123</a></blockquote>`,
+			has:    []string{`<figcaption><span class="social-network">on Bluesky</span></figcaption>`},
+			hasNot: []string{"social-name", "social-handle", ">did:plc"},
+		},
+		{
+			name:   "Bluesky embed naming another record type stays a blockquote",
+			raw:    `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.like/3leotaf7z2227"><p>Hi</p></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "Bluesky post link on another host stays a blockquote",
+			raw:    `<blockquote class="bluesky-embed"><p>Hi</p><a href="https://evil.example/profile/jane/post/3leotaf7z2227">x</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name: "feed-written Bluesky post card keeps data-social",
+			raw:  `<figure class="social-post" data-social="bluesky">x</figure>`,
+			want: ptr(`<figure class="social-post" data-social="bluesky">x</figure>`),
+		},
+		{
 			name: "feed-written post card with an unknown network loses data-social",
 			raw:  `<figure class="social-post" data-social="evil">x</figure>`,
 			want: ptr(`<figure class="social-post">x</figure>`),
@@ -515,6 +567,10 @@ func TestHTML(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// blueskyEmbed is a post embedded from Bluesky, as embed.bsky.app writes it,
+// with a picture.
+const blueskyEmbed = `<blockquote class="bluesky-embed" data-bluesky-uri="at://did:plc:abc123/app.bsky.feed.post/3leotaf7z2227" data-bluesky-cid="bafyreiabc" data-bluesky-embed-color-mode="system"><p lang="en">The post's text<br><br><a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227?ref_src=embed">[image or embed]</a></p>&mdash; Jane Doe (<a href="https://bsky.app/profile/did:plc:abc123?ref_src=embed">@jane.bsky.social</a>) <a href="https://bsky.app/profile/did:plc:abc123/post/3leotaf7z2227?ref_src=embed">January 1, 2025 at 3:00 PM</a></blockquote><script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>`
 
 // xEmbed is a post embedded from X, as X's publish tool writes it, with a
 // picture.

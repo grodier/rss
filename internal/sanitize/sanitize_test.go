@@ -228,6 +228,131 @@ func TestHTML(t *testing.T) {
 			want: ptr(`<figure class="embed" data-embed="youtube">x</figure>`),
 		},
 		{
+			name: "X embed becomes a post card",
+			raw:  xEmbed,
+			want: ptr(`<figure class="social-post" data-social="x"><blockquote cite="https://x.com/jane/status/1234567890">` +
+				`<p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw" rel="nofollow noreferrer noopener" target="_blank">@bob</a>` +
+				` see <a href="https://t.co/xyz" rel="nofollow noreferrer noopener" target="_blank">example.com/page</a></p>` +
+				`<p class="social-media"><a href="https://x.com/jane/status/1234567890" rel="nofollow noreferrer noopener" target="_blank">View media on X</a></p></blockquote>` +
+				`<figcaption><span class="social-name">Jane Doe</span> <span class="social-handle">@jane</span> <span class="social-network">on X</span>` +
+				` · <a href="https://x.com/jane/status/1234567890" rel="nofollow noreferrer noopener" target="_blank">January 1, 2024</a></figcaption></figure> `),
+			hasNot: []string{"pic.twitter.com", "twitter-tweet", "widgets.js", "<script"},
+		},
+		{
+			name:   "X embed on x.com with extra classes and attributes",
+			raw:    `<blockquote class="twitter-tweet tw-align-center" data-dnt="true" data-theme="dark"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1?ref_src=twsrc%5Etfw">May 2, 2025</a></blockquote>`,
+			has:    []string{`<figure class="social-post" data-social="x">`, `<p>Hi</p>`, `href="https://x.com/jane/status/1"`},
+			hasNot: []string{"ref_src", "data-dnt", "data-theme", "tw-align-center"},
+		},
+		{
+			name: "X video embed becomes a post card",
+			raw:  `<blockquote class="twitter-video"><p>Watch</p>&mdash; Jane (@jane) <a href="https://twitter.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:  []string{`data-social="x"`, `<p>Watch</p>`},
+		},
+		{
+			name:   "X picture on pic.x.com becomes the media line",
+			raw:    `<blockquote class="twitter-tweet"><p>Look <a href="https://t.co/a">pic.x.com/a</a></p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:    []string{`<p>Look</p>`, `class="social-media"`},
+			hasNot: []string{"pic.x.com"},
+		},
+		{
+			name:   "X post without a picture has no media line",
+			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			hasNot: []string{"social-media"},
+		},
+		{
+			name: "lazy X embed becomes a link-only card",
+			raw:  `<blockquote class="twitter-tweet" data-tweet-id="123"><a href="https://x.com/jane/status/123"></a></blockquote>`,
+			want: ptr(`<figure class="social-post" data-social="x"><figcaption><span class="social-handle">@jane</span> · ` +
+				`<a href="https://x.com/jane/status/123" rel="nofollow noreferrer noopener" target="_blank">View post on X</a></figcaption></figure>`),
+		},
+		{
+			name:   "lazy X embed whose link text is the URL",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://twitter.com/jane/status/123">https://twitter.com/jane/status/123</a></blockquote>`,
+			has:    []string{"View post on X"},
+			hasNot: []string{"<blockquote", ">https://twitter.com"},
+		},
+		{
+			name:   "X /i/web/status link has no handle",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/i/web/status/123"></a></blockquote>`,
+			has:    []string{`href="https://x.com/i/web/status/123"`, "View post on X"},
+			hasNot: []string{"social-handle"},
+		},
+		{
+			name: "X embed in a WordPress wrapper",
+			raw:  `<figure class="wp-block-embed is-type-rich is-provider-twitter wp-block-embed-twitter"><div class="wp-block-embed__wrapper">` + xEmbed + `</div></figure>`,
+			has:  []string{`<figure><div><figure class="social-post" data-social="x">`, `>January 1, 2024</a>`},
+		},
+		{
+			name:   "X embed iframe becomes a link-only card",
+			raw:    `<iframe src="https://platform.twitter.com/embed/Tweet.html?id=123&dnt=true"></iframe>`,
+			has:    []string{`<figure class="social-post" data-social="x"><figcaption><a href="https://x.com/i/web/status/123"`, "View post on X"},
+			hasNot: []string{"Open embedded content"},
+		},
+		{
+			name:   "X embed with an unmatched byline takes the handle from the link",
+			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane Doe <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:    []string{`<span class="social-handle">@jane</span>`, ">May 2, 2025</a>"},
+			hasNot: []string{"social-name"},
+		},
+		{
+			name: "X author name with parentheses",
+			raw:  `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane (work) Doe (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:  []string{`<span class="social-name">Jane (work) Doe</span>`},
+		},
+		{
+			name:   "X author name with markup characters stays text",
+			raw:    `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; &lt;b&gt;Jane&lt;/b&gt; (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:    []string{`<span class="social-name">&lt;b&gt;Jane&lt;/b&gt;</span>`},
+			hasNot: []string{"<b>"},
+		},
+		{
+			name: "X embed without a status link stays a blockquote",
+			raw:  `<blockquote class="twitter-tweet"><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane">May 2, 2025</a></blockquote>`,
+			want: ptr(`<blockquote><p>Hi</p>— Jane (@jane) <a href="https://x.com/jane" rel="nofollow noreferrer noopener" target="_blank">May 2, 2025</a></blockquote>`),
+		},
+		{
+			name:   "X status link with a bad handle stays a blockquote",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/ja-ne/status/1">x</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "X status link with a 16-character handle stays a blockquote",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/abcdefghijklmnop/status/1">x</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "X status link with a non-numeric ID stays a blockquote",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://x.com/jane/status/12a">x</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "status link on another host stays a blockquote",
+			raw:    `<blockquote class="twitter-tweet"><a href="https://evil.example/jane/status/1">x</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "blockquote without the class stays a blockquote",
+			raw:    `<blockquote><p>Hi</p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			hasNot: []string{"social-post"},
+		},
+		{
+			name:   "javascript link inside an X embed removed",
+			raw:    `<blockquote class="twitter-tweet"><p>Hi <a href="javascript:alert(1)">x</a></p>&mdash; Jane (@jane) <a href="https://x.com/jane/status/1">May 2, 2025</a></blockquote>`,
+			has:    []string{"social-post"},
+			hasNot: []string{"javascript"},
+		},
+		{
+			name: "feed-written post card with an unknown network loses data-social",
+			raw:  `<figure class="social-post" data-social="evil">x</figure>`,
+			want: ptr(`<figure class="social-post">x</figure>`),
+		},
+		{
+			name: "feed-written post card span with another class loses it",
+			raw:  `<span class="social-name evil">x</span><p class="social-media">y</p>`,
+			want: ptr(`<span>x</span><p class="social-media">y</p>`),
+		},
+		{
 			name: "nested relative iframe resolved and replaced",
 			raw:  `<div><iframe src="/embed/x"></iframe></div>`,
 			base: base,
@@ -388,6 +513,10 @@ func TestHTML(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// xEmbed is a post embedded from X, as X's publish tool writes it, with a
+// picture.
+const xEmbed = `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Hello <a href="https://twitter.com/bob?ref_src=twsrc%5Etfw">@bob</a> see <a href="https://t.co/xyz">example.com/page</a> <a href="https://t.co/abc">pic.twitter.com/abc</a></p>&mdash; Jane Doe (@jane) <a href="https://twitter.com/jane/status/1234567890?ref_src=twsrc%5Etfw">January 1, 2024</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
 
 func TestShowsImage(t *testing.T) {
 	base, err := url.Parse("https://example.com/posts/1")

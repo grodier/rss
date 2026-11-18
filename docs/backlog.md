@@ -345,9 +345,6 @@ The decisions are under "Filtering and timelines" in decisions.md.
 
 ## Design
 
-- [ ] **Drop `paper` from `users.theme`'s check.**
-  Light became Paper's palette, and its migration (`00016_paper_is_light.sql`) moved accounts from `paper` to `light` but left `paper` allowed, since the version running beside it during that deploy could still save it.
-  Once that's deployed, a migration converts any `paper` left to `light` and drops it from `users_theme_check`.
 - [ ] **Decide whether both article layouts stay.**
   Headlines and Cards are both supported (#680), so every change to article rows is designed twice.
   Once testers have used both, look at how many chose Cards and whether it earns that cost; "Article rows have two layouts" in [decisions.md](decisions.md) has why both exist.

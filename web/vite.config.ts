@@ -33,6 +33,11 @@ export function frontend(dir: "app" | "admin"): UserConfig {
       outDir: `dist/${dir}`,
       emptyOutDir: true,
       manifest: true,
+      // Never inline files as data: URLs: the CSP's img-src doesn't allow
+      // them, so a small image a stylesheet uses (a network's logo on a
+      // post card) would be blocked. They're emitted and cached like the
+      // rest.
+      assetsInlineLimit: 0,
       // Every supported browser has modulepreload.
       modulePreload: { polyfill: false },
       rolldownOptions: {

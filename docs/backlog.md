@@ -258,7 +258,9 @@ Each with when it pays off:
 - [ ] **Music embeds.**
   Spotify, SoundCloud and Bandcamp players as click-to-play previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.**
-  Style the blockquote that X, Bluesky and Mastodon embeds arrive as into a quote card with the author and a link, without loading their scripts.
+  Mastodon's embeds, as the post card X's have (#698) and Bluesky's will (#699), without loading their scripts.
+- [ ] **Excerpts of articles that open with an embedded post.**
+  The excerpt is plain text cut at ingest, so an article that opens with an X post shows the post's text and its "— Name (@handle) date" byline in its row (noticed in #698).
 - [ ] **Save any web page.**
   Save a link that isn't in any feed to Saved, from a bookmarklet, a "Save a link" form on Saved, or the phone's share sheet (a share target added to the manifest from #394).
   Read-later apps keep closing (Pocket in 2025), and Saved plus enrichment already shows a page's title, image and description.

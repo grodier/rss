@@ -1,16 +1,18 @@
-/* The tokens every rule uses by name: colors (light, Paper, then dark), font
+/* The tokens every rule uses by name: colors (light, then dark), font
    stacks, and the motion curves and durations. */
 @layer base {
   /* Colors are tokens so a theme can redefine them in one place.
-     The palette is the logo's: ink, sky and tomato. */
+     The palette is the logo's: ink, sky and tomato.
+     Light is warm, like paper: the column nearly white on a page a
+     shade darker, its greys warmed, and color keeping its meaning. */
   :root {
     color-scheme: light;
-    --bg: #fff;
-    --bg-glass: rgb(255 255 255 / 0.82);
-    --surface: #eff4fa;
-    --read-bg: #eff4fa;
-    --border: #dfe6ef;
-    --border-strong: #8794a8;
+    --bg: #fffefc;
+    --bg-glass: rgb(255 254 252 / 0.86);
+    --surface: #f6f3ec;
+    --read-bg: #f7f5ef;
+    --border: #e9e5db;
+    --border-strong: #8f8775;
     --text: #14213a;
     --text-2: #56627a;
     --text-3: #627089;
@@ -24,7 +26,7 @@
     --embed-play: rgb(0 0 0 / 0.7);
     --danger-bg: #fdf1f0;
     --on-danger-bg: #c0281e;
-    --info-bg: #eef3fe;
+    --info-bg: #f6f3ec;
     --tone-1: #9a4316;
     --tone-1-bg: #fde7d9;
     --tone-2: #2c6b3f;
@@ -46,8 +48,8 @@
     --avatar-icon-bg: #fff;
     --debug-bg: #fffbea;
     --debug-border: #c99a06;
-    /* What sits behind the reading column; Paper and dark tell it apart. */
-    --bg-page: var(--bg);
+    /* What sits behind the reading column, a shade darker than it. */
+    --bg-page: #faf9f5;
     /* Corners are barely rounded, like cut paper: --radius for frames and
        pictures, --radius-sm for small things, --radius-control for buttons
        and fields. */
@@ -102,27 +104,13 @@
     --delay-busy: 300ms;
   }
 
-  /* Paper: a warm light theme, chosen in Settings (never by the system).
-     Light with the page and its greys warmed: the column is nearly white on
-     a page a shade darker, and color keeps its meaning. */
-  :root[data-theme="paper"] {
-    --bg: #fffefc;
-    --bg-page: #faf9f5;
-    --bg-glass: rgb(255 254 252 / 0.86);
-    --surface: #f6f3ec;
-    --read-bg: #f7f5ef;
-    --border: #e9e5db;
-    --border-strong: #8f8775;
-    --info-bg: #f6f3ec;
-  }
-
   /* The dark theme: the same tokens, when the device is dark and the user
-     hasn't chosen light or Paper, or when they chose dark (data-theme on
-     <html>, from Settings). Graphite: near-neutral greys with a hint of the
-     logo's ink, and, like Paper, the column a shade lighter than the page.
+     hasn't chosen light, or when they chose dark (data-theme on <html>,
+     from Settings). Graphite: near-neutral greys with a hint of the logo's
+     ink, and, as in light, the column a shade lighter than the page.
      The two blocks hold the same values; change them together. */
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"], [data-theme="paper"]) {
+    :root:not([data-theme="light"]) {
       color-scheme: dark;
       --bg: #171a20;
       --bg-page: #0f1115;

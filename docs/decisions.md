@@ -884,9 +884,9 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   Rounded pills and big radii were part of the social look; older entries here that say "pill" mean the same controls in their new shape.
   The current section in the rail has a sunrise-colored edge, and the timeline tabs are set in the display face with a thicker sunrise underline.
   The admin keeps its rounder shape: its design was approved on its own (#562).
-- **Paper is a theme, beside Light and Dark** (#680, the owner): Light stays white and the default; Paper warms the page, the borders and the tints, with the column nearly white on a page a shade darker.
-  A first version with a stronger paper tone read as muddy, and a warm look as the only light theme was turned down, so it's a choice.
-  System never picks it, since devices only say light or dark.
+- **Light is Paper: the page, the borders and the tints warmed, with the column nearly white on a page a shade darker** (#680 added Paper as a fourth theme; the owner made it the light theme after Dark became Graphite).
+  So the themes are a pair, Paper by day and Graphite by night, and System picks between them; a white Light theme beside it was one more look every page had to be checked in.
+  A first version with a stronger paper tone read as muddy (#680).
   Feed names in the Headlines kicker are in the text color, not the sunrise: a colored label on every row was part of the muddiness.
 - **In Headlines the feed's name is set as a name, and on phones it sits over the time** (#681, the owner's pick of three options after using #680): the avatar at 28 px beside the name in sentence case, bold, at body size, on one line with the time; on phones a 36 px avatar with the name over the time.
   #680's kicker, a 20 px icon and the name in small capitals, made the feed too faint, on phones above all, where who published a thing is half of what a reader scans for.
@@ -917,14 +917,14 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
 - **Dark is Graphite: near-neutral greys with a hint of the logo's ink, and the column a shade lighter than the page, as in Paper** (the owner's pick of three options, after #413's navy).
   #413's dark used the ink, darkened, for the page and the column alike, which looked right on phones but was a wall of navy on desktop; the column now sits on a page about 1.1:1 darker, a little more than Paper's step since the eye sees steps less well in the dark, and phones, where the column fills the screen, only lose the navy.
   Rejected: keeping the navy and only darkening the page (the smallest change, still navy) and a warm charcoal as Paper's night side (read as brown).
-  Graphite was also picked as the dark half of a possible Paper and Graphite pair (backlog.md).
+  Graphite was also picked as the dark half of the Paper and Graphite pair, which the themes became next.
 - **Dark keeps the light theme's color where color means something, and stays calm everywhere else** (#413).
   Avatars are mid-tone colored tiles with near-white letters, the dark counterpart of light's pastel tiles; the error, flash and debug boxes are mid-tone tints with light text (`--on-danger-bg` for errors); the sky accent is saturated.
   The page, cards, text and images stay low-chroma, since saturated large areas glare at night.
   A first version mixed the tints almost into the background and read as dull next to light.
   Logged-out and error pages always follow the system, since they don't know the user, and the installed app's splash stays light, since the manifest can't vary.
   The browser bar (`theme-color`) follows the user's choice on logged-in pages, so a dark page doesn't sit under a white bar; the issue had accepted the system's, but the page knows the choice, so it costs one argument per page.
-- **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), the sky tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
+- **Read cards stay quieter than unread ones in both themes** (#413): they have their own tint (`--read-bg`), a warm tint in light and darker than the page in dark, since the lighter `--surface` would make read cards stand out at night.
   That is the Cards layout; in Headlines a read row dims its headline, kicker and picture instead (#680), having no card to tint.
 - **The danger color is lighter in dark** (#413), so error text stays readable, and the Delete button's text is the dark background, at about 8:1.
 - **Reading text is a little heavier in dark** (#413): Newsreader at weight 440 rather than 400, since light text on dark reads thinner.
@@ -973,11 +973,11 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   It replaced a front page (a newspaper with a P nameplate and the sunrise as its lead photo), whose dozen thin-stroked parts blurred at the rail's size.
   A flat redrawing of that front page (needed a second drawing for dark) and a P monogram of an ink bar and a tomato half-disc (lost the sunrise) were the alternatives; left-aligning the lines as a headline was dropped for its asymmetry.
   The first logo was picked over a letterbox (read as a ballot box), a mailbox (too close to email), a delivery bike, and a route drawn as a P (needed explaining).
-- **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise, with a sky tint for surfaces and read rows.
+- **The palette comes from the logo:** ink for text, sky blue and tomato from the sunrise; surfaces and read rows had a sky tint until light became Paper, whose tints are warm.
   Green and gold, maroon and an orange box were tried and dropped.
 - **Tomato is the one accent, used sparingly** (#414): the active timeline tab, starred articles (so Star no longer looks like Saved's blue) and the "You were here" marker.
   It's a deeper shade than the logo's (`--brand-strong`), so the marker's label passes AA as small text.
-- **Text colors pass WCAG AA** (4.5:1) on white and on the read-card tint (#414); the lightest grey was 3.2:1 before.
+- **Text colors pass WCAG AA** (4.5:1) on the column, the page and the read-card tint (#414); the lightest grey was 3.2:1 before.
 - **Input and outline-button borders are 3:1 in both themes** (`--border-strong`, #413), WCAG's minimum for a form field's edge; light's was 1.6:1 before.
   Filled fields (the search boxes) have no border and keep it that way.
 - **Actions that lose something you can't get back are outlined pills with red text** (`.btn-danger-quiet`, #422): Unsubscribe (it drops the subscription's name and tags), Delete tag, Delete timeline and Delete account, on every page that has them.

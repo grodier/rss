@@ -159,7 +159,7 @@ func TestUserRepository(t *testing.T) {
 	})
 
 	t.Run("UpdateReading saves each theme and layout", func(t *testing.T) {
-		for _, theme := range []string{rss.ThemeDark, rss.ThemeLight, rss.ThemePaper, rss.ThemeSystem} {
+		for _, theme := range []string{rss.ThemeDark, rss.ThemeLight, rss.ThemeSystem} {
 			for _, layout := range []string{rss.LayoutCards, rss.LayoutHeadlines} {
 				if err := repo.UpdateReading(t.Context(), id, theme, layout); err != nil {
 					t.Fatalf("UpdateReading(%q, %q): %v", theme, layout, err)

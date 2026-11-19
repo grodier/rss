@@ -112,6 +112,7 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   - the "Fetch history" under "Feed ingestion" (the last 20 or so attempts per feed: time, status, duration, size, items, new and updated, error) as a timeline on the feed's page, which reverses debug mode's "Nothing new is stored" ("Debug mode" in decisions.md) and adds a write per fetch for the watchlist;
   - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
   - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
+- [ ] **A site's icon on its admin page:** the stored image beside the Icon panel's sentence, served by the admin from `site_icons` (the admin's CSP allows only its own images), so a changed favicon can be checked at a glance (#706 leaves it out).
 - [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
 - [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
 - [ ] **Performance watchlist board:** each watchlist entry's signal, read live.
@@ -546,6 +547,10 @@ Admin and observability:
   On `make db/loadseed`'s 1,000 feeds, a page took about 3 ms by posts, failures or last success and 20 ms by subscribers (35 ms past the first page); a feed's page about 11 ms, counting a busy feed's 36,000 articles.
   *Signal:* feeds pass about 50,000, or `/feeds` takes over 200ms.
   *Fix:* a `subscribers` count column on `feeds`, kept by subscribing and unsubscribing, with indexes on the orders the page uses.
+- [ ] **The admin's site list reads every site and counts its feeds and subscribers** (#706).
+  `AdminFeedRepository.ListSites` filters and sorts with no index (only Host and Found could use one), counting each site's feeds and distinct subscribers before taking the first 100, and joining `site_icons` and `lookups` by host; `CountSites` reads every site once more per view.
+  *Signal:* sites pass about 50,000, or `/sites` takes over 200ms.
+  *Fix:* the `subscribers` count the feed list's entry plans, summed per site, with indexes on the orders the page uses.
 - [ ] **The admin's seed list page reads every entry on each view** (#648).
   `AdminFeedRepository.SeedList` joins the whole embedded list to `lookups` and counts each found site's feeds and catalog feeds, and the page filters and counts in Go, with no paging; the list is meant to grow to thousands of sites.
   *Signal:* the list passes about 5,000 entries, or `/seed` takes over 200ms.

@@ -195,7 +195,8 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 type foundSites struct {
 	Sites []rss.SiteWithFeeds
 	// LookupQ is the address to offer as a site lookup (see lookupAddress),
-	// or "" if q doesn't look like a website address.
+	// or "" if q doesn't look like a website address or the search already
+	// found what a lookup of it would (see knownAddress).
 	LookupQ string
 	// AppLink is set instead of LookupQ when q is an address on the app
 	// itself, such as a shared timeline's link, which is never looked up.
@@ -206,23 +207,26 @@ type foundSites struct {
 
 // searchSites finds up to limit sites for q, a valid, non-empty query,
 // with which of their feeds the user follows, and what to offer when q is
-// an address, whose site key it returns ("" otherwise).
-func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, string, error) {
+// an address.
+func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, error) {
 	var found foundSites
 	var siteKey string
-	if u, err := discovery.ParseInput(q); err == nil {
+	u, _ := discovery.ParseInput(q) // nil when q isn't an address
+	if u != nil {
 		siteKey = discovery.SiteKey(u)
-		if s.isAppLink(u) {
-			found.AppLink = true
-		} else {
-			found.LookupQ = lookupAddress(u)
-		}
 	}
 	sites, err := s.services.SearchService.Search(r.Context(), q, siteKey, limit)
 	if err != nil {
-		return foundSites{}, "", err
+		return foundSites{}, err
 	}
 	found.Sites = sites
+	if u != nil {
+		if s.isAppLink(u) {
+			found.AppLink = true
+		} else if !knownAddress(u, sites) {
+			found.LookupQ = lookupAddress(u)
+		}
+	}
 
 	var feedIDs []string
 	for _, site := range sites {
@@ -234,10 +238,44 @@ func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, 
 		userID, _ := s.authenticatedUserID(r)
 		found.Subscribed, err = s.services.SubscriptionService.SubscribedFeedIDs(r.Context(), userID, feedIDs)
 		if err != nil {
-			return foundSites{}, "", err
+			return foundSites{}, err
 		}
 	}
-	return found, siteKey, nil
+	return found, nil
+}
+
+// knownAddress reports whether looking up u (from discovery.ParseInput)
+// would find nothing that sites, a search's results, don't already show:
+// u is a found site's home page, or one of its feeds. Any other address on
+// a found site, such as a feed its home page doesn't link to, is offered as
+// a lookup, which adds what it finds to the site (LookupStore.Request
+// re-runs a finished lookup for a different address).
+func knownAddress(u *url.URL, sites []rss.SiteWithFeeds) bool {
+	key := discovery.SiteKey(u)
+	home := u.Path == "/" && u.RawQuery == ""
+	for _, site := range sites {
+		if home && site.Site.Host == key {
+			return true
+		}
+		for _, f := range site.Feeds {
+			if sameAddress(u, f.Url) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sameAddress reports whether u and feedURL, a feed's stored address, are the
+// same page but for the scheme and a leading "www.", which a reader leaves
+// out when pasting ("example.com/feed" is https) and SiteKey ignores.
+func sameAddress(u *url.URL, feedURL string) bool {
+	f, err := url.Parse(feedURL)
+	if err != nil {
+		return false
+	}
+	return discovery.SiteKey(f) == discovery.SiteKey(u) && f.Port() == u.Port() &&
+		f.EscapedPath() == u.EscapedPath() && f.RawQuery == u.RawQuery
 }
 
 // isAppLink reports whether u (from discovery.ParseInput) is on the app's own

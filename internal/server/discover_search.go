@@ -140,8 +140,8 @@ type discoverResults struct {
 	// More links the tabs with more than Top showed, after Top's list.
 	More []searchTab
 	// LookupQ is the address to offer Look up for, and AppLink says it's an
-	// address on the app itself: a row at the top, left out when the
-	// address's site was found, whose own row is there.
+	// address on the app itself: a row at the top, left out when a result
+	// already has the address (see foundSites).
 	LookupQ string
 	AppLink bool
 	// Empty is the no-results line.
@@ -181,7 +181,7 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 	if err != nil {
 		return discoverResults{}, err
 	}
-	found, siteKey, err := s.searchSites(r, q, searchTabLimit+1)
+	found, err := s.searchSites(r, q, searchTabLimit+1)
 	if err != nil {
 		return discoverResults{}, err
 	}
@@ -210,11 +210,7 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 	for _, sub := range subs {
 		feeds = append(feeds, followedFeedResult(sub, icons[sub.Site.ID], q, now))
 	}
-	known := false
 	for _, site := range found.Sites {
-		if siteKey != "" && site.Site.Host == siteKey {
-			known = true
-		}
 		if res, ok := siteResult(site, found.Subscribed, icons[site.Site.ID], q, r.URL.RequestURI()); ok {
 			feeds = append(feeds, res)
 		}
@@ -224,10 +220,7 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 	}
 	rankResults(feeds)
 
-	res := discoverResults{}
-	if !known {
-		res.LookupQ, res.AppLink = found.LookupQ, found.AppLink
-	}
+	res := discoverResults{LookupQ: found.LookupQ, AppLink: found.AppLink}
 	cut := func(rows []searchResult) []searchResult { return rows[:min(len(rows), searchTabLimit)] }
 	// Every source is read with one more than a tab lists, so a source that
 	// returned searchTabLimit+1 has more than a tab shows.
@@ -424,7 +417,7 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 	if err != nil {
 		return discoverSuggestions{}, err
 	}
-	found, siteKey, err := s.searchSites(r, q, suggestSitesLimit)
+	found, err := s.searchSites(r, q, suggestSitesLimit)
 	if err != nil {
 		return discoverSuggestions{}, err
 	}
@@ -445,22 +438,17 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 	for _, sub := range subs {
 		rows = append(rows, followedFeedSuggestion(sub, icons[sub.Site.ID], q, now))
 	}
-	known := false
 	for _, site := range found.Sites {
-		if siteKey != "" && site.Site.Host == siteKey {
-			known = true
-		}
 		if res, ok := siteSuggestion(site, found.Subscribed, icons[site.Site.ID], q); ok {
 			rows = append(rows, res)
 		}
 	}
 	rankResults(rows)
 
-	res := discoverSuggestions{Rows: rows[:min(len(rows), suggestLimit)], Q: q, SearchHref: discoverSearchURL(q, "top")}
-	if !known {
-		res.LookupQ, res.AppLink = found.LookupQ, found.AppLink
-	}
-	return res, nil
+	return discoverSuggestions{
+		Rows: rows[:min(len(rows), suggestLimit)], Q: q, SearchHref: discoverSearchURL(q, "top"),
+		LookupQ: found.LookupQ, AppLink: found.AppLink,
+	}, nil
 }
 
 // followedFeedSuggestion is a feed the reader follows as a suggestion: as

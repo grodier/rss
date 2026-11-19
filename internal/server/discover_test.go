@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/net/html"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -892,5 +893,43 @@ func TestSearchBoxSubmit(t *testing.T) {
 				t.Errorf("the submit button holds %s, want the search icon %s", got.String(), wantIcon.String())
 			}
 		})
+	}
+}
+
+func TestKnownAddress(t *testing.T) {
+	sites := []rss.SiteWithFeeds{
+		{Site: rss.Site{Host: "example.com"}, Feeds: []rss.Feed{
+			{Url: "https://example.com/feed.xml"},
+			{Url: "http://www.example.com/rss?section=world"},
+			{Url: "https://feeds.host.example/example"}, // on another host
+		}},
+		{Site: rss.Site{Host: "other.example"}},
+	}
+	tests := []struct {
+		q    string
+		want bool
+	}{
+		{"example.com", true},
+		{"https://www.example.com/", true},
+		{"other.example", true},
+		{"example.com/feed.xml", true},
+		{"http://WWW.example.com/feed.xml#top", true},
+		{"example.com/rss?section=world", true},
+		{"feeds.host.example/example", true},
+		{"example.com/?page=2", false},
+		{"example.com/hidden.xml", false},
+		{"example.com/rss?section=sport", false},
+		{"example.com/rss", false},
+		{"example.com:8443/feed.xml", false},
+		{"new.example", false},
+	}
+	for _, tt := range tests {
+		u, err := discovery.ParseInput(tt.q)
+		if err != nil {
+			t.Fatalf("ParseInput(%q): %v", tt.q, err)
+		}
+		if got := knownAddress(u, sites); got != tt.want {
+			t.Errorf("knownAddress(%q) = %v, want %v", tt.q, got, tt.want)
+		}
 	}
 }

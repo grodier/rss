@@ -144,7 +144,7 @@ func breadFixture(now time.Time) *searchFixture {
 	return &searchFixture{
 		subs: []rss.Subscription{searchSub(now, "pastry", "Bread & Pastry", "The Daily Crumb"), searchSub(now, "lab", "The Bread Lab", "The Bread Lab"), gone, failing},
 		sites: []rss.SiteWithFeeds{
-			searchSite("ahead", "Bread Ahead", "Bakery school recipes", rss.Feed{ID: "ahead-journal", Title: "Bread Ahead Journal"}),
+			searchSite("ahead", "Bread Ahead", "Bakery school recipes", rss.Feed{ID: "ahead-journal", Title: "Bread Ahead Journal", Url: "http://www.ahead.example/journal.xml"}),
 			searchSite("butter", "Bread and Butter", "Money, plainly", rss.Feed{ID: "butter-money", Title: "Money"}, rss.Feed{ID: "butter-work", Title: "Work"}),
 			searchSite("crumb", "The Daily Crumb", "", rss.Feed{ID: "crumb-pastry", Title: "Bread & Pastry"}, rss.Feed{ID: "crumb-world", Title: "World"}),
 			searchSite("followed", "Breadline", "", rss.Feed{ID: "followed-1", Title: "Breadline"}),
@@ -398,7 +398,7 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 	})
 
-	t.Run("a pasted address gets Look up, unless its site was found", func(t *testing.T) {
+	t.Run("a pasted address gets Look up, unless a result has it", func(t *testing.T) {
 		f := fixture()
 		_, body, _ := get(t, f, url.QueryEscape("https://new.example/"))
 		for _, want := range []string{`class="search-result search-lookup"`, "Find the feeds this site publishes", `action="/lookups"`, `name="q" value="new.example"`, `aria-label="Look up new.example"`} {
@@ -408,8 +408,17 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 		_, body, _ = get(t, f, url.QueryEscape("https://ahead.example/"))
 		if strings.Contains(body, "search-lookup") {
-			t.Error("Look up offered for an address whose site was found")
+			t.Error("Look up offered for the home page of a site found")
 		}
+		_, body, _ = get(t, f, url.QueryEscape("ahead.example/journal.xml"))
+		if strings.Contains(body, "search-lookup") {
+			t.Error("Look up offered for a feed of a site found")
+		}
+		doc, body, _ := get(t, f, url.QueryEscape("ahead.example/hidden.xml"))
+		if !strings.Contains(body, `class="search-result search-lookup"`) || !strings.Contains(body, `aria-label="Look up ahead.example/hidden.xml"`) {
+			t.Error("no Look up for another address on a site found")
+		}
+		rowByTitle(t, doc, "Bread Ahead") // and the site's own row is still there
 		_, body, _ = get(t, f, url.QueryEscape("new.example")+"&scope=saved")
 		if strings.Contains(body, "search-lookup") {
 			t.Error("Look up offered on the Saved tab")
@@ -566,7 +575,7 @@ func TestDiscoverSuggestions(t *testing.T) {
 		}
 	})
 
-	t.Run("a pasted address gets Look up, unless its site was found", func(t *testing.T) {
+	t.Run("a pasted address gets Look up, unless a suggestion has it", func(t *testing.T) {
 		_, body, _ := get(t, breadFixture(now), url.QueryEscape("https://new.example/"))
 		for _, want := range []string{`class="search-result search-lookup"`, `action="/lookups"`, `name="q" value="new.example"`} {
 			if !strings.Contains(body, want) {
@@ -575,8 +584,17 @@ func TestDiscoverSuggestions(t *testing.T) {
 		}
 		_, body, _ = get(t, breadFixture(now), url.QueryEscape("https://ahead.example/"))
 		if strings.Contains(body, "search-lookup") {
-			t.Error("Look up offered for an address whose site was found")
+			t.Error("Look up offered for the home page of a site found")
 		}
+		_, body, _ = get(t, breadFixture(now), url.QueryEscape("ahead.example/journal.xml"))
+		if strings.Contains(body, "search-lookup") {
+			t.Error("Look up offered for a feed of a site found")
+		}
+		doc, body, _ := get(t, breadFixture(now), url.QueryEscape("ahead.example/hidden.xml"))
+		if !strings.Contains(body, `class="search-result search-lookup"`) || !strings.Contains(body, `aria-label="Look up ahead.example/hidden.xml"`) {
+			t.Error("no Look up for another address on a site found")
+		}
+		searchRowByTitle(t, doc, "Bread Ahead")
 	})
 
 	t.Run("the last row links to the results", func(t *testing.T) {

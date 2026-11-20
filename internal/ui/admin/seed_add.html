@@ -28,7 +28,8 @@
             <textarea id="sites" name="sites" rows="12" autocapitalize="none" autocomplete="off" spellcheck="false" wrap="off"
               aria-describedby="sites-hint{{with .Form.FieldErrors.sites}} sites-error{{end}}"
               {{with .Form.FieldErrors.sites}}aria-invalid="true"{{end}}
-              {{if eq $focus "sites"}}autofocus{{end}}>{{.Form.Sites}}</textarea>
+              {{if eq $focus "sites"}}autofocus{{end}}>
+{{.Form.Sites}}</textarea>
             <p class="hint" id="sites-hint">One per line: a site’s address, or a feed’s to add only that feed, then optionally a comma or tab and a section{{with .Sections}} ({{range $i, $s := .}}{{if $i}}, {{end}}{{$s.Name}}{{end}}){{end}}, as a hint for picking its feeds for Discover. Blank lines and lines starting with # are skipped; at most 10,000 lines.</p>
             {{with .Form.FieldErrors.sites}}<p class="error" id="sites-error">{{.}}</p>{{end}}
           </div>

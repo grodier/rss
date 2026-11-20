@@ -89,7 +89,9 @@ func TestSeedAddPreview(t *testing.T) {
 		// The counts per outcome.
 		`<dt>Not an address</dt>`, `<dt>Will be added</dt>`,
 		// The text and source are kept.
-		`>` + html.EscapeString("# A comment, skipped\nnew.example, Food"),
+		// After a newline, which the browser drops, so a paste's own
+		// leading newline survives a preview and its line numbers stay.
+		`>` + "\n" + html.EscapeString("# A comment, skipped\nnew.example, Food"),
 		`value="IndieWeb list"`,
 		// Add, with its count.
 		`<button class="btn btn-primary" type="submit" name="step" value="add" data-busy-label="Adding…"><span data-busy-text>Add 2 sites</span></button>`,

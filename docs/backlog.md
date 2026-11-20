@@ -582,6 +582,10 @@ Admin and observability:
   Measured in #710 on 5,000 entries with no feeds: a page and the counts took under 5 ms each.
   *Signal:* the list passes about 20,000 entries, or `/seed` takes over 200ms.
   *Fix:* keep each found site's feed and catalog counts on `sites` (or in a table the catalog's edits update), and count the filters from those.
+- [ ] **A seed upload's audit entry lists every site key it added** (#711).
+  One `seed.add` holds up to 10,000 site keys, which the audit log shows in full: measured on a 10,000-line add, the entry took 45 KB stored and about 260 KB of page text, and the add itself 260 ms (the preview's check of the list, 10 ms).
+  *Signal:* the audit log's pages get slow to load or scroll, or `admin_audit` grows by megabytes a week from uploads.
+  *Fix:* show an upload's count with a link to its keys on their own page, or keep the keys in a table of uploads and only the upload's ID in the entry.
 - [ ] **The picking page looks for candidate feeds across all feeds** (#712).
   Each view of `/discover/pick` finds sites with a feed that isn't gone, in the catalog or skipped (anti-joins on `discover_feeds` and `discover_skips`), counts the sites per filter, and probes `articles_feed_sort_idx` for each listed feed's newest titles (up to 25 sites × 20 feeds).
   *Signal:* feeds pass about 50,000, or `/discover/pick` takes over 200ms.

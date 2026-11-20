@@ -96,16 +96,17 @@ func TestSitesPage(t *testing.T) {
 		`<th scope="col">Lookup</th>`, `<th scope="col">Icon</th>`,
 		// The rows: the host linking to its page with the title under it;
 		// a failed lookup in the danger tone, its error escaped; the icon.
-		`<a href="/sites/` + siteID(1) + `">example.com</a><small>Example</small>`,
+		// The icon leads the Site cell, from the admin's own route
+		// versioned by its hash; an empty tile without one.
+		`<td class="wrap feed-name site-name"><span class="site-cell"><span class="site-icon"><img src="/sites/` + siteID(1) + `/icon?v=abc123" alt="" width="32" height="32" loading="lazy"></span><span><a href="/sites/` + siteID(1) + `">example.com</a><small>Example</small></span></span>`,
+		`<span class="site-cell"><span class="site-icon"></span><span><a href="/sites/` + siteID(2) + `">`,
 		`<span class="problem problem-bad" title="&lt;script&gt;alert(&#34;lookup&#34;)&lt;/script&gt;"><strong>Failed 1 h ago after 2 attempts.</strong>`,
-		// The icon, from the admin's own route versioned by its hash,
-		// beside its size; an empty tile and None without one.
-		`<span class="site-icon"><img src="/sites/` + siteID(1) + `/icon?v=abc123" alt="" width="32" height="32" loading="lazy"></span>64×64 PNG</span>`,
-		`<span class="site-icon"></span>None</span>`, `No lookup of this site yet.`,
+		// The Icon column says its size and type, or None.
+		`<td>64×64 PNG</td>`, `<td>None</td>`, `No lookup of this site yet.`,
 		`<td class="num">2</td>`, `<td class="num">1,234</td>`,
 		`title="2026-11-07 10:00 UTC">2 days ago</time>`,
 		// Markup in a host is text.
-		`<a href="/sites/` + siteID(2) + `">&lt;b&gt;bold.example&lt;/b&gt;</a></td>`,
+		`<a href="/sites/` + siteID(2) + `">&lt;b&gt;bold.example&lt;/b&gt;</a></span></span></td>`,
 		`value="example"`, `<a class="btn btn-sm" href="/sites?filter=no-icon&amp;sort=host">Clear</a>`,
 	} {
 		if !strings.Contains(body, want) {

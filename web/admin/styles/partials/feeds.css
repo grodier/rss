@@ -107,20 +107,24 @@
     block-size: 4rem;
   }
 
-  .icon-cell,
+  /* The Sites list's Site cell: the icon, then the host with the title
+     under it. The site page's Icon panel: the icon beside its sentence. */
+  .site-cell,
   .icon-line {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.625rem;
   }
 
-  .icon-cell {
-    white-space: nowrap;
+  .icon-line {
+    margin-block-start: 0.25rem;
   }
 
-  .icon-line {
-    align-items: flex-start;
-    margin-block-start: 0.25rem;
+  /* The wrapping cell's width, plus the icon and its gap, so a host
+     breaks where it did without the icon (at hyphens and dots on phones)
+     rather than mid-word. */
+  .data .wrap.site-name {
+    min-inline-size: calc(12rem + 2.625rem);
   }
 
   .health .form-actions {

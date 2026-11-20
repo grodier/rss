@@ -107,7 +107,7 @@ CI's `image` job pushes `ghcr.io/grodier/rss:sha-<sha>`, `ghcr.io/grodier/rss-ad
 2. asks Render to deploy `ghcr.io/grodier/rss@<digest>`.
    Render never builds; it runs the image CI tested;
 3. follows the deploy until it's live.
-   Render runs `/www migrate -seed` first, which applies the migrations, then queues lookups of the seed list's sites not found yet (`www seed`; their keys are in its log); if it fails, the deploy fails within seconds and the old version keeps serving;
+   Render runs `/www migrate` first, which applies the migrations; if it fails, the deploy fails within seconds and the old version keeps serving;
 4. checks that `/healthcheck` reports the commit's SHA as its `version`;
 5. deploys `ghcr.io/grodier/rss-backup@<digest>` to the `rss-backup` cron job, resolved the same way, and follows that deploy until it's live;
 6. deploys `ghcr.io/grodier/rss-admin@<digest>` to `rss-admin` the same way, and checks that `https://admin.paperround.app/healthcheck` reports the SHA (Access lets `/healthcheck` through).

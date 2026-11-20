@@ -39,9 +39,9 @@ resource "render_web_service" "rss" {
 
   health_check_path = "/healthcheck"
 
-  # One command (the image has no shell): migrate, then queue lookups of the
-  # seed list's sites not found yet (internal/seed). Local resets don't seed.
-  pre_deploy_command = "/www migrate -seed"
+  # One command (the image has no shell): apply the migrations. Deploys don't
+  # seed: adding sites to the seed list queues their lookups (#709).
+  pre_deploy_command = "/www migrate"
 
   # Matches the 30-second graceful shutdown in internal/server/server.go.
   max_shutdown_delay_seconds = 30

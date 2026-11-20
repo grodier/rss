@@ -19,18 +19,14 @@ func TestRunMigrateRequiresDSN(t *testing.T) {
 	}
 }
 
-func TestRunMigrateSeed(t *testing.T) {
+func TestRunMigrate(t *testing.T) {
 	dsn := psqltest.NewSchemaDSN(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"migrate", "-seed", "-db-dsn", dsn}, noEnv, &stdout, &stderr); code != 0 {
+	if code := run([]string{"migrate", "-db-dsn", dsn}, noEnv, &stdout, &stderr); code != 0 {
 		t.Fatalf("run() = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
-
-	// The seed list may be empty, so check the seed step ran, after migrating.
-	out := stdout.String()
-	migrated, seeded := strings.Index(out, "database migrated"), strings.Index(out, "seed list queued")
-	if migrated < 0 || seeded < migrated {
-		t.Errorf("want the migration logged, then the seed list queued; stdout:\n%s", out)
+	if out := stdout.String(); !strings.Contains(out, "database migrated") {
+		t.Errorf("want the migration logged; stdout:\n%s", out)
 	}
 }

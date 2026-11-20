@@ -15,7 +15,7 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Seed list</h1>
-        <p>Each site in <code>internal/seed/sites.txt</code>, in the file’s order, with what its lookup found. Edit the list in a PR: each deploy looks up its new sites, and retries after an hour those never found. One found before whose later lookup failed waits for Look up again.</p>
+        <p>The sites to look up before anyone searches for them, newest first, with what each one’s lookup found. Nothing retries on its own: look an entry up again, or all those not found from Not found. Hover a time for its UTC date.</p>
       </header>
       {{with .Flash}}
       <div class="flash" role="status">{{.}}</div>
@@ -27,6 +27,11 @@
 
       <section class="admin-section" aria-labelledby="seed-heading">
         <h2 id="seed-heading" class="visually-hidden">Entries</h2>
+        {{with .RetryAll}}
+        <div class="form-actions">
+          <form action="/seed/retry" method="post"><button class="btn btn-sm btn-primary" type="submit">Look up all {{.}} again</button></form>
+        </div>
+        {{end}}
         {{if .Rows}}
         <div class="table-wrap">
           <table class="data feeds">
@@ -36,16 +41,19 @@
                 <th scope="col">Lookup</th>
                 <th scope="col">Site</th>
                 <th scope="col" class="num">In Discover</th>
+                <th scope="col">Added</th>
                 <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody>
+              {{$now := .Now}}
               {{range .Rows}}
               <tr>
                 <td class="wrap feed-name">{{.SiteKey}}{{if ne .URL (print "https://" .SiteKey "/")}}<small>{{.URL}}</small>{{end}}</td>
                 <td class="feed-problem">{{template "problem-text" .Status}}</td>
                 <td>{{if .SiteHost}}<a href="/sites/{{.Lookup.SiteID}}">{{.SiteHost}}</a>{{else}}—{{end}}</td>
                 <td class="num">{{if .SiteHost}}{{count .InDiscover}}{{else}}—{{end}}</td>
+                <td><time datetime="{{.AddedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .AddedAt}} UTC">{{ago $now .AddedAt}}</time></td>
                 <td>
                   {{if .Retry}}
                   <div class="row-actions">
@@ -62,6 +70,11 @@
             </tbody>
           </table>
         </div>
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Next</a>
+        </div>
+        {{end}}
         {{else if .Total}}
         <p class="empty">No entries here.</p>
         {{else}}

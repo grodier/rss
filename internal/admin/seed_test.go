@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/url"
@@ -10,59 +11,64 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/seed"
 )
-
-// testSeedList is the seed list the seed tests' server has.
-var testSeedList = []seed.Entry{
-	{URL: "https://found.example/", SiteKey: "found.example"},
-	{URL: "https://failed.example/", SiteKey: "failed.example"},
-	{URL: "https://feeds.example/rss.xml", SiteKey: "feeds.example"},
-}
 
 // testSeedEntries are an entry in each state: found with feeds in
 // Discover, found with none in it, failed with an error that's markup,
 // failed after finding a site, no feeds, waiting, never looked up, and
-// running.
+// running. Each was added an hour before the last.
 func testSeedEntries() []rss.AdminSeedEntry {
 	at := testNow.Add(-time.Hour)
+	added := testNow.Add(-2 * time.Hour)
 	entry := func(key string, l rss.Lookup) rss.AdminSeedEntry {
 		if l.Status != "" {
 			l.ID, l.SiteKey = "l-"+key, key
 		}
-		return rss.AdminSeedEntry{URL: "https://" + key + "/", SiteKey: key, Lookup: l}
+		e := rss.AdminSeedEntry{URL: "https://" + key + "/", SiteKey: key, Lookup: l, AddedAt: added}
+		added = added.Add(-time.Hour)
+		return e
 	}
 	found := entry("found.example", rss.Lookup{Status: rss.LookupDone, SiteID: siteID(1), FinishedAt: at})
 	found.SiteHost, found.Feeds, found.InDiscover = "www.found.example", 3, 2
 	single := entry("single.example", rss.Lookup{Status: rss.LookupDone, SiteID: siteID(2), FinishedAt: at})
 	single.SiteHost, single.Feeds = "single.example", 1
+	failed := entry("failed.example", rss.Lookup{Status: rss.LookupFailed, Error: `<script>alert("seed")</script>`, FinishedAt: at})
 	refailed := entry("refailed.example", rss.Lookup{Status: rss.LookupFailed, SiteID: siteID(3), Error: "timeout", FinishedAt: at})
 	refailed.SiteHost, refailed.Feeds = "refailed.example", 2
+	empty := entry("empty.example", rss.Lookup{Status: rss.LookupDone, FinishedAt: at})
 	feedURL := entry("feeds.example", rss.Lookup{Status: rss.LookupPending, RequestedAt: at})
 	feedURL.URL = "https://feeds.example/rss.xml"
 	return []rss.AdminSeedEntry{
-		found,
-		single,
-		entry("failed.example", rss.Lookup{Status: rss.LookupFailed, Error: `<script>alert("seed")</script>`, FinishedAt: at}),
-		refailed,
-		entry("empty.example", rss.Lookup{Status: rss.LookupDone, FinishedAt: at}),
-		feedURL,
+		found, single, failed, refailed, empty, feedURL,
 		entry("new.example", rss.Lookup{}),
 		entry("running.example", rss.Lookup{Status: rss.LookupRunning, StartedAt: at}),
 	}
 }
 
-// seedServer returns a logged-in browser on a server with testSeedList
-// and feeds.
+// testSeedCounts are each filter's count of testSeedEntries.
+var testSeedCounts = map[string]int{
+	rss.AdminSeedAll: 8, rss.AdminSeedNotFound: 3, rss.AdminSeedWaiting: 3, rss.AdminSeedNotInDiscover: 1,
+}
+
+// testSeedKeys are testSeedEntries' site keys.
+func testSeedKeys() []string {
+	var keys []string
+	for _, e := range testSeedEntries() {
+		keys = append(keys, e.SiteKey)
+	}
+	return keys
+}
+
+// seedServer returns a logged-in browser on a server with feeds.
 func seedServer(t *testing.T, feeds *fakeFeeds) *browser {
 	t.Helper()
-	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001", AppURL: testAppURL, SeedList: testSeedList}
+	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001", AppURL: testAppURL}
 	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Feeds: feeds, Audit: &fakeAudit{}})
 	return loggedIn(t, s)
 }
 
 func TestSeedPage(t *testing.T) {
-	b := seedServer(t, &fakeFeeds{seed: testSeedEntries()})
+	b := seedServer(t, &fakeFeeds{seed: testSeedEntries(), seedCounts: testSeedCounts})
 
 	rr := b.get(t, "/seed")
 	if rr.Code != http.StatusOK {
@@ -88,6 +94,9 @@ func TestSeedPage(t *testing.T) {
 		`<td class="num">2</td>`,
 		// An entry that isn't a home page shows its address.
 		`feeds.example<small>https://feeds.example/rss.xml</small>`,
+		// When each was added, relative, with the UTC time on hover.
+		`<th scope="col">Added</th>`,
+		`<time datetime="2026-11-09T10:00:00Z" title="2026-11-09 10:00 UTC">2 h ago</time>`,
 		// Look up again posts the entry, even one whose lookup found a
 		// site.
 		`<input type="hidden" name="site_key" value="refailed.example" />`,
@@ -104,56 +113,141 @@ func TestSeedPage(t *testing.T) {
 	if n := strings.Count(body, ">Look up again</button>"); n != 3 {
 		t.Errorf("seed page has %d Look up again buttons, want 3 (the failed and no-feeds entries)", n)
 	}
+	// Look up all again is only on Not found.
+	if strings.Contains(body, "/seed/retry") {
+		t.Error("All offers Look up all again")
+	}
+	// The last page has no next page.
+	if strings.Contains(body, ">Next</a>") {
+		t.Error("a single page links to a next one")
+	}
 }
 
-func TestSeedPageFilters(t *testing.T) {
-	b := seedServer(t, &fakeFeeds{seed: testSeedEntries()})
+func TestSeedPageQuery(t *testing.T) {
 	tests := []struct {
-		query     string
-		want, not []string
+		query string
+		want  rss.AdminSeedQuery
 	}{
-		{"?filter=not-found", []string{"failed.example", "refailed.example", "empty.example"}, []string{"found.example<", "new.example", "running.example"}},
-		{"?filter=waiting", []string{"feeds.example", "new.example", "running.example"}, []string{"failed.example", "single.example"}},
-		{"?filter=not-in-discover", []string{"single.example"}, []string{"www.found.example", "failed.example", "new.example"}},
+		{"", rss.AdminSeedQuery{Filter: rss.AdminSeedAll, Limit: seedPageSize + 1}},
+		{"?filter=not-found", rss.AdminSeedQuery{Filter: rss.AdminSeedNotFound, Limit: seedPageSize + 1}},
+		{"?filter=waiting&after=a.example", rss.AdminSeedQuery{Filter: rss.AdminSeedWaiting, After: "a.example", Limit: seedPageSize + 1}},
+		{"?filter=not-in-discover", rss.AdminSeedQuery{Filter: rss.AdminSeedNotInDiscover, Limit: seedPageSize + 1}},
 		// A filter the page doesn't offer is All.
-		{"?filter=bogus", []string{"found.example", "running.example"}, nil},
+		{"?filter=bogus", rss.AdminSeedQuery{Filter: rss.AdminSeedAll, Limit: seedPageSize + 1}},
 	}
 	for _, tt := range tests {
-		rr := b.get(t, "/seed"+tt.query)
-		if rr.Code != http.StatusOK {
+		feeds := &fakeFeeds{seed: testSeedEntries(), seedCounts: testSeedCounts}
+		b := seedServer(t, feeds)
+		if rr := b.get(t, "/seed"+tt.query); rr.Code != http.StatusOK {
 			t.Fatalf("GET /seed%s = %d, want 200", tt.query, rr.Code)
 		}
-		body := rr.Body.String()
-		for _, want := range tt.want {
-			if !strings.Contains(body, want) {
-				t.Errorf("GET /seed%s lacks %s", tt.query, want)
-			}
-		}
-		for _, not := range tt.not {
-			if strings.Contains(body, not) {
-				t.Errorf("GET /seed%s shows %s", tt.query, not)
-			}
+		if len(feeds.seedQueries) != 1 || feeds.seedQueries[0] != tt.want {
+			t.Errorf("GET /seed%s asked %+v, want %+v", tt.query, feeds.seedQueries, tt.want)
 		}
 	}
 
-	if rr := b.get(t, "/seed?filter=not-found"); !strings.Contains(rr.Body.String(), `<input type="hidden" name="filter" value="not-found" />`) {
+	b := seedServer(t, &fakeFeeds{seed: testSeedEntries(), seedCounts: testSeedCounts})
+	body := b.get(t, "/seed?filter=not-found").Body.String()
+	if !strings.Contains(body, `<a href="/seed?filter=not-found" aria-current="page">Not found`) {
+		t.Error("?filter=not-found isn't current")
+	}
+	if !strings.Contains(body, `<input type="hidden" name="filter" value="not-found" />`) {
 		t.Error("Look up again doesn't keep the filter")
 	}
 }
 
+func TestSeedPageNext(t *testing.T) {
+	var entries []rss.AdminSeedEntry
+	for i := range seedPageSize + 1 {
+		key := fmt.Sprintf("s%03d.example", i)
+		entries = append(entries, rss.AdminSeedEntry{URL: "https://" + key + "/", SiteKey: key, AddedAt: testNow})
+	}
+	b := seedServer(t, &fakeFeeds{seed: entries, seedCounts: testSeedCounts})
+	body := b.get(t, "/seed?filter=waiting").Body.String()
+	last := entries[seedPageSize-1].SiteKey
+	want := `<a class="btn btn-sm" href="` + html.EscapeString(seedHref(rss.AdminSeedWaiting, last)) + `">Next</a>`
+	if !strings.Contains(body, want) {
+		t.Errorf("seed page lacks %s", want)
+	}
+	if want := "/seed?after=" + url.QueryEscape(last) + "&filter=waiting"; seedHref(rss.AdminSeedWaiting, last) != want {
+		t.Errorf("seedHref = %q, want %q", seedHref(rss.AdminSeedWaiting, last), want)
+	}
+	if strings.Contains(body, entries[seedPageSize].SiteKey+"<") {
+		t.Error("seed page shows the row past the page")
+	}
+}
+
+// TestSeedPageCursorNotFound checks a cursor that isn't on the list, or
+// is the last entry, is 404: the store returns nothing after it.
+func TestSeedPageCursorNotFound(t *testing.T) {
+	b := seedServer(t, &fakeFeeds{seedCounts: testSeedCounts})
+	for _, q := range []string{"?after=nope", "?filter=not-found&after=running.example"} {
+		if rr := b.get(t, "/seed"+q); rr.Code != http.StatusNotFound {
+			t.Errorf("GET /seed%s = %d, want 404", q, rr.Code)
+		}
+	}
+}
+
 func TestSeedPageEmpty(t *testing.T) {
-	b := seedServer(t, &fakeFeeds{})
+	b := seedServer(t, &fakeFeeds{seedCounts: map[string]int{}})
 	if body := b.get(t, "/seed").Body.String(); !strings.Contains(body, "The seed list is empty.") {
 		t.Error("empty seed list doesn't say so")
 	}
-	b = seedServer(t, &fakeFeeds{seed: testSeedEntries()[:1]})
-	if body := b.get(t, "/seed?filter=not-found").Body.String(); !strings.Contains(body, "No entries here.") {
+	b = seedServer(t, &fakeFeeds{seedCounts: map[string]int{rss.AdminSeedAll: 1}})
+	body := b.get(t, "/seed?filter=not-found").Body.String()
+	if !strings.Contains(body, "No entries here.") {
 		t.Error("an empty filter doesn't say so")
+	}
+	if strings.Contains(body, "/seed/retry") {
+		t.Error("an empty Not found offers Look up all again")
+	}
+}
+
+func TestSeedPageRetryAll(t *testing.T) {
+	counts := map[string]int{rss.AdminSeedAll: 2000, rss.AdminSeedNotFound: 1234}
+	b := seedServer(t, &fakeFeeds{seed: testSeedEntries()[2:5], seedCounts: counts})
+	body := b.get(t, "/seed?filter=not-found").Body.String()
+	if !strings.Contains(body, `<form action="/seed/retry" method="post"><button class="btn btn-sm btn-primary" type="submit">Look up all 1,234 again</button></form>`) {
+		t.Error("Not found doesn't offer Look up all 1,234 again")
+	}
+	for _, q := range []string{"", "?filter=waiting", "?filter=not-in-discover"} {
+		if body := b.get(t, "/seed"+q).Body.String(); strings.Contains(body, "/seed/retry") {
+			t.Errorf("GET /seed%s offers Look up all again", q)
+		}
+	}
+}
+
+func TestSeedRetry(t *testing.T) {
+	for _, tt := range []struct {
+		n    int
+		want string
+	}{
+		{0, "Nothing to look up again."},
+		{1, "Looking up 1 site again."},
+		{1234, "Looking up 1,234 sites again."},
+	} {
+		feeds := &fakeFeeds{seedRetried: tt.n, seedCounts: testSeedCounts}
+		b := seedServer(t, feeds)
+		rr := b.post(t, "/seed/retry", nil)
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/seed?filter=not-found" {
+			t.Fatalf("POST /seed/retry = %d to %q, want 303 to /seed?filter=not-found", rr.Code, rr.Header().Get("Location"))
+		}
+		if len(feeds.calls) != 1 || feeds.calls[0].Action != "seed-retry" || feeds.calls[0].By.AdminEmail != testEmail {
+			t.Errorf("calls = %+v, want one seed-retry by %s", feeds.calls, testEmail)
+		}
+		if body := html.UnescapeString(b.get(t, "/seed?filter=not-found").Body.String()); !strings.Contains(body, tt.want) {
+			t.Errorf("seed page doesn't flash %q", tt.want)
+		}
+	}
+
+	b := seedServer(t, &fakeFeeds{err: errors.New("db down")})
+	if rr := b.post(t, "/seed/retry", nil); rr.Code != http.StatusInternalServerError {
+		t.Errorf("POST /seed/retry failing = %d, want 500", rr.Code)
 	}
 }
 
 func TestSeedLookup(t *testing.T) {
-	feeds := &fakeFeeds{}
+	feeds := &fakeFeeds{seedKeys: testSeedKeys(), seedCounts: testSeedCounts}
 	b := seedServer(t, feeds)
 
 	rr := b.post(t, "/seed/lookup", url.Values{"site_key": {"failed.example"}, "filter": {"not-found"}})

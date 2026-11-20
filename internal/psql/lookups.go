@@ -35,7 +35,7 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // stays cached; one that ran on another address (a feed, an article) is, since
 // the home page may list feeds it didn't. A pending or
 // running lookup is returned unchanged, except that a pending one the seed
-// list queued (www seed) moves ahead of the seed's, since a reader is now
+// list queued (RetrySeedLookups) moves ahead of the seed's, since a reader is now
 // waiting for it. A re-queue keeps site_id, so the site page keeps working while the
 // re-check runs. Either way the lookup has a reader's priority (0).
 func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {

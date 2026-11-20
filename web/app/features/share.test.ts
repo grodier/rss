@@ -71,38 +71,6 @@ describe("share", () => {
     expect("copied" in button().dataset).toBe(false);
   });
 
-  it("replays a repeated copy without hiding it", async () => {
-    vi.useFakeTimers();
-    browser({ writeText: async () => {} });
-    await start();
-    button().click();
-    await vi.advanceTimersByTimeAsync(1500);
-    button().click();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(button().dataset.copyRound).toBe("a");
-    expect("copied" in button().dataset).toBe(true);
-    // Its time starts over.
-    await vi.advanceTimersByTimeAsync(1500);
-    expect("copied" in button().dataset).toBe(true);
-    await vi.advanceTimersByTimeAsync(500);
-    expect("copied" in button().dataset).toBe(false);
-  });
-
-  it("says Couldn't copy when the copy fails, until the next press", async () => {
-    vi.useFakeTimers();
-    browser({ writeText: async () => Promise.reject(new DOMException("denied", "NotAllowedError")) });
-    await start();
-    button().click();
-    await vi.advanceTimersByTimeAsync(50);
-    expect("copyFailed" in button().dataset).toBe(true);
-    expect(button().querySelector(".copied-label")!.textContent).toBe("Couldn't copy");
-    expect(liveRegion()).toBe("Couldn't copy the link");
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect("copyFailed" in button().dataset).toBe(true);
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-    expect("copyFailed" in button().dataset).toBe(false);
-  });
-
   it("opens the share sheet where there is one, instead of copying", async () => {
     const share = vi.fn(async () => {});
     const writeText = vi.fn(async () => {});

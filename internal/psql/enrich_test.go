@@ -10,8 +10,10 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// newEnrichJob saves an article missing its image in feed and sets its
-// enrichment job's priority and next_attempt_at. It returns the article.
+// newEnrichJob saves an article missing its image in feed and gives it an
+// enrichment job with priority and next_attempt_at, inserting one if the
+// save didn't queue it (a feed that isn't wanted gets none, so such a job
+// is one an earlier version left). It returns the article.
 func newEnrichJob(t *testing.T, db *sql.DB, feed rss.Feed, externalID string, priority int, next time.Time) rss.Article {
 	t.Helper()
 	a := rss.Article{ExternalID: externalID, URL: "https://example.com/" + externalID, Title: "T", Excerpt: "E"}
@@ -21,8 +23,22 @@ func newEnrichJob(t *testing.T, db *sql.DB, feed rss.Feed, externalID string, pr
 	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_id = $1 AND external_id = $2`, feed.ID, externalID).Scan(&a.ID); err != nil {
 		t.Fatalf("select article: %v", err)
 	}
+	if _, err := db.Exec(`INSERT INTO enrich_jobs (article_id, priority, next_attempt_at) VALUES ($1, $2, $3)
+		ON CONFLICT (article_id) DO NOTHING`, a.ID, priority, next); err != nil {
+		t.Fatalf("insert enrich_jobs: %v", err)
+	}
 	setEnrichJob(t, db, a.ID, priority, next)
 	return a
+}
+
+// putInCatalog puts feedID in Discover's catalog, under the first section,
+// as the admin does, without SetDiscoverSection's other effects.
+func putInCatalog(t *testing.T, db *sql.DB, feedID string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO discover_feeds (feed_id, section_id)
+		SELECT $1, id FROM discover_sections ORDER BY position LIMIT 1`, feedID); err != nil {
+		t.Fatalf("insert discover_feeds: %v", err)
+	}
 }
 
 func setEnrichJob(t *testing.T, db *sql.DB, articleID string, priority int, next time.Time) {
@@ -68,9 +84,12 @@ func TestEnrichRepositoryClaimNext(t *testing.T) {
 
 	subscribed := newSubscribedFeed(t, db, userID)
 	unsubscribed := newTestFeed(t, db)
+	catalog := newTestFeed(t, db)
+	putInCatalog(t, db, catalog.ID)
 
 	lonely := newEnrichJob(t, db, unsubscribed, "lonely", 0, longAgo.Add(-time.Hour))
 	backlog := newEnrichJob(t, db, subscribed, "backlog", 1, longAgo.Add(-time.Hour))
+	catalogBacklog := newEnrichJob(t, db, catalog, "catalog-backlog", 1, longAgo.Add(-30*time.Minute))
 	notDue := newEnrichJob(t, db, subscribed, "not-due", 0, time.Now().Add(time.Hour))
 	first := newEnrichJob(t, db, subscribed, "first", 0, longAgo)
 	second := newEnrichJob(t, db, subscribed, "second", 0, longAgo.Add(time.Minute))
@@ -84,8 +103,9 @@ func TestEnrichRepositoryClaimNext(t *testing.T) {
 		return job
 	}
 
-	// Priority 0 comes first, by next_attempt_at; feeds without subscribers
-	// and jobs not yet due are skipped.
+	// Priority 0 comes first, by next_attempt_at; a catalog feed's job is
+	// claimed like a followed one's; feeds neither followed nor in the
+	// catalog, and jobs not yet due, are skipped.
 	got := claim(t)
 	if got.ArticleID != first.ID || got.URL != first.URL || got.Attempts != 1 {
 		t.Errorf("first claim = %+v; want %s, %s, attempt 1", got, first.ID, first.URL)
@@ -95,6 +115,9 @@ func TestEnrichRepositoryClaimNext(t *testing.T) {
 	}
 	if got := claim(t); got.ArticleID != backlog.ID {
 		t.Errorf("third claim = %s; want %s (backlog)", got.ArticleID, backlog.ID)
+	}
+	if got := claim(t); got.ArticleID != catalogBacklog.ID {
+		t.Errorf("fourth claim = %s; want %s (a catalog feed's)", got.ArticleID, catalogBacklog.ID)
 	}
 
 	j, _ := getEnrichJob(t, db, first.ID)

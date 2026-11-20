@@ -62,6 +62,22 @@ func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID s
 		return nil // already subscribed: their positions are set
 	}
 
+	// The feed becomes wanted when this is its first follower and it isn't
+	// in Discover's catalog: queue its enrichment backlog (#708). Two first
+	// followers at once may both queue, which queueEnrichBacklog allows.
+	var becameWanted bool
+	err = tx.QueryRowContext(ctx, `SELECT
+			NOT EXISTS (SELECT 1 FROM subscriptions WHERE feed_id = $1 AND user_id <> $2)
+			AND NOT EXISTS (SELECT 1 FROM discover_feeds WHERE feed_id = $1)`, feedID, userID).Scan(&becameWanted)
+	if err != nil {
+		return err
+	}
+	if becameWanted {
+		if err := queueEnrichBacklog(ctx, tx, feedID); err != nil {
+			return err
+		}
+	}
+
 	kept, err := keepCopiesInPlace(ctx, tx, userID, feedID)
 	if err != nil {
 		return err
@@ -171,10 +187,22 @@ func keepCopiesInPlace(ctx context.Context, tx *sql.Tx, userID, feedID string) (
 // they were rather than raising the feed's recent posts above what the
 // reader has seen a second time. Visits trim them like any other row.
 func (r *SubscriptionRepository) Unsubscribe(ctx context.Context, userID, feedID string) error {
-	stmt := `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-	_, err := r.DB.ExecContext(ctx, stmt, userID, feedID)
-	return err
+	stmt := `DELETE FROM subscriptions WHERE user_id = $1 AND feed_id = $2`
+	if _, err := tx.ExecContext(ctx, stmt, userID, feedID); err != nil {
+		return err
+	}
+	// Its last follower leaving makes a feed outside the catalog unwanted:
+	// drop its pending enrichment jobs (#708).
+	if err := dropUnwantedEnrichJobs(ctx, tx, []string{feedID}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Count returns how many feeds userID follows.

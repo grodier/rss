@@ -648,12 +648,11 @@ Other background work (#302, #304, #306):
   One worker fetches one page at a time (about one a second), so a large OPML import (#302) of feeds without images queues thousands of jobs that take hours to drain, and many of them hit the same few hosts back to back.
   *Signal:* `SELECT priority, count(*), min(next_attempt_at) FROM enrich_jobs GROUP BY 1` growing or the oldest due job getting older; 429s from one host in the `article enriched` logs.
   *Fix:* per-host pacing (skip jobs whose host was fetched in the last few seconds), more `-enrich-workers`, or a lower first-save count.
-- [ ] **Enrichment and icon claims skip unsubscribed work** (#304, #306).
-  Like `ClaimDue`, `ClaimNext` and `ClaimIconCheck` filter on an `EXISTS` subscription check the index can't serve, so jobs for feeds nobody subscribes to (looked up, never followed) stay at the front and every claim walks past them.
-  The seed list (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
-  *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
-  *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
-  #708 (planned in #649) stops queuing enrichment jobs for feeds nobody follows, which removes most of them; jobs left when a feed's last follower leaves, and the icon claim, remain.
+- [ ] **Icon claims skip unsubscribed sites** (#304).
+  Like `ClaimDue`, `ClaimIconCheck` filters on an `EXISTS` subscription check the index can't serve, so sites nobody follows whose icon was checked once stay due and every claim walks past them; the seed list (#447, #711) adds thousands of such sites.
+  Enrichment's claim had the same problem until #708, which keeps jobs only for feeds that are followed or in Discover's catalog, so `ClaimNext` has none to skip.
+  *Signal:* `EXPLAIN ANALYZE` of `ClaimIconCheck` reading far more rows than it returns.
+  *Fix:* the `subscriber_count` column planned for `ClaimDue`, or moving an unfollowed site's next check far ahead once it's checked.
 - [ ] **One import at a time** (#302).
   The import queue takes the oldest import's feeds first, so a 1,000-feed import delays a small one started after it, up to 20 minutes with six workers (#448).
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
@@ -665,16 +664,21 @@ Other background work (#302, #304, #306):
   *Signal:* pages slow or connections waiting in `sql.DBStats` while an import runs, memory near the instance's limit, or `import feed finished` durations growing with the worker count instead of the fetch.
   *Fix:* fewer workers (`RSS_IMPORT_WORKERS`), a cap on concurrent saves, or the separate worker process under Feed ingestion.
 - [ ] **Seeding thousands of sites fills the database with work nobody asked for** (#447, #711).
-  Each site the seed list (1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a production reset, the lookup workers spend an hour or more on the seed.
-  Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.
-  *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
-  *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
-  The jobs are planned in #708 (queued on a feed's first follow); the articles stay, since Discover's catalog shows them, and #711's bulk upload is what makes the list grow by the thousand.
+  Each site the seed list (1,000 and up) finds saves its feeds' current articles and gets an icon check, though most of those sites will never be followed; after a production reset, the lookup workers spend an hour or more on the seed.
+  Readers' lookups go first, so they don't wait, but the articles and the icon claims that walk past them (the entry above) grow with the list; #711's bulk upload is what makes it grow by the thousand.
+  Since #708 a seeded feed queues no enrichment jobs until someone follows it or it's put in Discover's catalog.
+  *Signal:* the database's size or the `articles` row count dominated by feeds without subscribers, or the icon claim slowing.
+  *Fix:* save no articles for a seeded lookup's feeds until someone subscribes, opens one or puts it in the catalog (a feed page view already requests a refresh), or delete unfollowed, uncatalogued seeded feeds' articles after a while.
 - [ ] **Daily refreshes of Discover's feeds** (#632).
   Every feed in Discover's catalog is fetched about once a day even with no followers, so N catalog feeds cost N fetches and their article saves a day, growing with the catalog rather than with readers.
   `ClaimDue` checks the catalog with a hashed subplan over all of `discover_feeds`, still on `feeds_next_fetch_at_idx`: on `make db/loadseed`'s data plus 5,000 unfollowed feeds, 3,000 of them in the catalog spread over the day (160 due), a claim took 1.3–1.9 ms against 0.6 ms without the catalog check; with 1,500 catalog feeds overdue at once (a backlog after downtime), 3.2 ms against 1.4 ms.
   *Signal:* refresh workers busy with unfollowed feeds in the admin's job metrics, or `ClaimDue`'s claim latency rising.
   *Fix:* a longer interval, or refreshing only the sites Discover and Picks showed recently.
+- [ ] **Enrichment of Discover's catalog** (#708).
+  Catalog feeds are enriched as followed ones are, so their page fetches grow with the catalog's posting rate, not with readers: at 3,000 catalog feeds posting about 5 times a week, about 2,000 new articles a day, roughly half of which need a fetch, against one worker's 86,000 a day; plus, as each feed is picked, up to 20 backlog fetches behind new arrivals (60,000 for 3,000 picks, about 17 hours).
+  `ClaimNext` checks the catalog with an `EXISTS` on `discover_feeds` beside its subscription check, as `ClaimDue` does (not measured on its own).
+  *Signal:* the Overview's enrichment queue staying behind, or `SELECT priority, count(*), min(next_attempt_at) FROM enrich_jobs GROUP BY 1` growing after a large pick.
+  *Fix:* a smaller backlog for catalog picks, more `-enrich-workers`, or enriching only the catalog feeds Discover and Picks showed recently.
 - [ ] **A section's page lists every catalog feed in the section, and its Recent posts merge every feed's newest articles** (#634).
   The Feeds tab is unpaginated, with an index probe and three latest titles per feed; each Recent posts page reads up to 31 articles from `articles_feed_sort_idx` per catalog feed in the section, then keeps 31, so a page costs about feeds × 31 index rows; both grow with how many feeds an admin puts in one section, not with readers.
   *Signal:* a section past about 200 feeds, or `/discover/sections/{slug}` or its `/posts` p95 over 200 ms on the admin's endpoints page.

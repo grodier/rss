@@ -2116,8 +2116,8 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 	ctx := t.Context()
 	date := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	t.Run("first save queues the 20 latest at priority 1", func(t *testing.T) {
-		feed := newTestFeed(t, db)
+	t.Run("a followed feed's first save queues the 20 latest at priority 1", func(t *testing.T) {
+		feed := newSubscribedFeed(t, db, newTestUser(t, db))
 		// Backlog, so each is placed at its published date: n29 is latest.
 		items := make([]rss.Article, 30)
 		for i := range items {
@@ -2134,13 +2134,13 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 		}
 
 		jobs := enrichJobs(t, db, feed.ID)
-		if len(jobs) != enrichFirstSave {
-			t.Errorf("got %d jobs, want %d: %v", len(jobs), enrichFirstSave, jobs)
+		if len(jobs) != enrichFirstWanted {
+			t.Errorf("got %d jobs, want %d: %v", len(jobs), enrichFirstWanted, jobs)
 		}
 		for i := range items {
 			id := items[i].ExternalID
 			priority, ok := jobs[id]
-			if want := i >= 30-enrichFirstSave; ok != want {
+			if want := i >= 30-enrichFirstWanted; ok != want {
 				t.Errorf("article %s queued = %v, want %v", id, ok, want)
 			}
 			if ok && priority != 1 {
@@ -2149,13 +2149,34 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 		}
 	})
 
+	// A lookup's or import's save: jobs wait until the feed is wanted
+	// (#708), which queues its backlog.
 	t.Run("first save of a feed nobody follows", func(t *testing.T) {
 		feed := newTestFeed(t, db)
 		items := []rss.Article{{ExternalID: "a", URL: "https://example.com/a", Title: "A"}}
 		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
 			t.Fatalf("SaveFetch: %v", err)
 		}
-		if want := map[string]int{"a": 1}; !maps.Equal(enrichJobs(t, db, feed.ID), want) {
+		if jobs := enrichJobs(t, db, feed.ID); len(jobs) != 0 {
+			t.Errorf("jobs = %v, want none", jobs)
+		}
+	})
+
+	t.Run("a catalog feed nobody follows", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		putInCatalog(t, db, feed.ID)
+		first := []rss.Article{{ExternalID: "first", URL: "https://example.com/first", Title: "First"}}
+		if _, err := feeds.SaveFetch(ctx, feed, first, feed.NextFetch); err != nil {
+			t.Fatalf("first SaveFetch: %v", err)
+		}
+		if want := map[string]int{"first": 1}; !maps.Equal(enrichJobs(t, db, feed.ID), want) {
+			t.Errorf("after the first save: jobs = %v, want %v", enrichJobs(t, db, feed.ID), want)
+		}
+		items := []rss.Article{{ExternalID: "new", URL: "https://example.com/new", Title: "New"}}
+		if _, err := feeds.SaveFetch(ctx, feed, items, feed.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		if want := map[string]int{"first": 1, "new": 0}; !maps.Equal(enrichJobs(t, db, feed.ID), want) {
 			t.Errorf("jobs = %v, want %v", enrichJobs(t, db, feed.ID), want)
 		}
 	})
@@ -2306,8 +2327,8 @@ func TestSaveFetchAfterNoAttempts(t *testing.T) {
 		}
 	})
 
-	t.Run("enrichment follows the first save's allowance", func(t *testing.T) {
-		feed := newTestFeed(t, db)
+	t.Run("a followed feed's stale save gets the first save's allowance", func(t *testing.T) {
+		feed := newSubscribedFeed(t, db, newTestUser(t, db))
 		setFetched(t, feed, 72*time.Hour, 72*time.Hour)
 		if _, err := db.Exec(`DELETE FROM enrich_jobs j USING articles a WHERE a.id = j.article_id AND a.feed_id = $1`, feed.ID); err != nil {
 			t.Fatalf("delete jobs: %v", err)
@@ -2328,8 +2349,8 @@ func TestSaveFetchAfterNoAttempts(t *testing.T) {
 		}
 
 		jobs := enrichJobs(t, db, feed.ID)
-		if len(jobs) > enrichFirstSave {
-			t.Errorf("got %d jobs, want at most %d: %v", len(jobs), enrichFirstSave, jobs)
+		if len(jobs) != enrichFirstWanted {
+			t.Errorf("got %d jobs, want %d: %v", len(jobs), enrichFirstWanted, jobs)
 		}
 		for id, priority := range jobs {
 			if priority != enrichPriorityBacklog {

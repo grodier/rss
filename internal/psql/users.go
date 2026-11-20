@@ -378,7 +378,9 @@ func (r *UserRepository) ResetPassword(ctx context.Context, hash []byte, newPass
 }
 
 // Delete verifies password and deletes the user, which cascades to their
-// subscriptions, reads, user_sessions and user_tokens. It returns the user as
+// subscriptions, reads, user_sessions and user_tokens, and drops the pending
+// enrichment jobs of the feeds they were the last to follow (outside
+// Discover's catalog; see dropUnwantedEnrichJobs). It returns the user as
 // they were, for the confirmation email. ErrWrongPassword if the password
 // doesn't match; ErrNoRecord if there is no such user.
 func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.User, error) {
@@ -405,7 +407,19 @@ func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.Use
 		return rss.User{}, rss.ErrWrongPassword
 	}
 
-	res, err := r.DB.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return rss.User{}, err
+	}
+	defer tx.Rollback()
+
+	var feedIDs []string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(array_agg(feed_id::text), '{}') FROM subscriptions WHERE user_id = $1`, userID).
+		Scan(pq.Array(&feedIDs))
+	if err != nil {
+		return rss.User{}, err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
 		return rss.User{}, err
 	}
@@ -415,6 +429,12 @@ func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.Use
 	}
 	if n == 0 {
 		return rss.User{}, rss.ErrNoRecord
+	}
+	if err := dropUnwantedEnrichJobs(ctx, tx, feedIDs); err != nil {
+		return rss.User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return rss.User{}, err
 	}
 	return u, nil
 }

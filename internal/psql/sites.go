@@ -20,28 +20,30 @@ func NewSiteRepository(db *sql.DB) *SiteRepository {
 
 // Upsert inserts the site or updates it by host and returns its ID.
 func (r *SiteRepository) Upsert(ctx context.Context, s rss.Site) (string, error) {
-	return upsertSite(ctx, r.DB, s, false)
+	return upsertSite(ctx, r.DB, s, true)
 }
 
 // upsertSite inserts the site or updates it by host and returns its ID. An
-// empty title or description doesn't overwrite a known one. When fromFeed,
-// s's details came from one of its feeds rather than its home page
-// (discovery.Result.Direct): they describe a new site, but an existing site
-// keeps its own, gaining only a title or description it lacks.
-func upsertSite(ctx context.Context, q querier, s rss.Site, fromFeed bool) (string, error) {
+// empty title or description doesn't overwrite a known one. Only details
+// read from the site's home page (fromHome, discovery.Result.HomePage)
+// replace an existing site's address, title and description: details read
+// from a feed or another page (an article, a Medium author's page) describe
+// a new site, but an existing one keeps its own, gaining only a title or
+// description it lacks.
+func upsertSite(ctx context.Context, q querier, s rss.Site, fromHome bool) (string, error) {
 	stmt := `INSERT INTO sites (host, url, title, description)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (host) DO UPDATE SET
-			url = CASE WHEN $5 THEN sites.url ELSE EXCLUDED.url END,
-			title = CASE WHEN $5 THEN COALESCE(NULLIF(sites.title, ''), EXCLUDED.title)
-				ELSE COALESCE(NULLIF(EXCLUDED.title, ''), sites.title) END,
-			description = CASE WHEN $5 THEN COALESCE(NULLIF(sites.description, ''), EXCLUDED.description)
-				ELSE COALESCE(NULLIF(EXCLUDED.description, ''), sites.description) END,
+			url = CASE WHEN $5 THEN EXCLUDED.url ELSE sites.url END,
+			title = CASE WHEN $5 THEN COALESCE(NULLIF(EXCLUDED.title, ''), sites.title)
+				ELSE COALESCE(NULLIF(sites.title, ''), EXCLUDED.title) END,
+			description = CASE WHEN $5 THEN COALESCE(NULLIF(EXCLUDED.description, ''), sites.description)
+				ELSE COALESCE(NULLIF(sites.description, ''), EXCLUDED.description) END,
 			updated_at = now()
 		RETURNING id`
 
 	var id string
-	if err := q.QueryRowContext(ctx, stmt, s.Host, s.URL, s.Title, s.Description, fromFeed).Scan(&id); err != nil {
+	if err := q.QueryRowContext(ctx, stmt, s.Host, s.URL, s.Title, s.Description, fromHome).Scan(&id); err != nil {
 		return "", err
 	}
 

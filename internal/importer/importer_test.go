@@ -136,13 +136,13 @@ func (t *fakeTags) AddToSubscription(ctx context.Context, userID, feedID string,
 type fakeSaver struct {
 	feeds        *fakeFeeds
 	calls        int
-	siteFromFeed []bool
+	siteFromHome []bool
 	err          error
 }
 
-func (s *fakeSaver) Save(ctx context.Context, site rss.Site, siteFromFeed bool, feeds []rss.FeedWithArticles) (string, error) {
+func (s *fakeSaver) Save(ctx context.Context, site rss.Site, siteFromHome bool, feeds []rss.FeedWithArticles) (string, error) {
 	s.calls++
-	s.siteFromFeed = append(s.siteFromFeed, siteFromFeed)
+	s.siteFromHome = append(s.siteFromHome, siteFromHome)
 	if s.err != nil {
 		return "", s.err
 	}
@@ -448,7 +448,7 @@ func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {
 		}
 		// Discovery reports the feed's final URL, after redirects.
 		res := result("https://example.com/feed.xml")
-		res.Direct = true
+		res.Direct = true // and not HomePage
 		return res, nil
 	}
 
@@ -458,8 +458,8 @@ func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {
 		t.Errorf("Save called %d times; want 1", tr.saver.calls)
 	}
 	// The site's details came from the feed, so an existing site keeps its own.
-	if !reflect.DeepEqual(tr.saver.siteFromFeed, []bool{true}) {
-		t.Errorf("Save siteFromFeed = %v; want [true]", tr.saver.siteFromFeed)
+	if !reflect.DeepEqual(tr.saver.siteFromHome, []bool{false}) {
+		t.Errorf("Save siteFromHome = %v; want [false]", tr.saver.siteFromHome)
 	}
 	if !tr.subs.subs["user-1 id:https://example.com/feed.xml"] {
 		t.Error("user not subscribed to the saved feed")
@@ -473,13 +473,15 @@ func TestProcessUnknownFeedIsDiscoveredAndSaved(t *testing.T) {
 func TestProcessWebPageUsesFirstFeed(t *testing.T) {
 	tr := newTestRunner()
 	tr.disc.DiscoverFn = func(ctx context.Context, u *url.URL) (discovery.Result, error) {
-		return result("https://example.com/posts.xml", "https://example.com/comments.xml"), nil
+		res := result("https://example.com/posts.xml", "https://example.com/comments.xml")
+		res.HomePage = true
+		return res, nil
 	}
 
 	got := tr.importOne(t, t.Context(), "https://example.com/")
 	checkOutcome(t, got, rss.ImportSubscribed, "", "id:https://example.com/posts.xml")
-	if !reflect.DeepEqual(tr.saver.siteFromFeed, []bool{false}) {
-		t.Errorf("Save siteFromFeed = %v; want [false]", tr.saver.siteFromFeed)
+	if !reflect.DeepEqual(tr.saver.siteFromHome, []bool{true}) {
+		t.Errorf("Save siteFromHome = %v; want [true]", tr.saver.siteFromHome)
 	}
 	if tr.subs.subs["user-1 id:https://example.com/comments.xml"] {
 		t.Error("subscribed to the second feed too")

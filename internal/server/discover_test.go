@@ -905,13 +905,16 @@ func TestKnownAddress(t *testing.T) {
 		}},
 		{Site: rss.Site{Host: "other.example"}},
 	}
+	// The home page counts only when it has been looked up (homeChecked).
+	if !knownAddress(mustParseInput(t, "example.com"), sites, true) {
+		t.Error("knownAddress(home page, homeChecked) = false")
+	}
 	tests := []struct {
 		q    string
 		want bool
 	}{
-		{"example.com", true},
-		{"https://www.example.com/", true},
-		{"other.example", true},
+		{"example.com", false},
+		{"other.example", false},
 		{"example.com/feed.xml", true},
 		{"http://WWW.example.com/feed.xml#top", true},
 		{"example.com/rss?section=world", true},
@@ -924,12 +927,17 @@ func TestKnownAddress(t *testing.T) {
 		{"new.example", false},
 	}
 	for _, tt := range tests {
-		u, err := discovery.ParseInput(tt.q)
-		if err != nil {
-			t.Fatalf("ParseInput(%q): %v", tt.q, err)
-		}
-		if got := knownAddress(u, sites); got != tt.want {
+		if got := knownAddress(mustParseInput(t, tt.q), sites, false); got != tt.want {
 			t.Errorf("knownAddress(%q) = %v, want %v", tt.q, got, tt.want)
 		}
 	}
+}
+
+func mustParseInput(t *testing.T, q string) *url.URL {
+	t.Helper()
+	u, err := discovery.ParseInput(q)
+	if err != nil {
+		t.Fatalf("ParseInput(%q): %v", q, err)
+	}
+	return u
 }

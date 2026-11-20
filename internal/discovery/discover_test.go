@@ -328,6 +328,41 @@ func TestDiscoverRedirect(t *testing.T) {
 	}
 }
 
+// HomePage says whether the site's details came from its home page, which
+// alone may replace an existing site's (psql.upsertSite).
+func TestDiscoverHomePage(t *testing.T) {
+	page := `<html><head><title>T</title><link rel="alternate" type="application/rss+xml" href="/rss.xml"></head></html>`
+	redirected := htmlResp(page)
+	redirected.URL = mustURL(t, "https://www.example.com/")
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://example.com/":            htmlResp(page),
+		"https://example.com/?ref=x":      htmlResp(page),
+		"https://example.com/@alice":      htmlResp(page),
+		"https://example.com/index.html":  redirected,
+		"https://example.com/rss.xml":     rssResp("Posts", "https://example.com/"),
+		"https://www.example.com/rss.xml": rssResp("Posts", "https://example.com/"),
+	}}
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"https://example.com/", true},
+		{"https://example.com/index.html", true}, // led to the home page
+		{"https://example.com/?ref=x", false},
+		{"https://example.com/@alice", false},
+		{"https://example.com/rss.xml", false}, // a feed
+	}
+	for _, tt := range tests {
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.url))
+		if err != nil {
+			t.Fatalf("%s: %v", tt.url, err)
+		}
+		if res.HomePage != tt.want {
+			t.Errorf("%s: HomePage = %v, want %v", tt.url, res.HomePage, tt.want)
+		}
+	}
+}
+
 func TestDiscoverDeduplicatesFinalURLs(t *testing.T) {
 	redirected := rssResp("Feed", "https://example.com/")
 	redirected.URL = mustURL(t, "https://EXAMPLE.com/feed.xml#top")

@@ -63,7 +63,7 @@ type Tags interface {
 // Saver stores a discovered site and its feeds; satisfied by
 // *psql.DiscoveryRepository.
 type Saver interface {
-	Save(ctx context.Context, site rss.Site, siteFromFeed bool, feeds []rss.FeedWithArticles) (string, error)
+	Save(ctx context.Context, site rss.Site, siteFromHome bool, feeds []rss.FeedWithArticles) (string, error)
 }
 
 // Discoverer finds a site's feeds; satisfied by *discovery.Discoverer.
@@ -348,7 +348,7 @@ func (r *Runner) discover(ctx context.Context, u *url.URL) (rss.Feed, rss.Import
 	}
 
 	site, feeds := lookup.ToSave(res, time.Now())
-	if _, err := r.Saver.Save(ctx, site, res.Direct, feeds); err != nil {
+	if _, err := r.Saver.Save(ctx, site, res.HomePage, feeds); err != nil {
 		return rss.Feed{}, rss.ImportUnreachable, fmt.Errorf("save: %w", err)
 	}
 	feed, err := r.Feeds.GetByURL(ctx, res.Feeds[0].URL)

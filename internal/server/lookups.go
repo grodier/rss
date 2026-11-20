@@ -60,9 +60,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ParseInput gives an address without a path the path "/".
-	homePage := u.Path == "/" && u.RawQuery == ""
-	lookup, err := s.services.LookupService.Request(r.Context(), discovery.SiteKey(u), u.String(), homePage, lookupDoneTTL, lookupFailedTTL)
+	lookup, err := s.services.LookupService.Request(r.Context(), discovery.SiteKey(u), u.String(), discovery.IsHomePage(u), lookupDoneTTL, lookupFailedTTL)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return

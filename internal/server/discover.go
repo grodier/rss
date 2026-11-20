@@ -223,8 +223,14 @@ func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, 
 	if u != nil {
 		if s.isAppLink(u) {
 			found.AppLink = true
-		} else if !knownAddress(u, sites) {
-			found.LookupQ = lookupAddress(u)
+		} else {
+			homeChecked, err := s.homePageChecked(r, u, sites)
+			if err != nil {
+				return foundSites{}, err
+			}
+			if !knownAddress(u, sites, homeChecked) {
+				found.LookupQ = lookupAddress(u)
+			}
 		}
 	}
 
@@ -244,19 +250,37 @@ func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, 
 	return found, nil
 }
 
+// homePageChecked reports whether u is the home page of one of sites whose
+// lookup has finished on its home page. A site found from another address
+// (a feed, or a page on another host such as feeds.npr.org) hasn't had its
+// home page's feeds looked for.
+func (s *Server) homePageChecked(r *http.Request, u *url.URL, sites []rss.SiteWithFeeds) (bool, error) {
+	key := discovery.SiteKey(u)
+	if !discovery.IsHomePage(u) || !slices.ContainsFunc(sites, func(site rss.SiteWithFeeds) bool { return site.Site.Host == key }) {
+		return false, nil
+	}
+	l, err := s.services.LookupService.GetBySiteKey(r.Context(), key)
+	if errors.Is(err, rss.ErrNoRecord) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return l.Status == rss.LookupDone && ranOnHomePage(l), nil
+}
+
 // knownAddress reports whether looking up u (from discovery.ParseInput)
 // would find nothing that sites, a search's results, don't already show:
-// u is a found site's home page, or one of its feeds. Any other address on
-// a found site, such as a feed its home page doesn't link to, is offered as
-// a lookup, which adds what it finds to the site (LookupStore.Request
-// re-runs a finished lookup for a different address).
-func knownAddress(u *url.URL, sites []rss.SiteWithFeeds) bool {
-	key := discovery.SiteKey(u)
-	home := u.Path == "/" && u.RawQuery == ""
+// u is a found site's home page and that has been looked up (homeChecked,
+// see homePageChecked), or u is one of a found site's feeds. Any other
+// address on a found site, such as a feed its home page doesn't link to, is
+// offered as a lookup, which adds what it finds to the site
+// (LookupStore.Request re-runs a finished lookup for a different address).
+func knownAddress(u *url.URL, sites []rss.SiteWithFeeds, homeChecked bool) bool {
+	if homeChecked {
+		return true
+	}
 	for _, site := range sites {
-		if home && site.Site.Host == key {
-			return true
-		}
 		for _, f := range site.Feeds {
 			if sameAddress(u, f.Url) {
 				return true

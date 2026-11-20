@@ -105,6 +105,8 @@ func TestArticleHandler(t *testing.T) {
 		`<p class="reader-dateline"><span class="reader-byline">By Ada and &lt;b&gt;Grace&lt;/b&gt;</span> <span aria-hidden="true">·</span> <time data-local datetime="2024-03-02T10:05:00Z">2 Mar 2024 10:05 UTC</time></p>`,
 		`<script type="module" src="`+entryJS("reading")+`"></script>`,
 		`<div class="article-body">`,
+		// code-copy.ts clones it into each code block.
+		`<template data-code-copy><button class="code-copy" type="button" aria-label="Copy code"><svg class="icon icon-copy"`,
 		"<strong>world</strong>",
 		`src="https://example.com/pic.png"`,
 		`href="https://example.com/posts/a" target="_blank" rel="noopener noreferrer" title="Read on Example Site">Read on <span class="btn-label">Example Site</span> ↗`,

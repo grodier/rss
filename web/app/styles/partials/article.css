@@ -162,6 +162,81 @@
     overflow-wrap: anywhere;
   }
 
+  /* A code block's bar: the language the feed names (data-lang, set by the
+     sanitizer) on the left and, with JavaScript, the Copy icon on the right
+     (code-copy.ts adds it, and data-copy-ready, to every block, so the
+     button sits in the same place on each). The bar is the block's own
+     ::before, so it isn't part of the code's text or a selection of it,
+     and the button sits in its space, never over the code. */
+  .article-body pre:is([data-lang], [data-copy-ready]) {
+    position: relative;
+  }
+
+  .article-body pre:is([data-lang], [data-copy-ready])::before {
+    content: attr(data-lang);
+    display: block;
+    block-size: 2.25rem;
+    margin: -0.875rem -1rem 0.875rem;
+    padding-block: 0.5rem;
+    padding-inline: 1rem 3rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--text-2);
+    font-family: var(--font);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .code-copy {
+    position: absolute;
+    inset-block-start: 0.25rem;
+    inset-inline-end: 0.25rem;
+    display: inline-flex;
+    padding: 0.375rem;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: none;
+    color: var(--text-2);
+    user-select: none;
+    cursor: pointer;
+    transition:
+      background-color var(--duration-quick) var(--ease-out),
+      color var(--duration-quick) var(--ease-out);
+  }
+
+  .code-copy:hover:not([data-copied]) {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .code-copy:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* The button sits at the block's edge, so its copied label (copied.css)
+     lines up with the button's end rather than its middle, staying on
+     screen. */
+  .code-copy .copied-label {
+    inset-inline: auto 0;
+    transform: none;
+  }
+
+  .code-copy .icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    stroke-width: 2;
+  }
+
+  @media (forced-colors: active) {
+    .code-copy {
+      border: 1px solid ButtonText;
+    }
+  }
+
   /* Inline code; code blocks are styled by pre. */
   .article-body :not(pre) > code {
     padding: 0.1em 0.35em;

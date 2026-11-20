@@ -242,7 +242,7 @@ Each with when it pays off:
   Screenshots and diagrams are hard to read at the column's width on a phone; obsidian-clipper's reader opens an article's images, other than those already in a link, full screen with their caption and previous and next (#718).
   Here it would be a `<dialog>` the script adds over `.article-body img`, needing a design checkpoint; without JavaScript nothing changes.
 - [ ] **Syntax highlighting in code blocks.**
-  The sanitizer drops the `language-*` classes feeds put on `<code>`, so keep them first (a class matching `^language-[a-z0-9+#-]{1,20}$`, as #722's caption option would).
+  The sanitizer already names a block's language in `data-lang` on its `<pre>` (#722), from a fixed list, which a highlighter would map to its own names.
   obsidian-clipper highlights in the browser with highlight.js, a runtime library we'd have to justify ("Code conventions" in CLAUDE.md); on the server (`alecthomas/chroma`) it adds to the cost of sanitizing on every view (see the watchlist).
   Worth it only if code-heavy feeds turn out to be common.
 - [ ] **Contents: the current section.**

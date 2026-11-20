@@ -31,6 +31,7 @@ func newPolicy() *bluemonday.Policy {
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^social-(name|handle|network)$`)).OnElements("span")
 	p.AllowAttrs("data-local").Matching(regexp.MustCompile(`^$`)).OnElements("time")
 	p.AllowAttrs("data-embed").Matching(regexp.MustCompile(`^(youtube|vimeo)$`)).OnElements("figure")
+	p.AllowAttrs("data-lang").Matching(languageNames).OnElements("pre")
 	p.AllowAttrs("data-embed-id").Matching(regexp.MustCompile(`^[A-Za-z0-9_-]{1,20}$`)).OnElements("figure")
 	return p
 }
@@ -39,7 +40,8 @@ func newPolicy() *bluemonday.Policy {
 // src are resolved against base (left as is if base is nil), http images
 // load over https (see httpsImage), posts embedded from X and Bluesky become
 // post cards (see xPost, blueskyPost and socialCard), YouTube and
-// Vimeo iframes become click-to-play previews (see videoEmbed), every other
+// Vimeo iframes become click-to-play previews (see videoEmbed), code blocks
+// name their language in data-lang (see labelCode), every other
 // <iframe> with an http(s) src is replaced by <p><a href="SRC">Open embedded
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
 // http(s) URLs become links (see linkify), images a script would have
@@ -277,6 +279,8 @@ func rewrite(n *html.Node, base *url.URL) {
 				continue
 			case atom.Img:
 				rewriteImage(c, base)
+			case atom.Pre:
+				labelCode(c)
 			case atom.Noscript:
 				if img := noscriptImage(c, base); img != nil {
 					if prev := previousElement(c); prev != nil && prev.DataAtom == atom.Img && !hasSource(prev) {

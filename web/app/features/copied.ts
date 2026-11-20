@@ -1,11 +1,12 @@
 // A copy's outcome on its button, shared by Share (share.ts) and the code
 // blocks' Copy buttons (code-copy.ts), so copying looks the same
-// everywhere. Call init once before the first showCopied.
+// everywhere. Call init (it sets up once, however often it's called)
+// before the first showCopied.
 //
 // showCopied shows the outcome on the button's .copied-label (aria-hidden,
 // since the caller announces it): text, like "Link copied", or "Couldn't
-// copy", shown by data-copied or data-copy-failed (copied.css; rows.css also
-// swaps Share's icon for a check that draws itself). Only the latest copy
+// copy", shown by data-copied or data-copy-failed (copied.css, which also
+// swaps the button's icon for a check that draws itself). Only the latest copy
 // shows, since the clipboard holds one thing: a copy hides any other
 // button's label at once. A success shows for 2 seconds, and longer while a
 // mouse is over the button (until it leaves) or it has keyboard focus

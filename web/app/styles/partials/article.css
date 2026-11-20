@@ -177,7 +177,8 @@
     display: block;
     block-size: 2.25rem;
     margin: -0.875rem -1rem 0.875rem;
-    padding: 0.5rem 3rem 0.5rem 1rem;
+    padding-block: 0.5rem;
+    padding-inline: 1rem 3rem;
     border-block-end: 1px solid var(--border);
     color: var(--text-2);
     font-family: var(--font);

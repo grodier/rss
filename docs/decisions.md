@@ -340,6 +340,7 @@ Planned in #50 (issues #51–#67).
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
 - **The `lookups` table is the queue and the cache:** one row per site key, re-runnable 24 hours after it found a site, or 1 hour after it failed or found no feeds (#439), since "No feeds found" is also worth retrying soon.
   A finished lookup re-runs at once for a different address on the same site (#439), so one result doesn't hide the site's other addresses, such as its feed URLs; pasting a feed URL on a site already found adds that feed to the site.
+  That adds the feed without renaming the site: details taken from a feed (its title, description and link) only fill in what an existing site lacks, since a site's own page describes it better than any one of its feeds (#716).
   Only the home page (path `/`, no query) of a site already found keeps the cached result, so `npr.org` and `www.npr.org/` still go straight to the site page.
   A lookup in progress is never re-queued, so two people typing different addresses don't keep restarting each other's lookup, and re-runs need no limit of their own: each is a lookup the per-user limit already counts.
 - **`POST /lookups` waits about 3 seconds**, then redirects to the site page if the lookup found the site, else to a status page that updates in place while the lookup runs (#515).

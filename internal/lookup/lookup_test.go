@@ -76,8 +76,9 @@ func (s *fakeStore) ResetStale(ctx context.Context, olderThan time.Duration, max
 }
 
 type saveCall struct {
-	site  rss.Site
-	feeds []rss.FeedWithArticles
+	site         rss.Site
+	siteFromFeed bool
+	feeds        []rss.FeedWithArticles
 }
 
 type fakeSaver struct {
@@ -87,10 +88,10 @@ type fakeSaver struct {
 	err    error
 }
 
-func (s *fakeSaver) Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error) {
+func (s *fakeSaver) Save(ctx context.Context, site rss.Site, siteFromFeed bool, feeds []rss.FeedWithArticles) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls = append(s.calls, saveCall{site, feeds})
+	s.calls = append(s.calls, saveCall{site, siteFromFeed, feeds})
 	return s.siteID, s.err
 }
 
@@ -176,6 +177,9 @@ func TestRunSavesDiscoveredFeeds(t *testing.T) {
 	if saver.calls[0].site != wantSite {
 		t.Errorf("Save site = %+v, want %+v", saver.calls[0].site, wantSite)
 	}
+	if saver.calls[0].siteFromFeed {
+		t.Error("Save siteFromFeed = true for a site found from its page")
+	}
 	wantFeeds := []rss.FeedWithArticles{
 		{
 			Feed:     rss.Feed{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts"},
@@ -195,6 +199,31 @@ func TestRunSavesDiscoveredFeeds(t *testing.T) {
 	}
 	if !reflect.DeepEqual(saver.calls[0].feeds, wantFeeds) {
 		t.Errorf("Save feeds = %+v, want %+v", saver.calls[0].feeds, wantFeeds)
+	}
+}
+
+// A lookup of a feed's own address takes the site's details from the feed,
+// which Save mustn't let replace an existing site's (see psql.upsertSite).
+func TestRunSavesDirectFeedSiteFromFeed(t *testing.T) {
+	store := newFakeStore(job("a"))
+	saver := &fakeSaver{siteID: "site-1"}
+	disc := &fakeDiscoverer{DiscoverFn: func(ctx context.Context, u *url.URL) (discovery.Result, error) {
+		return discovery.Result{
+			Site:   discovery.SiteInfo{Key: "a.example.com", URL: "https://a.example.com/", Title: "A Podcast"},
+			Feeds:  []discovery.FeedInfo{{URL: "https://a.example.com/podcast.xml", Title: "A Podcast"}},
+			Direct: true,
+		}, nil
+	}}
+
+	stop := start(t, &Runner{Store: store, Saver: saver, Discoverer: disc})
+	waitOutcomes(t, store, 1)
+	stop()
+
+	if len(saver.calls) != 1 {
+		t.Fatalf("Save called %d times, want 1", len(saver.calls))
+	}
+	if !saver.calls[0].siteFromFeed {
+		t.Error("Save siteFromFeed = false for a direct feed")
 	}
 }
 

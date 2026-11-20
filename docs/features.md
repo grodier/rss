@@ -171,6 +171,7 @@ Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
 `Discover` refuses with `ErrAppLink` an address on the app's own site (`Discoverer.AppSiteKey`) before fetching it, and a result that ended up there (a redirect, or a feed naming it as its site), so lookups, imports and the debug inspector never save one.
 `Result.Checked` records every candidate and its outcome, for the debug inspector; if the deadline ends the checking, `Discover` returns what it has alongside the error, and the runners ignore the result on any error.
 The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
+When the address was itself a feed (`Result.Direct`), the site's address, title and description come from the feed, so they name a new site but an existing one keeps its own, gaining only a title or description it lacks (`upsertSite`); imports save the same way.
 The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed.
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 

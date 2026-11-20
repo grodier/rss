@@ -39,7 +39,7 @@ type Store interface {
 // Saver stores a discovered site and its feeds; satisfied by
 // *psql.DiscoveryRepository.
 type Saver interface {
-	Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error)
+	Save(ctx context.Context, site rss.Site, siteFromFeed bool, feeds []rss.FeedWithArticles) (string, error)
 }
 
 // Discoverer finds a site's feeds; satisfied by *discovery.Discoverer.
@@ -257,7 +257,7 @@ func (r *Runner) run(ctx context.Context, job rss.Lookup) (siteID string, feeds,
 		articles += len(f.Articles)
 	}
 
-	siteID, err = r.Saver.Save(jobCtx, site, fs)
+	siteID, err = r.Saver.Save(jobCtx, site, res.Direct, fs)
 	if err != nil {
 		return "", 0, 0, err
 	}

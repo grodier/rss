@@ -17,8 +17,9 @@ func NewDiscoveryRepository(db *sql.DB) *DiscoveryRepository {
 
 // Save upserts the site, its feeds (each with SiteID set to the site's ID)
 // and each feed's articles (see saveArticles, which also sets the feed's
-// last_fetched_at) in one transaction, and returns the site ID.
-func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, feeds []rss.FeedWithArticles) (string, error) {
+// last_fetched_at) in one transaction, and returns the site ID. siteFromFeed
+// says the site's details came from a feed (see upsertSite).
+func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, siteFromFeed bool, feeds []rss.FeedWithArticles) (string, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -26,7 +27,7 @@ func (r *DiscoveryRepository) Save(ctx context.Context, site rss.Site, feeds []r
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
 
-	siteID, err := upsertSite(ctx, tx, site)
+	siteID, err := upsertSite(ctx, tx, site, siteFromFeed)
 	if err != nil {
 		return "", err
 	}

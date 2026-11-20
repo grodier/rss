@@ -109,11 +109,6 @@ db/seed: assets db/check
 	@test -n "$$RSS_DEV_EMAIL" && test -n "$$RSS_DEV_PASSWORD" || { echo "Set RSS_DEV_EMAIL and RSS_DEV_PASSWORD in .env"; exit 1; }
 	@printf '%s\n' "$$RSS_DEV_PASSWORD" | go run ./cmd/admin create-user -name "$${RSS_DEV_NAME:-Dev}" -email "$$RSS_DEV_EMAIL"
 
-## db/seed-sites: queue lookups of the seed list's sites (internal/seed/sites.txt) not found yet
-.PHONY: db/seed-sites
-db/seed-sites: assets db/check
-	go run ./cmd/www seed
-
 ## db/loadseed: seed the local database at realistic scale (1,000 feeds, 2 years), then measure the reading queries
 .PHONY: db/loadseed
 db/loadseed: db/check

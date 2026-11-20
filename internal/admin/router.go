@@ -73,6 +73,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/sites/{id}/check-icon", s.siteIconHandler)
 			r.Get("/seed", s.seedHandler)
 			r.Post("/seed/lookup", s.seedLookupHandler)
+			r.Post("/seed/retry", s.seedRetryHandler)
 			r.Get("/discover", s.catalogHandler)
 			r.Get("/service", s.serviceHandler)
 			r.Get("/web-performance", s.webPerfHandler)

@@ -577,10 +577,11 @@ Admin and observability:
   `AdminFeedRepository.ListSites` filters and sorts with no index (only Host and Found could use one), counting each site's feeds and distinct subscribers before taking the first 100, and joining `site_icons` and `lookups` by host; `CountSites` reads every site once more per view.
   *Signal:* sites pass about 50,000, or `/sites` takes over 200ms.
   *Fix:* the `subscribers` count the feed list's entry plans, summed per site, with indexes on the orders the page uses.
-- [ ] **The admin's seed list page reads every entry on each view** (#648).
-  `AdminFeedRepository.SeedList` joins the whole embedded list to `lookups` and counts each found site's feeds and catalog feeds, and the page filters and counts in Go, with no paging; the list is meant to grow to thousands of sites.
-  *Signal:* the list passes about 5,000 entries, or `/seed` takes over 200ms.
-  *Fix:* page the table (the filters' counts can stay one pass), and count feeds per site with one grouped query rather than per row; planned in #710, which moves the list into a table.
+- [ ] **The admin's seed list page counts every entry and the found sites' feeds on each view** (#648, #710).
+  `/seed` is paged since #710, but `CountSeed` joins every `seed_sites` row to `lookups` for the filters' counts, and both it and `SeedList` count the feeds and catalog feeds of every listed site in one grouped pass (the Found but not in Discover filter needs them), so each view grows with the list and its sites' feeds; the list is meant to grow to thousands of sites.
+  Measured in #710 on 5,000 entries with no feeds: a page and the counts took under 5 ms each.
+  *Signal:* the list passes about 20,000 entries, or `/seed` takes over 200ms.
+  *Fix:* keep each found site's feed and catalog counts on `sites` (or in a table the catalog's edits update), and count the filters from those.
 - [ ] **The picking page looks for candidate feeds across all feeds** (#712).
   Each view of `/discover/pick` finds sites with a feed that isn't gone, in the catalog or skipped (anti-joins on `discover_feeds` and `discover_skips`), counts the sites per filter, and probes `articles_feed_sort_idx` for each listed feed's newest titles (up to 25 sites × 20 feeds).
   *Signal:* feeds pass about 50,000, or `/discover/pick` takes over 200ms.

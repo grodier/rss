@@ -22,7 +22,6 @@ import (
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -51,9 +50,6 @@ type Config struct {
 	// AppInternalURL is www's URL on the private network that the pinger
 	// checks; "" when it doesn't run, which the service page says.
 	AppInternalURL string
-	// SeedList is the seed list's entries (seed.Entries), which the seed
-	// list page shows in this order.
-	SeedList []seed.Entry
 }
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -153,8 +149,10 @@ type FeedStore interface {
 	CheckForFeeds(ctx context.Context, id string, by rss.AuditActor) (rss.Lookup, error)
 	DiscoverSections(ctx context.Context) ([]rss.Section, error)
 	SetDiscoverSection(ctx context.Context, id, sectionID string, by rss.AuditActor) error
-	SeedList(ctx context.Context, entries []seed.Entry) ([]rss.AdminSeedEntry, error)
-	QueueSeedLookup(ctx context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error)
+	SeedList(ctx context.Context, q rss.AdminSeedQuery) ([]rss.AdminSeedEntry, error)
+	CountSeed(ctx context.Context) (map[string]int, error)
+	QueueSeedLookup(ctx context.Context, siteKey string, by rss.AuditActor) (rss.Lookup, error)
+	RetrySeedLookups(ctx context.Context, by rss.AuditActor) (int, error)
 	Catalog(ctx context.Context) ([]rss.AdminCatalogSection, error)
 }
 

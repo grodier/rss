@@ -91,13 +91,6 @@ It takes its own flags, also settable by environment variables:
 | --- | --- | --- | --- |
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
-| `-seed` | `RSS_SEED` | `false` | After migrating, queue the seed list's lookups, as [`www seed`](#www-seed) does |
-
-### `www seed`
-
-`www seed [-env <env>] [-db-dsn <dsn>]` queues lookups of the sites in the seed list (`internal/seed/sites.txt`, embedded in the binary) that haven't been found yet, behind readers' own lookups, and exits; the app's lookup workers then find them.
-It logs the sites whose lookups failed, and retries those that failed over an hour ago.
-It runs only by hand: production's deploys no longer run it (#709), and locally `make db/reset` doesn't, so run `make db/seed-sites` when you want the list looked up.
 
 ## The admin site
 
@@ -225,7 +218,6 @@ In `web/`, `npm run typecheck` checks the TypeScript (`tsc --noEmit`) and `npm r
 
 `make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with [`admin create-user`](#admin-create-user).
 `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
-`make db/seed-sites` queues lookups of the seed list's sites with [`www seed`](#www-seed); `make db/reset` doesn't, so a reset doesn't look up the whole list.
 
 `make db/loadseed` seeds the local database at realistic scale (1,000 feeds, two years of articles, a user with 300 subscriptions) with `tools/loadseed`, then prints how long the timeline, starred, shared and feed queries take, with their plans.
 `make db/loadseed/measure` prints the report again without reseeding.

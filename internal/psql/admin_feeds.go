@@ -10,10 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
-
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/seed"
 )
 
 // AdminFeedRepository reads the admin's feeds and sites pages and makes
@@ -616,39 +613,98 @@ func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectio
 	return tx.Commit()
 }
 
-// SeedList returns the seed list's entries, in their order, each with its
-// site key's lookup, the site that lookup found, that site's feeds and how
-// many of them are in Discover's catalog. An entry whose site key has no
-// lookup has a Lookup with ID "".
-func (r *AdminFeedRepository) SeedList(ctx context.Context, entries []seed.Entry) ([]rss.AdminSeedEntry, error) {
-	keys := make([]string, len(entries))
-	for i, e := range entries {
-		keys[i] = e.SiteKey
+// adminSeedFrom is the seed list's entries ss joined to their site key's
+// lookup l and, for one that found a site, that site s with its feeds and
+// catalog feeds counted in fc, in one grouped pass over the feeds of the
+// list's sites rather than two counts per row.
+const adminSeedFrom = `
+	FROM seed_sites ss
+	LEFT JOIN lookups l ON l.site_key = ss.site_key
+	LEFT JOIN sites s ON s.id = l.site_id
+	LEFT JOIN (
+		SELECT f.site_id, count(*) AS feeds, count(d.feed_id) AS in_discover
+		FROM feeds f LEFT JOIN discover_feeds d ON d.feed_id = f.id
+		WHERE f.site_id IN (SELECT sl.site_id FROM seed_sites sss JOIN lookups sl ON sl.site_key = sss.site_key)
+		GROUP BY f.site_id
+	) fc ON fc.site_id = s.id`
+
+// adminSeedNotFound is the condition that lookup l failed or finished
+// without finding a site: the Not found filter's entries, which
+// RetrySeedLookups looks up again. A lookup that found a site before and
+// failed since keeps its site_id, and is one.
+const adminSeedNotFound = `(l.status = 'failed' OR (l.status = 'done' AND l.site_id IS NULL))`
+
+// adminSeedFilters are the seed list's filters' conditions on adminSeedFrom.
+var adminSeedFilters = map[string]string{
+	rss.AdminSeedAll:           `true`,
+	rss.AdminSeedNotFound:      adminSeedNotFound,
+	rss.AdminSeedWaiting:       `(l.id IS NULL OR l.status IN ('pending', 'running'))`,
+	rss.AdminSeedNotInDiscover: `(l.status = 'done' AND l.site_id IS NOT NULL AND COALESCE(fc.in_discover, 0) = 0)`,
+}
+
+// CountSeed counts the seed list's entries each filter keeps, by filter,
+// in one statement.
+func (r *AdminFeedRepository) CountSeed(ctx context.Context) (map[string]int, error) {
+	keys := slices.Sorted(maps.Keys(adminSeedFilters))
+	cols := make([]string, len(keys))
+	for i, k := range keys {
+		cols[i] = `count(*) FILTER (WHERE ` + adminSeedFilters[k] + `)`
 	}
-	stmt := `SELECT t.site_key, COALESCE(l.id::text, ''), COALESCE(l.url, ''), COALESCE(l.status, ''),
+	stmt := `SELECT ` + strings.Join(cols, ", ") + adminSeedFrom
+
+	counts := make([]int, len(keys))
+	dest := make([]any, len(keys))
+	for i := range counts {
+		dest[i] = &counts[i]
+	}
+	if err := r.DB.QueryRowContext(ctx, stmt).Scan(dest...); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(keys))
+	for i, k := range keys {
+		out[k] = counts[i]
+	}
+	return out, nil
+}
+
+// SeedList returns a page of the seed list's entries q's filter keeps,
+// newest first (ties by site key, descending), starting after the entry
+// with site key q.After, each with its site key's lookup, the site that
+// lookup found, that site's feeds and how many of them are in Discover's
+// catalog. An entry whose site key has no lookup has a Lookup with ID "".
+// An unknown filter is an error.
+func (r *AdminFeedRepository) SeedList(ctx context.Context, q rss.AdminSeedQuery) ([]rss.AdminSeedEntry, error) {
+	filter, ok := adminSeedFilters[q.Filter]
+	if !ok {
+		return nil, fmt.Errorf("unknown seed filter %q", q.Filter)
+	}
+	args := []any{q.Limit}
+	where := []string{filter}
+	if q.After != "" {
+		args = append(args, q.After)
+		where = append(where, fmt.Sprintf(`(ss.added_at, ss.site_key) < (SELECT c.added_at, c.site_key FROM seed_sites c WHERE c.site_key = $%d)`, len(args)))
+	}
+	stmt := `SELECT ss.site_key, ss.url, ss.added_at, COALESCE(l.id::text, ''), COALESCE(l.url, ''), COALESCE(l.status, ''),
 			COALESCE(l.site_id::text, ''), COALESCE(l.error, ''), COALESCE(l.attempts, 0),
 			l.requested_at, l.started_at, l.finished_at, COALESCE(s.host, ''),
-			(SELECT count(*) FROM feeds f WHERE f.site_id = s.id),
-			(SELECT count(*) FROM feeds f JOIN discover_feeds d ON d.feed_id = f.id WHERE f.site_id = s.id)
-		FROM unnest($1::text[]) WITH ORDINALITY AS t(site_key, ord)
-		LEFT JOIN lookups l ON l.site_key = t.site_key
-		LEFT JOIN sites s ON s.id = l.site_id
-		ORDER BY t.ord`
-	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(keys))
+			COALESCE(fc.feeds, 0), COALESCE(fc.in_discover, 0)` + adminSeedFrom + `
+		WHERE ` + strings.Join(where, " AND ") + `
+		ORDER BY ss.added_at DESC, ss.site_key DESC
+		LIMIT $1`
+	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]rss.AdminSeedEntry, 0, len(entries))
-	for i := 0; rows.Next(); i++ {
+	var out []rss.AdminSeedEntry
+	for rows.Next() {
 		var e rss.AdminSeedEntry
 		l := &e.Lookup
 		var requested, started, finished sql.NullTime
-		if err := rows.Scan(&e.SiteKey, &l.ID, &l.URL, &l.Status, &l.SiteID, &l.Error, &l.Attempts,
+		if err := rows.Scan(&e.SiteKey, &e.URL, &e.AddedAt, &l.ID, &l.URL, &l.Status, &l.SiteID, &l.Error, &l.Attempts,
 			&requested, &started, &finished, &e.SiteHost, &e.Feeds, &e.InDiscover); err != nil {
 			return nil, err
 		}
-		e.URL = entries[i].URL
 		if l.ID != "" {
 			l.SiteKey = e.SiteKey
 		}
@@ -658,29 +714,73 @@ func (r *AdminFeedRepository) SeedList(ctx context.Context, entries []seed.Entry
 	return out, rows.Err()
 }
 
-// QueueSeedLookup queues a lookup of the seed list's entry e at a reader's
-// priority, as CheckForFeeds does for a site, however recently it last
-// ran, and returns it; a lookup already pending or running is returned as
-// it is. It's recorded as seed.lookup by by, with the entry's address and
-// the lookup's ID and status.
-func (r *AdminFeedRepository) QueueSeedLookup(ctx context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error) {
+// QueueSeedLookup queues a lookup of the seed list's entry with siteKey,
+// of its own address, at a reader's priority, as CheckForFeeds does for a
+// site, however recently it last ran, and returns it; a lookup already
+// pending or running is returned as it is. It's recorded as seed.lookup by
+// by, with the entry's address and the lookup's ID and status. A site key
+// that isn't on the list is rss.ErrNoRecord.
+func (r *AdminFeedRepository) QueueSeedLookup(ctx context.Context, siteKey string, by rss.AuditActor) (rss.Lookup, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return rss.Lookup{}, err
 	}
 	defer tx.Rollback()
 
-	// No time-to-live, so a finished lookup always runs again.
-	l, err := requestLookup(ctx, tx, e.SiteKey, e.URL, false, 0, 0)
+	var u string
+	err = tx.QueryRowContext(ctx, `SELECT url FROM seed_sites WHERE site_key = $1`, siteKey).Scan(&u)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.Lookup{}, rss.ErrNoRecord
+	}
 	if err != nil {
 		return rss.Lookup{}, err
 	}
-	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "seed.lookup", TargetType: "seed", TargetID: e.SiteKey,
-		After: map[string]any{"url": e.URL, "lookup_id": l.ID, "status": l.Status}})
+	// No time-to-live, so a finished lookup always runs again.
+	l, err := requestLookup(ctx, tx, siteKey, u, false, 0, 0)
+	if err != nil {
+		return rss.Lookup{}, err
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "seed.lookup", TargetType: "seed", TargetID: siteKey,
+		After: map[string]any{"url": u, "lookup_id": l.ID, "status": l.Status}})
 	if err != nil {
 		return rss.Lookup{}, err
 	}
 	return l, tx.Commit()
+}
+
+// RetrySeedLookups re-queues, with each entry's own address and at the
+// seed's priority (1, behind readers'), the lookup of every seed list entry
+// that failed or finished without finding a site (the Not found filter's),
+// leaving pending, running and found ones alone, and returns how many. It's
+// recorded as seed.retry by by, with the count; when there was none to
+// retry, nothing is recorded.
+func (r *AdminFeedRepository) RetrySeedLookups(ctx context.Context, by rss.AuditActor) (int, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt := `WITH retried AS (
+			UPDATE lookups l SET status = 'pending', url = ss.url, error = '', priority = 1,
+				attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
+			FROM seed_sites ss
+			WHERE l.site_key = ss.site_key AND ` + adminSeedNotFound + `
+			RETURNING 1)
+		SELECT count(*) FROM retried`
+	var n int
+	if err := tx.QueryRowContext(ctx, stmt).Scan(&n); err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "seed.retry", TargetType: "seed",
+		After: map[string]any{"count": n}})
+	if err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 // Catalog returns Discover's sections in their default order, each with

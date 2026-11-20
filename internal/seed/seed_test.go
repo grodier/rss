@@ -1,12 +1,9 @@
 package seed
 
 import (
-	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -51,44 +48,5 @@ func TestParse(t *testing.T) {
 				t.Errorf("err = %v; want one containing %q", err, tc.want)
 			}
 		})
-	}
-}
-
-// TestEmbeddedList stops a bad edit to sites.txt from shipping: Entries
-// panics if it doesn't parse. It may be empty.
-func TestEmbeddedList(t *testing.T) {
-	Entries()
-}
-
-type fakeStore struct {
-	got        []Entry
-	retryAfter time.Duration
-	res        Result
-	err        error
-}
-
-func (f *fakeStore) Queue(_ context.Context, entries []Entry, retryAfter time.Duration) (Result, error) {
-	f.got, f.retryAfter = entries, retryAfter
-	return f.res, f.err
-}
-
-func TestRun(t *testing.T) {
-	entries := []Entry{{URL: "https://npr.org/", SiteKey: "npr.org"}}
-	want := Result{Queued: 3, Retried: []string{"npr.org"}, Missing: []string{"bbc.co.uk"}}
-	store := &fakeStore{res: want}
-	got, err := Run(t.Context(), store, entries)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Run = %+v; want %+v", got, want)
-	}
-	if store.retryAfter != RetryAfter || !reflect.DeepEqual(store.got, entries) {
-		t.Errorf("Queue got %v, %v; want the entries and %v", store.got, store.retryAfter, RetryAfter)
-	}
-
-	boom := errors.New("boom")
-	if _, err := Run(t.Context(), &fakeStore{err: boom}, entries); !errors.Is(err, boom) {
-		t.Errorf("err = %v; want boom", err)
 	}
 }

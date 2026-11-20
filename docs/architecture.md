@@ -47,7 +47,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`; so does the admin's Refresh now, through `ingest`.
 
-`cmd/www/main.go` (`run`) hands `www migrate` and `www seed` to their own functions (below).
+`cmd/www/main.go` (`run`) hands `www migrate` to its own function (below).
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
@@ -56,9 +56,6 @@ Only `cmd/www` and `cmd/admin` handle signals.
 `www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits.
 It runs before new code goes live, never at startup.
 `Migrate` applies the migrations the database doesn't have yet, with goose, and never wipes anything; CI refuses a PR that changes a migration already on `main`.
-
-`www seed` (`cmd/www/seed.go`) queues lookups of the seed list's sites (`internal/seed/sites.txt`, embedded) that haven't been found, behind readers', and exits; the app's lookup runner fetches them.
-It only writes `lookups` rows; it runs only by hand (`make db/seed-sites`, or `www migrate -seed`), never on `make db/reset`, and production's deploys no longer run it (#709), since the seed list is moving into a table whose additions queue their own lookups (#710).
 
 
 `admin` (`cmd/admin/main.go`, `run`) is the admin site's server, `admin` or `admin serve` (`serve.go`), and its command-line tools; an unknown subcommand prints the usage and exits 2.
@@ -77,16 +74,16 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate` and `seed` commands | everything below |
-| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `seed`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `seed`, `password`, `token`, `validator`, `ui`, `web` |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate` command | everything below |
+| `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password`, `textcut` |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `metrics` (types), `password`, `textcut` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
-| `internal/seed` | The embedded seed list: parse it and queue its lookups | `discovery` |
+| `internal/seed` | Parses lists of sites, one address per line, for the seed list | `discovery` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
@@ -251,6 +248,7 @@ waitlist ──< invites >── users   (both nullable: the entry it was sent t
 
 admins ──< admin_recovery_codes   (apart from users: an admin is never a reader)
 admins ──< admin_audit   (admin_id nullable: none for a failed password or a command, and kept, with the email, when the admin is deleted)
+admins ──< seed_sites   (added_by nullable, cleared when the admin is deleted; site_key matches lookups.site_key, no foreign key)
 admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
@@ -275,6 +273,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   `Unsubscribe` keeps the reader's rows for the feed, so following it again finds its posts where they were.
   `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
   Every timeline that isn't starred-only or shared reads them (`ListTimeline`): an entry is at the reader's row's position when there is one, else at `timeline_at`, and rows of feeds the reader no longer follows are left out by a join with `subscriptions`.
+- **`seed_sites`:** the seed list, one row per site key, the admin's intent; how it went is the `lookups` row with the same site key, joined by key with no foreign key, since an entry can be listed before it's looked up and a lookup outlives its entry.
 - **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section's ID.
   Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
   `discover_sections` is the list of sections, in `position` order; code never names one, so renaming or adding a section is a row change, and a section with feeds under it can't be deleted.

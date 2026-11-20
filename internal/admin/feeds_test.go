@@ -15,7 +15,6 @@ import (
 
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/seed"
 )
 
 // feedID and siteID are the UUIDs of the nth test feed and site.
@@ -35,11 +34,19 @@ type fakeFeeds struct {
 	site    rss.AdminSite
 	err     error
 	calls   []feedCall
-	// seed is what SeedList returns, and catalog Catalog.
-	seed    []rss.AdminSeedEntry
-	catalog []rss.AdminCatalogSection
-	// seedStatus is the status of the lookup QueueSeedLookup returns.
-	seedStatus rss.LookupStatus
+	// seed is what SeedList returns, keeping the queries it was asked in
+	// seedQueries; seedCounts is what CountSeed returns; and catalog is
+	// what Catalog returns.
+	seed        []rss.AdminSeedEntry
+	seedQueries []rss.AdminSeedQuery
+	seedCounts  map[string]int
+	catalog     []rss.AdminCatalogSection
+	// seedStatus is the status of the lookup QueueSeedLookup returns;
+	// seedKeys are the site keys on the list, the others being
+	// rss.ErrNoRecord; seedRetried is what RetrySeedLookups returns.
+	seedStatus  rss.LookupStatus
+	seedKeys    []string
+	seedRetried int
 	// sites is what ListSites returns, keeping the queries it was asked in
 	// siteQueries; siteCounts is what CountSites returns, keeping the
 	// searches in siteCounted.
@@ -152,18 +159,35 @@ func (f *fakeFeeds) SetDiscoverSection(_ context.Context, id, sectionID string, 
 	return f.call("discover:"+sectionID, id, by)
 }
 
-func (f *fakeFeeds) SeedList(context.Context, []seed.Entry) ([]rss.AdminSeedEntry, error) {
+func (f *fakeFeeds) SeedList(_ context.Context, q rss.AdminSeedQuery) ([]rss.AdminSeedEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seedQueries = append(f.seedQueries, q)
 	return f.seed, f.err
 }
 
-// QueueSeedLookup records the call as "seed-lookup" with the entry's site
-// key, and returns a lookup with seedStatus, pending by default.
-func (f *fakeFeeds) QueueSeedLookup(_ context.Context, e seed.Entry, by rss.AuditActor) (rss.Lookup, error) {
+func (f *fakeFeeds) CountSeed(context.Context) (map[string]int, error) {
+	return f.seedCounts, f.err
+}
+
+// QueueSeedLookup returns rss.ErrNoRecord for a site key not in seedKeys;
+// otherwise it records the call as "seed-lookup" with the site key, and
+// returns a lookup with seedStatus, pending by default.
+func (f *fakeFeeds) QueueSeedLookup(_ context.Context, siteKey string, by rss.AuditActor) (rss.Lookup, error) {
+	if !slices.Contains(f.seedKeys, siteKey) {
+		return rss.Lookup{}, rss.ErrNoRecord
+	}
 	status := f.seedStatus
 	if status == "" {
 		status = rss.LookupPending
 	}
-	return rss.Lookup{Status: status}, f.call("seed-lookup", e.SiteKey, by)
+	return rss.Lookup{Status: status}, f.call("seed-lookup", siteKey, by)
+}
+
+// RetrySeedLookups records the call as "seed-retry" and returns
+// seedRetried.
+func (f *fakeFeeds) RetrySeedLookups(_ context.Context, by rss.AuditActor) (int, error) {
+	return f.seedRetried, f.call("seed-retry", "", by)
 }
 
 func (f *fakeFeeds) Catalog(context.Context) ([]rss.AdminCatalogSection, error) {

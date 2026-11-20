@@ -43,7 +43,6 @@ go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, 
 go run ./cmd/admin               # run the admin site on :4001 (or: make run/admin)
 go run ./cmd/admin enroll -email you@example.com  # enroll an admin (password on stdin; needs RSS_SECRET_KEY, see README)
 go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
-go run ./cmd/www seed            # queue lookups of the seed list's sites (or: make db/seed-sites); by hand only, deploys don't run it
 go run ./cmd/admin send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB from scratch
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
@@ -77,7 +76,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/metrics`: counts `www`'s requests and background jobs and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background; the real-user metrics' buckets and thresholds, and percentiles from buckets
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
-- `internal/seed`: the seed list (`sites.txt`, embedded) of sites to look up before anyone searches for them; `www seed` queues their lookups
+- `internal/seed`: parses lists of sites for the seed list (the `seed_sites` table of sites to look up before anyone searches for them)
 - `internal/opml`: reads the feeds listed in OPML files
 - `internal/importer`: subscribes users to the feeds of their OPML imports, queued in the `import_feeds` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)

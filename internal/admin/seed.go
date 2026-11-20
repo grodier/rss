@@ -1,36 +1,31 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/internal/validator"
 )
 
-// The seed list: which of internal/seed/sites.txt's sites were found, and
-// how many of their feeds are in Discover's catalog, so the owner sees a
-// failed entry without reading the deploy log. The file stays the list's
-// source; this page only reads it and looks entries up again.
+// The seed list: the sites in the seed_sites table, newest first, with
+// whether each was found and how many of its feeds are in Discover's
+// catalog, so the owner sees a failed entry and looks it up again. Nothing
+// retries on its own: Look up again and Look up all again do.
+
+// seedPageSize is how many entries the seed list page lists at once.
+const seedPageSize = 100
 
 // seedFilters are the seed list page's filters, in the order it offers
-// them; the first is the default. Keep says whether an entry is under it.
-var seedFilters = []struct {
-	Key, Label string
-	Keep       func(rss.AdminSeedEntry) bool
-}{
-	{"all", "All", func(rss.AdminSeedEntry) bool { return true }},
-	{"not-found", "Not found", func(e rss.AdminSeedEntry) bool {
-		return e.State() == rss.SeedFailed || e.State() == rss.SeedNoFeeds
-	}},
-	{"waiting", "Waiting", func(e rss.AdminSeedEntry) bool {
-		return e.State() == rss.SeedWaiting || e.State() == rss.SeedRunning
-	}},
-	{"not-in-discover", "Found but not in Discover", func(e rss.AdminSeedEntry) bool {
-		return e.State() == rss.SeedFound && e.InDiscover == 0
-	}},
+// them; the first is the default.
+var seedFilters = []struct{ Key, Label string }{
+	{rss.AdminSeedAll, "All"},
+	{rss.AdminSeedNotFound, "Not found"},
+	{rss.AdminSeedWaiting, "Waiting"},
+	{rss.AdminSeedNotInDiscover, "Found but not in Discover"},
 }
 
 // seedFilter returns the seed list filter key names, or the default when
@@ -44,13 +39,20 @@ func seedFilter(key string) string {
 	return seedFilters[0].Key
 }
 
-// seedHref is the seed list page's URL with filter, leaving out the
-// default.
-func seedHref(filter string) string {
-	if filter == seedFilters[0].Key {
+// seedHref is the seed list page's URL with filter, from after the entry
+// with site key after, leaving out the defaults.
+func seedHref(filter, after string) string {
+	v := url.Values{}
+	if filter != seedFilters[0].Key {
+		v.Set("filter", filter)
+	}
+	if after != "" {
+		v.Set("after", after)
+	}
+	if len(v) == 0 {
 		return "/seed"
 	}
-	return "/seed?" + url.Values{"filter": {filter}}.Encode()
+	return "/seed?" + v.Encode()
 }
 
 // seedRow is a seed list entry as the page shows it: where it stands, in
@@ -96,36 +98,58 @@ type seedPage struct {
 	Filters []filterLink
 	Filter  string
 	Rows    []seedRow
+	Now     time.Time
 	// Total is how many entries the list has.
 	Total int
+	// RetryAll is how many entries Look up all again would look up again,
+	// formatted, on the Not found filter; "" when it isn't offered.
+	RetryAll string
+	// Next is the URL of the next page, "" on the last.
+	Next string
 }
 
-// seedHandler lists the seed list's entries under ?filter=, in the file's
-// order, with how many each filter keeps.
+// seedHandler lists the seed list's entries, seedPageSize at a time,
+// newest first, under ?filter=, from after the entry ?after= (a site key),
+// with how many each filter keeps. A cursor that isn't on the list, or is
+// its filter's last entry, is 404.
 func (s *Server) seedHandler(w http.ResponseWriter, r *http.Request) {
 	filter := seedFilter(r.URL.Query().Get("filter"))
-	entries, err := s.services.Feeds.SeedList(r.Context(), s.config.SeedList)
+	after := r.URL.Query().Get("after")
+	// One more than a page, to know whether there's another.
+	entries, err := s.services.Feeds.SeedList(r.Context(), rss.AdminSeedQuery{Filter: filter, After: after, Limit: seedPageSize + 1})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	if after != "" && len(entries) == 0 {
+		s.notFoundResponse(w, r)
+		return
+	}
+	counts, err := s.services.Feeds.CountSeed(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
 	page := seedPage{
 		Nav:    s.nav(r, "seed"),
 		Flash:  s.sessionManager.PopString(r.Context(), sessionFlash),
 		Filter: filter,
-		Total:  len(entries),
+		Now:    s.now(),
+		Total:  counts[rss.AdminSeedAll],
+	}
+	if n := counts[rss.AdminSeedNotFound]; filter == rss.AdminSeedNotFound && n > 0 {
+		page.RetryAll = count(n)
+	}
+	if len(entries) > seedPageSize {
+		entries = entries[:seedPageSize]
+		page.Next = seedHref(filter, entries[len(entries)-1].SiteKey)
 	}
 	for _, f := range seedFilters {
-		n := 0
-		for _, e := range entries {
-			if f.Keep(e) {
-				n++
-				if f.Key == filter {
-					page.Rows = append(page.Rows, seedRow{AdminSeedEntry: e, Status: seedStatus(e), Retry: seedRetry(e)})
-				}
-			}
-		}
-		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: seedHref(f.Key), Current: f.Key == filter, Count: count(n)})
+		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: seedHref(f.Key, ""), Current: f.Key == filter, Count: count(counts[f.Key])})
+	}
+	for _, e := range entries {
+		page.Rows = append(page.Rows, seedRow{AdminSeedEntry: e, Status: seedStatus(e), Retry: seedRetry(e)})
 	}
 	if err := s.renderHTML(w, http.StatusOK, "seed.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -151,24 +175,39 @@ func (s *Server) seedLookupHandler(w http.ResponseWriter, r *http.Request) {
 		s.formErrorResponse(w, r, err)
 		return
 	}
-	var entry seed.Entry
-	for _, e := range s.config.SeedList {
-		if e.SiteKey == form.SiteKey {
-			entry = e
-		}
-	}
-	if entry.SiteKey == "" {
+	l, err := s.services.Feeds.QueueSeedLookup(r.Context(), form.SiteKey, s.actor(r))
+	switch {
+	case errors.Is(err, rss.ErrNoRecord):
 		s.notFoundResponse(w, r)
 		return
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+		return
 	}
-	l, err := s.services.Feeds.QueueSeedLookup(r.Context(), entry, s.actor(r))
+	msg := "Queued a lookup of " + form.SiteKey + ": refresh this page to see how it went."
+	if l.Status == rss.LookupRunning {
+		msg = "A lookup of " + form.SiteKey + " is already running: refresh this page to see how it went."
+	}
+	s.backTo(w, r, seedHref(seedFilter(form.Filter), ""), msg)
+}
+
+// seedRetryHandler looks up every entry under Not found again, at the
+// seed's priority, behind readers' lookups, and goes back to Not found.
+// It's recorded as seed.retry with the count, unless there were none.
+func (s *Server) seedRetryHandler(w http.ResponseWriter, r *http.Request) {
+	n, err := s.services.Feeds.RetrySeedLookups(r.Context(), s.actor(r))
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	msg := "Queued a lookup of " + entry.SiteKey + ": refresh this page to see how it went."
-	if l.Status == rss.LookupRunning {
-		msg = "A lookup of " + entry.SiteKey + " is already running: refresh this page to see how it went."
+	var msg string
+	switch n {
+	case 0:
+		msg = "Nothing to look up again."
+	case 1:
+		msg = "Looking up 1 site again."
+	default:
+		msg = "Looking up " + count(n) + " sites again."
 	}
-	s.backTo(w, r, seedHref(seedFilter(form.Filter)), msg)
+	s.backTo(w, r, seedHref(rss.AdminSeedNotFound, ""), msg)
 }

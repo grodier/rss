@@ -191,10 +191,9 @@ While the box is focused and empty, the list (from `<template data-recent-templa
 Clear empties the list, and the logged-out pages' entry (`login.ts`: Log in, where logging out lands, Sign up, Reset password and the landing page) clears it too, whatever the reason for being logged out, so the next person on a shared device doesn't see it.
 Without JavaScript, or with storage blocked, there are no recent searches.
 
-**The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
-`www seed`, and `www migrate -seed`, run `seed.Run` (by hand: production's deploys no longer do, #709): `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
+**The seed list.** The `seed_sites` table lists sites to look up before anyone searches for them, one per site key; it's edited only in the admin (see "Seed list and Discover's catalog" under "Admin"), and deploys don't touch it.
+Its lookups are ordinary `lookups` rows, which the lookup workers discover like any other; the admin's Look up all again queues them at the seed's priority (1), so the workers take readers' lookups (priority 0) first, and nothing retries a failed one on its own.
 A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
-The command logs the sites it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
 
 **Discover's catalog.** The feeds picked for Discover, each under one of Discover's sections (`discover_sections`, seeded by its migration), are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
 The seed list gets sites and their feeds into the database; the catalog is which of those feeds Discover shows.
@@ -729,21 +728,21 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 ### Seed list and Discover's catalog
 
-`GET /seed` (`seedHandler`) shows how each seed list entry's lookup went, and `GET /discover` (`catalogHandler`) what Discover's catalog holds, so the owner sees a failed entry without reading the deploy log and the catalog as a whole rather than a feed at a time.
+`GET /seed` (`seedHandler`) shows how each seed list entry's lookup went, and `GET /discover` (`catalogHandler`) what Discover's catalog holds, so the owner sees a failed entry and the catalog as a whole rather than a feed at a time.
 
-1. **The entries.** `cmd/admin`'s wiring passes the embedded list (`seed.Entries()`) in `Config.SeedList`, and `AdminFeedRepository.SeedList` joins its site keys, in the file's order (`unnest … WITH ORDINALITY`), to `lookups` by site key, the site that lookup found (`lookups.site_id`), that site's feeds and how many of them are in `discover_feeds`.
-2. **States and filters.** `rss.AdminSeedEntry.State` splits the lookup's status: found (done with a site), failed, no feeds (done without one), running, and waiting (pending, or no lookup yet, which the next deploy's `www seed` queues).
-   The filters (`seedFilters`: All, the default; Not found, failed or no feeds; Waiting, waiting or running; Found but not in Discover) and their counts are worked out in Go over the whole list, which is read on every view; each row says its state in the feeds' Problem style (`seedStatus`), a failure's error cut to one line, and links the site found to its page.
-3. **Look up again.** A failed or no-feeds entry has the button, which posts its site key to `POST /seed/lookup` (`seedLookupHandler`): the handler finds the key in `Config.SeedList` (404 when it isn't on the list) and `AdminFeedRepository.QueueSeedLookup` queues the entry's own address at a reader's priority with no time-to-live (`requestLookup`, as `CheckForFeeds` does), recorded as `seed.lookup` on target `seed` with the site key; the page then goes back to the list under the same filter, its flash saying when the lookup was already running and was left to finish.
-   It's the only retry for an entry found before whose later lookup failed: `www seed` retries only lookups that never found a site (`SeedRepository.Queue`).
-4. **The catalog.** `AdminFeedRepository.Catalog` returns every Discover section in its order with its feeds by title (site, posts a week, latest article, subscribers as a count), empty sections included; the page offers a filter link per section with its count, and All, the default, adds a Section column.
+1. **The entries.** `AdminFeedRepository.SeedList` reads a page of `seed_sites`, newest first (`added_at`, then site key, both descending, as `seed_sites_added_at_idx` is), 100 at a time with the last entry's site key as the `?after=` cursor (a cursor not on the list, or past the end, is 404, as on Feeds); each entry is joined to `lookups` by site key, the site that lookup found (`lookups.site_id`), and that site's feeds and catalog feeds, counted in one grouped subquery over the listed sites' feeds.
+2. **States and filters.** `rss.AdminSeedEntry.State` splits the lookup's status: found (done with a site), failed, no feeds (done without one), running, and waiting (pending, or no lookup yet).
+   The filters (`seedFilters`: All, the default; Not found, failed or no feeds; Waiting, waiting or running; Found but not in Discover) are conditions in SQL (`adminSeedFilters`), and `CountSeed` counts them all in one statement; each row says its state in the feeds' Problem style (`seedStatus`), a failure's error cut to one line, links the site found to its page, and says when it was added.
+3. **Look up again.** A failed or no-feeds entry has the button, which posts its site key to `POST /seed/lookup` (`seedLookupHandler`): `AdminFeedRepository.QueueSeedLookup` reads the entry's address from `seed_sites` (`rss.ErrNoRecord`, so 404, when the key isn't on the list) and queues it at a reader's priority with no time-to-live (`requestLookup`, as `CheckForFeeds` does), recorded as `seed.lookup` on target `seed` with the site key; the page then goes back to the list under the same filter, its flash saying when the lookup was already running and was left to finish.
+4. **Look up all again.** Not found, when it has entries, has a button that posts to `POST /seed/retry` (`seedRetryHandler`): `AdminFeedRepository.RetrySeedLookups` re-queues, in one statement, every listed lookup that failed or finished without a site (`adminSeedNotFound`, so it includes an entry found before whose later lookup failed), with the entry's address, at the seed's priority (1); it's recorded as `seed.retry` on target `seed` with the count, unless there were none, and the page goes back to Not found saying how many.
+5. **The catalog.** `AdminFeedRepository.Catalog` returns every Discover section in its order with its feeds by title (site, posts a week, latest article, subscribers as a count), empty sections included; the page offers a filter link per section with its count, and All, the default, adds a Section column.
    A gone feed still in the catalog is listed, marked as hidden from Discover (whose queries skip gone feeds), so the owner can take it out.
    Each feed links to its admin page, whose Discover panel (above) puts it in a section or takes it out.
 
 **Start at:**
 
-1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`) and `catalog.go`.
-2. `internal/psql/admin_feeds.go` (`SeedList`, `QueueSeedLookup`, `Catalog`).
+1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`) and `catalog.go`.
+2. `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `Catalog`).
 3. `internal/ui/admin/seed.html` and `discover.html`.
 
 **Tests:** `internal/admin/seed_test.go`; `internal/psql/admin_seed_test.go`.

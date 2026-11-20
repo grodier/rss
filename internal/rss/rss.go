@@ -1109,6 +1109,21 @@ type AdminSite struct {
 	Feeds  []AdminFeedRow
 }
 
+// The admin's seed list's filters (AdminSeedQuery.Filter).
+const (
+	AdminSeedAll           = "all"
+	AdminSeedNotFound      = "not-found"       // its lookup failed or found no feeds
+	AdminSeedWaiting       = "waiting"         // no lookup yet, or pending or running
+	AdminSeedNotInDiscover = "not-in-discover" // found, and none of its site's feeds is in the catalog
+)
+
+// AdminSeedQuery selects a page of the admin's seed list, newest first.
+type AdminSeedQuery struct {
+	Filter string
+	After  string // the site key of the previous page's last entry; "" for the first page
+	Limit  int
+}
+
 // A seed list entry's state on the admin's seed list page
 // (AdminSeedEntry.State).
 const (
@@ -1119,12 +1134,13 @@ const (
 	SeedFound   = "found"    // its lookup found a site with feeds
 )
 
-// AdminSeedEntry is a seed list entry as the admin lists it: its address
-// and site key, its site key's lookup (ID "" when it has none), and the
-// site that lookup found (SiteHost "" when none) with how many feeds the
-// site has and how many of them are in Discover's catalog.
+// AdminSeedEntry is a seed list entry as the admin lists it: its address,
+// site key and when it was added, its site key's lookup (ID "" when it has
+// none), and the site that lookup found (SiteHost "" when none) with how
+// many feeds the site has and how many of them are in Discover's catalog.
 type AdminSeedEntry struct {
 	URL, SiteKey string
+	AddedAt      time.Time
 	Lookup       Lookup
 	SiteHost     string
 	Feeds        int

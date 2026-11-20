@@ -12,7 +12,8 @@ go test ./...
 </code></pre>
       <pre>npm ci</pre>
     </div>
-    <pre>not in an article</pre>`;
+    <pre>not in an article</pre>
+    <template data-code-copy><button class="code-copy" type="button" aria-label="Copy code"><svg class="icon icon-copy"></svg><svg class="icon icon-check"></svg><span class="copied-label" aria-hidden="true"></span></button></template>`;
 });
 
 afterEach(() => {
@@ -37,9 +38,18 @@ describe("code-copy", () => {
       expect(b).toHaveLength(1);
       expect(b[0].getAttribute("aria-label")).toBe("Copy code");
       expect(b[0].type).toBe("button");
+      expect("copyReady" in (pre as HTMLElement).dataset).toBe(true);
     }
     expect(document.querySelector("p button")).toBeNull();
     expect(document.querySelector("body > pre button")).toBeNull();
+  });
+
+  it("adds none without the page's template", async () => {
+    clipboard(async () => {});
+    document.querySelector("template")!.remove();
+    await start();
+    expect(buttons()).toHaveLength(0);
+    expect(document.querySelector("[data-copy-ready]")).toBeNull();
   });
 
   it("adds none without the Clipboard API", async () => {

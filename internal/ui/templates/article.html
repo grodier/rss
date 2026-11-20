@@ -59,6 +59,7 @@
         {{with .LeadImage}}<img class="reader-image" src="{{.}}"{{with $.LeadImageFallback}} data-fallback-src="{{.}}"{{end}} alt="" fetchpriority="high" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>
+        <template data-code-copy><button class="code-copy" type="button" aria-label="Copy code">{{template "icon-copy"}}{{template "icon-check"}}<span class="copied-label" aria-hidden="true"></span></button></template>
         {{else if .Article.PageDescription}}
         <div class="article-body"><p>{{.Article.PageDescription}}</p></div>
         {{else}}

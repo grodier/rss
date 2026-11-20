@@ -584,56 +584,13 @@
   .save-button[aria-pressed="true"] .icon-bookmark,
   .save-button[aria-pressed="false"] .icon-bookmark-fill,
   .star-button[aria-pressed="true"] .icon-star,
-  .star-button[aria-pressed="false"] .icon-star-fill,
-  .share-button[data-copied] .icon-share,
-  .share-button:not([data-copied]) .icon-check {
+  .star-button[aria-pressed="false"] .icon-star-fill {
     display: none;
   }
 
-  .share-button[data-copied] {
-    color: var(--accent);
-  }
-
-  /* Share's copy outcome (copied.ts, its label in copied.css): the check
-     takes the share icon's place, drawing itself from its short end with
-     motion. A copy repeated while it shows redraws it: data-copy-round
-     alternates between two copies of its keyframes, since changing an
-     animation's name restarts it. */
+  /* Share's copy outcome is in copied.css. */
   .share-button {
     position: relative;
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .share-button[data-copied] .icon-check path {
-      stroke-dasharray: 1;
-      animation: check-draw var(--duration-base) var(--ease-out);
-    }
-
-    .share-button[data-copied][data-copy-round="a"] .icon-check path {
-      animation-name: check-draw-a;
-    }
-
-    .share-button[data-copied][data-copy-round="b"] .icon-check path {
-      animation-name: check-draw-b;
-    }
-  }
-
-  @keyframes check-draw {
-    from {
-      stroke-dashoffset: 1;
-    }
-  }
-
-  @keyframes check-draw-a {
-    from {
-      stroke-dashoffset: 1;
-    }
-  }
-
-  @keyframes check-draw-b {
-    from {
-      stroke-dashoffset: 1;
-    }
   }
 
   /* While a Save or Star request runs the button is aria-disabled; save-star.ts

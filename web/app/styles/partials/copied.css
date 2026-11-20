@@ -1,7 +1,18 @@
 /* A copy's outcome on its button (copied.ts's showCopied), for Share and
    the code blocks' Copy: a label centered 6 px above the button, so nothing
-   around it moves. The button is position: relative, in its own partial. */
+   around it moves, and on success a check in the button's icon's place.
+   The button is positioned in its own partial. */
 @layer components {
+  .share-button[data-copied] .icon-share,
+  .code-copy[data-copied] .icon-copy,
+  :is(.share-button, .code-copy):not([data-copied]) .icon-check {
+    display: none;
+  }
+
+  :is(.share-button, .code-copy)[data-copied] {
+    color: var(--accent);
+  }
+
   /* It fades out over --duration-quick, keeping its text while it fades,
      and is hidden once it has. */
   .copied-label {
@@ -42,10 +53,11 @@
     }
   }
 
-  /* With motion it comes in with an animation instead, rising 4 px. A copy
-     repeated while it shows replays the rise, without fading:
-     data-copy-round alternates between two copies of its keyframes, since
-     changing an animation's name restarts it. */
+  /* With motion it comes in with an animation instead, rising 4 px, and
+     the check draws itself from its short end. A copy repeated while it
+     shows replays the rise, without fading, and the check: data-copy-round
+     alternates between two copies of their keyframes, since changing an
+     animation's name restarts it. */
   @media (prefers-reduced-motion: no-preference) {
     :is([data-copied], [data-copy-failed]) > .copied-label {
       transition: none;
@@ -58,6 +70,19 @@
 
     [data-copy-round="b"] > .copied-label {
       animation-name: copied-again-b;
+    }
+
+    [data-copied] > .icon-check path {
+      stroke-dasharray: 1;
+      animation: check-draw var(--duration-base) var(--ease-out);
+    }
+
+    [data-copied][data-copy-round="a"] > .icon-check path {
+      animation-name: check-draw-a;
+    }
+
+    [data-copied][data-copy-round="b"] > .icon-check path {
+      animation-name: check-draw-b;
     }
   }
 
@@ -77,6 +102,24 @@
   @keyframes copied-again-b {
     from {
       translate: 0 4px;
+    }
+  }
+
+  @keyframes check-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-a {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes check-draw-b {
+    from {
+      stroke-dashoffset: 1;
     }
   }
 

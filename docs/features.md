@@ -460,7 +460,8 @@ The body is the content, else the summary, through `sanitize.HTML` (relative URL
 `sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`video-embeds.ts` swaps in the sandboxed player; without JavaScript the link opens the video), turns posts embedded from X and Bluesky into a post card (`xPost` and `blueskyPost` read the embed's markup, `socialCard` writes the card, whose time `local-times.ts` shows in the reader's zone), and turns any other iframe into a link, and makes `http:` images load over `https:`.
 Images a site lazy-loads with a script show without it: `imageSource` takes the URL from `data-src`, `data-original` or `data-lazy-src` when `src` is missing or a `data:` placeholder, `noscriptImage` uses the `<img>` in a `<noscript>`, and `dropEmptyImages` removes an image still left without an http(s) source, with the paragraph, link or figure that held only it; `ShowsImage` reads sources the same way.
 The card image shows above the text unless `sanitize.ShowsImage` finds the content already shows it.
-Each code block (`.article-body pre`) gets a Copy button from `code-copy.ts`, since the sanitizer allows no button and it needs JavaScript; it's added only where the Clipboard API works, copies the block's text less one trailing line break, and shows and announces the outcome ("Code copied" or "Couldn't copy") with the same label as Share's (`copied.ts`, below).
+`sanitize.HTML` also names a code block's language, when the feed's highlighter marked it, in `data-lang` on its `<pre>` (`labelCode` in `code.go`), which the block's bar shows.
+Each code block (`.article-body pre`) gets a copy button from `code-copy.ts`, cloned from the page's `template[data-code-copy]` into the block's bar, since the sanitizer allows no button and it needs JavaScript; it's added only where the Clipboard API works, copies the block's text less one trailing line break, and shows and announces the outcome ("Code copied" or "Couldn't copy") with the same label as Share's (`copied.ts`, below).
 
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `read-pings.ts` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
@@ -492,7 +493,7 @@ Without JavaScript the link just works.
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
-4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
+4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`), `code.go` (`labelCode`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 
 **Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.

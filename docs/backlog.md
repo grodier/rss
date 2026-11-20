@@ -231,6 +231,20 @@ Each with when it pays off:
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.
   Needs a failure story ("Couldn't load the article; read it on {site}").
+  Extracted text would need more clean-up than feed HTML: Defuddle, which obsidian-clipper uses, also standardizes footnotes, code blocks and math from many sites' markup and removes newsletter prompts (#718); #719–#721's steps in `sanitize` apply to it as to feeds.
+- [ ] **Footnotes in place.**
+  Tapping a footnote number shows the note beside it, with the article's footnotes section still there to jump to, as obsidian-clipper's reader does (`initializeFootnotes`, #718); without JavaScript the in-page links #719 makes keep working.
+  Needs the common formats recognized (Kramdown and Goldmark's `fn:N`, WordPress, Substack; Defuddle's `elements/footnotes.ts` covers about a dozen), and a quieter footnotes section, smaller under a rule, whose class the sanitizer drops today.
+  A design checkpoint (a popover, or the note opening inline under the paragraph), after #719.
+- [ ] **Tap an image to enlarge it.**
+  Screenshots and diagrams are hard to read at the column's width on a phone; obsidian-clipper's reader opens an article's images, other than those already in a link, full screen with their caption and previous and next (#718).
+  Here it would be a `<dialog>` the script adds over `.article-body img`, needing a design checkpoint; without JavaScript nothing changes.
+- [ ] **Syntax highlighting in code blocks.**
+  The sanitizer drops the `language-*` classes feeds put on `<code>`, so keep them first (a class matching `^language-[a-z0-9+#-]{1,20}$`, as #722's caption option would).
+  obsidian-clipper highlights in the browser with highlight.js, a runtime library we'd have to justify ("Code conventions" in CLAUDE.md); on the server (`alecthomas/chroma`) it adds to the cost of sanitizing on every view (see the watchlist).
+  Worth it only if code-heavy feeds turn out to be common.
+- [ ] **Contents: the current section.**
+  #723's contents list could mark the section being read, as obsidian-clipper's outline does with an `IntersectionObserver`, and add "back to contents" links; it changes on every scroll, which "Motion and feedback" in decisions.md weighed against a progress bar, so it needs the owner's call after #723 has been used.
 - [ ] **Dates for undated articles from their pages.**
   Enrichment could read a page's `article:published_time` and fill an undated article's `published_at`, so rows and feed pages show a date; its timeline position wouldn't move (it's set once), and many pages have no date.
   Deferred from #438, which places undated articles without one.
@@ -393,6 +407,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **Reading preferences (needs planning).**
   Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as fieldsets in Settings → Reading's form (#446), next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).
+  obsidian-clipper's reader (#718) offers text size (9–24 px, plus `0.25vw` so it grows with the window), line height (1.1–2), line width (30–60em) and font, and sets them as custom properties from its script; here they'd be a few fixed steps rendered as `data-*` attributes on `<html>`, like `data-theme`, since pages work without JavaScript and the CSP blocks `style` attributes.
 - [ ] **Rebuild assets without restarting `go run`.**
   Once Vite builds the frontend (#543), a development-only flag could serve `web/dist` from disk instead of the embedded copy, so `make assets/watch`'s output shows on reload.
   Templates are embedded too, so it only helps with CSS and JavaScript changes; when restarting after each one gets in the way.
@@ -774,6 +789,7 @@ Pages and queries:
   *Fix:* an in-memory cache per token (keyed by the timeline's `updated_at` and newest article), a CDN in front of `/shared/`, or a per-IP limit.
 - [ ] **Sanitizing article HTML on every view** (#151).
   `sanitize.HTML` parses and renders the article with `x/net/html`, then bluemonday parses it again, on each article page view; cost grows with the size of the HTML, which feeds don't bound.
+  #719, #721 and #723 add passes over the parsed tree (ids and links, lazy images, headings), each linear in its size.
   *Signal:* article page p95 latency or CPU rising, especially for long articles.
   *Fix:* cache the sanitized HTML per article (keyed by a policy version, so a policy change still applies everywhere), or cap the HTML size we render.
 - [ ] **Read writes on article views** (#156, #158).

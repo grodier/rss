@@ -40,6 +40,13 @@ type fakeFeeds struct {
 	catalog []rss.AdminCatalogSection
 	// seedStatus is the status of the lookup QueueSeedLookup returns.
 	seedStatus rss.LookupStatus
+	// sites is what ListSites returns, keeping the queries it was asked in
+	// siteQueries; siteCounts is what CountSites returns, keeping the
+	// searches in siteCounted.
+	sites       []rss.AdminSiteRow
+	siteQueries []rss.AdminSiteQuery
+	siteCounts  map[string]int
+	siteCounted []string
 }
 
 // feedCall is one action the store was asked to make.
@@ -60,6 +67,20 @@ func (f *fakeFeeds) CountFeeds(_ context.Context, q string) (map[string]int, err
 	defer f.mu.Unlock()
 	f.counted = append(f.counted, q)
 	return f.counts, nil
+}
+
+func (f *fakeFeeds) ListSites(_ context.Context, q rss.AdminSiteQuery) ([]rss.AdminSiteRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.siteQueries = append(f.siteQueries, q)
+	return f.sites, f.err
+}
+
+func (f *fakeFeeds) CountSites(_ context.Context, q string) (map[string]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.siteCounted = append(f.siteCounted, q)
+	return f.siteCounts, f.err
 }
 
 func (f *fakeFeeds) Feed(_ context.Context, id string) (rss.AdminFeed, error) {
@@ -258,7 +279,8 @@ func TestFeedsPage(t *testing.T) {
 		`<th scope="col">Next fetch</th>`,
 		// The rows: the problem in words, its error escaped; a late last
 		// success in bold, relative, with its UTC time on hover.
-		`<a href="/feeds/` + feedID(1) + `">Example feed</a><small>example.com</small>`,
+		// The host links to its site's page.
+		`<a href="/feeds/` + feedID(1) + `">Example feed</a><small><a href="/sites/` + siteID(1) + `">example.com</a></small>`,
 		`<span class="problem problem-bad" title="&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;"><strong>Failing 4×</strong><span class="problem-detail"> · &lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</span></span>`,
 		`<strong>Gone since 8 Nov 2026</strong>`,
 		`1,234`, `2.2`,
@@ -347,6 +369,10 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	body = rr.Body.String()
 	for _, want := range []string{
 		`<h1>example.com</h1>`,
+		// A site's page is under Sites, and its feeds' hosts, its own,
+		// aren't links.
+		`<a href="/sites" aria-current="page">Sites</a>`,
+		`<a href="/feeds/` + feedID(1) + `">Example feed</a><small>example.com</small>`,
 		`<code>&lt;img src=x onerror=&#34;lookup&#34;&gt;</code>`,
 		`<section class="admin-section health health-bad" aria-labelledby="lookup-heading">`,
 		`<p class="health-line">Failed 1 h ago after 2 attempts.</p>`,

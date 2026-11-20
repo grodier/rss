@@ -686,35 +686,38 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 ### Feeds and sites
 
-`GET /feeds` (`feedsHandler`) finds the feeds that fail, went quiet or answered 410, and each feed's and site's page fixes their fetching; subscribers are counts, never who ("Admin" in decisions.md).
+`GET /feeds` (`feedsHandler`) finds the feeds that fail, went quiet or answered 410, `GET /sites` (`sitesHandler`) lists the sites with their lookup and icon, and each feed's and site's page fixes their fetching; subscribers are counts, never who ("Admin" in decisions.md).
 
 1. **The list.** A row of filter links (`feedFilters`): Failing (`rss.AdminFailingAfter`, 3, failures in a row, the reader's warning), Gone, Never fetched (no successful fetch), Stale (subscribed, not gone, and no successful fetch for a day, counting a feed never fetched from when it was found), No subscribers and All, Failing by default; a search of titles, URLs and site hosts (`?q=`); and headers that sort by subscribers (the default), posts a week, failures (most first) or last success (oldest first, never fetched before all).
    A filter or order the page doesn't offer is its default, and each link keeps the others (`feedsParams.href`).
    Each filter shows how many feeds matching the search it keeps (`AdminFeedRepository.CountFeeds`, one pass with a `count(*) FILTER` per filter).
-   Each row is the feed with its site's host and its Discover section, if any, under it, its problem (`problemOf`, the `problem-text` partial), its subscribers, its posts a week, and its last success and next fetch relative to now (`ago`), with the UTC time on hover; a subscribed feed's last success over a day old is in bold (`isLate`), since Stale is a filter, not a problem.
+   Each row is the feed with its site's host (linking to the site's page, `feedTable.LinkSites`) and its Discover section, if any, under it, its problem (`problemOf`, the `problem-text` partial), its subscribers, its posts a week, and its last success and next fetch relative to now (`ago`), with the UTC time on hover; a subscribed feed's last success over a day old is in bold (`isLate`), since Stale is a filter, not a problem.
    The problem is one phrase, the first that applies, then the last error cut to one line: "Gone since {date}" and "Failing {n}×" (from `rss.AdminFailingAfter` failures in a row) in the danger tone, "Failed {n}×" (fewer) and "Never fetched" in the neutral one, and nothing for a feed that's fine; the Problem header sorts by failures in a row.
    `AdminFeedRepository.ListFeeds` returns 100 a page; its cursor (`?after=`) is the last row's feed, compared on the order's key and then the ID, read from the feed itself, so a row that changes between pages doesn't lose the place.
    Every filter but Gone reads every feed and counts its subscribers (the watchlist entry "The admin's feed list").
 2. **A feed's page.** `GET /feeds/{id}` (`feedHandler`, `AdminFeedRepository.Feed`) opens with its status panel, tinted when its problem is bad: its problem as the heading, else "Last fetched {when}" when it's late, else "Fetching normally"; a line of what happened and when; the whole last error while it's failing; and only the actions that apply (Refresh now, or Clear gone when it's gone; Reset backoff after a failure).
    Then its figures (subscribers, posts a week, articles with the newest's age, enrichment jobs with the oldest's: `feedFigures`), its Discover panel, and every other column as escaped text in Details, with links to its page in the reader, where debug mode inspects it, and to its History in the audit log.
-3. **A site's page.** `GET /sites/{id}` (`siteHandler`, `AdminFeedRepository.Site`) shows its feeds in the list's table (the `feed-table` partial, unsorted); its lookup (by its host, the lookups' site key) as a sentence (`lookupSummary`: waiting, running, done with or without feeds, or failed, with its error) and its icon (size, type, bytes, source and when fetched, or none, and its next check) side by side, each with its action; then the site's columns in Details.
-4. **Actions.** Each is a POST that redirects back to its page with a flash, and each is recorded in the audit log:
+3. **The sites list.** Sites have their own section in the sidebar, after Feeds, and the list follows the feeds list's pattern (`sitesParams`, like `feedsParams`): filter links (`siteFilters`: All, the default, No icon, Lookup failed and No subscribers) with their counts (`AdminFeedRepository.CountSites`, one pass), a search of hosts and titles, and headers that sort by subscribers (the default), feeds, host (A to Z) or when it was found (newest first), 100 a page with the same kind of cursor.
+   Each row is the site's host, linking to its page, with its title under it; its lookup (the one keyed by its host) in `lookupSummary`'s words, in the danger tone when it failed; its icon in short ("64×64 PNG", or "None", `iconLabel`); its feeds; its subscribers, each reader once across its feeds; and when it was found.
+   `AdminFeedRepository.ListSites` counts each site's feeds and subscribers and joins its icon (never the image) and lookup on every view (the watchlist entry "The admin's site list").
+4. **A site's page.** `GET /sites/{id}` (`siteHandler`, `AdminFeedRepository.Site`), under Sites in the sidebar, shows its feeds in the list's table (the `feed-table` partial, unsorted, their hosts not linked); its lookup (by its host, the lookups' site key) as a sentence (`lookupSummary`: waiting, running, done with or without feeds, or failed, with its error) and its icon (size, type, bytes, source and when fetched, or none, and its next check) side by side, each with its action; then the site's columns in Details.
+5. **Actions.** Each is a POST that redirects back to its page with a flash, and each is recorded in the audit log:
    - Refresh now (`feedRefreshHandler`) calls `ingest.Refresher.Refresh` within 8 s, as the reader's Refresh button does but without its 5-minute rule or per-reader limit, through the admin's own `fetch.Client` (see "Outbound HTTP" in architecture.md); the fetch records its outcome on the feed as any does, and the handler then records `feed.refresh` with the outcome (saved with its counts, not modified, gone, or failed with the error), even when the fetch used up the request's time.
      A gone feed isn't refreshed: Clear gone first.
    - Reset backoff (`AdminFeedRepository.ResetBackoff`, `feed.reset_backoff`) and Clear gone (`ClearGone`, `feed.clear_gone`, only for a gone feed) make the feed due now, the first with no failures counted; the background refresh runner fetches it if it has subscribers.
    - Check for new feeds (`CheckForFeeds`, `site.lookup`) queues a lookup of the site's home page at a reader's priority with the reader's `LookupRepository.Request` statement (`requestLookup`, in the action's transaction) and no time-to-live, so a finished lookup runs again; one already pending or running stays as it is.
    - Check the icon again (`CheckIcon`, `site.check_icon`) makes the site's icon due now.
-5. **Discover's catalog.** A feed's Discover panel says whether it's in the catalog and under which section, as its heading, with a section select and Save posting to `POST /feeds/{id}/discover` (`feedDiscoverHandler`); the empty choice takes it out.
+6. **Discover's catalog.** A feed's Discover panel says whether it's in the catalog and under which section, as its heading, with a section select and Save posting to `POST /feeds/{id}/discover` (`feedDiscoverHandler`); the empty choice takes it out.
    `AdminFeedRepository.SetDiscoverSection` changes the feed's `discover_feeds` row and records `feed.discover` with the section's ID and name before and after, in one transaction, so the entry still reads after a rename; saving the section it already has records nothing.
    The panel's choices are `discover_sections` in their order (`DiscoverSections`), posted by ID; a section that doesn't exist and adding a gone feed are refused with a field error (422); a gone feed already in the catalog can still be taken out.
 
 **Start at:**
 
-1. `internal/admin/feeds.go` (`feedsHandler`, `feedRefreshHandler`, `feedDiscoverHandler`).
-2. `internal/psql/admin_feeds.go` (`ListFeeds`, `updateFeed`, `CheckForFeeds`, `SetDiscoverSection`).
-3. `internal/ui/admin/feeds.html`, `feed.html`, `site.html` and `partials/feeds.html`.
+1. `internal/admin/feeds.go` (`feedsHandler`, `feedRefreshHandler`, `feedDiscoverHandler`) and `sites.go` (`sitesHandler`).
+2. `internal/psql/admin_feeds.go` (`ListFeeds`, `ListSites`, `updateFeed`, `CheckForFeeds`, `SetDiscoverSection`).
+3. `internal/ui/admin/feeds.html`, `sites.html`, `feed.html`, `site.html` and `partials/feeds.html`.
 
-**Tests:** `internal/admin/feeds_test.go`; `internal/psql/admin_feeds_test.go`.
+**Tests:** `internal/admin/feeds_test.go`, `sites_test.go`; `internal/psql/admin_feeds_test.go`.
 
 ### Seed list and Discover's catalog
 

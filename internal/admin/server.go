@@ -142,6 +142,8 @@ type RenderReader interface {
 type FeedStore interface {
 	ListFeeds(ctx context.Context, q rss.AdminFeedQuery) ([]rss.AdminFeedRow, error)
 	CountFeeds(ctx context.Context, q string) (map[string]int, error)
+	ListSites(ctx context.Context, q rss.AdminSiteQuery) ([]rss.AdminSiteRow, error)
+	CountSites(ctx context.Context, q string) (map[string]int, error)
 	Feed(ctx context.Context, id string) (rss.AdminFeed, error)
 	Site(ctx context.Context, id string) (rss.AdminSite, error)
 	ResetBackoff(ctx context.Context, id string, by rss.AuditActor) error

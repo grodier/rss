@@ -162,7 +162,7 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
 - [ ] **Platform-specific discovery rules.**
-  YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
+  Beyond #725's site keys for shared hosts: Medium publications (`medium.com/<publication>`, which share the first path segment with Medium's own pages), host aliases that should key as their main host (`m.youtube.com`, `old.reddit.com`), other platforms that share a host under a path, and finding a platform's feed when its page doesn't advertise one.
 - [ ] **`<a href>` heuristics.**
   When a page has no `<link rel="alternate">`, look for links whose URL or text mentions RSS/Atom/feed before probing common paths.
 
@@ -611,6 +611,10 @@ Background refresh:
   Every instance's lookup runner resets stale jobs every minute, and no index covers `ResetStale`'s `status = 'running'` filter, so each reset scans the table, which keeps a row per site key ever looked up.
   *Signal:* `ResetStale` in `pg_stat_statements` totals, or a large `lookups` table.
   *Fix:* a partial index on `started_at WHERE status = 'running'`.
+- [ ] **The site-key re-key reads every feed** (#727).
+  When `SiteKeyRulesVersion` changes, `www migrate` computes every feed's key in Go in one transaction during the pre-deploy, which holds the deploy and its locks.
+  *Signal:* the pre-deploy's re-key log line, or the deploy, takes over a few seconds.
+  *Fix:* read only feeds whose site is a bare host the rules can split (a host with a rule, or a `site_url` with `/@`), in batches with a transaction each.
 - [ ] **One statement per article in `saveArticles`.**
   Each fetched item is a separate upsert inside the `SaveFetch` transaction, and inside `DiscoveryRepository.Save` for lookups and imports.
   #448 measured about 1 ms per article locally: about 190 ms of a 200-item feed's first save, most of an imported feed's own time.

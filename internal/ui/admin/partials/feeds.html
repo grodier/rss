@@ -1,6 +1,6 @@
 {{/* feed-table lists feeds (dot: a feedTable): each linking to its page,
-     with its site's host and its section in Discover, if it's in it, under
-     it; what's wrong with it, if anything (the problem-text partial); its
+     with its site's host (linking to the site's page, with LinkSites) and
+     its section in Discover, if it's in it, under it; what's wrong with it, if anything (the problem-text partial); its
      subscribers (a count, never who) and posting rate; and its last
      success, in bold when it's late, and next fetch, relative to the
      table's time with the UTC time on hover. A sortable column's header
@@ -14,9 +14,10 @@
             </thead>
             <tbody>
               {{$now := .Now}}
+              {{$linkSites := .LinkSites}}
               {{range .Rows}}
               <tr>
-                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a><small>{{.SiteHost}}{{with .Section.Name}} · Discover: {{.}}{{end}}</small></td>
+                <td class="wrap feed-name"><a href="/feeds/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Url}}{{end}}</a><small>{{if $linkSites}}<a href="/sites/{{.SiteID}}">{{.SiteHost}}</a>{{else}}{{.SiteHost}}{{end}}{{with .Section.Name}} · Discover: {{.}}{{end}}</small></td>
                 <td class="feed-problem">{{template "problem-text" .Problem}}</td>
                 <td class="num">{{count .Subscribers}}</td>
                 <td class="num">{{perWeek .PostsPerWeek}}</td>

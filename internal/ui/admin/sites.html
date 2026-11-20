@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Sites - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Sites</h1>
+        <p>Every site the app knows, with its lookup and icon. Open one to check its lookup or icon again; hover a time for its UTC date.</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Show" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="sites-heading">
+        <h2 id="sites-heading" class="visually-hidden">Sites</h2>
+        <form class="filters" action="/sites" method="get" role="search" aria-label="Search sites">
+          <input type="hidden" name="filter" value="{{.Filter}}" />
+          <input type="hidden" name="sort" value="{{.Sort}}" />
+          <div>
+            <label for="q">Host or title</label>
+            <input type="search" id="q" name="q" value="{{.Q}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <button class="btn btn-sm" type="submit">Search</button>
+          {{if .Q}}<a class="btn btn-sm" href="{{.ClearSearch}}">Clear</a>{{end}}
+        </form>
+
+        {{if .Rows}}
+        {{/* The feeds tables' styles: a name with a line under it, and a
+             problem cut to one line; the site's icon leads its cell, as
+             readers' avatars do, so it shows on phones without scrolling,
+             and the Icon column says its size and type. */}}
+        <div class="table-wrap">
+          <table class="data feeds">
+            <thead>
+              <tr>
+                {{range .Columns}}<th scope="col"{{if .Numeric}} class="num"{{end}}{{with .Sort}} aria-sort="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}">{{.Label}}{{if .Sort}} <span aria-hidden="true">{{if eq .Sort "ascending"}}↑{{else}}↓{{end}}</span>{{end}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}
+              </tr>
+            </thead>
+            <tbody>
+              {{$now := .Now}}
+              {{range .Rows}}
+              <tr>
+                <td class="wrap feed-name site-name"><span class="site-cell"><span class="site-icon">{{with .IconURL}}<img src="{{.}}" alt="" width="32" height="32" loading="lazy">{{end}}</span><span><a href="/sites/{{.ID}}">{{.Host}}</a>{{with .Title}}<small>{{.}}</small>{{end}}</span></span></td>
+                <td class="feed-problem">{{template "problem-text" .Lookup}}</td>
+                <td>{{.Icon}}</td>
+                <td class="num">{{count .Feeds}}</td>
+                <td class="num">{{count .Subscribers}}</td>
+                <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Next</a>
+        </div>
+        {{end}}
+        {{else}}
+        <p class="empty">{{if .Q}}No sites match “{{.Q}}”.{{else}}No sites.{{end}}</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

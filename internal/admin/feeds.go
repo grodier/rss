@@ -548,7 +548,9 @@ type sitePage struct {
 	Feeds feedTable
 	// Lookup says how the site's lookup stands, in the feeds' Problem
 	// style.
-	Lookup    feedProblem
+	Lookup feedProblem
+	// IconURL is the admin's URL of the site's icon, "" when it has none.
+	IconURL   string
 	ReaderURL string
 	History   string
 	Now       time.Time
@@ -588,6 +590,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		Site:      site,
 		Feeds:     feedTable{Columns: feedTableColumns(nil), Rows: feedRows(site.Feeds, now), Now: now},
 		Lookup:    lookupSummary(site.Lookup, now),
+		IconURL:   iconURL(site.Icon.Icon),
 		ReaderURL: s.config.AppURL + "/sites/" + site.Site.ID,
 		History:   auditHistoryURL("site", site.Site.ID),
 		Now:       now,

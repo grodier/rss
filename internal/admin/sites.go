@@ -1,19 +1,24 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
 
 // The Sites list: every site with its lookup, its icon, its feeds and its
 // subscribers (a count, never who), leading to a site's page, which is
-// otherwise reached only through one of its feeds (#706).
+// otherwise reached only through one of its feeds (#706). Icons are shown
+// as images, served by the admin itself (siteIconImageHandler), since its
+// CSP allows only its own images.
 
 // sitesPageSize is how many sites the Sites page lists at once.
 const sitesPageSize = 100
@@ -88,11 +93,23 @@ func (p sitesParams) href() string {
 }
 
 // siteRow is a site as the Sites table shows it: its lookup in words, in
-// the danger tone when it failed, and its icon in short.
+// the danger tone when it failed, its icon's URL ("" for none) and its icon
+// in short.
 type siteRow struct {
 	rss.AdminSiteRow
-	Lookup feedProblem
-	Icon   string
+	Lookup  feedProblem
+	IconURL string
+	Icon    string
+}
+
+// iconURL is the admin's URL of icon i, versioned by its hash so a changed
+// icon gets a new URL and an unchanged one stays cached; "" when there's
+// none.
+func iconURL(i rss.SiteIcon) string {
+	if i.SiteID == "" {
+		return ""
+	}
+	return "/sites/" + i.SiteID + "/icon?" + url.Values{"v": {i.Hash}}.Encode()
 }
 
 // iconLabel says what icon i is, "64×64 PNG", or "None" when there's none.
@@ -192,10 +209,43 @@ func (s *Server) sitesHandler(w http.ResponseWriter, r *http.Request) {
 		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: next.href(), Current: f.Key == params.filter, Count: count(counts[f.Key])})
 	}
 	for _, row := range rows {
-		page.Rows = append(page.Rows, siteRow{AdminSiteRow: row, Lookup: lookupSummary(row.Lookup, now), Icon: iconLabel(row.Icon)})
+		page.Rows = append(page.Rows, siteRow{AdminSiteRow: row, Lookup: lookupSummary(row.Lookup, now), IconURL: iconURL(row.Icon), Icon: iconLabel(row.Icon)})
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "sites.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// siteIconImageHandler serves the site {id}'s stored icon, 404 when it has
+// none, so the admin can show it: its CSP allows only its own images, so
+// it can't use the reader's /sites/{id}/icon. Like the reader's, a URL
+// whose ?v= is the icon's hash is cached for good (privately: the admin is
+// behind its login), and the image is sandboxed in case it's opened
+// directly.
+func (s *Server) siteIconImageHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return
+	}
+	icon, err := s.services.Feeds.SiteIcon(r.Context(), id)
+	switch {
+	case errors.Is(err, rss.ErrNoRecord):
+		s.notFoundResponse(w, r)
+		return
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	h := w.Header()
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	if r.URL.Query().Get("v") == icon.Hash {
+		h.Set("Cache-Control", "private, max-age=31536000, immutable")
+	}
+	h.Set("Content-Type", icon.ContentType)
+	h.Set("Content-Length", strconv.Itoa(len(icon.Data)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(icon.Data)
 }

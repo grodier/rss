@@ -47,6 +47,8 @@ type fakeFeeds struct {
 	siteQueries []rss.AdminSiteQuery
 	siteCounts  map[string]int
 	siteCounted []string
+	// icon is what SiteIcon returns when its site ID matches.
+	icon rss.SiteIcon
 }
 
 // feedCall is one action the store was asked to make.
@@ -95,6 +97,16 @@ func (f *fakeFeeds) Site(_ context.Context, id string) (rss.AdminSite, error) {
 		return rss.AdminSite{}, rss.ErrNoRecord
 	}
 	return f.site, nil
+}
+
+func (f *fakeFeeds) SiteIcon(_ context.Context, id string) (rss.SiteIcon, error) {
+	if f.err != nil {
+		return rss.SiteIcon{}, f.err
+	}
+	if id != f.icon.SiteID {
+		return rss.SiteIcon{}, rss.ErrNoRecord
+	}
+	return f.icon, nil
 }
 
 func (f *fakeFeeds) call(action, id string, by rss.AuditActor) error {
@@ -378,6 +390,8 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 		`<p class="health-line">Failed 1 h ago after 2 attempts.</p>`,
 		`<a href="/feeds/` + feedID(1) + `">Example feed</a>`,
 		`No icon.`, `Next check in 24 h.`, `2026-11-10 12:00`,
+		// No icon: an empty tile.
+		`<span class="site-icon site-icon-lg"></span>`,
 		`/sites/` + siteID(1) + `/lookup`, `/sites/` + siteID(1) + `/check-icon`,
 		`href="` + testAppURL + `/sites/` + siteID(1) + `">In the reader</a>`,
 	} {

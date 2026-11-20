@@ -51,7 +51,7 @@
               <tr>
                 <td class="wrap feed-name"><a href="/sites/{{.ID}}">{{.Host}}</a>{{with .Title}}<small>{{.}}</small>{{end}}</td>
                 <td class="feed-problem">{{template "problem-text" .Lookup}}</td>
-                <td>{{.Icon}}</td>
+                <td><span class="icon-cell"><span class="site-icon">{{with .IconURL}}<img src="{{.}}" alt="" width="32" height="32" loading="lazy">{{end}}</span>{{.Icon}}</span></td>
                 <td class="num">{{count .Feeds}}</td>
                 <td class="num">{{count .Subscribers}}</td>
                 <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>

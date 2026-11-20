@@ -3,6 +3,7 @@ package psql
 import (
 	"cmp"
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -708,6 +709,19 @@ func TestAdminFeedRepositoryListSites(t *testing.T) {
 		}
 		if r := rows[quiet]; r.Icon.SiteID != "" || r.Lookup != (rss.Lookup{}) {
 			t.Errorf("quiet: icon %+v, lookup %+v; want none", r.Icon, r.Lookup)
+		}
+	})
+
+	t.Run("icon", func(t *testing.T) {
+		icon, err := repo.SiteIcon(t.Context(), withIcon)
+		if err != nil {
+			t.Fatalf("SiteIcon: %v", err)
+		}
+		if string(icon.Data) != "\x89" || icon.ContentType != "image/png" || icon.Hash != "abc" {
+			t.Errorf("SiteIcon = %q, %q, %q; want the stored image", icon.Data, icon.ContentType, icon.Hash)
+		}
+		if _, err := repo.SiteIcon(t.Context(), quiet); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("SiteIcon of a site without one: %v, want rss.ErrNoRecord", err)
 		}
 	})
 

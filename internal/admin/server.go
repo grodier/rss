@@ -146,6 +146,7 @@ type FeedStore interface {
 	CountSites(ctx context.Context, q string) (map[string]int, error)
 	Feed(ctx context.Context, id string) (rss.AdminFeed, error)
 	Site(ctx context.Context, id string) (rss.AdminSite, error)
+	SiteIcon(ctx context.Context, id string) (rss.SiteIcon, error)
 	ResetBackoff(ctx context.Context, id string, by rss.AuditActor) error
 	ClearGone(ctx context.Context, id string, by rss.AuditActor) error
 	CheckIcon(ctx context.Context, id string, by rss.AuditActor) error

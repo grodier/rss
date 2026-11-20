@@ -1,6 +1,7 @@
 /* The feeds and sites pages: a feed's problem, said in words, in the
    tables and atop its page (the status panel, tinted when it's bad), a
-   late last success in bold, and a site's lookup and icon side by side. */
+   late last success in bold, a site's lookup and icon side by side, and
+   its icon's image. */
 @layer components {
   .feeds .feed-name small {
     display: block;
@@ -73,6 +74,53 @@
     font-size: 0.8125rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* A site's icon as readers see it: on a white tile, contained, so a
+     small or oddly shaped icon shows as it is; an empty tile when the
+     site has none. */
+  .site-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    inline-size: 2rem;
+    block-size: 2rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--avatar-icon-bg);
+  }
+
+  .site-icon:empty {
+    border-style: dashed;
+    background: transparent;
+  }
+
+  .site-icon img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+  }
+
+  .site-icon-lg {
+    inline-size: 4rem;
+    block-size: 4rem;
+  }
+
+  .icon-cell,
+  .icon-line {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  .icon-cell {
+    white-space: nowrap;
+  }
+
+  .icon-line {
+    align-items: flex-start;
+    margin-block-start: 0.25rem;
   }
 
   .health .form-actions {

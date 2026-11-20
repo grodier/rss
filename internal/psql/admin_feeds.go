@@ -398,6 +398,13 @@ func (r *AdminFeedRepository) ListSites(ctx context.Context, q rss.AdminSiteQuer
 	return out, rows.Err()
 }
 
+// SiteIcon returns site id's stored icon with its image, or
+// rss.ErrNoRecord when it has none, for the admin's own copy of the
+// reader's icon route (the admin shows only its own images).
+func (r *AdminFeedRepository) SiteIcon(ctx context.Context, id string) (rss.SiteIcon, error) {
+	return NewSiteRepository(r.DB).GetIcon(ctx, id)
+}
+
 // ResetBackoff makes feed id due now with no failures counted, so the
 // refresh runner fetches it next as if it had never failed, recorded as
 // feed.reset_backoff by by. rss.ErrNoRecord if the feed doesn't exist.

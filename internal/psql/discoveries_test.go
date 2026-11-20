@@ -147,7 +147,7 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 		}
 	})
 
-	id, err := repo.Save(t.Context(), site, feedList)
+	id, err := repo.Save(t.Context(), site, true, feedList)
 	if err != nil || id == "" {
 		t.Fatalf("Save: id %q, err %v", id, err)
 	}
@@ -170,7 +170,7 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 	for i := range feedList {
 		feedList[i].Feed.NextFetch = secondFetch
 	}
-	id2, err := repo.Save(t.Context(), site, feedList)
+	id2, err := repo.Save(t.Context(), site, true, feedList)
 	if err != nil {
 		t.Fatalf("Save again: %v", err)
 	}
@@ -215,8 +215,47 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 	t.Run("zero feeds is allowed", func(t *testing.T) {
 		h := fmt.Sprintf("empty-%d.example.com", n)
 		t.Cleanup(func() { db.Exec(`DELETE FROM sites WHERE host = $1`, h) })
-		if id, err := repo.Save(t.Context(), rss.Site{Host: h, URL: "https://" + h + "/"}, nil); err != nil || id == "" {
+		if id, err := repo.Save(t.Context(), rss.Site{Host: h, URL: "https://" + h + "/"}, true, nil); err != nil || id == "" {
 			t.Errorf("Save: id %q, err %v", id, err)
+		}
+	})
+
+	t.Run("only a site's home page replaces its details", func(t *testing.T) {
+		h := fmt.Sprintf("fromfeed-%d.example.com", n)
+		t.Cleanup(func() {
+			db.Exec(`DELETE FROM feeds WHERE url LIKE $1`, "https://"+h+"/%")
+			db.Exec(`DELETE FROM sites WHERE host = $1`, h)
+		})
+		get := func(t *testing.T) rss.Site {
+			t.Helper()
+			got, err := NewSiteRepository(db).GetByHost(t.Context(), h)
+			if err != nil {
+				t.Fatalf("GetByHost: %v", err)
+			}
+			return got
+		}
+		save := func(t *testing.T, site rss.Site, fromHome bool) {
+			t.Helper()
+			feed := []rss.FeedWithArticles{{Feed: rss.Feed{Url: "https://" + h + "/podcast.xml", Title: "Podcast"}}}
+			if _, err := repo.Save(t.Context(), site, fromHome, feed); err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+		}
+
+		// A new site takes a feed's details.
+		save(t, rss.Site{Host: h, URL: "http://" + h + "/", Title: "The Podcast"}, false)
+		if got := get(t); got.Title != "The Podcast" || got.URL != "http://"+h+"/" {
+			t.Errorf("new site = %q at %q; want The Podcast at http", got.Title, got.URL)
+		}
+
+		// Its home page's lookup replaces them.
+		save(t, rss.Site{Host: h, URL: "https://" + h + "/", Title: "Example"}, true)
+		// Another page's or a feed's details then fill in only the description
+		// it lacks.
+		save(t, rss.Site{Host: h, URL: "http://" + h + "/", Title: "Alice – Example", Description: "Episodes"}, false)
+		got := get(t)
+		if got.Title != "Example" || got.URL != "https://"+h+"/" || got.Description != "Episodes" {
+			t.Errorf("site = %+v; want Example at https, described Episodes", got)
 		}
 	})
 }

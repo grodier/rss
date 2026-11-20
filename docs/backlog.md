@@ -112,7 +112,6 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   - the "Fetch history" under "Feed ingestion" (the last 20 or so attempts per feed: time, status, duration, size, items, new and updated, error) as a timeline on the feed's page, which reverses debug mode's "Nothing new is stored" ("Debug mode" in decisions.md) and adds a write per fetch for the watchlist;
   - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
   - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
-- [ ] **A site's icon on its admin page:** the stored image beside the Icon panel's sentence, served by the admin from `site_icons` (the admin's CSP allows only its own images), so a changed favicon can be checked at a glance (#706 leaves it out).
 - [ ] **A model's suggestions for Discover's catalog** (from #649; after #712, once the owner has picked 200–300 feeds by hand).
   A button on the picking page sends a batch of sites (name, description, each candidate feed's title, categories from #713 and recent headlines; public data only) to a model, which answers per feed whether to pick it and under which section, with a probability; the page pre-fills them, and only an admin's Save puts a feed in the catalog.
   Choose the model with a bake-off on the owner's hand picks as the labeled set: Claude Haiku 5.5 with structured outputs limited to the site's feed IDs and the section IDs (about $0.10 and $0.50 per million input and output tokens, roughly $0.20 per 1,000 sites), against Jev, TypeSafe's decision model, which returns a probability per answer trained to be calibrated (about $0.04 per million input tokens, output free, through OpenRouter's alpha Decisions endpoint), with a larger model as the ceiling; then set the threshold below which a suggestion isn't pre-filled from the same data.
@@ -163,6 +162,9 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   Don't fetch them automatically.
 - [ ] **Platform-specific discovery rules.**
   Beyond #725's site keys for shared hosts: Medium publications (`medium.com/<publication>`, which share the first path segment with Medium's own pages), host aliases that should key as their main host (`m.youtube.com`, `old.reddit.com`), other platforms that share a host under a path, and finding a platform's feed when its page doesn't advertise one.
+- [ ] **Add a feed by its address on a site's page.**
+  A field by "Missing a feed?" on the site page, for a feed the site's home page doesn't link to, offered whatever the last lookup's age; today the reader pastes its address into Discover, whose Look up adds it to the site.
+  Needs a design checkpoint; worth it if readers don't find Discover's route.
 - [ ] **`<a href>` heuristics.**
   When a page has no `<link rel="alternate">`, look for links whose URL or text mentions RSS/Atom/feed before probing common paths.
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -91,7 +92,8 @@ type searchFixture struct {
 	followed map[string]bool // feed IDs the reader follows, of the sites' feeds
 	saved    []rss.SavedArticle
 	hasSaves bool
-	fail     string // the source that fails: "subs", "saved", "sites", "followed" or "hasSaves"
+	lookups  map[string]rss.Lookup // by site key; none means never looked up
+	fail     string                // the source that fails: "subs", "saved", "sites", "followed", "hasSaves" or "lookup"
 
 	limits map[string]int
 }
@@ -117,6 +119,13 @@ func (f *searchFixture) services() Services {
 		SearchService: &fakeSearchStore{searchFn: func(_ context.Context, _, _ string, limit int) ([]rss.SiteWithFeeds, error) {
 			f.limits["sites"] = limit
 			return f.sites, err("sites")
+		}},
+		LookupService: &fakeLookupStore{getBySiteKeyFn: func(_ context.Context, key string) (rss.Lookup, error) {
+			l, ok := f.lookups[key]
+			if !ok {
+				return rss.Lookup{}, cmp.Or(err("lookup"), rss.ErrNoRecord)
+			}
+			return l, err("lookup")
 		}},
 		SaveService: &fakeSaveStore{
 			listSavedFn: func(_ context.Context, _, _ string, before rss.ArticleCursor, limit int) ([]rss.SavedArticle, error) {
@@ -144,13 +153,14 @@ func breadFixture(now time.Time) *searchFixture {
 	return &searchFixture{
 		subs: []rss.Subscription{searchSub(now, "pastry", "Bread & Pastry", "The Daily Crumb"), searchSub(now, "lab", "The Bread Lab", "The Bread Lab"), gone, failing},
 		sites: []rss.SiteWithFeeds{
-			searchSite("ahead", "Bread Ahead", "Bakery school recipes", rss.Feed{ID: "ahead-journal", Title: "Bread Ahead Journal"}),
+			searchSite("ahead", "Bread Ahead", "Bakery school recipes", rss.Feed{ID: "ahead-journal", Title: "Bread Ahead Journal", Url: "http://www.ahead.example/journal.xml"}),
 			searchSite("butter", "Bread and Butter", "Money, plainly", rss.Feed{ID: "butter-money", Title: "Money"}, rss.Feed{ID: "butter-work", Title: "Work"}),
 			searchSite("crumb", "The Daily Crumb", "", rss.Feed{ID: "crumb-pastry", Title: "Bread & Pastry"}, rss.Feed{ID: "crumb-world", Title: "World"}),
 			searchSite("followed", "Breadline", "", rss.Feed{ID: "followed-1", Title: "Breadline"}),
 			searchSite("bare", "Bread Bare", ""),
 		},
 		followed: map[string]bool{"crumb-pastry": true, "followed-1": true},
+		lookups:  map[string]rss.Lookup{"ahead.example": {URL: "https://ahead.example/", Status: rss.LookupDone, SiteID: "ahead"}},
 		saved: []rss.SavedArticle{{
 			Article: rss.Article{ID: "a1", Title: "Breadcrumbs from stale bread", Excerpt: "Don't throw out the heel."},
 			Feed:    rss.Feed{SiteID: "site-a1", Title: "Small Plates"},
@@ -398,7 +408,7 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 	})
 
-	t.Run("a pasted address gets Look up, unless its site was found", func(t *testing.T) {
+	t.Run("a pasted address gets Look up, unless a result has it", func(t *testing.T) {
 		f := fixture()
 		_, body, _ := get(t, f, url.QueryEscape("https://new.example/"))
 		for _, want := range []string{`class="search-result search-lookup"`, "Find the feeds this site publishes", `action="/lookups"`, `name="q" value="new.example"`, `aria-label="Look up new.example"`} {
@@ -408,7 +418,37 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 		_, body, _ = get(t, f, url.QueryEscape("https://ahead.example/"))
 		if strings.Contains(body, "search-lookup") {
-			t.Error("Look up offered for an address whose site was found")
+			t.Error("Look up offered for the home page of a site found")
+		}
+		_, body, _ = get(t, f, url.QueryEscape("ahead.example/journal.xml"))
+		if strings.Contains(body, "search-lookup") {
+			t.Error("Look up offered for a feed of a site found")
+		}
+		doc, body, _ := get(t, f, url.QueryEscape("ahead.example/hidden.xml"))
+		if !strings.Contains(body, `class="search-result search-lookup"`) || !strings.Contains(body, `aria-label="Look up ahead.example/hidden.xml"`) {
+			t.Error("no Look up for another address on a site found")
+		}
+		rowByTitle(t, doc, "Bread Ahead") // and the site's own row is still there
+
+		// A site found from another address hasn't had its home page looked
+		// at, nor has one never looked up (found from a feed on another host).
+		for name, l := range map[string]*rss.Lookup{
+			"found from a feed": {URL: "https://ahead.example/journal.xml", Status: rss.LookupDone, SiteID: "ahead"},
+			"never looked up":   nil,
+		} {
+			f := fixture()
+			delete(f.lookups, "ahead.example")
+			if l != nil {
+				f.lookups["ahead.example"] = *l
+			}
+			_, body, _ := get(t, f, url.QueryEscape("ahead.example"))
+			if !strings.Contains(body, `aria-label="Look up ahead.example"`) {
+				t.Errorf("%s: no Look up for the home page", name)
+			}
+		}
+		f.fail = "lookup"
+		if _, _, code := get(t, f, url.QueryEscape("ahead.example")); code != http.StatusInternalServerError {
+			t.Errorf("a failed lookup read: status = %d, want 500", code)
 		}
 		_, body, _ = get(t, f, url.QueryEscape("new.example")+"&scope=saved")
 		if strings.Contains(body, "search-lookup") {
@@ -566,7 +606,7 @@ func TestDiscoverSuggestions(t *testing.T) {
 		}
 	})
 
-	t.Run("a pasted address gets Look up, unless its site was found", func(t *testing.T) {
+	t.Run("a pasted address gets Look up, unless a suggestion has it", func(t *testing.T) {
 		_, body, _ := get(t, breadFixture(now), url.QueryEscape("https://new.example/"))
 		for _, want := range []string{`class="search-result search-lookup"`, `action="/lookups"`, `name="q" value="new.example"`} {
 			if !strings.Contains(body, want) {
@@ -575,7 +615,22 @@ func TestDiscoverSuggestions(t *testing.T) {
 		}
 		_, body, _ = get(t, breadFixture(now), url.QueryEscape("https://ahead.example/"))
 		if strings.Contains(body, "search-lookup") {
-			t.Error("Look up offered for an address whose site was found")
+			t.Error("Look up offered for the home page of a site found")
+		}
+		_, body, _ = get(t, breadFixture(now), url.QueryEscape("ahead.example/journal.xml"))
+		if strings.Contains(body, "search-lookup") {
+			t.Error("Look up offered for a feed of a site found")
+		}
+		doc, body, _ := get(t, breadFixture(now), url.QueryEscape("ahead.example/hidden.xml"))
+		if !strings.Contains(body, `class="search-result search-lookup"`) || !strings.Contains(body, `aria-label="Look up ahead.example/hidden.xml"`) {
+			t.Error("no Look up for another address on a site found")
+		}
+		searchRowByTitle(t, doc, "Bread Ahead")
+
+		f := breadFixture(now)
+		f.lookups["ahead.example"] = rss.Lookup{URL: "https://ahead.example/journal.xml", Status: rss.LookupDone, SiteID: "ahead"}
+		if _, body, _ := get(t, f, url.QueryEscape("ahead.example")); !strings.Contains(body, `aria-label="Look up ahead.example"`) {
+			t.Error("no Look up for the home page of a site found from a feed")
 		}
 	})
 

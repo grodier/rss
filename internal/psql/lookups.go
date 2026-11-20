@@ -30,8 +30,10 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // doesn't exist, or re-queuing it as pending if it is finished and either its
 // result has expired (doneTTL for a lookup that found a site, failedTTL for one
 // that failed or found no feeds) or url differs from the one it ran on. A
-// lookup that found a site isn't re-queued for a different url that is the
-// site's home page (homePage), so the site page stays cached. A pending or
+// lookup that found a site from its home page isn't re-queued for a different
+// url that is also the home page (homePage: "www." or not), so the site page
+// stays cached; one that ran on another address (a feed, an article) is, since
+// the home page may list feeds it didn't. A pending or
 // running lookup is returned unchanged, except that a pending one the seed
 // list queued (www seed) moves ahead of the seed's, since a reader is now
 // waiting for it. A re-queue keeps site_id, so the site page keeps working while the
@@ -44,12 +46,14 @@ func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, hom
 // transaction (AdminFeedRepository.CheckForFeeds).
 func requestLookup(ctx context.Context, q querier, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
 	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
+	// The lookup ran on a home page: discovery.IsHomePage of its canonical url.
+	const ranOnHome = `(lookups.url ~ '^https?://[^/?#]+/$')`
 	stmt := `INSERT INTO lookups (site_key, url) VALUES ($1, $2)
 		ON CONFLICT (site_key) DO UPDATE SET
 			status = 'pending', url = EXCLUDED.url, error = '', priority = 0,
 			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
 		WHERE lookups.status IN ('done', 'failed') AND (
-			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND $5))
+			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND ` + ranOnHome + ` AND $5))
 			OR (` + found + ` AND lookups.finished_at < now() - make_interval(secs => $3))
 			OR (NOT ` + found + ` AND lookups.finished_at < now() - make_interval(secs => $4)))
 		RETURNING ` + lookupColumns

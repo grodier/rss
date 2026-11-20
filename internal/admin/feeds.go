@@ -166,12 +166,14 @@ type feedsPage struct {
 	Next string
 }
 
-// feedTable is the feed-table partial's data: its columns, its rows and
-// the time they're shown at.
+// feedTable is the feed-table partial's data: its columns, its rows, the
+// time they're shown at, and whether each feed's host links to its site's
+// page (not on that site's own page).
 type feedTable struct {
-	Columns []sortColumn
-	Rows    []feedRow
-	Now     time.Time
+	Columns   []sortColumn
+	Rows      []feedRow
+	Now       time.Time
+	LinkSites bool
 }
 
 // feedTableColumns are the feeds tables' headers. With params, the
@@ -238,7 +240,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		page.Filters = append(page.Filters, filterLink{Label: f.Label, Href: next.href(), Current: f.Key == params.filter, Count: count(counts[f.Key])})
 	}
 	now := s.now()
-	page.Table = feedTable{Columns: feedTableColumns(&params), Rows: feedRows(rows, now), Now: now}
+	page.Table = feedTable{Columns: feedTableColumns(&params), Rows: feedRows(rows, now), Now: now, LinkSites: true}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -546,7 +548,9 @@ type sitePage struct {
 	Feeds feedTable
 	// Lookup says how the site's lookup stands, in the feeds' Problem
 	// style.
-	Lookup    feedProblem
+	Lookup feedProblem
+	// IconURL is the admin's URL of the site's icon, "" when it has none.
+	IconURL   string
 	ReaderURL string
 	History   string
 	Now       time.Time
@@ -581,11 +585,12 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.now()
 	data := sitePage{
-		Nav:       s.nav(r, "feeds"),
+		Nav:       s.nav(r, "sites"),
 		Flash:     s.sessionManager.PopString(r.Context(), sessionFlash),
 		Site:      site,
 		Feeds:     feedTable{Columns: feedTableColumns(nil), Rows: feedRows(site.Feeds, now), Now: now},
 		Lookup:    lookupSummary(site.Lookup, now),
+		IconURL:   iconURL(site.Icon.Icon),
 		ReaderURL: s.config.AppURL + "/sites/" + site.Site.ID,
 		History:   auditHistoryURL("site", site.Site.ID),
 		Now:       now,

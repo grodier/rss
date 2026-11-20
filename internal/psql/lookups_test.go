@@ -120,6 +120,34 @@ func TestLookupRepositoryRequest(t *testing.T) {
 		{"failed re-check of a site, home page re-queues at once", rss.LookupFailed, true, "now() - interval '1 minute'", "www", true, rss.LookupPending},
 		{"in progress, different URL isn't re-queued", rss.LookupRunning, false, "NULL", "/feeds/x.xml", false, rss.LookupRunning},
 	}
+	// A site found from another address (a feed) hasn't had its home page
+	// looked at, so the home page re-queues at once, however recent the
+	// result; once the home page has run, it stays cached.
+	t.Run("found a site from a feed, home page re-queues at once", func(t *testing.T) {
+		key := newLookupKey(t, repo)
+		feedURL := "https://" + key + "/feed.xml"
+		l, err := repo.Request(t.Context(), key, feedURL, false, testDoneTTL, testFailedTTL)
+		if err != nil {
+			t.Fatalf("Request: %v", err)
+		}
+		finish := func(t *testing.T) {
+			t.Helper()
+			execSQL(t, repo, `UPDATE lookups SET status = 'done', site_id = $2, finished_at = now() - interval '1 minute' WHERE id = $1`,
+				l.ID, newTestSite(t, repo.DB))
+		}
+		finish(t)
+		home := "https://" + key + "/"
+		got, err := repo.Request(t.Context(), key, home, true, testDoneTTL, testFailedTTL)
+		if err != nil || got.Status != rss.LookupPending || got.URL != home {
+			t.Fatalf("home page after a feed: status %q url %q, err %v; want pending at %q", got.Status, got.URL, err, home)
+		}
+		finish(t)
+		got, err = repo.Request(t.Context(), key, "https://www."+key+"/", true, testDoneTTL, testFailedTTL)
+		if err != nil || got.Status != rss.LookupDone {
+			t.Errorf("home page after the home page: status %q, err %v; want done (cached)", got.Status, err)
+		}
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			key := newLookupKey(t, repo)

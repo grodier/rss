@@ -1061,6 +1061,45 @@ type AdminFeed struct {
 	OldestEnrichJob time.Time
 }
 
+// The admin's site list's filters (AdminSiteQuery.Filter).
+const (
+	AdminSitesAll           = "all"
+	AdminSitesNoIcon        = "no-icon"
+	AdminSitesLookupFailed  = "lookup-failed"
+	AdminSitesNoSubscribers = "no-subscribers"
+)
+
+// The admin's site list's orders (AdminSiteQuery.Sort).
+const (
+	AdminSitesBySubscribers = "subscribers" // most first
+	AdminSitesByFeeds       = "feeds"       // most first
+	AdminSitesByHost        = "host"        // A to Z
+	AdminSitesByFound       = "found"       // newest first
+)
+
+// AdminSiteQuery is a page of the admin's site list: a filter, a search of
+// hosts and titles (Q, "" for none), an order, and the site whose row the
+// page starts after (After, "" for the first page).
+type AdminSiteQuery struct {
+	Filter string
+	Q      string
+	Sort   string
+	After  string
+	Limit  int
+}
+
+// AdminSiteRow is a site as the admin lists it: the site, how many feeds it
+// has, how many readers subscribe to any of them (each reader once; a
+// count, never who), its icon (SiteID "" when it has none; Data is left
+// empty) and its lookup (ID "" when there's none).
+type AdminSiteRow struct {
+	Site
+	Feeds       int
+	Subscribers int
+	Icon        SiteIcon
+	Lookup      Lookup
+}
+
 // AdminSite is one site's admin page: the site, its icon's bookkeeping, its
 // lookup (ID "" when it has none) and its feeds, by title.
 type AdminSite struct {

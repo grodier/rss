@@ -47,11 +47,14 @@
         </section>
         <section class="admin-section health" aria-labelledby="icon-heading">
           <h2 id="icon-heading">Icon</h2>
+          <div class="icon-line">
+          <span class="site-icon site-icon-lg">{{with $.IconURL}}<img src="{{.}}" alt="" width="64" height="64">{{end}}</span>
           <p class="health-line">
             {{- with .Icon}}{{if .Icon.SiteID}}{{.Icon.Width}}×{{.Icon.Height}} {{.Icon.ContentType}}, {{count .IconBytes}} bytes, fetched {{ago $now .Icon.FetchedAt}} from <code>{{.Icon.SourceURL}}</code>.
             {{- else}}No icon{{if not .IconCheckedAt.IsZero}}: none found {{ago $now .IconCheckedAt}}{{end}}.{{end}}
             Next check {{ago $now .IconNextCheckAt}}.{{end -}}
           </p>
+          </div>
           <div class="form-actions">
             <form action="/sites/{{.Site.ID}}/check-icon" method="post"><button class="btn btn-sm" type="submit">Check the icon again</button></form>
           </div>

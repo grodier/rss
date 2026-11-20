@@ -53,10 +53,14 @@ type FeedInfo struct {
 
 // Result is what Discover found.
 type Result struct {
-	Site    SiteInfo
-	Feeds   []FeedInfo       // may be empty: "site reachable, no feeds found" is not an error
-	Direct  bool             // the looked-up URL was itself a feed; Checked is empty
-	Checked []CandidateCheck // every candidate, in order
+	Site   SiteInfo
+	Feeds  []FeedInfo // may be empty: "site reachable, no feeds found" is not an error
+	Direct bool       // the looked-up URL was itself a feed; Checked is empty
+	// HomePage says Site was read from the site's home page (the looked-up
+	// URL or where it led), so it describes the site; otherwise it was read
+	// from a feed or another page, and only stands in for a new site's.
+	HomePage bool
+	Checked  []CandidateCheck // every candidate, in order
 }
 
 // Sources of a candidate, as CandidateCheck.Source reports them.
@@ -187,7 +191,7 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 	if err != nil {
 		return Result{Site: site, Checked: checked}, err
 	}
-	return Result{Site: site, Feeds: feeds, Checked: checked}, nil
+	return Result{Site: site, Feeds: feeds, Checked: checked, HomePage: IsHomePage(u) || IsHomePage(resp.URL)}, nil
 }
 
 // checkCandidates fetches and parses up to MaxCandidates candidates,

@@ -49,7 +49,7 @@
 {{/* search-lookup is a pasted address's row at the top of Discover's
      search results; its data is a discoverResults: the address, what Look
      up does, and Look up, or why a link to the app itself isn't looked up.
-     Nothing when the query isn't an address, or its site was found. */}}
+     Nothing when the query isn't an address, or a result has it (knownAddress). */}}
 {{define "search-lookup"}}
 {{with .LookupQ}}
 <li class="search-result search-lookup">

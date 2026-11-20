@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -341,15 +342,20 @@ func (s *Server) siteDebug(ctx context.Context, site rss.Site, feeds []rss.Feed,
 	return view, nil
 }
 
-// canRecheck reports whether a new lookup of the site may be requested: there
-// is none yet, or at now the last one finished longer ago than the TTL that
-// LookupStore.Request enforces for its result.
+// canRecheck reports whether a new lookup of the site's home page may be
+// requested: there is none yet, the last one ran on another address (a feed
+// or an article, so the home page's feeds are unchecked), or at now it
+// finished longer ago than the TTL that LookupStore.Request enforces for its
+// result.
 func canRecheck(l rss.Lookup, now time.Time) bool {
 	age := now.Sub(l.FinishedAt)
 	switch l.Status {
 	case "":
 		return true
 	case rss.LookupDone:
+		if !ranOnHomePage(l) {
+			return true
+		}
 		if l.SiteID == "" {
 			return age > lookupFailedTTL
 		}
@@ -359,6 +365,12 @@ func canRecheck(l rss.Lookup, now time.Time) bool {
 	default:
 		return false
 	}
+}
+
+// ranOnHomePage reports whether l ran on its site's home page.
+func ranOnHomePage(l rss.Lookup) bool {
+	u, err := url.Parse(l.URL)
+	return err == nil && discovery.IsHomePage(u)
 }
 
 // siteIconHandler serves a site's stored icon. Icons are fetched from other

@@ -57,6 +57,12 @@ func ParseInput(q string) (*url.URL, error) {
 	return u, nil
 }
 
+// IsHomePage reports whether u (canonical, as from ParseInput) is its site's
+// home page: the path "/" and no query.
+func IsHomePage(u *url.URL) bool {
+	return u.Path == "/" && u.RawQuery == ""
+}
+
 // SiteKey identifies a site: the lowercase host without port and without a
 // leading "www.". "https://www.Example.com:443/a" -> "example.com".
 func SiteKey(u *url.URL) string {

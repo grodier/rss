@@ -163,6 +163,9 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   Don't fetch them automatically.
 - [ ] **Platform-specific discovery rules.**
   YouTube channels, Reddit, Substack, Medium, GitHub releases, etc. Includes sites that share a host and are identified by path (`medium.com/@user`), which the host-based site key can't tell apart.
+- [ ] **Add a feed by its address on a site's page.**
+  A field by "Missing a feed?" on the site page, for a feed the site's home page doesn't link to, offered whatever the last lookup's age; today the reader pastes its address into Discover, whose Look up adds it to the site.
+  Needs a design checkpoint; worth it if readers don't find Discover's route.
 - [ ] **`<a href>` heuristics.**
   When a page has no `<link rel="alternate">`, look for links whose URL or text mentions RSS/Atom/feed before probing common paths.
 

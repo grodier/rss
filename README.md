@@ -97,7 +97,7 @@ It takes its own flags, also settable by environment variables:
 
 `www seed [-env <env>] [-db-dsn <dsn>]` queues lookups of the sites in the seed list (`internal/seed/sites.txt`, embedded in the binary) that haven't been found yet, behind readers' own lookups, and exits; the app's lookup workers then find them.
 It logs the sites whose lookups failed, and retries those that failed over an hour ago.
-Production runs it on every deploy as `www migrate -seed`; locally, `make db/reset` doesn't, so run `make db/seed-sites` when you want the list looked up.
+It runs only by hand: production's deploys no longer run it (#709), and locally `make db/reset` doesn't, so run `make db/seed-sites` when you want the list looked up.
 
 ## The admin site
 

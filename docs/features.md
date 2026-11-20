@@ -192,7 +192,7 @@ Clear empties the list, and the logged-out pages' entry (`login.ts`: Log in, whe
 Without JavaScript, or with storage blocked, there are no recent searches.
 
 **The seed list.** `internal/seed/sites.txt`, embedded in the binary, lists sites to look up before anyone searches for them.
-`www seed`, and `www migrate -seed` (production's pre-deploy command), run `seed.Run`: `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
+`www seed`, and `www migrate -seed`, run `seed.Run` (by hand: production's deploys no longer do, #709): `SeedRepository.Queue` inserts a lookup for each listed site key with no `lookups` row, at priority 1 so the workers take readers' lookups (priority 0) first, and re-queues listed lookups that failed or found no feeds over an hour ago (`seed.RetryAfter`); the lookup workers then discover them like any other.
 A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
 The command logs the sites it retried and those that failed too recently to retry, so a site that keeps failing shows up in every deploy's log.
 

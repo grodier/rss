@@ -113,6 +113,15 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
   - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
 - [ ] **A site's icon on its admin page:** the stored image beside the Icon panel's sentence, served by the admin from `site_icons` (the admin's CSP allows only its own images), so a changed favicon can be checked at a glance (#706 leaves it out).
+- [ ] **A model's suggestions for Discover's catalog** (from #649; after #712, once the owner has picked 200–300 feeds by hand).
+  A button on the picking page sends a batch of sites (name, description, each candidate feed's title, categories from #713 and recent headlines; public data only) to a model, which answers per feed whether to pick it and under which section, with a probability; the page pre-fills them, and only an admin's Save puts a feed in the catalog.
+  Choose the model with a bake-off on the owner's hand picks as the labeled set: Claude Haiku 5.5 with structured outputs limited to the site's feed IDs and the section IDs (about $0.10 and $0.50 per million input and output tokens, roughly $0.20 per 1,000 sites), against Jev, TypeSafe's decision model, which returns a probability per answer trained to be calibrated (about $0.04 per million input tokens, output free, through OpenRouter's alpha Decisions endpoint), with a larger model as the ceiling; then set the threshold below which a suggestion isn't pre-filled from the same data.
+  Store each suggestion with its model, prompt version and probability, never overwrite an admin's choice, and audit runs (who, how many sites, tokens); calls go from the admin to one fixed API host, so `internal/fetch` (for user-influenced URLs) doesn't apply, and the key is an admin service secret like `-render-api-key`.
+  Headlines are untrusted and can try to steer the model: constrained answers and the admin's review are the defense.
+  Its watchlist entry, the calls' cost and rate per run, comes with the issue.
+- [ ] **A sections page:** add, rename, reorder and delete Discover's sections from the admin, and merge one into another (move its feeds, then delete it); the decisions under "First run and discovery" already make renames free and refuse deleting a section with feeds, and waitlist and account answers ignore a dropped section's ID.
+- [ ] **Several feeds of one site in one seed upload, and OPML files whose folders are sections** (from #649): curated lists often come as OPML with several feeds per site, but the lookup queue holds one row per site key, so #711 takes one line per site; this needs lookups (or the importer) to take several addresses of one site.
+- [ ] **Delete or edit seed list entries** (from #649), if wanted: a seeded site is an ordinary site once found, so removing its entry only stops retries.
 - [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
 - [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
 - [ ] **Performance watchlist board:** each watchlist entry's signal, read live.
@@ -554,7 +563,11 @@ Admin and observability:
 - [ ] **The admin's seed list page reads every entry on each view** (#648).
   `AdminFeedRepository.SeedList` joins the whole embedded list to `lookups` and counts each found site's feeds and catalog feeds, and the page filters and counts in Go, with no paging; the list is meant to grow to thousands of sites.
   *Signal:* the list passes about 5,000 entries, or `/seed` takes over 200ms.
-  *Fix:* page the table (the filters' counts can stay one pass), and count feeds per site with one grouped query rather than per row.
+  *Fix:* page the table (the filters' counts can stay one pass), and count feeds per site with one grouped query rather than per row; planned in #710, which moves the list into a table.
+- [ ] **The picking page looks for candidate feeds across all feeds** (#712).
+  Each view of `/discover/pick` finds sites with a feed that isn't gone, in the catalog or skipped (anti-joins on `discover_feeds` and `discover_skips`), counts the sites per filter, and probes `articles_feed_sort_idx` for each listed feed's newest titles (up to 25 sites × 20 feeds).
+  *Signal:* feeds pass about 50,000, or `/discover/pick` takes over 200ms.
+  *Fix:* a partial index on candidate feeds, or a `pick_state` kept on `feeds` by the catalog and skip writes.
 - [ ] **The invites page sums every wave on each view** (#607).
   `InviteRepository.Waves` groups every invite with a wave and checks each signed-up one's sessions, on every view of `/invites`.
   *Signal:* invites pass about 50,000, or `/invites` takes over 200ms.
@@ -619,6 +632,7 @@ Other background work (#302, #304, #306):
   The seed list (#447) adds feeds nobody may follow, and each first save queues up to 20 enrichment jobs, most of them never claimed.
   *Signal:* `EXPLAIN ANALYZE` of either claim reading far more rows than it returns.
   *Fix:* the `subscriber_count` column planned for `ClaimDue`, or deleting jobs of feeds without subscribers after a while.
+  #708 (planned in #649) stops queuing enrichment jobs for feeds nobody follows, which removes most of them; jobs left when a feed's last follower leaves, and the icon claim, remain.
 - [ ] **One import at a time** (#302).
   The import queue takes the oldest import's feeds first, so a 1,000-feed import delays a small one started after it, up to 20 minutes with six workers (#448).
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
@@ -629,11 +643,12 @@ Other background work (#302, #304, #306):
   Locally, a 100-feed import with six workers and 10 connections never waited for a connection, and used about 12 MB more heap than with two.
   *Signal:* pages slow or connections waiting in `sql.DBStats` while an import runs, memory near the instance's limit, or `import feed finished` durations growing with the worker count instead of the fetch.
   *Fix:* fewer workers (`RSS_IMPORT_WORKERS`), a cap on concurrent saves, or the separate worker process under Feed ingestion.
-- [ ] **Seeding thousands of sites fills the database with work nobody asked for** (#447).
+- [ ] **Seeding thousands of sites fills the database with work nobody asked for** (#447, #711).
   Each site the seed list (1,000 and up) finds saves its feeds' current articles, queues up to 20 enrichment jobs per feed, and gets an icon check, though most of those sites will never be followed; after a production reset, the lookup workers spend an hour or more on the seed.
   Readers' lookups go first, so they don't wait, but the articles, jobs and the claims that walk past them (the entries above) grow with the list.
   *Signal:* the database's size or the `articles` and `enrich_jobs` row counts dominated by feeds without subscribers, or the claims above slowing.
   *Fix:* save no articles and queue no jobs for a seeded lookup's feeds until someone subscribes or opens one (a feed page view already requests a refresh), or delete unfollowed seeded feeds' articles after a while.
+  The jobs are planned in #708 (queued on a feed's first follow); the articles stay, since Discover's catalog shows them, and #711's bulk upload is what makes the list grow by the thousand.
 - [ ] **Daily refreshes of Discover's feeds** (#632).
   Every feed in Discover's catalog is fetched about once a day even with no followers, so N catalog feeds cost N fetches and their article saves a day, growing with the catalog rather than with readers.
   `ClaimDue` checks the catalog with a hashed subplan over all of `discover_feeds`, still on `feeds_next_fetch_at_idx`: on `make db/loadseed`'s data plus 5,000 unfollowed feeds, 3,000 of them in the catalog spread over the day (160 due), a claim took 1.3–1.9 ms against 0.6 ms without the catalog check; with 1,500 catalog feeds overdue at once (a backlog after downtime), 3.2 ms against 1.4 ms.

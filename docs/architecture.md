@@ -76,14 +76,14 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` command | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages and adding sites to the seed list in bulk, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `discovery`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
 | `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
-| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail` and `metrics` (types), `password`, `textcut` |
+| `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password`, `textcut` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
-| `internal/seed` | Parses lists of sites, one address per line, for the seed list | `discovery` |
+| `internal/seed` | Parses the lists of sites the admin pastes into the seed list, one address per line with an optional section hint, saying what each line will do | `discovery`, `rss` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
@@ -249,6 +249,7 @@ waitlist ──< invites >── users   (both nullable: the entry it was sent t
 admins ──< admin_recovery_codes   (apart from users: an admin is never a reader)
 admins ──< admin_audit   (admin_id nullable: none for a failed password or a command, and kept, with the email, when the admin is deleted)
 admins ──< seed_sites   (added_by nullable, cleared when the admin is deleted; site_key matches lookups.site_key, no foreign key)
+discover_sections ──< seed_sites   (section_id: the entry's section hint, nullable, cleared when the section is deleted)
 admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
@@ -274,6 +275,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   `MarkSeen` trims a reader's rows at the start of each visit, in the transaction that updates their `timeline_marks` row (see "You were here" in features.md).
   Every timeline that isn't starred-only or shared reads them (`ListTimeline`): an entry is at the reader's row's position when there is one, else at `timeline_at`, and rows of feeds the reader no longer follows are left out by a join with `subscriptions`.
 - **`seed_sites`:** the seed list, one row per site key, the admin's intent; how it went is the `lookups` row with the same site key, joined by key with no foreign key, since an entry can be listed before it's looked up and a lookup outlives its entry.
+  Its `section_id` is a hint for the section of the site's feeds, which never puts them in Discover's catalog itself, and `source` is where the uploader said the entry came from.
 - **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section's ID.
   Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
   `discover_sections` is the list of sections, in `position` order; code never names one, so renaming or adding a section is a row change, and a section with feeds under it can't be deleted.

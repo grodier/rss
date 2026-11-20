@@ -1,7 +1,8 @@
 /* The feeds and sites pages: a feed's problem, said in words, in the
    tables and atop its page (the status panel, tinted when it's bad), a
-   late last success in bold, a site's lookup and icon side by side, and
-   its icon's image. */
+   late last success in bold, a site's lookup and icon side by side, its
+   icon's image, and the seed list's add form, wide enough for a list's
+   addresses, in a fixed-width face so they line up. */
 @layer components {
   .feeds .feed-name small {
     display: block;
@@ -153,5 +154,22 @@
       border-block-start: 0;
       border-inline-start: 1px solid var(--border);
     }
+  }
+
+  .seed-add .field {
+    max-inline-size: 44rem;
+  }
+
+  .seed-add .seed-source {
+    max-inline-size: 28rem;
+  }
+
+  .seed-add textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+  }
+
+  .seed-preview {
+    margin-block-start: 1rem;
   }
 }

@@ -192,7 +192,7 @@ Clear empties the list, and the logged-out pages' entry (`login.ts`: Log in, whe
 Without JavaScript, or with storage blocked, there are no recent searches.
 
 **The seed list.** The `seed_sites` table lists sites to look up before anyone searches for them, one per site key; it's edited only in the admin (see "Seed list and Discover's catalog" under "Admin"), and deploys don't touch it.
-Its lookups are ordinary `lookups` rows, which the lookup workers discover like any other; the admin's Look up all again queues them at the seed's priority (1), so the workers take readers' lookups (priority 0) first, and nothing retries a failed one on its own.
+Its lookups are ordinary `lookups` rows, which the lookup workers discover like any other; the admin's Add sites and Look up all again queue them at the seed's priority (1), so the workers take readers' lookups (priority 0) first, and nothing retries a failed one on its own.
 A reader who requests a site still queued by the seed moves its lookup to priority 0 (`LookupRepository.Request`).
 
 **Discover's catalog.** The feeds picked for Discover, each under one of Discover's sections (`discover_sections`, seeded by its migration), are the `discover_feeds` table, edited one feed at a time on the admin's feed page (see "Feeds and sites" under "Admin").
@@ -231,12 +231,12 @@ The foot says when the site's feeds were last looked for and offers to look agai
    The search: `internal/server/discover_search.go` (`discoverSearch`, `matchRank`, `rankResults`), `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`HasSaves`), and `partials/search_result.html`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
-   The seed list: `internal/seed/seed.go` (`Parse`, `Run`), `internal/psql/seeds.go` (`Queue`), and `cmd/www/seed.go` (`runSeed`, `seedSites`).
+   The seed list: see "Seed list and Discover's catalog" under "Admin".
 4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`) and `normalize.go` (`ParseInput`, `SiteKey`, `CanonicalFeedURL`).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 
-**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `recent-searches.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/seed`; `cmd/www/seed_test.go`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `seeds_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
+**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `recent-searches.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
 **Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 
@@ -736,14 +736,21 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 5. **The catalog.** `AdminFeedRepository.Catalog` returns every Discover section in its order with its feeds by title (site, posts a week, latest article, subscribers as a count), empty sections included; the page offers a filter link per section with its count, and All, the default, adds a Section column.
    A gone feed still in the catalog is listed, marked as hidden from Discover (whose queries skip gone feeds), so the owner can take it out.
    Each feed links to its admin page, whose Discover panel (above) puts it in a section or takes it out.
+6. **Adding sites.** The list's Add sites goes to `GET /seed/add` (`seedAddHandler`), a text area for a pasted list and an optional source ("waitlist", "IndieWeb list"); `POST /seed/add` (`seedAddFormHandler`) reads up to 1 MiB (`maxSeedUploadBytes`, over every other form's 64 KiB) and 10,000 lines.
+   `seed.Parse` reads the text with no database: one address per line (a home page, or a feed's address, which adds only that feed, as its lookup runs on it), optionally followed by a comma or tab and a section's slug or name in any case, blank and `#` lines skipped; each line gets an outcome: can be added, not an address (`discovery.ParseInput`), names no section, an address on the reader's own site (`-app-url`), or the same site as an earlier line that can be added.
+   The handler then asks `AdminFeedRepository.SeedOnList` which sites are already on the list.
+   Preview (the form's first button, so Enter in Source is Preview) re-renders the form with the text kept, counts per outcome and every line in a table, problems first, then line order, with an Add button counting the lines that can be added.
+   Add parses and checks the text again rather than trusting the preview, then `AddSeedSites`, in one transaction, inserts the lines (`ON CONFLICT (site_key) DO NOTHING`, so a site added by someone else since the preview isn't added or counted twice) with their section hint and the source, queues a lookup of each at the seed's priority (1): a new one, or a re-queue of one that failed or found no feeds however long ago it ran, leaving found, pending and running ones alone; and records one `seed.add` on target `seed` with the source, the count and every site key added, the list's history, unless none was added.
+   The page goes back to the list with a flash of how many were added; each entry there shows its section hint and source under its address.
+   The hint is stored only: picking an entry's feeds for Discover is still a Save on a feed's page.
 
 **Start at:**
 
-1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`) and `catalog.go`.
-2. `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `Catalog`).
-3. `internal/ui/admin/seed.html` and `discover.html`.
+1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`), `seed_add.go` (`seedAddFormHandler`) and `catalog.go`.
+2. `internal/seed/seed.go` (`Parse`) and `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `SeedOnList`, `AddSeedSites`, `Catalog`).
+3. `internal/ui/admin/seed.html`, `seed_add.html` and `discover.html`.
 
-**Tests:** `internal/admin/seed_test.go`; `internal/psql/admin_seed_test.go`.
+**Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`.
 
 ### Web performance
 

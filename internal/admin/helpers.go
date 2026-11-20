@@ -33,7 +33,13 @@ func (s *Server) logError(r *http.Request, err error) {
 // decodePostForm parses the posted form, at most maxFormBytes, into dst, a
 // struct with form tags. On error, the handler calls formErrorResponse.
 func (s *Server) decodePostForm(w http.ResponseWriter, r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	return s.decodePostFormLimit(w, r, dst, maxFormBytes)
+}
+
+// decodePostFormLimit is decodePostForm for a route whose forms may be
+// larger, at most limit bytes.
+func (s *Server) decodePostFormLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) error {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := r.ParseForm(); err != nil {
 		return err
 	}

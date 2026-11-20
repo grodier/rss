@@ -15,6 +15,7 @@ import (
 
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/seed"
 )
 
 // feedID and siteID are the UUIDs of the nth test feed and site.
@@ -47,6 +48,9 @@ type fakeFeeds struct {
 	seedStatus  rss.LookupStatus
 	seedKeys    []string
 	seedRetried int
+	// seedAdded are the lines AddSeedSites was given, which it adds all
+	// of, recording the call as "seed-add" with the source.
+	seedAdded []seed.Line
 	// sites is what ListSites returns, keeping the queries it was asked in
 	// siteQueries; siteCounts is what CountSites returns, keeping the
 	// searches in siteCounted.
@@ -182,6 +186,24 @@ func (f *fakeFeeds) QueueSeedLookup(_ context.Context, siteKey string, by rss.Au
 		status = rss.LookupPending
 	}
 	return rss.Lookup{Status: status}, f.call("seed-lookup", siteKey, by)
+}
+
+// SeedOnList returns which of siteKeys are in seedKeys.
+func (f *fakeFeeds) SeedOnList(_ context.Context, siteKeys []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, k := range siteKeys {
+		if slices.Contains(f.seedKeys, k) {
+			out[k] = true
+		}
+	}
+	return out, f.err
+}
+
+func (f *fakeFeeds) AddSeedSites(_ context.Context, lines []seed.Line, source string, by rss.AuditActor) (int, error) {
+	f.mu.Lock()
+	f.seedAdded = append(f.seedAdded, lines...)
+	f.mu.Unlock()
+	return len(lines), f.call("seed-add", source, by)
 }
 
 // RetrySeedLookups records the call as "seed-retry" and returns

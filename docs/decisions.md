@@ -216,6 +216,7 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   The section is a hint stored on the entry, which the picking page pre-selects; it never puts feeds in the catalog by itself, since a site can have several feeds and only an admin decides.
   One line per site keeps the list's rule (a site has one lookup), which is also why OPML files, which list several feeds per site, aren't accepted yet (backlog).
   No file upload: pasting works for thousands of lines, and the route takes up to 1 MiB and 10,000 lines.
+  A line's address ends at its first comma or tab, since an address has no spaces and seldom a comma while a section's name may have both (#711); a line repeats only an earlier line that can be added, so a bad first line doesn't block a good second one.
   Each upload is one audit entry with every site key it added, as the list's history.
 - **Picking Discover's feeds is a queue of sites with feeds still to decide** (#712): a feed leaves it when it's put in the catalog, skipped, or gone; skips are stored (`discover_skips`) and can be undone.
   Each feed shows what helps choose (posting rate, latest post, its newest titles, notes for comments feeds and silent ones, and its categories, #713), with a section pre-filled from the seed entry's hint, else from the site's feed already in Discover.

@@ -15,6 +15,9 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Seed list</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm btn-primary" href="/seed/add">Add sites</a>
+        </div>
         <p>The sites to look up before anyone searches for them, newest first, with what each one’s lookup found. Nothing retries on its own: look an entry up again, or all those not found from Not found. Hover a time for its UTC date.</p>
       </header>
       {{with .Flash}}
@@ -49,7 +52,7 @@
               {{$now := .Now}}
               {{range .Rows}}
               <tr>
-                <td class="wrap feed-name">{{.SiteKey}}{{if ne .URL (print "https://" .SiteKey "/")}}<small>{{.URL}}</small>{{end}}</td>
+                <td class="wrap feed-name">{{.SiteKey}}{{if ne .URL (print "https://" .SiteKey "/")}}<small>{{.URL}}</small>{{end}}{{if or .SectionName .Source}}<small>{{with .SectionName}}For {{.}}{{end}}{{if and .SectionName .Source}} · {{end}}{{with .Source}}From {{.}}{{end}}</small>{{end}}</td>
                 <td class="feed-problem">{{template "problem-text" .Status}}</td>
                 <td>{{if .SiteHost}}<a href="/sites/{{.Lookup.SiteID}}">{{.SiteHost}}</a>{{else}}—{{end}}</td>
                 <td class="num">{{if .SiteHost}}{{count .InDiscover}}{{else}}—{{end}}</td>

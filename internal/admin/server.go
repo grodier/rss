@@ -22,6 +22,7 @@ import (
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/internal/ui"
 )
 
@@ -151,6 +152,8 @@ type FeedStore interface {
 	SetDiscoverSection(ctx context.Context, id, sectionID string, by rss.AuditActor) error
 	SeedList(ctx context.Context, q rss.AdminSeedQuery) ([]rss.AdminSeedEntry, error)
 	CountSeed(ctx context.Context) (map[string]int, error)
+	SeedOnList(ctx context.Context, siteKeys []string) (map[string]bool, error)
+	AddSeedSites(ctx context.Context, lines []seed.Line, source string, by rss.AuditActor) (int, error)
 	QueueSeedLookup(ctx context.Context, siteKey string, by rss.AuditActor) (rss.Lookup, error)
 	RetrySeedLookups(ctx context.Context, by rss.AuditActor) (int, error)
 	Catalog(ctx context.Context) ([]rss.AdminCatalogSection, error)

@@ -197,12 +197,37 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   Rejected: a plain labelled form (it read as foreign to a page of status and figures), a button per section that saves on click (grows with the list, and a stray click saves), and the select in the page head (no room for its hint or error).
   A gone feed can't be added, since Discover would offer a feed that no longer updates; one already in the catalog can still be taken out.
   Breadcrumbs on the feed and site pages, which the checkpoint showed were missing, are #655.
-- **The seed list's status is a page that reads the file, not a table** (#648, from #450's plan): the embedded list joined to `lookups` by site key, so the owner sees failed entries without the deploy log, and the file stays the list's source until #649 decides otherwise.
+- **The seed list's status is a page** (#648, from #450's plan): the list joined to `lookups` by site key, so the owner sees failed entries without the deploy log; it read the embedded file until #649 moved the list into a table (#710), which it now pages newest first, 100 at a time, its filters counted in SQL.
   Its one action, Look up again, is offered on entries not found (failed or no feeds) and always queues the entry's own address (`seed.lookup`), at a reader's priority so it runs now rather than behind the seed.
   It doesn't reuse a site's Check for new feeds, as #648 first planned: that fetches the site's home page, which isn't the entry's address when the entry is a feed (#678).
 - **The seed list and the catalog are two pages after Feeds, each one table with filter links like the feeds list** (#648, approved at its design checkpoint in #678): the seed list's filters are All (the default), Not found, Waiting and Found but not in Discover; the catalog's are All, which adds a Section column, and one per section in Discover's order, empty ones included with their count.
   Rejected: the catalog grouped under a heading per section (long and mostly empty while the catalog is small, its tables' columns not lining up), and both on one page with tabs (two rows of filter links, for two questions asked apart).
-- **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stays in `www`, since it's a deploy step (`www migrate -seed`).
+- **Sites are their own section in the admin, above their feeds** (#706, found while looking for a site's icon): a Sites list after Feeds, a site's page under Sites in the sidebar, and each host in the feed tables linking to its site, since a site's page was reachable only by opening one of its feeds and going up.
+  The list follows the Feeds list's pattern (filter links with counts, a search, sortable headers, a keyset cursor); its look is #706's design checkpoint.
+  Rejected: only linking hosts from the Feeds list (sites stay reachable only through their feeds), and grouping the Feeds list by site (it's triage first, and grouping buries failing feeds under healthy sites).
+  Breadcrumbs (#655) follow where a page sits, not how it was reached: `Sites › host` and `Sites › host › feed`.
+- **Discover's catalog grows from the admin in three steps** (#649): sites are added to the seed list in bulk (#711), their lookups find the feeds, and an admin picks feeds for Discover a page of sites at a time (#712).
+  Bulk upload and picking come first; a model's suggestions wait in the backlog until the owner's own picks can measure one (below).
+- **Sites are added to the seed list by pasting, then previewing, then adding** (#711): one site per line, optionally followed by a comma or tab and a Discover section, with a source naming the batch; the preview says what each line will do, and only Add writes.
+  The section is a hint stored on the entry, which the picking page pre-selects; it never puts feeds in the catalog by itself, since a site can have several feeds and only an admin decides.
+  One line per site keeps the list's rule (a site has one lookup), which is also why OPML files, which list several feeds per site, aren't accepted yet (backlog).
+  No file upload: pasting works for thousands of lines, and the route takes up to 1 MiB and 10,000 lines.
+  Each upload is one audit entry with every site key it added, as the list's history.
+- **Picking Discover's feeds is a queue of sites with feeds still to decide** (#712): a feed leaves it when it's put in the catalog, skipped, or gone; skips are stored (`discover_skips`) and can be undone.
+  Each feed shows what helps choose (posting rate, latest post, its newest titles, notes for comments feeds and silent ones, and its categories, #713), with a section pre-filled from the seed entry's hint, else from the site's feed already in Discover.
+  A feed is ticked for you only when its site has one candidate and the admin's own upload named its section, a choice already made; nothing else is.
+  Picks are recorded per feed as the feed page records them (`feed.discover`), so the catalog's history reads the same however a feed got in.
+  Subscriber counts aren't shown there: no cross-reader data decides what's in the catalog.
+- **Feeds' categories are kept and shown to admins only** (#713): a channel's own `<category>` and iTunes categories, then its items' most common, at most 10.
+  They're free, help an admin pick, and are a model's input later; they never become sections or tags by themselves.
+- **Waitlist answers reach the seed list through the upload form** (#714): the Waiting tab's selection fills the form with the addresses in their answers and lists the names that aren't addresses, for the owner to look up; nothing is added until the owner adds it, since answers are public input.
+- **A model's suggestions for the catalog are deferred** (#649), to the backlog's "A model's suggestions for Discover's catalog".
+  Cost isn't the reason (well under a dollar per thousand sites on a small model): which model, its prompt and the confidence to trust can only be chosen against labeled picks, and bulk picking (#712) produces them.
+  Planned shape, for when it's filed: run from the admin, which holds the key, never `www`; public site data only (names, descriptions, feed titles, categories, headlines); answers constrained to the site's feed IDs and the section IDs, with a probability; stored as suggestions an admin accepts or changes on the picking page, never applied by themselves.
+  Headlines are untrusted text that can try to steer a model, which is one more reason suggestions are only ever pre-filled choices.
+- **Check the icon again works on any site** (#705): it clears `icon_checked_at` as well as making the check due, so the runner takes the site as if it were new, subscribed or not.
+  Rejected: dropping the runner's subscriber condition (it would recheck thousands of unfollowed seed sites every 30 days) and a column for a requested check (a migration for what "never checked" already says); the cost is that the site's page loses "none found {when}" until the check runs, seconds later.
+- **`create-user` and `send-test-email` move from `www` to `admin`** (#568); `seed` stayed in `www` as a deploy step until the seed list moved into a table (#710), which removed it.
 
 ## Observability
 
@@ -300,19 +325,16 @@ Planned in #50 (issues #51–#67).
 - **The database is seeded with a list of sites** (#447), so search finds well-known sites before anyone has looked them up.
   #447 first planned a catalog with topics and a Browse list on the Search page, so new readers could discover sites without knowing their addresses; both were built and dropped in review, since Browse worked as recommendations but poorly otherwise, and shared topics sat awkwardly beside readers' own tags, which are private, with no clear use yet.
   How new readers discover sites is under "First run and discovery" (#450): sections came back, for Discover only; keywords are for #451 to plan.
-- **The seed list is a plain text file kept in the repository** (`internal/seed/sites.txt`, #447): one website address per line, with comments, so the owner edits it in PRs and it can start empty and grow to thousands of sites.
-  A test parses the embedded file, so a bad edit can't ship.
+- **The seed list is a table the admin edits, `seed_sites`, and its only source** (#649, #710), replacing #447's plain text file in the repository, which the owner edited in PRs and which never listed a site.
+  Growing the list to thousands of sites from curated lists and waitlist answers needed a PR and a deploy per batch; the audit log now keeps the history git kept.
+  Rejected: keeping the file and having the admin produce one to commit (slow, and waitlist answers would need PRs too), and a table plus the file for new databases (two sources of truth).
   Each site is listed once, since a site has one lookup; a home page's lookup finds the feeds the page advertises, and a feed's address adds only that feed.
-  Plain text was picked over OPML, which lists feeds, often several per site, so all but one of a site's feeds would be dropped.
-- **Seeding queues lookups**, so seeded feeds are created by discovery like any other, and needs no table of its own: the seed list is in the binary, and a seeded site is an ordinary site once found.
-- **Seeding is its own command, `www seed`, run in production on every deploy and locally only by hand** (#447): production's pre-deploy command is `www migrate -seed`, so every deploy and production reset seeds without anyone remembering, while `make db/reset`, which runs often, never looks up the whole list.
-  `-seed` exists because Render's pre-deploy takes one command and the image has no shell to chain two.
-  CI doesn't seed: it can't reach the production database (Render's private network only), and its test database has no lookup workers.
-  A Render job started by the deploy workflow after each deploy was the alternative, but it needed the jobs API, polling and error reporting in two workflows for a list that rarely changes.
-  Like a migration, a failed seed fails the deploy and the old version keeps serving.
-- **A seeded site's lookup is retried on the next seed if it failed or found no feeds over an hour ago** (#447), the same wait as a reader's lookup, so a transient failure (a timeout, a rate limit) doesn't keep a site out of search for good.
-  A lookup that found a site, or is in progress, is never re-queued, so sites already found aren't fetched again.
-  The seed logs the sites it retried and those that failed too recently, so a site that keeps failing (one blocking datacenter addresses, say) shows up in every deploy's log, as a reason to fix or drop it; a periodic retry worker was more machinery than the seed needs, since each deploy already retries.
+  An entry is the admin's intent, and its site key's lookup is how it went.
+- **Seeding queues lookups**, so seeded feeds are created by discovery like any other, and a seeded site is an ordinary site once found.
+  Adding sites to the list queues their lookups there and then (#711), at the seed's priority.
+- **Deploys don't seed, and nothing retries on its own** (#649, #709, #710), replacing #447's `www seed`, which every deploy ran as `www migrate -seed` and which retried failed entries an hour after they failed.
+  With the list in a table, adding queues the lookups, so a deploy has nothing to do; the admin's seed list shows failures (#648), and its Not found filter has Look up all again, which re-queues every failed or no-feeds entry at the seed's priority.
+  A periodic retry worker is still more machinery than the list needs: an entry that keeps failing is a reason to fix or drop it, which the page shows.
 - **Readers' lookups go before the seed's** (#447): lookups have a priority, and the seed's are claimed only when no reader's is pending, so seeding thousands of sites after a reset never makes a reader's lookup wait.
   A reader who looks up a site the seed has queued moves that lookup ahead, since someone is now waiting for it.
 - **A lookup is offered when the query looks like a URL or domain.** Turning a name into a website ("the verge" → theverge.com) is a backlog item.
@@ -360,9 +382,9 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   Feeds refer to a section by its ID, so a rename changes nothing else; a section with feeds under it can't be deleted until they're moved.
   The migration seeds the starting list; there's no admin page for sections yet.
   They never appear on subscriptions, aren't tags and readers can't edit them, which is what made #447's topics awkward beside private tags.
-- **The catalog lives in the database, edited in the admin** (#628), not in the seed list: production data is kept now that schema changes are migrations, and bulk upload and a model's suggestions (#649) write to it, so a file would be a second source of truth.
+- **The catalog lives in the database, edited in the admin** (#628), not in the seed list: production data is kept now that schema changes are migrations, and bulk upload (#711) and picking (#712) write to it, so a file would be a second source of truth.
   The seed list keeps its job of looking sites up before anyone searches for them.
-  Local development marks feeds in its own admin rather than copying production, which holds people's emails and reading.
+  Local development adds sites and marks feeds in its own admin (#711, #712) rather than copying production, which holds people's emails and reading; there's no fixture of catalog data (#649).
 - **The catalog is the same for everyone; each reader's Discover is computed from it on each load** (#633, #643): leaving out followed feeds and ordering sections are cheap queries over a few thousand feeds.
   A per-reader table was considered and not taken: it would need a row per reader per catalog feed and an update on every follow, unfollow, signup and catalog edit, for no speed-up at this size.
   Unlike `timeline_entries`, whose positions can't be recomputed, a per-reader ranking can always be rebuilt, so if scoring ever gets too slow it becomes a cache refreshed by a job; personalizing Picks and Discover from a reader's own follows, stars, saves and opens is planned together in #644.
@@ -851,7 +873,8 @@ Planned in #309 (issues #298, #306, #307).
   No full text (an on-demand "Load full article" is a backlog item, never automatic: storage, failed extractions, and the copyright question of storing publishers' text) and no AI.
 - **Enriched values have their own `page_*` columns** and only fill gaps: the feed's own image, title and excerpt always win.
   `saveArticles` overwrites the feed's fields on every changed fetch, so enrichment never writes them.
-- **How far back:** a feed's first save (a lookup or an import) queues only its 20 newest articles, at a lower priority than new arrivals; after that, every new article that qualifies.
+- **How far back:** a feed's first follower queues its 20 newest articles that need it, at a lower priority than new arrivals; after that, every new article that qualifies (#708).
+  Until #708 the first save (a lookup or an import) queued them, which left jobs nobody claims for every feed looked up but never followed, thousands once the seed list grows (#649).
   Older articles wait for a low-priority backlog queue (a backlog item, for future search and related-article features).
 - **Its own queue table (`enrich_jobs`) and runner**, one worker by default.
   Jobs are only claimed for feeds someone subscribes to, as refresh only fetches subscribed feeds, so a looked-up site nobody follows costs no page fetches.
@@ -1358,6 +1381,7 @@ Planned in #583.
 - **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
 - **Joining asks for an email, a name and one optional question, "A few sites you'd like to follow"** (#566, approved at its design checkpoint; #583 had planned up to two questions).
   Its answers are used: the sites go on the seed list, so their lookups have run before the person arrives, and checking that discovery finds their feeds before their wave is invited catches failures before a new reader's first search.
+  The admin sends the selected entries' addresses to the seed list's upload form (#714).
   Rejected: "Which feed reader do you use now?", whose answer wouldn't change anything we do; "What do you mostly read?", too vague to act on; and "How many feeds do you follow now?", useful only for planning waves by load, which one more field on the form doesn't justify yet.
   Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
   Every waitlist email has a link to leave the list.

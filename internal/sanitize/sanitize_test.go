@@ -28,8 +28,8 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name:   "onerror removed",
-			raw:    `<img src=x onerror=alert(1)>`,
-			has:    []string{`<img src="x"`},
+			raw:    `<img src=https://example.com/x onerror=alert(1)>`,
+			has:    []string{`<img src="https://example.com/x"`},
 			hasNot: []string{"onerror", "alert"},
 		},
 		{
@@ -116,9 +116,15 @@ func TestHTML(t *testing.T) {
 		},
 		{
 			name:   "nil base leaves URLs relative",
-			raw:    `<a href="/p">x</a><img src="i.png">`,
-			has:    []string{`href="/p"`, `src="i.png"`},
+			raw:    `<a href="/p">x</a>`,
+			has:    []string{`href="/p"`},
 			hasNot: []string{"example.com"},
+		},
+		{
+			// It can't load from the app's own address.
+			name: "relative image without a base removed",
+			raw:  `<p>a</p><p><img src="i.png"></p>`,
+			want: ptr(`<p>a</p>`),
 		},
 		{
 			name: "image loads lazily without a referrer, srcset removed",
@@ -566,6 +572,117 @@ func TestHTML(t *testing.T) {
 	}
 }
 
+func TestHTMLLazyImages(t *testing.T) {
+	base, err := url.Parse("https://example.com/posts/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		svg   = `data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22/%3E`
+		attrs = ` loading="lazy" referrerpolicy="no-referrer"/>`
+	)
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "data: placeholder and data-src",
+			raw:  `<p><img class="lazyload" src="` + svg + `" data-src="https://cdn.example.com/a.jpg" alt="A"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg" alt="A"` + attrs + `</p>`,
+		},
+		{
+			name: "no src, data-original",
+			raw:  `<p><img data-original="https://cdn.example.com/a.jpg"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "data-lazy-src alone",
+			raw:  `<p><img data-lazy-src="https://cdn.example.com/a.jpg"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "empty src, data-src and data-original",
+			raw:  `<p><img src="" data-original="https://cdn.example.com/b.jpg" data-src="https://cdn.example.com/a.jpg"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "real src wins over data-src",
+			raw:  `<p><img src="https://cdn.example.com/a.jpg" data-src="https://cdn.example.com/b.jpg"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "relative data-src resolved",
+			raw:  `<p><img src="` + svg + `" data-src="/a.jpg"></p>`,
+			want: `<p><img src="https://example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "http data-src loads over https",
+			raw:  `<p><img data-src="http://cdn.example.com/a.jpg"></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "placeholder followed by a noscript image",
+			raw:  `<p><img class="lazyload" src="` + svg + `"> <noscript><img src="https://cdn.example.com/a.jpg" alt="A"></noscript></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg" loading="lazy" referrerpolicy="no-referrer" alt="A"/> </p>`,
+		},
+		{
+			name: "placeholder's alt kept",
+			raw:  `<p><img src="" alt="B"><noscript><img src="https://cdn.example.com/a.jpg" alt="A"></noscript></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg" alt="B"` + attrs + `</p>`,
+		},
+		{
+			name: "noscript image alone in a paragraph",
+			raw:  `<p><noscript><img src="/a.jpg" alt="A"></noscript></p>`,
+			want: `<p><img src="https://example.com/a.jpg" alt="A"` + attrs + `</p>`,
+		},
+		{
+			name: "noscript image after an image with a source",
+			raw:  `<p><img src="https://cdn.example.com/a.jpg"><noscript><img src="https://cdn.example.com/b.jpg"></noscript></p>`,
+			want: `<p><img src="https://cdn.example.com/a.jpg"` + attrs + `<img src="https://cdn.example.com/b.jpg"` + attrs + `</p>`,
+		},
+		{
+			name: "noscript with anything else removed",
+			raw:  `<p>a</p><noscript><p>Turn on JavaScript</p></noscript>`,
+			want: `<p>a</p>`,
+		},
+		{
+			name: "noscript with an image without a source removed",
+			raw:  `<p>a</p><noscript><img src="data:image/gif;base64,AAAA"></noscript>`,
+			want: `<p>a</p>`,
+		},
+		{
+			name: "placeholder alone in a paragraph removed with it",
+			raw:  `<p>a</p><p><img src="` + svg + `"></p>`,
+			want: `<p>a</p>`,
+		},
+		{
+			name: "placeholder in a paragraph with text removed alone",
+			raw:  `<p><img src="` + svg + `">text</p>`,
+			want: `<p>text</p>`,
+		},
+		{
+			name: "placeholder in a link in a figure removed with them",
+			raw:  `<p>a</p><figure><a href="/x"><img src="` + svg + `"></a><figcaption>c</figcaption></figure>`,
+			want: `<p>a</p>`,
+		},
+		{
+			name: "empty anchor kept",
+			raw:  `<p><a id="top"></a>a<img></p>`,
+			want: `<p><a id="top"></a>a</p>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(HTML(tt.raw, base)); got != tt.want {
+				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func ptr(s string) *string { return &s }
 
 // blueskyEmbed is a post embedded from Bluesky, as embed.bsky.app writes it,
@@ -625,6 +742,13 @@ func TestShowsImage(t *testing.T) {
 		{name: "empty imageURL, image after first paragraph", raw: `<p>intro</p><img src="a.jpg">`, want: true},
 		{name: "empty imageURL, image later on", raw: `<p>one</p><p>two</p><img src="a.jpg">`, want: false},
 		{name: "empty imageURL, img with empty src later on", raw: `<p>one</p><p>two</p><img src="">`, want: false},
+
+		// Lazy-loaded images.
+		{name: "leading lazy img", raw: `<p><img src="data:image/gif;base64,AAAA" data-src="a.jpg"></p><p>t</p>`, imageURL: other, want: true},
+		{name: "leading placeholder without a lazy attribute", raw: `<p><img src="data:image/gif;base64,AAAA"></p><p>t</p>`, want: false},
+		{name: "leading placeholder, imageURL elsewhere", raw: `<p><img src="data:image/gif;base64,AAAA"></p><p>t</p>`, imageURL: other, want: false},
+		{name: "data-src same as imageURL", raw: `<p>one</p><p>two</p><img src="data:image/gif;base64,AAAA" data-src="/photo.jpg">`, base: base, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "real src wins over data-src for the same image", raw: `<p>one</p><p>two</p><img src="/other.jpg" data-src="/photo.jpg">`, base: base, imageURL: "https://example.com/photo.jpg", want: false},
 	}
 
 	for _, tt := range tests {

@@ -42,7 +42,9 @@ func newPolicy() *bluemonday.Policy {
 // Vimeo iframes become click-to-play previews (see videoEmbed), every other
 // <iframe> with an http(s) src is replaced by <p><a href="SRC">Open embedded
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
-// http(s) URLs become links (see linkify), and everything bluemonday's policy
+// http(s) URLs become links (see linkify), images a script would have
+// lazy-loaded show (see imageSource and noscriptImage), images left without an
+// http(s) source are removed (see dropEmptyImages), and everything bluemonday's policy
 // doesn't allow is removed.
 //
 // It is the one place the app vouches for untrusted HTML: article HTML is
@@ -52,7 +54,7 @@ func HTML(raw string, base *url.URL) template.HTML {
 }
 
 // prepare parses raw as a fragment of a <div>, rewrites it (see rewrite),
-// reflows it (see reflow), links its bare URLs (see linkify) and renders it
+// drops images without a source (see dropEmptyImages), reflows it (see reflow), links its bare URLs (see linkify) and renders it
 // back. If raw can't be parsed or rendered it is returned as is;
 // the policy still makes it safe, it just misses the rewrites.
 func prepare(raw string, base *url.URL) string {
@@ -61,6 +63,7 @@ func prepare(raw string, base *url.URL) string {
 		return raw
 	}
 	rewrite(root, base)
+	dropEmptyImages(root)
 	reflow(root)
 	linkify(root)
 	var b strings.Builder
@@ -146,7 +149,8 @@ func blocks(n *html.Node) []*html.Node {
 	return bs
 }
 
-// isImageBlock reports whether n is an <img> or <picture>, or a <figure>,
+// isImageBlock reports whether n is an <img> with a source (see
+// imageSource) or a <picture>, or a <figure>,
 // <p>, <a> or <span> whose only content (besides whitespace, comments and,
 // in a <figure>, a <figcaption>) is an image block.
 func isImageBlock(n *html.Node) bool {
@@ -154,7 +158,10 @@ func isImageBlock(n *html.Node) bool {
 		return false
 	}
 	switch n.DataAtom {
-	case atom.Img, atom.Picture:
+	case atom.Img:
+		_, ok := imageSource(n, nil)
+		return ok
+	case atom.Picture:
 		return true
 	case atom.Figure, atom.P, atom.A, atom.Span:
 	default:
@@ -170,15 +177,15 @@ func isImageBlock(n *html.Node) bool {
 	return len(content) == 1 && isImageBlock(content[0])
 }
 
-// hasImage reports whether an <img> under n has a src with the image key
-// want.
+// hasImage reports whether an <img> under n shows an image (see
+// imageSource) with the image key want.
 func hasImage(n *html.Node, base *url.URL, want string) bool {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if c.Type != html.ElementNode {
 			continue
 		}
 		if c.DataAtom == atom.Img {
-			if src, ok := attr(c, "src"); ok {
+			if src, ok := imageSource(c, base); ok {
 				if key, ok := imageKey(src, base); ok && key == want {
 					return true
 				}
@@ -233,7 +240,8 @@ func httpsImage(rawURL string) string {
 // rewrite walks the children of n: it resolves href and src against base,
 // replaces embedded posts with post cards, replaces iframes with post cards,
 // video previews or links (or drops them), removes srcset and sizes, and
-// makes images load over https, lazily and without a referrer.
+// makes images show the image their lazy-loading attributes or <noscript>
+// name and load it over https, lazily and without a referrer.
 func rewrite(n *html.Node, base *url.URL) {
 	for c := n.FirstChild; c != nil; {
 		next := c.NextSibling
@@ -268,18 +276,167 @@ func rewrite(n *html.Node, base *url.URL) {
 				c = next
 				continue
 			case atom.Img:
-				for i, a := range c.Attr {
-					if a.Namespace == "" && a.Key == "src" {
-						c.Attr[i].Val = httpsImage(a.Val)
+				rewriteImage(c, base)
+			case atom.Noscript:
+				if img := noscriptImage(c, base); img != nil {
+					if prev := previousElement(c); prev != nil && prev.DataAtom == atom.Img && !hasSource(prev) {
+						// The script would have swapped the placeholder
+						// for the image; do it here.
+						src, _ := attr(img, "src")
+						replaceAttr(prev, "src", src)
+						if _, ok := attr(prev, "alt"); !ok {
+							if alt, ok := attr(img, "alt"); ok {
+								setAttr(prev, "alt", alt)
+							}
+						}
+					} else {
+						n.InsertBefore(img, c)
 					}
+					n.RemoveChild(c)
 				}
-				setAttr(c, "loading", "lazy")
-				setAttr(c, "referrerpolicy", "no-referrer")
+				c = next
+				continue
 			}
 			rewrite(c, base)
 		}
 		c = next
 	}
+}
+
+// rewriteImage makes img show the image its lazy-loading attributes name
+// (see imageSource), over https, lazily and without a referrer. An img left
+// without an http(s) source is removed later, by dropEmptyImages.
+func rewriteImage(img *html.Node, base *url.URL) {
+	if src, ok := imageSource(img, base); ok {
+		replaceAttr(img, "src", httpsImage(src))
+	}
+	setAttr(img, "loading", "lazy")
+	setAttr(img, "referrerpolicy", "no-referrer")
+}
+
+// lazyAttrs are the attributes lazy-loading scripts read an image's URL from,
+// in the order imageSource tries them.
+var lazyAttrs = []string{"data-src", "data-original", "data-lazy-src"}
+
+// imageSource returns the URL img shows: its src when that is set and not
+// a data: URL, else the first of data-src, data-original and
+// data-lazy-src that is set, resolved against base (nil leaves it as is).
+// ok is false when there is none.
+func imageSource(img *html.Node, base *url.URL) (src string, ok bool) {
+	src, _ = attr(img, "src")
+	src = strings.TrimSpace(src)
+	if src == "" || strings.HasPrefix(strings.ToLower(src), "data:") {
+		src = ""
+		for _, key := range lazyAttrs {
+			if v, _ := attr(img, key); strings.TrimSpace(v) != "" {
+				src = strings.TrimSpace(v)
+				break
+			}
+		}
+		if src == "" {
+			return "", false
+		}
+	}
+	if base != nil {
+		if u, err := url.Parse(src); err == nil {
+			src = base.ResolveReference(u).String()
+		}
+	}
+	return src, true
+}
+
+// hasSource reports whether img has an http(s) src.
+func hasSource(img *html.Node) bool {
+	src, ok := attr(img, "src")
+	if !ok {
+		return false
+	}
+	u, err := url.Parse(strings.TrimSpace(src))
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
+}
+
+// noscriptImage returns the <img> the <noscript> n holds, rewritten (see
+// rewriteImage), when that is its only content and it has an http(s) src, or
+// nil. The parser keeps a <noscript>'s content as text, so it is parsed here.
+func noscriptImage(n *html.Node, base *url.URL) *html.Node {
+	var text strings.Builder
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.TextNode {
+			return nil
+		}
+		text.WriteString(c.Data)
+	}
+	root, err := parse(text.String())
+	if err != nil {
+		return nil
+	}
+	bs := blocks(root)
+	if len(bs) != 1 || bs[0].Type != html.ElementNode || bs[0].DataAtom != atom.Img {
+		return nil
+	}
+	img := bs[0]
+	resolveURLs(img, base)
+	removeAttrs(img, "srcset", "sizes")
+	rewriteImage(img, base)
+	if !hasSource(img) {
+		return nil
+	}
+	root.RemoveChild(img)
+	return img
+}
+
+// previousElement returns the sibling element before n when only whitespace
+// text is between them, or nil.
+func previousElement(n *html.Node) *html.Node {
+	for c := n.PrevSibling; c != nil; c = c.PrevSibling {
+		switch {
+		case c.Type == html.ElementNode:
+			return c
+		case c.Type == html.TextNode && strings.Trim(c.Data, htmlSpace) == "":
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// dropEmptyImages removes each <img> under n without an http(s) src, and
+// the <p>, <a> or <figure> whose only content (besides whitespace, comments
+// and, in a <figure>, a <figcaption>) it was, as image-fallback.ts does for
+// images that fail to load. It reports whether it removed anything.
+func dropEmptyImages(n *html.Node) bool {
+	removed := false
+	for c := n.FirstChild; c != nil; {
+		next := c.NextSibling
+		if c.Type == html.ElementNode {
+			switch {
+			case c.DataAtom == atom.Img:
+				if !hasSource(c) {
+					n.RemoveChild(c)
+					removed = true
+				}
+			case dropEmptyImages(c):
+				removed = true
+				if (c.DataAtom == atom.P || c.DataAtom == atom.A || c.DataAtom == atom.Figure) && isEmptyFrame(c) {
+					n.RemoveChild(c)
+				}
+			}
+		}
+		c = next
+	}
+	return removed
+}
+
+// isEmptyFrame reports whether n has no content besides whitespace, comments
+// and, in a <figure>, a <figcaption>.
+func isEmptyFrame(n *html.Node) bool {
+	for _, c := range blocks(n) {
+		if n.DataAtom == atom.Figure && c.DataAtom == atom.Figcaption {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // blockAtoms are the elements that give text its own layout. Text containing
@@ -516,7 +673,7 @@ func newElement(a atom.Atom) *html.Node {
 // resolveURLs resolves the href and src attributes of n against base. Values
 // that aren't parseable URLs are left for the policy to remove, and
 // fragment-only references (footnotes, "#top") are kept so they still point
-// into the article.
+// into the article. An empty src is left empty.
 func resolveURLs(n *html.Node, base *url.URL) {
 	if base == nil {
 		return
@@ -526,7 +683,9 @@ func resolveURLs(n *html.Node, base *url.URL) {
 			continue
 		}
 		val := strings.TrimSpace(a.Val)
-		if strings.HasPrefix(val, "#") {
+		if strings.HasPrefix(val, "#") || (a.Key == "src" && val == "") {
+			// An empty src is no image, not the page itself (see
+			// imageSource).
 			continue
 		}
 		u, err := url.Parse(val)
@@ -648,6 +807,17 @@ func attr(n *html.Node, key string) (string, bool) {
 
 func setAttr(n *html.Node, key, val string) {
 	removeAttrs(n, key)
+	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: val})
+}
+
+// replaceAttr sets n's key attribute to val where it is, or adds it.
+func replaceAttr(n *html.Node, key, val string) {
+	for i, a := range n.Attr {
+		if a.Namespace == "" && a.Key == key {
+			n.Attr[i].Val = val
+			return
+		}
+	}
 	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: val})
 }
 

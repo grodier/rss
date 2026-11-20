@@ -582,15 +582,17 @@ There is no service worker, install button or banner, and no pull-to-refresh: ta
 **Flow.** Many feed items arrive without an image, a title or any text; enrichment fetches their web page in the background and stores what its meta tags say.
 
 1. **Queuing.** `saveArticles` knows which upserted articles were inserted (`RETURNING id, (xmax = 0)`).
-   A new article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row if `enrichCandidates` allows it: on a feed's first save only the 20 with the latest `timeline_at`, at priority 1; on later saves every one, at priority 0, but none for a feed nobody follows (a catalog feed's daily refreshes), whose jobs would never be claimed.
+   Jobs exist only for *wanted* feeds, ones someone follows or in Discover's catalog (`enrichWanted` in `internal/psql/enrich.go`).
+   A new article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row if `enrichCandidates` allows it: none for a feed that isn't wanted; for a wanted feed, on a save placed as a first save only the 20 with the latest `timeline_at`, at priority 1, and on later saves every one, at priority 0.
    Updated articles aren't queued again, and older articles never.
-2. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`) claims a due job whose article's feed has a subscriber, priority 0 first, with a 2-minute lease, and counts the attempt.
-   A looked-up site nobody subscribes to costs no page fetches.
-3. **Fetching** (20 s per job):
+2. **Becoming wanted or not.** The places that change follows and the catalog keep the rule, each in its own transaction: `SubscriptionRepository.Subscribe`, for a feed's first follower while it isn't in the catalog, and `AdminFeedRepository.SetDiscoverSection`, for a feed entering the catalog while nobody follows it, queue its backlog (`queueEnrichBacklog`: its 20 newest that need it and have no `page_*` values yet, at priority 1); `Unsubscribe`, `UserRepository.Delete` (the feeds the account followed) and `SetDiscoverSection` taking a feed out drop the pending jobs of those no longer wanted (`dropUnwantedEnrichJobs`).
+   So a looked-up or seeded site nobody follows costs no page fetches, and no job is left that nobody would claim.
+3. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`) claims a due job whose article's feed is wanted, priority 0 first, with a 2-minute lease, and counts the attempt.
+4. **Fetching** (20 s per job):
    - **network error, 429 or 5xx:** retried after 1 hour, then 6 hours (or a later `Retry-After`, capped at 24 h), and given up after the third attempt;
    - **any other non-2xx, a body that isn't HTML, or a fetch the client refuses:** given up at once;
    - **an HTML page:** `discovery.ParsePage` reads its `og:image` (else `twitter:image`), `og:title` (else `<title>`) and description, `PageOf` turns them into an `rss.ArticlePage`, and `SavePage` stores them in `page_image_url`, `page_title` and `page_description` and deletes the job, in one transaction.
-4. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and the lease retries the job.
+5. Outcomes are recorded with a fresh short context; on shutdown nothing is recorded and the lease retries the job.
 
 The `page_*` columns are never the feed's values: `saveArticles` overwrites `image_url`, `title` and `excerpt` on every changed fetch and leaves `page_*` alone.
 Pages read them only through the card-value accessors (see "Card values" under "Reading").
@@ -598,9 +600,10 @@ Pages read them only through the card-value accessors (see "Card values" under "
 **Start at:**
 
 1. `saveArticles`, `needsEnrichment` and `enrichCandidates` in `internal/psql/articles.go`.
-2. `internal/enrich/enrich.go` (`Runner`, `attempt`, `PageOf`) and `internal/psql/enrich.go`.
+2. `internal/psql/enrich.go` (`enrichWanted`, `queueEnrichBacklog`, `dropUnwantedEnrichJobs`, `ClaimNext`), and their callers in `subscriptions.go`, `users.go` and `admin_feeds.go`.
+3. `internal/enrich/enrich.go` (`Runner`, `attempt`, `PageOf`).
 
-**Tests:** `internal/psql/articles_test.go`, `enrich_test.go`; `internal/enrich` (an `httptest` server); `cmd/www/config_test.go`.
+**Tests:** `internal/psql/articles_test.go`, `enrich_test.go`, `enrich_wanted_test.go`; `internal/enrich` (an `httptest` server); `cmd/www/config_test.go`.
 
 **Why:** "Enrichment" in decisions.md.
 

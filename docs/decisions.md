@@ -444,7 +444,7 @@ Planned in #126, with issues #128–#133.
 - **Discover's catalog feeds are refreshed even with no followers, about once a day** (#632, planned in #450): Discover shows each feed's posting rate and latest posts, and Picks recent articles from feeds the reader doesn't follow, so they can't keep the articles from their lookup forever.
   Only catalog feeds (`discover_feeds`): they're what Discover and Picks show, and other unfollowed feeds keep the rule above.
   Any feed nobody follows waits at least a day between fetches, whatever its posting rate or outcome, so the cost grows with the catalog, not with readers; once someone follows it, its normal schedule applies from its next fetch, with no fetch forced on follow, since the feed is at most a day old.
-  Later saves of a feed nobody follows queue no enrichment, since enrichment only works for followed feeds and the jobs would pile up; a first save keeps its allowance, as feeds are looked up before anyone follows them.
+  Their new articles are enriched, since a catalog feed is wanted as a followed one is (#708, under "Enrichment").
 - **Busy feeds are fetched more often; quiet ones stay hourly** (#456, planned on #438).
   The interval is about four fetches per expected article, from `posts_per_week`, between 15 minutes and an hour, so feeds posting more than 6 a day are fetched sooner and 24 a day or more every 15 minutes.
   At an hour, an article waited 30 minutes on average to be fetched, and a feed whose file holds fewer items than an hour of posts loses articles outright; in #438's simulation, faster busy feeds cost 22% more fetches and cut the wait to 11 minutes.
@@ -452,7 +452,7 @@ Planned in #126, with issues #128–#133.
   Fetching quiet feeds less often (up to a day) would save requests but delay the rare posts readers value most; it's a backlog item for when fetch volume matters.
 - **A 410 Gone stops background fetches** of the feed; rediscovering it clears that.
   (#132)
-- **A save after two days without a fetch attempt is placed as a feed's first save** (#497, planned in #491): everything is backlog at its date, undated items are spaced back, and only the first save's enrichment allowance applies.
+- **A save after two days without a fetch attempt is placed as a feed's first save** (#497, planned in #491): everything is backlog at its date, undated items are spaced back, and, for a followed or catalog feed, only the first save's enrichment allowance applies.
   Feeds nobody follows aren't refreshed, so a seeded or looked-up site followed weeks later would otherwise bring every post since a day before its last fetch in as news, spread into the top 6 hours as one block; nobody was fetching it, so we don't know when those posts appeared, and dates are the best order we have.
   The previous attempt decides, not the previous success: a followed feed is attempted at least once a day even while it fails, so a feed that was down keeps its news.
 - **Articles keep their authors' names, never their email addresses** (`articles.authors`).
@@ -899,11 +899,16 @@ Planned in #309 (issues #298, #306, #307).
   No full text (an on-demand "Load full article" is a backlog item, never automatic: storage, failed extractions, and the copyright question of storing publishers' text) and no AI.
 - **Enriched values have their own `page_*` columns** and only fill gaps: the feed's own image, title and excerpt always win.
   `saveArticles` overwrites the feed's fields on every changed fetch, so enrichment never writes them.
-- **How far back:** a feed's first follower queues its 20 newest articles that need it, at a lower priority than new arrivals; after that, every new article that qualifies (#708).
-  Until #708 the first save (a lookup or an import) queued them, which left jobs nobody claims for every feed looked up but never followed, thousands once the seed list grows (#649).
+- **Jobs exist only for wanted feeds: one someone follows, or one in Discover's catalog** (#708, changing #715's first-follower version of it, which left Discover's rows without pictures and unfollowed feeds' jobs behind).
+  The worker claims only their jobs, and every change that makes a feed wanted or unwanted keeps the rule, so no job is left that nobody would claim: a feed becoming wanted (its first follower, or entering the catalog) gets its backlog queued, and one becoming unwanted (its last follower leaving, by unfollowing or deleting the account, or leaving the catalog) has its pending jobs dropped.
+  A lookup's or import's save queues nothing by itself; an import's follow does.
+  Until #708 the first save queued jobs whatever followed, and only followed feeds' were claimed, so every feed looked up but never followed, or unfollowed, kept jobs nobody claimed: thousands once the seed list grows (#649).
+  Catalog feeds are wanted because Discover's section pages and Picks show their articles as rows, which need pictures like a timeline's; they cost what one follower of each would, growing with the catalog, not with readers (the watchlist entry "Enrichment of Discover's catalog").
+  Rejected: queuing on the first follower only (Discover's rows stay bare, and unfollowing still leaves jobs), a periodic cleanup of unclaimed jobs (machinery for rows that needn't exist), and database triggers (the app uses none; the few places that change follows and the catalog are in `internal/psql`).
+- **How far back:** a feed becoming wanted queues its 20 newest articles that need it and haven't been enriched, at a lower priority than new arrivals; after that, every new article that qualifies.
+  A wanted feed's save placed as a first save (never fetched, or not attempted for two days, below) gets the same 20 at the same priority, rather than every article.
   Older articles wait for a low-priority backlog queue (a backlog item, for future search and related-article features).
 - **Its own queue table (`enrich_jobs`) and runner**, one worker by default.
-  Jobs are only claimed for feeds someone subscribes to, as refresh only fetches subscribed feeds, so a looked-up site nobody follows costs no page fetches.
 - **Polite, with a retry story:** one request at a time through `internal/fetch`; a network error, 429 or 5xx is retried after 1 hour, then 6, then given up; any other 4xx or a non-HTML response is given up at once, as is a fetch `internal/fetch` refuses (a blocked address, a body over 5 MiB, too many redirects), which a retry wouldn't change (#306).
   `robots.txt` isn't consulted: it's one fetch of a page a reader is about to see, like a link preview.
 - **One page parser:** `discovery.ParsePage` reads Open Graph tags and icon links too (#298), for both enrichment and site icons.

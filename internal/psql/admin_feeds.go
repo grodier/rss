@@ -587,9 +587,22 @@ func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectio
 		return rss.ErrFeedGone
 	case after.ID == "":
 		_, err = tx.ExecContext(ctx, `DELETE FROM discover_feeds WHERE feed_id = $1`, id)
+		if err == nil {
+			// Leaving the catalog makes a feed nobody follows unwanted (#708).
+			err = dropUnwantedEnrichJobs(ctx, tx, []string{id})
+		}
 	default:
 		_, err = tx.ExecContext(ctx, `INSERT INTO discover_feeds (feed_id, section_id) VALUES ($1, $2)
 			ON CONFLICT (feed_id) DO UPDATE SET section_id = EXCLUDED.section_id`, id, after.ID)
+		if err == nil && before.ID == "" {
+			// Entering the catalog makes a feed nobody follows wanted: queue
+			// its enrichment backlog (#708).
+			var followed bool
+			err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM subscriptions WHERE feed_id = $1)`, id).Scan(&followed)
+			if err == nil && !followed {
+				err = queueEnrichBacklog(ctx, tx, id)
+			}
+		}
 	}
 	if err != nil {
 		return err

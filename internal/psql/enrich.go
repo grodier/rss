@@ -6,12 +6,22 @@ import (
 	"errors"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/textcut"
 )
 
 // EnrichRepository hands out enrich_jobs and records what enrichment read
-// from articles' web pages. Jobs are queued by saveArticles.
+// from articles' web pages.
+//
+// Jobs exist only for wanted feeds (enrichWanted): a feed someone follows
+// or one in Discover's catalog (#708). saveArticles queues a wanted feed's
+// new arrivals; a feed becoming wanted gets its backlog queued
+// (queueEnrichBacklog: a first follower, or entering the catalog), and one
+// becoming unwanted has its pending jobs dropped (dropUnwantedEnrichJobs:
+// its last follower leaving, or leaving the catalog), so no job is left
+// that ClaimNext would never claim.
 type EnrichRepository struct {
 	DB *sql.DB
 }
@@ -20,14 +30,62 @@ func NewEnrichRepository(db *sql.DB) *EnrichRepository {
 	return &EnrichRepository{DB: db}
 }
 
+// enrichWanted is true for the feed whose ID is the SQL expression feed
+// when its articles may have enrichment jobs: someone follows it or it's
+// in Discover's catalog.
+func enrichWanted(feed string) string {
+	return `(EXISTS (SELECT 1 FROM subscriptions ws WHERE ws.feed_id = ` + feed + `)
+		OR EXISTS (SELECT 1 FROM discover_feeds wd WHERE wd.feed_id = ` + feed + `))`
+}
+
 // enrichJobDue is true for a job j, of article a, that ClaimNext may
-// claim: due, and the article's feed has a subscriber. The admin's Overview
+// claim: due, and the article's feed is wanted. The admin's Overview
 // counts the enrichment queue with it (AdminOverviewRepository.Queues).
-const enrichJobDue = `j.next_attempt_at <= now()
-	AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = a.feed_id)`
+var enrichJobDue = `j.next_attempt_at <= now()
+	AND ` + enrichWanted("a.feed_id")
+
+// enrichFirstWanted is how many of a feed's articles, the latest by
+// timeline position, get an enrichment job when the feed becomes wanted.
+const enrichFirstWanted = 20
+
+// Priorities of enrichment jobs; lower goes first.
+const (
+	enrichPriorityNew     = 0 // new arrivals of a wanted feed
+	enrichPriorityBacklog = 1 // a feed's latest articles when it becomes wanted
+)
+
+// queueEnrichBacklog queues jobs for the enrichFirstWanted latest articles
+// of feedID that need enrichment and haven't had it, at
+// enrichPriorityBacklog, for a feed that has just become wanted. Its first
+// three conditions are needsEnrichment's, in SQL: keep the two in step. The
+// page_* ones skip articles enriched while the feed was wanted before. An
+// article that already has a job keeps it.
+func queueEnrichBacklog(ctx context.Context, q querier, feedID string) error {
+	_, err := q.ExecContext(ctx, `INSERT INTO enrich_jobs (article_id, priority)
+		SELECT id, $2 FROM articles
+		WHERE feed_id = $1
+		  AND url <> '' AND (image_url = '' OR title = '' OR excerpt = '')
+		  AND page_image_url = '' AND page_title = '' AND page_description = ''
+		ORDER BY timeline_at DESC, id DESC
+		LIMIT $3
+		ON CONFLICT (article_id) DO NOTHING`, feedID, enrichPriorityBacklog, enrichFirstWanted)
+	return err
+}
+
+// dropUnwantedEnrichJobs deletes the pending jobs of those of feedIDs that
+// are no longer wanted, after a change that may have made them so.
+func dropUnwantedEnrichJobs(ctx context.Context, q querier, feedIDs []string) error {
+	if len(feedIDs) == 0 {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `DELETE FROM enrich_jobs j USING articles a
+		WHERE a.id = j.article_id AND a.feed_id = ANY($1::uuid[]) AND NOT `+enrichWanted("a.feed_id"),
+		pq.Array(feedIDs))
+	return err
+}
 
 // ClaimNext claims a due job (next_attempt_at <= now()) whose article's feed
-// has a subscriber, lowest priority then earliest next_attempt_at first: it
+// is wanted, lowest priority then earliest next_attempt_at first: it
 // moves the job's next_attempt_at to now() + lease and counts the attempt.
 // If the claimer records nothing, the job is due again when the lease runs
 // out. rss.ErrNoRecord when no job is due.

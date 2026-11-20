@@ -1,6 +1,7 @@
 /* A Discover section's page: its Feeds and Recent posts tabs. In the
    partials' order (see base.css). */
 @import "./partials/rows.css";
+@import "./partials/copied.css";
 @import "./partials/profiles.css";
 @import "./partials/timeline-tabs.css";
 @import "./partials/follow.css";

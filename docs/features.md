@@ -460,6 +460,7 @@ The body is the content, else the summary, through `sanitize.HTML` (relative URL
 `sanitize.HTML` also splits plain text into paragraphs and links bare URLs, turns YouTube and Vimeo iframes into a click-to-play preview (`video-embeds.ts` swaps in the sandboxed player; without JavaScript the link opens the video), turns posts embedded from X and Bluesky into a post card (`xPost` and `blueskyPost` read the embed's markup, `socialCard` writes the card, whose time `local-times.ts` shows in the reader's zone), and turns any other iframe into a link, and makes `http:` images load over `https:`.
 Images a site lazy-loads with a script show without it: `imageSource` takes the URL from `data-src`, `data-original` or `data-lazy-src` when `src` is missing or a `data:` placeholder, `noscriptImage` uses the `<img>` in a `<noscript>`, and `dropEmptyImages` removes an image still left without an http(s) source, with the paragraph, link or figure that held only it; `ShowsImage` reads sources the same way.
 The card image shows above the text unless `sanitize.ShowsImage` finds the content already shows it.
+Each code block (`.article-body pre`) gets a Copy button from `code-copy.ts`, since the sanitizer allows no button and it needs JavaScript; it's added only where the Clipboard API works, copies the block's text less one trailing line break, and shows and announces the outcome ("Code copied" or "Couldn't copy") with the same label as Share's (`copied.ts`, below).
 
 **Read state.** An article is read when its page is opened, or when the reader clicks through to the original from a row: the link has `ping="/articles/{id}/read"`, which `read-pings.ts` replaces with `navigator.sendBeacon` because Firefox ignores `ping`.
 List pages ask `ReadArticleIDs` which rows are read (matching any copy with the same `canonical_url`), and the row is shown quieter.
@@ -492,9 +493,9 @@ Without JavaScript the link just works.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
 3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
-5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts` and `image-fallback.ts` in `web/app/features`.
+5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 
@@ -514,7 +515,7 @@ Stars are private, with no counts; starred-only timelines list them (see "Timeli
 **Share.** Between Star and Save, an icon-only Share button (the `share-button` partial) carries the article's `CanonicalURL` and `DisplayTitle`; an article without a canonical URL has none.
 It's rendered `hidden` and `share.ts` shows it, so it never appears without JavaScript.
 A click opens the system share sheet (`navigator.share`) where there is one, else copies the link and announces "Link copied" in a polite live region.
-When it copies, `showCopied` in `share.ts` also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
+When it copies, `showCopied` in `copied.ts` (shared with code blocks' Copy buttons) also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
 Only the latest copy's label shows, and a copy repeated while it shows replays its entrance (`data-copy-round` restarts the CSS animations).
 The label is `aria-hidden`, so it isn't read on top of the announcement.
 A browser that can neither share nor copy never shows the button.
@@ -529,9 +530,9 @@ There's no count anywhere.
 
 1. `internal/server/articles.go` (`toggleAction` and the save and star handlers) and `saved.go`.
 2. `internal/psql/saves.go` and `stars.go`.
-3. `partials/save_button.html`, and `save-star.ts` and `share.ts` in `web/app/features`.
+3. `partials/save_button.html`, and `save-star.ts`, `share.ts` and `copied.ts` in `web/app/features`.
 
-**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `save-star.test.ts` and `share.test.ts` in `web/app/features`; `internal/psql/saves_test.go`, `stars_test.go`.
+**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `save-star.test.ts`, `share.test.ts` and `copied.test.ts` in `web/app/features`; `internal/psql/saves_test.go`, `stars_test.go`.
 
 **Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and timelines" in decisions.md.
 

@@ -4,6 +4,7 @@
 // the group's name. Every page works without them.
 import * as busyForms from "../../shared/lib/busy-forms";
 import { localizeTimes } from "../../shared/lib/local-times";
+import * as codeCopy from "../features/code-copy";
 import * as backForward from "../features/back-forward";
 import * as dividerDraw from "../features/divider-draw";
 import * as homeFetching from "../features/home-fetching";
@@ -23,6 +24,7 @@ enhancePings(document);
 backForward.init();
 saveStar.init();
 share.init();
+codeCopy.init();
 busyForms.init(); // after saveStar: it skips the submits saveStar takes over
 videoEmbeds.init();
 imageFallback.init();

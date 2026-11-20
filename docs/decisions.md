@@ -359,7 +359,18 @@ Planned in #50 (issues #51–#67).
 - **Discovery order:** fetch the page (or a feed URL directly), take its `<link rel="alternate">` feeds, else try common paths (`/feed`, `/rss.xml`, …), and keep only candidates that parse as feeds.
 - **A site is keyed by its lowercase host without `www.`**, and lookups always land on the site page, even for one feed.
   A feed belongs to the first site it was discovered from.
-  Sites under a path on a shared host (`medium.com/@user`) aren't handled yet.
+- **On a host shared by many sites, the key adds the path that names the site** (planned in #725, built in #726): `medium.com/@alice`, `youtube.com/channel/UC…`, `reddit.com/r/golang`, `github.com/owner/repo`, `bsky.app/profile/someone`, and on any other host a first path segment `@name` (`mastodon.social/@bob`), so each author, channel or project gets its own site page, name and lookup.
+  The rules are a list in code for the platforms that need one, plus the generic `@name` rule, which covers every Mastodon and fediverse instance, Threads and the platforms' own `@` pages without listing them.
+  A list alone would leave thousands of fediverse instances merged; keying every site by its feed's link was rejected, since it would split ordinary sites (each NPR section's feed links to its section's page).
+  The rare site that uses `/@name` for something else gets one site per such path, which is harmless.
+  A page and its feed that disagree on a key with a path on the same host take the feed's (a YouTube `/@handle` page's feed links to its `/channel/ID`), so a channel is one site whichever address was looked up.
+  A path-scoped site doesn't try the common feed paths, which would find the platform's own feed.
+- **A feed moves from a shared host's own site to its new site** (#725), the one exception to "a feed belongs to the first site it was discovered from": when a lookup saves it under a key with a path whose host is the key of its current site (`medium.com` → `medium.com/@alice`), never between two path-scoped sites or two hosts.
+  Without it, sites merged before #726 would block their authors' new sites, which would come up empty.
+- **A site's "home page" is its root, `SiteRoot`, with no query** (#725): `/` for an ordinary site, `/@alice` for `medium.com/@alice`; a lookup records whether it ran on it (`lookups.home_page`), replacing #716's check that its URL's path is `/`.
+- **Stored sites follow a change of the key rules on deploy, only when the rules' version changes** (#725, built in #727): `discovery.SiteKeyRulesVersion`, bumped by any PR that changes what key an address gets, against the version stored in `site_key_rules`; `www migrate` (production's pre-deploy command) moves feeds from a bare host's site to their path-scoped sites, queues each new site's root lookup at the seed's priority, and deletes a bare host's site left with no feeds.
+  An SQL migration was rejected, as it would repeat the rules as regexes and need another migration for each rule change; a step that scanned on every deploy was rejected for its cost.
+  It isn't compatibility code with a removal date: it's how stored sites follow every future rule change, and a deploy with unchanged rules costs one read.
 - **Search, site pages and lookups are login-only** for now (logged-out access is a backlog item), and lookups are rate-limited per user.
   (#67)
 - **Feeds are parsed with `gofeed`**, which reads RSS 0.9x–2.0, RSS 1.0, Atom and JSON Feed.

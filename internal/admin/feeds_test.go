@@ -60,6 +60,17 @@ type fakeFeeds struct {
 	siteCounted []string
 	// icon is what SiteIcon returns when its site ID matches.
 	icon rss.SiteIcon
+	// pick is what PickSites returns, keeping the queries it was asked in
+	// pickQueries; pickCounts is what CountPick returns; picks and skips
+	// are what SavePicks was given, which returns pickErr; skipped are the
+	// feeds Unskip knows, the others being rss.ErrNoRecord.
+	pick        []rss.AdminPickSite
+	pickQueries []rss.AdminPickQuery
+	pickCounts  map[string]int
+	picks       []rss.DiscoverPick
+	skips       []string
+	pickErr     error
+	skipped     []string
 }
 
 // feedCall is one action the store was asked to make.
@@ -214,6 +225,48 @@ func (f *fakeFeeds) RetrySeedLookups(_ context.Context, by rss.AuditActor) (int,
 
 func (f *fakeFeeds) Catalog(context.Context) ([]rss.AdminCatalogSection, error) {
 	return f.catalog, f.err
+}
+
+// PickSites returns pick after the site q.After (nothing when it isn't
+// one of them), at most q.Limit.
+func (f *fakeFeeds) PickSites(_ context.Context, q rss.AdminPickQuery) ([]rss.AdminPickSite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pickQueries = append(f.pickQueries, q)
+	sites := f.pick
+	if q.After != "" {
+		i := slices.IndexFunc(sites, func(s rss.AdminPickSite) bool { return s.ID == q.After })
+		sites = sites[i+1:]
+		if i < 0 {
+			sites = nil
+		}
+	}
+	return sites[:min(len(sites), q.Limit)], f.err
+}
+
+func (f *fakeFeeds) CountPick(context.Context) (map[string]int, error) {
+	return f.pickCounts, f.err
+}
+
+// SavePicks keeps picks and skips, records the call as "pick", and
+// returns pickErr.
+func (f *fakeFeeds) SavePicks(_ context.Context, picks []rss.DiscoverPick, skips []string, by rss.AuditActor) error {
+	f.mu.Lock()
+	f.picks, f.skips = picks, skips
+	f.mu.Unlock()
+	if err := f.call("pick", "", by); err != nil {
+		return err
+	}
+	return f.pickErr
+}
+
+// Unskip returns rss.ErrNoRecord for a feed not in skipped; otherwise it
+// records the call as "unskip".
+func (f *fakeFeeds) Unskip(_ context.Context, id string, by rss.AuditActor) error {
+	if !slices.Contains(f.skipped, id) {
+		return rss.ErrNoRecord
+	}
+	return f.call("unskip", id, by)
 }
 
 // fakeRefresher returns res and err, keeping the feeds it refreshed and

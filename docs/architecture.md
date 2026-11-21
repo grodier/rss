@@ -76,7 +76,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` command | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages and adding sites to the seed list in bulk, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `discovery`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, adding sites to the seed list in bulk and picking Discover's feeds a page of sites at a time, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `discovery`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
@@ -230,6 +230,7 @@ users ──< subscriptions >── feeds ──< articles ──< reads >──
                               │          ├──< stars >── users
                               │          └──< enrich_jobs
                               ├── discover_feeds (one row per feed in Discover's catalog) >── discover_sections
+                              ├── discover_skips (one row per feed skipped on the picking page)
                               │
                             sites ──< lookups (site_id, once found)
                               └──< site_icons
@@ -250,6 +251,7 @@ admins ──< admin_recovery_codes   (apart from users: an admin is never a rea
 admins ──< admin_audit   (admin_id nullable: none for a failed password or a command, and kept, with the email, when the admin is deleted)
 admins ──< seed_sites   (added_by nullable, cleared when the admin is deleted; site_key matches lookups.site_key, no foreign key)
 discover_sections ──< seed_sites   (section_id: the entry's section hint, nullable, cleared when the section is deleted)
+admins ──< discover_skips   (skipped_by nullable, cleared when the admin is deleted)
 admin_sessions (the admin's scs sessions, apart from the reader's sessions)
 
 sessions (scs's table: session data keyed by token, no foreign keys)
@@ -278,6 +280,7 @@ availability_checks   (written by the admin's pinger; no foreign keys)
   Its `section_id` is a hint for the section of the site's feeds, which never puts them in Discover's catalog itself, and `source` is where the uploader said the entry came from.
 - **`discover_feeds`:** Discover's catalog, the same for every reader, one row per picked feed with its section's ID.
   Only the admin writes it, recording each change in `admin_audit` in the same transaction; deleting a feed deletes its row.
+  `discover_skips` holds the feeds an admin left out of the catalog on the picking page, so it stops offering them; unskipping deletes the row, and so does putting the feed in the catalog (`setDiscoverSection`), each recorded in `admin_audit`.
   `discover_sections` is the list of sections, in `position` order; code never names one, so renaming or adding a section is a row change, and a section with feeds under it can't be deleted.
   `DiscoverRepository.Sections` reads it for each reader on each visit, leaving out the feeds they follow with a `NOT EXISTS` on `subscriptions`; nothing per reader is stored.
 - **Per-user names:** a subscription's `title` is the user's name for the feed (`''` uses the feed's); per-user list queries select it in place of `feeds.title` (`subscriptionTitle`).

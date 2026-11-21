@@ -1,8 +1,9 @@
 /* The feeds and sites pages: a feed's problem, said in words, in the
    tables and atop its page (the status panel, tinted when it's bad), a
    late last success in bold, a site's lookup and icon side by side, its
-   icon's image, and the seed list's add form, wide enough for a list's
-   addresses, in a fixed-width face so they line up. */
+   icon's image, the seed list's add form, wide enough for a list's
+   addresses, in a fixed-width face so they line up, and the picking page's
+   table, a header row per site above its feeds. */
 @layer components {
   .feeds .feed-name small {
     display: block;
@@ -171,5 +172,100 @@
 
   .seed-preview {
     margin-block-start: 1rem;
+  }
+
+  /* The picking page: a site's header row (its host, facts and Skip the
+     rest, on a line that wraps on phones) above its feed rows; a feed's
+     newest titles, a line each, cut to fit; a row with an error tinted. */
+  .pick .pick-site th {
+    padding-block: 0.625rem 0.5rem;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.875rem;
+    font-weight: 650;
+    white-space: normal;
+  }
+
+  .pick tbody + tbody .pick-site th {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .pick .pick-site:hover {
+    background: transparent;
+  }
+
+  .pick-site-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+  }
+
+  /* On phones the table scrolls, so a site's line stays in view, as wide
+     as the screen, and Skip the rest wraps under its facts there. */
+  @media (max-width: 47.99rem) {
+    .pick-site-line {
+      position: sticky;
+      inset-inline-start: 0.625rem;
+      max-inline-size: calc(100vw - 4.5rem);
+    }
+  }
+
+  .pick-site-name small,
+  .pick-site-facts {
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+
+  .pick-skip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-inline-start: auto;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+
+  .pick .feed-name small.pick-notes {
+    font-style: italic;
+  }
+
+  .pick-posting small {
+    display: block;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .pick-latest ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pick-latest li {
+    max-inline-size: 18rem;
+    overflow: hidden;
+    color: var(--text-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pick select {
+    max-inline-size: 12rem;
+  }
+
+  .pick .error {
+    margin-block-start: 0.25rem;
+    font-size: 0.75rem;
+    white-space: normal;
+  }
+
+  .pick .pick-invalid {
+    background: var(--danger-bg);
+  }
+
+  .pick-more td {
+    color: var(--text-2);
   }
 }

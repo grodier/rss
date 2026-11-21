@@ -15,7 +15,10 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Discover</h1>
-        <p>The feeds in Discover’s catalog, by section, in Discover’s order. A feed’s page puts it in a section or takes it out; Discover hides a gone feed until it’s taken out or cleared.</p>
+        <div class="head-actions">
+          <a class="btn btn-sm btn-primary" href="/discover/pick">Pick feeds ({{.Pick}} sites)</a>
+        </div>
+        <p>The feeds in Discover’s catalog, by section, in Discover’s order. Pick feeds puts found sites’ feeds in sections a page at a time, and a feed’s page puts it in a section or takes it out; Discover hides a gone feed until it’s taken out or cleared.</p>
       </header>
 
       <div class="segments">

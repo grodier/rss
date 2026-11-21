@@ -1186,3 +1186,42 @@ type AdminCatalogFeed struct {
 	Subscribers      int
 	GoneAt           time.Time
 }
+
+// The picking page's filters (AdminPickQuery.Filter).
+const (
+	AdminPickSeed    = "seed"    // sites a seed entry's lookup found
+	AdminPickAll     = "all"     // every site with a candidate feed
+	AdminPickSkipped = "skipped" // sites with skipped feeds
+)
+
+// AdminPickQuery selects a page of sites for the picking page.
+type AdminPickQuery struct {
+	Filter string
+	After  string // the previous page's last site ID; "" for the first page
+	Limit  int    // sites
+}
+
+// AdminPickSite is a site on the picking page: the site, its seed entry's
+// source, the section to pre-select (ID "" for none), whether it came from
+// the seed entry, its feeds to decide (or, under Skipped, its skipped
+// feeds), and how many more there are than the page shows.
+type AdminPickSite struct {
+	Site
+	Source   string
+	Hint     Section
+	HintSeed bool
+	Feeds    []AdminPickFeed
+	More     int
+}
+
+// AdminPickFeed is a feed on the picking page.
+type AdminPickFeed struct {
+	ID, Title, URL string
+	PostsPerWeek   float64
+	LatestPost     time.Time // zero when it has no articles
+	Latest         []string  // its 3 newest titles
+	Comments       bool      // its title or address mentions comments
+}
+
+// DiscoverPick is a feed put in Discover's catalog from the picking page.
+type DiscoverPick struct{ FeedID, SectionID string }

@@ -587,7 +587,8 @@ Admin and observability:
   *Signal:* the audit log's pages get slow to load or scroll, or `admin_audit` grows by megabytes a week from uploads.
   *Fix:* show an upload's count with a link to its keys on their own page, or keep the keys in a table of uploads and only the upload's ID in the entry.
 - [ ] **The picking page looks for candidate feeds across all feeds** (#712).
-  Each view of `/discover/pick` finds sites with a feed that isn't gone, in the catalog or skipped (anti-joins on `discover_feeds` and `discover_skips`), counts the sites per filter, and probes `articles_feed_sort_idx` for each listed feed's newest titles (up to 25 sites × 20 feeds).
+  Each view of `/discover/pick` finds sites with a feed that isn't gone, in the catalog or skipped (anti-joins on `discover_feeds` and `discover_skips`), counts the sites per filter (as `/discover` does too, for its Pick feeds link), and probes `articles_feed_sort_idx` for each listed feed's newest titles (up to 25 sites × 20 feeds).
+  Measured in #712 on 9,000 feeds and 3,000 sites: a page took 40–55 ms, the counts 8.5 ms.
   *Signal:* feeds pass about 50,000, or `/discover/pick` takes over 200ms.
   *Fix:* a partial index on candidate feeds, or a `pick_state` kept on `feeds` by the catalog and skip writes.
 - [ ] **The invites page sums every wave on each view** (#607).

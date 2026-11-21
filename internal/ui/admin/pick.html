@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Pick feeds - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Pick feeds</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/discover">Discover’s catalog</a>
+        </div>
+        <p>Found sites with feeds not yet in Discover or skipped, a page at a time. Tick a feed and choose its section to put it in Discover; Skip the rest skips a site’s feeds you didn’t tick, so they leave the queue until you unskip them from Skipped. Save applies the whole page.</p>
+      </header>
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      <div class="segments">
+        {{template "segmented" (segmented "Show" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="pick-heading">
+        <h2 id="pick-heading" class="visually-hidden">{{if .Skipped}}Skipped feeds{{else}}Sites to pick from{{end}}</h2>
+        {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+        {{if not .Sites}}
+        {{if .Skipped}}
+        <p class="empty">No skipped feeds.</p>
+        {{else}}
+        <p class="empty">Nothing to pick: every found site’s feeds are in Discover or skipped.</p>
+        {{end}}
+        {{else if .Skipped}}
+        {{$now := .Now}}
+        <div class="table-wrap">
+          <table class="data feeds pick">
+            <thead>
+              <tr>
+                <th scope="col">Feed</th>
+                <th scope="col">Posting</th>
+                <th scope="col">Latest titles</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            {{range .Sites}}
+            <tbody>
+              {{template "pick-site-head" (pickSite . 4 false)}}
+              {{range .Rows}}
+              <tr>
+                {{template "pick-feed" (pickFeed . $now)}}
+                <td>
+                  <div class="row-actions">
+                    <form action="/discover/pick/unskip" method="post">
+                      <input type="hidden" name="feed" value="{{.ID}}" />
+                      <button class="btn btn-sm" type="submit">Unskip</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+              {{template "pick-more" (pickSite . 4 false)}}
+            </tbody>
+            {{end}}
+          </table>
+        </div>
+        {{else}}
+        {{$now := .Now}}
+        {{$sections := .Sections}}
+        <form action="/discover/pick" method="post" data-busy>
+          <input type="hidden" name="filter" value="{{.Filter}}" />
+          <input type="hidden" name="after" value="{{.After}}" />
+          <div class="table-wrap">
+            <table class="data feeds pick">
+              <thead>
+                <tr>
+                  <th scope="col" class="check">Pick</th>
+                  <th scope="col">Feed</th>
+                  <th scope="col">Posting</th>
+                  <th scope="col">Latest titles</th>
+                  <th scope="col">Section</th>
+                </tr>
+              </thead>
+              {{range .Sites}}
+              {{$site := .}}
+              <tbody>
+                {{template "pick-site-head" (pickSite . 5 true)}}
+                {{range .Rows}}
+                {{$i := .Index}}
+                <tr{{if .Error}} class="pick-invalid"{{end}}>
+                  <td class="check">
+                    <input type="hidden" name="feeds[{{.Index}}].id" value="{{.ID}}" />
+                    <input type="hidden" name="feeds[{{.Index}}].site" value="{{$site.ID}}" />
+                    <input type="checkbox" id="pick-{{.Index}}" name="feeds[{{.Index}}].pick" value="true"{{if .Pick}} checked{{end}}
+                      aria-label="Pick {{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}" />
+                  </td>
+                  {{template "pick-feed" (pickFeed . $now)}}
+                  <td>
+                    <select name="feeds[{{.Index}}].section" aria-label="Section for {{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}"
+                      {{if .Error}}aria-invalid="true" aria-describedby="feed-{{.Index}}-error"{{if eq $i $.FirstError}} autofocus{{end}}{{end}}>
+                      <option value="">Choose a section</option>
+                      {{$chosen := .Section}}
+                      {{range $sections}}<option value="{{.ID}}"{{if eq .ID $chosen}} selected{{end}}>{{.Name}}</option>
+                      {{end}}
+                    </select>
+                    {{with .Error}}<p class="error" id="feed-{{$i}}-error">{{.}}</p>{{end}}
+                  </td>
+                </tr>
+                {{end}}
+                {{template "pick-more" (pickSite . 5 true)}}
+              </tbody>
+              {{end}}
+            </table>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit" data-busy-label="Saving…"><span data-busy-text>Save</span></button>
+            {{with .Next}}<a class="btn btn-sm" href="{{.}}">Next</a>{{end}}
+          </div>
+        </form>
+        {{end}}
+        {{if and .Sites .Skipped}}{{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Next</a>
+        </div>
+        {{end}}{{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{define "pick-site-head"}}
+{{$site := .Site}}
+<tr class="pick-site">
+  <th scope="colgroup" colspan="{{.Columns}}">
+    <div class="pick-site-line">
+      <span class="pick-site-name"><a href="/sites/{{$site.ID}}">{{$site.Host}}</a>{{with $site.Title}} <small>{{.}}</small>{{end}}</span>
+      <small class="pick-site-facts">{{with $site.Source}}From {{.}}{{end}}{{if and $site.Source $site.Hint.Name}} · {{end}}{{with $site.Hint.Name}}{{if $site.HintSeed}}For {{.}}{{else}}Its other feeds are in {{.}}{{end}}{{end}}</small>
+      {{if .Form}}
+      <span class="pick-skip">
+        <input type="hidden" name="sites[{{$site.Index}}].id" value="{{$site.ID}}" />
+        <input type="checkbox" id="skip-{{$site.Index}}" name="sites[{{$site.Index}}].skip" value="true"{{if $site.Skip}} checked{{end}} />
+        <label for="skip-{{$site.Index}}">Skip the rest</label>
+      </span>
+      {{end}}
+    </div>
+  </th>
+</tr>
+{{end}}
+
+{{define "pick-more"}}
+{{with .Site.More}}
+<tr class="pick-more">
+  <td colspan="{{$.Columns}}"><a href="/sites/{{$.Site.ID}}">{{count .}} more feeds: pick them on the site’s page</a></td>
+</tr>
+{{end}}
+{{end}}
+
+{{define "pick-feed"}}
+{{$f := .Feed}}
+<td class="wrap feed-name">
+  <a href="/feeds/{{$f.ID}}">{{if $f.Title}}{{$f.Title}}{{else}}{{$f.URL}}{{end}}</a>
+  <small>{{$f.URL}}</small>
+  {{if or $f.Comments $f.Silent}}<small class="pick-notes">{{if $f.Comments}}Comments feed{{end}}{{if and $f.Comments $f.Silent}} · {{end}}{{if $f.Silent}}No posts in 90 days{{end}}</small>{{end}}
+</td>
+<td class="pick-posting">About {{perWeek $f.PostsPerWeek}} posts a week<small>{{if $f.LatestPost.IsZero}}No posts yet{{else}}Latest <time datetime="{{$f.LatestPost.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp $f.LatestPost}} UTC">{{ago .Now $f.LatestPost}}</time>{{end}}</small></td>
+<td class="wrap pick-latest">{{if $f.Latest}}<ul>{{range $f.Latest}}<li>{{if .}}{{.}}{{else}}Untitled{{end}}</li>{{end}}</ul>{{else}}—{{end}}</td>
+{{end}}

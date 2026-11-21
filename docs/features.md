@@ -716,7 +716,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    - Check for new feeds (`CheckForFeeds`, `site.lookup`) queues a lookup of the site's home page at a reader's priority with the reader's `LookupRepository.Request` statement (`requestLookup`, in the action's transaction) and no time-to-live, so a finished lookup runs again; one already pending or running stays as it is.
    - Check the icon again (`CheckIcon`, `site.check_icon`) makes the site's icon due now.
 6. **Discover's catalog.** A feed's Discover panel says whether it's in the catalog and under which section, as its heading, with a section select and Save posting to `POST /feeds/{id}/discover` (`feedDiscoverHandler`); the empty choice takes it out.
-   `AdminFeedRepository.SetDiscoverSection` changes the feed's `discover_feeds` row and records `feed.discover` with the section's ID and name before and after, in one transaction, so the entry still reads after a rename; saving the section it already has records nothing.
+   `AdminFeedRepository.SetDiscoverSection` changes the feed's `discover_feeds` row and records `feed.discover` with the section's ID and name before and after, in one transaction, so the entry still reads after a rename; saving the section it already has records nothing, and putting a skipped feed in the catalog unskips it (see "Picking feeds" below).
    The panel's choices are `discover_sections` in their order (`DiscoverSections`), posted by ID; a section that doesn't exist and adding a gone feed are refused with a field error (422); a gone feed already in the catalog can still be taken out.
 
 **Start at:**
@@ -745,15 +745,24 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    Preview (the form's first button, so Enter in Source is Preview) re-renders the form with the text kept, counts per outcome and every line in a table, problems first, then line order, with an Add button counting the lines that can be added.
    Add parses and checks the text again rather than trusting the preview, then `AddSeedSites`, in one transaction, inserts the lines (`ON CONFLICT (site_key) DO NOTHING`, so a site added by someone else since the preview isn't added or counted twice) with their section hint and the source, queues a lookup of each at the seed's priority (1): a new one, or a re-queue of one that failed or found no feeds however long ago it ran, leaving found, pending and running ones alone; and records one `seed.add` on target `seed` with the source, the count and every site key added, the list's history, unless none was added.
    The page goes back to the list with a flash of how many were added; each entry there shows its section hint and source under its address.
-   The hint is stored only: picking an entry's feeds for Discover is still a Save on a feed's page.
+   The hint is stored only: it pre-selects the section of the site's feeds on the picking page (below), and only an admin's Save there puts them in the catalog.
+7. **Picking feeds.** The catalog page's head links Pick feeds with how many sites have feeds to pick (`CountPick`, All's count) to `GET /discover/pick` (`pickHandler`): a queue of sites with candidate feeds, ones that aren't gone, in the catalog or skipped (`adminPickCandidate`), 25 sites a page with the last site's ID as the `?after=` cursor (a malformed one, or one past the end, is 404).
+   Its filters are From the seed list, the default (sites a seed entry's lookup found, by their newest entry, newest first, `adminPickSeeded`), All sites (every site with a candidate, newest site first) and Skipped (sites with skipped feeds that aren't gone, listing those feeds with an Unskip button each).
+   `AdminFeedRepository.PickSites` reads the page's sites with their seed entry's source and section hint, else the section of the site's feed already in the catalog, then, in a second statement, up to 20 candidate feeds per site (most recently posting first, comments feeds, whose title has the word "comment(s)" or whose address has it as a segment, last), each with its posting rate, newest post and 3 newest titles (`articles_feed_sort_idx` per feed), and how many more the site has, which link to its page.
+   Each feed is a table row under its site's header row with a tick and a section select, pre-filled with the hint; it's ticked for you only when its site has one candidate and its seed entry's hint, the admin's own upload, placed it.
+   Each site has Skip the rest, ticked to start with.
+   `POST /discover/pick` (`pickFormHandler`, up to 256 KiB, `maxPickBytes`) posts each listed feed's ID, site, tick and section and each site's Skip the rest; a ticked feed without a section is 422 with "Choose a section." on its row, which takes the focus, and above the table, the posted choices kept (a site not posted, new on the page since, keeps Skip the rest's default).
+   Otherwise `SavePicks`, in one transaction, puts each ticked feed, in ID order so two saves lock feeds alike, in the catalog through `setDiscoverSection`, the feed page's own code (recorded as `feed.discover`, and `feed.discover_unskip` for a skipped one), and skips the posted feeds of Skip the rest sites that weren't ticked (`discover_skips`, recorded as `feed.discover_skip`); a feed the store refuses (gone, an unknown section, deleted) is an `rss.PickError` naming it, which saves nothing and shows the page again at 422 with the error on its row and above the table.
+   The page then goes back to the filter's first page with a flash of how many were added and skipped.
+   Unskip posts to `POST /discover/pick/unskip` (`unskipHandler`; `Unskip`, recorded as `feed.discover_unskip`; 404 when the feed isn't skipped) and goes back to Skipped.
 
 **Start at:**
 
-1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`), `seed_add.go` (`seedAddFormHandler`) and `catalog.go`.
-2. `internal/seed/seed.go` (`Parse`) and `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `SeedOnList`, `AddSeedSites`, `Catalog`).
-3. `internal/ui/admin/seed.html`, `seed_add.html` and `discover.html`.
+1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`), `seed_add.go` (`seedAddFormHandler`), `catalog.go` and `pick.go` (`renderPick`, `pickFormHandler`).
+2. `internal/seed/seed.go` (`Parse`) and `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `SeedOnList`, `AddSeedSites`, `Catalog`, `PickSites`, `SavePicks`, `setDiscoverSection`).
+3. `internal/ui/admin/seed.html`, `seed_add.html`, `discover.html` and `pick.html`.
 
-**Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`.
+**Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`, `pick_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`, `admin_pick_test.go`.
 
 ### Web performance
 

@@ -28,6 +28,9 @@ type catalogPage struct {
 	// Section is the current section's name, "" for all.
 	Section string
 	Now     time.Time
+	// Pick is how many sites have feeds to pick, formatted, for the
+	// picking page's link.
+	Pick string
 }
 
 // catalogHref is the Discover page's URL showing the section slug, or all
@@ -59,7 +62,13 @@ func (s *Server) catalogHandler(w http.ResponseWriter, r *http.Request) {
 		slug = ""
 	}
 
-	page := catalogPage{Nav: s.nav(r, "discover"), Every: slug == "", Now: s.now()}
+	picks, err := s.services.Feeds.CountPick(r.Context())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+
+	page := catalogPage{Nav: s.nav(r, "discover"), Every: slug == "", Now: s.now(), Pick: count(picks[rss.AdminPickAll])}
 	page.Filters = append(page.Filters, filterLink{Label: "All", Href: catalogHref(""), Current: slug == "", Count: count(total)})
 	for _, sec := range sections {
 		page.Filters = append(page.Filters, filterLink{Label: sec.Name, Href: catalogHref(sec.Slug), Current: sec.Slug == slug, Count: count(len(sec.Feeds))})

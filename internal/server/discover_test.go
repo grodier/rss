@@ -392,6 +392,7 @@ func TestSearchAppLink(t *testing.T) {
 	}{
 		{"https://paperround.app/shared/abc", true},
 		{"www.paperround.app/shared/abc", true},
+		{"paperround.app/@x", true},
 		{"example.com", false},
 	}
 	for _, tt := range tests {

@@ -166,13 +166,16 @@ While it runs, `lookup-status.ts` fetches the page's own URL 2 s after each answ
 An address on the app's own site (`-base-url`'s site key, such as a shared timeline's link) is never looked up: Discover says so in place of Look up, and `/lookups` refuses it with a field error before the per-user limit.
 
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
-Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`.
+Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`, except on a site whose key has a path, where they'd find the platform's own feed (`medium.com/feed`).
+The site is the page's, or for a feed, that of its link, else of the feed itself: `SiteKey` and `SiteRoot` (`sitekeys.go`) add the path that names a site on a shared host, by a rule per platform (Medium, YouTube, Reddit, GitHub, Bluesky) or, on any other host, a first path segment `@name`.
+A page whose key has a path takes its first feed's site when that's another key with a path on the same host, so a YouTube `/@handle` page and its `/channel/ID` feed are one site.
 Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
 `Discover` refuses with `ErrAppLink` an address on the app's own site (`Discoverer.AppSiteKey`) before fetching it, and a result that ended up there (a redirect, or a feed naming it as its site), so lookups, imports and the debug inspector never save one.
 `Result.Checked` records every candidate and its outcome, for the debug inspector; if the deadline ends the checking, `Discover` returns what it has alongside the error, and the runners ignore the result on any error.
 The worker turns each feed's items into articles (`ingest.Articles`) and saves the site, its feeds and their articles in one transaction (`DiscoveryRepository.Save`), so a looked-up feed has articles right away.
-The site's address, title and description come from the page or feed the lookup fetched, so only a home page's (`Result.HomePage`) replace an existing site's; a feed's or another page's (an article, a Medium author's page) name a new site, but an existing one keeps its own, gaining only a title or description it lacks (`upsertSite`); imports save the same way.
-The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed, or at once when that lookup ran on another address than the home page (`canRecheck`).
+The site's address, title and description come from the page or feed the lookup fetched, so only a home page's (`Result.HomePage`: the address, or where it led, is the site's root with no query, `IsHomePage`) replace an existing site's; a feed's or another page's (an article, a Medium author's page) name a new site, but an existing one keeps its own, gaining only a title or description it lacks (`upsertSite`); imports save the same way.
+A feed already saved under a shared host's own site (`medium.com`, from before sites on shared hosts had their own keys) moves to the site with a path the lookup found it under (`upsertFeed`); it never moves between two sites with a path or two hosts.
+The site page (below) lists the feeds, and offers "Check {host} for new feeds" at its foot once the last lookup's TTL has passed, or at once when that lookup ran on another address than the home page (`canRecheck`, which reads the lookup's `home_page`, set by `LookupRepository.Request` from `IsHomePage` of the address).
 (`ParsePage` also reads a page's title, image and icon links, for the icon worker and enrichment.)
 
 **Discover's suggestions.** With a query but no `scope` (live search's fetch, or a reload of the URL it left), `discoverSuggest` reads only the reader's subscriptions that match (6) and the sites (`searchSites`, 12, as fully followed ones are left out), and builds the same rows as the Feeds tab below, compacted (`followedFeedSuggestion`, `siteSuggestion`: one line of facts, no tagline, no Follow), ranked by `rankResults` and cut to 6.
@@ -232,7 +235,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: see "Seed list and Discover's catalog" under "Admin".
-4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`) and `normalize.go` (`ParseInput`, `SiteKey`, `CanonicalFeedURL`).
+4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`), `normalize.go` (`ParseInput`, `CanonicalFeedURL`) and `sitekeys.go` (`SiteKey`, `SiteRoot`, `IsHomePage`).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 

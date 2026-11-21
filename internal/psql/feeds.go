@@ -83,7 +83,9 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 
 // Upsert inserts a feed or updates its metadata by URL and returns its ID.
 // An existing site_id is kept (a feed belongs to the first site it was
-// discovered from). next_fetch_at is set to f.NextFetch, or now() for a new
+// discovered from), unless it is a shared host's own site and f's site has
+// a path on that host ("medium.com" -> "medium.com/@alice"): the feed then
+// moves to f's site. next_fetch_at is set to f.NextFetch, or now() for a new
 // feed when f.NextFetch is zero. It clears gone_at: the caller just parsed a
 // feed at that URL, so it's back.
 func (r *FeedRepository) Upsert(ctx context.Context, f rss.Feed) (string, error) {
@@ -92,10 +94,17 @@ func (r *FeedRepository) Upsert(ctx context.Context, f rss.Feed) (string, error)
 
 func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 	// The caller just fetched the feed, so a conflict takes its next_fetch_at
-	// and clears gone_at.
+	// and clears gone_at. A feed keeps the first site it was discovered from,
+	// except that it moves from a shared host's own site to a site with a
+	// path on that host (medium.com -> medium.com/@alice), never between two
+	// sites with a path or two hosts.
 	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id, next_fetch_at)
 		VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()))
 		ON CONFLICT (url) DO UPDATE SET
+			site_id = CASE WHEN (SELECT host FROM sites WHERE id = feeds.site_id)
+					= split_part((SELECT host FROM sites WHERE id = EXCLUDED.site_id), '/', 1)
+				AND (SELECT host FROM sites WHERE id = EXCLUDED.site_id) LIKE '%/%'
+				THEN EXCLUDED.site_id ELSE feeds.site_id END,
 			site_url = EXCLUDED.site_url,
 			title = COALESCE(NULLIF(EXCLUDED.title, ''), feeds.title),
 			description = COALESCE(NULLIF(EXCLUDED.description, ''), feeds.description),

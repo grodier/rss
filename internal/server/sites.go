@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -353,7 +352,7 @@ func canRecheck(l rss.Lookup, now time.Time) bool {
 	case "":
 		return true
 	case rss.LookupDone:
-		if !ranOnHomePage(l) {
+		if !l.HomePage {
 			return true
 		}
 		if l.SiteID == "" {
@@ -365,12 +364,6 @@ func canRecheck(l rss.Lookup, now time.Time) bool {
 	default:
 		return false
 	}
-}
-
-// ranOnHomePage reports whether l ran on its site's home page.
-func ranOnHomePage(l rss.Lookup) bool {
-	u, err := url.Parse(l.URL)
-	return err == nil && discovery.IsHomePage(u)
 }
 
 // siteIconHandler serves a site's stored icon. Icons are fetched from other

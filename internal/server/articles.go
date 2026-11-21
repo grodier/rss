@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/sanitize"
 	"github.com/grodier/rss/internal/validator"
@@ -155,12 +157,14 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 // readOnLabel returns the name the article page's "Read on" button shows:
 // the article's host (without "www.") when its URL is on another site than
 // site, else name (the user's name for the article's feed, "" if none), else
-// the site's title, else its host. Hosts on a subdomain of each other count
-// as the same site.
+// the site's title, else its key. Hosts on a subdomain of each other count
+// as the same site, and a site on a shared host ("medium.com/@alice") is on
+// its host.
 func readOnLabel(article rss.Article, site rss.Site, name string) string {
 	host := strings.ToLower(article.URLHost())
-	if host == "" || host == site.Host ||
-		strings.HasSuffix(host, "."+site.Host) || strings.HasSuffix(site.Host, "."+host) {
+	siteHost := discovery.KeyHost(site.Host)
+	if host == "" || host == siteHost ||
+		strings.HasSuffix(host, "."+siteHost) || strings.HasSuffix(siteHost, "."+host) {
 		return cmp.Or(name, site.Title, site.Host)
 	}
 	return host

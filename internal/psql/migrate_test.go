@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/pressly/goose/v3"
+
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/migrations"
 )
@@ -99,5 +101,41 @@ func TestMigrateDropsFingerprintTable(t *testing.T) {
 	mustMigrate(t, db)
 	if tableExists(t, db, "schema_fingerprint") {
 		t.Error("schema_fingerprint exists after Migrate, want it dropped")
+	}
+}
+
+// 00021 records whether each existing lookup ran on its site's home page,
+// which until then was its URL's path "/" with no query.
+func TestMigrateLookupsHomePage(t *testing.T) {
+	db := newMigrateDB(t)
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(t.Context(), 20); err != nil {
+		t.Fatalf("migrate to 20: %v", err)
+	}
+	want := map[string]bool{
+		"https://home.example/":          true,
+		"http://www.home2.example/":      true,
+		"https://feed.example/feed.xml":  false,
+		"https://query.example/?ref=x":   false,
+		"https://medium.com/@alice/post": false,
+	}
+	for u := range want {
+		if _, err := db.Exec(`INSERT INTO lookups (site_key, url) VALUES ($1, $1)`, u); err != nil {
+			t.Fatalf("insert lookup: %v", err)
+		}
+	}
+
+	mustMigrate(t, db)
+	for u, home := range want {
+		var got bool
+		if err := db.QueryRow(`SELECT home_page FROM lookups WHERE url = $1`, u).Scan(&got); err != nil {
+			t.Fatalf("home_page of %s: %v", u, err)
+		}
+		if got != home {
+			t.Errorf("home_page of %s = %v, want %v", u, got, home)
+		}
 	}
 }

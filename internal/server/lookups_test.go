@@ -99,7 +99,7 @@ func TestLookupCreateAppLink(t *testing.T) {
 	}
 	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", BaseURL: "https://paperround.app"}, Services{LookupService: store})
 
-	for _, q := range []string{"https://paperround.app/shared/abc", "www.PaperRound.app/shared/abc"} {
+	for _, q := range []string{"https://paperround.app/shared/abc", "www.PaperRound.app/shared/abc", "paperround.app/@x"} {
 		rr := postLookup(t, s, q)
 		if rr.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: status = %d, want 422", q, rr.Code)

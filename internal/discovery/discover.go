@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/grodier/rss/internal/feedparse"
@@ -36,8 +37,8 @@ const (
 
 // SiteInfo describes the site a lookup ended up on.
 type SiteInfo struct {
-	Key         string // SiteKey of the final page URL (after redirects)
-	URL         string // origin of the final page URL + "/", e.g. "https://www.example.com/"
+	Key         string // SiteKey of the final page URL (after redirects), or of its first feed's link (see Discover)
+	URL         string // SiteRoot of the same URL, e.g. "https://www.example.com/" or "https://medium.com/@alice"
 	Title       string // PageInfo.Title, else feed title (direct-feed case), else Key
 	Description string
 }
@@ -107,7 +108,13 @@ type Discoverer struct {
 // Failing to fetch u, or a non-2xx status, is an error. An HTML page is never
 // an error, however malformed or truncated: Discover uses whatever title,
 // description and feed links it could read, and when the page advertises no
-// feeds it tries CommonFeedPaths.
+// feeds it tries CommonFeedPaths, unless its site key has a path (a site on
+// a shared host, see SiteKey).
+//
+// The site is the page's (SiteKey and SiteRoot of where u led), or for a
+// feed, that of its link, else of the feed itself. A page whose key has a
+// path takes the key of its first feed's link instead when that is another
+// key with a path on the same host.
 //
 // Result.Checked records every candidate. If ctx ends while candidates are
 // being checked, Discover returns the Site and the Checked so far alongside
@@ -124,9 +131,10 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	return res, err
 }
 
-// isAppSite reports whether key is the app's own site key.
+// isAppSite reports whether key is on the app's own site, with a path
+// ("paperround.app/@x") or without.
 func (d *Discoverer) isAppSite(key string) bool {
-	return d.AppSiteKey != "" && key == d.AppSiteKey
+	return d.AppSiteKey != "" && KeyHost(key) == d.AppSiteKey
 }
 
 // discover is Discover without the AppSiteKey checks.
@@ -151,7 +159,7 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 			}
 			site := SiteInfo{
 				Key:         SiteKey(siteURL),
-				URL:         origin(siteURL),
+				URL:         SiteRoot(siteURL).String(),
 				Title:       f.Title,
 				Description: f.Description,
 			}
@@ -166,7 +174,7 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 	info := ParsePage(resp.URL, resp.Body)
 	site := SiteInfo{
 		Key:         SiteKey(resp.URL),
-		URL:         origin(resp.URL),
+		URL:         SiteRoot(resp.URL).String(),
 		Title:       info.Title,
 		Description: info.Description,
 	}
@@ -174,8 +182,10 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 		site.Title = site.Key
 	}
 
+	// A site with a path in its key is one of many on a shared host, whose
+	// common paths would find the platform's own feed (medium.com/feed).
 	candidates, source := info.Feeds, SourcePage
-	if len(candidates) == 0 {
+	if len(candidates) == 0 && !hasPath(site.Key) {
 		source = SourceCommonPath
 		base, _ := url.Parse(site.URL)
 		for _, p := range CommonFeedPaths {
@@ -190,6 +200,9 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 	feeds, checked, err := d.checkCandidates(ctx, candidates, source)
 	if err != nil {
 		return Result{Site: site, Checked: checked}, err
+	}
+	if len(feeds) > 0 {
+		site = feedSite(site, feeds[0])
 	}
 	return Result{Site: site, Feeds: feeds, Checked: checked, HomePage: IsHomePage(u) || IsHomePage(resp.URL)}, nil
 }
@@ -307,9 +320,34 @@ func feedInfo(finalURL *url.URL, parsed feedparse.Feed, candidateTitle string) F
 	return f
 }
 
-// origin returns u's canonical scheme and host followed by "/".
-func origin(u *url.URL) string {
-	return CanonicalFeedURL(&url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/"})
+// feedSite returns site, a page's, with the key and root of the site that
+// feed, the first found on the page, links to when both keys have a path on
+// the same host but differ: a YouTube /@handle page's feed links to its
+// /channel/ID, so a channel is one site whichever address was looked up.
+// Any other site is returned as it is.
+func feedSite(site SiteInfo, feed FeedInfo) SiteInfo {
+	if !hasPath(site.Key) || feed.SiteURL == "" {
+		return site
+	}
+	su, err := url.Parse(feed.SiteURL)
+	if err != nil || su.Host == "" || (su.Scheme != "http" && su.Scheme != "https") {
+		return site
+	}
+	key := SiteKey(su)
+	if key == site.Key || !hasPath(key) || KeyHost(key) != KeyHost(site.Key) {
+		return site
+	}
+	if site.Title == site.Key {
+		site.Title = key
+	}
+	site.Key, site.URL = key, SiteRoot(su).String()
+	return site
+}
+
+// hasPath reports whether a site key has a path: the site is one of many on
+// a shared host ("medium.com/@alice").
+func hasPath(key string) bool {
+	return strings.Contains(key, "/")
 }
 
 func ok2xx(status int) bool {

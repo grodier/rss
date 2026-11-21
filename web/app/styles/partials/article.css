@@ -85,6 +85,19 @@
     }
   }
 
+  /* Footnotes and other in-page links (sanitize's localAnchors) land a
+     little below the top of the screen. */
+  .article-body [id] {
+    scroll-margin-block-start: 1rem;
+  }
+
+  /* On phones, below the sticky top bar (shell.css): 65px high, measured. */
+  @media (max-width: 42.99rem) {
+    .article-body [id] {
+      scroll-margin-block-start: 5.125rem;
+    }
+  }
+
   /* Feeds often wrap the whole article in a <div>, <section> or <article>
      (and the reset zeroes <p> margins), so space the blocks inside those
      wrappers like top-level ones. */

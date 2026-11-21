@@ -108,13 +108,6 @@ func TestHTML(t *testing.T) {
 			hasNot: []string{`src="http:`},
 		},
 		{
-			name:   "fragment link kept in the article",
-			raw:    `<a href="#fn1">1</a>`,
-			base:   base,
-			has:    []string{`href="#fn1"`},
-			hasNot: []string{"example.com", "_blank"},
-		},
-		{
 			name:   "nil base leaves URLs relative",
 			raw:    `<a href="/p">x</a>`,
 			has:    []string{`href="/p"`},
@@ -670,13 +663,130 @@ func TestHTMLLazyImages(t *testing.T) {
 		{
 			name: "empty anchor kept",
 			raw:  `<p><a id="top"></a>a<img></p>`,
-			want: `<p><a id="top"></a>a</p>`,
+			want: `<p><a id="body-top"></a>a</p>`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := string(HTML(tt.raw, base)); got != tt.want {
+				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTMLLocalAnchors(t *testing.T) {
+	base, err := url.Parse("https://example.com/2026/post/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		raw  string
+		base *url.URL
+		want string
+	}{
+		{
+			name: "Kramdown footnote",
+			raw:  `<p>a<sup id="fnref:1"><a href="#fn:1">1</a></sup></p><ol><li id="fn:1"><p>note <a href="#fnref:1">↩</a></p></li></ol>`,
+			base: base,
+			want: `<p>a<sup id="body-fnref:1"><a href="#body-fn:1" rel="nofollow">1</a></sup></p><ol><li id="body-fn:1"><p>note <a href="#body-fnref:1" rel="nofollow">↩</a></p></li></ol>`,
+		},
+		{
+			name: "Substack footnote",
+			raw:  `<p>a<a class="footnote-anchor" id="footnote-anchor-1" href="https://example.com/2026/post/#footnote-1">1</a></p><div class="footnote"><a id="footnote-1" href="https://example.com/2026/post/#footnote-anchor-1">1</a><p>note</p></div>`,
+			base: base,
+			want: `<p>a<a href="#body-footnote-1" id="body-footnote-anchor-1" rel="nofollow">1</a></p><div><a href="#body-footnote-anchor-1" id="body-footnote-1" rel="nofollow">1</a><p>note</p></div>`,
+		},
+		{
+			name: "full link without the trailing slash, host in capitals",
+			raw:  `<a href="https://EXAMPLE.com/2026/post#note">1</a><p id="note">n</p>`,
+			base: base,
+			want: `<a href="#body-note" rel="nofollow">1</a><p id="body-note">n</p>`,
+		},
+		{
+			name: "relative link to the article",
+			raw:  `<a href="/2026/post/#note">1</a><p id="note">n</p>`,
+			base: base,
+			want: `<a href="#body-note" rel="nofollow">1</a><p id="body-note">n</p>`,
+		},
+		{
+			name: "full link to the article with a fragment not in it",
+			raw:  `<a href="https://example.com/2026/post/#comments">c</a>`,
+			base: base,
+			want: `<a href="https://example.com/2026/post/#comments" rel="nofollow noreferrer noopener" target="_blank">c</a>`,
+		},
+		{
+			name: "full link to the article with another query",
+			raw:  `<a href="https://example.com/2026/post/?page=2#note">1</a><p id="note">n</p>`,
+			base: base,
+			want: `<a href="https://example.com/2026/post/?page=2#note" rel="nofollow noreferrer noopener" target="_blank">1</a><p id="body-note">n</p>`,
+		},
+		{
+			name: "fragment not in the article opens the original",
+			raw:  `<a href="#top">top</a>`,
+			base: base,
+			want: `<a href="https://example.com/2026/post/#top" rel="nofollow noreferrer noopener" target="_blank">top</a>`,
+		},
+		{
+			name: "fragment not in the article without a base",
+			raw:  `<a href="#top">top</a>`,
+			want: `top`,
+		},
+		{
+			name: "fragment in the article without a base",
+			raw:  `<a href="#fn1">1</a><p id="fn1">n</p>`,
+			want: `<a href="#body-fn1" rel="nofollow">1</a><p id="body-fn1">n</p>`,
+		},
+		{
+			name: "link to another page with a fragment",
+			raw:  `<a href="https://example.com/2026/other/#note">1</a><p id="note">n</p>`,
+			base: base,
+			want: `<a href="https://example.com/2026/other/#note" rel="nofollow noreferrer noopener" target="_blank">1</a><p id="body-note">n</p>`,
+		},
+		{
+			name: "old-style anchor",
+			raw:  `<a href="#fn1">1</a><p><a name="fn1"></a>note</p>`,
+			base: base,
+			want: `<a href="#body-fn1" rel="nofollow">1</a><p><a id="body-fn1"></a>note</p>`,
+		},
+		{
+			name: "old-style anchor with an id keeps its id",
+			raw:  `<a href="#fn1">1</a><p><a name="fn1" id="note1"></a>note</p>`,
+			base: base,
+			want: `<a href="https://example.com/2026/post/#fn1" rel="nofollow noreferrer noopener" target="_blank">1</a><p><a id="body-note1"></a>note</p>`,
+		},
+		{
+			name: "id with whitespace removed",
+			raw:  `<p id="Hello World">a</p><p id="">b</p>`,
+			base: base,
+			want: `<p>a</p><p>b</p>`,
+		},
+		{
+			name: "repeated id removed from the later element",
+			raw:  `<p id="x">a</p><p id="x">b</p>`,
+			base: base,
+			want: `<p id="body-x">a</p><p>b</p>`,
+		},
+		{
+			name: "id that is the page's own",
+			raw:  `<a href="#debug">d</a><p id="debug">d</p>`,
+			base: base,
+			want: `<a href="#body-debug" rel="nofollow">d</a><p id="body-debug">d</p>`,
+		},
+		{
+			name: "percent-encoded fragment",
+			raw:  `<a href="#caf%C3%A9">1</a><p id="café">n</p>`,
+			base: base,
+			want: `<a href="#body-caf%C3%A9" rel="nofollow">1</a><p id="body-café">n</p>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(HTML(tt.raw, tt.base)); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
 			}
 		})

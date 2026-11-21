@@ -68,7 +68,7 @@ func Parse(text string, sections []rss.Section, appSiteKey string) []Line {
 		}
 		l.Entry = Entry{URL: u.String(), SiteKey: discovery.SiteKey(u)}
 		switch {
-		case appSiteKey != "" && l.SiteKey == appSiteKey:
+		case appSiteKey != "" && discovery.KeyHost(l.SiteKey) == appSiteKey:
 			l.Outcome = LineAppLink
 		case section != "" && !findSection(sections, section, &l.SectionID):
 			l.Outcome = LineBadSection

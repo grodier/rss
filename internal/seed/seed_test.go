@@ -58,8 +58,9 @@ func TestParse(t *testing.T) {
 			{N: 1, Text: "not an address, Food", Outcome: LineBadAddress},
 			{N: 2, Text: "ftp://example.com", Outcome: LineBadAddress},
 		}},
-		{"the app's own site", "https://www.paperround.app/discover", []Line{
+		{"the app's own site", "https://www.paperround.app/discover\npaperround.app/@x", []Line{
 			{N: 1, Text: "https://www.paperround.app/discover", Entry: Entry{URL: "https://www.paperround.app/discover", SiteKey: app}, Outcome: LineAppLink},
+			{N: 2, Text: "paperround.app/@x", Entry: Entry{URL: "https://paperround.app/@x", SiteKey: app + "/@x"}, Outcome: LineAppLink},
 		}},
 		{"a duplicate only of a line that can be added", "a.example, Gardening\na.example, Food\nwww.a.example", []Line{
 			{N: 1, Text: "a.example, Gardening", Entry: Entry{URL: "https://a.example/", SiteKey: "a.example"}, Outcome: LineBadSection},

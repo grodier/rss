@@ -266,7 +266,7 @@ func (s *Server) homePageChecked(r *http.Request, u *url.URL, sites []rss.SiteWi
 	if err != nil {
 		return false, err
 	}
-	return l.Status == rss.LookupDone && ranOnHomePage(l), nil
+	return l.Status == rss.LookupDone && l.HomePage, nil
 }
 
 // knownAddress reports whether looking up u (from discovery.ParseInput)
@@ -298,14 +298,15 @@ func sameAddress(u *url.URL, feedURL string) bool {
 	if err != nil {
 		return false
 	}
-	return discovery.SiteKey(f) == discovery.SiteKey(u) && f.Port() == u.Port() &&
+	return discovery.KeyHost(discovery.SiteKey(f)) == discovery.KeyHost(discovery.SiteKey(u)) && f.Port() == u.Port() &&
 		f.EscapedPath() == u.EscapedPath() && f.RawQuery == u.RawQuery
 }
 
 // isAppLink reports whether u (from discovery.ParseInput) is on the app's own
-// site, which is never looked up.
+// site, with a path ("paperround.app/@x") or without, which is never looked
+// up.
 func (s *Server) isAppLink(u *url.URL) bool {
-	return s.appSiteKey != "" && discovery.SiteKey(u) == s.appSiteKey
+	return s.appSiteKey != "" && discovery.KeyHost(discovery.SiteKey(u)) == s.appSiteKey
 }
 
 // lookupAddress is u (from discovery.ParseInput) as the lookup offer shows and

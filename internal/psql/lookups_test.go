@@ -148,6 +148,53 @@ func TestLookupRepositoryRequest(t *testing.T) {
 		}
 	})
 
+	// A site on a shared host has its root at a path, and the lookup
+	// records whether it ran there.
+	t.Run("site root with a path", func(t *testing.T) {
+		host := newLookupKey(t, repo)
+		finish := func(t *testing.T, l rss.Lookup) {
+			t.Helper()
+			execSQL(t, repo, `UPDATE lookups SET status = 'done', site_id = $2, finished_at = now() - interval '1 minute' WHERE id = $1`,
+				l.ID, newTestSite(t, repo.DB))
+		}
+		pathKey := func(t *testing.T, name string) string {
+			key := host + "/@" + name
+			t.Cleanup(func() {
+				if _, err := repo.DB.Exec(`DELETE FROM lookups WHERE site_key = $1`, key); err != nil {
+					t.Errorf("cleanup lookup: %v", err)
+				}
+			})
+			return key
+		}
+
+		t.Run("ran on the root, stays cached", func(t *testing.T) {
+			key := pathKey(t, "alice")
+			l, err := repo.Request(t.Context(), key, "https://"+host+"/@alice", true, testDoneTTL, testFailedTTL)
+			if err != nil || !l.HomePage {
+				t.Fatalf("Request: %+v, err %v; want home_page", l, err)
+			}
+			finish(t, l)
+			got, err := repo.Request(t.Context(), key, "https://www."+host+"/@alice", true, testDoneTTL, testFailedTTL)
+			if err != nil || got.Status != rss.LookupDone || got.URL != l.URL || !got.HomePage {
+				t.Errorf("root again: %+v, err %v; want done (cached) on %q", got, err, l.URL)
+			}
+		})
+
+		t.Run("ran on its feed, re-queues for the root", func(t *testing.T) {
+			key := pathKey(t, "bob")
+			l, err := repo.Request(t.Context(), key, "https://"+host+"/feed/@bob", false, testDoneTTL, testFailedTTL)
+			if err != nil || l.HomePage {
+				t.Fatalf("Request: %+v, err %v; want no home_page", l, err)
+			}
+			finish(t, l)
+			root := "https://" + host + "/@bob"
+			got, err := repo.Request(t.Context(), key, root, true, testDoneTTL, testFailedTTL)
+			if err != nil || got.Status != rss.LookupPending || got.URL != root || !got.HomePage {
+				t.Errorf("root after the feed: %+v, err %v; want pending on %q with home_page", got, err, root)
+			}
+		})
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			key := newLookupKey(t, repo)
@@ -186,7 +233,7 @@ func TestLookupRepositoryRequest(t *testing.T) {
 				}
 				return
 			}
-			if got.URL != newURL || got.Attempts != 0 || got.Error != "" || !got.StartedAt.IsZero() || !got.FinishedAt.IsZero() {
+			if got.URL != newURL || got.HomePage != tt.homePage || got.Attempts != 0 || got.Error != "" || !got.StartedAt.IsZero() || !got.FinishedAt.IsZero() {
 				t.Errorf("got %+v; want reset with url %q", got, newURL)
 			}
 			if !got.RequestedAt.After(before.RequestedAt) {

@@ -160,7 +160,7 @@ func breadFixture(now time.Time) *searchFixture {
 			searchSite("bare", "Bread Bare", ""),
 		},
 		followed: map[string]bool{"crumb-pastry": true, "followed-1": true},
-		lookups:  map[string]rss.Lookup{"ahead.example": {URL: "https://ahead.example/", Status: rss.LookupDone, SiteID: "ahead"}},
+		lookups:  map[string]rss.Lookup{"ahead.example": {URL: "https://ahead.example/", HomePage: true, Status: rss.LookupDone, SiteID: "ahead"}},
 		saved: []rss.SavedArticle{{
 			Article: rss.Article{ID: "a1", Title: "Breadcrumbs from stale bread", Excerpt: "Don't throw out the heel."},
 			Feed:    rss.Feed{SiteID: "site-a1", Title: "Small Plates"},
@@ -446,6 +446,22 @@ func TestDiscoverSearchResults(t *testing.T) {
 				t.Errorf("%s: no Look up for the home page", name)
 			}
 		}
+
+		// Each author on a shared host is a site of its own.
+		alice := searchSite("alice", "Alice – Medium", "", rss.Feed{ID: "alice-feed", Title: "Stories by Alice", Url: "https://medium.com/feed/@alice"})
+		alice.Site.Host = "medium.com/@alice"
+		shared := fixture()
+		shared.sites = append(shared.sites, alice)
+		shared.lookups["medium.com/@alice"] = rss.Lookup{URL: "https://medium.com/@alice", HomePage: true, Status: rss.LookupDone, SiteID: "alice"}
+		_, body, _ = get(t, shared, url.QueryEscape("https://medium.com/@alice"))
+		if strings.Contains(body, "search-lookup") {
+			t.Error("Look up offered for the home page of an author found")
+		}
+		_, body, _ = get(t, shared, url.QueryEscape("https://medium.com/@bob"))
+		if !strings.Contains(body, `aria-label="Look up medium.com/@bob"`) {
+			t.Error("no Look up for another author on the host of an author found")
+		}
+
 		f.fail = "lookup"
 		if _, _, code := get(t, f, url.QueryEscape("ahead.example")); code != http.StatusInternalServerError {
 			t.Errorf("a failed lookup read: status = %d, want 500", code)

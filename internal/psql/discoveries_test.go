@@ -259,3 +259,68 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 		}
 	})
 }
+
+// A feed moves from a shared host's own site to a site with a path on that
+// host, and never between two sites with a path or two hosts.
+func TestFeedUpsertMovesToSharedHostSite(t *testing.T) {
+	db := psqltest.NewDB(t)
+	feeds := NewFeedRepository(db)
+	sites := NewSiteRepository(db)
+	n := time.Now().UnixNano()
+	host := fmt.Sprintf("shared-%d.example.com", n)
+
+	var siteIDs []string
+	newSite := func(t *testing.T, key string) string {
+		t.Helper()
+		id, err := sites.Upsert(t.Context(), rss.Site{Host: key, URL: "https://" + key})
+		if err != nil {
+			t.Fatalf("Upsert site %s: %v", key, err)
+		}
+		siteIDs = append(siteIDs, id)
+		return id
+	}
+	bare, alice, bob := newSite(t, host), newSite(t, host+"/@alice"), newSite(t, host+"/@bob")
+	otherHost := newSite(t, fmt.Sprintf("other-%d.example/@x", n))
+	prefix := fmt.Sprintf("https://feeds-shared-%d.example.com/", n)
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM feeds WHERE url LIKE $1`, prefix+"%"); err != nil {
+			t.Errorf("cleanup feeds: %v", err)
+		}
+		for _, id := range siteIDs {
+			if _, err := db.Exec(`DELETE FROM sites WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup sites: %v", err)
+			}
+		}
+	})
+
+	tests := []struct {
+		name     string
+		from, to string
+		want     string
+	}{
+		{"from the host's own site to an author's", bare, bob, bob},
+		{"from one author's site to another's", alice, bob, alice},
+		{"from an author's site to the host's own", alice, bare, alice},
+		{"to a site with a path on another host", bare, otherHost, bare},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := rss.Feed{Url: fmt.Sprintf("%s%d", prefix, i), Title: "F", SiteID: tt.from}
+			id, err := feeds.Upsert(t.Context(), f)
+			if err != nil {
+				t.Fatalf("Upsert: %v", err)
+			}
+			f.SiteID = tt.to
+			if _, err := feeds.Upsert(t.Context(), f); err != nil {
+				t.Fatalf("Upsert again: %v", err)
+			}
+			got, err := feeds.GetByID(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.SiteID != tt.want {
+				t.Errorf("site_id = %s, want %s", got.SiteID, tt.want)
+			}
+		})
+	}
+}

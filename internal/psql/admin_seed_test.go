@@ -254,8 +254,8 @@ func TestAdminFeedRepositoryQueueSeedLookup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if l.Status != rss.LookupPending || l.URL != u || l.SiteKey != key {
-			t.Errorf("lookup = %+v, want pending of %s", l, u)
+		if l.Status != rss.LookupPending || l.URL != u || l.SiteKey != key || l.HomePage {
+			t.Errorf("lookup = %+v, want pending of %s, not the home page", l, u)
 		}
 		if p := lookupPriority(t, db, key); p != 0 {
 			t.Errorf("priority %d, want a reader's, 0", p)
@@ -279,6 +279,19 @@ func TestAdminFeedRepositoryQueueSeedLookup(t *testing.T) {
 		}
 		if l.Status != rss.LookupPending || l.Error != "" || l.Attempts != 0 || l.URL != u {
 			t.Errorf("lookup = %+v, want pending again of %s", l, u)
+		}
+	})
+
+	t.Run("the entry's home page", func(t *testing.T) {
+		key := newLookupKey(t, lookups)
+		u := "https://" + key + "/"
+		seedSite(t, db, key, u, time.Now())
+		l, err := repo.QueueSeedLookup(t.Context(), key, by)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l.Status != rss.LookupPending || l.URL != u || !l.HomePage {
+			t.Errorf("lookup = %+v, want pending of the home page %s", l, u)
 		}
 	})
 
@@ -335,8 +348,15 @@ func TestAdminFeedRepositoryRetrySeedLookups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// One entry's address is its site's home page.
+	entryURL := func(key string) string {
+		if key == empty {
+			return "https://" + key + "/"
+		}
+		return "https://" + key + "/seed"
+	}
 	for _, key := range []string{never, pending, running, failed, empty, found, refailed} {
-		seedSite(t, db, key, "https://"+key+"/seed", time.Now())
+		seedSite(t, db, key, entryURL(key), time.Now())
 	}
 
 	n, err := repo.RetrySeedLookups(t.Context(), by)
@@ -352,13 +372,17 @@ func TestAdminFeedRepositoryRetrySeedLookups(t *testing.T) {
 		var status, u, errText string
 		var priority, attempts int
 		var finished sql.NullTime
-		if err := db.QueryRow(`SELECT status, url, error, priority, attempts, finished_at FROM lookups WHERE site_key = $1`, key).
-			Scan(&status, &u, &errText, &priority, &attempts, &finished); err != nil {
+		var homePage bool
+		if err := db.QueryRow(`SELECT status, url, home_page, error, priority, attempts, finished_at FROM lookups WHERE site_key = $1`, key).
+			Scan(&status, &u, &homePage, &errText, &priority, &attempts, &finished); err != nil {
 			t.Fatal(err)
 		}
-		if status != "pending" || u != "https://"+key+"/seed" || errText != "" || priority != 1 || attempts != 0 || finished.Valid {
+		if status != "pending" || u != entryURL(key) || errText != "" || priority != 1 || attempts != 0 || finished.Valid {
 			t.Errorf("%s: %s of %s (error %q), priority %d, %d attempts, finished %v; want pending of the entry's address at 1",
 				key, status, u, errText, priority, attempts, finished.Valid)
+		}
+		if homePage != (key == empty) {
+			t.Errorf("%s: home_page = %v, want %v", key, homePage, key == empty)
 		}
 	}
 	for key, status := range map[string]string{found: "done", pending: "pending", running: "running", unlisted: "failed"} {
@@ -495,8 +519,15 @@ func TestAdminFeedRepositoryAddSeedSites(t *testing.T) {
 	keys := []string{fresh, failed, empty, pending, found}
 	cleanupExec(t, db, `DELETE FROM seed_sites WHERE site_key = ANY($1)`, pq.Array(keys))
 
+	// One entry's address is its site's home page.
+	entryURL := func(key string) string {
+		if key == failed {
+			return "https://" + key + "/"
+		}
+		return "https://" + key + "/seed"
+	}
 	line := func(key, sectionID string) seed.Line {
-		return seed.Line{Text: key, Entry: seed.Entry{URL: "https://" + key + "/seed", SiteKey: key}, SectionID: sectionID, Outcome: seed.LineAdd}
+		return seed.Line{Text: key, Entry: seed.Entry{URL: entryURL(key), SiteKey: key}, SectionID: sectionID, Outcome: seed.LineAdd}
 	}
 	lines := []seed.Line{
 		line(fresh, sec.ID), line(failed, ""), line(empty, ""), line(pending, ""), line(found, ""),
@@ -532,19 +563,23 @@ func TestAdminFeedRepositoryAddSeedSites(t *testing.T) {
 		t.Errorf("%s already on the list changed: %+v", listed, e)
 	}
 
-	// New and not-found lookups queued at 1 with the entry's address; found
-	// and pending ones left as they are.
+	// New and not-found lookups queued at 1 with the entry's address, and
+	// whether it is the home page; found and pending ones left as they are.
 	for _, key := range []string{fresh, failed, empty} {
 		var status, u, errText string
 		var priority, attempts int
 		var finished sql.NullTime
-		if err := db.QueryRow(`SELECT status, url, error, priority, attempts, finished_at FROM lookups WHERE site_key = $1`, key).
-			Scan(&status, &u, &errText, &priority, &attempts, &finished); err != nil {
+		var homePage bool
+		if err := db.QueryRow(`SELECT status, url, home_page, error, priority, attempts, finished_at FROM lookups WHERE site_key = $1`, key).
+			Scan(&status, &u, &homePage, &errText, &priority, &attempts, &finished); err != nil {
 			t.Fatalf("%s: %v", key, err)
 		}
-		if status != "pending" || u != "https://"+key+"/seed" || errText != "" || priority != 1 || attempts != 0 || finished.Valid {
+		if status != "pending" || u != entryURL(key) || errText != "" || priority != 1 || attempts != 0 || finished.Valid {
 			t.Errorf("%s: %s of %s (error %q), priority %d, %d attempts, finished %v; want pending of the entry's address at 1",
 				key, status, u, errText, priority, attempts, finished.Valid)
+		}
+		if homePage != (key == failed) {
+			t.Errorf("%s: home_page = %v, want %v", key, homePage, key == failed)
 		}
 	}
 	for key, status := range map[string]string{found: "done", pending: "pending"} {

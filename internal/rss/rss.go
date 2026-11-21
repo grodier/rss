@@ -231,7 +231,9 @@ type FetchResult struct {
 }
 
 // Site is a website that feeds are discovered from. Host is its site key:
-// the lowercase host without a leading "www." (see discovery.SiteKey).
+// the lowercase host without a leading "www.", followed on a host shared by
+// many sites by the path that names the site ("medium.com/@alice"; see
+// discovery.SiteKey). URL is its root (discovery.SiteRoot).
 type Site struct {
 	ID          string
 	Host        string
@@ -425,6 +427,7 @@ type Lookup struct {
 	ID          string
 	SiteKey     string
 	URL         string
+	HomePage    bool // URL is its site's root (discovery.IsHomePage)
 	Status      LookupStatus
 	SiteID      string // "" if none
 	Error       string // internal detail; never shown to users

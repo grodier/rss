@@ -12,11 +12,12 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
 
 ## Glossary
 
-- **Site:** a website, identified by its *site key*, the lowercase host without `www.` (`example.com` for `https://www.Example.com/blog`).
+- **Site:** a website, identified by its *site key*, the lowercase host without `www.` (`example.com` for `https://www.Example.com/blog`), followed on a host shared by many sites by the path that names the site (`medium.com/@alice`, `youtube.com/channel/UC…`; `discovery.SiteKey`).
+  Its *root* (`discovery.SiteRoot`) is its home page, or on a shared host the page that names it.
 - **Feed:** an RSS, Atom or JSON Feed document.
-  It belongs to the site it was first discovered from.
+  It belongs to the site it was first discovered from, unless that's a shared host's own site (`medium.com`) and a lookup finds it under a site with a path on that host.
 - **Lookup:** a background job that finds a site's feeds.
-  Its row is also the cached result for that site key.
+  Its row is also the cached result for that site key, and records whether it ran on the site's root (`home_page`).
 - **Article:** one item of a feed.
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
 - **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`rss.NewsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save or on a save after two days without a fetch attempt, where undated ones get spaced-out positions at least a day back), its published date.

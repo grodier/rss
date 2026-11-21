@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/textcut"
 )
@@ -16,7 +18,7 @@ import (
 // bytes.
 const maxErrorLen = 1000
 
-const lookupColumns = `id, site_key, url, status, site_id, error, attempts, requested_at, started_at, finished_at`
+const lookupColumns = `id, site_key, url, home_page, status, site_id, error, attempts, requested_at, started_at, finished_at`
 
 type LookupRepository struct {
 	DB *sql.DB
@@ -29,10 +31,11 @@ func NewLookupRepository(db *sql.DB) *LookupRepository {
 // Request returns the lookup for siteKey, creating it as pending if it
 // doesn't exist, or re-queuing it as pending if it is finished and either its
 // result has expired (doneTTL for a lookup that found a site, failedTTL for one
-// that failed or found no feeds) or url differs from the one it ran on. A
-// lookup that found a site from its home page isn't re-queued for a different
-// url that is also the home page (homePage: "www." or not), so the site page
-// stays cached; one that ran on another address (a feed, an article) is, since
+// that failed or found no feeds) or url differs from the one it ran on. It
+// records whether url is the site's home page (homePage,
+// discovery.IsHomePage). A lookup that found a site from its home page isn't
+// re-queued for a different url that is also the home page ("www." or not),
+// so the site page stays cached; one that ran on another address (a feed, an article) is, since
 // the home page may list feeds it didn't. A pending or
 // running lookup is returned unchanged, except that a pending one the seed
 // list queued (RetrySeedLookups) moves ahead of the seed's, since a reader is now
@@ -46,14 +49,12 @@ func (r *LookupRepository) Request(ctx context.Context, siteKey, url string, hom
 // transaction (AdminFeedRepository.CheckForFeeds).
 func requestLookup(ctx context.Context, q querier, siteKey, url string, homePage bool, doneTTL, failedTTL time.Duration) (rss.Lookup, error) {
 	const found = `(lookups.status = 'done' AND lookups.site_id IS NOT NULL)`
-	// The lookup ran on a home page: discovery.IsHomePage of its canonical url.
-	const ranOnHome = `(lookups.url ~ '^https?://[^/?#]+/$')`
-	stmt := `INSERT INTO lookups (site_key, url) VALUES ($1, $2)
+	stmt := `INSERT INTO lookups (site_key, url, home_page) VALUES ($1, $2, $5)
 		ON CONFLICT (site_key) DO UPDATE SET
-			status = 'pending', url = EXCLUDED.url, error = '', priority = 0,
+			status = 'pending', url = EXCLUDED.url, home_page = EXCLUDED.home_page, error = '', priority = 0,
 			attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
 		WHERE lookups.status IN ('done', 'failed') AND (
-			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND ` + ranOnHome + ` AND $5))
+			(lookups.url <> EXCLUDED.url AND NOT (` + found + ` AND lookups.home_page AND $5))
 			OR (` + found + ` AND lookups.finished_at < now() - make_interval(secs => $3))
 			OR (NOT ` + found + ` AND lookups.finished_at < now() - make_interval(secs => $4)))
 		RETURNING ` + lookupColumns
@@ -138,6 +139,13 @@ func (r *LookupRepository) ResetStale(ctx context.Context, olderThan time.Durati
 	return res.RowsAffected()
 }
 
+// isHomePage is discovery.IsHomePage of rawURL, a lookup's address; false
+// when it doesn't parse.
+func isHomePage(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	return err == nil && discovery.IsHomePage(u)
+}
+
 // execOne runs stmt and returns rss.ErrNoRecord if it changed no rows.
 func execOne(ctx context.Context, q querier, stmt string, args ...any) error {
 	res, err := q.ExecContext(ctx, stmt, args...)
@@ -161,7 +169,7 @@ func scanLookup(row *sql.Row) (rss.Lookup, error) {
 		startedAt  sql.NullTime
 		finishedAt sql.NullTime
 	)
-	err := row.Scan(&l.ID, &l.SiteKey, &l.URL, &l.Status, &siteID, &l.Error, &l.Attempts, &l.RequestedAt, &startedAt, &finishedAt)
+	err := row.Scan(&l.ID, &l.SiteKey, &l.URL, &l.HomePage, &l.Status, &siteID, &l.Error, &l.Attempts, &l.RequestedAt, &startedAt, &finishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Lookup{}, rss.ErrNoRecord

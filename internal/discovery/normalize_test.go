@@ -86,20 +86,6 @@ func TestLooksLikeURL(t *testing.T) {
 	}
 }
 
-func TestSiteKey(t *testing.T) {
-	tests := []struct{ in, want string }{
-		{"https://www.Example.com:443/a", "example.com"},
-		{"https://example.com/", "example.com"},
-		{"https://blog.example.com/", "blog.example.com"},
-		{"http://www2.example.com", "www2.example.com"},
-	}
-	for _, tt := range tests {
-		if got := SiteKey(mustParse(t, tt.in)); got != tt.want {
-			t.Errorf("SiteKey(%q) = %q; want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
 func TestCanonicalFeedURL(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"HTTPS://Example.com:443/feed.xml#x", "https://example.com/feed.xml"},

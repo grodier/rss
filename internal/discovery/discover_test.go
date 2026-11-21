@@ -337,7 +337,7 @@ func TestDiscoverHomePage(t *testing.T) {
 	f := &fakeFetcher{responses: map[string]*fetch.Response{
 		"https://example.com/":            htmlResp(page),
 		"https://example.com/?ref=x":      htmlResp(page),
-		"https://example.com/@alice":      htmlResp(page),
+		"https://example.com/about":       htmlResp(page),
 		"https://example.com/index.html":  redirected,
 		"https://example.com/rss.xml":     rssResp("Posts", "https://example.com/"),
 		"https://www.example.com/rss.xml": rssResp("Posts", "https://example.com/"),
@@ -349,7 +349,7 @@ func TestDiscoverHomePage(t *testing.T) {
 		{"https://example.com/", true},
 		{"https://example.com/index.html", true}, // led to the home page
 		{"https://example.com/?ref=x", false},
-		{"https://example.com/@alice", false},
+		{"https://example.com/about", false},
 		{"https://example.com/rss.xml", false}, // a feed
 	}
 	for _, tt := range tests {
@@ -668,7 +668,7 @@ func TestDiscoverAppLink(t *testing.T) {
 	shared := htmlResp(`<title>Picks</title><link rel="alternate" type="application/atom+xml" href="/shared/abc/feed.atom">`)
 
 	t.Run("address on the app", func(t *testing.T) {
-		for _, addr := range []string{"https://paperround.app/shared/abc", "https://www.PaperRound.app/shared/abc"} {
+		for _, addr := range []string{"https://paperround.app/shared/abc", "https://www.PaperRound.app/shared/abc", "https://paperround.app/@x"} {
 			f := &fakeFetcher{responses: map[string]*fetch.Response{addr: shared}}
 			d := &Discoverer{Fetcher: f, AppSiteKey: "paperround.app"}
 			_, err := d.Discover(context.Background(), mustURL(t, addr))
@@ -733,4 +733,127 @@ func TestDiscoverAppLink(t *testing.T) {
 		}
 		assertURLs(t, res.Feeds, "https://example.com/feed.xml")
 	})
+}
+
+func atomResp(title, link string) *fetch.Response {
+	body := fmt.Sprintf(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+		<title>%s</title><link rel="alternate" href="%s"/>
+		<entry><id>g1</id><title>First</title><link href="https://example.com/1"/></entry>
+		</feed>`, title, link)
+	return &fetch.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/atom+xml"}},
+		Body:       []byte(body),
+	}
+}
+
+// A site on a shared host is keyed by the path that names it, whether its
+// page or its feed is looked up.
+func TestDiscoverSharedHostSite(t *testing.T) {
+	page := htmlResp(`<title>Alice – Medium</title><link rel="alternate" type="application/rss+xml" href="https://medium.com/feed/@alice">`)
+	feed := rssResp("Stories by Alice on Medium", "https://medium.com/@alice?source=rss-abc------2")
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://medium.com/@alice":        page,
+		"https://medium.com/@alice/a-post": page,
+		"https://medium.com/feed/@alice":   feed,
+	}}
+	tests := []struct {
+		url          string
+		wantHomePage bool
+	}{
+		{"https://medium.com/@alice", true},
+		{"https://medium.com/@alice/a-post", false},
+		{"https://medium.com/feed/@alice", false}, // direct
+	}
+	for _, tt := range tests {
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.url))
+		if err != nil {
+			t.Fatalf("%s: %v", tt.url, err)
+		}
+		if res.Site.Key != "medium.com/@alice" || res.Site.URL != "https://medium.com/@alice" {
+			t.Errorf("%s: Site = %+v, want Key medium.com/@alice URL https://medium.com/@alice", tt.url, res.Site)
+		}
+		if res.HomePage != tt.wantHomePage {
+			t.Errorf("%s: HomePage = %v, want %v", tt.url, res.HomePage, tt.wantHomePage)
+		}
+		assertURLs(t, res.Feeds, "https://medium.com/feed/@alice")
+	}
+
+	t.Run("feed without a link", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://medium.com/feed/@alice": rssResp("Alice", ""),
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://medium.com/feed/@alice"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Site.Key != "medium.com/@alice" || res.Site.URL != "https://medium.com/@alice" {
+			t.Errorf("Site = %+v, want Key medium.com/@alice URL https://medium.com/@alice", res.Site)
+		}
+	})
+}
+
+// A page whose key has a path takes its first feed's site when that is
+// another key with a path on the same host.
+func TestDiscoverSharedHostFeedSite(t *testing.T) {
+	const channel = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
+	const feedURL = "https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw"
+	page := htmlResp(`<title>Google for Developers - YouTube</title><link rel="alternate" type="application/rss+xml" href="` + feedURL + `">`)
+	tests := []struct {
+		name     string
+		pageURL  string
+		feedLink string
+		wantKey  string
+		wantURL  string
+	}{
+		{"handle to channel", "https://www.youtube.com/@GoogleDevelopers", channel,
+			"youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw", channel},
+		{"feed on the host's own site", "https://www.youtube.com/@GoogleDevelopers", "https://www.youtube.com/",
+			"youtube.com/@googledevelopers", "https://www.youtube.com/@GoogleDevelopers"},
+		{"feed on another host", "https://www.youtube.com/@GoogleDevelopers", "https://developers.google.com/@x",
+			"youtube.com/@googledevelopers", "https://www.youtube.com/@GoogleDevelopers"},
+		{"page on the host's own site", "https://www.youtube.com/", channel,
+			"youtube.com", "https://www.youtube.com/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeFetcher{responses: map[string]*fetch.Response{
+				tt.pageURL: page,
+				feedURL:    atomResp("Google for Developers", tt.feedLink),
+			}}
+			res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.pageURL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Site.Key != tt.wantKey || res.Site.URL != tt.wantURL {
+				t.Errorf("Site = %+v, want Key %q URL %q", res.Site, tt.wantKey, tt.wantURL)
+			}
+			if res.Site.Title != "Google for Developers - YouTube" {
+				t.Errorf("Site.Title = %q, want the page's", res.Site.Title)
+			}
+			assertURLs(t, res.Feeds, feedURL)
+		})
+	}
+}
+
+// A site on a shared host doesn't try the common feed paths, which would
+// find the platform's own feed.
+func TestDiscoverSharedHostNoCommonPaths(t *testing.T) {
+	f := &fakeFetcher{responses: map[string]*fetch.Response{
+		"https://medium.com/@alice": htmlResp(`<title>Alice</title>`),
+		"https://medium.com/feed":   rssResp("Medium", "https://medium.com/"),
+	}}
+	res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://medium.com/@alice"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Feeds) != 0 || len(res.Checked) != 0 {
+		t.Errorf("Feeds = %v, Checked = %v, want none", feedURLs(res.Feeds), res.Checked)
+	}
+	if !slices.Equal(f.gets, []string{"https://medium.com/@alice"}) {
+		t.Errorf("gets = %v, want only the page", f.gets)
+	}
+	if res.Site.Key != "medium.com/@alice" {
+		t.Errorf("Site.Key = %q, want medium.com/@alice", res.Site.Key)
+	}
 }

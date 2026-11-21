@@ -739,7 +739,7 @@ func (r *AdminFeedRepository) QueueSeedLookup(ctx context.Context, siteKey strin
 		return rss.Lookup{}, err
 	}
 	// No time-to-live, so a finished lookup always runs again.
-	l, err := requestLookup(ctx, tx, siteKey, u, false, 0, 0)
+	l, err := requestLookup(ctx, tx, siteKey, u, isHomePage(u), 0, 0)
 	if err != nil {
 		return rss.Lookup{}, err
 	}
@@ -785,11 +785,13 @@ func (r *AdminFeedRepository) SeedOnList(ctx context.Context, siteKeys []string)
 // were added; adding none records nothing. All of it is one transaction.
 func (r *AdminFeedRepository) AddSeedSites(ctx context.Context, lines []seed.Line, source string, by rss.AuditActor) (int, error) {
 	var keys, urls, sections []string
+	var homePages []bool
 	for _, l := range lines {
 		if l.Outcome != seed.LineAdd {
 			continue
 		}
 		keys, urls, sections = append(keys, l.SiteKey), append(urls, l.URL), append(sections, l.SectionID)
+		homePages = append(homePages, isHomePage(l.URL))
 	}
 	if len(keys) == 0 {
 		return 0, nil
@@ -802,7 +804,7 @@ func (r *AdminFeedRepository) AddSeedSites(ctx context.Context, lines []seed.Lin
 	defer tx.Rollback()
 
 	stmt := `WITH input AS (
-			SELECT * FROM unnest($1::text[], $2::text[], $3::text[]) WITH ORDINALITY AS t(site_key, url, section_id, n)
+			SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $6::bool[]) WITH ORDINALITY AS t(site_key, url, section_id, home_page, n)
 		), added AS (
 			INSERT INTO seed_sites (site_key, url, section_id, source, added_by)
 			SELECT i.site_key, i.url, ds.id, $4, NULLIF($5, '')::uuid
@@ -811,15 +813,15 @@ func (r *AdminFeedRepository) AddSeedSites(ctx context.Context, lines []seed.Lin
 			ON CONFLICT (site_key) DO NOTHING
 			RETURNING site_key, url
 		), queued AS (
-			INSERT INTO lookups (site_key, url, priority)
-			SELECT site_key, url, 1 FROM added
+			INSERT INTO lookups (site_key, url, home_page, priority)
+			SELECT a.site_key, a.url, i.home_page, 1 FROM added a JOIN input i ON i.site_key = a.site_key
 			ON CONFLICT (site_key) DO UPDATE SET
-				status = 'pending', url = EXCLUDED.url, error = '', priority = 1,
+				status = 'pending', url = EXCLUDED.url, home_page = EXCLUDED.home_page, error = '', priority = 1,
 				attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
 			WHERE lookups.status = 'failed' OR (lookups.status = 'done' AND lookups.site_id IS NULL)
 		)
 		SELECT a.site_key FROM added a JOIN input i ON i.site_key = a.site_key ORDER BY i.n`
-	rows, err := tx.QueryContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(sections), source, by.AdminID)
+	rows, err := tx.QueryContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(sections), source, by.AdminID, pq.Array(homePages))
 	if err != nil {
 		return 0, err
 	}
@@ -859,15 +861,41 @@ func (r *AdminFeedRepository) RetrySeedLookups(ctx context.Context, by rss.Audit
 	}
 	defer tx.Rollback()
 
+	// Whether an entry's address is its site's home page is read in Go
+	// (discovery.IsHomePage), so the entries are locked and read first.
+	rows, err := tx.QueryContext(ctx, `SELECT ss.site_key, ss.url
+		FROM seed_sites ss JOIN lookups l ON l.site_key = ss.site_key
+		WHERE `+adminSeedNotFound+`
+		FOR UPDATE OF l`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var keys, urls []string
+	var homePages []bool
+	for rows.Next() {
+		var key, u string
+		if err := rows.Scan(&key, &u); err != nil {
+			return 0, err
+		}
+		keys, urls, homePages = append(keys, key), append(urls, u), append(homePages, isHomePage(u))
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(keys) == 0 {
+		return 0, nil
+	}
+
 	stmt := `WITH retried AS (
-			UPDATE lookups l SET status = 'pending', url = ss.url, error = '', priority = 1,
+			UPDATE lookups l SET status = 'pending', url = i.url, home_page = i.home_page, error = '', priority = 1,
 				attempts = 0, requested_at = now(), started_at = NULL, finished_at = NULL
-			FROM seed_sites ss
-			WHERE l.site_key = ss.site_key AND ` + adminSeedNotFound + `
+			FROM unnest($1::text[], $2::text[], $3::bool[]) AS i(site_key, url, home_page)
+			WHERE l.site_key = i.site_key AND ` + adminSeedNotFound + `
 			RETURNING 1)
 		SELECT count(*) FROM retried`
 	var n int
-	if err := tx.QueryRowContext(ctx, stmt).Scan(&n); err != nil {
+	if err := tx.QueryRowContext(ctx, stmt, pq.Array(keys), pq.Array(urls), pq.Array(homePages)).Scan(&n); err != nil {
 		return 0, err
 	}
 	if n == 0 {

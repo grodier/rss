@@ -1135,11 +1135,14 @@ const (
 )
 
 // AdminSeedEntry is a seed list entry as the admin lists it: its address,
-// site key and when it was added, its site key's lookup (ID "" when it has
-// none), and the site that lookup found (SiteHost "" when none) with how
-// many feeds the site has and how many of them are in Discover's catalog.
+// site key, section hint ("" for none), source ("" for none) and when it
+// was added, its site key's lookup (ID "" when it has none), and the site
+// that lookup found (SiteHost "" when none) with how many feeds the site
+// has and how many of them are in Discover's catalog.
 type AdminSeedEntry struct {
 	URL, SiteKey string
+	SectionName  string
+	Source       string
 	AddedAt      time.Time
 	Lookup       Lookup
 	SiteHost     string

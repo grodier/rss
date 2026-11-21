@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Add sites - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Add sites</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/seed">Seed list</a>
+        </div>
+        <p>Paste sites to look up before anyone searches for them. Preview shows what each line will do; nothing is added until you add them.</p>
+      </header>
+      {{$focus := .Form.FirstError "sites" "source"}}
+      <form class="seed-add" action="/seed/add" method="post" data-busy>
+        <section class="admin-section">
+          <div class="field">
+            <label for="sites">Sites</label>
+            <textarea id="sites" name="sites" rows="12" autocapitalize="none" autocomplete="off" spellcheck="false" wrap="off"
+              aria-describedby="sites-hint{{with .Form.FieldErrors.sites}} sites-error{{end}}"
+              {{with .Form.FieldErrors.sites}}aria-invalid="true"{{end}}
+              {{if eq $focus "sites"}}autofocus{{end}}>
+{{.Form.Sites}}</textarea>
+            <p class="hint" id="sites-hint">One per line: a site’s address, or a feed’s to add only that feed, then optionally a comma or tab and a section{{with .Sections}} ({{range $i, $s := .}}{{if $i}}, {{end}}{{$s.Name}}{{end}}){{end}}, as a hint for picking its feeds for Discover. Blank lines and lines starting with # are skipped; at most 10,000 lines.</p>
+            {{with .Form.FieldErrors.sites}}<p class="error" id="sites-error">{{.}}</p>{{end}}
+          </div>
+          <div class="field seed-source">
+            <label for="source">Source (optional)</label>
+            <input type="text" id="source" name="source" value="{{.Form.Source}}" maxlength="100"
+              aria-describedby="source-hint{{with .Form.FieldErrors.source}} source-error{{end}}"
+              {{with .Form.FieldErrors.source}}aria-invalid="true"{{end}}
+              {{if eq $focus "source"}}autofocus{{end}} />
+            <p class="hint" id="source-hint">Where these came from, such as “waitlist” or “IndieWeb list”, shown on the seed list.</p>
+            {{with .Form.FieldErrors.source}}<p class="error" id="source-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button class="btn{{if not .Previewed}} btn-primary{{end}}" type="submit" name="step" value="preview" data-busy-label="Checking…"><span data-busy-text>Preview</span></button>
+          </div>
+        </section>
+
+        {{if .Previewed}}
+        <section class="admin-section" aria-labelledby="preview-heading">
+          <h2 id="preview-heading">Preview</h2>
+          {{template "stat-row" .Counts}}
+          <div class="table-wrap seed-preview">
+            <table class="data feeds">
+              <thead>
+                <tr>
+                  <th scope="col" class="num">Line</th>
+                  <th scope="col">What happens</th>
+                  <th scope="col">As pasted</th>
+                  <th scope="col">Site</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range .Rows}}
+                <tr>
+                  <td class="num">{{.N}}</td>
+                  <td class="feed-problem">{{template "problem-text" .Status}}</td>
+                  <td class="wrap feed-name">{{.Text}}</td>
+                  <td>{{or .SiteKey "—"}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          <div class="form-actions">
+            {{if .Adds}}
+            <button class="btn btn-primary" type="submit" name="step" value="add" data-busy-label="Adding…"><span data-busy-text>Add {{count .Adds}} {{if eq .Adds 1}}site{{else}}sites{{end}}</span></button>
+            {{else}}
+            <p class="empty">Nothing here can be added.</p>
+            {{end}}
+          </div>
+        </section>
+        {{end}}
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

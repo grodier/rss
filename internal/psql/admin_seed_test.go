@@ -9,6 +9,8 @@ import (
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/seed"
+	"github.com/lib/pq"
 )
 
 // seedSite adds key to the seed list with address url, added at, and
@@ -450,5 +452,137 @@ func TestAdminFeedRepositoryCatalog(t *testing.T) {
 	f := fs[1]
 	if !f.LatestPost.Equal(posted) || f.Subscribers != 1 || f.PostsPerWeek != 2.5 || f.Title != "b feed" || f.URL != b.Url || f.SiteID != b.SiteID || f.SiteHost == "" {
 		t.Errorf("b feed = %+v, want posted %v, 1 subscriber, 2.5 a week, its URL and site", f, posted)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestAdminFeedRepositorySeedOnList(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminFeedRepository(db)
+	lookups := NewLookupRepository(db)
+
+	on, off := newLookupKey(t, lookups), newLookupKey(t, lookups)
+	seedSite(t, db, on, "https://"+on+"/", time.Now())
+
+	got, err := repo.SeedOnList(t.Context(), []string{on, off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got[on] || got[off] || len(got) != 1 {
+		t.Errorf("SeedOnList = %v, want only %s", got, on)
+	}
+	if got, err := repo.SeedOnList(t.Context(), nil); err != nil || len(got) != 0 {
+		t.Errorf("SeedOnList(nil) = %v, %v; want none", got, err)
+	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestAdminFeedRepositoryAddSeedSites(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminFeedRepository(db)
+	lookups := NewLookupRepository(db)
+	by := testActor(t, db)
+
+	sec := newTestSection(t, db, "Seed add", 1)
+	foundID, found := adminFeedsSite(t, db)
+	fresh, failed, empty, pending, listed, skipped := newLookupKey(t, lookups), newLookupKey(t, lookups),
+		newLookupKey(t, lookups), newLookupKey(t, lookups), newLookupKey(t, lookups), newLookupKey(t, lookups)
+	setLookup(t, lookups, found, "done", foundID, "")
+	setLookup(t, lookups, failed, "failed", "", "boom")
+	setLookup(t, lookups, empty, "done", "", "")
+	setLookup(t, lookups, pending, "pending", "", "")
+	seedSite(t, db, listed, "https://"+listed+"/old", time.Now())
+	keys := []string{fresh, failed, empty, pending, found}
+	cleanupExec(t, db, `DELETE FROM seed_sites WHERE site_key = ANY($1)`, pq.Array(keys))
+
+	line := func(key, sectionID string) seed.Line {
+		return seed.Line{Text: key, Entry: seed.Entry{URL: "https://" + key + "/seed", SiteKey: key}, SectionID: sectionID, Outcome: seed.LineAdd}
+	}
+	lines := []seed.Line{
+		line(fresh, sec.ID), line(failed, ""), line(empty, ""), line(pending, ""), line(found, ""),
+		// Already on the list, perhaps added since the preview.
+		line(listed, sec.ID),
+		// Not an add.
+		{Text: skipped, Entry: seed.Entry{URL: "https://" + skipped + "/", SiteKey: skipped}, Outcome: seed.LineBadSection},
+	}
+	n, err := repo.AddSeedSites(t.Context(), lines, "waitlist", by)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Errorf("AddSeedSites = %d, want 5", n)
+	}
+
+	// Each added with its hint and the source.
+	entries := seedPages(t, repo, rss.AdminSeedAll, 100, append(slices.Clone(keys), listed, skipped))
+	got := map[string]rss.AdminSeedEntry{}
+	for _, e := range entries {
+		got[e.SiteKey] = e
+	}
+	if len(got) != 6 {
+		t.Errorf("seed list has %d of the keys, want 6 (not the skipped line)", len(got))
+	}
+	if e := got[fresh]; e.URL != "https://"+fresh+"/seed" || e.SectionName != sec.Name || e.Source != "waitlist" {
+		t.Errorf("%s: %+v, want its address, section %q and source waitlist", fresh, e, sec.Name)
+	}
+	if e := got[failed]; e.SectionName != "" || e.Source != "waitlist" {
+		t.Errorf("%s: section %q, source %q; want none and waitlist", failed, e.SectionName, e.Source)
+	}
+	if e := got[listed]; e.URL != "https://"+listed+"/old" || e.SectionName != "" || e.Source != "" {
+		t.Errorf("%s already on the list changed: %+v", listed, e)
+	}
+
+	// New and not-found lookups queued at 1 with the entry's address; found
+	// and pending ones left as they are.
+	for _, key := range []string{fresh, failed, empty} {
+		var status, u, errText string
+		var priority, attempts int
+		var finished sql.NullTime
+		if err := db.QueryRow(`SELECT status, url, error, priority, attempts, finished_at FROM lookups WHERE site_key = $1`, key).
+			Scan(&status, &u, &errText, &priority, &attempts, &finished); err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		if status != "pending" || u != "https://"+key+"/seed" || errText != "" || priority != 1 || attempts != 0 || finished.Valid {
+			t.Errorf("%s: %s of %s (error %q), priority %d, %d attempts, finished %v; want pending of the entry's address at 1",
+				key, status, u, errText, priority, attempts, finished.Valid)
+		}
+	}
+	for key, status := range map[string]string{found: "done", pending: "pending"} {
+		var got, u string
+		var priority int
+		if err := db.QueryRow(`SELECT status, url, priority FROM lookups WHERE site_key = $1`, key).Scan(&got, &u, &priority); err != nil {
+			t.Fatal(err)
+		}
+		if got != status || u != "https://"+key+"/lookup" || priority != 0 {
+			t.Errorf("%s: %s of %s at %d, want untouched (%s)", key, got, u, priority, status)
+		}
+	}
+	var listedLookups int
+	if err := db.QueryRow(`SELECT count(*) FROM lookups WHERE site_key = ANY($1)`, pq.Array([]string{listed, skipped})).Scan(&listedLookups); err != nil || listedLookups != 0 {
+		t.Errorf("lookups of the lines not added = %d, %v; want none", listedLookups, err)
+	}
+
+	// One audit entry with the keys added, in the upload's order.
+	events := auditBy(t, db, by)
+	if len(events) != 1 || events[0].Action != "seed.add" || events[0].TargetType != "seed" || events[0].TargetID != "" ||
+		events[0].After["source"] != "waitlist" || events[0].After["count"] != float64(5) {
+		t.Fatalf("audit = %+v, want one seed.add from waitlist with the count 5", events)
+	}
+	var auditKeys []string
+	for _, k := range events[0].After["site_keys"].([]any) {
+		auditKeys = append(auditKeys, k.(string))
+	}
+	if !slices.Equal(auditKeys, keys) {
+		t.Errorf("audit's site keys = %v, want %v", auditKeys, keys)
+	}
+
+	// Nothing to add records nothing.
+	for _, ls := range [][]seed.Line{lines, lines[6:], nil} {
+		if n, err := repo.AddSeedSites(t.Context(), ls, "", by); err != nil || n != 0 {
+			t.Errorf("AddSeedSites again = %d, %v; want 0", n, err)
+		}
+	}
+	if events := auditBy(t, db, by); len(events) != 1 {
+		t.Errorf("audit = %+v, want still one entry", events)
 	}
 }

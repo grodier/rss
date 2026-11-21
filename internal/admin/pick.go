@@ -119,9 +119,12 @@ type pickPage struct {
 	Sites    []pickSiteRow
 	Sections []rss.Section
 	Now      time.Time
-	// Error is a failed Save's error about a feed the page no longer
-	// lists; "" for none.
+	// Error is a failed Save's error, said above the table too, since
+	// the feed it's about may no longer be listed; "" for none.
 	Error string
+	// FirstError is the form index of the first feed with an error, which
+	// takes the focus; -1 for none.
+	FirstError int
 	// Next is the URL of the next page, "" on the last.
 	Next string
 }
@@ -170,14 +173,15 @@ func (s *Server) renderPick(w http.ResponseWriter, r *http.Request, status int, 
 
 	now := s.now()
 	page := pickPage{
-		Nav:      s.nav(r, "discover"),
-		Flash:    s.sessionManager.PopString(r.Context(), sessionFlash),
-		Filter:   filter,
-		After:    after,
-		Skipped:  filter == rss.AdminPickSkipped,
-		Sections: sections,
-		Now:      now,
-		Error:    pageErr,
+		Nav:        s.nav(r, "discover"),
+		Flash:      s.sessionManager.PopString(r.Context(), sessionFlash),
+		Filter:     filter,
+		After:      after,
+		Skipped:    filter == rss.AdminPickSkipped,
+		Sections:   sections,
+		Now:        now,
+		Error:      pageErr,
+		FirstError: -1,
 	}
 	if len(sites) > pickPageSize {
 		sites = sites[:pickPageSize]
@@ -189,15 +193,21 @@ func (s *Server) renderPick(w http.ResponseWriter, r *http.Request, status int, 
 	i := 0
 	for j, site := range sites {
 		row := pickSiteRow{AdminPickSite: site, Index: j, Skip: true}
-		if skips != nil {
-			row.Skip = skips[site.ID]
+		// A site that wasn't posted, new on the page since, keeps the
+		// default.
+		if skip, ok := skips[site.ID]; ok {
+			row.Skip = skip
 		}
 		preset := site.HintSeed && len(site.Feeds) == 1 && site.More == 0
 		for _, f := range site.Feeds {
-			fr := pickFeedRow{AdminPickFeed: f, Index: i, Silent: f.LatestPost.IsZero() || now.Sub(f.LatestPost) > pickSilentAfter}
+			// A feed with no posts says "No posts yet" instead.
+			fr := pickFeedRow{AdminPickFeed: f, Index: i, Silent: !f.LatestPost.IsZero() && now.Sub(f.LatestPost) > pickSilentAfter}
 			fr.pickChoice = pickChoice{Pick: preset, Section: site.Hint.ID}
 			if c, ok := choices[f.ID]; ok {
 				fr.pickChoice = c
+			}
+			if fr.Error != "" && page.FirstError < 0 {
+				page.FirstError = i
 			}
 			row.Rows = append(row.Rows, fr)
 			i++
@@ -253,7 +263,8 @@ func (s *Server) pickFormHandler(w http.ResponseWriter, r *http.Request) {
 		choices[f.ID] = c
 	}
 	if !valid {
-		s.renderPick(w, r, http.StatusUnprocessableEntity, filter, form.After, choices, skipSite, "")
+		s.renderPick(w, r, http.StatusUnprocessableEntity, filter, form.After, choices, skipSite,
+			"Nothing was saved: choose a section for each feed you ticked.")
 		return
 	}
 

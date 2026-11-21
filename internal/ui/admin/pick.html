@@ -103,7 +103,7 @@
                   {{template "pick-feed" (pickFeed . $now)}}
                   <td>
                     <select name="feeds[{{.Index}}].section" aria-label="Section for {{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}"
-                      {{if .Error}}aria-invalid="true" aria-describedby="feed-{{.Index}}-error"{{end}}>
+                      {{if .Error}}aria-invalid="true" aria-describedby="feed-{{.Index}}-error"{{if eq $i $.FirstError}} autofocus{{end}}{{end}}>
                       <option value="">Choose a section</option>
                       {{$chosen := .Section}}
                       {{range $sections}}<option value="{{.ID}}"{{if eq .ID $chosen}} selected{{end}}>{{.Name}}</option>

@@ -31,7 +31,7 @@ func testPickSites() []rss.AdminPickSite {
 			Site: rss.Site{ID: siteID(2), Host: "several.example"}, Hint: science,
 			Feeds: []rss.AdminPickFeed{
 				{ID: feedID(2), Title: "Posts", URL: "https://several.example/feed", LatestPost: testNow.Add(-24 * time.Hour)},
-				{ID: feedID(3), URL: "https://several.example/comments/feed", Comments: true},
+				{ID: feedID(3), URL: "https://several.example/comments/feed", Comments: true, LatestPost: testNow.Add(-120 * 24 * time.Hour)},
 			},
 		},
 		{
@@ -104,8 +104,13 @@ func TestPickPage(t *testing.T) {
 			t.Errorf("pick page lacks %s", want)
 		}
 	}
-	if n := strings.Count(body, "No posts in 90 days"); n != 4 {
-		t.Errorf("%d feeds noted silent, want 4 (three never posted, one 100 days ago)", n)
+	// Silent is for a feed that posted, but not in 90 days; one that never
+	// did says so instead.
+	if n := strings.Count(body, "No posts in 90 days"); n != 2 {
+		t.Errorf("%d feeds noted silent, want 2 (posted 120 and 100 days ago)", n)
+	}
+	if n := strings.Count(body, "No posts yet"); n != 2 {
+		t.Errorf("%d feeds say they never posted, want 2", n)
 	}
 	if strings.Contains(body, "<b>Single</b>") || strings.Contains(body, "<i>world</i>") {
 		t.Error("a title or headline isn't escaped")
@@ -292,8 +297,9 @@ func TestPickSaveErrors(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
-		`aria-invalid="true" aria-describedby="feed-0-error"`,
+		`aria-invalid="true" aria-describedby="feed-0-error" autofocus>`,
 		`<p class="error" id="feed-0-error">Choose a section.</p>`,
+		`<p class="error" role="alert">Nothing was saved: choose a section for each feed you ticked.</p>`,
 		`<input type="hidden" name="filter" value="all" />`,
 	} {
 		if !strings.Contains(body, want) {
@@ -311,6 +317,13 @@ func TestPickSaveErrors(t *testing.T) {
 	}
 	if !strings.Contains(body, `name="sites[0].skip" value="true" checked`) || strings.Contains(body, `name="sites[1].skip" value="true" checked`) {
 		t.Error("the posted Skip the rest choices aren't kept")
+	}
+	// A site that wasn't posted (new on the page since) keeps the default.
+	if !strings.Contains(body, `name="sites[3].skip" value="true" checked`) {
+		t.Error("a site that wasn't posted lost Skip the rest's default")
+	}
+	if n := strings.Count(body, "autofocus"); n != 1 {
+		t.Errorf("%d fields autofocus, want 1", n)
 	}
 
 	// The store refusing a feed names it on its row.

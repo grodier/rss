@@ -62,7 +62,6 @@ var templateFuncs = template.FuncMap{
 	},
 	// ago says how long before now t was ("2 days ago", "in 3 h").
 	"ago": ago,
-	// perWeek formats a feed's posts a week to one decimal place.
 	// pickSite and pickFeed are the picking page's site and feed rows'
 	// partials' data.
 	"pickSite": func(site pickSiteRow, columns int, form bool) map[string]any {
@@ -71,6 +70,7 @@ var templateFuncs = template.FuncMap{
 	"pickFeed": func(f pickFeedRow, now time.Time) map[string]any {
 		return map[string]any{"Feed": f, "Now": now}
 	},
+	// perWeek formats a feed's posts a week to one decimal place.
 	"perWeek": func(n float64) string { return fmt.Sprintf("%.1f", n) },
 }
 

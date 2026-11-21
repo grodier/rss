@@ -225,6 +225,9 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   A feed is ticked for you only when its site has one candidate and the admin's own upload named its section, a choice already made; nothing else is.
   Picks are recorded per feed as the feed page records them (`feed.discover`), so the catalog's history reads the same however a feed got in.
   Subscriber counts aren't shown there: no cross-reader data decides what's in the catalog.
+  The page is one table, each site's header row (its host, source, hint and Skip the rest) above its feed rows (#712's design checkpoint, option (a)): the most decisions per screen, in the admin's dense-table pattern; on phones the table scrolls like the others, with the site's line pinned in view.
+  Rejected: a bordered block per site with its feeds as a list (half as many per screen, and cards around lists), and one site per page with Save & next (the slowest way through thousands of sites).
+  Skip the rest starts ticked, so a Save clears the page and the next one is new work; skips are undone from Skipped (#712).
 - **Feeds' categories are kept and shown to admins only** (#713): a channel's own `<category>` and iTunes categories, then its items' most common, at most 10.
   They're free, help an admin pick, and are a model's input later; they never become sections or tags by themselves.
 - **Waitlist answers reach the seed list through the upload form** (#714): the Waiting tab's selection fills the form with the addresses in their answers and lists the names that aren't addresses, for the owner to look up; nothing is added until the owner adds it, since answers are public input.

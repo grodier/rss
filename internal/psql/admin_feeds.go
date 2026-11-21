@@ -633,8 +633,9 @@ const adminPickCandidate = `f.gone_at IS NULL
 	AND NOT EXISTS (SELECT 1 FROM discover_feeds cd WHERE cd.feed_id = f.id)
 	AND NOT EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
 
-// adminPickSkipped is the condition that feed f is skipped.
-const adminPickSkipped = `EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
+// adminPickSkipped is the condition that feed f is skipped and not gone:
+// a gone feed unskipped wouldn't be back in the queue.
+const adminPickSkipped = `f.gone_at IS NULL AND EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
 
 // adminPickSeeded selects, for each site a seed entry's lookup found, its
 // newest such entry (by added_at, then site key) as seeded: the seed
@@ -647,8 +648,9 @@ const adminPickSeeded = `seeded AS (
 	)`
 
 // adminPickComments is the condition that feed f is a comments feed: its
-// title or address mentions comments.
-const adminPickComments = `(f.title ILIKE '%comment%' OR f.url ILIKE '%comment%')`
+// title has the word "comment" or "comments", or a segment of its address
+// is one, so "Commentary" isn't.
+const adminPickComments = `(f.title ~* '\mcomments?\M' OR f.url ~* '[/._-]comments?([/._?-]|$)')`
 
 // adminPickFeeds is how many of a site's feeds the picking page lists.
 const adminPickFeeds = 20
@@ -668,7 +670,7 @@ func (r *AdminFeedRepository) CountPick(ctx context.Context) (map[string]int, er
 			(SELECT count(*) FROM candidates c WHERE EXISTS (SELECT 1 FROM seed_sites ss
 				JOIN lookups l ON l.site_key = ss.site_key WHERE l.site_id = c.site_id)),
 			(SELECT count(*) FROM candidates),
-			(SELECT count(DISTINCT f.site_id) FROM discover_skips k JOIN feeds f ON f.id = k.feed_id)`
+			(SELECT count(DISTINCT f.site_id) FROM discover_skips k JOIN feeds f ON f.id = k.feed_id WHERE f.gone_at IS NULL)`
 	var seeded, all, skipped int
 	if err := r.DB.QueryRowContext(ctx, stmt).Scan(&seeded, &all, &skipped); err != nil {
 		return nil, err
@@ -805,6 +807,9 @@ func (r *AdminFeedRepository) SavePicks(ctx context.Context, picks []rss.Discove
 	}
 	defer tx.Rollback()
 
+	// In ID order, so two saves of the same feeds lock them in the same
+	// order rather than deadlock.
+	picks = slices.SortedFunc(slices.Values(picks), func(a, b rss.DiscoverPick) int { return strings.Compare(a.FeedID, b.FeedID) })
 	for _, p := range picks {
 		err := setDiscoverSection(ctx, tx, p.FeedID, p.SectionID, by)
 		if errors.Is(err, rss.ErrUnknownSection) || errors.Is(err, rss.ErrFeedGone) || errors.Is(err, rss.ErrNoRecord) {

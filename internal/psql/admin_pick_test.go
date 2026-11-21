@@ -108,6 +108,8 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 	skipped := adminFeed(t, db, mixedID, "Skipped", "")
 	skipFeed(t, repo, skipped)
 	adminFeed(t, db, mixedID, "Gone", "gone_at = now()")
+	// Skipped, then gone: unskipping it wouldn't put it back in the queue.
+	skipFeed(t, repo, adminFeed(t, db, mixedID, "Skipped and gone", "gone_at = now()"))
 	candidate := adminFeed(t, db, mixedID, "Candidate", "posts_per_week = 2.5")
 	seedPick(t, repo, mixed, mixedID, "", "IndieWeb list", now.Add(-2*time.Hour))
 
@@ -135,6 +137,9 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 		pickArticle(t, repo, posts, title, now.Add(-time.Duration(4-i)*time.Hour))
 	}
 	quiet := adminFeed(t, db, commentsID, "Quiet", "")
+	// Commentary isn't a comments feed.
+	commentary := adminFeed(t, db, commentsID, "Daily Commentary", "")
+	pickArticle(t, repo, commentary, "Today", now.Add(-5*time.Hour))
 	seedPick(t, repo, commentsHost, commentsID, "", "", now.Add(-4*time.Hour))
 
 	decidedID, decided := adminFeedsSite(t, db)
@@ -221,8 +226,8 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 
 	t.Run("comments last and latest titles", func(t *testing.T) {
 		c := site(sites, commentsID)
-		if got := pickFeedIDs(c); !slices.Equal(got, []string{posts, quiet, comments}) {
-			t.Errorf("feeds = %v, want posts, quiet, comments", got)
+		if got := pickFeedIDs(c); !slices.Equal(got, []string{posts, commentary, quiet, comments}) {
+			t.Errorf("feeds = %v, want posts, commentary, quiet, comments", got)
 		}
 		p := c.Feeds[0]
 		if !slices.Equal(p.Latest, []string{"First", "Second", "Third"}) {
@@ -231,8 +236,8 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 		if d := p.LatestPost.Sub(now.Add(-time.Hour)); d < -time.Second || d > time.Second {
 			t.Errorf("latest post %v, want an hour ago", p.LatestPost)
 		}
-		if p.Comments || !c.Feeds[2].Comments {
-			t.Errorf("comments = %v, %v; want false, true", p.Comments, c.Feeds[2].Comments)
+		if p.Comments || c.Feeds[1].Comments || !c.Feeds[3].Comments {
+			t.Errorf("comments = %v, %v, %v; want only the comments feed", p.Comments, c.Feeds[1].Comments, c.Feeds[3].Comments)
 		}
 	})
 
@@ -283,6 +288,7 @@ func TestAdminFeedRepositoryCountPick(t *testing.T) {
 	skipFeed(t, repo, adminFeed(t, db, readerID, "Skipped", ""))
 	goneID, _ := adminFeedsSite(t, db)
 	adminFeed(t, db, goneID, "Gone", "gone_at = now()")
+	skipFeed(t, repo, adminFeed(t, db, goneID, "Skipped and gone", "gone_at = now()"))
 
 	after, err := repo.CountPick(t.Context())
 	if err != nil {

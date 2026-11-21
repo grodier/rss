@@ -46,7 +46,8 @@ func newPolicy() *bluemonday.Policy {
 // content</a></p>, plain text is split into paragraphs (see reflow), bare
 // http(s) URLs become links (see linkify), images a script would have
 // lazy-loaded show (see imageSource and noscriptImage), images left without an
-// http(s) source are removed (see dropEmptyImages), and everything bluemonday's policy
+// http(s) source are removed (see dropEmptyImages), ids get the prefix
+// "body-" and links to them stay on the page (see localAnchors), and everything bluemonday's policy
 // doesn't allow is removed.
 //
 // It is the one place the app vouches for untrusted HTML: article HTML is
@@ -56,7 +57,8 @@ func HTML(raw string, base *url.URL) template.HTML {
 }
 
 // prepare parses raw as a fragment of a <div>, rewrites it (see rewrite),
-// drops images without a source (see dropEmptyImages), reflows it (see reflow), links its bare URLs (see linkify) and renders it
+// drops images without a source (see dropEmptyImages), prefixes its ids and
+// makes links to them in-page links (see localAnchors), reflows it (see reflow), links its bare URLs (see linkify) and renders it
 // back. If raw can't be parsed or rendered it is returned as is;
 // the policy still makes it safe, it just misses the rewrites.
 func prepare(raw string, base *url.URL) string {
@@ -66,6 +68,7 @@ func prepare(raw string, base *url.URL) string {
 	}
 	rewrite(root, base)
 	dropEmptyImages(root)
+	localAnchors(root, base)
 	reflow(root)
 	linkify(root)
 	var b strings.Builder
@@ -443,6 +446,109 @@ func isEmptyFrame(n *html.Node) bool {
 	return true
 }
 
+// idPrefix starts every id in an article, so none collides with the page's
+// own ids.
+const idPrefix = "body-"
+
+// localAnchors gives every id under root the prefix "body-", so ids from a
+// feed can't collide with the page's own, and makes links to them in-page
+// links: an href that is "#frag", or that resolves against base to base's
+// own page with a fragment, becomes "#body-frag" when frag is an id in the
+// article. A bare "#frag" with no such id resolves against base, so it
+// opens the original page there. An old-style <a name="x"> becomes
+// id="body-x" when it has no id.
+//
+// An id that is empty or contains whitespace isn't a fragment target and is
+// removed, and so is a repeat of an earlier id. It runs after rewrite, which
+// has resolved every href but the "#frag" ones against base.
+func localAnchors(root *html.Node, base *url.URL) {
+	ids := make(map[string]bool)
+	prefixIDs(root, ids)
+	localLinks(root, base, ids)
+}
+
+// prefixIDs walks the elements under n in document order, collecting their
+// ids in ids and prefixing them (see localAnchors).
+func prefixIDs(n *html.Node, ids map[string]bool) {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode {
+			continue
+		}
+		if c.DataAtom == atom.A {
+			if name, ok := attr(c, "name"); ok {
+				if _, ok := attr(c, "id"); !ok {
+					setAttr(c, "id", name)
+				}
+				removeAttrs(c, "name")
+			}
+		}
+		if id, ok := attr(c, "id"); ok {
+			if id == "" || strings.ContainsAny(id, htmlSpace) || ids[id] {
+				removeAttrs(c, "id")
+			} else {
+				ids[id] = true
+				replaceAttr(c, "id", idPrefix+id)
+			}
+		}
+		prefixIDs(c, ids)
+	}
+}
+
+// localLinks rewrites the href of each <a> and <area> under n that links to
+// one of ids, or is a bare fragment, as localAnchors describes.
+func localLinks(n *html.Node, base *url.URL, ids map[string]bool) {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode {
+			continue
+		}
+		if c.DataAtom == atom.A || c.DataAtom == atom.Area {
+			if href, ok := attr(c, "href"); ok {
+				localLink(c, strings.TrimSpace(href), base, ids)
+			}
+		}
+		localLinks(c, base, ids)
+	}
+}
+
+// localLink rewrites the href of n, which is href, as localAnchors
+// describes. An href that doesn't parse is left for the policy to remove.
+func localLink(n *html.Node, href string, base *url.URL, ids map[string]bool) {
+	u, err := url.Parse(href)
+	if err != nil {
+		return
+	}
+	if strings.HasPrefix(href, "#") {
+		switch {
+		case ids[u.Fragment]:
+			replaceAttr(n, "href", fragmentLink(u.Fragment))
+		case base != nil:
+			replaceAttr(n, "href", base.ResolveReference(u).String())
+		default:
+			removeAttrs(n, "href")
+		}
+		return
+	}
+	if ids[u.Fragment] && samePage(u, base) {
+		replaceAttr(n, "href", fragmentLink(u.Fragment))
+	}
+}
+
+// fragmentLink returns the in-page link to the prefixed id, percent-encoded
+// as url.URL writes a fragment.
+func fragmentLink(id string) string {
+	return (&url.URL{Fragment: idPrefix + id}).String()
+}
+
+// samePage reports whether the absolute URL u is base's page: the same host
+// (in any case), the same path once a trailing slash is ignored, and the same
+// query. The scheme and fragment don't count.
+func samePage(u, base *url.URL) bool {
+	return base != nil && u.Host != "" &&
+		strings.EqualFold(u.Host, base.Host) &&
+		strings.TrimSuffix(u.EscapedPath(), "/") == strings.TrimSuffix(base.EscapedPath(), "/") &&
+		u.RawQuery == base.RawQuery
+}
+
 // blockAtoms are the elements that give text its own layout. Text containing
 // any of them is HTML whose paragraphs reflow leaves alone.
 var blockAtoms = map[atom.Atom]bool{
@@ -676,8 +782,8 @@ func newElement(a atom.Atom) *html.Node {
 
 // resolveURLs resolves the href and src attributes of n against base. Values
 // that aren't parseable URLs are left for the policy to remove, and
-// fragment-only references (footnotes, "#top") are kept so they still point
-// into the article. An empty src is left empty.
+// fragment-only references (footnotes, "#top") are left for localAnchors,
+// which makes them point into the article or resolves them. An empty src is left empty.
 func resolveURLs(n *html.Node, base *url.URL) {
 	if base == nil {
 		return

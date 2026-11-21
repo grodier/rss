@@ -34,9 +34,9 @@ func discoverRequest(t *testing.T, s *Server, q string) *httptest.ResponseRecord
 }
 
 func failingSearchStore(t *testing.T) *fakeSearchStore {
-	return &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
+	return &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 		t.Error("store must not be called")
-		return nil, nil
+		return nil, nil, nil
 	}}
 }
 
@@ -258,14 +258,14 @@ func TestSearchTooLong(t *testing.T) {
 // no-results message, and, with no query, Discover's sections (empty here,
 // with an empty catalog).
 func TestLiveSearchMarkup(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(_ context.Context, q, _ string, _ int) ([]rss.SiteWithFeeds, error) {
+	store := &fakeSearchStore{searchFn: func(_ context.Context, q, _, _ string, _ int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 		if q == "zzz" {
-			return nil, nil
+			return nil, nil, nil
 		}
 		return []rss.SiteWithFeeds{
 			{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}},
 			{Site: rss.Site{ID: "site-2", Host: "two.example"}},
-		}, nil
+		}, nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
 
@@ -381,8 +381,8 @@ func TestLiveSearchMarkup(t *testing.T) {
 }
 
 func TestSearchAppLink(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}}}, nil
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}}}, nil, nil
 	}}
 	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", BaseURL: "https://paperround.app"}, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}})
 
@@ -426,8 +426,8 @@ func TestSearchInputAttributes(t *testing.T) {
 }
 
 func TestSearchStoreError(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return nil, errors.New("boom")
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return nil, nil, errors.New("boom")
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
 	rr := discoverRequest(t, s, "ex")
@@ -437,8 +437,8 @@ func TestSearchStoreError(t *testing.T) {
 }
 
 func TestSearchEscapesQuery(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return nil, nil
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return nil, nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
 	rr := discoverRequest(t, s, "%3Cscript%3E")
@@ -448,8 +448,8 @@ func TestSearchEscapesQuery(t *testing.T) {
 }
 
 func TestSearchSiteIcons(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return []rss.SiteWithFeeds{{Site: rss.Site{ID: testSiteID, Host: "one.example", Title: "One"}}}, nil
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: testSiteID, Host: "one.example", Title: "One"}}}, nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store, SubscriptionService: &fakeSubscriptionStore{}, SiteService: &fakeSiteStore{}})
 	testSiteIcons(t, s, testSiteID, "O", func(t *testing.T) string {
@@ -673,8 +673,8 @@ func TestDiscoverImportCard(t *testing.T) {
 				}
 				return tt.subscriptions, nil
 			}}
-			search := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-				return nil, nil
+			search := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+				return nil, nil, nil
 			}}
 			s := newTestServerWith(t, Services{SearchService: search, ImportService: imports, SubscriptionService: subs})
 			rr := discoverRequestAs(t, s, "user-1", tt.q)
@@ -806,7 +806,9 @@ func TestDiscoverSectionOrderNote(t *testing.T) {
 	}
 
 	t.Run("not with a query", func(t *testing.T) {
-		store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) { return nil, nil }}
+		store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+			return nil, nil, nil
+		}}
 		s := newTestServerWith(t, Services{SearchService: store, DiscoverService: failingDiscoverStore(t)})
 		if body := discoverRequestAs(t, s, "user-1", "food").Body.String(); strings.Contains(body, "section-order-note") {
 			t.Error("the note is shown with a query")
@@ -838,8 +840,8 @@ func TestSearchBoxSubmit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	search := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}}}, nil
+	search := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return []rss.SiteWithFeeds{{Site: rss.Site{ID: "site-1", Host: "one.example"}, Feeds: []rss.Feed{{ID: "feed-1", Title: "F1"}}}}, nil, nil
 	}}
 	saves := &fakeSaveStore{listSavedFn: func(context.Context, string, string, rss.ArticleCursor, int) ([]rss.SavedArticle, error) {
 		return savedItems(2), nil

@@ -194,6 +194,9 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 // foundSites is a site search's results.
 type foundSites struct {
 	Sites []rss.SiteWithFeeds
+	// Groups are the sites on shared hosts counted rather than listed, one
+	// row each (groupResult).
+	Groups []rss.SiteGroup
 	// LookupQ is the address to offer as a site lookup (see lookupAddress),
 	// or "" if q doesn't look like a website address or the search already
 	// found what a lookup of it would (see knownAddress).
@@ -205,21 +208,23 @@ type foundSites struct {
 	Subscribed map[string]bool
 }
 
-// searchSites finds up to limit sites for q, a valid, non-empty query,
+// searchSites finds up to limit sites for q, a valid, non-empty query, and
+// the groups of the rest on shared hosts (see psql's Search); with host
+// set, only the sites on that host, none grouped. It finds them
 // with which of their feeds the user follows, and what to offer when q is
 // an address.
-func (s *Server) searchSites(r *http.Request, q string, limit int) (foundSites, error) {
+func (s *Server) searchSites(r *http.Request, q, host string, limit int) (foundSites, error) {
 	var found foundSites
 	var siteKey string
 	u, _ := discovery.ParseInput(q) // nil when q isn't an address
 	if u != nil {
 		siteKey = discovery.SiteKey(u)
 	}
-	sites, err := s.services.SearchService.Search(r.Context(), q, siteKey, limit)
+	sites, groups, err := s.services.SearchService.Search(r.Context(), q, siteKey, host, limit)
 	if err != nil {
 		return foundSites{}, err
 	}
-	found.Sites = sites
+	found.Sites, found.Groups = sites, groups
 	if u != nil {
 		if s.isAppLink(u) {
 			found.AppLink = true

@@ -2,11 +2,16 @@
      discoverData with a query. The tabs (Top, Feeds, Saved; none for a
      reader who has saved nothing) are each their own URL, so they're
      navigation, links with aria-current, as the timeline tabs and a
-     section's tabs are; timeline-tabs.css draws them. Then a pasted
+     section's tabs are; timeline-tabs.css draws them. Narrowed to the
+     sites on a shared host (a group row's link), there are no tabs but a
+     line naming the host, with a link back to all the results. Then a pasted
      address's Look up row, the current tab's rows, Top's "More in" line,
      and the no-results line. */}}
 {{define "search-results"}}
 {{$r := .Results}}
+{{with $r.Host}}
+<p class="search-narrowed">Sites on <strong>{{.}}</strong> that match “{{$.Form.Q}}” · <a href="{{$r.AllHref}}">All results</a></p>
+{{end}}
 {{with $r.Tabs}}
 <nav class="timeline-tabs section-tabs search-tabs" aria-label="Search results">
   <ul role="list">

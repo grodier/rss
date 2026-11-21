@@ -55,7 +55,7 @@ func TestSearchRepository(t *testing.T) {
 	}
 	search := func(q string, limit int) []rss.SiteWithFeeds {
 		t.Helper()
-		res, err := repo.Search(ctx, q, "", limit)
+		res, _, err := repo.Search(ctx, q, "", "", limit)
 		if err != nil {
 			t.Fatalf("Search(%q): %v", q, err)
 		}
@@ -151,7 +151,7 @@ func TestSearchRepository(t *testing.T) {
 		// A third site whose title sorts before the others and contains the host.
 		hostC := "c-" + tok + ".example.io"
 		addSite(hostC, "AAA "+hostA)
-		res, err := repo.Search(ctx, hostA, hostA, 10)
+		res, _, err := repo.Search(ctx, hostA, hostA, "", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +165,7 @@ func TestSearchRepository(t *testing.T) {
 		hostE := "e-" + tok + ".example"
 		addSite(hostE, "AAA "+tok)
 		q := "https://www." + hostE + "/some/path"
-		res, err := repo.Search(ctx, q, hostE, 10)
+		res, _, err := repo.Search(ctx, q, hostE, "", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,6 +201,90 @@ func TestSearchRepository(t *testing.T) {
 		if res := search(tok, 1); len(res) != 1 {
 			t.Errorf("got %d sites; want 1", len(res))
 		}
+	})
+
+	t.Run("sites on a shared host are grouped", func(t *testing.T) {
+		searchAll := func(q, siteKey, host string, limit int) ([]string, []rss.SiteGroup) {
+			t.Helper()
+			res, groups, err := repo.Search(ctx, q, siteKey, host, limit)
+			if err != nil {
+				t.Fatalf("Search(%q, %q, %q): %v", q, siteKey, host, err)
+			}
+			return siteHosts(res), groups
+		}
+
+		// Five profiles matched only by their keys.
+		shared := "sh-" + tok + ".example"
+		for i := range 5 {
+			addSite(fmt.Sprintf("%s/@user%d", shared, i), fmt.Sprintf("User %d (@user%d)", i, i))
+		}
+		sites, groups := searchAll(shared, "", "", 10)
+		if len(sites) != 0 || len(groups) != 1 || groups[0] != (rss.SiteGroup{Host: shared, Count: 5}) {
+			t.Errorf("by key: got sites %v, groups %+v; want one group of 5", sites, groups)
+		}
+
+		t.Run("narrowed to the host, none grouped", func(t *testing.T) {
+			sites, groups := searchAll(shared, "", shared, 10)
+			if len(sites) != 5 || len(groups) != 0 {
+				t.Errorf("got sites %v, groups %+v; want the 5 sites", sites, groups)
+			}
+			sites, groups = searchAll(shared, "", "nope-"+tok+".example", 10)
+			if len(sites) != 0 || len(groups) != 0 {
+				t.Errorf("another host: got sites %v, groups %+v; want nothing", sites, groups)
+			}
+		})
+
+		t.Run("the platform's suffix isn't a name match", func(t *testing.T) {
+			platform := "Plat" + tok
+			host := "pf-" + tok + ".example"
+			addSite(host+"/@ann", "Ann – "+platform)
+			addSite(host+"/@bo", "Bo (@bo) — "+platform)
+			addSite(host+"/@cy", "Cy | "+platform)
+			sites, groups := searchAll(platform, "", "", 10)
+			if len(sites) != 0 || len(groups) != 1 || groups[0] != (rss.SiteGroup{Host: host, Count: 3}) {
+				t.Errorf("got sites %v, groups %+v; want one group of 3", sites, groups)
+			}
+		})
+
+		w := "kw" + tok
+		named := "nm-" + tok + ".example"
+		first := named + "/@" + w + "-1"
+		addSite(first, "Zed – Platform")
+		addSite(named+"/@"+w+"-2", "Yan – Platform")
+		byName := addSiteHost(t, addSite, named+"/@"+w+"-3", w+" Writes – Platform")
+		addSite(named+"/@"+w+"-4", "The "+w+" – Platform")
+
+		t.Run("a site whose own name matches isn't grouped", func(t *testing.T) {
+			sites, groups := searchAll(w, "", "", 10)
+			if len(sites) != 2 || sites[0] != byName || len(groups) != 1 || groups[0] != (rss.SiteGroup{Host: named, Count: 2}) {
+				t.Errorf("got sites %v, groups %+v; want [%s, the word start] and a group of 2", sites, groups, byName)
+			}
+		})
+
+		t.Run("the limit counts sites only", func(t *testing.T) {
+			sites, groups := searchAll(w, "", "", 1)
+			if len(sites) != 1 || sites[0] != byName || len(groups) != 1 || groups[0].Count != 2 {
+				t.Errorf("got sites %v, groups %+v; want [%s] and a group of 2", sites, groups, byName)
+			}
+		})
+
+		t.Run("the exact address comes first and no group has one site", func(t *testing.T) {
+			sites, groups := searchAll(w, first, "", 10)
+			if len(sites) != 4 || sites[0] != first || len(groups) != 0 {
+				t.Errorf("got sites %v, groups %+v; want all 4, %s first", sites, groups, first)
+			}
+		})
+
+		t.Run("sites without a path are never grouped", func(t *testing.T) {
+			q := "np-" + tok
+			for i := range 3 {
+				addSite(fmt.Sprintf("%s-%d.example", q, i), "Other")
+			}
+			sites, groups := searchAll(q, "", "", 10)
+			if len(sites) != 3 || len(groups) != 0 {
+				t.Errorf("got sites %v, groups %+v; want the 3 sites", sites, groups)
+			}
+		})
 	})
 
 	t.Run("empty query", func(t *testing.T) {

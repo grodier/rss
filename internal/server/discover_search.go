@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -146,6 +147,11 @@ type discoverResults struct {
 	AppLink bool
 	// Empty is the no-results line.
 	Empty string
+	// Host narrows the results to the sites on one shared host, from a
+	// group row's link (groupResult): the Feeds tab's rows on that host,
+	// none grouped, without tabs, and AllHref links back to all of them.
+	Host    string
+	AllHref string
 }
 
 // Announce is what live search says when these results come in.
@@ -172,6 +178,10 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 	ctx := r.Context()
 	userID, _ := s.authenticatedUserID(r)
 	now := time.Now()
+	host := r.URL.Query().Get("host")
+	if host != "" {
+		return s.discoverHostSearch(r, q, host)
+	}
 
 	subs, err := s.services.SubscriptionService.Search(ctx, userID, q, searchTabLimit+1)
 	if err != nil {
@@ -181,7 +191,7 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 	if err != nil {
 		return discoverResults{}, err
 	}
-	found, err := s.searchSites(r, q, searchTabLimit+1)
+	found, err := s.searchSites(r, q, "", searchTabLimit+1)
 	if err != nil {
 		return discoverResults{}, err
 	}
@@ -214,6 +224,9 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 		if res, ok := siteResult(site, found.Subscribed, icons[site.Site.ID], q, r.URL.RequestURI()); ok {
 			feeds = append(feeds, res)
 		}
+	}
+	for _, g := range found.Groups {
+		feeds = append(feeds, groupResult(g, found.Sites, icons, q))
 	}
 	for _, a := range saved {
 		savedRows = append(savedRows, savedResult(a, icons[a.Feed.SiteID], q, now))
@@ -281,6 +294,62 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 // discoverSearchURL is the results' URL for q in scope.
 func discoverSearchURL(q, scope string) string {
 	return "/discover?" + url.Values{"q": {q}, "scope": {scope}}.Encode()
+}
+
+// discoverHostURL is the results' URL for q narrowed to the sites on host
+// (discoverHostSearch).
+func discoverHostURL(q, host string) string {
+	return "/discover?" + url.Values{"q": {q}, "scope": {"feeds"}, "host": {host}}.Encode()
+}
+
+// discoverHostSearch is the results for q narrowed to the sites on a
+// shared host, a group row's link: the reader's feeds and the sites whose
+// key's host is host, none grouped, ranked as the Feeds tab and up to its
+// limit. A host with nothing on it, or any other value, lists nothing.
+func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverResults, error) {
+	userID, _ := s.authenticatedUserID(r)
+	now := time.Now()
+
+	subs, err := s.services.SubscriptionService.Search(r.Context(), userID, q, searchTabLimit+1)
+	if err != nil {
+		return discoverResults{}, err
+	}
+	subs = slices.DeleteFunc(subs, func(sub rss.Subscription) bool {
+		return discovery.KeyHost(sub.Site.Host) != host
+	})
+	found, err := s.searchSites(r, q, host, searchTabLimit+1)
+	if err != nil {
+		return discoverResults{}, err
+	}
+
+	var siteIDs []string
+	for _, sub := range subs {
+		siteIDs = append(siteIDs, sub.Site.ID)
+	}
+	for _, site := range found.Sites {
+		siteIDs = append(siteIDs, site.Site.ID)
+	}
+	var icons map[string]string
+	if len(siteIDs) > 0 {
+		icons = s.pageIcons(r, siteIDs)
+	}
+
+	var rows []searchResult
+	for _, sub := range subs {
+		rows = append(rows, followedFeedResult(sub, icons[sub.Site.ID], q, now))
+	}
+	for _, site := range found.Sites {
+		if res, ok := siteResult(site, found.Subscribed, icons[site.Site.ID], q, r.URL.RequestURI()); ok {
+			rows = append(rows, res)
+		}
+	}
+	rankResults(rows)
+
+	res := discoverResults{Scope: "feeds", Host: host, AllHref: discoverSearchURL(q, "top"), Rows: rows[:min(len(rows), searchTabLimit)]}
+	if len(res.Rows) == 0 {
+		res.Empty = "No sites on " + host + " match “" + q + "”."
+	}
+	return res, nil
 }
 
 // followedFeedResult is a feed the reader follows: its name (theirs, else
@@ -356,6 +425,26 @@ func siteResult(site rss.SiteWithFeeds, subscribed map[string]bool, icon, q, ret
 	return res, true
 }
 
+// groupResult is a group of sites on a shared host as a row: the host,
+// how many sites matched, and a link to them (discoverHostSearch), ranked
+// as a match outside the title. Its avatar is the host's own site's icon
+// when that site is among sites.
+func groupResult(g rss.SiteGroup, sites []rss.SiteWithFeeds, icons map[string]string, q string) searchResult {
+	id := "host:" + g.Host
+	for _, site := range sites {
+		if site.Site.Host == g.Host {
+			id = site.Site.ID
+		}
+	}
+	return searchResult{
+		Href:   discoverHostURL(q, g.Host),
+		Title:  g.Host,
+		Avatar: avatar(id, g.Host, icons[id]),
+		Facts:  []string{fmt.Sprintf("%d more sites on %s match", g.Count, g.Host)},
+		Score:  searchScore(0, true, 0, false),
+	}
+}
+
 // savedResult is a saved article: its title, excerpt, when it was saved
 // and its feed.
 func savedResult(a rss.SavedArticle, icon, q string, now time.Time) searchResult {
@@ -417,7 +506,7 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 	if err != nil {
 		return discoverSuggestions{}, err
 	}
-	found, err := s.searchSites(r, q, suggestSitesLimit)
+	found, err := s.searchSites(r, q, "", suggestSitesLimit)
 	if err != nil {
 		return discoverSuggestions{}, err
 	}
@@ -442,6 +531,9 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 		if res, ok := siteSuggestion(site, found.Subscribed, icons[site.Site.ID], q); ok {
 			rows = append(rows, res)
 		}
+	}
+	for _, g := range found.Groups {
+		rows = append(rows, groupResult(g, found.Sites, icons, q))
 	}
 	rankResults(rows)
 

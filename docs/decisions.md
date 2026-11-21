@@ -371,6 +371,11 @@ Planned in #50 (issues #51–#67).
   The rare site that uses `/@name` for something else gets one site per such path, which is harmless.
   A page and its feed that disagree on a key with a path on the same host take the feed's (a YouTube `/@handle` page's feed links to its `/channel/ID`), so a channel is one site whichever address was looked up.
   A path-scoped site doesn't try the common feed paths, which would find the platform's own feed.
+- **Searching a platform's name groups its profiles; searching a person's name finds them** (#739, option 1 chosen by the owner over a per-host cap and over matching path-scoped sites by name only).
+  A site with a path in its key is grouped with the others of its host into one row, counting them and linking to the results narrowed to that host, unless its own name matches the query at its start or a word's start, or it's the pasted address.
+  Its own name is its title without the platform's suffix ("Alice – Medium" → "Alice"), since sites on a shared host must keep showing their platform (see #728) and "medium" mustn't count as a match of every Medium author's name.
+  Grouping, not hiding: the reader learns the profiles exist and how to list them; matching by name only was rejected, as a profile whose handle isn't in its title couldn't be found by its handle.
+  There are no groups of one, and the reader's followed feeds are never grouped.
 - **A feed moves from a shared host's own site to its new site** (#725), the one exception to "a feed belongs to the first site it was discovered from": when a lookup saves it under a key with a path whose host is the key of its current site (`medium.com` → `medium.com/@alice`), never between two path-scoped sites or two hosts.
   Without it, sites merged before #726 would block their authors' new sites, which would come up empty.
 - **A site's "home page" is its root, `SiteRoot`, with no query** (#725): `/` for an ordinary site, `/@alice` for `medium.com/@alice`; a lookup records whether it ran on it (`lookups.home_page`), replacing #716's check that its URL's path is `/`.

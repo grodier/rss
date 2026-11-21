@@ -188,6 +188,12 @@ They become rows (`searchResult`): a followed feed with "✓ Following", a site 
 The tabs, Top, Feeds and Saved (`?scope=`), are links in the timeline tabs' markup; a reader with no saves gets none and sees the feeds; Top shows 10 and links the tabs with more.
 Follow works as on Discover's rows (`save-star.ts`), returning to the results.
 
+**Sites on a shared host in search** (#739). Searching a platform's name ("bsky", "medium") would otherwise list every profile on it, since the name is in each one's key and feed URLs.
+`SearchRepository.Search` groups the sites with a path in their key (`bsky.app/profile/alice.bsky.social`) that matched only outside their own name, in the same statement: a site stays its own row when it's the pasted address (`siteKey`) or its own name (its title without the platform's suffix, `ownName`) matches at its start or a word's start, and a host with only one site to group keeps it as a row.
+The rest come back as one `rss.SiteGroup` per host with its count, so the limit is spent on sites that are listed.
+Suggestions, Top and the Feeds tab show each group as one row (`groupResult`), ranked as a match outside the title, linking to the results narrowed to that host (`/discover?q=…&scope=feeds&host=bsky.app`, `discoverHostSearch`): the Feeds tab's rows whose key's host is `host`, none grouped, the reader's followed feeds there included, without tabs and with a line linking back to all the results.
+The reader's own feeds come from their subscriptions, not the site search, so a followed profile is never grouped.
+
 **Recent searches.** They're kept only in the browser, never on the server: `recent-searches.ts` keeps up to 5 queries, newest first, in `localStorage` (`paperround.recentSearches`), a repeat (ignoring case) moving to the top.
 A page of results records its query, which the server puts on the results container as `data-recent-query`; suggestions record nothing, so neither typing nor a reload of the URL it left does.
 While the box is focused and empty, the list (from `<template data-recent-template>` in `discover.html`, as the CSP allows no inline script) takes the place of the container's contents, each row linking to its query's Top tab; the contents come back on a press or focus outside the box and the list, on Escape, or when the reader types.

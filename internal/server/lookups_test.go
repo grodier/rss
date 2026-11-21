@@ -357,8 +357,8 @@ func TestLookupHandlerFailed(t *testing.T) {
 }
 
 func TestSearchOffersLookup(t *testing.T) {
-	store := &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-		return nil, nil
+	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+		return nil, nil, nil
 	}}
 	s := newTestServerWith(t, Services{SearchService: store})
 

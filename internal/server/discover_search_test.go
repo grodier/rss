@@ -87,13 +87,16 @@ func TestSearchRanking(t *testing.T) {
 
 // searchFixture is Discover's search's sources for TestDiscoverSearchResults.
 type searchFixture struct {
-	subs     []rss.Subscription
-	sites    []rss.SiteWithFeeds
-	followed map[string]bool // feed IDs the reader follows, of the sites' feeds
-	saved    []rss.SavedArticle
-	hasSaves bool
-	lookups  map[string]rss.Lookup // by site key; none means never looked up
-	fail     string                // the source that fails: "subs", "saved", "sites", "followed", "hasSaves" or "lookup"
+	subs   []rss.Subscription
+	sites  []rss.SiteWithFeeds
+	groups []rss.SiteGroup
+	// hostSites are the sites the search returns narrowed to a host.
+	hostSites map[string][]rss.SiteWithFeeds
+	followed  map[string]bool // feed IDs the reader follows, of the sites' feeds
+	saved     []rss.SavedArticle
+	hasSaves  bool
+	lookups   map[string]rss.Lookup // by site key; none means never looked up
+	fail      string                // the source that fails: "subs", "saved", "sites", "followed", "hasSaves" or "lookup"
 
 	limits map[string]int
 }
@@ -116,9 +119,12 @@ func (f *searchFixture) services() Services {
 				return f.followed, err("followed")
 			},
 		},
-		SearchService: &fakeSearchStore{searchFn: func(_ context.Context, _, _ string, limit int) ([]rss.SiteWithFeeds, error) {
+		SearchService: &fakeSearchStore{searchFn: func(_ context.Context, _, _, host string, limit int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 			f.limits["sites"] = limit
-			return f.sites, err("sites")
+			if host != "" {
+				return f.hostSites[host], nil, err("sites")
+			}
+			return f.sites, f.groups, err("sites")
 		}},
 		LookupService: &fakeLookupStore{getBySiteKeyFn: func(_ context.Context, key string) (rss.Lookup, error) {
 			l, ok := f.lookups[key]
@@ -244,6 +250,48 @@ func searchAnnounce(t *testing.T, doc *html.Node) string {
 		t.Fatalf("found %d results containers, want 1", len(cs))
 	}
 	return attr(cs[0], "data-announce")
+}
+
+// blueskyFixture is the sources of a search for "bsky": the bsky.app
+// site, the profiles on it counted as a group (or, narrowed to bsky.app,
+// listed), a followed profile, and a followed feed on another host.
+func blueskyFixture(now time.Time) *searchFixture {
+	alice := searchSub(now, "alice", "Alice", "Alice (@alice.bsky.social) — Bluesky")
+	alice.Site.Host = "bsky.app/profile/alice.bsky.social"
+	return &searchFixture{
+		subs:   []rss.Subscription{alice, searchSub(now, "news", "Bsky News", "")},
+		sites:  []rss.SiteWithFeeds{{Site: rss.Site{ID: "bsky", Host: "bsky.app", Title: "Bluesky"}}},
+		groups: []rss.SiteGroup{{Host: "bsky.app", Count: 214}},
+		hostSites: map[string][]rss.SiteWithFeeds{"bsky.app": {
+			{Site: rss.Site{ID: "bob", Host: "bsky.app/profile/bob.bsky.social", Title: "Bob"}, Feeds: []rss.Feed{{ID: "bob-feed", Title: "Bob"}}},
+			{Site: rss.Site{ID: "cat", Host: "bsky.app/profile/cat.bsky.social", Title: "Cat"}, Feeds: []rss.Feed{{ID: "cat-feed", Title: "Cat"}}},
+		}},
+		hasSaves: true,
+	}
+}
+
+// searchRowHref is a row's link.
+func searchRowHref(r *html.Node) string {
+	return attr(findAll(r, func(n *html.Node) bool { return hasClass(n, "search-result-title") })[0], "href")
+}
+
+// checkGroupRow checks the row of the bsky.app group in doc: its count,
+// its link to the sites narrowed to the host, and no Follow.
+func checkGroupRow(t *testing.T, doc *html.Node) {
+	t.Helper()
+	r := searchRowByTitle(t, doc, "bsky.app")
+	if got, want := searchRowFacts(r), "214 more sites on bsky.app match"; got != want {
+		t.Errorf("group facts = %q, want %q", got, want)
+	}
+	if got, want := searchRowHref(r), "/discover?host=bsky.app&q=bsky&scope=feeds"; got != want {
+		t.Errorf("group href = %q, want %q", got, want)
+	}
+	if n := len(findAll(r, func(n *html.Node) bool { return n.Data == "form" || n.Data == "button" })); n != 0 {
+		t.Errorf("group row has %d forms or buttons, want none", n)
+	}
+	if !searchRowFollowing(searchRowByTitle(t, doc, "Alice")) {
+		t.Error("the followed profile has no row with ✓ Following")
+	}
 }
 
 func TestDiscoverSearchResults(t *testing.T) {
@@ -472,6 +520,57 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 	})
 
+	t.Run("sites on a shared host are grouped", func(t *testing.T) {
+		doc, _, _ := get(t, blueskyFixture(now), "bsky")
+		checkGroupRow(t, doc)
+		_, body, _ := get(t, blueskyFixture(now), "bsky&scope=feeds")
+		if !strings.Contains(body, "214 more sites on bsky.app match") {
+			t.Error("the Feeds tab has no group row")
+		}
+	})
+
+	t.Run("narrowed to a shared host", func(t *testing.T) {
+		f := blueskyFixture(now)
+		doc, _, code := get(t, f, "bsky&scope=feeds&host=bsky.app")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		// The followed profile and the host's sites; not the followed feed
+		// on another host, the host's own site, or a group.
+		if got, want := searchRowTitles(doc), []string{"Alice", "Bob", "Cat"}; !slices.Equal(got, want) {
+			t.Errorf("rows = %q, want %q", got, want)
+		}
+		if got := tabs(doc); len(got) != 0 {
+			t.Errorf("tabs = %q, want none", got)
+		}
+		narrowed := findAll(doc, func(n *html.Node) bool { return hasClass(n, "search-narrowed") })
+		if len(narrowed) != 1 {
+			t.Fatalf("found %d narrowed lines, want 1", len(narrowed))
+		}
+		if got, want := strings.Join(strings.Fields(textContent(narrowed[0])), " "), "Sites on bsky.app that match “bsky” · All results"; got != want {
+			t.Errorf("narrowed line = %q, want %q", got, want)
+		}
+		if a := findAll(narrowed[0], func(n *html.Node) bool { return n.Data == "a" }); len(a) != 1 || attr(a[0], "href") != "/discover?q=bsky&scope=top" {
+			t.Error("the narrowed line doesn't link to all the results")
+		}
+		if f.limits["sites"] != searchTabLimit+1 {
+			t.Errorf("sites limit = %d, want %d", f.limits["sites"], searchTabLimit+1)
+		}
+	})
+
+	t.Run("narrowed to an unknown host", func(t *testing.T) {
+		doc, body, code := get(t, blueskyFixture(now), "bsky&scope=feeds&host=nope.example")
+		if code != http.StatusOK {
+			t.Errorf("status = %d, want 200", code)
+		}
+		if n := len(searchRows(doc)); n != 0 {
+			t.Errorf("listed %d rows, want none", n)
+		}
+		if !strings.Contains(body, "No sites on nope.example match “bsky”.") {
+			t.Error("no empty state")
+		}
+	})
+
 	t.Run("no results", func(t *testing.T) {
 		empty := &searchFixture{hasSaves: true}
 		tests := []struct{ query, want string }{
@@ -620,6 +719,11 @@ func TestDiscoverSuggestions(t *testing.T) {
 		if n := len(findAll(doc, func(n *html.Node) bool { return hasClass(n, "search-result-title") && textContent(n) == "Breadline" })); n != 0 {
 			t.Error("a site whose feeds the reader all follows is listed")
 		}
+	})
+
+	t.Run("sites on a shared host are grouped", func(t *testing.T) {
+		doc, _, _ := get(t, blueskyFixture(now), "bsky")
+		checkGroupRow(t, doc)
 	})
 
 	t.Run("a pasted address gets Look up, unless a suggestion has it", func(t *testing.T) {

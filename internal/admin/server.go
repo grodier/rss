@@ -157,6 +157,10 @@ type FeedStore interface {
 	QueueSeedLookup(ctx context.Context, siteKey string, by rss.AuditActor) (rss.Lookup, error)
 	RetrySeedLookups(ctx context.Context, by rss.AuditActor) (int, error)
 	Catalog(ctx context.Context) ([]rss.AdminCatalogSection, error)
+	PickSites(ctx context.Context, q rss.AdminPickQuery) ([]rss.AdminPickSite, error)
+	CountPick(ctx context.Context) (map[string]int, error)
+	SavePicks(ctx context.Context, picks []rss.DiscoverPick, skips []string, by rss.AuditActor) error
+	Unskip(ctx context.Context, id string, by rss.AuditActor) error
 }
 
 // Refresher fetches a feed now and records the outcome on it;

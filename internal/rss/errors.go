@@ -29,3 +29,14 @@ var (
 	// Discover.
 	ErrFeedGone = errors.New("rss: the feed is gone")
 )
+
+// PickError is the picking page's save failing on one feed: Err is
+// ErrUnknownSection, ErrFeedGone or ErrNoRecord, for the feed FeedID.
+type PickError struct {
+	FeedID string
+	Err    error
+}
+
+func (e *PickError) Error() string { return "feed " + e.FeedID + ": " + e.Err.Error() }
+
+func (e *PickError) Unwrap() error { return e.Err }

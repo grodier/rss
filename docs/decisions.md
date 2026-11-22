@@ -440,7 +440,8 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
 - **At most one notice above the first article**: the confirm-email notice waits for a page without a flash (#640).
 - **One search for the whole app** (#645, #646), on Discover (#664's design checkpoint): your feeds, saved articles and sites to follow, with articles in your feeds planned (#647); see "Feed discovery".
   Rejected: a search box on each page, which makes you know where something is before you can find it.
-  Saved keeps its own box for the list you're looking at.
+  Saved keeps its own box for the list you're looking at, and so does My feeds (the owner, in the PR that added it): a reader with many feeds was going to Discover to find one they follow, so My feeds had stopped being where you look for your feeds.
+  Both filter the list on their page and nothing else; finding feeds to follow stays Discover's.
 - **No measurement of whether new accounts follow anything**, beyond the admin's existing aggregates (the Waves table's "active after 7 days"): that would be per-person data about reading.
 - **Discover's catalog feeds are refreshed about once a day even without followers** (#632), so its "Latest" dates and Picks are current; the cost grows with the catalog, not with readers.
 
@@ -498,7 +499,17 @@ Planned in #139 (issues #135–#138).
 - **My feeds has a site header only where it groups something** (#424): sites with two or more subscriptions; a single subscription says "From <site>" under its name when the names differ, rather than in its meta line, which would wrap to three lines on phones.
   Most headers had repeated the row under them; no headers at all would leave a site's feeds unmarked as a group.
   A group ends in a double rule, so the rows after it don't read as part of it.
-- **The global "latest feeds" list was removed, not moved:** `/feeds` is "My feeds".
+- **My feeds can be sorted by Name or Recently updated, and searched in place** (the owner's pick of three options at the design checkpoint in #742): a search box filters the rows as you type, with nothing fetched, and the sort sits under it.
+  Recently updated is the latest article's date, newest first, without site headers (a group would put a stale feed next to its site's active one), and feeds without articles come last.
+  The page renders every row and the server hides those that don't match a `?q=`, so the search works without JavaScript and the script toggles the same rows; a site keeps its header while any of its feeds match.
+  The sort is in the URL, not a stored preference, until a reader asks for it to stick.
+  Rejected: the sort as tabs under the page head (a full row of height above the list, and tabs elsewhere switch content rather than order it), and Discover's suggestions while typing (every match is a feed you follow and is already on the page, so a compact step shows the same feeds twice and hides their warnings; Discover needs it because its full results are heavy and its tabs would shift, #666).
+- **A choice between a page's views is a segmented control of links** (#742): the timeline form's segmented look, with the admin's markup for filters, a `<nav>` named by its visible label holding a list of links, the current one `aria-current="page"`.
+  Links rather than buttons, since each view is its own URL and needs no script; a segmented control rather than a `<select>`, since two or three choices fit and all stay visible, and a select would need a button or a script that submits on change.
+  The first version, two quiet text links after "Sort by", was 20 px tall, didn't look pressable on touch screens, and had no name tying the links to the sort.
+- **The segmented control is an outlined button group** (#742): one box with a `.btn`'s border, radius and height, a rule between the choices, and the current one filled with ink to the box's edge, as Material's segmented buttons and Bootstrap's button groups do; the timeline form's Show uses it too.
+  Its first version framed an inset fill, which mixed this style with iOS's track and thumb: without the track's tint the gap between fill and frame looked like a mistake, and the fill's corners weren't concentric with the frame's.
+  Rejected: the track and thumb (a tinted track with the current choice as an outlined thumb inset in it), quieter and closer to the search box above it, but a raised thumb is an app's control, not a paper's, and it would change the timeline form's ink fill.
 - **Subscribed state comes from a separate `SubscribedFeedIDs` query** rather than a user parameter on every feed query.
 - **Refresh requests from page views are a `feeds` column** (`refresh_requested_at`) worked by the existing refresh workers, never a goroutine or an in-memory queue, so they survive restarts and work across instances.
 - **Subscriptions are private:** no subscriber counts.

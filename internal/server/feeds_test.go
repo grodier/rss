@@ -603,8 +603,13 @@ func TestFeedHandlerNotFound(t *testing.T) {
 
 func getFeeds(t *testing.T, subs *fakeSubscriptionStore) (*httptest.ResponseRecorder, string) {
 	t.Helper()
+	return getFeedsURL(t, subs, "/feeds")
+}
+
+func getFeedsURL(t *testing.T, subs *fakeSubscriptionStore, target string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
 	s := newTestServerWith(t, Services{SubscriptionService: subs})
-	req := httptest.NewRequest(http.MethodGet, "/feeds", nil)
+	req := httptest.NewRequest(http.MethodGet, target, nil)
 	req = req.WithContext(context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1"))
 	rr := httptest.NewRecorder()
 	s.sessionManager.LoadAndSave(http.HandlerFunc(s.feedsHandler)).ServeHTTP(rr, req)
@@ -745,7 +750,7 @@ func TestFeedsHandler(t *testing.T) {
 		for _, id := range []string{testFeedID, otherID} {
 			assertContains(t, body,
 				`<a class="feed-row-title" href="/feeds/`+id+`">`,
-				`href="/feeds/`+id+`/edit?return_to=/feeds"`,
+				`href="/feeds/`+id+`/edit?return_to=%2ffeeds"`,
 			)
 		}
 		// Unsubscribe is on Edit subscription and the feed page.
@@ -756,7 +761,7 @@ func TestFeedsHandler(t *testing.T) {
 		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Title: "My Name", Feed: rss.Feed{ID: testFeedID, Title: "One"}}))
 		assertContains(t, body,
 			`<a class="feed-row-title" href="/feeds/`+testFeedID+`">My Name</a>`,
-			`<a class="row-icon-btn" href="/feeds/`+testFeedID+`/edit?return_to=/feeds" aria-label="Edit My Name" title="Edit">`,
+			`<a class="row-icon-btn" href="/feeds/`+testFeedID+`/edit?return_to=%2ffeeds" aria-label="Edit My Name" title="Edit">`,
 		)
 		assertNotContains(t, body, ">One<")
 	})
@@ -808,6 +813,227 @@ func TestFeedsHandler(t *testing.T) {
 		}})
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestFeedsHandlerSortAndSearch(t *testing.T) {
+	const (
+		idOld   = "11111111-1111-4111-8111-111111111111"
+		idNew   = "22222222-2222-4222-8222-222222222222"
+		idNone  = "33333333-3333-4333-8333-333333333333"
+		idMid   = "44444444-4444-4444-8444-444444444444"
+		siteA   = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		siteB   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		siteC   = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		titleOf = `<a class="feed-row-title" href="/feeds/`
+	)
+	a := rss.Site{ID: siteA, Host: "alpha.example.com", Title: "Alpha"}
+	b := rss.Site{ID: siteB, Host: "beta.example.com", Title: "Beta"}
+	c := rss.Site{ID: siteC, Host: "gamma.example.com"}
+	day := func(d int) time.Time { return time.Date(2026, 3, d, 10, 0, 0, 0, time.UTC) }
+	// In ListByUser's order: by site, then name.
+	subs := func() *fakeSubscriptionStore {
+		return listing(
+			rss.Subscription{Site: a, Feed: rss.Feed{ID: idOld, Title: "Alpha Notes"}, LatestArticleAt: day(1)},
+			rss.Subscription{Site: a, Title: "My Alpha", Feed: rss.Feed{ID: idNew, Title: "Alpha Posts"}, LatestArticleAt: day(9)},
+			rss.Subscription{Site: b, Feed: rss.Feed{ID: idNone, Title: "Beta"}},
+			rss.Subscription{Site: c, Feed: rss.Feed{ID: idMid, Title: "Gamma Weekly"}, LatestArticleAt: day(5)},
+		)
+	}
+	order := func(t *testing.T, body string, ids ...string) {
+		t.Helper()
+		last := -1
+		for _, id := range ids {
+			i := strings.Index(body, titleOf+id+`"`)
+			if i < 0 {
+				t.Fatalf("no row for %s", id)
+			}
+			if i < last {
+				t.Errorf("rows out of order, want %v: %s", ids, body)
+				return
+			}
+			last = i
+		}
+	}
+	// hidden reports whether the row for id is rendered hidden.
+	hidden := func(t *testing.T, body, id string) bool {
+		t.Helper()
+		i := strings.Index(body, titleOf+id+`"`)
+		if i < 0 {
+			t.Fatalf("no row for %s", id)
+		}
+		li := strings.LastIndex(body[:i], "<li ")
+		tag := body[li : li+strings.Index(body[li:], ">")]
+		return strings.Contains(tag, " hidden")
+	}
+
+	t.Run("by name: grouped by site, Name current", func(t *testing.T) {
+		_, body := getFeeds(t, subs())
+		order(t, body, idOld, idNew, idNone, idMid)
+		if !strings.Contains(body, `<h2><a href="/sites/`+siteA+`">Alpha</a></h2>`) {
+			t.Errorf("site A should have a header: %s", body)
+		}
+		if !strings.Contains(body, `<a href="/feeds" aria-current="page" data-sort-link>Name</a>`) ||
+			!strings.Contains(body, `<a href="/feeds?sort=updated" data-sort-link>Recently updated</a>`) {
+			t.Errorf("want Name current and a link to Recently updated: %s", body)
+		}
+		if strings.Contains(body, `name="sort"`) {
+			t.Errorf("the default sort needs no hidden field: %s", body)
+		}
+	})
+
+	t.Run("an unknown sort is by name", func(t *testing.T) {
+		_, body := getFeedsURL(t, subs(), "/feeds?sort=bogus")
+		order(t, body, idOld, idNew, idNone, idMid)
+		if !strings.Contains(body, `aria-current="page" data-sort-link>Name</a>`) {
+			t.Errorf("want Name current: %s", body)
+		}
+	})
+
+	t.Run("recently updated: newest latest article first, ungrouped", func(t *testing.T) {
+		_, body := getFeedsURL(t, subs(), "/feeds?sort=updated")
+		order(t, body, idNew, idMid, idOld, idNone)
+		if strings.Contains(body, "<h2>") {
+			t.Errorf("no site headers when sorted by recency: %s", body)
+		}
+		// Each row names its site instead.
+		if n := strings.Count(body, `<p class="feed-site">From <a href="/sites/`+siteA+`">Alpha</a></p>`); n != 2 {
+			t.Errorf("got %d From Alpha lines, want 2: %s", n, body)
+		}
+		for _, want := range []string{
+			`<a href="/feeds?sort=updated" aria-current="page" data-sort-link>Recently updated</a>`,
+			`<input type="hidden" name="sort" value="updated" />`,
+			`/edit?return_to=%2ffeeds%3fsort%3dupdated"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("a search hides the rows that don't match", func(t *testing.T) {
+		tests := []struct {
+			q     string
+			shown []string
+		}{
+			{"alpha", []string{idOld, idNew}},  // the site's title
+			{"MY ALPHA", []string{idNew}},      // the user's name, ignoring case
+			{"posts", []string{idNew}},         // the feed's title under a renamed row
+			{"gamma.example", []string{idMid}}, // the host
+			{"  weekly ", []string{idMid}},     // trimmed
+			{"", []string{idOld, idNew, idNone, idMid}},
+		}
+		for _, tt := range tests {
+			_, body := getFeedsURL(t, subs(), "/feeds?q="+url.QueryEscape(tt.q))
+			for _, id := range []string{idOld, idNew, idNone, idMid} {
+				if want := !slices.Contains(tt.shown, id); hidden(t, body, id) != want {
+					t.Errorf("q=%q: row %s hidden = %v, want %v", tt.q, id, !want, want)
+				}
+			}
+			if !strings.Contains(body, `<div class="empty" data-feeds-none hidden>`) {
+				t.Errorf("q=%q: the no-match message should be hidden: %s", tt.q, body)
+			}
+		}
+	})
+
+	t.Run("a group keeps its header when one of its feeds matches", func(t *testing.T) {
+		_, body := getFeedsURL(t, subs(), "/feeds?q=notes")
+		if !strings.Contains(body, `<section class="my-feeds-site my-feeds-group" data-grouped>`) ||
+			!strings.Contains(body, `<h2><a href="/sites/`+siteA+`">Alpha</a></h2>`) {
+			t.Errorf("site A should keep its header: %s", body)
+		}
+		if n := strings.Count(body, `<section class="my-feeds-site" hidden>`); n != 2 {
+			t.Errorf("got %d hidden sections, want 2: %s", n, body)
+		}
+	})
+
+	// A group ends in a double rule above the next shown section that isn't
+	// a group, whichever sections the search hides between them.
+	t.Run("the rule after a group goes on the next shown section", func(t *testing.T) {
+		// Site A's group, B's feed, then C's.
+		section := func(body, id string) string {
+			i := strings.Index(body, titleOf+id+`"`)
+			s := strings.LastIndex(body[:i], "<section ")
+			return body[s : s+strings.Index(body[s:], ">")+1]
+		}
+		tests := []struct {
+			name, url string
+			want      map[string]bool // whether each shown row's section has the rule
+		}{
+			{"no search: the section right after the group", "/feeds", map[string]bool{idOld: false, idNone: true, idMid: false}},
+			{"the next section hidden: the one after it", "/feeds?q=y", map[string]bool{idNew: false, idMid: true}},
+			{"the group hidden: none", "/feeds?q=gamma", map[string]bool{idMid: false}},
+			{"recently updated: none", "/feeds?sort=updated", map[string]bool{idOld: false, idNone: false, idMid: false}},
+		}
+		for _, tt := range tests {
+			_, body := getFeedsURL(t, subs(), tt.url)
+			for id, want := range tt.want {
+				if got := strings.Contains(section(body, id), "data-after-group"); got != want {
+					t.Errorf("%s: section of %s has the rule = %v, want %v: %s", tt.name, id, got, want, section(body, id))
+				}
+			}
+		}
+	})
+
+	t.Run("the sort links and the search keep each other", func(t *testing.T) {
+		_, body := getFeedsURL(t, subs(), "/feeds?sort=updated&q=a+b")
+		for _, want := range []string{
+			`<input type="search" id="feeds-q" name="q" value="a b"`,
+			`<a href="/feeds?q=a&#43;b" data-sort-link>Name</a>`,
+			`<a href="/feeds?q=a&#43;b&amp;sort=updated" aria-current="page" data-sort-link>Recently updated</a>`,
+			// Edit returns to the sort, not the search.
+			`/edit?return_to=%2ffeeds%3fsort%3dupdated"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	})
+
+	t.Run("no matches", func(t *testing.T) {
+		rr, body := getFeedsURL(t, subs(), "/feeds?q=zzz")
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		for _, want := range []string{
+			`<div class="empty" data-feeds-none>`,
+			`None of your feeds match “<span data-feeds-q>zzz</span>”. <a href="/discover?q=zzz" data-feeds-discover>Search Discover</a> for sites to follow.`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+		for _, id := range []string{idOld, idNew, idNone, idMid} {
+			if !hidden(t, body, id) {
+				t.Errorf("row %s should be hidden", id)
+			}
+		}
+	})
+
+	t.Run("a long query is cut", func(t *testing.T) {
+		_, body := getFeedsURL(t, subs(), "/feeds?q="+strings.Repeat("é", feedsSearchMaxRunes+10))
+		if !strings.Contains(body, `value="`+strings.Repeat("é", feedsSearchMaxRunes)+`"`) {
+			t.Errorf("want the query cut to %d characters", feedsSearchMaxRunes)
+		}
+	})
+
+	t.Run("one feed has a search but no sort", func(t *testing.T) {
+		_, body := getFeeds(t, listing(rss.Subscription{Site: a, Feed: rss.Feed{ID: idOld, Title: "Alpha Notes"}}))
+		if !strings.Contains(body, `id="feeds-q"`) {
+			t.Errorf("want the search: %s", body)
+		}
+		if strings.Contains(body, "data-sort-link") {
+			t.Errorf("one feed needs no sort: %s", body)
+		}
+	})
+
+	t.Run("no feeds: no search, no sort", func(t *testing.T) {
+		_, body := getFeedsURL(t, listing(), "/feeds?q=x")
+		for _, not := range []string{`id="feeds-q"`, "data-sort-link", "data-feeds-none"} {
+			if strings.Contains(body, not) {
+				t.Errorf("body contains %q: %s", not, body)
+			}
 		}
 	})
 }

@@ -23,11 +23,33 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
+      {{if .Sites}}
+      <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
+        <label for="feeds-q" class="visually-hidden">Search my feeds</label>
+        <div class="search-row">
+          <div class="search-field">
+            <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
+            <input type="search" id="feeds-q" name="q" value="{{.Q}}" placeholder="Search my feeds" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+          </div>
+        </div>
+        {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
+      </form>
+      {{if gt .Total 1}}
+      <nav class="feeds-sort" aria-labelledby="feeds-sort-label">
+        <span id="feeds-sort-label">Sort by</span>
+        <ul class="segmented" role="list">
+          <li><a href="{{.ByName}}"{{if not .Sort}} aria-current="page"{{end}} data-sort-link>Name</a></li>
+          <li><a href="{{.ByUpdated}}"{{if .Sort}} aria-current="page"{{end}} data-sort-link>Recently updated</a></li>
+        </ul>
+      </nav>
+      {{end}}
+      {{end}}
+
       {{range .Sites}}
       {{$site := or .Site.Title .Site.Host}}
       {{$siteID := .Site.ID}}
-      {{$grouped := gt (len .Subs) 1}}
-      <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}">
+      {{$grouped := .Grouped}}
+      <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}"{{if $grouped}} data-grouped{{end}}{{if .AfterGroup}} data-after-group{{end}}{{if .Hidden}} hidden{{end}}>
         {{if $grouped}}
         <div class="list-head">
           <h2><a href="/sites/{{.Site.ID}}">{{$site}}</a></h2>
@@ -36,7 +58,7 @@
         <ul role="list">
           {{range .Subs}}
           {{$name := or .Title .Feed.Title .Feed.Url}}
-          <li class="feed-row my-feed">
+          <li class="feed-row my-feed" data-filter="{{.Filter}}"{{if .Hidden}} hidden{{end}}>
             {{template "avatar" (avatar .Feed.SiteID $name (index $.Icons .Feed.SiteID))}}
             <div>
               <a class="feed-row-title" href="/feeds/{{.Feed.ID}}">{{$name}}</a>
@@ -57,7 +79,7 @@
               <p class="fetch-error">This feed is failing to update.</p>
               {{end}}
             </div>
-            <a class="row-icon-btn" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
+            <a class="row-icon-btn" href="/feeds/{{.Feed.ID}}/edit?return_to={{$.ReturnTo}}" aria-label="Edit {{$name}}" title="Edit">{{template "icon-edit"}}</a>
           </li>
           {{end}}
         </ul>
@@ -66,6 +88,11 @@
       <div class="empty">
         {{template "icon-feeds"}}
         <p>You're not following any feeds yet. Find sites to follow in <a href="/discover">Discover</a>.</p>
+      </div>
+      {{end}}
+      {{if .Sites}}
+      <div class="empty" data-feeds-none{{if .Matches}} hidden{{end}}>
+        <p>None of your feeds match “<span data-feeds-q>{{.Q}}</span>”. <a href="/discover?q={{.Q}}" data-feeds-discover>Search Discover</a> for sites to follow.</p>
       </div>
       {{end}}
     </main>

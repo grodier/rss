@@ -1,6 +1,64 @@
 /* Settings and the account pages' rows, the Reading form, tag checkboxes,
-   and an import's progress and rows. */
+   an import's progress and rows, and the segmented control. */
 @layer components {
+  /* A segmented control: two or three choices side by side in one
+     outlined box, as a button group, a rule between them and the current
+     one filled with ink to the box's edge. As a form's radios (the
+     timeline form's Show: "All my feeds" or "Only some") or as links to a
+     page's views, the current one aria-current (My feeds' sort), so
+     changing view needs no script. Each choice is a .btn's height. */
+  .segmented {
+    display: inline-flex;
+    justify-self: start;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    overflow: hidden;
+  }
+
+  .segmented > :not(:first-child) {
+    border-inline-start: 1px solid var(--border-strong);
+  }
+
+  /* Block, so a link's padding sizes its list item as a label's does (a
+     label is the flex item itself). */
+  .segmented :is(label, a) {
+    display: block;
+    position: relative;
+    margin: 0;
+    padding: 0.625rem 1rem;
+    color: var(--text-2);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .segmented input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .segmented :is(label:not(:has(input:checked)), a:not([aria-current])):hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .segmented :is(label:has(input:checked), a[aria-current]) {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  /* Inside the choice, since the box clips what's outside it. */
+  .segmented label:has(input:focus-visible),
+  .segmented a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -4px;
+  }
+
   /* Settings: rows of a label, a value and, on links, a chevron. */
   .settings-row {
     display: flex;

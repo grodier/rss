@@ -144,7 +144,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 - Schema changes: every change is a **new** goose migration (`make db/migrations/new name=<name>`), applied locally with `go run ./cmd/www migrate`.
   Migrations already on `main` are never edited, renamed or deleted (CI fails a PR that does); fix a mistake with another migration.
   Each must work with the version still running during a deploy (see "Prototype stage"), and migrates the existing rows it affects.
-  If two branches add the same migration number, the one that merges `main` second renumbers its file (goose refuses duplicate versions).
+  If two branches add the same migration number, the one that merges `main` second renumbers its file (goose refuses duplicate versions); CI fails a branch whose migrations share a version, but only against the `main` it was tested with, so merge the latest `main` into a branch that adds a migration just before merging it.
   `make db/reset` only rebuilds a local database from scratch.
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page.
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `discover`, `settings`, or `""`); logged-out and error pages use `.solo`.

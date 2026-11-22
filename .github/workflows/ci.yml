@@ -51,6 +51,20 @@ jobs:
             echo "::error::Migrations on main are never edited; add a new one (make db/migrations/new name=...): $changed"
             exit 1
           fi
+
+      # goose refuses two migrations with one version, which happens when two
+      # PRs each add the next number and both merge. Checked on PRs and on
+      # main, before anything else, so the failure says why. A PR passes only
+      # against the main it was tested with: see "Schema changes" in CLAUDE.md.
+      - name: migration versions unique
+        run: |
+          dups=$(ls migrations/*.sql | sed -E 's#^migrations/0*([0-9]+)_.*#\1#' | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            for v in $dups; do
+              echo "::error::Migration version $v is used twice ($(ls migrations | grep -E "^0*${v}_" | paste -sd ' ')); the one that merged second takes the next free number."
+            done
+            exit 1
+          fi
       - uses: actions/setup-node@v7
         with:
           node-version-file: web/.node-version

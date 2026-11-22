@@ -42,7 +42,8 @@ make test/db                     # all tests against the local DB (make db/start
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 go run ./cmd/admin               # run the admin site on :4001 (or: make run/admin)
 go run ./cmd/admin enroll -email you@example.com  # enroll an admin (password on stdin; needs RSS_SECRET_KEY, see README)
-go run ./cmd/www migrate         # apply migrations (or: make db/migrations/up)
+go run ./cmd/www migrate         # apply migrations, then re-key the sites if the site-key rules changed (or: make db/migrations/up)
+go run ./cmd/www rekey           # only re-key the sites
 go run ./cmd/admin send-test-email -to you@example.com  # check the mail settings (Mailpit locally: http://localhost:8025)
 make db/reset                            # rebuild the local DB from scratch
 make db/loadseed                         # seed the local DB at realistic scale and measure the reading queries (make db/loadseed/measure: measure only)
@@ -146,6 +147,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Each must work with the version still running during a deploy (see "Prototype stage"), and migrates the existing rows it affects.
   If two branches add the same migration number, the one that merges `main` second renumbers its file (goose refuses duplicate versions); CI fails a branch whose migrations share a version, but only against the `main` it was tested with, so merge the latest `main` into a branch that adds a migration just before merging it.
   `make db/reset` only rebuilds a local database from scratch.
+- A PR that changes what site key an address gets (`discovery.SiteKey`'s rules) bumps `discovery.SiteKeyRulesVersion`, so the next deploy re-keys the stored sites (see "Feed discovery" in `docs/decisions.md`).
 - Templates are standalone full pages (no shared layout yet); fragments shared between pages are `{{define}}` blocks in `templates/partials/`, parsed with every page.
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `discover`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.

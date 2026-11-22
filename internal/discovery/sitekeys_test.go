@@ -135,3 +135,21 @@ func TestKeyHost(t *testing.T) {
 		}
 	}
 }
+
+func TestFeedSiteKey(t *testing.T) {
+	tests := []struct {
+		name, siteURL, feedURL, key, root string
+	}{
+		{"from the link", "https://medium.com/@alice?source=rss----abc", "https://medium.com/feed/@alice", "medium.com/@alice", "https://medium.com/@alice"},
+		{"from the URL without a link", "", "https://medium.com/feed/@alice", "medium.com/@alice", "https://medium.com/@alice"},
+		{"an ordinary feed", "https://www.example.com/blog/", "https://www.example.com/feed.xml", "example.com", "https://www.example.com/"},
+		{"a link that isn't an address", "not a link", "https://example.com/feed.xml", "example.com", "https://example.com/"},
+		{"neither", "", "", "", ""},
+	}
+	for _, tt := range tests {
+		key, root := FeedSiteKey(tt.siteURL, tt.feedURL)
+		if key != tt.key || root != tt.root {
+			t.Errorf("%s: FeedSiteKey(%q, %q) = %q, %q; want %q, %q", tt.name, tt.siteURL, tt.feedURL, key, root, tt.key, tt.root)
+		}
+	}
+}

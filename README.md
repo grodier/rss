@@ -85,6 +85,7 @@ Locally, `make db/seed` makes your account without signing up (see [`admin creat
 
 `www migrate [flags]` applies the migrations embedded in the binary and exits; hosts run it before new code goes live.
 It applies only the migrations the database doesn't have yet, and keeps its data.
+Then, when the site-key rules changed since the database last saw them, it moves the stored feeds onto the sites the new rules name, and logs `site keys: re-keyed` with the counts; `www rekey [flags]` runs only that step, with the same flags.
 It takes its own flags, also settable by environment variables:
 
 | Flag | Variable | Default | Description |

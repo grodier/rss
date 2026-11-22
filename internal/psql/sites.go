@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/lib/pq"
 )
@@ -224,4 +226,118 @@ func (r *SiteRepository) KeepIcon(ctx context.Context, siteID string, checked bo
 		WHERE id = $1`
 
 	return execOne(ctx, r.DB, stmt, siteID, checked, next)
+}
+
+// RekeyResult is what Rekey did.
+type RekeyResult struct {
+	Skipped                 bool // the version was current
+	Feeds, Created, Deleted int
+}
+
+// Rekey moves each feed onto the site its key now names, when the stored
+// rules version is older than version: a feed whose site is the bare host
+// of the key that siteKey gives it (from its site_url, else its url) moves
+// to that key's site, created if needed, whose root lookup is queued at the
+// seed's priority so the site gets its own details, feeds and icon. A bare
+// host's site left with no feeds is deleted. It then records version, all
+// in one transaction. As upsertFeed, it never moves a feed between two
+// sites with a path or two hosts. RekeyResult says what it did; nothing
+// when the version is current.
+func (r *SiteRepository) Rekey(ctx context.Context, version int, siteKey func(siteURL, feedURL string) (key, root string)) (RekeyResult, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return RekeyResult{}, err
+	}
+	defer tx.Rollback()
+
+	// FOR UPDATE: a second deploy's re-key waits, then finds it current.
+	var stored int
+	if err := tx.QueryRowContext(ctx, `SELECT version FROM site_key_rules FOR UPDATE`).Scan(&stored); err != nil {
+		return RekeyResult{}, err
+	}
+	if stored >= version {
+		return RekeyResult{Skipped: true}, nil
+	}
+
+	// Only feeds on a bare host's site can move. They're read in full
+	// before any write, as a connection runs one statement at a time.
+	type feedSite struct{ feedID, url, siteURL, siteID, host string }
+	rows, err := tx.QueryContext(ctx, `SELECT f.id, f.url, f.site_url, s.id, s.host
+		FROM feeds f JOIN sites s ON s.id = f.site_id
+		WHERE position('/' in s.host) = 0`)
+	if err != nil {
+		return RekeyResult{}, err
+	}
+	var feeds []feedSite
+	for rows.Next() {
+		var f feedSite
+		if err := rows.Scan(&f.feedID, &f.url, &f.siteURL, &f.siteID, &f.host); err != nil {
+			rows.Close()
+			return RekeyResult{}, err
+		}
+		feeds = append(feeds, f)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return RekeyResult{}, err
+	}
+
+	var res RekeyResult
+	sites := map[string]string{} // key -> site ID, for keys already handled
+	emptied := map[string]bool{} // bare sites that lost a feed
+	for _, f := range feeds {
+		key, root := siteKey(f.siteURL, f.url)
+		if !strings.Contains(key, "/") || discovery.KeyHost(key) != f.host {
+			continue
+		}
+		id, ok := sites[key]
+		if !ok {
+			created := true
+			err := tx.QueryRowContext(ctx, `INSERT INTO sites (host, url) VALUES ($1, $2)
+				ON CONFLICT (host) DO NOTHING RETURNING id`, key, root).Scan(&id)
+			if errors.Is(err, sql.ErrNoRows) {
+				created = false
+				err = tx.QueryRowContext(ctx, `SELECT id FROM sites WHERE host = $1`, key).Scan(&id)
+			}
+			if err != nil {
+				return RekeyResult{}, err
+			}
+			if created {
+				res.Created++
+			}
+			// As the seed list queues one, after readers' lookups.
+			if _, err := tx.ExecContext(ctx, `INSERT INTO lookups (site_key, url, priority, home_page)
+				VALUES ($1, $2, 1, true) ON CONFLICT (site_key) DO NOTHING`, key, root); err != nil {
+				return RekeyResult{}, err
+			}
+			sites[key] = id
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE feeds SET site_id = $2 WHERE id = $1`, f.feedID, id); err != nil {
+			return RekeyResult{}, err
+		}
+		res.Feeds++
+		emptied[f.siteID] = true
+	}
+
+	if len(emptied) > 0 {
+		ids := make([]string, 0, len(emptied))
+		for id := range emptied {
+			ids = append(ids, id)
+		}
+		result, err := tx.ExecContext(ctx, `DELETE FROM sites s WHERE s.id = ANY($1)
+			AND NOT EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id)`, pq.Array(ids))
+		if err != nil {
+			return RekeyResult{}, err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return RekeyResult{}, err
+		}
+		res.Deleted = int(n)
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE site_key_rules SET version = $1`, version); err != nil {
+		return RekeyResult{}, err
+	}
+	return res, tx.Commit()
 }

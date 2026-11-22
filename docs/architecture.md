@@ -48,13 +48,13 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 
 `ingest`, `discovery`, `siteicon` and `enrich` make every outbound request through `internal/fetch`; so does the admin's Refresh now, through `ingest`.
 
-`cmd/www/main.go` (`run`) hands `www migrate` to its own function (below).
+`cmd/www/main.go` (`run`) hands `www migrate` and `www rekey` to their own functions (below).
 Otherwise it parses the configuration (`parseConfig` in `config.go`: each flag, or else its `RSS_` environment variable, set by `cli.SetFlagsFromEnv`, or else its default) and builds the slog logger on stdout (`cli.NewLogger`: JSON in production, text otherwise).
 `cmd/www/application.go` (`Application.Run`) wires everything: it opens the database, builds one `fetch.Client` (plus one capped at 256 KiB for icon downloads) and one `ingest.Refresher` (shared by the Refresh button and the workers), the repositories, the scs session manager and the server, then starts the runners next to `Server.Serve`.
 On SIGINT or SIGTERM, or when any component fails, the context is canceled: the server drains requests for up to 30 seconds, the workers stop, and only then is the database closed.
 Only `cmd/www` and `cmd/admin` handle signals.
 
-`www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate` and exits.
+`www migrate` (`cmd/www/migrate.go`) applies the migrations embedded in the binary (`migrations.FS`) with `psql.Migrate`, then re-keys the stored sites when the site-key rules changed (`SiteRepository.Rekey`, see "Discover, site lookups and discovery" in features.md), and exits; `www rekey` runs only the re-key.
 It runs before new code goes live, never at startup.
 `Migrate` applies the migrations the database doesn't have yet, with goose, and never wipes anything; CI refuses a PR that changes a migration already on `main`.
 
@@ -75,7 +75,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 
 | Package | Role | Depends on |
 | --- | --- | --- |
-| `cmd/www` | Flags, wiring, signal handling, the `migrate` command | everything below |
+| `cmd/www` | Flags, wiring, signal handling, the `migrate` and `rekey` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
 | `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, adding sites to the seed list in bulk and picking Discover's feeds a page of sites at a time, the web performance and service pages, and the pinger that checks `www`'s availability | `assets`, `chart`, `clientip`, `discovery`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
@@ -260,6 +260,7 @@ emails   (the outbox: no foreign keys)
 email_daily_counts   (emails queued per UTC day, for the admin's sending limits)
 request_metrics, job_metrics, runtime_metrics, server_errors, rum_views, rum_daily (written by each www instance, read by the admin; no foreign keys)
 availability_checks   (written by the admin's pinger; no foreign keys)
+site_key_rules   (one row: the site-key rules version whose re-key last finished; no foreign keys)
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").

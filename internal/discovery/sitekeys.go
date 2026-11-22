@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// SiteKeyRulesVersion is the version of SiteKey's rules. Bump it in any PR
+// that changes what key an address gets, so the next deploy re-keys the
+// sites already stored (www migrate's re-key step).
+const SiteKeyRulesVersion = 1
+
 // SiteKey identifies a site: its lowercase host without port and without a
 // leading "www.", followed on a host shared by many sites by the path that
 // names the site (sitePath). "https://www.Example.com:443/a" -> "example.com",
@@ -36,6 +41,19 @@ func IsHomePage(u *url.URL) bool {
 	}
 	root, _ := rootPath(u)
 	return strings.TrimSuffix(u.Path, "/") == root
+}
+
+// FeedSiteKey is the key and root of the site a stored feed belongs to under
+// the current rules, as discovery's direct branch derives them: from the
+// feed's link (siteURL) when it has one, else from the feed's own URL. Both
+// are "" when neither parses as an address with a host.
+func FeedSiteKey(siteURL, feedURL string) (key, root string) {
+	for _, raw := range []string{siteURL, feedURL} {
+		if u, err := url.Parse(raw); err == nil && u.Host != "" {
+			return SiteKey(u), SiteRoot(u).String()
+		}
+	}
+	return "", ""
 }
 
 // KeyHost is a site key's host: "medium.com/@alice" -> "medium.com".

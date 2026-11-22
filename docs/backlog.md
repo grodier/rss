@@ -619,8 +619,8 @@ Background refresh:
   Every instance's lookup runner resets stale jobs every minute, and no index covers `ResetStale`'s `status = 'running'` filter, so each reset scans the table, which keeps a row per site key ever looked up.
   *Signal:* `ResetStale` in `pg_stat_statements` totals, or a large `lookups` table.
   *Fix:* a partial index on `started_at WHERE status = 'running'`.
-- [ ] **The site-key re-key reads every feed** (#727).
-  When `SiteKeyRulesVersion` changes, `www migrate` computes every feed's key in Go in one transaction during the pre-deploy, which holds the deploy and its locks.
+- [ ] **The site-key re-key reads every feed on a bare host's site** (#727).
+  When `SiteKeyRulesVersion` changes, `www migrate` computes the key of every feed whose site's key has no path (most feeds) in Go, in one transaction during the pre-deploy, which holds the deploy and its locks.
   *Signal:* the pre-deploy's re-key log line, or the deploy, takes over a few seconds.
   *Fix:* read only feeds whose site is a bare host the rules can split (a host with a rule, or a `site_url` with `/@`), in batches with a transaction each.
 - [ ] **One statement per article in `saveArticles`.**

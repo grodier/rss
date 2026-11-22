@@ -937,8 +937,9 @@ func TestReadOnLabel(t *testing.T) {
 		{"uppercase host", "https://EXAMPLE.com/a", example, "", "Example Site"},
 		{"no title", "https://example.com/a", rss.Site{Host: "example.com"}, "", "example.com"},
 		{"not http", "mailto:x@example.org", example, "", "Example Site"},
-		{"site on a shared host", "https://medium.com/@alice/a-post", rss.Site{Host: "medium.com/@alice", Title: "Alice"}, "", "Alice"},
-		{"site on a shared host, no title", "https://medium.com/@alice/a-post", rss.Site{Host: "medium.com/@alice"}, "", "medium.com/@alice"},
+		{"site on a shared host names its platform", "https://medium.com/@alice/a-post", rss.Site{Host: "medium.com/@alice", Title: "Alice"}, "Alice's posts", "Medium"},
+		{"site on a shared host, no title", "https://medium.com/@alice/a-post", rss.Site{Host: "medium.com/@alice"}, "", "Medium"},
+		{"site on an @name host names the host", "https://mastodon.social/@bob/1", rss.Site{Host: "mastodon.social/@bob", Title: "Bob"}, "", "mastodon.social"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

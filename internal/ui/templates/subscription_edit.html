@@ -22,7 +22,7 @@
         {{template "avatar" (avatar .Sub.Feed.SiteID (or .Sub.Feed.Title .Sub.Feed.Url) (index .Icons .Sub.Feed.SiteID))}}
         <div>
           <a class="feed-row-title" href="/feeds/{{.Sub.Feed.ID}}">{{or .Sub.Feed.Title .Sub.Feed.Url}}</a>
-          <p>From {{or .Sub.Site.Title .Sub.Site.Host}}</p>
+          <p>From {{siteName .Sub.Site}}</p>
           <p class="feed-url"><code>{{.Sub.Feed.Url}}</code></p>
         </div>
       </div>

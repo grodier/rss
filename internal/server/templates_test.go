@@ -664,3 +664,21 @@ func TestSunriseLogo(t *testing.T) {
 		}
 	})
 }
+func TestSiteName(t *testing.T) {
+	tests := []struct {
+		site rss.Site
+		want string
+	}{
+		{rss.Site{Host: "medium.com/@alice", Title: "Alice"}, "Alice · Medium"},
+		{rss.Site{Host: "mastodon.social/@bob", Title: "Bob"}, "Bob · mastodon.social"},
+		// An untitled site's key already names its platform.
+		{rss.Site{Host: "medium.com/@alice"}, "medium.com/@alice"},
+		{rss.Site{Host: "example.com", Title: "Example"}, "Example"},
+		{rss.Site{Host: "example.com"}, "example.com"},
+	}
+	for _, tt := range tests {
+		if got := siteName(tt.site); got != tt.want {
+			t.Errorf("siteName(%+v) = %q, want %q", tt.site, got, tt.want)
+		}
+	}
+}

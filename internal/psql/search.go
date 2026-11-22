@@ -47,15 +47,6 @@ func matchOrder(name string, n int) string {
 		(' ' || %[1]s) ILIKE $%[4]d ESCAPE '\' DESC`, name, n, n+1, n+2)
 }
 
-// ownName is the SQL for a site's own name, for grouping (Search): its
-// title without the platform's suffix, the last " - ", " – ", " — " or
-// " | " and what follows it ("Alice – Medium" -> "Alice"), since a profile
-// on a platform is often titled after both. Any last segment goes, not only
-// a platform's name: a path-scoped site's title comes from its platform's
-// page, whose last segment is the platform, and a list of platforms would
-// miss the fediverse's many. Untitled, it's "".
-const ownName = `regexp_replace(s.title, '\s+[-–—|]\s+[^-–—|]*$', '')`
-
 // Search matches q (case-insensitive substring) against site title, host and
 // description and feed title, URL and description, and siteKey (discovery.SiteKey of q when q is a web
 // address, else "") against site host exactly; that site comes first, then
@@ -63,11 +54,11 @@ const ownName = `regexp_replace(s.title, '\s+[-–—|]\s+[^-–—|]*$', '')`
 // title. It returns at most limit sites, each with all of its feeds.
 //
 // Sites on a shared host (a key with a path, "bsky.app/profile/alice")
-// that matched only through their key, handle, platform or feeds are
-// grouped by host and counted instead (#739), so searching a platform's
-// name doesn't list every profile on it: a site is grouped unless it is
-// siteKey or its own name (ownName) matches q at its start or a word's
-// start. A host with one such site keeps it as a site: there are no groups
+// that matched only through their key, description or feeds are grouped by
+// host and counted instead (#739), so searching a platform's name doesn't
+// list every profile on it: a site is grouped unless it is siteKey or its
+// title, which is its own name without its platform (discovery.OwnName,
+// #728), matches q at its start or a word's start. A host with one such site keeps it as a site: there are no groups
 // of one. Groups come largest first. With host set, only the sites whose
 // key's host is host come back, none grouped.
 func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, limit int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
@@ -84,7 +75,7 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, 
 			SELECT s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at,
 				split_part(s.host, '/', 1) AS key_host,
 				$7 = '' AND position('/' in s.host) > 0 AND s.host <> $2
-					AND NOT (` + ownName + ` ILIKE $5 ESCAPE '\' OR (' ' || ` + ownName + `) ILIKE $6 ESCAPE '\') AS groupable
+					AND NOT (s.title ILIKE $5 ESCAPE '\' OR (' ' || s.title) ILIKE $6 ESCAPE '\') AS groupable
 			FROM sites s
 			WHERE (s.host = $2 OR s.title ILIKE $1 ESCAPE '\' OR s.host ILIKE $1 ESCAPE '\'
 			   OR s.description ILIKE $1 ESCAPE '\'

@@ -703,6 +703,20 @@ func TestFeedsHandler(t *testing.T) {
 		assertNotContains(t, body, `class="feed-site"`)
 	})
 
+	t.Run("a site on a shared host shows its platform", func(t *testing.T) {
+		alice := rss.Site{ID: siteA, Host: "medium.com/@alice", Title: "Alice"}
+		bob := rss.Site{ID: siteB, Host: "mastodon.social/@bob", Title: "Bob"}
+		_, body := getFeeds(t, listing(
+			rss.Subscription{Site: alice, Feed: rss.Feed{ID: testFeedID, Title: "Stories by Alice on Medium"}},
+			// Named like its site: the platform still shows.
+			rss.Subscription{Site: bob, Feed: rss.Feed{ID: otherID, Title: "Bob"}},
+		))
+		assertContains(t, body,
+			`<p class="feed-site">From <a href="/sites/`+siteA+`">Alice · Medium</a></p>`,
+			`<p class="feed-site">On mastodon.social</p>`,
+		)
+	})
+
 	t.Run("latest article", func(t *testing.T) {
 		_, body := getFeeds(t, listing(
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One", PostsPerWeek: 3.4}, LatestArticleAt: latest},

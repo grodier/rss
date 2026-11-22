@@ -220,7 +220,7 @@
       {{template "avatar" (avatar .Feed.SiteID $name (index $.Icons .Feed.SiteID))}}
       <span class="check-row-text">
         <span class="check-row-title">{{$name}}</span>
-        <span class="check-row-sub">{{or .Site.Title .Site.Host}} · {{postingRate .Feed.PostsPerWeek}}</span>
+        <span class="check-row-sub">{{siteName .Site}} · {{postingRate .Feed.PostsPerWeek}}</span>
       </span>
     </label>
   </li>

@@ -234,12 +234,15 @@ func TestSearchRepository(t *testing.T) {
 			}
 		})
 
-		t.Run("the platform's suffix isn't a name match", func(t *testing.T) {
+		t.Run("profiles matched by their feeds' platform are grouped", func(t *testing.T) {
+			// Titles are stored without the platform (#728); a profile's
+			// feed often names it: "Stories by Ann on Medium".
 			platform := "Plat" + tok
 			host := "pf-" + tok + ".example"
-			addSite(host+"/@ann", "Ann – "+platform)
-			addSite(host+"/@bo", "Bo (@bo) — "+platform)
-			addSite(host+"/@cy", "Cy | "+platform)
+			for _, name := range []string{"ann", "bo", "cy"} {
+				id := addSite(host+"/@"+name, name)
+				addFeed(id, "https://"+host+"/@"+name+".rss", "Stories by "+name+" on "+platform)
+			}
 			sites, groups := searchAll(platform, "", "", 10)
 			if len(sites) != 0 || len(groups) != 1 || groups[0] != (rss.SiteGroup{Host: host, Count: 3}) {
 				t.Errorf("got sites %v, groups %+v; want one group of 3", sites, groups)

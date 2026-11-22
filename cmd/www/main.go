@@ -19,10 +19,17 @@ func main() {
 
 // run runs the command in args and returns the process's exit code: 0 on
 // success or -help, 1 when the command fails, 2 for invalid configuration.
-// "www migrate [flags]" applies the migrations; "www [flags]" serves the app.
+// "www migrate [flags]" applies the migrations and re-keys the sites when the
+// site-key rules changed; "www rekey [flags]" only re-keys; "www [flags]"
+// serves the app.
 func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "migrate" {
-		return runMigrate(args[1:], getenv, stdout, stderr)
+	if len(args) > 0 {
+		switch args[0] {
+		case "migrate":
+			return runMigrate(args[1:], getenv, stdout, stderr)
+		case "rekey":
+			return runRekey(args[1:], getenv, stdout, stderr)
+		}
 	}
 
 	cfg, err := parseConfig(args, getenv, stderr)

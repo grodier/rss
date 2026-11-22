@@ -432,7 +432,8 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
 - **At most one notice above the first article**: the confirm-email notice waits for a page without a flash (#640).
 - **One search for the whole app** (#645, #646), on Discover (#664's design checkpoint): your feeds, saved articles and sites to follow, with articles in your feeds planned (#647); see "Feed discovery".
   Rejected: a search box on each page, which makes you know where something is before you can find it.
-  Saved keeps its own box for the list you're looking at.
+  Saved keeps its own box for the list you're looking at, and so does My feeds (the owner, in the PR that added it): a reader with many feeds was going to Discover to find one they follow, so My feeds had stopped being where you look for your feeds.
+  Both filter the list on their page and nothing else; finding feeds to follow stays Discover's.
 - **No measurement of whether new accounts follow anything**, beyond the admin's existing aggregates (the Waves table's "active after 7 days"): that would be per-person data about reading.
 - **Discover's catalog feeds are refreshed about once a day even without followers** (#632), so its "Latest" dates and Picks are current; the cost grows with the catalog, not with readers.
 

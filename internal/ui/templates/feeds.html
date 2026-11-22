@@ -33,13 +33,16 @@
           </div>
         </div>
         {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
-        {{if gt .Total 1}}
-        <p class="sort-links">Sort by
-          <a href="{{.ByName}}"{{if not .Sort}} aria-current="true"{{end}} data-sort-link>Name</a>
-          <a href="{{.ByUpdated}}"{{if .Sort}} aria-current="true"{{end}} data-sort-link>Recently updated</a>
-        </p>
-        {{end}}
       </form>
+      {{if gt .Total 1}}
+      <nav class="feeds-sort" aria-labelledby="feeds-sort-label">
+        <span id="feeds-sort-label">Sort by</span>
+        <ul class="segmented" role="list">
+          <li><a href="{{.ByName}}"{{if not .Sort}} aria-current="page"{{end}} data-sort-link>Name</a></li>
+          <li><a href="{{.ByUpdated}}"{{if .Sort}} aria-current="page"{{end}} data-sort-link>Recently updated</a></li>
+        </ul>
+      </nav>
+      {{end}}
       {{end}}
 
       {{range .Sites}}

@@ -1,6 +1,55 @@
 /* Settings and the account pages' rows, the Reading form, tag checkboxes,
-   and an import's progress and rows. */
+   an import's progress and rows, and the segmented control. */
 @layer components {
+  /* A segmented control: two or three choices side by side, the current
+     one filled. As a form's radios (the timeline form's Show: "All my
+     feeds" or "Only some") or as links to a page's views, the current one
+     aria-current (My feeds' sort), so changing view needs no script. */
+  .segmented {
+    display: inline-flex;
+    justify-self: start;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+  }
+
+  .segmented :is(label, a) {
+    position: relative;
+    margin: 0;
+    padding: 0.4375rem 1rem;
+    border-radius: var(--radius-control);
+    color: var(--text-2);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .segmented input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .segmented a:not([aria-current]):hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .segmented :is(label:has(input:checked), a[aria-current]) {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  .segmented label:has(input:focus-visible),
+  .segmented a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   /* Settings: rows of a label, a value and, on links, a chevron. */
   .settings-row {
     display: flex;

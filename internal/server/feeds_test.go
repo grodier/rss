@@ -874,7 +874,7 @@ func TestFeedsHandlerSortAndSearch(t *testing.T) {
 		if !strings.Contains(body, `<h2><a href="/sites/`+siteA+`">Alpha</a></h2>`) {
 			t.Errorf("site A should have a header: %s", body)
 		}
-		if !strings.Contains(body, `<a href="/feeds" aria-current="true" data-sort-link>Name</a>`) ||
+		if !strings.Contains(body, `<a href="/feeds" aria-current="page" data-sort-link>Name</a>`) ||
 			!strings.Contains(body, `<a href="/feeds?sort=updated" data-sort-link>Recently updated</a>`) {
 			t.Errorf("want Name current and a link to Recently updated: %s", body)
 		}
@@ -886,7 +886,7 @@ func TestFeedsHandlerSortAndSearch(t *testing.T) {
 	t.Run("an unknown sort is by name", func(t *testing.T) {
 		_, body := getFeedsURL(t, subs(), "/feeds?sort=bogus")
 		order(t, body, idOld, idNew, idNone, idMid)
-		if !strings.Contains(body, `aria-current="true" data-sort-link>Name</a>`) {
+		if !strings.Contains(body, `aria-current="page" data-sort-link>Name</a>`) {
 			t.Errorf("want Name current: %s", body)
 		}
 	})
@@ -902,7 +902,7 @@ func TestFeedsHandlerSortAndSearch(t *testing.T) {
 			t.Errorf("got %d From Alpha lines, want 2: %s", n, body)
 		}
 		for _, want := range []string{
-			`<a href="/feeds?sort=updated" aria-current="true" data-sort-link>Recently updated</a>`,
+			`<a href="/feeds?sort=updated" aria-current="page" data-sort-link>Recently updated</a>`,
 			`<input type="hidden" name="sort" value="updated" />`,
 			`/edit?return_to=%2ffeeds%3fsort%3dupdated"`,
 		} {
@@ -953,7 +953,7 @@ func TestFeedsHandlerSortAndSearch(t *testing.T) {
 		for _, want := range []string{
 			`<input type="search" id="feeds-q" name="q" value="a b"`,
 			`<a href="/feeds?q=a&#43;b" data-sort-link>Name</a>`,
-			`<a href="/feeds?q=a&#43;b&amp;sort=updated" aria-current="true" data-sort-link>Recently updated</a>`,
+			`<a href="/feeds?q=a&#43;b&amp;sort=updated" aria-current="page" data-sort-link>Recently updated</a>`,
 			// Edit returns to the sort, not the search.
 			`/edit?return_to=%2ffeeds%3fsort%3dupdated"`,
 		} {

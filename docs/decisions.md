@@ -491,7 +491,14 @@ Planned in #139 (issues #135–#138).
 - **My feeds has a site header only where it groups something** (#424): sites with two or more subscriptions; a single subscription says "From <site>" under its name when the names differ, rather than in its meta line, which would wrap to three lines on phones.
   Most headers had repeated the row under them; no headers at all would leave a site's feeds unmarked as a group.
   A group ends in a double rule, so the rows after it don't read as part of it.
-- **The global "latest feeds" list was removed, not moved:** `/feeds` is "My feeds".
+- **My feeds can be sorted by Name or Recently updated, and searched in place** (the owner's pick of three options at the design checkpoint in #742): a search box filters the rows as you type, with nothing fetched, and the sort sits under it.
+  Recently updated is the latest article's date, newest first, without site headers (a group would put a stale feed next to its site's active one), and feeds without articles come last.
+  The page renders every row and the server hides those that don't match a `?q=`, so the search works without JavaScript and the script toggles the same rows; a site keeps its header while any of its feeds match.
+  The sort is in the URL, not a stored preference, until a reader asks for it to stick.
+  Rejected: the sort as tabs under the page head (a full row of height above the list, and tabs elsewhere switch content rather than order it), and Discover's suggestions while typing (every match is a feed you follow and is already on the page, so a compact step shows the same feeds twice and hides their warnings; Discover needs it because its full results are heavy and its tabs would shift, #666).
+- **A choice between a page's views is a segmented control of links** (#742): the timeline form's segmented look, with the admin's markup for filters, a `<nav>` named by its visible label holding a list of links, the current one `aria-current="page"`.
+  Links rather than buttons, since each view is its own URL and needs no script; a segmented control rather than a `<select>`, since two or three choices fit and all stay visible, and a select would need a button or a script that submits on change.
+  The first version, two quiet text links after "Sort by", was 20 px tall, didn't look pressable on touch screens, and had no name tying the links to the sort.
 - **Subscribed state comes from a separate `SubscribedFeedIDs` query** rather than a user parameter on every feed query.
 - **Refresh requests from page views are a `feeds` column** (`refresh_requested_at`) worked by the existing refresh workers, never a goroutine or an in-memory queue, so they survive restarts and work across instances.
 - **Subscriptions are private:** no subscriber counts.

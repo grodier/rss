@@ -499,6 +499,9 @@ Planned in #139 (issues #135–#138).
 - **A choice between a page's views is a segmented control of links** (#742): the timeline form's segmented look, with the admin's markup for filters, a `<nav>` named by its visible label holding a list of links, the current one `aria-current="page"`.
   Links rather than buttons, since each view is its own URL and needs no script; a segmented control rather than a `<select>`, since two or three choices fit and all stay visible, and a select would need a button or a script that submits on change.
   The first version, two quiet text links after "Sort by", was 20 px tall, didn't look pressable on touch screens, and had no name tying the links to the sort.
+- **The segmented control is an outlined button group** (#742): one box with a `.btn`'s border, radius and height, a rule between the choices, and the current one filled with ink to the box's edge, as Material's segmented buttons and Bootstrap's button groups do; the timeline form's Show uses it too.
+  Its first version framed an inset fill, which mixed this style with iOS's track and thumb: without the track's tint the gap between fill and frame looked like a mistake, and the fill's corners weren't concentric with the frame's.
+  Rejected: the track and thumb (a tinted track with the current choice as an outlined thumb inset in it), quieter and closer to the search box above it, but a raised thumb is an app's control, not a paper's, and it would change the timeline form's ink fill.
 - **Subscribed state comes from a separate `SubscribedFeedIDs` query** rather than a user parameter on every feed query.
 - **Refresh requests from page views are a `feeds` column** (`refresh_requested_at`) worked by the existing refresh workers, never a goroutine or an in-memory queue, so they survive restarts and work across instances.
 - **Subscriptions are private:** no subscriber counts.

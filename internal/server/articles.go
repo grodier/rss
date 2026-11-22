@@ -156,16 +156,17 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 
 // readOnLabel returns the name the article page's "Read on" button shows:
 // the article's host (without "www.") when its URL is on another site than
-// site, else name (the user's name for the article's feed, "" if none), else
-// the site's title, else its key. Hosts on a subdomain of each other count
-// as the same site, and a site on a shared host ("medium.com/@alice") is on
-// its host.
+// site; else, for a site on a shared host ("medium.com/@alice"), its platform
+// ("Medium"), since the page's header already names the feed (#728); else
+// name (the user's name for the article's feed, "" if none), else the site's
+// title, else its key. Hosts on a subdomain of each other count as the same
+// site, and a site on a shared host is on its host.
 func readOnLabel(article rss.Article, site rss.Site, name string) string {
 	host := strings.ToLower(article.URLHost())
 	siteHost := discovery.KeyHost(site.Host)
 	if host == "" || host == siteHost ||
 		strings.HasSuffix(host, "."+siteHost) || strings.HasSuffix(siteHost, "."+host) {
-		return cmp.Or(name, site.Title, site.Host)
+		return cmp.Or(discovery.Platform(site.Host), name, site.Title, site.Host)
 	}
 	return host
 }

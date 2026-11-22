@@ -10,6 +10,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 
+	"github.com/grodier/rss/internal/discovery"
+
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/migrations"
 )
@@ -136,6 +138,49 @@ func TestMigrateLookupsHomePage(t *testing.T) {
 		}
 		if got != home {
 			t.Errorf("home_page of %s = %v, want %v", u, got, home)
+		}
+	}
+}
+
+// 00024 trims the stored titles of sites on a shared host as
+// discovery.OwnName trims a lookup's, and leaves ordinary sites alone.
+func TestMigrateSharedHostSiteNames(t *testing.T) {
+	db := newMigrateDB(t)
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(t.Context(), 23); err != nil {
+		t.Fatalf("migrate to 23: %v", err)
+	}
+	sites := map[string]string{
+		"medium.com/@alice":               "Alice – Medium",
+		"medium.com/@ann":                 "Stories by Ann on Medium",
+		"mastodon.social/@bob":            "Bob (@bob@mastodon.social) - Mastodon",
+		"bsky.app/profile/cy.bsky.social": "Cy (@cy.bsky.social) — Bluesky",
+		"youtube.com/@chan":               "Channel name - YouTube",
+		"github.com/owner/repo":           "owner/repo: a tool - fast - GitHub",
+		"github.com/owner/other":          "GitHub - owner/other: a tool",
+		"github.com/owner":                "owner (Owner Name) · GitHub",
+		"medium.com/@plain":               "Plain",
+		"medium.com/@untitled":            "",
+		"example.com/@dash":               "- Medium",
+		"example.com":                     "Notes - Medium",
+	}
+	for host, title := range sites {
+		if _, err := db.Exec(`INSERT INTO sites (host, url, title) VALUES ($1, $2, $3)`, host, "https://"+host, title); err != nil {
+			t.Fatalf("insert site: %v", err)
+		}
+	}
+
+	mustMigrate(t, db)
+	for host, title := range sites {
+		var got string
+		if err := db.QueryRow(`SELECT title FROM sites WHERE host = $1`, host).Scan(&got); err != nil {
+			t.Fatalf("title of %s: %v", host, err)
+		}
+		if want := discovery.OwnName(host, title); got != want {
+			t.Errorf("title of %s = %q, want %q (OwnName of %q)", host, got, want, title)
 		}
 	}
 }

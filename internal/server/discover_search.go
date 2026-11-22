@@ -366,8 +366,10 @@ func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverRe
 func followedFeedResult(sub rss.Subscription, icon, q string, now time.Time) searchResult {
 	name := cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url)
 	res := searchResult{Href: "/feeds/" + sub.Feed.ID, Title: name, Avatar: avatar(sub.Feed.SiteID, name, icon), Following: true}
-	if site := cmp.Or(sub.Site.Title, sub.Site.Host); site != name {
-		res.Facts = append(res.Facts, "From "+site)
+	if cmp.Or(sub.Site.Title, sub.Site.Host) != name {
+		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
+	} else if p := discovery.Platform(sub.Site.Host); p != "" {
+		res.Facts = append(res.Facts, "On "+p)
 	}
 	res.Facts = append(res.Facts, postingRate(sub.Feed.PostsPerWeek))
 	if !sub.LatestArticleAt.IsZero() {
@@ -557,8 +559,10 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 func followedFeedSuggestion(sub rss.Subscription, icon, q string, now time.Time) searchResult {
 	res := followedFeedResult(sub, icon, q, now)
 	res.Facts, res.Warning = nil, ""
-	if site := cmp.Or(sub.Site.Title, sub.Site.Host); site != res.Title {
-		res.Facts = append(res.Facts, "From "+site)
+	if cmp.Or(sub.Site.Title, sub.Site.Host) != res.Title {
+		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
+	} else if p := discovery.Platform(sub.Site.Host); p != "" {
+		res.Facts = append(res.Facts, "On "+p)
 	}
 	if !sub.LatestArticleAt.IsZero() {
 		res.Facts = append(res.Facts, "Latest "+since(sub.LatestArticleAt, now))

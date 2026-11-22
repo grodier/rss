@@ -36,7 +36,7 @@
           {{end}}
         </div>
         <h1>{{or .Name .Feed.Title .Feed.Url}}</h1>
-        <p class="profile-sub">From <a href="/sites/{{.Site.ID}}">{{or .Site.Title .Site.Host}}</a>{{if .Name}} · Feed title “{{or .Feed.Title .Feed.Url}}”{{end}}</p>
+        <p class="profile-sub">From <a href="/sites/{{.Site.ID}}">{{siteName .Site}}</a>{{if .Name}} · Feed title “{{or .Feed.Title .Feed.Url}}”{{end}}</p>
         {{with .Feed.Description}}
         <p class="profile-desc">{{.}}</p>
         {{end}}

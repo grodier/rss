@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"hash/fnv"
 	"html/template"
@@ -13,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/ui"
 )
@@ -34,6 +36,20 @@ var templateFuncs = template.FuncMap{
 	"monogram":    monogram,
 	"postingRate": postingRate,
 	"since":       func(t time.Time) string { return since(t, time.Now()) },
+	"siteName":    siteName,
+	"platform":    discovery.Platform,
+}
+
+// siteName is how a site is named wherever it's listed: its title, else its
+// key, followed for a site on a shared host by its platform ("Alice ·
+// Medium"), so a reader always sees where it is (#728). An untitled site's
+// key already says.
+func siteName(s rss.Site) string {
+	name := cmp.Or(s.Title, s.Host)
+	if p := discovery.Platform(s.Host); p != "" && name != s.Host {
+		name += " · " + p
+	}
+	return name
 }
 
 // since says how long before now t was, by whole days, for "Latest {when}":

@@ -828,8 +828,14 @@ func TestDiscoverSharedHostFeedSite(t *testing.T) {
 			if res.Site.Key != tt.wantKey || res.Site.URL != tt.wantURL {
 				t.Errorf("Site = %+v, want Key %q URL %q", res.Site, tt.wantKey, tt.wantURL)
 			}
-			if res.Site.Title != "Google for Developers - YouTube" {
-				t.Errorf("Site.Title = %q, want the page's", res.Site.Title)
+			// A key with a path names the site as it names itself (OwnName);
+			// the host's own site keeps the page's title.
+			wantTitle := "Google for Developers"
+			if tt.wantKey == "youtube.com" {
+				wantTitle = "Google for Developers - YouTube"
+			}
+			if res.Site.Title != wantTitle {
+				t.Errorf("Site.Title = %q, want %q", res.Site.Title, wantTitle)
 			}
 			assertURLs(t, res.Feeds, feedURL)
 		})

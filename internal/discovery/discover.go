@@ -128,6 +128,9 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	if err == nil && d.isAppSite(res.Site.Key) {
 		return Result{}, fmt.Errorf("%w: %s led to %s", ErrAppLink, u, res.Site.URL)
 	}
+	// A site on a shared host is named as it names itself; its platform
+	// is shown apart (Platform).
+	res.Site.Title = OwnName(res.Site.Key, res.Site.Title)
 	return res, err
 }
 

@@ -43,7 +43,7 @@
                 {{template "avatar" (avatar .Feed.SiteID (or .Title .Feed.Title .Feed.Url) (index $.Icons .Feed.SiteID))}}
                 <span class="check-row-text">
                   <span class="check-row-title">{{or .Title .Feed.Title .Feed.Url}}</span>
-                  <span class="check-row-sub">{{or .Site.Title .Site.Host}}</span>
+                  <span class="check-row-sub">{{siteName .Site}}</span>
                 </span>
               </label>
             </li>

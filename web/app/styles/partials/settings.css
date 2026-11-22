@@ -14,7 +14,11 @@
     border-radius: var(--radius-control);
   }
 
+  /* Block, so a link's padding sizes its list item as a label's does (a
+     label is the flex item itself); inline, the fill spilled over the
+     frame above and below. */
   .segmented :is(label, a) {
+    display: block;
     position: relative;
     margin: 0;
     padding: 0.4375rem 1rem;
@@ -22,6 +26,7 @@
     color: var(--text-2);
     font-size: 0.9375rem;
     font-weight: 600;
+    line-height: 1.2;
     text-decoration: none;
     cursor: pointer;
   }

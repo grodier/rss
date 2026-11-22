@@ -130,7 +130,7 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	}
 	// A site on a shared host is named as it names itself; its platform
 	// is shown apart (Platform).
-	res.Site.Title = OwnName(res.Site.Key, res.Site.Title)
+	res.Site.Title = OwnName(res.Site.Key, res.Site.Title, res.Direct)
 	return res, err
 }
 

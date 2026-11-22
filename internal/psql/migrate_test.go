@@ -143,7 +143,9 @@ func TestMigrateLookupsHomePage(t *testing.T) {
 }
 
 // 00024 trims the stored titles of sites on a shared host as
-// discovery.OwnName trims a lookup's, and leaves ordinary sites alone.
+// discovery.OwnName trims a lookup's: a title equal to one of the site's
+// feed titles as a feed's, any other as a page's. Ordinary sites are left
+// alone.
 func TestMigrateSharedHostSiteNames(t *testing.T) {
 	db := newMigrateDB(t)
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
@@ -153,34 +155,50 @@ func TestMigrateSharedHostSiteNames(t *testing.T) {
 	if _, err := provider.UpTo(t.Context(), 23); err != nil {
 		t.Fatalf("migrate to 23: %v", err)
 	}
-	sites := map[string]string{
-		"medium.com/@alice":               "Alice – Medium",
-		"medium.com/@ann":                 "Stories by Ann on Medium",
-		"mastodon.social/@bob":            "Bob (@bob@mastodon.social) - Mastodon",
-		"bsky.app/profile/cy.bsky.social": "Cy (@cy.bsky.social) — Bluesky",
-		"youtube.com/@chan":               "Channel name - YouTube",
-		"github.com/owner/repo":           "owner/repo: a tool - fast - GitHub",
-		"github.com/owner/other":          "GitHub - owner/other: a tool",
-		"github.com/owner":                "owner (Owner Name) · GitHub",
-		"medium.com/@plain":               "Plain",
-		"medium.com/@untitled":            "",
-		"example.com/@dash":               "- Medium",
-		"example.com":                     "Notes - Medium",
+	type site struct {
+		title    string
+		fromFeed bool // the site has a feed with this title
 	}
-	for host, title := range sites {
-		if _, err := db.Exec(`INSERT INTO sites (host, url, title) VALUES ($1, $2, $3)`, host, "https://"+host, title); err != nil {
+	sites := map[string]site{
+		"medium.com/@alice":               {"Alice – Medium", false},
+		"medium.com/@ann":                 {"Stories by Ann on Medium", true},
+		"medium.com/@amy":                 {"  Stories by Amy on Medium\n", false},
+		"mastodon.social/@bob":            {"Bob (@bob@mastodon.social) - Mastodon", false},
+		"mastodon.social/@jane":           {"Jane | Rust dev", true},
+		"bsky.app/profile/cy.bsky.social": {"Cy (@cy.bsky.social) — Bluesky", false},
+		"youtube.com/@chan":               {"Channel name - YouTube", false},
+		"youtube.com/channel/UCx":         {"Kurzgesagt – In a Nutshell", true},
+		"github.com/owner/repo":           {"owner/repo: a tool - fast - GitHub", false},
+		"github.com/owner/other":          {"GitHub - owner/other: a tool", false},
+		"github.com/owner":                {"owner (Owner Name) · GitHub", false},
+		"github.com/acme":                 {"acme (Acme: Tools) · GitHub", false},
+		"medium.com/@plain":               {"Plain", false},
+		"medium.com/@untitled":            {"", false},
+		"example.com/@dash":               {"- Medium", false},
+		"example.com":                     {"Notes - Medium", false},
+	}
+	for host, s := range sites {
+		var id string
+		if err := db.QueryRow(`INSERT INTO sites (host, url, title) VALUES ($1, $2, $3) RETURNING id`, host, "https://"+host, s.title).Scan(&id); err != nil {
 			t.Fatalf("insert site: %v", err)
+		}
+		feedTitle := "Another title"
+		if s.fromFeed {
+			feedTitle = s.title
+		}
+		if _, err := db.Exec(`INSERT INTO feeds (site_id, url, title) VALUES ($1, $2, $3)`, id, "https://"+host+"/feed", feedTitle); err != nil {
+			t.Fatalf("insert feed: %v", err)
 		}
 	}
 
 	mustMigrate(t, db)
-	for host, title := range sites {
+	for host, s := range sites {
 		var got string
 		if err := db.QueryRow(`SELECT title FROM sites WHERE host = $1`, host).Scan(&got); err != nil {
 			t.Fatalf("title of %s: %v", host, err)
 		}
-		if want := discovery.OwnName(host, title); got != want {
-			t.Errorf("title of %s = %q, want %q (OwnName of %q)", host, got, want, title)
+		if want := discovery.OwnName(host, s.title, s.fromFeed); got != want {
+			t.Errorf("title of %s = %q, want %q (OwnName of %q, from a feed: %v)", host, got, want, s.title, s.fromFeed)
 		}
 	}
 }

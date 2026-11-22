@@ -853,3 +853,41 @@ func lastElementChild(n *html.Node) *html.Node {
 	}
 	return nil
 }
+
+// A followed feed on a shared host names its platform in its facts, in the
+// results and the suggestions: with its site's name when that differs from
+// the feed's, else on its own.
+func TestFollowedFeedPlatform(t *testing.T) {
+	now := time.Now()
+	sub := func(feedTitle string, site rss.Site) rss.Subscription {
+		return rss.Subscription{Feed: rss.Feed{ID: "f", SiteID: site.ID, Title: feedTitle}, Site: site}
+	}
+	alice := rss.Site{ID: "a", Host: "medium.com/@alice", Title: "Alice"}
+	bob := rss.Site{ID: "b", Host: "mastodon.social/@bob", Title: "Bob"}
+	plain := rss.Site{ID: "p", Host: "plain.example", Title: "Plain"}
+	tests := []struct {
+		name string
+		sub  rss.Subscription
+		want string // the first fact
+	}{
+		{"named apart from its site", sub("Stories by Alice on Medium", alice), "From Alice · Medium"},
+		{"named like its site", sub("Bob", bob), "On mastodon.social"},
+		{"an ordinary site named like it", sub("Plain", plain), "No posts in the last 30 days"},
+	}
+	for _, tt := range tests {
+		if got := followedFeedResult(tt.sub, "", "q", now).Facts[0]; got != tt.want {
+			t.Errorf("%s: result's first fact = %q, want %q", tt.name, got, tt.want)
+		}
+		facts := followedFeedSuggestion(tt.sub, "", "q", now).Facts
+		want := tt.want
+		if tt.sub.Site.ID == "p" {
+			if len(facts) != 0 {
+				t.Errorf("%s: suggestion's facts = %q, want none", tt.name, facts)
+			}
+			continue
+		}
+		if len(facts) == 0 || facts[0] != want {
+			t.Errorf("%s: suggestion's facts = %q, want %q first", tt.name, facts, want)
+		}
+	}
+}

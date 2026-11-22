@@ -9,8 +9,7 @@ import (
 // repeat its key, removed by OwnName.
 var (
 	// platformSuffix is the last " - ", " – ", " — " or " | " and what
-	// follows it: "Alice – Medium", "Channel - YouTube". psql's ownName
-	// matches the same suffix in SQL, for search.
+	// follows it: "Alice – Medium", "Channel - YouTube".
 	platformSuffix = regexp.MustCompile(`\s+[-–—|]\s+[^-–—|]*$`)
 	// handleSuffix is a trailing "(@handle)": "Bob (@bob@mastodon.social)".
 	handleSuffix = regexp.MustCompile(`\s*\(@[^()]*\)$`)
@@ -19,13 +18,16 @@ var (
 	mediumFeed = regexp.MustCompile(`^Stories by (.+) on Medium$`)
 )
 
-// OwnName is a site's title as the site names itself (#728): for a key with
-// a path, without the platform's suffix, a trailing handle, Medium's
-// "Stories by … on Medium" or, on GitHub, "GitHub - " and the description
-// after "owner/repo:", so "Alice – Medium" -> "Alice". The platform is shown
-// apart from the name (Platform). A title that would end up empty, and any
-// title of a key without a path, is returned as it is.
-func OwnName(key, title string) string {
+// OwnName is a site's title as the site names itself (#728), for a key with
+// a path; the platform is shown apart from the name (Platform). A title from
+// the platform's page (fromFeed false) loses the platform's suffix, a
+// trailing handle and, on GitHub, "GitHub - " and a repository's
+// description after "owner/repo:", so "Alice – Medium" -> "Alice". A title
+// from a feed is the feed's own name, so only Medium's "Stories by … on
+// Medium" goes: "Kurzgesagt – In a Nutshell" keeps its dash. A title that
+// would end up empty, and any title of a key without a path, is returned
+// as it is.
+func OwnName(key, title string, fromFeed bool) string {
 	if !hasPath(key) {
 		return title
 	}
@@ -33,15 +35,23 @@ func OwnName(key, title string) string {
 	if m := mediumFeed.FindStringSubmatch(name); m != nil {
 		name = m[1]
 	}
+	if fromFeed {
+		if name == "" {
+			return title
+		}
+		return name
+	}
 	if KeyHost(key) == "github.com" {
 		// "GitHub - owner/repo: description", or "owner · GitHub".
 		name = strings.TrimSuffix(strings.TrimPrefix(name, "GitHub - "), " · GitHub")
 	}
 	name = platformSuffix.ReplaceAllString(name, "")
 	name = handleSuffix.ReplaceAllString(name, "")
-	if KeyHost(key) == "github.com" {
-		if owner, _, ok := strings.Cut(name, ": "); ok {
-			name = owner
+	if strings.Count(key, "/") == 2 && KeyHost(key) == "github.com" {
+		// A repository's "owner/repo: description"; an owner's page has
+		// no description to cut.
+		if repo, _, ok := strings.Cut(name, ": "); ok {
+			name = repo
 		}
 	}
 	if name = strings.TrimSpace(name); name == "" {

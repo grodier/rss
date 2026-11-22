@@ -713,7 +713,7 @@ func TestFeedsHandler(t *testing.T) {
 		))
 		assertContains(t, body,
 			`<p class="feed-site">From <a href="/sites/`+siteA+`">Alice · Medium</a></p>`,
-			`<p class="feed-site">On <a href="/sites/`+siteB+`">mastodon.social</a></p>`,
+			`<p class="feed-site">On mastodon.social</p>`,
 		)
 	})
 

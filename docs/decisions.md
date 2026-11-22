@@ -372,9 +372,13 @@ Planned in #50 (issues #51–#67).
   The rare site that uses `/@name` for something else gets one site per such path, which is harmless.
   A page and its feed that disagree on a key with a path on the same host take the feed's (a YouTube `/@handle` page's feed links to its `/channel/ID`), so a channel is one site whichever address was looked up.
   A path-scoped site doesn't try the common feed paths, which would find the platform's own feed.
+- **A site on a shared host goes by its own name, and its platform is shown wherever it's named** (#728, option 1 approved by the owner over the page's own title and over the name with its key).
+  The name is the page's title without the platform's suffix, a trailing handle, Medium's "Stories by … on Medium" or GitHub's affixes (`discovery.OwnName`), stored that way; the platform follows it as "Alice · Medium", or "Bob · mastodon.social" on a host the rules don't name, and "Read on" names the platform.
+  The platform comes from the site key, never from the title, so a title in an unexpected format can't hide it; the owner's requirement is that a reader who follows such a site always sees its platform, and a picture alone never counts.
+  The page's own title was rejected as inconsistent between platforms and silent when a title lacks the suffix; the key was rejected as long and technical on phones.
 - **Searching a platform's name groups its profiles; searching a person's name finds them** (#739, option 1 chosen by the owner over a per-host cap and over matching path-scoped sites by name only).
   A site with a path in its key is grouped with the others of its host into one row, counting them and linking to the results narrowed to that host, unless its own name matches the query at its start or a word's start, or it's the pasted address.
-  Its own name is its title without the platform's suffix ("Alice – Medium" → "Alice"), since sites on a shared host must keep showing their platform (see #728) and "medium" mustn't count as a match of every Medium author's name.
+  Its own name is its title, which since #728 is stored without the platform ("Alice – Medium" → "Alice"), so "medium" doesn't count as a match of every Medium author's name; #739 trimmed the suffix at query time until then.
   Grouping, not hiding: the reader learns the profiles exist and how to list them; matching by name only was rejected, as a profile whose handle isn't in its title couldn't be found by its handle.
   There are no groups of one, and the reader's followed feeds are never grouped.
 - **A group of sites on a shared host is a search row like any other** (#739, approved by the owner): the host as its name, its host's own site's avatar, "{N} sites on {host} match" as its fact, no Follow, ranked as a match outside the title, opening the results narrowed to that host.

@@ -37,7 +37,7 @@ Inside the `www` process run eleven long-lived components, all stopped by one co
 - The **refresh runner** (`internal/refresh`) claims due feeds and hands each to `ingest.Refresher`, which fetches the feed and saves the outcome.
 - The **lookup runner** (`internal/lookup`) claims pending lookups, runs `discovery.Discoverer` to find the site's feeds, and saves them with `psql.DiscoveryRepository`.
 - The **import runner** (`internal/importer`) claims the feeds of uploaded OPML files one at a time, finds or discovers each like the lookup runner, subscribes the import's user and adds the row's tags.
-- The **site icon runner** (`internal/siteicon`) checks sites' home pages for a usable icon and stores it in `site_icons`.
+- The **site icon runner** (`internal/siteicon`) checks sites' home pages for a usable icon, or on a shared host the author's own picture, and stores it in `site_icons`.
 - The **enrich runner** (`internal/enrich`) fetches the web pages of new articles missing an image, title or excerpt, and stores their Open Graph values in the article's `page_*` columns.
 - The **mail runner** (`internal/mail`, `mail.Runner`) sends the emails the server queues in the `emails` outbox.
 - The **request metrics** (`metrics.Requests`) count the requests the server reports in memory and write them to `request_metrics` once a minute.
@@ -88,7 +88,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
-| `internal/siteicon` | Site icon workers | `discovery`, `fetch`, `rss` |
+| `internal/siteicon` | Site icon workers | `discovery`, `feedparse`, `fetch`, `rss` |
 | `internal/enrich` | Article enrichment workers | `discovery`, `fetch`, `ingest`, `rss` |
 | `internal/ingest` | Fetch a feed, turn items into articles, schedule the next fetch | `fetch`, `feedparse`, `rss` |
 | `internal/discovery` | Normalize user input, find a site's feeds, read pages' tags | `fetch`, `feedparse`, `textcut` |

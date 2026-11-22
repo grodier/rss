@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/feedparse"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -39,7 +40,9 @@ const (
 	MaxBytes = 256 << 10
 	// MinSize is the smallest an icon's shorter side may be.
 	MinSize = 32
-	// maxCandidates is how many icons a check downloads at most.
+	// maxCandidates is how many declared or fallback icons a check
+	// downloads at most; a site on a shared host may try two pictures of
+	// its own before them (pictures).
 	maxCandidates = 4
 
 	// RecheckInterval is how long after a check that reached the site its
@@ -230,7 +233,9 @@ func (r *Runner) observe(outcome string, start time.Time) {
 }
 
 // find fetches site's home page and downloads the icons it declares, in
-// order of preference, until one is usable.
+// order of preference, until one is usable. A site on a shared host (a key
+// with a path) tries its own picture first (pictures), since the icons its
+// page declares are the platform's (#744).
 func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) result {
 	page, err := r.Fetcher.Get(ctx, site.URL, nil)
 	if err != nil {
@@ -240,13 +245,17 @@ func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) 
 		return result{outcome: outcomeFailed, err: fmt.Errorf("home page: status %d", page.StatusCode)}
 	}
 
-	var declared []discovery.Icon
+	var info discovery.PageInfo
 	if isHTML(page) {
-		declared = discovery.ParsePage(page.URL, page.Body).Icons
+		info = discovery.ParsePage(page.URL, page.Body)
+	}
+	var own []string // the site's own pictures, tried first
+	if strings.Contains(site.Host, "/") {
+		own = r.pictures(ctx, info)
 	}
 
 	unsure := false // a candidate failed in a way that may not last
-	for _, u := range candidates(page.URL, declared) {
+	for i, u := range dedupe(append(own, candidates(page.URL, info.Icons)...)) {
 		var header http.Header
 		if current.SourceURL != "" && u == current.SourceURL {
 			header = validators(current)
@@ -266,7 +275,11 @@ func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) 
 			unsure = unsure || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 			continue
 		}
-		if icon, ok := usable(resp); ok {
+		icon, ok := usable(resp)
+		if ok && i < len(own) && !squarish(icon) {
+			ok = false // a banner or a card, not a picture of the author
+		}
+		if ok {
 			return result{outcome: outcomeSaved, icon: icon}
 		}
 	}
@@ -274,6 +287,35 @@ func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) 
 		return result{outcome: outcomeFailed, err: errors.New("no usable icon, and some candidates could not be fetched")}
 	}
 	return result{outcome: outcomeRemoved}
+}
+
+// pictures returns the URLs of a site's own picture, best first, from its
+// page (info): the page's og:image, then the image of the first feed it
+// declares, fetched and parsed for it. On a platform these are the author's
+// or channel's, where the declared icons are the platform's. A feed that
+// can't be fetched or parsed adds nothing.
+func (r *Runner) pictures(ctx context.Context, info discovery.PageInfo) []string {
+	var urls []string
+	if info.Image != "" {
+		urls = append(urls, info.Image)
+	}
+	if len(info.Feeds) > 0 {
+		resp, err := r.Fetcher.Get(ctx, info.Feeds[0].URL.String(), nil)
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+			if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil && f.Image != "" {
+				urls = append(urls, f.Image)
+			}
+		}
+	}
+	return urls
+}
+
+// squarish reports whether an icon is at most a third longer than it is
+// wide, or wide than it is long: an author's picture, not a banner or a
+// link card, which usable would otherwise keep.
+func squarish(icon rss.SiteIcon) bool {
+	short, long := min(icon.Width, icon.Height), max(icon.Width, icon.Height)
+	return 3*long <= 4*short
 }
 
 // isHTML reports whether a response is an HTML page, by its Content-Type, or

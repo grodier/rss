@@ -32,6 +32,7 @@ type Meta struct {
 	Title       string // plain text, whitespace-trimmed and collapsed; may be ""
 	Description string // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
 	SiteURL     string // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
+	Image       string // absolute http(s) URL of the feed's own image: RSS channel <image><url>, Atom <logo> (else <icon>), JSON "icon"; "" if none
 }
 
 // Feed is a parsed feed: its metadata and its items in document order.
@@ -218,9 +219,23 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 			Title:       title,
 			Description: desc,
 			SiteURL:     resolveHTTP(feedURL, link),
+			Image:       resolveHTTP(feedURL, feedImage(f)),
 		},
 		Items: items,
 	}, f, indexes, nil
+}
+
+// feedImage returns the URL of the image a feed declares for itself,
+// unresolved: gofeed's Image (RSS <image><url>, Atom <logo>, JSON "icon"),
+// else an Atom <icon>.
+func feedImage(f *gofeed.Feed) string {
+	if f.Image != nil && strings.TrimSpace(f.Image.URL) != "" {
+		return strings.TrimSpace(f.Image.URL)
+	}
+	if a, ok := f.OriginalFeed().(*atom.Feed); ok {
+		return strings.TrimSpace(a.Icon)
+	}
+	return ""
 }
 
 // itemImage returns the URL of the image an item declares, unresolved, from

@@ -203,8 +203,9 @@ func TestMigrateSharedHostSiteNames(t *testing.T) {
 	}
 }
 
-// 00025 makes the icons of sites on a shared host due now, and leaves
-// ordinary sites' schedules alone.
+// 00025 makes the icons of sites on a shared host due within minutes (not
+// at once, so the old version's workers don't take the check during the
+// deploy), and leaves ordinary sites' schedules alone.
 func TestMigrateSharedHostIconsRecheck(t *testing.T) {
 	db := newMigrateDB(t)
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
@@ -223,11 +224,11 @@ func TestMigrateSharedHostIconsRecheck(t *testing.T) {
 	mustMigrate(t, db)
 	for host, wantDue := range map[string]bool{"medium.com/@alice": true, "example.com": false} {
 		var due bool
-		if err := db.QueryRow(`SELECT icon_next_check_at <= now() FROM sites WHERE host = $1`, host).Scan(&due); err != nil {
+		if err := db.QueryRow(`SELECT icon_next_check_at BETWEEN now() + interval '5 minutes' AND now() + interval '10 minutes' FROM sites WHERE host = $1`, host).Scan(&due); err != nil {
 			t.Fatalf("%s: %v", host, err)
 		}
 		if due != wantDue {
-			t.Errorf("%s due = %v, want %v", host, due, wantDue)
+			t.Errorf("%s due in 5 to 10 minutes = %v, want %v", host, due, wantDue)
 		}
 	}
 }

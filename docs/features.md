@@ -558,7 +558,8 @@ The claim moves `icon_next_check_at` 5 minutes ahead as a lease.
 
 `Runner.check` fetches the site's home page; an error or a non-2xx keeps the icon and retries in a day.
 Otherwise it builds up to four candidates (`candidates`): the icons the page declares, apple-touch first and largest first, skipping SVG and those declaring a size under 32, then `/apple-touch-icon.png` and `/favicon.ico`.
-A site on a shared host (a key with a path) tries its own picture before them, since the icons its page declares are the platform's (#744): the page's `og:image`, then the image of the first feed the page declares, fetched and parsed for it (`pictures`, `feedparse`'s `Image`); either must also be nearly square (`squarish`), so a banner or a link card falls through.
+A site on a shared host (a key with a path) tries its own picture before them, since the icons its page declares are the platform's (#744): the page's `og:image` (else `twitter:image`), then the picture of the first feed the page declares, fetched and parsed for it (`pictures`, `feedparse`'s `Image`: an Atom feed's square icon before its logo); either must also be nearly square (`squarish`), so a banner or a link card falls through (`ownPicture`).
+This stage gets half the check's time, so the declared icons keep theirs; if the feed or a picture failed in a way that may not last and the site already has an icon, the check keeps it and retries in a day, rather than replacing the author's picture with the platform's.
 Each is downloaded with a second `fetch.Client` capped at 256 KiB, the current icon conditionally (a 304 keeps it).
 `usable` recognizes PNG, JPEG, GIF and ICO from the bytes and reads their size; the first icon at least 32 px on its shorter side and at most twice as long as wide is stored (`SaveIcon`, with its SHA-256 `hash`).
 If none is usable the icon is removed, unless a candidate failed with a network error, a 429 or a 5xx: then it's kept and retried in a day.

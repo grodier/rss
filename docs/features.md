@@ -294,6 +294,9 @@ Gone feeds can't be subscribed to but can be unsubscribed from.
 My feeds (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest article date, posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
 Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
 Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `feeds.css`), and has one control, an Edit pencil.
+Sort by Recently updated (`?sort=updated`) lists the feeds whose latest article is newest first, without site headers, so every row whose name differs from its site's says "From <site>"; feeds without articles come last, and Edit subscription returns to the sort.
+The search (`?q=`) matches the row's name, the feed's title, and the site's title and host, ignoring case: `feedsHandler` renders every row with that text lowercased in `data-filter` and hides the rows (and the sections left empty) that don't contain the query, so the page works without JavaScript, and `feeds-filter.ts` toggles the same rows as the reader types, with nothing fetched.
+A group keeps its header while any of its feeds match, and the double rule that ends it goes on the next shown section (`data-after-group`, set by both).
 Site, feed and search pages mark subscribed feeds with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
@@ -322,12 +325,12 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Start at:**
 
-1. `internal/server/feeds.go`: subscribe and unsubscribe, `feedsHandler`, and the subscription edit handlers.
+1. `internal/server/feeds.go`: subscribe and unsubscribe, `feedsHandler` (its sort and search), and the subscription edit handlers; `web/app/features/feeds-filter.ts`.
 2. `internal/psql/subscriptions.go`.
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `settings_test.go`, `import_test.go`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
+**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

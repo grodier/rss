@@ -163,9 +163,29 @@
 
   /* Only sites with two or more subscriptions get a header, so a group
      ends in the nameplate's thin rule doubled: the single-feed rows after
-     it don't read as part of it. */
-  .my-feeds-group + .my-feeds-site:not(.my-feeds-group) {
+     it don't read as part of it. The server marks the section after a
+     group, and feeds-filter.ts moves the mark as the search hides
+     sections. */
+  .my-feeds-site[data-after-group] {
     border-block-start: 3px double var(--border-strong);
+  }
+
+  /* My feeds' search hides what doesn't match (feeds-filter.ts, and the
+     server for a ?q= without JavaScript); a row's grid would show it. */
+  .my-feed[hidden] {
+    display: none;
+  }
+
+  /* My feeds' sort under its search: its label, then the choices as a
+     segmented control (settings.css). */
+  .feeds-sort {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0 1rem 0.75rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   /* An icon-only control at the end of a row, like My feeds' Edit. */

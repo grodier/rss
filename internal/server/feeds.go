@@ -44,6 +44,11 @@ type siteSubscriptions struct {
 	Grouped bool
 	// Hidden is set when none of Subs matches the search.
 	Hidden bool
+	// AfterGroup puts a double rule above a section that isn't a group when
+	// the nearest shown section above it is, so a group's end is marked
+	// whichever sections the search hides. feeds-filter.ts sets it the same
+	// way as the reader types.
+	AfterGroup bool
 }
 
 // myFeed is one row of My feeds.
@@ -145,6 +150,15 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 				matches++
 			}
 		}
+	}
+
+	afterGroup := false
+	for i := range sites {
+		if sites[i].Hidden {
+			continue
+		}
+		sites[i].AfterGroup = afterGroup && !sites[i].Grouped
+		afterGroup = sites[i].Grouped
 	}
 
 	siteIDs := make([]string, len(sites))

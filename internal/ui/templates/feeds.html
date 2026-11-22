@@ -24,7 +24,7 @@
       {{end}}
 
       {{if .Sites}}
-      <form class="page-search my-feeds-search" role="search" method="get" action="/feeds" data-feeds-filter>
+      <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
         <label for="feeds-q" class="visually-hidden">Search my feeds</label>
         <div class="search-row">
           <div class="search-field">
@@ -49,7 +49,7 @@
       {{$site := or .Site.Title .Site.Host}}
       {{$siteID := .Site.ID}}
       {{$grouped := .Grouped}}
-      <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}"{{if .Hidden}} hidden{{end}}>
+      <section class="my-feeds-site{{if $grouped}} my-feeds-group{{end}}"{{if $grouped}} data-grouped{{end}}{{if .AfterGroup}} data-after-group{{end}}{{if .Hidden}} hidden{{end}}>
         {{if $grouped}}
         <div class="list-head">
           <h2><a href="/sites/{{.Site.ID}}">{{$site}}</a></h2>

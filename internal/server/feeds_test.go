@@ -939,12 +939,40 @@ func TestFeedsHandlerSortAndSearch(t *testing.T) {
 
 	t.Run("a group keeps its header when one of its feeds matches", func(t *testing.T) {
 		_, body := getFeedsURL(t, subs(), "/feeds?q=notes")
-		if !strings.Contains(body, `<section class="my-feeds-site my-feeds-group">`) ||
+		if !strings.Contains(body, `<section class="my-feeds-site my-feeds-group" data-grouped>`) ||
 			!strings.Contains(body, `<h2><a href="/sites/`+siteA+`">Alpha</a></h2>`) {
 			t.Errorf("site A should keep its header: %s", body)
 		}
 		if n := strings.Count(body, `<section class="my-feeds-site" hidden>`); n != 2 {
 			t.Errorf("got %d hidden sections, want 2: %s", n, body)
+		}
+	})
+
+	// A group ends in a double rule above the next shown section that isn't
+	// a group, whichever sections the search hides between them.
+	t.Run("the rule after a group goes on the next shown section", func(t *testing.T) {
+		// Site A's group, B's feed, then C's.
+		section := func(body, id string) string {
+			i := strings.Index(body, titleOf+id+`"`)
+			s := strings.LastIndex(body[:i], "<section ")
+			return body[s : s+strings.Index(body[s:], ">")+1]
+		}
+		tests := []struct {
+			name, url string
+			want      map[string]bool // whether each shown row's section has the rule
+		}{
+			{"no search: the section right after the group", "/feeds", map[string]bool{idOld: false, idNone: true, idMid: false}},
+			{"the next section hidden: the one after it", "/feeds?q=y", map[string]bool{idNew: false, idMid: true}},
+			{"the group hidden: none", "/feeds?q=gamma", map[string]bool{idMid: false}},
+			{"recently updated: none", "/feeds?sort=updated", map[string]bool{idOld: false, idNone: false, idMid: false}},
+		}
+		for _, tt := range tests {
+			_, body := getFeedsURL(t, subs(), tt.url)
+			for id, want := range tt.want {
+				if got := strings.Contains(section(body, id), "data-after-group"); got != want {
+					t.Errorf("%s: section of %s has the rule = %v, want %v: %s", tt.name, id, got, want, section(body, id))
+				}
+			}
 		}
 	})
 

@@ -3,8 +3,9 @@ import { isolate, liveRegion } from "../../shared/test/setup";
 
 isolate();
 
-// The markup feedsHandler renders for /feeds?sort=updated: a group of two
-// feeds and a feed of its own, every row's data-filter lowercased.
+// The markup feedsHandler renders: a group of two feeds, marking the
+// section after it, then two feeds of their own, every row's data-filter
+// lowercased.
 beforeEach(async () => {
   vi.useFakeTimers();
   history.replaceState(null, "", "/feeds?sort=updated");
@@ -14,11 +15,14 @@ beforeEach(async () => {
       <input type="hidden" name="sort" value="updated">
       <p><a href="/feeds" data-sort-link>Name</a> <a href="/feeds?sort=updated" data-sort-link>Recently updated</a></p>
     </form>
-    <section id="alpha">
+    <section id="alpha" data-grouped>
       <ul>
         <li id="notes" data-filter="alpha notes\nalpha notes\nalpha\nalpha.example.com">Alpha Notes</li>
         <li id="mine" data-filter="my alpha\nalpha posts\nalpha\nalpha.example.com">My Alpha</li>
       </ul>
+    </section>
+    <section id="beta" data-after-group>
+      <ul><li id="beta-feed" data-filter="beta\nbeta\nbeta\nbeta.example.com">Beta</li></ul>
     </section>
     <section id="gamma">
       <ul><li id="weekly" data-filter="gamma weekly\ngamma weekly\n\ngamma.example.com">Gamma Weekly</li></ul>
@@ -101,6 +105,16 @@ describe("feeds-filter", () => {
     type("zzz");
     await vi.advanceTimersByTimeAsync(600);
     expect(liveRegion()).toBe("No feeds");
+  });
+
+  it("puts the rule after a group on the next shown section", () => {
+    const ruled = () => ["beta", "gamma"].filter((id) => document.getElementById(id)!.hasAttribute("data-after-group"));
+    type("weekly");
+    expect(ruled()).toEqual([]); // the group is hidden
+    type("y"); // My Alpha and Gamma Weekly, not Beta
+    expect(ruled()).toEqual(["gamma"]);
+    type("");
+    expect(ruled()).toEqual(["beta"]);
   });
 
   it("filters on Enter without submitting", () => {

@@ -6,10 +6,12 @@ import { announce } from "../../shared/lib/announce";
 // show [data-feeds-none] when nothing matches. The server renders every row
 // and hides the same ones for a ?q= (feedsHandler, which writes each row's
 // lowercased data-filter), so this only toggles hidden and nothing is
-// fetched. The URL, the sort links and the no-match message's Discover link
-// follow the query, so a reload, Back or a change of sort keeps it. How many
-// feeds match is announced once typing pauses; focus never moves. Enter
-// filters as typing does, without a reload, and closes a phone's keyboard.
+// fetched. It moves the double rule that ends a site's group
+// (data-after-group) to the next shown section. The URL, the sort links and
+// the no-match message's Discover link follow the query, so a reload, Back or
+// a change of sort keeps it. How many feeds match is announced once typing
+// pauses; focus never moves. Enter filters as typing does, without a reload,
+// and closes a phone's keyboard.
 export function init(): void {
   const form = document.querySelector<HTMLFormElement>("form[data-feeds-filter]");
   const input = form && form.elements.namedItem("q");
@@ -34,8 +36,14 @@ export function init(): void {
       row.hidden = !(row.dataset.filter ?? "").includes(needle);
       if (!row.hidden) matches++;
     }
+    // A group ends in a double rule above the next shown section that
+    // isn't a group (data-after-group), as feedsHandler marks it.
+    let afterGroup = false;
     for (const section of sections) {
       section.hidden = !section.querySelector("li[data-filter]:not([hidden])");
+      const grouped = section.hasAttribute("data-grouped");
+      section.toggleAttribute("data-after-group", !section.hidden && afterGroup && !grouped);
+      if (!section.hidden) afterGroup = grouped;
     }
     if (none) {
       none.hidden = matches > 0;

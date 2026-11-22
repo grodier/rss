@@ -296,7 +296,7 @@ Only a site with two or more subscriptions gets a header; a single subscription 
 Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `feeds.css`), and has one control, an Edit pencil.
 Sort by Recently updated (`?sort=updated`) lists the feeds whose latest article is newest first, without site headers, so every row whose name differs from its site's says "From <site>"; feeds without articles come last, and Edit subscription returns to the sort.
 The search (`?q=`) matches the row's name, the feed's title, and the site's title and host, ignoring case: `feedsHandler` renders every row with that text lowercased in `data-filter` and hides the rows (and the sections left empty) that don't contain the query, so the page works without JavaScript, and `feeds-filter.ts` toggles the same rows as the reader types, with nothing fetched.
-A group keeps its header while any of its feeds match.
+A group keeps its header while any of its feeds match, and the double rule that ends it goes on the next shown section (`data-after-group`, set by both).
 Site, feed and search pages mark subscribed feeds with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 

@@ -1,11 +1,13 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -32,28 +34,117 @@ const (
 // page warn that a feed is failing, so a single failure doesn't raise an alarm.
 const failingThreshold = 3
 
-// siteSubscriptions is one site's feeds on the user's feeds page.
+// siteSubscriptions is one site's feeds on the user's feeds page, or, sorted
+// by Recently updated, one feed.
 type siteSubscriptions struct {
 	Site rss.Site
-	Subs []rss.Subscription
+	Subs []myFeed
+	// Grouped gives the site a header over its feeds: it has two or more
+	// subscriptions, whether or not they all match the search.
+	Grouped bool
+	// Hidden is set when none of Subs matches the search.
+	Hidden bool
 }
 
+// myFeed is one row of My feeds.
+type myFeed struct {
+	rss.Subscription
+	// Filter is what the search matches, lowercased: the row's name, the
+	// feed's title, and the site's title and host, a line each.
+	// feeds-filter.ts matches the same text as the reader types.
+	Filter string
+	// Hidden is set when the row doesn't match the search. Every row is
+	// rendered, hidden or not, so the search can change without a reload.
+	Hidden bool
+}
+
+// feedsSortUpdated is My feeds' sort=updated: the feeds whose latest article
+// is newest first, ungrouped. Without it, sites are listed by name.
+const feedsSortUpdated = "updated"
+
+// feedsSearchMaxRunes caps My feeds' search query; a longer one is cut, not
+// rejected.
+const feedsSearchMaxRunes = 200
+
+// feedsURL returns My feeds' URL for the sort and the query q, leaving out
+// whichever is empty.
+func feedsURL(sort, q string) string {
+	v := url.Values{}
+	if sort != "" {
+		v.Set("sort", sort)
+	}
+	if q != "" {
+		v.Set("q", q)
+	}
+	if len(v) == 0 {
+		return "/feeds"
+	}
+	return "/feeds?" + v.Encode()
+}
+
+// myFeedFilter is the text My feeds' search matches for sub (myFeed.Filter).
+func myFeedFilter(sub rss.Subscription) string {
+	name := cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url)
+	return strings.ToLower(strings.Join([]string{name, sub.Feed.Title, sub.Site.Title, sub.Site.Host}, "\n"))
+}
+
+// feedsHandler shows My feeds: the user's subscriptions grouped by site, or,
+// with sort=updated, the feeds whose latest article is newest first. A
+// search q hides the rows that don't match their name, feed title, site
+// title or host.
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
+	sort := r.URL.Query().Get("sort")
+	if sort != feedsSortUpdated {
+		sort = ""
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if runes := []rune(q); len(runes) > feedsSearchMaxRunes {
+		q = strings.TrimSpace(string(runes[:feedsSearchMaxRunes]))
+	}
+
 	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	// subs is ordered by site, so a site's feeds are consecutive.
 	var sites []siteSubscriptions
-	for _, sub := range subs {
-		if n := len(sites); n > 0 && sites[n-1].Site.ID == sub.Site.ID {
-			sites[n-1].Subs = append(sites[n-1].Subs, sub)
-			continue
+	if sort == feedsSortUpdated {
+		// Newest latest article first, feeds without articles last; ties
+		// keep ListByUser's order, by site and name.
+		slices.SortStableFunc(subs, func(a, b rss.Subscription) int {
+			return b.LatestArticleAt.Compare(a.LatestArticleAt)
+		})
+		for _, sub := range subs {
+			sites = append(sites, siteSubscriptions{Site: sub.Site, Subs: []myFeed{{Subscription: sub}}})
 		}
-		sites = append(sites, siteSubscriptions{Site: sub.Site, Subs: []rss.Subscription{sub}})
+	} else {
+		// subs is ordered by site, so a site's feeds are consecutive.
+		for _, sub := range subs {
+			if n := len(sites); n > 0 && sites[n-1].Site.ID == sub.Site.ID {
+				sites[n-1].Subs = append(sites[n-1].Subs, myFeed{Subscription: sub})
+				sites[n-1].Grouped = true
+				continue
+			}
+			sites = append(sites, siteSubscriptions{Site: sub.Site, Subs: []myFeed{{Subscription: sub}}})
+		}
+	}
+
+	needle := strings.ToLower(q)
+	matches := 0
+	for i := range sites {
+		site := &sites[i]
+		site.Hidden = true
+		for j := range site.Subs {
+			row := &site.Subs[j]
+			row.Filter = myFeedFilter(row.Subscription)
+			row.Hidden = !strings.Contains(row.Filter, needle)
+			if !row.Hidden {
+				site.Hidden = false
+				matches++
+			}
+		}
 	}
 
 	siteIDs := make([]string, len(sites))
@@ -67,12 +158,29 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		Icons            map[string]string
 		Flash            string
 		FailingThreshold int
+		Sort             string
+		Q                string
+		// Total is how many feeds the user follows.
+		Total int
+		// Matches is how many rows match Q (all of them without one).
+		Matches int
+		// ByName and ByUpdated are the sort links, keeping Q.
+		ByName, ByUpdated string
+		// ReturnTo brings Edit subscription back to this sort.
+		ReturnTo string
 	}{
 		Nav:              s.nav(r, "feeds"),
 		Sites:            sites,
 		Icons:            s.pageIcons(r, siteIDs),
 		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
 		FailingThreshold: failingThreshold,
+		Sort:             sort,
+		Q:                q,
+		Total:            len(subs),
+		Matches:          matches,
+		ByName:           feedsURL("", q),
+		ByUpdated:        feedsURL(feedsSortUpdated, q),
+		ReturnTo:         feedsURL(sort, ""),
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {

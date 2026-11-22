@@ -168,6 +168,39 @@
     border-block-start: 3px double var(--border-strong);
   }
 
+  /* My feeds' search hides what doesn't match (feeds-filter.ts, and the
+     server for a ?q= without JavaScript); a row's grid would show it. */
+  .my-feed[hidden] {
+    display: none;
+  }
+
+  /* The sort under My feeds' search: two quiet links, the current one in
+     the text color and bold, like a selected tab without the tab. */
+  .sort-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+    margin-block-start: 0.625rem;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  .sort-links a {
+    color: var(--text-2);
+    text-decoration: none;
+  }
+
+  .sort-links a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  .sort-links a[aria-current] {
+    color: var(--text);
+    font-weight: 650;
+  }
+
   /* An icon-only control at the end of a row, like My feeds' Edit. */
   .row-icon-btn {
     display: inline-flex;

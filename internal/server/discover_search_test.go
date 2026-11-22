@@ -280,7 +280,7 @@ func searchRowHref(r *html.Node) string {
 func checkGroupRow(t *testing.T, doc *html.Node) {
 	t.Helper()
 	r := searchRowByTitle(t, doc, "bsky.app")
-	if got, want := searchRowFacts(r), "214 more sites on bsky.app match"; got != want {
+	if got, want := searchRowFacts(r), "214 sites on bsky.app match"; got != want {
 		t.Errorf("group facts = %q, want %q", got, want)
 	}
 	if got, want := searchRowHref(r), "/discover?host=bsky.app&q=bsky&scope=feeds"; got != want {
@@ -524,7 +524,7 @@ func TestDiscoverSearchResults(t *testing.T) {
 		doc, _, _ := get(t, blueskyFixture(now), "bsky")
 		checkGroupRow(t, doc)
 		_, body, _ := get(t, blueskyFixture(now), "bsky&scope=feeds")
-		if !strings.Contains(body, "214 more sites on bsky.app match") {
+		if !strings.Contains(body, "214 sites on bsky.app match") {
 			t.Error("the Feeds tab has no group row")
 		}
 	})
@@ -555,6 +555,27 @@ func TestDiscoverSearchResults(t *testing.T) {
 		}
 		if f.limits["sites"] != searchTabLimit+1 {
 			t.Errorf("sites limit = %d, want %d", f.limits["sites"], searchTabLimit+1)
+		}
+	})
+
+	t.Run("narrowed to a shared host with more than it lists", func(t *testing.T) {
+		f := blueskyFixture(now)
+		f.subs = nil
+		var many []rss.SiteWithFeeds
+		for i := range searchTabLimit + 1 {
+			id := fmt.Sprintf("p%d", i)
+			many = append(many, rss.SiteWithFeeds{Site: rss.Site{ID: id, Host: "bsky.app/profile/" + id, Title: "P" + id}, Feeds: []rss.Feed{{ID: id + "-feed"}}})
+		}
+		f.hostSites["bsky.app"] = many
+		doc, body, _ := get(t, f, "bsky&scope=feeds&host=bsky.app")
+		if n := len(searchRows(doc)); n != searchTabLimit {
+			t.Errorf("listed %d rows, want %d", n, searchTabLimit)
+		}
+		if !strings.Contains(body, "Showing the first 50. Add to your search to narrow it.") {
+			t.Error("no line saying the list is cut")
+		}
+		if _, body, _ := get(t, blueskyFixture(now), "bsky&scope=feeds&host=bsky.app"); strings.Contains(body, "Showing the first") {
+			t.Error("the cut line shows for a list that isn't cut")
 		}
 	})
 

@@ -4,7 +4,8 @@
      navigation, links with aria-current, as the timeline tabs and a
      section's tabs are; timeline-tabs.css draws them. Narrowed to the
      sites on a shared host (a group row's link), there are no tabs but a
-     line naming the host, with a link back to all the results. Then a pasted
+     line naming the host, with a link back to all the results, and a line
+     after its rows when it has more than it shows. Then a pasted
      address's Look up row, the current tab's rows, Top's "More in" line,
      and the no-results line. */}}
 {{define "search-results"}}
@@ -24,6 +25,9 @@
   {{if ne $r.Scope "saved"}}{{template "search-lookup" $r}}{{end}}
   {{range $r.Rows}}{{template "search-result" .}}{{end}}
 </ul>
+{{end}}
+{{if $r.HostOver}}
+<p class="search-more">Showing the first {{len $r.Rows}}. Add to your search to narrow it.</p>
 {{end}}
 {{with $r.More}}
 <p class="search-more">More in {{range $i, $t := .}}{{if $i}} · {{end}}<a href="{{$t.Href}}">{{$t.Name}} ({{$t.CountText}})</a>{{end}}</p>

@@ -50,7 +50,10 @@ func matchOrder(name string, n int) string {
 // ownName is the SQL for a site's own name, for grouping (Search): its
 // title without the platform's suffix, the last " - ", " – ", " — " or
 // " | " and what follows it ("Alice – Medium" -> "Alice"), since a profile
-// on a platform is often titled after both. Untitled, it's "".
+// on a platform is often titled after both. Any last segment goes, not only
+// a platform's name: a path-scoped site's title comes from its platform's
+// page, whose last segment is the platform, and a list of platforms would
+// miss the fediverse's many. Untitled, it's "".
 const ownName = `regexp_replace(s.title, '\s+[-–—|]\s+[^-–—|]*$', '')`
 
 // Search matches q (case-insensitive substring) against site title, host and

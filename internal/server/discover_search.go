@@ -152,6 +152,8 @@ type discoverResults struct {
 	// none grouped, without tabs, and AllHref links back to all of them.
 	Host    string
 	AllHref string
+	// HostOver says the sites on Host are more than the list shows.
+	HostOver bool
 }
 
 // Announce is what live search says when these results come in.
@@ -306,6 +308,9 @@ func discoverHostURL(q, host string) string {
 // shared host, a group row's link: the reader's feeds and the sites whose
 // key's host is host, none grouped, ranked as the Feeds tab and up to its
 // limit. A host with nothing on it, or any other value, lists nothing.
+// The reader's feeds are read as on the Feeds tab, up to its limit across
+// every host, then filtered: a reader with more matching feeds elsewhere
+// can miss one here, which is fine while followed lists are small.
 func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverResults, error) {
 	userID, _ := s.authenticatedUserID(r)
 	now := time.Now()
@@ -345,7 +350,10 @@ func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverRe
 	}
 	rankResults(rows)
 
-	res := discoverResults{Scope: "feeds", Host: host, AllHref: discoverSearchURL(q, "top"), Rows: rows[:min(len(rows), searchTabLimit)]}
+	res := discoverResults{
+		Scope: "feeds", Host: host, AllHref: discoverSearchURL(q, "top"),
+		Rows: rows[:min(len(rows), searchTabLimit)], HostOver: len(rows) > searchTabLimit,
+	}
 	if len(res.Rows) == 0 {
 		res.Empty = "No sites on " + host + " match “" + q + "”."
 	}
@@ -440,7 +448,7 @@ func groupResult(g rss.SiteGroup, sites []rss.SiteWithFeeds, icons map[string]st
 		Href:   discoverHostURL(q, g.Host),
 		Title:  g.Host,
 		Avatar: avatar(id, g.Host, icons[id]),
-		Facts:  []string{fmt.Sprintf("%d more sites on %s match", g.Count, g.Host)},
+		Facts:  []string{fmt.Sprintf("%d sites on %s match", g.Count, g.Host)},
 		Score:  searchScore(0, true, 0, false),
 	}
 }

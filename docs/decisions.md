@@ -289,6 +289,7 @@ Planned in #50 (issues #51–#67).
 - **Search only reads the database** (site title, host and description, feed title, URL and description).
   Sites are found with their feeds; Discover's search shows a site as one row, with Follow when it has one feed the reader doesn't follow, or opening its page to choose when it has several (#645).
   Descriptions were added with search as you type (#449), so a site can be found by what it's about, not only by its name or address.
+  Sites on a shared host that match only through their key, handle, platform or feeds are counted per host rather than listed (#739, below under "Feed discovery").
 - **The search box is for names and addresses, not prose** (#441): it turns off autocorrect, auto-capitalization and spellcheck, which on phones broke addresses ("npr. org"), and an address typed with stray spaces is still offered as a lookup.
   The input has `autocapitalize="none" autocorrect="off" spellcheck="false"` and `enterkeyhint="search"`, and keeps `type="search"`; the Saved page's search box keeps spellcheck, since it searches article text.
   Only whitespace next to `.`, `/` or `:` is removed (`npr. org`, `https: //npr.org`); any other whitespace still means the query isn't an address, so free text such as `news on npr.org` isn't glued into one.
@@ -376,6 +377,8 @@ Planned in #50 (issues #51–#67).
   Its own name is its title without the platform's suffix ("Alice – Medium" → "Alice"), since sites on a shared host must keep showing their platform (see #728) and "medium" mustn't count as a match of every Medium author's name.
   Grouping, not hiding: the reader learns the profiles exist and how to list them; matching by name only was rejected, as a profile whose handle isn't in its title couldn't be found by its handle.
   There are no groups of one, and the reader's followed feeds are never grouped.
+- **A group of sites on a shared host is a search row like any other** (#739, approved by the owner): the host as its name, its host's own site's avatar, "{N} sites on {host} match" as its fact, no Follow, ranked as a match outside the title, opening the results narrowed to that host.
+  The narrowed list is the Feeds tab's rows without tabs, under a line naming the host and query with a link back to all the results, and says when it shows only the first 50; a pager was left out, since a reader looking past 50 profiles should type more of the name.
 - **A feed moves from a shared host's own site to its new site** (#725), the one exception to "a feed belongs to the first site it was discovered from": when a lookup saves it under a key with a path whose host is the key of its current site (`medium.com` → `medium.com/@alice`), never between two path-scoped sites or two hosts.
   Without it, sites merged before #726 would block their authors' new sites, which would come up empty.
 - **A site's "home page" is its root, `SiteRoot`, with no query** (#725): `/` for an ordinary site, `/@alice` for `medium.com/@alice`; a lookup records whether it ran on it (`lookups.home_page`), replacing #716's check that its URL's path is `/`.

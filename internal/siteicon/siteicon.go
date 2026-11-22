@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/feedparse"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/rss"
 )
@@ -39,7 +40,9 @@ const (
 	MaxBytes = 256 << 10
 	// MinSize is the smallest an icon's shorter side may be.
 	MinSize = 32
-	// maxCandidates is how many icons a check downloads at most.
+	// maxCandidates is how many declared or fallback icons a check
+	// downloads at most; a site on a shared host may try two pictures of
+	// its own before them (ownPicture).
 	maxCandidates = 4
 
 	// RecheckInterval is how long after a check that reached the site its
@@ -230,7 +233,9 @@ func (r *Runner) observe(outcome string, start time.Time) {
 }
 
 // find fetches site's home page and downloads the icons it declares, in
-// order of preference, until one is usable.
+// order of preference, until one is usable. A site on a shared host (a key
+// with a path) tries its own pictures first (ownPicture), since the icons
+// its page declares are the platform's (#744).
 func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) result {
 	page, err := r.Fetcher.Get(ctx, site.URL, nil)
 	if err != nil {
@@ -240,40 +245,140 @@ func (r *Runner) find(ctx context.Context, site rss.Site, current rss.SiteIcon) 
 		return result{outcome: outcomeFailed, err: fmt.Errorf("home page: status %d", page.StatusCode)}
 	}
 
-	var declared []discovery.Icon
+	var info discovery.PageInfo
 	if isHTML(page) {
-		declared = discovery.ParsePage(page.URL, page.Body).Icons
+		info = discovery.ParsePage(page.URL, page.Body)
+	}
+	tried := map[string]bool{}
+	if strings.Contains(site.Host, "/") {
+		res, done := r.ownPicture(ctx, info, current, tried)
+		if done {
+			return res
+		}
 	}
 
 	unsure := false // a candidate failed in a way that may not last
-	for _, u := range candidates(page.URL, declared) {
-		var header http.Header
-		if current.SourceURL != "" && u == current.SourceURL {
-			header = validators(current)
-		}
-		resp, err := r.IconFetcher.Get(ctx, u, header)
-		if err != nil {
-			if ctx.Err() != nil {
-				return result{outcome: outcomeFailed, err: err}
-			}
-			unsure = unsure || transient(err)
+	for _, u := range candidates(page.URL, info.Icons) {
+		if tried[u] {
 			continue
 		}
-		if header != nil && resp.StatusCode == http.StatusNotModified {
+		icon, outcome, flaky := r.download(ctx, u, current)
+		switch {
+		case outcome == outcomeFailed:
+			return result{outcome: outcomeFailed, err: ctx.Err()}
+		case outcome == outcomeKept:
 			return result{outcome: outcomeKept}
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			unsure = unsure || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-			continue
-		}
-		if icon, ok := usable(resp); ok {
+		case outcome == outcomeSaved:
 			return result{outcome: outcomeSaved, icon: icon}
 		}
+		unsure = unsure || flaky
 	}
 	if unsure {
 		return result{outcome: outcomeFailed, err: errors.New("no usable icon, and some candidates could not be fetched")}
 	}
 	return result{outcome: outcomeRemoved}
+}
+
+// ownPicture tries a site's own pictures (pictures), with half the job's
+// time so the declared icons keep theirs, and adds each URL it tried to
+// tried. done says res is the check's result: a picture saved or kept, or,
+// when a picture or the feed failed in a way that may not last and the site
+// already has an icon, a failure that keeps it and retries in a day rather
+// than replacing it with the platform's.
+func (r *Runner) ownPicture(ctx context.Context, info discovery.PageInfo, current rss.SiteIcon, tried map[string]bool) (res result, done bool) {
+	ownCtx, cancel := context.WithTimeout(ctx, r.JobTimeout/2)
+	defer cancel()
+
+	urls, unsure := r.pictures(ownCtx, info)
+	for _, u := range urls {
+		tried[u] = true
+		icon, outcome, flaky := r.download(ownCtx, u, current)
+		switch {
+		case outcome == outcomeFailed:
+			if ctx.Err() != nil {
+				return result{outcome: outcomeFailed, err: ctx.Err()}, true
+			}
+			unsure = true // out of its share of the time
+		case outcome == outcomeKept:
+			return result{outcome: outcomeKept}, true
+		case outcome == outcomeSaved && squarish(icon):
+			return result{outcome: outcomeSaved, icon: icon}, true
+		}
+		// A banner or a link card, not a picture of the author, falls
+		// through like an unusable icon.
+		unsure = unsure || flaky
+		if ownCtx.Err() != nil {
+			break
+		}
+	}
+	if unsure && current.SourceURL != "" {
+		return result{outcome: outcomeFailed, err: errors.New("the site's own picture could not be fetched; keeping its icon")}, true
+	}
+	return result{}, false
+}
+
+// download fetches the icon at u, conditionally when u is the current
+// icon's, and says what came of it: outcomeSaved with a usable icon,
+// outcomeKept for a 304, outcomeFailed when ctx ended, or "" when it isn't
+// usable; flaky says it failed in a way that may not last (a network error,
+// a 429 or a 5xx).
+func (r *Runner) download(ctx context.Context, u string, current rss.SiteIcon) (icon rss.SiteIcon, outcome string, flaky bool) {
+	var header http.Header
+	if current.SourceURL != "" && u == current.SourceURL {
+		header = validators(current)
+	}
+	resp, err := r.IconFetcher.Get(ctx, u, header)
+	if err != nil {
+		if ctx.Err() != nil {
+			return rss.SiteIcon{}, outcomeFailed, false
+		}
+		return rss.SiteIcon{}, "", transient(err)
+	}
+	if header != nil && resp.StatusCode == http.StatusNotModified {
+		return rss.SiteIcon{}, outcomeKept, false
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return rss.SiteIcon{}, "", resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+	}
+	if icon, ok := usable(resp); ok {
+		return icon, outcomeSaved, false
+	}
+	return rss.SiteIcon{}, "", false
+}
+
+// pictures returns the URLs of a site's own picture, best first and without
+// repeats, from its page (info): the page's og:image (else twitter:image),
+// then the image of the first feed it declares, fetched and parsed for it.
+// On a platform these are the author's or channel's, where the declared
+// icons are the platform's. unsure says the feed failed in a way that may
+// not last (a network error, a 429 or a 5xx); a feed that can't be read
+// otherwise adds nothing.
+func (r *Runner) pictures(ctx context.Context, info discovery.PageInfo) (urls []string, unsure bool) {
+	if info.Image != "" {
+		urls = append(urls, info.Image)
+	}
+	if len(info.Feeds) > 0 {
+		resp, err := r.Fetcher.Get(ctx, info.Feeds[0].URL.String(), nil)
+		switch {
+		case err != nil:
+			unsure = ctx.Err() != nil || transient(err)
+		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+			unsure = true
+		case resp.StatusCode >= 200 && resp.StatusCode <= 299:
+			if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil && f.Image != "" {
+				urls = append(urls, f.Image)
+			}
+		}
+	}
+	return dedupe(urls), unsure
+}
+
+// squarish reports whether an icon is at most a third longer than it is
+// wide, or wide than it is long: an author's picture, not a banner or a
+// link card, which usable would otherwise keep.
+func squarish(icon rss.SiteIcon) bool {
+	short, long := min(icon.Width, icon.Height), max(icon.Width, icon.Height)
+	return 3*long <= 4*short
 }
 
 // isHTML reports whether a response is an HTML page, by its Content-Type, or

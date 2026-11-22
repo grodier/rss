@@ -20,6 +20,7 @@ import (
 	"github.com/mmcdole/gofeed/atom"
 	ext "github.com/mmcdole/gofeed/extensions"
 	jsonfeed "github.com/mmcdole/gofeed/json"
+	"github.com/mmcdole/gofeed/rss"
 	"golang.org/x/net/html"
 )
 
@@ -32,6 +33,7 @@ type Meta struct {
 	Title       string // plain text, whitespace-trimmed and collapsed; may be ""
 	Description string // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
 	SiteURL     string // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
+	Image       string // absolute http(s) URL of the feed's own picture: RSS channel <image><url> (else itunes:image), Atom <icon> (square, else <logo>), JSON "icon"; "" if none
 }
 
 // Feed is a parsed feed: its metadata and its items in document order.
@@ -218,9 +220,28 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 			Title:       title,
 			Description: desc,
 			SiteURL:     resolveHTTP(feedURL, link),
+			Image:       resolveHTTP(feedURL, feedImage(f)),
 		},
 		Items: items,
 	}, f, indexes, nil
+}
+
+// feedImage returns the URL of the picture a feed declares for itself,
+// unresolved: an Atom feed's <icon>, which is square, before its 2:1 <logo>;
+// else gofeed's Image (RSS <image><url>, Atom <logo>, JSON "icon"); else an
+// RSS feed's itunes:image, which gofeed skips when <image> is there but
+// empty.
+func feedImage(f *gofeed.Feed) string {
+	if a, ok := f.OriginalFeed().(*atom.Feed); ok && strings.TrimSpace(a.Icon) != "" {
+		return strings.TrimSpace(a.Icon)
+	}
+	if f.Image != nil && strings.TrimSpace(f.Image.URL) != "" {
+		return strings.TrimSpace(f.Image.URL)
+	}
+	if r, ok := f.OriginalFeed().(*rss.Feed); ok && r.ITunesExt != nil {
+		return strings.TrimSpace(r.ITunesExt.Image)
+	}
+	return ""
 }
 
 // itemImage returns the URL of the image an item declares, unresolved, from

@@ -900,3 +900,29 @@ func TestSniff(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFeedImage(t *testing.T) {
+	tests := []struct {
+		name, body, want string
+	}{
+		{"rss image", `<rss version="2.0"><channel><title>T</title><image><url>https://cdn.example/alice.png</url><title>T</title><link>https://example.com/</link></image></channel></rss>`, "https://cdn.example/alice.png"},
+		{"relative rss image", `<rss version="2.0"><channel><title>T</title><image><url>/alice.png</url></image></channel></rss>`, "https://example.com/alice.png"},
+		{"atom icon before logo", `<feed xmlns="http://www.w3.org/2005/Atom"><title>T</title><logo>https://cdn.example/logo.png</logo><icon>https://cdn.example/icon.png</icon></feed>`, "https://cdn.example/icon.png"},
+		{"atom logo", `<feed xmlns="http://www.w3.org/2005/Atom"><title>T</title><logo>https://cdn.example/logo.png</logo></feed>`, "https://cdn.example/logo.png"},
+		{"itunes image after an empty image", `<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>T</title><image><title>T</title></image><itunes:image href="https://cdn.example/alice.jpg"/></channel></rss>`, "https://cdn.example/alice.jpg"},
+		{"json icon", `{"version":"https://jsonfeed.org/version/1.1","title":"T","icon":"https://cdn.example/icon.png","items":[]}`, "https://cdn.example/icon.png"},
+		{"not http", `<rss version="2.0"><channel><title>T</title><image><url>data:image/png;base64,AAAA</url></image></channel></rss>`, ""},
+		{"none", `<rss version="2.0"><channel><title>T</title></channel></rss>`, ""},
+	}
+	feedURL, _ := url.Parse("https://example.com/feed.xml")
+	for _, tt := range tests {
+		f, err := Parse(feedURL, []byte(tt.body))
+		if err != nil {
+			t.Errorf("%s: Parse: %v", tt.name, err)
+			continue
+		}
+		if f.Image != tt.want {
+			t.Errorf("%s: Image = %q, want %q", tt.name, f.Image, tt.want)
+		}
+	}
+}

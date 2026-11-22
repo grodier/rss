@@ -625,3 +625,145 @@ func TestCheckMetrics(t *testing.T) {
 		})
 	}
 }
+
+// checkAs is check for a site with key host.
+func checkAs(t *testing.T, srv *site, host string) call {
+	t.Helper()
+	store := &fakeStore{}
+	newRunner(store).check(t.Context(), rss.Site{ID: "site-1", Host: host, URL: srv.URL + "/"}, rss.SiteIcon{})
+	if len(store.calls) != 1 {
+		t.Fatalf("Store calls = %+v; want exactly one", store.calls)
+	}
+	return store.calls[0]
+}
+
+// rssWithImage is an RSS feed whose channel image is at image.
+func rssWithImage(image string) []byte {
+	return []byte(`<rss version="2.0"><channel><title>Alice</title><image><url>` + image + `</url></image></channel></rss>`)
+}
+
+// The page of a site on a shared host declares the platform's icon; the
+// site's own picture comes first (#744).
+func TestCheckSharedHostOwnPicture(t *testing.T) {
+	const shared = "medium.example/@alice"
+	const declared = `<link rel="apple-touch-icon" sizes="180x180" href="/platform.png">`
+	feedLink := `<link rel="alternate" type="application/rss+xml" href="/feed.xml">`
+
+	t.Run("the page's og:image", func(t *testing.T) {
+		srv := newSite(t, `<meta property="og:image" content="/alice.jpg">`+feedLink+declared)
+		srv.serve("/alice.jpg", "image/jpeg", encodeJPEG(t, 400, 400))
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/alice.jpg", "image/jpeg", 400, 400)
+	})
+
+	t.Run("else the feed's image", func(t *testing.T) {
+		srv := newSite(t, feedLink+declared)
+		srv.serve("/feed.xml", "application/rss+xml", rssWithImage("/avatar.png"))
+		srv.serve("/avatar.png", "image/png", encodePNG(t, 150, 150))
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/avatar.png", "image/png", 150, 150)
+	})
+
+	t.Run("a picture that fails the checks falls through", func(t *testing.T) {
+		// A banner (usable as an icon, but not a picture of the author),
+		// then a picture too small: the declared icon.
+		srv := newSite(t, `<meta property="og:image" content="/banner.png">`+feedLink+declared)
+		srv.serve("/banner.png", "image/png", encodePNG(t, 1200, 630))
+		srv.serve("/feed.xml", "application/rss+xml", rssWithImage("/tiny.png"))
+		srv.serve("/tiny.png", "image/png", encodePNG(t, 16, 16))
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/platform.png", "image/png", 180, 180)
+	})
+
+	t.Run("a feed that can't be read adds nothing", func(t *testing.T) {
+		srv := newSite(t, feedLink+declared)
+		srv.status("/feed.xml", http.StatusNotFound)
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/platform.png", "image/png", 180, 180)
+	})
+
+	t.Run("an ordinary site ignores both", func(t *testing.T) {
+		srv := newSite(t, `<meta property="og:image" content="/alice.jpg">`+feedLink+declared)
+		srv.serve("/alice.jpg", "image/jpeg", encodeJPEG(t, 400, 400))
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, "medium.example"), srv, "/platform.png", "image/png", 180, 180)
+		for _, path := range []string{"/alice.jpg", "/feed.xml"} {
+			if _, ok := srv.requested(path); ok {
+				t.Errorf("%s was fetched for an ordinary site", path)
+			}
+		}
+	})
+}
+
+func TestSquarish(t *testing.T) {
+	for _, tt := range []struct {
+		w, h int
+		want bool
+	}{{400, 400, true}, {400, 300, true}, {300, 400, true}, {401, 300, false}, {1200, 630, false}} {
+		if got := squarish(rss.SiteIcon{Width: tt.w, Height: tt.h}); got != tt.want {
+			t.Errorf("squarish(%dx%d) = %v, want %v", tt.w, tt.h, got, tt.want)
+		}
+	}
+}
+
+// checkWith is checkAs for a site that already has current as its icon.
+func checkWith(t *testing.T, srv *site, host string, current rss.SiteIcon) call {
+	t.Helper()
+	store := &fakeStore{}
+	newRunner(store).check(t.Context(), rss.Site{ID: "site-1", Host: host, URL: srv.URL + "/"}, current)
+	if len(store.calls) != 1 {
+		t.Fatalf("Store calls = %+v; want exactly one", store.calls)
+	}
+	return store.calls[0]
+}
+
+func TestCheckSharedHostOwnPictureFailures(t *testing.T) {
+	const shared = "medium.example/@alice"
+	const declared = `<link rel="apple-touch-icon" href="/platform.png">`
+	feedLink := `<link rel="alternate" type="application/rss+xml" href="/feed.xml">`
+	stored := rss.SiteIcon{SourceURL: "https://cdn.example/alice.png", ContentType: "image/png", Width: 150, Height: 150}
+
+	t.Run("a feed that may come back keeps the stored picture", func(t *testing.T) {
+		srv := newSite(t, feedLink+declared)
+		srv.status("/feed.xml", http.StatusServiceUnavailable)
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantKept(t, checkWith(t, srv, shared, stored), false)
+		if _, ok := srv.requested("/platform.png"); ok {
+			t.Error("the platform's icon was downloaded while the feed was down")
+		}
+	})
+
+	t.Run("a picture that may come back keeps the stored picture", func(t *testing.T) {
+		srv := newSite(t, `<meta property="og:image" content="/alice.png">`+declared)
+		srv.status("/alice.png", http.StatusBadGateway)
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantKept(t, checkWith(t, srv, shared, stored), false)
+	})
+
+	t.Run("without a stored icon, the platform's is taken meanwhile", func(t *testing.T) {
+		srv := newSite(t, feedLink+declared)
+		srv.status("/feed.xml", http.StatusServiceUnavailable)
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/platform.png", "image/png", 180, 180)
+	})
+
+	t.Run("the same URL twice is one own picture", func(t *testing.T) {
+		// The page's og:image is also the feed's image, a banner; the
+		// platform's icon after it isn't square, but it's not one of the
+		// site's own pictures, so it's taken.
+		srv := newSite(t, `<meta property="og:image" content="/banner.png">`+feedLink+`<link rel="apple-touch-icon" href="/wide.png">`)
+		srv.serve("/banner.png", "image/png", encodePNG(t, 1200, 630))
+		srv.serve("/feed.xml", "application/rss+xml", rssWithImage(srv.URL+"/banner.png"))
+		srv.serve("/wide.png", "image/png", encodePNG(t, 200, 120))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/wide.png", "image/png", 200, 120)
+	})
+
+	t.Run("an Atom feed's square icon before its logo", func(t *testing.T) {
+		srv := newSite(t, `<link rel="alternate" type="application/atom+xml" href="/atom.xml">`+declared)
+		srv.serve("/atom.xml", "application/atom+xml", []byte(`<feed xmlns="http://www.w3.org/2005/Atom"><title>A</title><logo>/logo.png</logo><icon>/icon.png</icon></feed>`))
+		srv.serve("/logo.png", "image/png", encodePNG(t, 400, 200))
+		srv.serve("/icon.png", "image/png", encodePNG(t, 128, 128))
+		srv.serve("/platform.png", "image/png", encodePNG(t, 180, 180))
+		wantSaved(t, checkAs(t, srv, shared), srv, "/icon.png", "image/png", 128, 128)
+	})
+}

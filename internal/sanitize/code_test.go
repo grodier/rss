@@ -31,7 +31,7 @@ func TestHTMLCodeLanguage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(HTML(tt.raw, nil))
+			got := string(HTML(tt.raw, nil, ""))
 			if tt.want == "" {
 				if strings.Contains(got, "data-lang") {
 					t.Errorf("HTML(%q) = %q, want no data-lang", tt.raw, got)
@@ -52,7 +52,7 @@ func TestHTMLCodeLanguage(t *testing.T) {
 // characters a pattern could trip on (C++, C#).
 func TestLanguageNamesAllowed(t *testing.T) {
 	for token, name := range languages {
-		got := string(HTML(`<pre class="language-`+token+`">x</pre>`, nil))
+		got := string(HTML(`<pre class="language-`+token+`">x</pre>`, nil, ""))
 		if want := `data-lang="` + name + `"`; !strings.Contains(got, want) {
 			t.Errorf("language-%s: got %q, want it to contain %q", token, got, want)
 		}

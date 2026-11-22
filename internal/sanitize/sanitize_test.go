@@ -547,7 +547,7 @@ func TestHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(HTML(tt.raw, tt.base))
+			got := string(HTML(tt.raw, tt.base, ""))
 			if tt.want != nil && got != *tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, *tt.want)
 			}
@@ -669,7 +669,7 @@ func TestHTMLLazyImages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, base)); got != tt.want {
+			if got := string(HTML(tt.raw, base, "")); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
 			}
 		})
@@ -786,8 +786,118 @@ func TestHTMLLocalAnchors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, tt.base)); got != tt.want {
+			if got := string(HTML(tt.raw, tt.base, "")); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTMLDemotesH1(t *testing.T) {
+	tests := []struct {
+		name, raw, want string
+	}{
+		{
+			name: "attributes and content kept",
+			raw:  `<h1 id="a">A <em>b</em></h1>`,
+			want: `<h2 id="body-a">A <em>b</em></h2>`,
+		},
+		{
+			name: "every h1",
+			raw:  `<h1>One</h1><p>a</p><div><h1>Two</h1></div>`,
+			want: `<h2>One</h2><p>a</p><div><h2>Two</h2></div>`,
+		},
+		{
+			name: "other levels unchanged",
+			raw:  `<h2>2</h2><h3>3</h3><h4>4</h4><h5>5</h5><h6>6</h6>`,
+			want: `<h2>2</h2><h3>3</h3><h4>4</h4><h5>5</h5><h6>6</h6>`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(HTML(tt.raw, nil, "")); got != tt.want {
+				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTMLDropsRepeatedTitle(t *testing.T) {
+	const title = "The Big Story"
+	tests := []struct {
+		name, raw, title, want string
+	}{
+		{
+			name:  "h1 repeating the title",
+			raw:   `<h1>The Big Story</h1><p>Text</p>`,
+			title: title,
+			want:  `<p>Text</p>`,
+		},
+		{
+			name:  "case, spaces and a permalink mark",
+			raw:   `<h2>  the big  story ¶</h2><p>Text</p>`,
+			title: title,
+			want:  `<p>Text</p>`,
+		},
+		{
+			name:  "other permalink marks",
+			raw:   `<h3>The Big Story <a href="#x">#</a></h3><p>Text</p>`,
+			title: title,
+			want:  `<p>Text</p>`,
+		},
+		{
+			name:  "linked heading",
+			raw:   `<h2><a href="https://example.com/post">The Big Story</a></h2><p>Text</p>`,
+			title: title,
+			want:  `<p>Text</p>`,
+		},
+		{
+			name:  "inside a single div wrapper",
+			raw:   `<div> <h2>The Big Story</h2> <p>Text</p> </div>`,
+			title: title,
+			want:  `<div>  <p>Text</p> </div>`,
+		},
+		{
+			name:  "a title ending in a mark",
+			raw:   `<h2>Learning C#</h2><p>Text</p>`,
+			title: "Learning C#",
+			want:  `<p>Text</p>`,
+		},
+		{
+			name:  "not first kept",
+			raw:   `<p>Intro</p><h2>The Big Story</h2>`,
+			title: title,
+			want:  `<p>Intro</p><h2>The Big Story</h2>`,
+		},
+		{
+			name:  "another heading kept",
+			raw:   `<h2>Another heading</h2><p>Text</p>`,
+			title: title,
+			want:  `<h2>Another heading</h2><p>Text</p>`,
+		},
+		{
+			name:  "a paragraph repeating the title kept",
+			raw:   `<p>The Big Story</p><p>Text</p>`,
+			title: title,
+			want:  `<p>The Big Story</p><p>Text</p>`,
+		},
+		{
+			name:  "only block kept",
+			raw:   `<h1>The Big Story</h1>`,
+			title: title,
+			want:  `<h2>The Big Story</h2>`,
+		},
+		{
+			name:  "no title",
+			raw:   `<h2>The Big Story</h2><p>Text</p>`,
+			title: "",
+			want:  `<h2>The Big Story</h2><p>Text</p>`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(HTML(tt.raw, nil, tt.title)); got != tt.want {
+				t.Errorf("HTML(%q, %q)\n got: %s\nwant: %s", tt.raw, tt.title, got, tt.want)
 			}
 		})
 	}

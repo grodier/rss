@@ -94,7 +94,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body := sanitize.HTML(raw, base)
+	body := sanitize.HTML(raw, base, article.DisplayTitle())
 
 	saved, err := s.services.SaveService.SavedArticleIDs(r.Context(), userID, []string{article.ID})
 	if err != nil {

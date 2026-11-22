@@ -277,6 +277,27 @@ func TestArticleHandlerUntitled(t *testing.T) {
 	})
 }
 
+func TestArticleHandlerRepeatedTitle(t *testing.T) {
+	article := rss.Article{
+		Title:   "The Big Story",
+		Content: `<h1>The Big Story</h1><p>Text</p><h1>A section</h1>`,
+	}
+	rr := serveArticle(t, articleServer(t, article, nil, nil, nil), testArticleID)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	assertBodyContains(t, body, "<h1>The Big Story</h1>", "<h2>A section</h2>")
+	if n := strings.Count(body, "The Big Story"); n != 2 {
+		// The <title> and the page's <h1>.
+		t.Errorf("title shown %d times, want 2 (<title> and <h1>): %s", n, body)
+	}
+	if n := strings.Count(body, "<h1"); n != 1 {
+		t.Errorf("page has %d <h1>s, want 1: %s", n, body)
+	}
+}
+
 func TestArticleHandlerMalformedID(t *testing.T) {
 	s := newTestServer(t)
 	for _, id := range []string{"abc", " "} {

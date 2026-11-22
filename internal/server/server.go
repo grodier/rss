@@ -121,7 +121,7 @@ type SessionStore interface {
 
 // SearchStore searches sites and feeds already in the database.
 type SearchStore interface {
-	Search(ctx context.Context, q, siteKey string, limit int) ([]rss.SiteWithFeeds, error)
+	Search(ctx context.Context, q, siteKey, host string, limit int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error)
 }
 
 // DiscoverStore reads Discover's catalog as a reader sees it; satisfied by

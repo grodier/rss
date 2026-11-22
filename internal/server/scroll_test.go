@@ -393,8 +393,8 @@ func TestBusyFormsMarkup(t *testing.T) {
 		switch name {
 		case "discover":
 			return func(t *testing.T) string {
-				s := newTestServerWith(t, Services{SearchService: &fakeSearchStore{searchFn: func(context.Context, string, string, int) ([]rss.SiteWithFeeds, error) {
-					return nil, nil
+				s := newTestServerWith(t, Services{SearchService: &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
+					return nil, nil, nil
 				}}})
 				return discoverRequest(t, s, "example.com").Body.String()
 			}

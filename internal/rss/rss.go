@@ -411,6 +411,14 @@ type SiteWithFeeds struct {
 	Feeds []Feed
 }
 
+// SiteGroup is the sites on one shared host that matched a search only
+// through their key, handle, platform or feeds, counted rather than listed
+// (#739).
+type SiteGroup struct {
+	Host  string // discovery.KeyHost of their keys: "bsky.app"
+	Count int
+}
+
 // LookupStatus is the state of a site lookup.
 type LookupStatus string
 

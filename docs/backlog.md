@@ -727,6 +727,7 @@ Pages and queries:
   Sites and feeds are matched with `%q%`, which can't use a b-tree index, and the seed list (#447) can add thousands of sites to scan.
   Search as you type (#449) runs it once per pause in typing, not once per search, and also matches site and feed descriptions, which are longer to scan than titles.
   *Measured 2026-11-01* (#449, on a dev container with about 1,300 sites and feeds): 5–11 ms per search request while typing, 3–8 ms of it the query.
+  Since #739, the same statement groups the sites on shared hosts: it adds a `regexp_replace` of each matching path-scoped site's title and a count over the matches, but no query, and the limit no longer bounds how many matches are read before it applies (it never did for the scan).
   *Signal:* search latency growing with the number of sites and feeds, or `/discover?q=` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
 - [ ] **Infinite scroll keeps every page in the DOM** (#155, #159).

@@ -197,7 +197,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `POST /articles/{id}/read` | yes | Click-through ping; 204 |
 | `POST /articles/{id}/save`, `/unsave`, `/star`, `/unstar` | yes | Save and Star buttons |
 | `GET /sites/{id}` | yes | A site: its feeds, with their facts and Follow, and its recent posts |
-| `GET /discover` | yes | Discover: the catalog's sections and an import offer or progress, or with `?q=` the whole app's search (the reader's feeds, their saved articles and sites to follow, in tabs by `?scope=`) |
+| `GET /discover` | yes | Discover: the catalog's sections and an import offer or progress, or with `?q=` the whole app's search (the reader's feeds, their saved articles and sites to follow, in tabs by `?scope=`; with `&host=`, the sites on one shared host) |
 | `GET /discover/sections/{slug}`, `/discover/sections/{slug}/posts` | yes | A Discover section's page: its Feeds tab (every catalog feed in it) and its Recent posts tab (their articles, paged) |
 | `POST /lookups`, `GET /lookups/{id}` | yes | Queue a site lookup; its status page |
 | `GET /settings` | yes | The Settings home: the account and the other categories |

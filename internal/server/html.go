@@ -35,7 +35,7 @@ var templateFuncs = template.FuncMap{
 	"homeName":    func() string { return homeName },
 	"monogram":    monogram,
 	"postingRate": postingRate,
-	"since":       func(t time.Time) string { return since(t, time.Now()) },
+	"sinceDate":   func(t time.Time) sinceView { return newSinceView(t, time.Now()) },
 	"siteName":    siteName,
 	"platform":    discovery.Platform,
 }
@@ -52,11 +52,23 @@ func siteName(s rss.Site) string {
 	return name
 }
 
-// since says how long before now t was, by whole days, for "Latest {when}":
-// "today" (or a future t), "yesterday", "N days ago" up to two weeks, then
-// weeks up to two months, then months, then years.
+// sinceRelativeFor is how long since shows a time as relative ("3 weeks
+// ago"); past it, a month and year ("Sep 2025") is quicker to judge than a
+// count of months, and says more.
+const sinceRelativeFor = 60 * 24 * time.Hour
+
+// since says how recently t was, for "Latest post {when}" and "Saved
+// {when}": "today" (or a future t), "yesterday", "N days ago" up to two
+// weeks, then weeks, and from sinceRelativeFor its UTC month and year
+// ("Sep 2025", which local-times.ts shows in the reader's format through
+// the since-date partial). Days are 24-hour spans, not calendar days: the
+// server doesn't know the reader's time zone.
 func since(t, now time.Time) string {
-	days := int(now.Sub(t) / (24 * time.Hour))
+	d := now.Sub(t)
+	if d >= sinceRelativeFor {
+		return t.UTC().Format("Jan 2006")
+	}
+	days := int(d / (24 * time.Hour))
 	switch {
 	case days < 1:
 		return "today"
@@ -64,13 +76,21 @@ func since(t, now time.Time) string {
 		return "yesterday"
 	case days < 14:
 		return fmt.Sprintf("%d days ago", days)
-	case days < 60:
-		return fmt.Sprintf("%d weeks ago", days/7)
-	case days < 730:
-		return fmt.Sprintf("%d months ago", days/30)
 	default:
-		return fmt.Sprintf("%d years ago", days/365)
+		return fmt.Sprintf("%d weeks ago", days/7)
 	}
+}
+
+// sinceView is what the since-date partial shows: since's text, and whether
+// it's relative ("3 days ago", which the script leaves alone) or a month and
+// year (which it shows in the reader's format).
+type sinceView struct {
+	Text     string
+	Relative bool
+}
+
+func newSinceView(t, now time.Time) sinceView {
+	return sinceView{Text: since(t, now), Relative: now.Sub(t) < sinceRelativeFor}
 }
 
 // avatarView is what the avatar partial shows: the site's icon, else its

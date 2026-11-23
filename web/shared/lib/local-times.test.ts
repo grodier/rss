@@ -50,6 +50,17 @@ describe("localizeTimes", () => {
     expect(el.title).not.toBe("9 Oct 2026"); // 8 Oct in New York
   });
 
+  it("shows an older feed's month and year in the reader's format, and its date in its title", async () => {
+    document.body.innerHTML = `<time data-local="month" datetime="2025-09-01T02:30:00Z" title="1 Sep 2025">Sep 2025</time>`;
+    const { localizeTimes } = await import("./local-times");
+    localizeTimes(document);
+    const el = document.querySelector("time")!;
+    const d = new Date("2025-09-01T02:30:00Z");
+    expect(el.textContent).toBe(new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" }).format(d));
+    expect(el.textContent).not.toBe("Sep 2025"); // 31 Aug in New York
+    expect(el.title).toBe(medium().format(d));
+  });
+
   it("leaves a time it can't read and one without data-local as the server wrote them", async () => {
     document.body.innerHTML =
       `<time data-local datetime="not a time">as written</time>` + `<time datetime="2026-10-09">9 Oct 2026</time>`;

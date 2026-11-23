@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -558,6 +559,63 @@ func TestAvatarPartial(t *testing.T) {
 			}
 			if got := buf.String(); got != tt.want {
 				t.Errorf("avatar =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSince(t *testing.T) {
+	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+	tests := []struct {
+		ago      time.Duration
+		want     string
+		relative bool
+	}{
+		{-time.Hour, "today", true}, // a future time
+		{0, "today", true},
+		{23 * time.Hour, "today", true},
+		{day, "yesterday", true},
+		{2 * day, "2 days ago", true},
+		{13 * day, "13 days ago", true},
+		{14 * day, "2 weeks ago", true},
+		{59*day + 23*time.Hour, "8 weeks ago", true},
+		{60 * day, "Sep 2026", false},
+		{400 * day, "Oct 2025", false},
+		// Its month in UTC: 23:30 on 31 Aug in New York is September.
+		{now.Sub(time.Date(2025, 8, 31, 23, 30, 0, 0, time.FixedZone("EDT", -4*60*60))), "Sep 2025", false},
+	}
+	for _, tt := range tests {
+		v := newSinceView(now.Add(-tt.ago), now)
+		if v.Text != tt.want || v.Relative != tt.relative {
+			t.Errorf("%v ago: sinceView = %+v, want {Text:%s Relative:%v}", tt.ago, v, tt.want, tt.relative)
+		}
+	}
+}
+
+func TestSinceDatePartial(t *testing.T) {
+	ts, err := parseTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent := time.Now().Add(-50 * time.Hour)
+	old := time.Date(2025, 9, 14, 8, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		t    time.Time
+		want string
+	}{
+		{"relative", recent, `<time data-local="since" datetime="` + recent.UTC().Format(time.RFC3339) + `" title="` + recent.UTC().Format("2 Jan 2006") + `">2 days ago</time>`},
+		{"month and year", old, `<time data-local="month" datetime="2025-09-14T08:00:00Z" title="14 Sep 2025">Sep 2025</time>`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := ts["timeline.html"].ExecuteTemplate(&buf, "since-date", tt.t); err != nil {
+				t.Fatal(err)
+			}
+			if got := buf.String(); got != tt.want {
+				t.Errorf("since-date =\n%s\nwant\n%s", got, tt.want)
 			}
 		})
 	}

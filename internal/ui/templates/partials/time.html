@@ -4,7 +4,8 @@
      local-times.ts shows it in the reader's date format but never moves it
      to their time zone. */}}
 {{define "local-day"}}<time data-local="day" datetime="{{.UTC.Format "2006-01-02"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}
-{{/* since-date is how recently a feed posted: a relative day ("4 days ago",
-     from since), with the exact date in its title, which local-times.ts
-     shows in the reader's date format. */}}
-{{define "since-date"}}<time data-local="since" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}" title="{{.UTC.Format "2 Jan 2006"}}">{{since .}}</time>{{end}}
+{{/* since-date is how recently a feed posted, from since: relative ("4 days
+     ago") for two months, then a month and year ("Sep 2025"), with the date
+     in its title. local-times.ts shows the date, and the month and year, in
+     the reader's format. */}}
+{{define "since-date"}}{{$s := sinceDate .}}<time data-local="{{if $s.Relative}}since{{else}}month{{end}}" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}" title="{{.UTC.Format "2 Jan 2006"}}">{{$s.Text}}</time>{{end}}

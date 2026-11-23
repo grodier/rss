@@ -736,8 +736,8 @@ func TestFeedsHandler(t *testing.T) {
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One", PostsPerWeek: 3.4}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
 		))
-		// Relative, with the exact date on hover.
-		assertContains(t, body, `Latest post <time data-local="since" datetime="2026-03-04T10:00:00Z" title="4 Mar 2026">`+since(latest, time.Now())+`</time> · About 3 posts a week</p>`, "<p>No posts yet.</p>")
+		// Months ago, so a month and year, with the date on hover.
+		assertContains(t, body, `Latest post <time data-local="month" datetime="2026-03-04T10:00:00Z" title="4 Mar 2026">Mar 2026</time> · About 3 posts a week</p>`, "<p>No posts yet.</p>")
 		// The feed without articles shows no rate.
 		assertNotContains(t, body, "No posts in the last 30 days")
 	})
@@ -748,7 +748,7 @@ func TestFeedsHandler(t *testing.T) {
 		_, body := getFeeds(t, listing(
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: late},
 		))
-		assertContains(t, body, `Latest post <time data-local="since" datetime="2026-03-05T04:30:00Z" title="5 Mar 2026">`)
+		assertContains(t, body, `Latest post <time data-local="month" datetime="2026-03-05T04:30:00Z" title="5 Mar 2026">Mar 2026</time>`)
 	})
 
 	health := []struct {

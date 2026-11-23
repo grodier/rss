@@ -34,8 +34,8 @@ const click = (el: HTMLElement, init: MouseEventInit = {}) => {
   return e;
 };
 
-const escape = (input: HTMLInputElement) => {
-  const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+const escape = (input: HTMLInputElement, isComposing = false) => {
+  const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, isComposing });
   input.dispatchEvent(e);
   return e;
 };
@@ -113,6 +113,13 @@ describe("search clear", () => {
   it("leaves Escape in an empty box alone", async () => {
     const { input, inputs } = await page("", true);
     expect(escape(input).defaultPrevented).toBe(false);
+    expect(inputs).not.toHaveBeenCalled();
+  });
+
+  it("leaves Escape to an input method that's composing", async () => {
+    const { input, inputs } = await page("にほ", true);
+    expect(escape(input, true).defaultPrevented).toBe(false);
+    expect(input.value).toBe("にほ");
     expect(inputs).not.toHaveBeenCalled();
   });
 

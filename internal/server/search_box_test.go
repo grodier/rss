@@ -105,41 +105,59 @@ func TestSearchBox(t *testing.T) {
 	}
 }
 
-// TestSearchBoxError checks Discover's query error follows the form fields'
-// pattern: after the field, as #q-error, which the input is described by,
-// with the input aria-invalid and autofocused.
+// TestSearchBoxError checks Discover's query errors follow the form fields'
+// pattern, from its own search and from a refused lookup: after the field,
+// as #q-error, which the input is described by, with the input
+// aria-invalid and autofocused, and the clear button shown.
 func TestSearchBoxError(t *testing.T) {
-	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	rr := discoverRequest(t, s, strings.Repeat("a", 201))
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422", rr.Code)
+	tests := []struct {
+		name, msg string
+		render    func(t *testing.T) *httptest.ResponseRecorder
+	}{
+		{"a query over 200 characters", "Search must be 200 characters or fewer", func(t *testing.T) *httptest.ResponseRecorder {
+			return discoverRequest(t, newTestServerWith(t, Services{SearchService: failingSearchStore(t)}), strings.Repeat("a", 201))
+		}},
+		{"a lookup of an invalid address", "Enter a website address like example.com", func(t *testing.T) *httptest.ResponseRecorder {
+			return postLookup(t, newTestServer(t), "not a url")
+		}},
 	}
-	doc, err := html.Parse(rr.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ins := findAll(doc, func(n *html.Node) bool { return n.Data == "input" && attr(n, "id") == "q" })
-	if len(ins) != 1 {
-		t.Fatalf("found %d inputs #q, want 1", len(ins))
-	}
-	in := ins[0]
-	if attr(in, "aria-invalid") != "true" || attr(in, "aria-describedby") != "q-error" || !hasAttr(in, "autofocus") {
-		t.Errorf("input aria-invalid = %q, aria-describedby = %q, autofocus %v; want true, q-error, set",
-			attr(in, "aria-invalid"), attr(in, "aria-describedby"), hasAttr(in, "autofocus"))
-	}
-	errs := findAll(doc, func(n *html.Node) bool { return n.Data == "p" && attr(n, "id") == "q-error" })
-	if len(errs) != 1 {
-		t.Fatalf("found %d #q-error, want 1", len(errs))
-	}
-	if !hasClass(errs[0], "error") || strings.TrimSpace(textContent(errs[0])) != "Search must be 200 characters or fewer" {
-		t.Errorf("#q-error = %q (class %q)", textContent(errs[0]), attr(errs[0], "class"))
-	}
-	field := in.Parent
-	sib := field.NextSibling
-	for sib != nil && sib.Type != html.ElementNode {
-		sib = sib.NextSibling
-	}
-	if sib != errs[0] {
-		t.Error("the error isn't right after the search field")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := tt.render(t)
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422", rr.Code)
+			}
+			doc, err := html.Parse(rr.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ins := findAll(doc, func(n *html.Node) bool { return n.Data == "input" && attr(n, "id") == "q" })
+			if len(ins) != 1 {
+				t.Fatalf("found %d inputs #q, want 1", len(ins))
+			}
+			in := ins[0]
+			if attr(in, "aria-invalid") != "true" || attr(in, "aria-describedby") != "q-error" || !hasAttr(in, "autofocus") {
+				t.Errorf("input aria-invalid = %q, aria-describedby = %q, autofocus %v; want true, q-error, set",
+					attr(in, "aria-invalid"), attr(in, "aria-describedby"), hasAttr(in, "autofocus"))
+			}
+			errs := findAll(doc, func(n *html.Node) bool { return n.Data == "p" && attr(n, "id") == "q-error" })
+			if len(errs) != 1 {
+				t.Fatalf("found %d #q-error, want 1", len(errs))
+			}
+			if !hasClass(errs[0], "error") || strings.TrimSpace(textContent(errs[0])) != tt.msg {
+				t.Errorf("#q-error = %q (class %q), want %q", textContent(errs[0]), attr(errs[0], "class"), tt.msg)
+			}
+			sib := in.Parent.NextSibling
+			for sib != nil && sib.Type != html.ElementNode {
+				sib = sib.NextSibling
+			}
+			if sib != errs[0] {
+				t.Error("the error isn't right after the search field")
+			}
+			clears := findAll(in.Parent, func(n *html.Node) bool { return hasClass(n, "search-clear") })
+			if len(clears) != 1 || hasAttr(clears[0], "hidden") {
+				t.Error("the clear button isn't shown for the refused query")
+			}
+		})
 	}
 }

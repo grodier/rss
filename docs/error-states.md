@@ -240,7 +240,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | Y2 My feeds, none | New account's `/feeds` | 200 | "You're not following any feeds yet. Find sites to follow in Discover." | Yes | ok |
 | Y2a My feeds search, no matches | Type "zzz" in My feeds' search, or open `/feeds?q=zzz` | 200 | "None of your feeds match “zzz”. Search Discover for sites to follow.", the sort links still shown; with JavaScript it updates as you type and announces "No feeds" | Yes, the link searches Discover for the same words | new |
 | Y3 Saved, none | New account's `/saved` | 200 | "Nothing saved yet. Use the bookmark on any article to keep it here." | Yes | ok |
-| Y4 Saved search, no matches | `/saved?q=zzz` with saves | 200 | "No saved articles match “zzz”." | Yes | ok |
+| Y4 Saved search, no matches | `/saved?q=zzz` with saves | 200 | "No saved articles match “zzz”." | Yes, the box's clear button (#764) | ok |
 | Y5 Tags, none | New account's `/tags` | 200 | "You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them." | Yes | ok |
 | Y6 Timelines, none | `/timelines` after deleting a new account's Quiet posters and Starred | 200 | Home's row, then "You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”." | Yes | ok |
 | Y7 Site page, no feeds | L9 | | | | see L9 |

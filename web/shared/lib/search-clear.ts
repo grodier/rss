@@ -11,7 +11,7 @@
 // to typing, and keeps focus in the box. Otherwise (Saved, showing a
 // query's results) it follows the link, so the page reloads without the
 // query rather than keep results that no longer match the box. Escape in
-// an empty box is left alone, for whatever else listens for it.
+// an empty box, or while an input method is composing, is left alone.
 export function init(): void {
   for (const clear of document.querySelectorAll<HTMLAnchorElement>("a[data-search-clear]")) {
     const input = clear.closest(".search-field")?.querySelector<HTMLInputElement>('input[type="search"]');
@@ -39,7 +39,8 @@ export function init(): void {
       clearInPlace();
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape" || input.value === "") return;
+      // Escape while an input method is composing cancels the composition.
+      if (e.key !== "Escape" || e.isComposing || input.value === "") return;
       e.preventDefault();
       // As a press of the button: in place, or the link is followed.
       clear.click();

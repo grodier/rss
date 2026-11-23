@@ -593,20 +593,15 @@
     position: relative;
   }
 
-  /* While a Save or Star request runs the button is aria-disabled; save-star.ts
-     adds data-busy only once it has taken --delay-busy, so a quick one never
-     flickers. */
+  /* Save and Star answer a press at once, so they never look busy; only
+     after a failure, while the page loads the form's response, is the
+     button aria-disabled (save-star.ts). */
   .save-button[aria-disabled="true"],
   .star-button[aria-disabled="true"] {
     cursor: progress;
   }
 
-  .save-button[data-busy],
-  .star-button[data-busy] {
-    opacity: 0.6;
-  }
-
-  /* Feedback once a 204 turns Star or Save on (save-star.ts sets
+  /* Feedback as a press turns Star or Save on (save-star.ts sets
      data-just-toggled): the star pops on the spring with a burst of dots
      (starring is the one celebratory moment), the bookmark drops into
      place. Turning either off doesn't animate. The burst sits over the

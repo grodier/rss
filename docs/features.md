@@ -529,9 +529,11 @@ Without JavaScript the link just works.
 ## Saved articles
 
 **Flow.** Every article row and the article page has an icon-only Save button (the `save-button` partial), named by its `aria-label` and with the same word as its `title`, like Star and Share: a form posting to `/articles/{id}/save`, or `/unsave`, with a `return_to` of the page.
-The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `save-star.ts` posts the form with `fetch`, which the handlers tell apart by its `Sec-Fetch-Mode` header and answer with a `204`, and flips the button in place (`aria-pressed` carries the state); on anything but a `204`, such as the redirect to Login when the session has ended, it submits the form normally.
+The handlers (both `toggleAction`) redirect back with `#article-{id}`, so without JavaScript the page comes back at the same row; with JavaScript, `save-star.ts` flips the button in place as it's pressed (`aria-pressed` carries the state) and posts the form with `fetch`, which the handlers tell apart by its `Sec-Fetch-Mode` header and answer with a `204`.
+It sends one request at a time per button: presses made while one runs count, and when it ends the script sends the request for the state last pressed if that isn't the one the `204` confirmed, so the reader's last press wins.
+On anything but a `204`, such as the redirect to Login when the session has ended, the button goes back to the last confirmed state and the form for the state the reader wanted is submitted normally.
 Saving is quiet: no flash, and it doesn't mark the article read.
-While the request runs the button stays focusable (`aria-disabled`) and ignores presses; once a `204` turns Save or Star on, the bookmark drops into place and the star pops with a burst of dots (only under `prefers-reduced-motion: no-preference`; the burst is off in forced colors).
+A press that turns Save or Star on drops the bookmark into place or pops the star with a burst of dots, without waiting for the server (only under `prefers-reduced-motion: no-preference`; the burst is off in forced colors); going back after a failure doesn't animate.
 
 **Copies.** Saving covers every copy of an article (same non-empty `canonical_url`), like read state: `Save` inserts nothing when a copy is already saved, `Unsave` removes every copy's save, and `SavedArticleIDs` matches copies.
 

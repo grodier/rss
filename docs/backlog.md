@@ -1,7 +1,7 @@
 # Backlog
 
 Work that has no GitHub issue yet, and the Performance watchlist.
-What's planned, and in which order, is the [Roadmap issue](https://github.com/grodier/rss/issues/385): its sub-issues are the filed work.
+What's planned, and in which order, is the [Roadmap 2 issue](https://github.com/grodier/rss/issues/770), which continues the full [Roadmap (#385)](https://github.com/grodier/rss/issues/385): their sub-issues are the filed work.
 When an item here gets an issue, the planning work deletes it from this file and adds the issue to the Roadmap.
 Items marked "needs planning" are too large or open-ended to hand to an agent as-is; plan them first and split them into issues.
 How to keep this file up to date is under "Docs" in CLAUDE.md; decisions already made are in [decisions.md](decisions.md).
@@ -425,17 +425,21 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Templates are embedded too, so it only helps with CSS and JavaScript changes; when restarting after each one gets in the way.
 - [ ] **Instant navigation (needs planning).**
   Make moving between pages feel instant, beyond the view transitions in #513; deferred from #507, since each option needs server work ("Motion and feedback" in decisions.md).
-  Options, to measure against each other:
-  - The back-forward cache: Back from an article would restore the timeline at once, in place, with the pages infinite scroll added.
-    Logged-in pages send `Cache-Control: no-store` (so nothing is shown from the cache after logging out), which keeps them out of it in Safari and Firefox and often in Chrome; `Clear-Site-Data: "cache"` on logout may make dropping it safe.
-    Back to the timeline is the trip readers make most, so measure this first.
+  The back-forward cache in Chrome is #773 (Roadmap 2's wave 18, with #771 measuring why a page isn't restored); our own navigation, htmx and Turbo were rejected in its planning ("Overall" in decisions.md).
+  What's left, after #773 ships:
+  - The back-forward cache in Safari and Firefox, which don't restore `no-store` pages, or not dependably: drop `no-store` on logged-in navigations for `private, no-cache`, with `Clear-Site-Data: "cache"` on logout, and a check on `pageshow` (with `persisted`) that reloads a page restored after logging out, by a mark the logged-out pages leave in `localStorage` as they clear recent searches.
+    Decide from the real-user metrics once #773 has shipped: how often Back is a `restore` in Chrome, against how often it's a `back_forward` in Safari, which most phones use.
   - Speculation rules: a `Speculation-Rules` header naming a static rules file (the CSP blocks inline rules), prefetching article and feed pages on hover or press.
     A prefetch (`Sec-Purpose: prefetch`) must skip a GET's upkeep: `articleHandler` records an opened article and `feedHandler` queues a refresh.
     Prefetch rather than prerender, which runs the app's script in a hidden page.
-    Chromium only; check whether Chrome uses a prefetched `no-store` response, and add each prefetched page's queries to the watchlist.
+    Chromium only (Safari 26.2 has it behind a setting); check whether Chrome uses a prefetched `no-store` response, and add each prefetched page's queries to the watchlist.
     Prefetching on intent (hover, press or keyboard focus) is the rules' `eagerness`; the next page's assets need no prefetch of their own, since the article page shares the reading pages' bundle ("Frontend assets" in decisions.md).
-  - Our own navigation in plain JavaScript: fetch the next page and swap in its `<main>`, as infinite scroll and live search do; the most JavaScript, and it must handle focus, the title, announcements, history and scroll itself.
   - A faster server, from what "Load and performance testing" finds.
+- [ ] **Forms that update in place.**
+  A shared helper, `form[data-swap]`, that posts a form with `fetch`, follows its redirect and swaps in the page's `<main>` (or a named part), keeping the scroll and focus, with the flash announced.
+  It would suit a tag's checklist (saving a long list lands at the top of the page again), sharing and unsharing a timeline, renaming a tag, and Settings → Reading, where the theme and layout could also show as soon as they're picked.
+  The same fetch, parse and swap is already in `infinite-scroll.ts`, `live-search.ts` and `poll-self.ts`, which could move onto the helper with it.
+  Deferred in Roadmap 2's wave 18 planning until a second form needs it, since these pages are visited rarely; each form that adopts it needs a design checkpoint.
 
 ## Mobile
 

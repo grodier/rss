@@ -357,17 +357,34 @@ func TestAdminFeedRepositoryActions(t *testing.T) {
 		}
 	}
 
+	// A site checked before, due in the future, with no subscribed feed:
+	// the icon runner takes it only once CheckIcon clears icon_checked_at.
+	if _, err := db.Exec(`UPDATE sites SET icon_checked_at = now() - interval '1 day', icon_next_check_at = now() + interval '30 days' WHERE id = $1`, siteID); err != nil {
+		t.Fatal(err)
+	}
 	if err := repo.CheckIcon(t.Context(), siteID, by); err != nil {
 		t.Fatalf("CheckIcon: %v", err)
 	}
+	var iconChecked sql.NullTime
 	var iconNext time.Time
-	if err := db.QueryRow(`SELECT icon_next_check_at FROM sites WHERE id = $1`, siteID).Scan(&iconNext); err != nil {
+	if err := db.QueryRow(`SELECT icon_checked_at, icon_next_check_at FROM sites WHERE id = $1`, siteID).Scan(&iconChecked, &iconNext); err != nil {
 		t.Fatal(err)
 	}
-	if iconNext.After(now.Add(time.Minute)) {
-		t.Errorf("icon_next_check_at = %v, want now", iconNext)
+	if iconChecked.Valid || iconNext.After(now.Add(time.Minute)) {
+		t.Errorf("after CheckIcon: icon_checked_at %v, icon_next_check_at %v; want NULL, now", iconChecked, iconNext)
 	}
-	lastEntry("site.check_icon", siteID)
+	var due bool
+	if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM sites WHERE id = $1 AND `+siteIconDue+`)`, siteID).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if !due {
+		t.Error("after CheckIcon, the site isn't due for the icon runner")
+	}
+	e = lastEntry("site.check_icon", siteID)
+	if e.TargetType != "site" || e.Before["icon_checked_at"] == nil || e.After["icon_checked_at"] != nil ||
+		e.Before["icon_next_check_at"] == nil || e.After["icon_next_check_at"] == nil {
+		t.Errorf("check icon entry = %+v, want icon_checked_at set then NULL, and icon_next_check_at both times", e)
+	}
 
 	// A lookup that finished a moment ago runs again.
 	if _, err := db.Exec(`INSERT INTO lookups (site_key, url, status, site_id, finished_at) VALUES ($1, $2, 'done', $3, now())`, host, "https://"+host+"/", siteID); err != nil {

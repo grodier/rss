@@ -70,6 +70,7 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 		// Search shows the search form: there are saves to search, or a
 		// query to change. A later page implies saves.
 		Search bool
+		Box    searchBox
 	}{
 		Nav:    s.nav(r, "saved"),
 		Flash:  s.sessionManager.PopString(r.Context(), "flash"),
@@ -79,6 +80,14 @@ func (s *Server) savedHandler(w http.ResponseWriter, r *http.Request) {
 		Newest: savedURL(q, ""),
 		Next:   next,
 		Search: len(rows) > 0 || q != "" || !before.IsZero(),
+		Box: searchBox{
+			ID:          "saved-q",
+			Label:       "Search saved articles",
+			Placeholder: "Search saved articles",
+			Value:       q,
+			ClearURL:    "/saved",
+			Prose:       true,
+		},
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "saved.html", data); err != nil {

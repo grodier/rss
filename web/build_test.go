@@ -136,13 +136,14 @@ type manifestEntry struct {
 // and the chunks it imports) and their CSS (base.css, reading.css and the
 // entry's CSS). Each is what was last measured plus 10%: the CSS by #680,
 // whose second article layout (Headlines beside Cards, in rows.css) added
-// about 1,100 bytes, the JavaScript by #639, which brought pollSelf into the reading entry for
-// Home's "Getting the latest…" (#565 had added the real-user metrics,
-// web-vitals and rum.ts, 3,971 bytes of it). The reading pages are where readers spend
+// about 1,100 bytes, the JavaScript by the search boxes' clear button
+// (search-clear.ts, about 400 bytes, for Saved's box; #639 had brought
+// pollSelf into the reading entry for Home's "Getting the latest…", and #565
+// the real-user metrics, web-vitals and rum.ts, 3,971 bytes of it). The reading pages are where readers spend
 // their time, so growing them is a decision: raise a budget only in a PR
 // that says why in its description.
 const (
-	readingJSBudget  = 11740 // 10671 measured
+	readingJSBudget  = 13060 // 11875 measured
 	readingCSSBudget = 11415 // 10378 measured
 )
 

@@ -46,6 +46,7 @@ func (s *Server) lookupCreateHandler(w http.ResponseWriter, r *http.Request) {
 			Nav:   s.nav(r, "discover"),
 			Form:  searchForm(form),
 			Flash: s.sessionManager.PopString(r.Context(), "flash"),
+			Box:   discoverBox(searchForm(form)),
 		}
 		if err := s.renderHTML(w, http.StatusUnprocessableEntity, "discover.html", data); err != nil {
 			s.serverErrorHTML(w, r, err)

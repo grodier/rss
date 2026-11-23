@@ -19,16 +19,7 @@
       </header>
 
       <form class="page-search" role="search" action="/discover" method="get" data-live-search>
-        <label class="visually-hidden" for="q">Search</label>
-        {{with .Form.FieldErrors.q}}
-        <span class="error">{{.}}</span>
-        {{end}}
-        <div class="search-row">
-          <div class="search-field">
-            <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
-            <input type="search" id="q" name="q" value="{{.Form.Q}}" placeholder="Search or paste a link" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
-          </div>
-        </div>
+        {{template "search-box" .Box}}
         {{/* Only a submit sends this, so live search, which fetches the
              form's action with q alone, gets suggestions, and Enter the
              results, in the tab shown (#666). */}}

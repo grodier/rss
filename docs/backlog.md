@@ -597,9 +597,9 @@ Admin and observability:
   *Signal:* sites pass about 50,000, or `/sites` takes over 200ms.
   *Fix:* the `subscribers` count the feed list's entry plans, summed per site, with indexes on the orders the page uses.
 - [ ] **The admin's users list reads every user** (#579).
-  `AdminUserRepository.ListUsers` sorts every user by `created_at`, which has no index, and its search (`ILIKE` on the start of the email or name) can't use one, before taking the first 50, and it reads each listed user's newest session.
-  *Signal:* users pass about 50,000, or `/users` takes over 200ms.
-  *Fix:* an index on `users (created_at DESC, id DESC)`, and `text_pattern_ops` indexes on `lower(email)` and `lower(name)` with the search written to use them.
+  `AdminUserRepository.ListUsers` sorts every user by `created_at`, which has no index, and its search (`ILIKE` on the start of the email or name) can't use one, before taking the first 50, and it reads each listed user's newest session; a user's page (`User`) reads every invite to find theirs, as `invites.user_id` has no index.
+  *Signal:* users pass about 50,000, invites about 50,000, or `/users` or a user's page takes over 200ms.
+  *Fix:* an index on `users (created_at DESC, id DESC)`, `text_pattern_ops` indexes on `lower(email)` and `lower(name)` with the search written to use them, and an index on `invites (user_id)`.
 - [ ] **The admin's seed list page counts every entry and the found sites' feeds on each view** (#648, #710).
   `/seed` is paged since #710, but `CountSeed` joins every `seed_sites` row to `lookups` for the filters' counts, and both it and `SeedList` count the feeds and catalog feeds of every listed site in one grouped pass (the Found but not in Discover filter needs them), so each view grows with the list and its sites' feeds; the list is meant to grow to thousands of sites.
   Measured in #710 on 5,000 entries with no feeds: a page and the counts took under 5 ms each.

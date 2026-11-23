@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,9 +23,29 @@ import (
 const usersPageSize = 50
 
 // usersParams are the users page's URL parameters: the search and the
-// user whose row the page starts after.
+// row the page starts after, as userCursor writes it ("" for the first
+// page).
 type usersParams struct {
 	q, after string
+}
+
+// userCursor is ?after= for the page after row: its join time in Unix
+// seconds (users.created_at is to the second) and its ID.
+func userCursor(row rss.AdminUserRow) string {
+	return strconv.FormatInt(row.CreatedAt.Unix(), 10) + "_" + row.ID
+}
+
+// parseUserCursor reads a userCursor, reporting false when s isn't one.
+func parseUserCursor(s string) (rss.AdminUserCursor, bool) {
+	secs, id, ok := strings.Cut(s, "_")
+	if !ok || !validator.Matches(id, validator.UUIDRX) {
+		return rss.AdminUserCursor{}, false
+	}
+	n, err := strconv.ParseInt(secs, 10, 64)
+	if err != nil {
+		return rss.AdminUserCursor{}, false
+	}
+	return rss.AdminUserCursor{CreatedAt: time.Unix(n, 0), ID: id}, true
 }
 
 // href is the users page's URL with p, leaving out what's empty.
@@ -54,15 +75,19 @@ type usersPage struct {
 
 // usersHandler lists readers, newest first, usersPageSize at a time,
 // those whose email or name starts with ?q= (any case), from after the
-// user ?after=.
+// row ?after=.
 func (s *Server) usersHandler(w http.ResponseWriter, r *http.Request) {
 	params := usersParams{q: strings.TrimSpace(r.URL.Query().Get("q")), after: r.URL.Query().Get("after")}
-	if params.after != "" && !validator.Matches(params.after, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
-		return
+	var after rss.AdminUserCursor
+	if params.after != "" {
+		var ok bool
+		if after, ok = parseUserCursor(params.after); !ok {
+			s.notFoundResponse(w, r)
+			return
+		}
 	}
 	// One more than a page, to know whether there's another.
-	rows, err := s.services.Users.ListUsers(r.Context(), rss.AdminUserQuery{Q: params.q, After: params.after, Limit: usersPageSize + 1})
+	rows, err := s.services.Users.ListUsers(r.Context(), rss.AdminUserQuery{Q: params.q, After: after, Limit: usersPageSize + 1})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
@@ -76,7 +101,7 @@ func (s *Server) usersHandler(w http.ResponseWriter, r *http.Request) {
 	if len(rows) > usersPageSize {
 		rows = rows[:usersPageSize]
 		next := params
-		next.after = rows[len(rows)-1].ID
+		next.after = userCursor(rows[len(rows)-1])
 		page.Next = next.href()
 	}
 	page.Rows = rows
@@ -93,8 +118,8 @@ type userPage struct {
 	User rss.AdminUser
 	// Counts are the reader's counts as a stat row.
 	Counts []statTile
-	// Emails are the outbox's emails to the reader's address, and Tokens
-	// their outstanding email links, as the page says them.
+	// Emails are the outbox's emails to the reader, and Tokens their
+	// outstanding email links, as the page says them.
 	Emails []userEmail
 	Tokens []userToken
 	// History is the reader's entries in the audit log.
@@ -103,31 +128,31 @@ type userPage struct {
 }
 
 // userEmail is an email in the outbox as a reader's page shows it: its
-// status in words, in the danger tone when it failed.
+// status in words (Label) and its tone (emailStatuses).
 type userEmail struct {
 	rss.AdminUserEmail
-	Status string
-	Tone   string
+	Label, Tone string
 }
 
 // userToken is an outstanding email link as a reader's page shows it: its
-// purpose in words.
+// purpose in words (Label).
 type userToken struct {
 	rss.AdminUserToken
-	Purpose string
+	Label string
 }
 
-// tokenPurposes say what each kind of email link is for.
+// tokenPurposes say what each kind of email link is for (user_tokens'
+// purposes, all of them).
 var tokenPurposes = map[string]string{
 	rss.TokenConfirmEmail:  "Confirm email",
 	rss.TokenResetPassword: "Reset password",
 	rss.TokenChangeEmail:   "Change email",
 }
 
-// emailStatuses say an outbox email's status, and its tone, a status
-// label's class suffix: an invite's tones for waiting and done
-// (status-pending, status-redeemed), and the danger tone when the outbox
-// gave up.
+// emailStatuses say each of an outbox email's statuses (all of them), and
+// its tone, a status label's class suffix: an invite's tones for waiting
+// and done (status-pending, status-redeemed), and the danger tone when the
+// outbox gave up.
 var emailStatuses = map[string]struct{ Text, Tone string }{
 	"pending": {"Pending", "pending"},
 	"sent":    {"Sent", "redeemed"},
@@ -181,18 +206,11 @@ func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
 		Now:     s.now(),
 	}
 	for _, e := range user.Emails {
-		st, ok := emailStatuses[e.Status]
-		if !ok {
-			st.Text, st.Tone = e.Status, "pending"
-		}
-		page.Emails = append(page.Emails, userEmail{AdminUserEmail: e, Status: st.Text, Tone: st.Tone})
+		st := emailStatuses[e.Status]
+		page.Emails = append(page.Emails, userEmail{AdminUserEmail: e, Label: st.Text, Tone: st.Tone})
 	}
 	for _, t := range user.Tokens {
-		purpose, ok := tokenPurposes[t.Purpose]
-		if !ok {
-			purpose = t.Purpose
-		}
-		page.Tokens = append(page.Tokens, userToken{AdminUserToken: t, Purpose: purpose})
+		page.Tokens = append(page.Tokens, userToken{AdminUserToken: t, Label: tokenPurposes[t.Purpose]})
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "user.html", page); err != nil {

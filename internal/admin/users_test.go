@@ -38,6 +38,8 @@ func (f *fakeUsers) ListUsers(_ context.Context, q rss.AdminUserQuery) ([]rss.Ad
 }
 
 func (f *fakeUsers) User(_ context.Context, id string) (rss.AdminUser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.err != nil {
 		return rss.AdminUser{}, f.err
 	}
@@ -75,7 +77,7 @@ func TestUsersPageQuery(t *testing.T) {
 	}{
 		{"", rss.AdminUserQuery{}},
 		{"?q=+Ann+", rss.AdminUserQuery{Q: "Ann"}},
-		{"?q=ann&after=" + userID(9), rss.AdminUserQuery{Q: "ann", After: userID(9)}},
+		{"?q=ann&after=1700000000_" + userID(9), rss.AdminUserQuery{Q: "ann", After: rss.AdminUserCursor{CreatedAt: time.Unix(1700000000, 0), ID: userID(9)}}},
 	}
 	for _, tt := range tests {
 		rr := b.get(t, "/users"+tt.query)
@@ -89,12 +91,15 @@ func TestUsersPageQuery(t *testing.T) {
 		}
 	}
 
-	if rr := b.get(t, "/users?after=nope"); rr.Code != http.StatusNotFound {
-		t.Errorf("GET /users?after=nope = %d, want 404", rr.Code)
+	// A cursor that isn't one: no time, a bad time, a bad ID.
+	for _, after := range []string{"nope", userID(9), "x_" + userID(9), "1700000000_nope", "1700000000_"} {
+		if rr := b.get(t, "/users?after="+after); rr.Code != http.StatusNotFound {
+			t.Errorf("GET /users?after=%s = %d, want 404", after, rr.Code)
+		}
 	}
 	// A page after the last is missing.
 	users.rows = nil
-	if rr := b.get(t, "/users?after="+userID(9)); rr.Code != http.StatusNotFound {
+	if rr := b.get(t, "/users?after=1700000000_"+userID(9)); rr.Code != http.StatusNotFound {
 		t.Errorf("GET /users?after= past the end = %d, want 404", rr.Code)
 	}
 
@@ -153,8 +158,16 @@ func TestUsersPagePaging(t *testing.T) {
 	if n := strings.Count(body, `<a href="/users/`); n != usersPageSize {
 		t.Errorf("GET /users lists %d users, want %d", n, usersPageSize)
 	}
-	if want := `<a class="btn btn-sm" href="/users?after=` + userID(usersPageSize) + `&amp;q=reader">Older</a>`; !strings.Contains(body, want) {
+	if want := `<a class="btn btn-sm" href="/users?after=` + userCursor(rows[usersPageSize-1]) + `&amp;q=reader">Older</a>`; !strings.Contains(body, want) {
 		t.Errorf("GET /users lacks %s", want)
+	}
+}
+
+func TestUserCursor(t *testing.T) {
+	row := testUserRow(3)
+	got, ok := parseUserCursor(userCursor(row))
+	if !ok || !got.CreatedAt.Equal(row.CreatedAt) || got.ID != row.ID {
+		t.Errorf("parseUserCursor(userCursor(row)) = %+v, %v, want the row's time and ID", got, ok)
 	}
 }
 
@@ -177,7 +190,7 @@ func testUser() rss.AdminUser {
 		Counts: rss.AdminUserCounts{Devices: 2, Subscriptions: 1234, Tags: 5, Timelines: 3, SharedTimelines: 1,
 			Saved: 40, Starred: 7, Imports: 2, ImportedFeeds: 120, ImportFailures: 3},
 		Emails: []rss.AdminUserEmail{
-			{ID: "e2", Subject: "<b>Reset</b> your password", Status: "failed", Attempts: 5, CreatedAt: testNow.Add(-time.Hour)},
+			{ID: "e2", To: "reader1@example.com", Subject: "<b>Reset</b> your password", Status: "failed", Attempts: 5, CreatedAt: testNow.Add(-time.Hour)},
 			{ID: "e1", Subject: "Confirm your email", Status: "sent", Attempts: 1, CreatedAt: testNow.Add(-48 * time.Hour), SentAt: testNow.Add(-48 * time.Hour)},
 		},
 		Tokens: []rss.AdminUserToken{
@@ -213,6 +226,7 @@ func TestUserPage(t *testing.T) {
 		`<span class="status status-danger">Failed</span>`,
 		`<span class="status status-redeemed">Sent</span>`,
 		`<td class="num">5</td>`,
+		`<td class="wrap">reader1@example.com</td>`,
 		`<td>Change email</td>`,
 		`new@example.com`,
 		`title="2026-11-10 11:00 UTC">in 23 h</time>`,
@@ -242,7 +256,7 @@ func TestUserPageBare(t *testing.T) {
 		`<dt>Invite</dt><dd class="wrap">None</dd>`,
 		`none shared`,
 		`none yet`,
-		`No emails to this address in the outbox`,
+		`No emails to them in the outbox`,
 		`No email links waiting to be used.`,
 	} {
 		if !strings.Contains(body, want) {

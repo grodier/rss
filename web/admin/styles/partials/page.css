@@ -206,6 +206,11 @@
     font-size: 0.8125rem;
   }
 
+  /* A note under a table: off its border. */
+  .table-wrap + .missing {
+    margin-block-start: 0.5rem;
+  }
+
   /* A row of figures, separated by dividers: a label over a number. Each
      figure draws the dividers above and before it, pulled 1px out so that
      those on the row's edges are clipped, however the row wraps. */

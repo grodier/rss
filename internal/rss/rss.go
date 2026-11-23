@@ -569,6 +569,10 @@ const (
 	LayoutCards     = "cards"
 )
 
+// SessionIdleTimeout ends a reader's login (a user_sessions row) that
+// hasn't been used for this long; the row is deleted at their next login.
+const SessionIdleTimeout = 90 * 24 * time.Hour
+
 // Token is a one-time email link (a user_tokens row).
 type Token struct {
 	Hash      []byte
@@ -1143,11 +1147,19 @@ type AdminSite struct {
 
 // AdminUserQuery selects a page of the admin's users list, newest first:
 // those whose email or name starts with Q (any case; "" for every user),
-// starting after the user After ("" for the first page).
+// starting after the row After (zero for the first page).
 type AdminUserQuery struct {
 	Q     string
-	After string
+	After AdminUserCursor
 	Limit int
+}
+
+// AdminUserCursor is where a page of the users list starts: after the user
+// who joined at CreatedAt with ID, ordered by both. It carries the time,
+// so a page still follows the last if that user is deleted in between.
+type AdminUserCursor struct {
+	CreatedAt time.Time
+	ID        string
 }
 
 // AdminUserRow is a reader as the admin lists them: account facts only,
@@ -1162,8 +1174,8 @@ type AdminUserRow struct {
 }
 
 // AdminUser is one reader's admin page: their account, the invite they
-// signed up with (ID "" for none), their counts, the emails sent to their
-// address that the outbox still holds, and their outstanding email links.
+// signed up with (ID "" for none), their counts, the emails to them that
+// the outbox still holds, and their outstanding email links.
 // Counts only: never their reads, saves, stars, tags, timelines or feeds.
 type AdminUser struct {
 	AdminUserRow
@@ -1194,6 +1206,7 @@ type AdminUserCounts struct {
 // it: never its body, which can carry a one-time link.
 type AdminUserEmail struct {
 	ID        string
+	To        string // the account's address, or a change of address's new one
 	Subject   string
 	Status    string // pending, sent or failed
 	Attempts  int

@@ -99,17 +99,18 @@ func TestAdminUserRepositoryListUsers(t *testing.T) {
 	// who joined in the same second.
 	all := append(append([]string{underscore, newest}, same...), oldest)
 	var paged []string
-	after := ""
+	var after rss.AdminUserCursor
 	for range len(all) {
 		got, err := repo.ListUsers(t.Context(), rss.AdminUserQuery{Q: p, After: after, Limit: 2})
 		if err != nil {
-			t.Fatalf("ListUsers after %q: %v", after, err)
+			t.Fatalf("ListUsers after %+v: %v", after, err)
 		}
 		if len(got) == 0 {
 			break
 		}
 		paged = append(paged, ids(got)...)
-		after = got[len(got)-1].ID
+		last := got[len(got)-1]
+		after = rss.AdminUserCursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 	if !slices.Equal(paged, all) {
 		t.Errorf("paging by 2 = %v, want %v", paged, all)
@@ -142,6 +143,23 @@ func TestAdminUserRepositoryListUsers(t *testing.T) {
 	}
 	if !got[0].LastSeenAt.IsZero() || !got[0].EmailConfirmedAt.IsZero() {
 		t.Errorf("a user never seen or confirmed = %+v, want zero times", got[0])
+	}
+
+	// A page still follows a cursor whose user was deleted since.
+	newestRow, err := repo.ListUsers(t.Context(), rss.AdminUserQuery{Q: "newest-" + p, Limit: 1})
+	if err != nil || len(newestRow) != 1 {
+		t.Fatalf("ListUsers newest = %v, %v", newestRow, err)
+	}
+	cursor := rss.AdminUserCursor{CreatedAt: newestRow[0].CreatedAt, ID: newestRow[0].ID}
+	if _, err := db.Exec(`DELETE FROM users WHERE id = $1`, newest); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListUsers(t.Context(), rss.AdminUserQuery{Q: p, After: cursor, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := append(append([]string{}, same...), oldest); !slices.Equal(ids(rows), want) {
+		t.Errorf("after a deleted user = %v, want %v", ids(rows), want)
 	}
 }
 
@@ -200,9 +218,13 @@ func TestAdminUserRepositoryUser(t *testing.T) {
 	exec(`INSERT INTO emails (to_address, subject, text_body, html_body, status, attempts, created_at, sent_at) VALUES
 		($1, 'Confirm your email', 'secret link', '<p>secret link</p>', 'sent', 1, now() - interval '2 hours', now() - interval '2 hours'),
 		($2, 'Reset your password', 'secret link', '', 'pending', 0, now() - interval '1 hour', NULL),
-		($3, 'Not theirs', '', '', 'sent', 1, now(), now())`, email, strings.ToUpper(email), "other-"+email)
+		($3, 'Not theirs', '', '', 'sent', 1, now(), now()),
+		($4, 'Confirm your new address', '', '', 'sent', 1, now() - interval '30 minutes', now() - interval '30 minutes'),
+		($1, 'A previous account''s', '', '', 'sent', 1, $5::timestamptz - interval '1 hour', $5::timestamptz - interval '1 hour'),
+		($1, 'Confirm on signup', '', '', 'sent', 1, $5::timestamptz - interval '400 milliseconds', $5)`,
+		email, strings.ToUpper(email), "other-"+email, "new-"+email, created)
 	t.Cleanup(func() {
-		db.Exec(`DELETE FROM emails WHERE to_address IN ($1, $2)`, email, "other-"+email)
+		db.Exec(`DELETE FROM emails WHERE to_address IN ($1, $2, $3)`, email, "other-"+email, "new-"+email)
 	})
 
 	// Email links: one outstanding, one expired.
@@ -237,11 +259,14 @@ func TestAdminUserRepositoryUser(t *testing.T) {
 	for _, e := range got.Emails {
 		subjects = append(subjects, e.Subject)
 	}
-	if !slices.Equal(subjects, []string{"Reset your password", "Confirm your email"}) {
-		t.Errorf("Emails' subjects = %v, want the two to the address, newest first", subjects)
+	// Those to the address and the change of address's, since they joined
+	// (within the second users.created_at rounds to), newest first.
+	if want := []string{"Confirm your new address", "Reset your password", "Confirm your email", "Confirm on signup"}; !slices.Equal(subjects, want) {
+		t.Errorf("Emails' subjects = %v, want %v", subjects, want)
 	}
-	if len(got.Emails) == 2 {
-		if e := got.Emails[1]; e.Status != "sent" || e.Attempts != 1 || e.SentAt.IsZero() {
+	if len(got.Emails) == 4 {
+		got.Emails = got.Emails[1:3]
+		if e := got.Emails[1]; e.Status != "sent" || e.Attempts != 1 || e.SentAt.IsZero() || e.To != email {
 			t.Errorf("sent email = %+v", e)
 		}
 		if e := got.Emails[0]; e.Status != "pending" || e.Attempts != 0 || !e.SentAt.IsZero() {

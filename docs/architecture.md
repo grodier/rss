@@ -417,7 +417,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **Outbound requests:** `internal/fetch` (see Outbound HTTP).
 - **Sessions:** scs, stored in Postgres; the token is renewed on login and logout; the reader's cookies are `SameSite=Lax`, and `Secure` with `-env production` (the admin's are above).
 - **The `tab` cookie** remembers the tab a reader was on for a visit (`rss.VisitGap`), so `/` can return to it; it's a cookie rather than a session value because sessions are stored in Postgres and it's set on every timeline page. It's `HttpOnly`, `SameSite=Lax`, `Secure` like the session cookie, and checked against the reader's tabs on every use.
-  Each login is a `user_sessions` row: it ends after 90 days unused (`sessionIdleTimeout`) and at most a year after login (scs's `Lifetime`), and logging out deletes it.
+  Each login is a `user_sessions` row: it ends after 90 days unused (`rss.SessionIdleTimeout`) and at most a year after login (scs's `Lifetime`), and logging out deletes it.
 - **Passwords:** Argon2id with OWASP's minimum parameters (`internal/password`); at most `GOMAXPROCS` hashes run at once and the rest wait.
   `Hash` and `Verify` normalize the password to Unicode NFKC first.
   Every new password (`validator.CheckNewPassword`) is 8 to 256 characters, isn't the account's email and isn't on the common-password list (`internal/validator/common_passwords.txt`: the NCSC's 100,000 most common passwords from Have I Been Pwned, via SecLists, kept to 8 characters or more; lookups are case-insensitive).

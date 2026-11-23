@@ -25,8 +25,8 @@
 
       <section class="admin-section" aria-labelledby="account-heading">
         <h2 id="account-heading">Account</h2>
-        {{/* A two-column list of facts on desktop, one on phones; dates
-             relative, with the UTC time beside them. */}}
+        {{/* Dates are relative, with the UTC time beside them (under them on
+             phones). */}}
         <dl class="fact-list">
           <div><dt>Name</dt><dd class="wrap">{{with .Name}}{{.}}{{else}}—{{end}}</dd></div>
           <div><dt>Email</dt><dd class="wrap">{{.Email}}</dd></div>
@@ -47,13 +47,14 @@
 
       <section class="admin-section" aria-labelledby="email-heading">
         <h2 id="email-heading">Email</h2>
-        <h3 class="sub">Sent to {{.Email}}</h3>
+        <h3 class="sub">In the outbox</h3>
         {{if $.Emails}}
         <div class="table-wrap">
           <table class="data">
             <thead>
               <tr>
                 <th scope="col">Subject</th>
+                <th scope="col">To</th>
                 <th scope="col">Status</th>
                 <th scope="col">Queued</th>
                 <th scope="col">Sent</th>
@@ -64,7 +65,8 @@
               {{range $.Emails}}
               <tr>
                 <td class="wrap">{{.Subject}}</td>
-                <td><span class="status status-{{.Tone}}">{{.Status}}</span></td>
+                <td class="wrap">{{.To}}</td>
+                <td><span class="status status-{{.Tone}}">{{.Label}}</span></td>
                 <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
                 <td>{{if .SentAt.IsZero}}—{{else}}<time datetime="{{.SentAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .SentAt}} UTC">{{ago $now .SentAt}}</time>{{end}}</td>
                 <td class="num">{{.Attempts}}</td>
@@ -73,10 +75,11 @@
             </tbody>
           </table>
         </div>
+        {{/* mail.Runner.KeepFor's default, which www doesn't change. */}}
+        <p class="missing">The outbox keeps sent and failed emails for a week.</p>
         {{else}}
-        <p class="missing">No emails to this address in the outbox, which keeps sent and failed emails for a week.</p>
+        <p class="missing">No emails to them in the outbox, which keeps sent and failed emails for a week.</p>
         {{end}}
-        {{if $.Emails}}<p class="missing">The outbox keeps sent and failed emails for a week.</p>{{end}}
 
         <h3 class="sub">Email links not yet used</h3>
         {{if $.Tokens}}
@@ -93,7 +96,7 @@
             <tbody>
               {{range $.Tokens}}
               <tr>
-                <td>{{.Purpose}}</td>
+                <td>{{.Label}}</td>
                 <td class="wrap">{{.Email}}</td>
                 <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
                 <td><time datetime="{{.ExpiresAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .ExpiresAt}} UTC">{{ago $now .ExpiresAt}}</time></td>

@@ -202,6 +202,67 @@ describe("save-star", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("sends a waiting press when the page is hidden without a pagehide, once", async () => {
+    let visibility: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    pending();
+    submit(form(), button()); // on
+    submit(form(), button()); // off, waiting
+
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(path(1)).toBe("/articles/a1/unsave");
+
+    // Hidden again, or then left, it isn't sent again.
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the wanted state once more after a press sent early, as the two may have crossed", async () => {
+    const responds = pending();
+    submit(form(), button()); // on: /save runs
+    submit(form(), button()); // off, waiting
+    pageTransition("pagehide", true); // /unsave sent early
+    pageTransition("pageshow", true); // back from the back/forward cache
+    submit(form(), button()); // on again, while /save still runs
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // /save ends, but the early /unsave may have reached the server after
+    // it, so /save goes again.
+    await responds[0](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(path(2)).toBe("/articles/a1/save");
+    await responds[2](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+    expect(form().getAttribute("action")).toBe("/articles/a1/unsave");
+    expect(formSubmit).not.toHaveBeenCalled();
+  });
+
+  it("sends early only the waiting presses, button by button", async () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<form class="star-form" method="post" action="/articles/a1/star" data-toggle>
+        <button class="star-button" type="submit" aria-pressed="false" aria-label="Star" title="Star"></button>
+      </form>`,
+    );
+    const star = document.querySelector<HTMLFormElement>(".star-form")!;
+    pending();
+    submit(form(), button()); // Save on
+    submit(star, star.querySelector("button")!); // Star on
+    submit(form(), button()); // Save off, waiting; Star's request is the one wanted
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(path(2)).toBe("/articles/a1/unsave");
+  });
+
   it("sends one request for three quick presses ending on", async () => {
     const responds = pending();
     submit(form(), button());
@@ -268,6 +329,21 @@ describe("save-star", () => {
       submit(form(), button());
       expect(button().getAttribute("aria-disabled")).toBe("true");
       expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(submit(form(), button())).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await responds[0](noContent());
+      expect(button().hasAttribute("aria-disabled")).toBe(false);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(fetchMock.mock.calls[0][1].keepalive).toBe(false);
+    });
+
+    it("stays waiting when the page comes back from the back/forward cache while its request runs", async () => {
+      const responds = pending();
+      submit(form(), button());
+      pageTransition("pagehide", true);
+      pageTransition("pageshow", true);
+      expect(button().getAttribute("aria-disabled")).toBe("true");
       expect(submit(form(), button())).toBe(true);
       expect(fetchMock).toHaveBeenCalledTimes(1);
 

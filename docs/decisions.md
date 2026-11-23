@@ -760,7 +760,8 @@ Planned in #309 (issues #299–#301).
 - **Save and Star answer the press before the server does** (#775, planned in Roadmap 2's wave 18 and approved at its design checkpoint; the look is under "Starring and saving" in "Motion and feedback"): they're the app's most frequent writes, and both routes are idempotent, so the button can show the result at once and put itself back on the rare failure.
   The `204` contract above stays: on anything else the button returns to the last state a `204` confirmed, and the form for the state the reader wanted is submitted normally.
   One request at a time per button, and the last press wins: when a request finishes and the reader now wants the other state, the script sends that one, so the server sees a button's requests in order.
-  The one exception is leaving the page: a press still waiting behind a running request is sent at once on `pagehide` (`keepalive`, like the running one), since the page won't be there to send it later; the two can then reach the server in either order, which is rarer than losing the press.
+  The one exception is the page being hidden: a press still waiting behind a running request is sent at once (`keepalive`, like the running one) on `pagehide` or `visibilitychange`, since a phone may discard a hidden tab without a `pagehide` and the page may not be there to send it later.
+  The two can then reach the server in either order, so if the page is still there when the running request ends, the wanted state is sent once more; if it isn't, the order is a rarer loss than dropping the press.
   Follow keeps waiting for the server, since unfollowing a feed with a name or tags leads to a confirmation (#752) and Follow in a list becomes "✓ Following".
 - **Saved has its own nav entry**: Home, Saved, My feeds, Search.
   Newest saved first, paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt and feed title; a user's saves are a small set).

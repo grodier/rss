@@ -21,10 +21,14 @@ import { announce } from "../../shared/lib/announce";
 // and the server sees a button's requests in order. On a failure the
 // button goes back to the confirmed state, without an animation, and the
 // form for the wanted state is submitted.
-// Requests are keepalive, so one that's running still reaches the server
-// if the reader leaves the page; a press waiting behind it is sent at once
-// on pagehide, the one time a button's requests overlap, as the page won't
-// be there to send it later.
+// Their requests are keepalive, so one that's running still reaches the
+// server if the reader leaves the page. A press waiting behind it is sent
+// at once when the page is hidden (pagehide, or visibilitychange, which a
+// phone may give instead before it discards a backgrounded tab), as the
+// page may not be there to send it later. It's the one time a button's
+// requests overlap and may reach the server in either order, so if the
+// page is still there when the running request ends, the wanted state is
+// sent once more.
 //
 // Follow waits for the server, since unfollowing a feed with a name or
 // tags redirects to a confirmation. While its request runs the button is
@@ -35,7 +39,8 @@ import { announce } from "../../shared/lib/announce";
 //
 // A button whose form is submitted stays aria-disabled while the page
 // loads; a page restored from the back/forward cache, such as coming Back
-// from Follow's confirmation, gets its buttons back (pageshow).
+// from Follow's confirmation, gets those buttons back (pageshow), but not a
+// Follow whose request is still running.
 // data-just-toggled is cleared once the animations end (with reduced motion
 // none run, so it stays until the button is turned off).
 const instant = /\/(un)?(save|star)$/;
@@ -55,11 +60,11 @@ function setPressed(form: HTMLFormElement, button: HTMLButtonElement, on: boolea
   form.setAttribute("action", actionTo(form, !on));
 }
 
-function post(form: HTMLFormElement, action: string): Promise<Response> {
+function post(form: HTMLFormElement, action: string, keepalive = false): Promise<Response> {
   return fetch(new URL(action, location.href).href, {
     method: "POST",
     redirect: "manual",
-    keepalive: true,
+    keepalive,
     // FormData is a sequence of name and value pairs, which TypeScript's
     // types don't let URLSearchParams take.
     body: new URLSearchParams(new FormData(form) as unknown as string[][]),
@@ -72,19 +77,29 @@ function announceState(form: HTMLFormElement, on: boolean): void {
 }
 
 // A Save or Star button's state: what the last 204 confirmed, what the
-// reader last pressed, and the state its running request asks for, if
-// one is running.
+// reader last pressed, the state its running request asks for, if one is
+// running, and the state sent while it ran because the page was hidden, if
+// one was.
 type Toggle = {
   form: HTMLFormElement;
   button: HTMLButtonElement;
   confirmed: boolean;
   wanted: boolean;
   sending?: boolean;
+  sentEarly?: boolean;
 };
 
 export function init(): void {
   const states = new WeakMap<HTMLButtonElement, Toggle>();
   const running = new Set<Toggle>();
+  // The buttons whose form was submitted normally, for pageshow.
+  const submitted = new Set<HTMLButtonElement>();
+
+  function submit(form: HTMLFormElement, button: HTMLButtonElement): void {
+    button.setAttribute("aria-disabled", "true");
+    submitted.add(button);
+    form.submit();
+  }
 
   // press answers a press on Save or Star, and sends its request unless
   // one is already running, which send's loop then follows with it.
@@ -109,14 +124,16 @@ export function init(): void {
   async function send(state: Toggle): Promise<void> {
     const { form, button } = state;
     running.add(state);
-    while (state.wanted !== state.confirmed) {
+    while (state.wanted !== state.confirmed || state.sentEarly !== undefined) {
       const on = state.wanted;
       state.sending = on;
+      delete state.sentEarly;
       try {
-        const res = await post(form, actionTo(form, on));
+        const res = await post(form, actionTo(form, on), true);
         if (res.status !== 204) throw new Error(`status ${res.status}`);
       } catch {
         delete state.sending;
+        delete state.sentEarly;
         running.delete(state);
         delete button.dataset.justToggled;
         setPressed(form, button, state.confirmed);
@@ -125,8 +142,7 @@ export function init(): void {
         // what went wrong. form.submit() reads the action at once.
         const action = form.getAttribute("action")!;
         form.setAttribute("action", actionTo(form, state.wanted));
-        button.setAttribute("aria-disabled", "true");
-        form.submit();
+        submit(form, button);
         form.setAttribute("action", action);
         return;
       }
@@ -142,7 +158,7 @@ export function init(): void {
       const res = await post(form, form.getAttribute("action")!);
       if (res.status !== 204) throw new Error(`status ${res.status}`);
     } catch {
-      form.submit();
+      submit(form, button);
       return;
     }
     button.removeAttribute("aria-disabled");
@@ -170,16 +186,21 @@ export function init(): void {
   });
   addEventListener("pageshow", (e) => {
     if (!e.persisted) return;
-    for (const button of document.querySelectorAll<HTMLButtonElement>(
-      'form[data-toggle] button[aria-disabled="true"]',
-    )) {
-      button.removeAttribute("aria-disabled");
-    }
+    for (const button of submitted) button.removeAttribute("aria-disabled");
+    submitted.clear();
   });
-  addEventListener("pagehide", () => {
-    for (const { form, wanted, sending } of running) {
-      if (wanted !== sending) void post(form, actionTo(form, wanted)).catch(() => {});
+
+  // sendWaiting sends each press still waiting behind a running request.
+  function sendWaiting(): void {
+    for (const state of running) {
+      if (state.wanted === (state.sentEarly ?? state.sending)) continue;
+      state.sentEarly = state.wanted;
+      post(state.form, actionTo(state.form, state.wanted), true).catch(() => {});
     }
+  }
+  addEventListener("pagehide", sendWaiting);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") sendWaiting();
   });
   document.addEventListener("animationend", (e) => {
     const button = e.target instanceof Element && e.target.closest<HTMLElement>("button[data-just-toggled]");

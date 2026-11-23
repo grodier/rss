@@ -217,8 +217,8 @@ Each with when it pays off:
 - [ ] **Unfollowing also takes the feed out of the reader's custom timelines, without saying so** (found in #752).
   `timeline_feeds` cascades from the subscription, so a timeline that names the feed loses it; the confirmation before unfollowing (#752) asks only about a name or tags, and a feed in a timeline but with neither unfollows at once.
   Decide whether being in a timeline counts as something lost (one more condition in `losesOnUnfollow`, and a line on the confirmation), and whether following again should put it back.
-- [ ] **A Follow, Save or Star that fails after its row was swapped out says nothing** (found in #775's review).
-  On anything but a `204`, `save-star.ts` calls `form.submit()`, which does nothing on a form no longer in the page; live search swaps Discover's results, Follow forms included, as the reader types, and Home swaps in its rows once its feeds are fetched.
+- [ ] **A Follow that fails after Discover's results were swapped out says nothing** (found in #775's review).
+  On anything but a `204`, `save-star.ts` calls `form.submit()`, which does nothing on a form no longer in the page; live search (`live-search.ts`) and recent searches (`recent-searches.ts`) replace Discover's results, Follow forms included, as the reader types or focuses the box.
   So a Follow pressed after the session ended, followed by more typing before the redirect returns, neither follows nor shows Login.
   Fix: when `form.isConnected` is false, reload the page (or put the form back in the page to submit it).
 

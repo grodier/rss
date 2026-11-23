@@ -903,8 +903,9 @@ type WebPerf struct {
 type RUMBackForward struct {
 	Restored    int // restore views
 	NotRestored int // back_forward views
-	// Unexplained is the back_forward views with no reason, where the
-	// browser reports none (Safari, Firefox) or gave none.
+	// Unexplained is the back_forward views with no reason kept: the
+	// browser reports none (Safari, Firefox, Chrome before 123), gave none,
+	// or named none the server keeps (rumNotRestored).
 	Unexplained int
 	// Reasons are the 20 reasons named by the most back_forward views,
 	// most first; a view can name up to 3.

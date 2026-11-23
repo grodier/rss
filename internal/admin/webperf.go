@@ -352,8 +352,12 @@ func backForwardData(bf rss.RUMBackForward) backForward {
 	if out.Views == 0 {
 		return out
 	}
+	restored := share(bf.Restored, out.Views)
+	if restored == "100%" && bf.NotRestored > 0 {
+		restored = ">99%" // as share says "<1%" rather than 0% for a few
+	}
 	out.Stats = []statTile{
-		{Label: "Restored from the cache", Text: share(bf.Restored, out.Views), Note: count(bf.Restored) + " of " + count(out.Views) + " Back and Forward views"},
+		{Label: "Restored from the cache", Text: restored, Note: count(bf.Restored) + " of " + count(out.Views) + " Back and Forward views"},
 		{Label: "Loaded again", Value: bf.NotRestored, Note: count(bf.NotRestored-bf.Unexplained) + " with a reason"},
 	}
 	for _, c := range bf.Reasons {

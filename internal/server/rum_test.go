@@ -285,8 +285,8 @@ func TestRUMContext(t *testing.T) {
 	}
 }
 
-// A back_forward view keeps the first 3 of the reasons it wasn't restored
-// from the back/forward cache that are reason names; other views keep none.
+// A back_forward view keeps the first 3 distinct reason names of the reasons
+// it wasn't restored from the back/forward cache; other views keep none.
 func TestRUMNotRestored(t *testing.T) {
 	long := strings.Repeat("a", 65)
 	tests := []struct {
@@ -298,6 +298,7 @@ func TestRUMNotRestored(t *testing.T) {
 		{"names that aren't reasons", "back_forward", "Masked,unload listener," + long + ",cookie-disabled", []string{"cookie-disabled"}},
 		{"64 characters", "back_forward", long[1:], []string{long[1:]}},
 		{"invalid names don't count toward 3", "back_forward", "X,a,b,,c,d", []string{"a", "b", "c"}},
+		{"a name given twice", "back_forward", "masked,masked,unload-listener,masked,cookie-disabled", []string{"masked", "unload-listener", "cookie-disabled"}},
 		{"empty", "back_forward", "", nil},
 		{"navigate", "navigate", "unload-listener", nil},
 		{"restore", "restore", "unload-listener", nil},

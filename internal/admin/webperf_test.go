@@ -371,6 +371,14 @@ func TestWebPerfBackForward(t *testing.T) {
 		}
 	}
 
+	// Nearly every time: never 100% while one was loaded again.
+	wp.BackForward = rss.RUMBackForward{Restored: 1999, NotRestored: 1, Unexplained: 1}
+	b = webPerfServer(t, &fakeWebPerf{wp: wp})
+	body = b.get(t, "/web-performance").Body.String()
+	if !strings.Contains(body, `<dd>&gt;99%</dd>`) {
+		t.Error("1,999 of 2,000 restored doesn't read >99%")
+	}
+
 	// Restored every time: no reasons to show.
 	wp.BackForward = rss.RUMBackForward{Restored: 12}
 	b = webPerfServer(t, &fakeWebPerf{wp: wp})

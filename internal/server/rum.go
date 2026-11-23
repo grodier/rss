@@ -199,11 +199,12 @@ func rumName(v string) string {
 	return v
 }
 
-// rumNotRestored returns the first rumMaxReasons of v's comma-separated
-// reasons that are reason names, for a back_forward view only: a restored
-// view has none, and other navigations aren't Back or Forward. It isn't an
-// allowlist: Chrome adds reasons, and a new one is what the admin wants to
-// see.
+// rumNotRestored returns the first rumMaxReasons distinct names among v's
+// comma-separated reasons, for a back_forward view only: a restored view has
+// none, and other navigations aren't Back or Forward. Anything that isn't a
+// reason name is dropped, and a name given twice is kept once, so the admin
+// counts a view once per reason. It isn't an allowlist: Chrome adds
+// reasons, and a new one is what the admin wants to see.
 func rumNotRestored(nav, v string) []string {
 	if nav != "back_forward" {
 		return nil
@@ -213,7 +214,7 @@ func rumNotRestored(nav, v string) []string {
 		if len(out) == rumMaxReasons {
 			break
 		}
-		if rumReasonRX.MatchString(name) {
+		if rumReasonRX.MatchString(name) && !slices.Contains(out, name) {
 			out = append(out, name)
 		}
 	}

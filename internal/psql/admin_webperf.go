@@ -284,7 +284,7 @@ func (r *AdminWebPerfRepository) backForward(ctx context.Context, args []any) (r
 	    ORDER BY n DESC, reason
 	    LIMIT `+fmt.Sprint(webPerfReasons), args...)
 	if err != nil {
-		return bf, err
+		return bf, fmt.Errorf("web perf not restored reasons: %w", err)
 	}
 	bf.Reasons, err = scanCounts(rows)
 	if err != nil {

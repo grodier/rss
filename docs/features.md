@@ -682,9 +682,9 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, Web performance, Service health and Endpoints are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `feeds`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `endpoints`, `feeds`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
    The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
    Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
@@ -880,6 +880,29 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
 
 **Tests:** `internal/admin/service_test.go`; `internal/admin/render/render_test.go` (Render's answers in `testdata/`); `internal/psql/availability_test.go`.
 
+### Endpoints
+
+`GET /endpoints` (`endpointsHandler`) shows `www`'s requests as a whole and by route, from its request metrics (see "Observability" below), and `GET /endpoints/route?route=<pattern>&method=<method>` (`routeHandler`) one route's.
+
+1. **Period.** A row of links (the `segmented` partial), 24h by default, 1h, 7d or 30d, which both pages keep between them; a value the pages don't offer is the default (`readPeriod`).
+   Up to 24 hours they read minute rows, up to the current minute, which isn't written yet; beyond, hourly rows, up to the end of the current hour, whose minutes so far come from the minute rows not rolled up yet (`endpointPeriod.window`).
+2. **Reading.** `AdminEndpointsRepository.Endpoints` reads the period's rows (`endpointRows`: hourly rows, plus the minute rows from the hour after the last rolled-up one, as `RollUp` picks them, so no request is counted twice), each with its step's start (`date_bin`), and sums them in Go into the total, each step, and each route and method, or, for one route from minute rows, each instance (hourly rows have none); latency buckets are summed element-wise, and percentiles come from them with `metrics.Percentile`, interpolated within a bucket.
+   Summing in Go after one read was 2 to 3 times faster on local data than summing the buckets in SQL, which has to unnest each row's array (the timings are in the watchlist).
+3. **Charts.** Requests per minute (per hour beyond 24 hours: each step's requests over the part of it that has passed, so the current hour isn't low), the share of 5xx (and of 4xx on a route's page), and p95 latency (p50, p95 and p99 on a route's page), a point per step (`endpointSteps`), with a gap where a step had no requests for the rates and latencies.
+   Each is marked with the deploys that went live in the period, as on the service page (`endpointMarkers`, `deployMarkers`); without Render's settings, or with Render failing, a line under the charts says so.
+4. **Routes.** A dense table of every route and method in the period, `(unmatched)` included: requests, the shares of 4xx and 5xx, p50, p95 and p99, and the average response size, sortable by each column through its header's link (`?sort=`, `routeRows`: numbers most first, a route with no value last, ties by route).
+   Each route links to its page.
+5. **A route's page.** Its charts, its latency histogram for the period, its requests by status class, its instances when there are several (minute rows only), and its 50 most recent server errors (`AdminEndpointsRepository.RouteErrors`, by route and method), which are kept by count, not age, so they don't follow the period: time, instance, panic or error, and the message's first line, cut to the column, with the whole message in a `<details>`.
+   A route with no requests in the period, or none ever, shows that as an empty state, not a 404; a missing route or a method `metrics.NormalizeMethod` wouldn't record is a 404.
+
+**Start at:**
+
+1. `internal/admin/endpoints.go` (`endpointsHandler`, `routeHandler`, `routeRows`).
+2. `internal/psql/admin_endpoints.go` (`Endpoints`, `endpointRows`, `RouteErrors`).
+3. `internal/ui/admin/endpoints.html`, `endpoint.html`, `partials/endpoints.html` and `web/admin/styles/partials/endpoints.css`.
+
+**Tests:** `internal/admin/endpoints_test.go`; `internal/psql/admin_endpoints_test.go` (minute and hourly reads agree, and element-wise sums).
+
 ### Login
 
 Admins are their own accounts (`admins`), apart from readers, and every admin page but the login's needs one logged in with a password and a second factor (see "The admin's login" in architecture.md).
@@ -925,7 +948,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 
 ### Observability
 
-`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin, and the admin checks `www`'s availability from inside Render's network; the admin's Web performance page reads the real-user metrics and its Service page the availability checks and runtime metrics (above), and its page for the rest comes later (#577).
+`www` records its own request, background job and runtime metrics, its recent server errors and real-user metrics from every page in Postgres for the admin, and the admin checks `www`'s availability from inside Render's network; the admin's Web performance page reads the real-user metrics, its Service page the availability checks and runtime metrics, and its Endpoints pages the request metrics and server errors (above).
 
 1. **Counting.** `recordRequest` (`internal/server/middleware.go`) reports each request to `metrics.Requests.Observe`: its chi route pattern (never its URL), method, status, duration and size.
    `Observe` counts it in memory under the minute it finished, its route, its method (unknown methods fold into `OTHER`, so clients can't add rows) and its status class, with its latency in the `metrics.DurationBounds` histogram.

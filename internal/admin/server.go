@@ -119,6 +119,13 @@ type WebPerfStore interface {
 	WebPerf(ctx context.Context, q rss.WebPerfQuery) (rss.WebPerf, error)
 }
 
+// EndpointsStore reads the request metrics and recent server errors for
+// the endpoints pages; *psql.AdminEndpointsRepository is one.
+type EndpointsStore interface {
+	Endpoints(ctx context.Context, q rss.EndpointQuery) (rss.Endpoints, error)
+	RouteErrors(ctx context.Context, route, method string, limit int) ([]rss.ServerError, error)
+}
+
 // AvailabilityReader reads the pinger's checks for the service page;
 // *psql.AvailabilityRepository is one.
 type AvailabilityReader interface {
@@ -199,6 +206,8 @@ type Services struct {
 	Overview OverviewStore
 	WebPerf  WebPerfStore
 	Users    UserStore
+
+	Endpoints EndpointsStore
 
 	Feeds     FeedStore
 	Refresher Refresher

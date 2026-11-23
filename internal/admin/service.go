@@ -237,13 +237,7 @@ func (s *Server) renderSections(r *http.Request, page *servicePage, period servi
 	if err != nil {
 		return nil, err
 	}
-	var markers []chart.Marker
-	for _, d := range deploys {
-		if d.WentLive() && !d.FinishedAt.Before(from) {
-			markers = append(markers, chart.Marker{T: d.FinishedAt, Label: "Deploy " + versions[d.ID].Text})
-		}
-	}
-	slices.SortFunc(markers, func(a, b chart.Marker) int { return a.T.Compare(b.T) })
+	markers := deployMarkers(deploys, versions, from)
 	for _, d := range deploys[:min(len(deploys), deploysShown)] {
 		label, failed := deployStatus(d.Status)
 		page.Deploys = append(page.Deploys, deployRow{
@@ -252,6 +246,19 @@ func (s *Server) renderSections(r *http.Request, page *servicePage, period servi
 		})
 	}
 	return markers, nil
+}
+
+// deployMarkers are the chart markers of deploys that went live from from
+// on, oldest first, labelled by versions (deployVersions').
+func deployMarkers(deploys []render.Deploy, versions map[string]versionInfo, from time.Time) []chart.Marker {
+	var markers []chart.Marker
+	for _, d := range deploys {
+		if d.WentLive() && !d.FinishedAt.Before(from) {
+			markers = append(markers, chart.Marker{T: d.FinishedAt, Label: "Deploy " + versions[d.ID].Text})
+		}
+	}
+	slices.SortFunc(markers, func(a, b chart.Marker) int { return a.T.Compare(b.T) })
+	return markers
 }
 
 // deployVersions labels deploys by ID: a deploy that went live with the

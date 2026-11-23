@@ -957,6 +957,60 @@ type RUMCount struct {
 	Views int
 }
 
+// EndpointQuery says which request metrics (request_metrics) the admin's
+// endpoints pages read: those of periods starting in [From, To), from the
+// minute rows, or from the hourly rows when Hourly is set (and the minute
+// rows of the hours not rolled up yet), with Series' points Step apart
+// from From. A Route ("" for every route) and Method pick one route's.
+type EndpointQuery struct {
+	From, To      time.Time
+	Hourly        bool
+	Step          time.Duration
+	Route, Method string
+}
+
+// RequestStats are some requests' counts, sizes and latencies.
+type RequestStats struct {
+	Requests int
+	// Classes counts the requests by status class: Classes[0] the 1xx,
+	// Classes[4] the 5xx.
+	Classes       [5]int
+	DurationMsSum float64
+	BytesSum      int64
+	// Buckets counts the requests per metrics.DurationBounds bucket, the
+	// last above every bound.
+	Buckets []int
+}
+
+// Endpoints are the request metrics of an EndpointQuery: every request's,
+// a step at a time, by route and method (without a Route), and by
+// instance (with one, from minute rows only, as hourly rows have none).
+type Endpoints struct {
+	Total     RequestStats
+	Series    []EndpointPoint
+	Routes    []EndpointRoute
+	Instances []EndpointInstance
+}
+
+// EndpointPoint is the requests of a step of Endpoints' Series, starting
+// at T.
+type EndpointPoint struct {
+	T time.Time
+	RequestStats
+}
+
+// EndpointRoute is a route's requests with one method.
+type EndpointRoute struct {
+	Route, Method string
+	RequestStats
+}
+
+// EndpointInstance is the requests one www instance served.
+type EndpointInstance struct {
+	Instance string
+	RequestStats
+}
+
 // AdminOverview is the admin's Overview: aggregates across every reader,
 // never one reader's reading ("Admin" in docs/decisions.md).
 type AdminOverview struct {

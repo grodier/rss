@@ -569,6 +569,11 @@ Admin and observability:
   Its runtime charts read every `runtime_metrics` row in the period, one per instance per minute, and step them in Go: at 30 days about 43,000 rows per instance, more while instances overlap during deploys.
   *Signal:* the service page at 30 days takes over a second, or `www` runs several instances for good.
   *Fix:* step in SQL (`date_bin` with `max` per step) and read only the points.
+- [ ] **The endpoints pages read every request metrics row in the period and sum it in Go** (#577).
+  `AdminEndpointsRepository.Endpoints` reads each row of the period (minute rows up to 24 hours, hourly rows and the last hours' minute rows beyond) with its latency buckets, and sums them by step, route and instance in Go, which on local data was 2 to 3 times faster than summing the buckets in SQL.
+  With about 48,000 rows (3 days of minute rows and 27 of hourly ones for 20 routes), on a 4-core laptop: 24h about 36 ms (11,000 rows), 7d about 22 ms, 30d about 54 ms (16,000 rows); a route's page under 5 ms.
+  *Signal:* `/endpoints` at 24h or 30d takes over half a second (the admin's own request logs say), or `request_metrics` passes a million rows.
+  *Fix:* step in SQL with the buckets summed there too (`unnest ... WITH ORDINALITY`), so fewer rows leave the database; or roll up 10-minute rows.
 - [ ] **The admin's overview counts big tables** (#575, #610).
   `count(*)` on `articles` and `reads` reads the whole table, so the overview uses `pg_class.reltuples` estimates for them from the start and exact counts only for small tables.
   Its queues are counted exactly, with their claim queries' conditions: refresh's and enrichment's run an `EXISTS` per due row, and enrichment's joins `articles`, so a large backlog is the slow part.

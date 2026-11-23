@@ -49,6 +49,15 @@ var templateFuncs = template.FuncMap{
 		return map[string]any{"Name": name, "Column": column, "Rows": rows, "Share": share}
 	},
 	"lower": strings.ToLower,
+	// slashBreaks escapes a route pattern and lets it wrap only before a
+	// slash: /discover<wbr>/sections.
+	"slashBreaks": func(route string) template.HTML {
+		parts := strings.Split(route, "/")
+		for i, p := range parts {
+			parts[i] = template.HTMLEscapeString(p)
+		}
+		return template.HTML(strings.TrimPrefix(strings.Join(parts, "<wbr>/"), "<wbr>"))
+	},
 	// join joins a list of names with ", ".
 	"join": func(names []string) string { return strings.Join(names, ", ") },
 	// date formats t as a UTC date.
@@ -75,7 +84,7 @@ var templateFuncs = template.FuncMap{
 }
 
 // navData is what the admin-nav partial shows: the current section
-// ("overview", "waitlist", "users", "feeds", "seed", "discover", "service", "webperf", "audit", or ""
+// ("overview", "waitlist", "users", "feeds", "seed", "discover", "service", "endpoints", "webperf", "audit", or ""
 // on pages outside the sections) and the logged-in admin's email, "" when
 // no one is logged in, which hides the sections and Log out. Every page's data carries it as Nav, like the reader's pages.
 type navData struct {

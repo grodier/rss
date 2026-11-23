@@ -1,0 +1,9 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "JSON tags",
+  "items": [
+    {"id": "1", "tags": ["web", "go"]},
+    {"id": "2", "tags": ["Go"]},
+    {"id": "3", "tags": ["web", "once"]}
+  ]
+}

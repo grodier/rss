@@ -166,6 +166,7 @@ const testRSS = `<?xml version="1.0"?>
   <title>Example Feed</title>
   <link>https://example.com/</link>
   <description>An example</description>
+  <category>Examples</category>
   <item><guid>item-1</guid><title>One</title><link>https://example.com/1</link></item>
   <item><title>Two</title><link>https://example.com/2</link></item>
 </channel>
@@ -266,8 +267,8 @@ func TestRefresh(t *testing.T) {
 		checkWithin(t, "NextFetch", store.feed.NextFetch, before, after, RefreshInterval)
 		gotFeed := store.feed
 		gotFeed.NextFetch = time.Time{}
-		wantFeed := rss.Feed{ID: "feed-1", Title: "Example Feed", Description: "An example", SiteUrl: "https://example.com/"}
-		if gotFeed != wantFeed {
+		wantFeed := rss.Feed{ID: "feed-1", Title: "Example Feed", Description: "An example", SiteUrl: "https://example.com/", Categories: []string{"Examples"}}
+		if !reflect.DeepEqual(gotFeed, wantFeed) {
 			t.Errorf("feed = %+v, want %+v", gotFeed, wantFeed)
 		}
 		if len(store.articles) != 2 {

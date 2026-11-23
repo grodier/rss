@@ -264,7 +264,7 @@ site_key_rules   (one row: the site-key rules version whose re-key last finished
 ```
 
 - **Tables that are also queues** keep their claim state in their own columns, and a due time doubles as the claim's lease: `feeds.next_fetch_at`, `sites.icon_next_check_at`, `enrich_jobs.next_attempt_at`, `emails.next_attempt_at`; `lookups` and `import_feeds` use a `status` column instead (see "Background work").
-- **Columns marked internal** (`feeds.last_error`, `lookups.error`, `import_feeds.error`, `enrich_jobs.last_error`, `emails.last_error`) are never shown to users, except in debug panels; `server_errors.message` is shown only in the admin.
+- **Columns marked internal** (`feeds.last_error`, `lookups.error`, `import_feeds.error`, `enrich_jobs.last_error`, `emails.last_error`) are never shown to users, except in debug panels; `server_errors.message` and `feeds.categories` are shown only in the admin.
 - **`articles`:** `timeline_at` is set once on insert and never updated.
   The feed's own `image_url`, `title` and `excerpt` are overwritten by every changed fetch; the `page_*` columns are written only by enrichment, so the two never mix.
 - **Copies:** reads, saves and stars belong to one article, but every copy (same non-empty `canonical_url`) counts, matched at query time.

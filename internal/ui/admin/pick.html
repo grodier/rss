@@ -169,6 +169,7 @@
   <a href="/feeds/{{$f.ID}}">{{if $f.Title}}{{$f.Title}}{{else}}{{$f.URL}}{{end}}</a>
   <small>{{$f.URL}}</small>
   {{if or $f.Comments $f.Silent}}<small class="pick-notes">{{if $f.Comments}}Comments feed{{end}}{{if and $f.Comments $f.Silent}} · {{end}}{{if $f.Silent}}No posts in 90 days{{end}}</small>{{end}}
+  {{with $f.Categories}}<small>{{join .}}</small>{{end}}
 </td>
 <td class="pick-posting">About {{perWeek $f.PostsPerWeek}} posts a week<small>{{if $f.LatestPost.IsZero}}No posts yet{{else}}Latest <time datetime="{{$f.LatestPost.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp $f.LatestPost}} UTC">{{ago .Now $f.LatestPost}}</time>{{end}}</small></td>
 <td class="wrap pick-latest">{{if $f.Latest}}<ul>{{range $f.Latest}}<li>{{if .}}{{.}}{{else}}Untitled{{end}}</li>{{end}}</ul>{{else}}—{{end}}</td>

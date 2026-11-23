@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Many categories</title>
+    <category>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx éé suffix</category>
+    <category>Two</category>
+    <category>Three</category>
+    <category>Four</category>
+    <category>Five</category>
+    <category>Six</category>
+    <category>Seven</category>
+    <category>Eight</category>
+    <category>Nine</category>
+    <category>Ten</category>
+    <category>Eleven</category>
+    <item><title>1</title><category>Common</category></item>
+    <item><title>2</title><category>Common</category></item>
+  </channel>
+</rss>

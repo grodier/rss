@@ -46,7 +46,7 @@ func TestInspectRSS(t *testing.T) {
 	checkField(t, insp.ItemFields, "guid", 2, true)
 	checkField(t, insp.ItemFields, "guid@isPermaLink", 1, false)
 	checkField(t, insp.ItemFields, "dc:creator", 1, true)
-	checkField(t, insp.ItemFields, "category", 2, false)
+	checkField(t, insp.ItemFields, "category", 2, true)
 	checkField(t, insp.ItemFields, "enclosure@type", 1, true)
 	checkField(t, insp.ItemFields, "enclosure@length", 1, false)
 
@@ -116,6 +116,24 @@ func TestInspectAtom(t *testing.T) {
 			t.Errorf("channel lists entry field %q", f.Path)
 		}
 	}
+}
+
+func TestInspectCategories(t *testing.T) {
+	insp := inspectTestdata(t, "rss-categories.xml")
+	checkField(t, insp.Channel, "category", 1, true)
+	checkField(t, insp.Channel, "itunes:category@text", 1, true)
+	checkField(t, insp.Channel, "itunes:category/itunes:category@text", 1, true)
+	checkField(t, insp.Channel, "itunes:keywords", 1, false)
+	checkField(t, insp.ItemFields, "category", 5, true)
+
+	insp = inspectTestdata(t, "atom-categories.xml")
+	checkField(t, insp.Channel, "category@term", 1, true)
+	checkField(t, insp.Channel, "category@label", 1, true)
+	checkField(t, insp.ItemFields, "category@term", 2, true)
+	checkField(t, insp.ItemFields, "category@label", 2, true)
+
+	insp = inspectTestdata(t, "jsonfeed-tags.json")
+	checkField(t, insp.ItemFields, "tags", 3, true)
 }
 
 func TestInspectMediaGroup(t *testing.T) {

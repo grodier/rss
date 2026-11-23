@@ -87,6 +87,7 @@
               <tr><th scope="row">Last-Modified</th><td class="wrap">{{with .LastModified}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
               <tr><th scope="row">Site URL</th><td class="wrap">{{with .SiteUrl}}<code>{{.}}</code>{{else}}—{{end}}</td></tr>
               <tr><th scope="row">Description</th><td class="wrap">{{with .Description}}{{.}}{{else}}—{{end}}</td></tr>
+              <tr><th scope="row">Categories</th><td class="wrap">{{with .Categories}}{{join .}}{{else}}None{{end}}</td></tr>
               <tr><th scope="row">Found</th><td>{{stamp .CreatedAt}}</td></tr>
               <tr><th scope="row">Newest article</th><td>{{stamp .NewestArticleAt}}</td></tr>
               <tr><th scope="row">Oldest enrichment job</th><td>{{stamp .OldestEnrichJob}}</td></tr>

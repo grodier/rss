@@ -18,14 +18,14 @@ import (
 // places its one candidate (pre-ticked), one with two feeds hinted from
 // its feed in the catalog (one a silent comments feed), one with more than
 // the page shows and no hint, and one whose seed hint covers two feeds
-// (not pre-ticked). Titles and headlines are markup.
+// (not pre-ticked). Titles, headlines and categories are markup.
 func testPickSites() []rss.AdminPickSite {
 	food, science := testSections[1], testSections[0]
 	return []rss.AdminPickSite{
 		{
 			Site: rss.Site{ID: siteID(1), Host: "single.example", Title: "Single"}, Source: "waitlist", Hint: food, HintSeed: true,
 			Feeds: []rss.AdminPickFeed{{ID: feedID(1), Title: "<b>Single</b>", URL: "https://single.example/feed", PostsPerWeek: 2.5,
-				LatestPost: testNow.Add(-3 * time.Hour), Latest: []string{"Hello <i>world</i>", ""}}},
+				LatestPost: testNow.Add(-3 * time.Hour), Latest: []string{"Hello <i>world</i>", ""}, Categories: []string{"Food", "<b>Recipes</b>"}}},
 		},
 		{
 			Site: rss.Site{ID: siteID(2), Host: "several.example"}, Hint: science,
@@ -94,6 +94,8 @@ func TestPickPage(t *testing.T) {
 		`<a href="/feeds/` + feedID(1) + `">&lt;b&gt;Single&lt;/b&gt;</a>`,
 		`About 2.5 posts a week<small>Latest <time`, `3 h ago`,
 		`<li>Hello &lt;i&gt;world&lt;/i&gt;</li><li>Untitled</li>`,
+		// Its categories, under its facts.
+		`<small>Food, &lt;b&gt;Recipes&lt;/b&gt;</small>`,
 		// Untitled, it's its address; notes for comments and silent feeds.
 		`<a href="/feeds/` + feedID(3) + `">https://several.example/comments/feed</a>`,
 		`Comments feed · No posts in 90 days`,
@@ -112,8 +114,8 @@ func TestPickPage(t *testing.T) {
 	if n := strings.Count(body, "No posts yet"); n != 2 {
 		t.Errorf("%d feeds say they never posted, want 2", n)
 	}
-	if strings.Contains(body, "<b>Single</b>") || strings.Contains(body, "<i>world</i>") {
-		t.Error("a title or headline isn't escaped")
+	if strings.Contains(body, "<b>Single</b>") || strings.Contains(body, "<i>world</i>") || strings.Contains(body, "<b>Recipes</b>") {
+		t.Error("a title, headline or category isn't escaped")
 	}
 
 	// Only a single candidate placed by its seed entry is ticked.

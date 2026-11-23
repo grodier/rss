@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/lib/pq"
 )
 
 // newTestSite inserts a site and deletes it (and its feeds) on cleanup.
@@ -631,6 +633,56 @@ func TestSaveFetchCatchUp(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestFeedRepositoryCategories(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewFeedRepository(db)
+	ctx := t.Context()
+
+	stored := func(id string) []string {
+		t.Helper()
+		var got []string
+		if err := db.QueryRow(`SELECT categories FROM feeds WHERE id = $1`, id).Scan(pq.Array(&got)); err != nil {
+			t.Fatalf("select categories: %v", err)
+		}
+		return got
+	}
+	check := func(step, id string, want []string) {
+		t.Helper()
+		if got := stored(id); !slices.Equal(got, want) {
+			t.Errorf("%s: categories = %q, want %q", step, got, want)
+		}
+	}
+
+	// Upsert, the discovery save, stores them and replaces them, also
+	// with none.
+	f := newTestFeed(t, db)
+	check("new feed without categories", f.ID, []string{})
+	f.Categories = []string{"Tech", "News"}
+	if _, err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	check("Upsert", f.ID, []string{"Tech", "News"})
+	f.Categories = nil
+	if _, err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	check("Upsert with none", f.ID, []string{})
+
+	// SaveFetch, like the feed's title, replaces them on every fetch,
+	// also with none.
+	f.Categories = []string{"Go", "Postgres"}
+	if _, err := repo.SaveFetch(ctx, f, nil, f.NextFetch); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	check("SaveFetch", f.ID, []string{"Go", "Postgres"})
+	f.Categories = nil
+	if _, err := repo.SaveFetch(ctx, f, nil, f.NextFetch); err != nil {
+		t.Fatalf("SaveFetch: %v", err)
+	}
+	check("SaveFetch with none", f.ID, []string{})
 }
 
 // Requires a migrated database; see psqltest.NewDB.

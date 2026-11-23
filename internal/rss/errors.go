@@ -8,6 +8,12 @@ var (
 	ErrWrongPassword  = errors.New("wrong password")
 	ErrDuplicateEmail = errors.New("duplicate email")
 	ErrTooManyEmails  = errors.New("too many emails to this address")
+	// ErrAlreadyConfirmed is an account whose address is already confirmed
+	// (the admin's Resend confirmation and Mark confirmed).
+	ErrAlreadyConfirmed = errors.New("email already confirmed")
+	// ErrAddressChanged is an account whose address is no longer the one an
+	// admin's action was about (the address its page showed).
+	ErrAddressChanged = errors.New("the account's email address changed")
 	// ErrOverLimit is emails that no longer fit under the email provider's
 	// sending limits (the admin's waves of invites).
 	ErrOverLimit        = errors.New("over the email sending limits")

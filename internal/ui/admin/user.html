@@ -22,6 +22,9 @@
         </div>
         <p>{{.Email}}</p>
       </header>
+      {{with $.Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
 
       <section class="admin-section" aria-labelledby="account-heading">
         <h2 id="account-heading">Account</h2>
@@ -108,6 +111,36 @@
         {{else}}
         <p class="missing">No email links waiting to be used.</p>
         {{end}}
+      </section>
+
+      {{/* Each action is a button with a line on what it does. The links'
+           lifetimes are accounts.ConfirmLinkTTL and ResetLinkTTL. */}}
+      <section class="admin-section" aria-labelledby="actions-heading">
+        <h2 id="actions-heading">Actions</h2>
+        <ul class="action-list">
+          {{if .EmailConfirmedAt.IsZero}}
+          <li>
+            <form action="/users/{{.ID}}/resend-confirmation" method="post" data-busy><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="resend-hint" data-busy-label="Sending…"><span data-busy-text>Resend confirmation</span></button></form>
+            <p id="resend-hint">Emails {{.Email}} a new link to confirm it, which works for 7 days.</p>
+          </li>
+          <li>
+            <form action="/users/{{.ID}}/mark-confirmed" method="post"><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="mark-hint">Mark confirmed</button></form>
+            <p id="mark-hint">Confirms the address without a link, when they’ve confirmed it another way, like replying to support from it.</p>
+          </li>
+          {{end}}
+          <li>
+            <form action="/users/{{.ID}}/send-password-reset" method="post" data-busy><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="reset-hint" data-busy-label="Sending…"><span data-busy-text>Send a password reset link</span></button></form>
+            <p id="reset-hint">Emails {{.Email}} a link to choose a new password, which works for 1 hour. Their password works until they do.</p>
+          </li>
+          <li>
+            <form action="/users/{{.ID}}/log-out-everywhere" method="post"><button class="btn btn-sm" type="submit" aria-describedby="logout-hint">Log out everywhere</button></form>
+            <p id="logout-hint">{{with .Counts.Devices}}Ends their sessions on the {{if eq . 1}}device{{else}}{{.}} devices{{end}} they’re logged in on.{{else}}They aren’t logged in anywhere now.{{end}} They log in again with their password.</p>
+          </li>
+          <li>
+            <a class="btn btn-sm btn-danger-quiet" href="/users/{{.ID}}/delete" aria-describedby="delete-hint">Delete account…</a>
+            <p id="delete-hint">Deletes the account and everything in it, and emails them it’s gone. Asks you to type their email, and for a code if your last one is over 10 minutes old.</p>
+          </li>
+        </ul>
       </section>
       {{end}}
     </main>

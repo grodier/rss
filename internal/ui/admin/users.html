@@ -17,6 +17,9 @@
         <h1>Users</h1>
         <p>Every reader’s account, newest first. Open one to see its state and the emails sent to it; hover a time for its UTC date.</p>
       </header>
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
 
       <section class="admin-section" aria-labelledby="users-heading">
         <h2 id="users-heading" class="visually-hidden">Users</h2>

@@ -350,7 +350,9 @@ func (s *Server) settingsDeleteFormHandler(w http.ResponseWriter, r *http.Reques
 	// The account is gone either way, so a failure to queue the notice
 	// doesn't fail the page. The outbox has no foreign key to users, so the
 	// email outlives the account.
-	if err := s.sendEmail(r.Context(), old.Email, "account_deleted", struct{ Name string }{old.Name}); err != nil {
+	if m, err := s.accountEmails.AccountDeleted(old); err != nil {
+		s.logError(r, err)
+	} else if err := s.queueEmail(r.Context(), "account_deleted", m); err != nil {
 		s.logError(r, err)
 	}
 

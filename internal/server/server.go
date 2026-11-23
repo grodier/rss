@@ -14,6 +14,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/accounts"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
 	"github.com/grodier/rss/internal/ingest"
@@ -432,6 +433,8 @@ type Server struct {
 	templates   map[string]*template.Template
 	emails      *mail.Templates
 	formDecoder *form.Decoder
+	// accountEmails makes the account emails the admin also sends.
+	accountEmails accounts.Emails
 
 	// canonicalHost is BaseURL's host, lowercase and without its port.
 	// redirectToCanonicalHost sends requests for other hosts there.
@@ -531,6 +534,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		appSiteKey:            discovery.SiteKey(baseURL),
 		templates:             templates,
 		emails:                emails,
+		accountEmails:         accounts.Emails{Templates: emails, AppURL: cfg.BaseURL},
 		formDecoder:           form.NewDecoder(),
 		services:              services,
 		sessionManager:        sessionManager,

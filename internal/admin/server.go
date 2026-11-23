@@ -17,6 +17,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/accounts"
 	"github.com/grodier/rss/internal/admin/render"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/metrics"
@@ -40,8 +41,8 @@ type Config struct {
 	// SecretKey is the 32-byte key admins' TOTP secrets are sealed with
 	// (Seal), held only in the admin service's environment.
 	SecretKey []byte
-	// AppURL is the reader's public URL, without a trailing slash: invites'
-	// links point there.
+	// AppURL is the reader's public URL, without a trailing slash: the links
+	// in invites and account emails point there.
 	AppURL string
 	// SupportEmail is where people can get help, shown in emails' footers.
 	SupportEmail string
@@ -101,6 +102,7 @@ type InviteStore interface {
 // EmailStore is the outbox's repository; *psql.EmailRepository is one.
 type EmailStore interface {
 	Usage(ctx context.Context, now time.Time) (rss.EmailUsage, error)
+	Enqueue(ctx context.Context, m mail.Message) error
 }
 
 // OverviewStore reads the Overview's counts; *psql.AdminOverviewRepository
@@ -163,11 +165,16 @@ type FeedStore interface {
 	Unskip(ctx context.Context, id string, by rss.AuditActor) error
 }
 
-// UserStore reads the users pages: account facts and counts, never a
-// reader's reading; *psql.AdminUserRepository is one.
+// UserStore reads the users pages, account facts and counts, never a
+// reader's reading, and makes a reader's page's actions;
+// *psql.AdminUserRepository is one.
 type UserStore interface {
 	ListUsers(ctx context.Context, q rss.AdminUserQuery) ([]rss.AdminUserRow, error)
 	User(ctx context.Context, id string) (rss.AdminUser, error)
+	SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error
+	MarkConfirmed(ctx context.Context, id, email string, by rss.AuditActor) error
+	LogOutEverywhere(ctx context.Context, id string, by rss.AuditActor) (int, error)
+	Delete(ctx context.Context, id string, by rss.AuditActor) (rss.User, error)
 }
 
 // Refresher fetches a feed now and records the outcome on it;
@@ -208,8 +215,11 @@ type Server struct {
 	templates map[string]*template.Template
 	// emails renders the emails the admin queues (invites), whose links
 	// point at the reader, AppURL.
-	emails   *mail.Templates
-	services Services
+	emails *mail.Templates
+	// accountEmails makes the account emails www also sends (a reader's
+	// page's actions), with links to the reader.
+	accountEmails accounts.Emails
+	services      Services
 
 	sessionManager *scs.SessionManager
 	formDecoder    *form.Decoder
@@ -237,11 +247,12 @@ func New(logger *slog.Logger, cfg Config, services Services, sessionManager *scs
 		return nil, err
 	}
 	s := &Server{
-		logger:    logger,
-		config:    cfg,
-		templates: templates,
-		emails:    emails,
-		services:  services,
+		logger:        logger,
+		config:        cfg,
+		templates:     templates,
+		emails:        emails,
+		accountEmails: accounts.Emails{Templates: emails, AppURL: cfg.AppURL},
+		services:      services,
 
 		sessionManager:     sessionManager,
 		formDecoder:        form.NewDecoder(),

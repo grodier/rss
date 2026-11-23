@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/password"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
@@ -493,7 +494,23 @@ func (f *fakeInvites) Resend(_ context.Context, id string, inv rss.WaveInvite, _
 	return nil
 }
 
-// fakeEmails is an EmailStore whose usage is fixed.
-type fakeEmails struct{ usage rss.EmailUsage }
+// fakeEmails is an EmailStore whose usage is fixed. Enqueue keeps the
+// emails, or returns err when it's set.
+type fakeEmails struct {
+	usage  rss.EmailUsage
+	err    error
+	mu     sync.Mutex
+	queued []mail.Message
+}
 
 func (f *fakeEmails) Usage(context.Context, time.Time) (rss.EmailUsage, error) { return f.usage, nil }
+
+func (f *fakeEmails) Enqueue(_ context.Context, m mail.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.queued = append(f.queued, m)
+	return nil
+}

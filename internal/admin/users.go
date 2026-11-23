@@ -65,10 +65,11 @@ func (p usersParams) href() string {
 
 // usersPage is the users page's data.
 type usersPage struct {
-	Nav  navData
-	Q    string
-	Rows []rss.AdminUserRow
-	Now  time.Time
+	Nav   navData
+	Flash string
+	Q     string
+	Rows  []rss.AdminUserRow
+	Now   time.Time
 	// Next is the URL of the next page, "" on the last.
 	Next string
 }
@@ -97,7 +98,7 @@ func (s *Server) usersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page := usersPage{Nav: s.nav(r, "users"), Q: params.q, Now: s.now()}
+	page := usersPage{Nav: s.nav(r, "users"), Flash: s.sessionManager.PopString(r.Context(), sessionFlash), Q: params.q, Now: s.now()}
 	if len(rows) > usersPageSize {
 		rows = rows[:usersPageSize]
 		next := params
@@ -114,8 +115,9 @@ func (s *Server) usersHandler(w http.ResponseWriter, r *http.Request) {
 // userPage is a reader's page's data. It holds account facts and counts
 // only: TestUserPageHoldsNoReading keeps it that way.
 type userPage struct {
-	Nav  navData
-	User rss.AdminUser
+	Nav   navData
+	Flash string
+	User  rss.AdminUser
 	// Counts are the reader's counts as a stat row.
 	Counts []statTile
 	// Emails are the outbox's emails to the reader, and Tokens their
@@ -181,25 +183,37 @@ func userCounts(c rss.AdminUserCounts) []statTile {
 	}
 }
 
-// userHandler shows the reader {id}'s account, counts and emails.
-func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
+// userFromURL returns the reader the URL's {id} names; when there's none,
+// it responds with 404 and returns false.
+func (s *Server) userFromURL(w http.ResponseWriter, r *http.Request) (rss.AdminUser, bool) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
-		return
+		return rss.AdminUser{}, false
 	}
 	user, err := s.services.Users.User(r.Context(), id)
 	switch {
 	case errors.Is(err, rss.ErrNoRecord):
 		s.notFoundResponse(w, r)
-		return
+		return rss.AdminUser{}, false
 	case err != nil:
 		s.serverErrorHTML(w, r, err)
+		return rss.AdminUser{}, false
+	}
+	return user, true
+}
+
+// userHandler shows the reader {id}'s account, counts and emails, and the
+// actions on it.
+func (s *Server) userHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.userFromURL(w, r)
+	if !ok {
 		return
 	}
 
 	page := userPage{
 		Nav:     s.nav(r, "users"),
+		Flash:   s.sessionManager.PopString(r.Context(), sessionFlash),
 		User:    user,
 		Counts:  userCounts(user.Counts),
 		History: auditHistoryURL("user", user.ID),

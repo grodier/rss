@@ -120,16 +120,16 @@
         <ul class="action-list">
           {{if .EmailConfirmedAt.IsZero}}
           <li>
-            <form action="/users/{{.ID}}/resend-confirmation" method="post" data-busy><button class="btn btn-sm" type="submit" aria-describedby="resend-hint" data-busy-label="Sending…"><span data-busy-text>Resend confirmation</span></button></form>
+            <form action="/users/{{.ID}}/resend-confirmation" method="post" data-busy><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="resend-hint" data-busy-label="Sending…"><span data-busy-text>Resend confirmation</span></button></form>
             <p id="resend-hint">Emails {{.Email}} a new link to confirm it, which works for 7 days.</p>
           </li>
           <li>
-            <form action="/users/{{.ID}}/mark-confirmed" method="post"><button class="btn btn-sm" type="submit" aria-describedby="mark-hint">Mark confirmed</button></form>
+            <form action="/users/{{.ID}}/mark-confirmed" method="post"><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="mark-hint">Mark confirmed</button></form>
             <p id="mark-hint">Confirms the address without a link, when they’ve confirmed it another way, like replying to support from it.</p>
           </li>
           {{end}}
           <li>
-            <form action="/users/{{.ID}}/send-password-reset" method="post" data-busy><button class="btn btn-sm" type="submit" aria-describedby="reset-hint" data-busy-label="Sending…"><span data-busy-text>Send a password reset link</span></button></form>
+            <form action="/users/{{.ID}}/send-password-reset" method="post" data-busy><input type="hidden" name="email" value="{{.Email}}" /><button class="btn btn-sm" type="submit" aria-describedby="reset-hint" data-busy-label="Sending…"><span data-busy-text>Send a password reset link</span></button></form>
             <p id="reset-hint">Emails {{.Email}} a link to choose a new password, which works for 1 hour. Their password works until they do.</p>
           </li>
           <li>

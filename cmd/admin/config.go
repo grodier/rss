@@ -26,7 +26,8 @@ type config struct {
 	// sealed with; "" in development makes serve generate one per run.
 	secretKey string
 	// appURL is the reader's public URL, without a trailing slash, for the
-	// links in invites; supportEmail is shown in their footers.
+	// links in invites and account emails; supportEmail is shown in their
+	// footers.
 	appURL       string
 	supportEmail string
 	// appInternalURL is www's URL on the private network, without a
@@ -153,11 +154,11 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.IntVar(&cfg.proxyHops, "proxy-hops", cfg.proxyHops, "Reverse proxies in front of the admin that append to X-Forwarded-For (0-3; 0 ignores the header)")
 	fs.StringVar(&cfg.db.dsn, "db-dsn", cfg.db.dsn, "PostgreSQL DSN")
 	fs.StringVar(&cfg.secretKey, "secret-key", "", secretKeyUsage)
-	fs.StringVar(&cfg.appURL, "app-url", cfg.appURL, "The reader's public URL, for the links in invites")
+	fs.StringVar(&cfg.appURL, "app-url", cfg.appURL, "The reader's public URL, for the links in invites and account emails")
 	fs.StringVar(&cfg.appInternalURL, "app-internal-url", "", "The reader's URL on the private network, whose /healthcheck the admin checks every minute (empty: no checks)")
 	fs.StringVar(&cfg.renderAPIKey, "render-api-key", "", "A Render API key, to read www's CPU, memory and deploys (empty: not shown)")
 	fs.StringVar(&cfg.renderServiceID, "render-service-id", "", "www's Render service ID (srv-…), whose CPU, memory and deploys the service page shows")
-	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in invites' footers")
+	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in the footers of invites and account emails")
 	fs.IntVar(&cfg.mailLimits.Daily, "mail-daily-limit", cfg.mailLimits.Daily, "The email provider's daily sending limit, which invites are checked against")
 	fs.IntVar(&cfg.mailLimits.Monthly, "mail-monthly-limit", cfg.mailLimits.Monthly, "The email provider's monthly sending limit")
 	fs.IntVar(&cfg.mailLimits.Reserve, "mail-reserve", cfg.mailLimits.Reserve, "Emails a day and a month that invites leave for account emails, like password resets")

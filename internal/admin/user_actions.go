@@ -20,6 +20,10 @@ import (
 // about a confirmed address.
 const alreadyConfirmedMessage = "Their email address is already confirmed."
 
+// addressChangedMessage is what an action about the address the page showed
+// says when the account's address is no longer that one.
+const addressChangedMessage = "Their email address changed since the page loaded: check it, then try again."
+
 // tooManyEmailsMessage says no email went to address, which is over the
 // outbox's per-address cap.
 func tooManyEmailsMessage(address string) string {
@@ -31,22 +35,42 @@ func (s *Server) userBack(w http.ResponseWriter, r *http.Request, user rss.Admin
 	s.backTo(w, r, "/users/"+user.ID, msg)
 }
 
-// sendUserLink emails user the link newLink makes, an accounts.Emails
-// method, and says sent once it's queued.
-func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, user rss.AdminUser, newLink func(rss.User, time.Time) (accounts.Link, error), sent string) {
-	link, err := newLink(rss.User{ID: user.ID, Name: user.Name, Email: user.Email}, s.now())
-	if err != nil {
-		s.serverErrorHTML(w, r, err)
-		return
+// addressForm is an action about the reader's address: the address their
+// page showed, which the action uses, and its repository method refuses
+// when it's no longer the account's (rss.ErrAddressChanged), so it never
+// reaches an address the admin didn't see.
+type addressForm struct {
+	Email string `form:"email"`
+}
+
+// userAddressAction returns the reader {id} and the address the form names.
+// When there's no reader, or the form doesn't decode, it responds and
+// returns false.
+func (s *Server) userAddressAction(w http.ResponseWriter, r *http.Request) (rss.AdminUser, string, bool) {
+	user, ok := s.userFromURL(w, r)
+	if !ok {
+		return rss.AdminUser{}, "", false
 	}
-	err = s.services.Users.SendLink(r.Context(), link.Token, link.Email, s.actor(r))
+	var form addressForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return rss.AdminUser{}, "", false
+	}
+	return user, form.Email, true
+}
+
+// addressActionDone sends the admin back to user's page saying how the
+// action about address went: sent when err is nil.
+func (s *Server) addressActionDone(w http.ResponseWriter, r *http.Request, user rss.AdminUser, address string, err error, sent string) {
 	switch {
 	case errors.Is(err, rss.ErrAlreadyConfirmed):
 		s.userBack(w, r, user, alreadyConfirmedMessage)
+	case errors.Is(err, rss.ErrAddressChanged):
+		s.userBack(w, r, user, addressChangedMessage)
 	case errors.Is(err, rss.ErrTooManyEmails):
-		s.userBack(w, r, user, tooManyEmailsMessage(user.Email))
+		s.userBack(w, r, user, tooManyEmailsMessage(address))
 	case errors.Is(err, rss.ErrNoRecord):
-		// Deleted, or their address changed, since the page was loaded.
+		// Deleted since the page loaded.
 		s.notFoundResponse(w, r)
 	case err != nil:
 		s.serverErrorHTML(w, r, err)
@@ -55,54 +79,46 @@ func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, user rss.A
 	}
 }
 
-// userResendConfirmationHandler emails the reader {id} a new link to
-// confirm their address, the email www sends at signup, recorded as
-// user.resend_confirmation. It refuses a confirmed address.
-func (s *Server) userResendConfirmationHandler(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.userFromURL(w, r)
+// sendUserLink emails the link newLink makes, an accounts.Emails method,
+// to the address the form names, as addressForm says.
+func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, newLink func(rss.User, time.Time) (accounts.Link, error), sent string) {
+	user, address, ok := s.userAddressAction(w, r)
 	if !ok {
 		return
 	}
-	if !user.EmailConfirmedAt.IsZero() {
-		s.userBack(w, r, user, alreadyConfirmedMessage)
-		return
+	link, err := newLink(rss.User{ID: user.ID, Name: user.Name, Email: address}, s.now())
+	if err == nil {
+		err = s.services.Users.SendLink(r.Context(), link.Token, link.Email, s.actor(r))
 	}
-	s.sendUserLink(w, r, user, s.accountEmails.Confirmation, "Confirmation sent to "+user.Email+".")
+	s.addressActionDone(w, r, user, address, err, fmt.Sprintf(sent, address))
+}
+
+// userResendConfirmationHandler emails the reader {id} a new link to
+// confirm their address, the email www sends at signup, recorded as
+// user.resend_confirmation. Its repository method refuses a confirmed
+// address.
+func (s *Server) userResendConfirmationHandler(w http.ResponseWriter, r *http.Request) {
+	s.sendUserLink(w, r, s.accountEmails.Confirmation, "Confirmation sent to %s.")
 }
 
 // userSendPasswordResetHandler emails the reader {id} a link to choose a
 // new password, the email of www's "Forgot password?", recorded as
 // user.send_password_reset.
 func (s *Server) userSendPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.userFromURL(w, r)
-	if !ok {
-		return
-	}
-	s.sendUserLink(w, r, user, s.accountEmails.PasswordReset, "Reset link sent to "+user.Email+".")
+	s.sendUserLink(w, r, s.accountEmails.PasswordReset, "Reset link sent to %s.")
 }
 
-// userMarkConfirmedHandler confirms the reader {id}'s address without a
-// link, for one confirmed another way (by email to support), recorded as
-// user.mark_confirmed. It refuses a confirmed address.
+// userMarkConfirmedHandler confirms the reader {id}'s address, the one the
+// form names, without a link, for one confirmed another way (by email to
+// support), recorded as user.mark_confirmed. Its repository method refuses a
+// confirmed address.
 func (s *Server) userMarkConfirmedHandler(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.userFromURL(w, r)
+	user, address, ok := s.userAddressAction(w, r)
 	if !ok {
 		return
 	}
-	if !user.EmailConfirmedAt.IsZero() {
-		s.userBack(w, r, user, alreadyConfirmedMessage)
-		return
-	}
-	switch err := s.services.Users.MarkConfirmed(r.Context(), user.ID, s.actor(r)); {
-	case errors.Is(err, rss.ErrAlreadyConfirmed):
-		s.userBack(w, r, user, alreadyConfirmedMessage)
-	case errors.Is(err, rss.ErrNoRecord):
-		s.notFoundResponse(w, r)
-	case err != nil:
-		s.serverErrorHTML(w, r, err)
-	default:
-		s.userBack(w, r, user, "Marked "+user.Email+" as confirmed.")
-	}
+	err := s.services.Users.MarkConfirmed(r.Context(), user.ID, address, s.actor(r))
+	s.addressActionDone(w, r, user, address, err, "Marked "+address+" as confirmed.")
 }
 
 // userLogOutEverywhereHandler ends all of the reader {id}'s sessions,

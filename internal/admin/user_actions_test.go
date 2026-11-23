@@ -81,7 +81,8 @@ func TestUserActionsSection(t *testing.T) {
 		not  []string
 	}{
 		{"unconfirmed", unconfirmedUser(),
-			[]string{"/resend-confirmation", "/mark-confirmed", "/send-password-reset", "/log-out-everywhere", `href="/users/` + userID(1) + `/delete"`},
+			[]string{"/resend-confirmation", "/mark-confirmed", "/send-password-reset", "/log-out-everywhere", `href="/users/` + userID(1) + `/delete"`,
+				`<input type="hidden" name="email" value="reader1@example.com" />`},
 			nil},
 		{"confirmed", confirmedUser(),
 			[]string{"/send-password-reset", "/log-out-everywhere", `href="/users/` + userID(2) + `/delete"`},
@@ -106,34 +107,21 @@ func TestUserActionsSection(t *testing.T) {
 }
 
 func TestUserResendConfirmation(t *testing.T) {
-	t.Run("sends the signup's email", func(t *testing.T) {
-		user := unconfirmedUser()
-		users := &fakeUsers{user: user}
-		b, _ := actionsServer(t, users, &fakeEmails{})
+	user := unconfirmedUser()
+	users := &fakeUsers{user: user}
+	b, _ := actionsServer(t, users, &fakeEmails{})
 
-		rr := b.post(t, "/users/"+user.ID+"/resend-confirmation", nil)
-		followFlash(t, b, rr, "/users/"+user.ID, "Confirmation sent to "+user.Email+".")
-		c := onlyCall(t, users, "SendLink", user.ID)
-		if c.token.Purpose != rss.TokenConfirmEmail || c.token.Email != user.Email || c.email.To != user.Email || len(c.token.Hash) == 0 {
-			t.Errorf("SendLink(%+v, to %q), want a confirmation to %s", c.token, c.email.To, user.Email)
-		}
-		if !strings.Contains(c.email.Text, "https://app.example/confirm-email?token=") {
-			t.Errorf("the email has no link to the reader:\n%s", c.email.Text)
-		}
-	})
+	rr := b.post(t, "/users/"+user.ID+"/resend-confirmation", url.Values{"email": {user.Email}})
+	followFlash(t, b, rr, "/users/"+user.ID, "Confirmation sent to "+user.Email+".")
+	c := onlyCall(t, users, "SendLink", user.ID)
+	if c.token.Purpose != rss.TokenConfirmEmail || c.token.Email != user.Email || c.email.To != user.Email || len(c.token.Hash) == 0 {
+		t.Errorf("SendLink(%+v, to %q), want a confirmation to %s", c.token, c.email.To, user.Email)
+	}
+	if !strings.Contains(c.email.Text, "https://app.example/confirm-email?token=") {
+		t.Errorf("the email has no link to the reader:\n%s", c.email.Text)
+	}
 
-	t.Run("refuses a confirmed address", func(t *testing.T) {
-		user := confirmedUser()
-		users := &fakeUsers{user: user}
-		b, _ := actionsServer(t, users, &fakeEmails{})
-		rr := b.post(t, "/users/"+user.ID+"/resend-confirmation", nil)
-		followFlash(t, b, rr, "/users/"+user.ID, alreadyConfirmedMessage)
-		if len(users.calls) != 0 {
-			t.Errorf("calls = %+v, want none", users.calls)
-		}
-	})
-
-	linkErrors(t, "/resend-confirmation", unconfirmedUser)
+	addressActionErrors(t, "/resend-confirmation", unconfirmedUser)
 }
 
 func TestUserSendPasswordReset(t *testing.T) {
@@ -141,7 +129,7 @@ func TestUserSendPasswordReset(t *testing.T) {
 	users := &fakeUsers{user: user}
 	b, _ := actionsServer(t, users, &fakeEmails{})
 
-	rr := b.post(t, "/users/"+user.ID+"/send-password-reset", nil)
+	rr := b.post(t, "/users/"+user.ID+"/send-password-reset", url.Values{"email": {user.Email}})
 	followFlash(t, b, rr, "/users/"+user.ID, "Reset link sent to "+user.Email+".")
 	c := onlyCall(t, users, "SendLink", user.ID)
 	if c.token.Purpose != rss.TokenResetPassword || c.token.Email != user.Email || c.email.To != user.Email {
@@ -151,18 +139,53 @@ func TestUserSendPasswordReset(t *testing.T) {
 		t.Errorf("the email has no link to the reader:\n%s", c.email.Text)
 	}
 
-	linkErrors(t, "/send-password-reset", confirmedUser)
+	addressActionErrors(t, "/send-password-reset", confirmedUser)
 }
 
-// linkErrors checks how the action at path, which sends a link to user,
-// answers the store's errors.
-func linkErrors(t *testing.T, path string, user func() rss.AdminUser) {
+func TestUserMarkConfirmed(t *testing.T) {
+	user := unconfirmedUser()
+	users := &fakeUsers{user: user}
+	b, _ := actionsServer(t, users, &fakeEmails{})
+	rr := b.post(t, "/users/"+user.ID+"/mark-confirmed", url.Values{"email": {user.Email}})
+	followFlash(t, b, rr, "/users/"+user.ID, "Marked "+user.Email+" as confirmed.")
+	if c := onlyCall(t, users, "MarkConfirmed", user.ID); c.address != user.Email {
+		t.Errorf("MarkConfirmed(%q), want %q", c.address, user.Email)
+	}
+
+	addressActionErrors(t, "/mark-confirmed", unconfirmedUser)
+}
+
+// addressActionErrors checks that the action at path, about the address
+// user's page showed, acts on the address the form posts, not the one the
+// account has now, which its store checks; and how it answers the store's
+// errors.
+func addressActionErrors(t *testing.T, path string, user func() rss.AdminUser) {
+	t.Helper()
+	t.Run("the address the page showed", func(t *testing.T) {
+		u := user()
+		users := &fakeUsers{user: u}
+		b, _ := actionsServer(t, users, &fakeEmails{})
+		b.post(t, "/users/"+u.ID+path, url.Values{"email": {"old@example.com"}})
+		if len(users.calls) != 1 {
+			t.Fatalf("calls = %+v, want one", users.calls)
+		}
+		c := users.calls[0]
+		got := c.address
+		if c.method == "SendLink" {
+			got = c.token.Email
+		}
+		if got != "old@example.com" {
+			t.Errorf("%s about %q, want the posted old@example.com", c.method, got)
+		}
+	})
+
 	tests := []struct {
 		err   error
 		code  int
 		flash string
 	}{
 		{rss.ErrAlreadyConfirmed, http.StatusSeeOther, alreadyConfirmedMessage},
+		{rss.ErrAddressChanged, http.StatusSeeOther, addressChangedMessage},
 		{rss.ErrTooManyEmails, http.StatusSeeOther, tooManyEmailsMessage(user().Email)},
 		{rss.ErrNoRecord, http.StatusNotFound, ""},
 		{errors.New("boom"), http.StatusInternalServerError, ""},
@@ -171,7 +194,7 @@ func linkErrors(t *testing.T, path string, user func() rss.AdminUser) {
 		t.Run(tt.err.Error(), func(t *testing.T) {
 			u := user()
 			b, _ := actionsServer(t, &fakeUsers{user: u, actionErr: tt.err}, &fakeEmails{})
-			rr := b.post(t, "/users/"+u.ID+path, nil)
+			rr := b.post(t, "/users/"+u.ID+path, url.Values{"email": {u.Email}})
 			if tt.flash != "" {
 				followFlash(t, b, rr, "/users/"+u.ID, tt.flash)
 			} else if rr.Code != tt.code {
@@ -179,35 +202,6 @@ func linkErrors(t *testing.T, path string, user func() rss.AdminUser) {
 			}
 		})
 	}
-}
-
-func TestUserMarkConfirmed(t *testing.T) {
-	t.Run("unconfirmed", func(t *testing.T) {
-		user := unconfirmedUser()
-		users := &fakeUsers{user: user}
-		b, _ := actionsServer(t, users, &fakeEmails{})
-		rr := b.post(t, "/users/"+user.ID+"/mark-confirmed", nil)
-		followFlash(t, b, rr, "/users/"+user.ID, "Marked "+user.Email+" as confirmed.")
-		onlyCall(t, users, "MarkConfirmed", user.ID)
-	})
-
-	t.Run("refuses a confirmed address", func(t *testing.T) {
-		user := confirmedUser()
-		users := &fakeUsers{user: user}
-		b, _ := actionsServer(t, users, &fakeEmails{})
-		rr := b.post(t, "/users/"+user.ID+"/mark-confirmed", nil)
-		followFlash(t, b, rr, "/users/"+user.ID, alreadyConfirmedMessage)
-		if len(users.calls) != 0 {
-			t.Errorf("calls = %+v, want none", users.calls)
-		}
-	})
-
-	t.Run("confirmed since the page loaded", func(t *testing.T) {
-		user := unconfirmedUser()
-		b, _ := actionsServer(t, &fakeUsers{user: user, actionErr: rss.ErrAlreadyConfirmed}, &fakeEmails{})
-		rr := b.post(t, "/users/"+user.ID+"/mark-confirmed", nil)
-		followFlash(t, b, rr, "/users/"+user.ID, alreadyConfirmedMessage)
-	})
 }
 
 func TestUserLogOutEverywhere(t *testing.T) {
@@ -302,7 +296,7 @@ func TestUserDelete(t *testing.T) {
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("POST with %q = %d, want 422", typed, rr.Code)
 			}
-			for _, want := range []string{`<p class="error" id="email-error">Type ` + user.Email + ` to confirm.</p>`, `aria-invalid="true"`, `value="` + typed + `"`} {
+			for _, want := range []string{`<p class="error" id="email-error">Type ` + user.Email + ` to confirm.</p>`, `aria-describedby="email-hint email-error"`, `aria-invalid="true"`, `value="` + typed + `"`} {
 				if !strings.Contains(rr.Body.String(), want) {
 					t.Errorf("the page lacks %s:\n%s", want, rr.Body)
 				}

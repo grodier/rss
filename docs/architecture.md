@@ -64,7 +64,7 @@ It runs before new code goes live, never at startup.
 Its flags are read like `www`'s (`parseConfig` in `cmd/admin/config.go`, through `internal/cli`), and it opens its own small pool on the same database (`-db-max-open-conns`, 3 by default).
 Inside it run two components, the HTTP server (`internal/admin`), on port 4001, and, when `-app-internal-url` is set, the pinger (`admin.Pinger`, see "Background work"); it runs none of `www`'s workers.
 For the feeds page's Refresh now it builds its own `fetch.Client` and `ingest.Refresher`, as `www` does, so the admin fetches feeds only through `internal/fetch`.
-The invites it sends are queued in the shared `emails` outbox, with links to `-app-url` (the reader), and `www`'s mail runner sends them; `-mail-daily-limit`, `-mail-monthly-limit` and `-mail-reserve` are the email provider's limits it checks them against.
+The invites and account emails it sends (a reader's page's actions) are queued in the shared `emails` outbox, with links to `-app-url` (the reader), and `www`'s mail runner sends them; `-mail-daily-limit`, `-mail-monthly-limit` and `-mail-reserve` are the email provider's limits it checks invites against, and account emails are what that reserve keeps room for.
 On SIGINT or SIGTERM the server drains requests for up to 30 seconds and the pinger stops, then the database is closed.
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).

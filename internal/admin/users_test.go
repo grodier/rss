@@ -34,10 +34,11 @@ type fakeUsers struct {
 }
 
 // userCall is an action asked of fakeUsers: its method, the user's ID, who
-// asked, and SendLink's token and email.
+// asked, MarkConfirmed's address, and SendLink's token and email.
 type userCall struct {
 	method, id string
 	by         rss.AuditActor
+	address    string
 	token      rss.Token
 	email      mail.Message
 }
@@ -53,8 +54,8 @@ func (f *fakeUsers) SendLink(_ context.Context, t rss.Token, m mail.Message, by 
 	return f.call(userCall{method: "SendLink", id: t.UserID, by: by, token: t, email: m})
 }
 
-func (f *fakeUsers) MarkConfirmed(_ context.Context, id string, by rss.AuditActor) error {
-	return f.call(userCall{method: "MarkConfirmed", id: id, by: by})
+func (f *fakeUsers) MarkConfirmed(_ context.Context, id, email string, by rss.AuditActor) error {
+	return f.call(userCall{method: "MarkConfirmed", id: id, by: by, address: email})
 }
 
 func (f *fakeUsers) LogOutEverywhere(_ context.Context, id string, by rss.AuditActor) (int, error) {

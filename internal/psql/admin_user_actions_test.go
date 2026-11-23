@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 )
 
 // actionTestUser inserts a user with a unique address, confirmed at
-// confirmedAt (nil for not), deleting it and the emails to it on cleanup,
-// and returns its ID and address.
+// confirmedAt (nil for not), deleting it and the emails to it (and their
+// daily counts) on cleanup, and returns its ID and address.
 func actionTestUser(t *testing.T, db *sql.DB, confirmedAt any) (string, string) {
 	t.Helper()
 	email := fmt.Sprintf("action-%d@example.com", time.Now().UnixNano())
-	cleanupExec(t, db, `DELETE FROM emails WHERE to_address = $1`, email)
+	t.Cleanup(func() { deleteEmailsTo(t, db, email) })
 	return adminTestUser(t, db, "Action User", email, time.Now().Add(-time.Hour), confirmedAt), email
 }
 
@@ -126,7 +127,16 @@ func TestAdminUserRepositorySendLink(t *testing.T) {
 	})
 	t.Run("an address that changed", func(t *testing.T) {
 		id, email := actionTestUser(t, db, nil)
-		refused(t, newLinkToken(t, id, rss.TokenResetPassword, "old-"+email), "old-"+email, rss.ErrNoRecord)
+		old := "old-" + email
+		t.Cleanup(func() { deleteEmailsTo(t, db, old) })
+		refused(t, newLinkToken(t, id, rss.TokenResetPassword, old), old, rss.ErrAddressChanged)
+	})
+	t.Run("the address in another case", func(t *testing.T) {
+		id, email := actionTestUser(t, db, nil)
+		upper := strings.ToUpper(email)
+		if err := repo.SendLink(t.Context(), newLinkToken(t, id, rss.TokenResetPassword, upper), mail.Message{To: upper, Subject: "s", Text: "t", HTML: "h"}, testActor(t, db)); err != nil {
+			t.Fatalf("SendLink: %v", err)
+		}
 	})
 	t.Run("an unknown user", func(t *testing.T) {
 		refused(t, newLinkToken(t, "00000000-0000-4000-8000-000000000000", rss.TokenResetPassword, "nobody@example.com"), "nobody@example.com", rss.ErrNoRecord)
@@ -134,7 +144,7 @@ func TestAdminUserRepositorySendLink(t *testing.T) {
 	t.Run("over the per-address cap", func(t *testing.T) {
 		id, email := actionTestUser(t, db, nil)
 		for range maxEmailsPerAddressPerHour {
-			if _, err := db.Exec(`INSERT INTO emails (to_address, subject, text_body, html_body) VALUES ($1, 'earlier', '', '')`, email); err != nil {
+			if err := enqueue(t.Context(), db, mail.Message{To: email, Subject: "earlier"}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -170,7 +180,8 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 		reset := createToken(t, tokens, id, rss.TokenResetPassword, email, time.Now().Add(time.Hour))
 		by := testActor(t, db)
 
-		if err := repo.MarkConfirmed(t.Context(), id, by); err != nil {
+		// The address as the page showed it, in any case.
+		if err := repo.MarkConfirmed(t.Context(), id, strings.ToUpper(email), by); err != nil {
 			t.Fatalf("MarkConfirmed: %v", err)
 		}
 		var stored sql.NullTime
@@ -187,16 +198,16 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 			t.Error("the reset link was deleted too")
 		}
 		e := onlyEntry(t, db, by, "user.mark_confirmed", id)
-		if v, ok := e.Before["email_confirmed_at"]; !ok || v != nil || e.After["email_confirmed_at"] == nil {
+		if v, ok := e.Before["email_confirmed_at"]; !ok || v != nil || e.After["email_confirmed_at"] == nil || e.After["email"] != email {
 			t.Errorf("audit before %v, after %v", e.Before, e.After)
 		}
 	})
 
 	t.Run("already confirmed", func(t *testing.T) {
 		confirmedAt := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
-		id, _ := actionTestUser(t, db, confirmedAt)
+		id, email := actionTestUser(t, db, confirmedAt)
 		by := testActor(t, db)
-		if err := repo.MarkConfirmed(t.Context(), id, by); !errors.Is(err, rss.ErrAlreadyConfirmed) {
+		if err := repo.MarkConfirmed(t.Context(), id, email, by); !errors.Is(err, rss.ErrAlreadyConfirmed) {
 			t.Fatalf("MarkConfirmed = %v, want %v", err, rss.ErrAlreadyConfirmed)
 		}
 		var stored time.Time
@@ -212,14 +223,28 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 	})
 
 	t.Run("unknown user", func(t *testing.T) {
-		if err := repo.MarkConfirmed(t.Context(), "00000000-0000-4000-8000-000000000000", testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
+		if err := repo.MarkConfirmed(t.Context(), "00000000-0000-4000-8000-000000000000", "nobody@example.com", testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("MarkConfirmed = %v, want %v", err, rss.ErrNoRecord)
 		}
 	})
 
+	t.Run("an address that changed", func(t *testing.T) {
+		id, email := actionTestUser(t, db, nil)
+		by := testActor(t, db)
+		if err := repo.MarkConfirmed(t.Context(), id, "old-"+email, by); !errors.Is(err, rss.ErrAddressChanged) {
+			t.Fatalf("MarkConfirmed = %v, want %v", err, rss.ErrAddressChanged)
+		}
+		if n := countRows(t, db, `SELECT count(*) FROM users WHERE id = $1 AND email_confirmed_at IS NOT NULL`, id); n != 0 {
+			t.Error("confirmed an address the admin didn't see")
+		}
+		if got := auditBy(t, db, by); len(got) != 0 {
+			t.Errorf("recorded %d entries, want none", len(got))
+		}
+	})
+
 	t.Run("not recorded, not confirmed", func(t *testing.T) {
-		id, _ := actionTestUser(t, db, nil)
-		if err := repo.MarkConfirmed(t.Context(), id, brokenActor(t, db)); err == nil {
+		id, email := actionTestUser(t, db, nil)
+		if err := repo.MarkConfirmed(t.Context(), id, email, brokenActor(t, db)); err == nil {
 			t.Fatal("MarkConfirmed with a broken actor worked")
 		}
 		if n := countRows(t, db, `SELECT count(*) FROM users WHERE id = $1 AND email_confirmed_at IS NOT NULL`, id); n != 0 {

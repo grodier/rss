@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/mail"
@@ -39,10 +40,11 @@ var linkActions = map[string]string{
 // SendLink stores t, a confirmation or password reset link's token, and
 // queues m, its email, recorded as user.resend_confirmation or
 // user.send_password_reset by by. Like a new link from the reader, it first
-// deletes the user's expired links. rss.ErrNoRecord if the user is gone or
-// their address is no longer t's; rss.ErrAlreadyConfirmed for a
-// confirmation to a confirmed address; rss.ErrTooManyEmails over the
-// per-address cap. Then nothing is stored or queued.
+// deletes the user's expired links. rss.ErrNoRecord if the user is gone;
+// rss.ErrAddressChanged if their address (in any case) is no longer t's;
+// rss.ErrAlreadyConfirmed for a confirmation to a confirmed address;
+// rss.ErrTooManyEmails over the per-address cap. Then nothing is stored or
+// queued.
 func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error {
 	action, ok := linkActions[t.Purpose]
 	if !ok {
@@ -58,8 +60,8 @@ func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.
 	switch {
 	case err != nil:
 		return err
-	case u.Email != t.Email:
-		return rss.ErrNoRecord
+	case !strings.EqualFold(u.Email, t.Email):
+		return rss.ErrAddressChanged
 	case t.Purpose == rss.TokenConfirmEmail && !u.EmailConfirmedAt.IsZero():
 		return rss.ErrAlreadyConfirmed
 	}
@@ -82,11 +84,13 @@ func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.
 	return tx.Commit()
 }
 
-// MarkConfirmed confirms user id's address now, for one confirmed another
-// way, and, as confirming with a link does, deletes their confirmation
-// links; recorded as user.mark_confirmed by by. rss.ErrNoRecord if there's
-// no such user; rss.ErrAlreadyConfirmed if it's already confirmed.
-func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) error {
+// MarkConfirmed confirms user id's address, email, now, for one confirmed
+// another way, and, as confirming with a link does, deletes their
+// confirmation links; recorded as user.mark_confirmed by by. rss.ErrNoRecord
+// if there's no such user; rss.ErrAddressChanged if their address (in any
+// case) is no longer email; rss.ErrAlreadyConfirmed if it's already
+// confirmed.
+func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id, email string, by rss.AuditActor) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -94,10 +98,12 @@ func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id string, by r
 	defer tx.Rollback()
 
 	u, err := lockUser(ctx, tx, id)
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
-	}
-	if !u.EmailConfirmedAt.IsZero() {
+	case !strings.EqualFold(u.Email, email):
+		return rss.ErrAddressChanged
+	case !u.EmailConfirmedAt.IsZero():
 		return rss.ErrAlreadyConfirmed
 	}
 	var at time.Time
@@ -108,7 +114,7 @@ func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id string, by r
 		return err
 	}
 	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "user.mark_confirmed", TargetType: "user", TargetID: id,
-		Before: map[string]any{"email_confirmed_at": nil}, After: map[string]any{"email_confirmed_at": at}})
+		Before: map[string]any{"email_confirmed_at": nil}, After: map[string]any{"email": u.Email, "email_confirmed_at": at}})
 	if err != nil {
 		return err
 	}

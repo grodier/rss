@@ -41,8 +41,8 @@ type Config struct {
 	// SecretKey is the 32-byte key admins' TOTP secrets are sealed with
 	// (Seal), held only in the admin service's environment.
 	SecretKey []byte
-	// AppURL is the reader's public URL, without a trailing slash: invites'
-	// links point there.
+	// AppURL is the reader's public URL, without a trailing slash: the links
+	// in invites and account emails point there.
 	AppURL string
 	// SupportEmail is where people can get help, shown in emails' footers.
 	SupportEmail string
@@ -172,7 +172,7 @@ type UserStore interface {
 	ListUsers(ctx context.Context, q rss.AdminUserQuery) ([]rss.AdminUserRow, error)
 	User(ctx context.Context, id string) (rss.AdminUser, error)
 	SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error
-	MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) error
+	MarkConfirmed(ctx context.Context, id, email string, by rss.AuditActor) error
 	LogOutEverywhere(ctx context.Context, id string, by rss.AuditActor) (int, error)
 	Delete(ctx context.Context, id string, by rss.AuditActor) (rss.User, error)
 }

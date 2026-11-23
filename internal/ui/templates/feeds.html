@@ -73,9 +73,9 @@
               <p class="feed-tags">{{range .}}<a href="/tags/{{.ID}}">{{.Name}}</a>{{end}}</p>
               {{end}}
               {{if .LatestArticleAt.IsZero}}
-              <p>No articles yet.</p>
+              <p>No posts yet.</p>
               {{else}}
-              <p>Latest article {{template "local-date" .LatestArticleAt}} · {{postingRate .Feed.PostsPerWeek}}</p>
+              <p>Latest post {{template "local-date" .LatestArticleAt}} · {{postingRate .Feed.PostsPerWeek}}</p>
               {{end}}
               {{if not .Feed.GoneAt.IsZero}}
               <p class="fetch-error">This feed no longer exists.</p>

@@ -203,7 +203,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | D1 Fetch failed once | "Failing Once" from the setup | Feed page, 200 | "The last attempt to fetch this feed failed ({time}). We'll keep trying." | Nothing to do | ok |
 | D2 Fetch failing (3+ times) | "Failing Thrice" | My feeds: "This feed is failing to update."; feed page: "The last 3 attempts to fetch this feed failed, most recently {time}. We'll keep trying." | (as Where) | Nothing to do but wait or unfollow | ok |
 | D3 Gone (410) | "Gone Feed" | My feeds: "This feed no longer exists."; feed page: "This feed no longer exists: its publisher removed it. We've stopped checking it." with no Refresh button | (as Where) | Unfollow | ok |
-| D4 Never fetched, no articles | "Never Fetched" | Feed page, 200 | "Never fetched." and "No articles yet." | Waits | ok |
+| D4 Never fetched, no posts | "Never Fetched" | Feed page, 200 | "Never fetched." and "No posts yet." | Waits | ok |
 | D5 Refresh within 5 minutes of a fetch | `UPDATE feeds SET last_fetched_at = now() WHERE id = '{feed}'`, click Refresh | Feed page, flash | "This feed was refreshed in the last few minutes. Try again later." | Yes | ok |
 | D6 Refresh fails | Refresh "OK Feed" (its host doesn't exist); a feed whose address returns a web page; one that answers 410 | Feed page, flash | "Couldn't reach this feed. Try again later."; "This feed's address didn't return a feed. Try again later."; "This feed no longer exists. We've stopped checking it." | Yes | ok |
 | D7 Refresh a gone feed, or follow one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't follow it." | n/a | ok |
@@ -244,7 +244,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | Y5 Tags, none | New account's `/tags` | 200 | "You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them." | Yes | ok |
 | Y6 Timelines, none | `/timelines` after deleting a new account's Quiet posters and Starred | 200 | Home's row, then "You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”." | Yes | ok |
 | Y7 Site page, no feeds | L9 | | | | see L9 |
-| Y8 Feed, no articles | D4 | | | | see D4 |
+| Y8 Feed, no posts | D4 | | | | see D4 |
 
 ## Subscriptions
 
@@ -262,8 +262,8 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | P1 Empty timeline | Y1 | | | | see Y1 |
-| P2 No older articles | `/?before=0_2000-01-01T00:00:00Z_00000000-0000-0000-0000-000000000000` (also feed pages, Saved) | 200 | "No older articles." (Saved: "No older saved articles.", "No older matches.") | Yes | ok |
-| P3 Invalid `before` cursor | `/?before=garbage`, `/feeds/{feed}?before=garbage`, `/saved?before=garbage` | 400 error page | "Bad request" / "That link to older articles isn't valid." | Home only | needs work: see H1 |
+| P2 No older articles | `/?before=0_2000-01-01T00:00:00Z_00000000-0000-0000-0000-000000000000` (also feed pages, Saved) | 200 | "No older articles." (feed pages: "No older posts."; Saved: "No older saved articles.", "No older matches.") | Yes | ok |
+| P3 Invalid `before` cursor | `/?before=garbage`, `/feeds/{feed}?before=garbage`, `/saved?before=garbage` | 400 error page | "Bad request" / "That link to older articles isn't valid." (feed pages: "That link to older posts isn't valid.") | Home only | needs work: see H1 |
 | P4 Article with no text in its feed | The `notext` article | Article page, 200 | "This article has no text in its feed." + "Read on {site}" | Yes | ok |
 | P5 Article with no URL | The `nourl` article | Article page, 200, no "Read on" | None | n/a | ok |
 | P6 Article with no title, text or URL | The `nothing` article | Article page, 200 | "(untitled)" and P4's text | n/a | ok |

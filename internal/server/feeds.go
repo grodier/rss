@@ -211,7 +211,7 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 
 	before, err := decodeCursor(r.URL.Query().Get("before"))
 	if err != nil {
-		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older articles isn't valid.")
+		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That link to older posts isn't valid.")
 		return
 	}
 
@@ -711,11 +711,11 @@ func refreshFlash(res rss.FetchResult) string {
 	var msg string
 	switch res.New {
 	case 0:
-		msg = "No new articles"
+		msg = "No new posts"
 	case 1:
-		msg = "1 new article"
+		msg = "1 new post"
 	default:
-		msg = fmt.Sprintf("%d new articles", res.New)
+		msg = fmt.Sprintf("%d new posts", res.New)
 	}
 	if res.Updated > 0 {
 		msg += fmt.Sprintf(", %d updated", res.Updated)

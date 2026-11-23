@@ -152,7 +152,7 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
   Logged-in pages use the `.shell` layout with `{{template "app-nav" .Nav}}`, their data's `Nav: s.nav(r, "<section>")` (`home`, `saved`, `feeds`, `discover`, `settings`, or `""`); logged-out and error pages use `.solo`.
   Icons are inline SVG partials in `icons.html`.
   Search boxes are the `search-box` partial (`partials/search_box.html`), filled from a `searchBox` by the handler; never write a box's markup by hand.
-  A page with nothing to show yet is the `empty-state` partial (`partials/empty_state.html`), filled by `emptyState` in the template; an empty list inside a page, under its head, is a quiet `<p class="empty">` (see "Design" in `docs/decisions.md`).
+  A page whose main content is empty is the `empty-state` partial (`partials/empty_state.html`), filled by `emptyState` in the template; an empty list that's secondary to its page (a feed's posts, search results, end lines) is a quiet `<p class="empty">` (see "Design" in `docs/decisions.md`).
 - The admin (`internal/admin`, `internal/ui/admin`, `web/admin`) follows these conventions with its own files: routes in `internal/admin/router.go`, pages in its layout with `{{template "admin-nav" .Nav}}` and `Nav: s.nav(r, "<section>")`, partials in `internal/ui/admin/partials`, and its stylesheet partials' order in `web/admin/styles/base.css`.
   Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`), shared styles in `web/shared`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).

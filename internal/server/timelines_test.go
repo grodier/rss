@@ -754,9 +754,9 @@ func TestTimelineHandler(t *testing.T) {
 		lead, line string
 	}{
 		{"empty, at most 2 posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2, IncludeWords: []string{"AI"}},
-			"No quiet feeds yet.", "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
+			"No quiet posts here yet.", "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
 		{"empty, at most 1 post a week", rss.TimelineFilter{MaxPostsPerWeek: 1},
-			"No quiet feeds yet.", "When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
+			"No quiet posts here yet.", "When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
 		{"empty, words only", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Nothing in this timeline yet.", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -777,7 +777,7 @@ func TestTimelineHandler(t *testing.T) {
 		s := newTestServerWith(t, Services{ArticleService: articles, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
 			TimelineService: userTimeline(rss.Timeline{Name: "AI", Filter: rss.TimelineFilter{OnlyIncluded: true, ExcludeTagIDs: []string{testTagID}}})})
 		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
-		assertEmptyState(t, rr.Body.String(), "This timeline has no feeds to show.", "Edit it to choose some.", "/timelines/"+testTimelineID+"/edit")
+		assertEmptyState(t, rr.Body.String(), "This timeline has no feeds to show.", "", "/timelines/"+testTimelineID+"/edit")
 	})
 
 	for _, tt := range []struct{ name, id string }{
@@ -873,7 +873,7 @@ func TestStarredTimeline(t *testing.T) {
 	t.Run("empty state", func(t *testing.T) {
 		result = nil
 		body := get(t, "/timelines/"+testTimelineID).Body.String()
-		assertEmptyState(t, body, "Nothing starred yet.", "Star the articles you like most and they'll show up here.")
+		assertEmptyState(t, body, "Nothing starred here yet.", "Star the articles you like most and they'll show up here.")
 		if strings.Contains(body, "Nothing in this timeline yet.") {
 			t.Errorf("shows the plain empty state: %s", body)
 		}

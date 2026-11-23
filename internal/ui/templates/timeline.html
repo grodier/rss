@@ -47,12 +47,12 @@
       {{else if .Before}}
       <p class="empty">No older articles.</p>
       {{else if .NoSources}}
-      {{template "empty-state" (emptyState "timeline" "This timeline has no feeds to show." "Edit it to choose some." "Edit timeline" (printf "/timelines/%s/edit" .Timeline.ID))}}
+      {{template "empty-state" (emptyState "timeline" "This timeline has no feeds to show." "" "Edit timeline" (printf "/timelines/%s/edit" .Timeline.ID))}}
       {{else if .Timeline.Filter.StarredOnly}}
-      {{template "empty-state" (emptyState "star" "Nothing starred yet." "Star the articles you like most and they'll show up here.")}}
+      {{template "empty-state" (emptyState "star" "Nothing starred here yet." "Star the articles you like most and they'll show up here.")}}
       {{else if .Timeline.Filter.MaxPostsPerWeek}}
       {{$n := .Timeline.Filter.MaxPostsPerWeek}}{{$often := "once"}}{{if ne $n 1}}{{$often = printf "%d times" $n}}{{end}}
-      {{template "empty-state" (emptyState "clock" "No quiet feeds yet." (printf "When a feed you follow posts at most %s a week, its articles show up here, so busy feeds never bury them." $often))}}
+      {{template "empty-state" (emptyState "clock" "No quiet posts here yet." (printf "When a feed you follow posts at most %s a week, its articles show up here, so busy feeds never bury them." $often))}}
       {{else if not .Home}}
       {{template "empty-state" (emptyState "timeline" "Nothing in this timeline yet." "")}}
       {{else if .Following.Unfetched}}

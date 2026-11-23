@@ -45,9 +45,8 @@ var templateFuncs = template.FuncMap{
 // emptyState is a page with nothing to show yet, for the empty-state
 // partial: its section's icon, a lead that says what's empty, a line on
 // how things get there, and up to two actions, the first one primary
-// (#757, after #639's empty Home). An empty state inside a page, under a
-// list's head, is a quiet line instead, since it isn't the page's main
-// content.
+// (#757, after #639's empty Home). An empty list that's secondary to its
+// page, like a feed's posts, is a quiet line instead.
 type emptyState struct {
 	Icon    string // one of emptyStateIcons
 	Lead    string

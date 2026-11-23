@@ -533,7 +533,7 @@ Beyond those:
   Log out is a button on the Settings home.
 - **Avatars:** sites and feeds have rounded-square avatars (`partials/avatar.html`): the site's icon on a white tile, else its letter on its tint.
   People's avatars (the nav, Settings) stay circles.
-- **Empty states** (#757): a page with nothing to show yet renders the `empty-state` partial (`partials/empty_state.html`), built in the template by `emptyState` (`internal/server/html.go`) from its icon, lead, line and actions, and styled by `empty.css`; an empty list inside a page, under its head, stays a quiet `<p class="empty">`.
+- **Empty states** (#757): a page with nothing to show yet renders the `empty-state` partial (`partials/empty_state.html`), built in the template by `emptyState` (`internal/server/html.go`) from its icon, lead, line and actions, and styled by `empty.css`; an empty list that's secondary to its page stays a quiet `<p class="empty">`.
 - **The tab row** (`partials/timeline_tabs.html`) heads Home and each custom timeline in place of the page's visible heading (the `<h1>` is visually hidden).
   It's a `nav` of links with `aria-current`, not ARIA tabs, and shows no counts.
   The current tab's underline is its own element, `.tab-indicator` (`aria-hidden`), named `tab-indicator` for view transitions (#521): between two tab pages the browser moves it from the old tab to the new one apart from the page's crossfade, and to or from a page without the row it fades with the page.

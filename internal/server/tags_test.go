@@ -244,8 +244,7 @@ func TestTagHandler(t *testing.T) {
 		rr, _ := serveTag(t, s, s.tagHandler, testTagID, nil)
 		body := rr.Body.String()
 		assertBodyContains(t, body,
-			"You're not following any feeds yet.",
-			`Find sites to follow in <a href="/discover">Discover</a>`,
+			`<p class="empty">You're not following any feeds yet. Find sites to follow in <a href="/discover">Discover</a>.</p>`,
 			`action="/tags/`+testTagID+`/rename"`,
 		)
 		if strings.Contains(body, `class="tag-feeds"`) {

@@ -288,9 +288,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | T5 Over 20 timelines | `INSERT INTO timelines (user_id, name) SELECT '{A}', 't' \|\| g FROM generate_series(1, 20) g`, then New timeline | 422, alert above the form | "You can have up to 20 timelines." | Only by deleting one; found out after filling the form | ok |
 | T6 A tag or feed deleted in another tab before saving | Code read | 404 (H2) | As H2 | Home only | ok (rare) |
 | T7 Empty custom timeline | A timeline whose words match nothing | 200 | "Nothing in this timeline yet." | The tab row's Edit leads to its row on `/timelines`, and its pencil | new (#757) |
-| T7a Empty quiet posters timeline | A new account's Quiet posters, or any timeline with "at most N posts a week" that has no articles | 200 | "No quiet feeds yet." "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them." ("once a week" for 1) | Yes: it explains what will show up | new (#757) |
-| T8 Timeline with no feeds to show | A timeline limited to a tag with no feeds | 200 | "This timeline has no feeds to show." "Edit it to choose some.", with the button "Edit timeline" | Yes, with a button | new (#757) |
-| T9 Starred-only, nothing starred | A new account's Starred | 200 | "Nothing starred yet." "Star the articles you like most and they'll show up here." | Yes | new (#757) |
+| T7a Empty quiet posters timeline | A new account's Quiet posters, or any timeline with "at most N posts a week" that has no articles | 200 | "No quiet posts here yet." "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them." ("once a week" for 1) | Yes: it explains what will show up | new (#757) |
+| T8 Timeline with no feeds to show | A timeline limited to a tag with no feeds | 200 | "This timeline has no feeds to show.", with the button "Edit timeline" | Yes, with a button | new (#757) |
+| T9 Starred-only, nothing starred | A new account's Starred | 200 | "Nothing starred here yet." "Star the articles you like most and they'll show up here." | Yes | new (#757) |
 | T9a New timeline without tags | New timeline with no tags | 200, the list of starting points | "Feeds with a tag" says "Make a tag first: tags group your feeds, like News or Tech." and links to Tags | Yes | ok |
 | T10 Unknown or another user's timeline | `/timelines/{uuid}`; as B, A's | 404 (H2) | As H2 | Home only | ok |
 
@@ -301,7 +301,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | G1 Name blank, with a comma, or too long | New tag, or rename | 422, under Name | "Enter a name."; "Tags can't contain commas."; "Must be 50 characters or fewer." | Yes | ok |
 | G2 Duplicate name | A tag that exists, in any case | 422, under Name | "You already have a tag called “news”." | Yes | ok |
 | G3 Over 100 tags | `INSERT INTO tags (user_id, name) SELECT '{A}', 't' \|\| g FROM generate_series(1, 100) g`, then New tag | 422, under Name | "You can have up to 100 tags." | Only by deleting one | ok |
-| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not following any feeds yet. Find sites to follow in Discover." | Yes | ok |
+| G4 Tag page without subscriptions | A tag on an account with no feeds | 200 | "You're not following any feeds yet. Find sites to follow in Discover.", a quiet line above Rename and Delete | Yes | new (#757) |
 | G5 Unknown or another user's tag | `/tags/{uuid}`; as B, A's | 404 (H2) | As H2 | Home only | ok |
 
 ## Shared timelines

@@ -253,6 +253,10 @@ Each with when it pays off:
 - [ ] **AI-assisted titles and summaries.**
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
   Deferred from #306.
+- [ ] **More copies of one image recognized as the same.**
+  `imageKey` treats URLs differing in scheme, `www.`, query or a WordPress size suffix as one image, so a lead image isn't repeated when the content shows it anywhere.
+  Two more would catch copies further down the content, if real examples turn up (noted in #748, whose position rule covered the case seen): unwrapping image-proxy URLs that carry the original (in the path, or in a `url=` or `image_uri=` parameter), and size prefixes like Engadget's `l-intro-1794602643.jpg` for `intro-1794602643.jpg`.
+  The prefix was left out because it encodes one site's naming, and a wrong match quietly hides a lead image that's a different picture, where a missed one only shows a duplicate.
 - [ ] **Generic `og:image` detection.**
   Some sites use one fallback `og:image` (their logo) for every page, so enrichment (#306) would give every card the same picture.
   If that shows up, ignore a page image that a feed's recent articles share.

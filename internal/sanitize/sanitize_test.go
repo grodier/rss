@@ -941,6 +941,39 @@ func TestShowsImage(t *testing.T) {
 		{name: "image after first paragraph after a heading", raw: `<h2>h</h2><p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
 		{name: "image later on", raw: `<p>one</p><p>two</p><img src="b.jpg">`, imageURL: other, want: false},
 
+		// The first paragraph can be loose text, outside a <p>.
+		{name: "image after loose opening text", raw: `text <p><img src="b.jpg"></p>`, imageURL: other, want: true},
+		{name: "image after loose text with inline elements", raw: `Some <em>text</em> and <a href="x">a link</a><br>more <img src="b.jpg">`, imageURL: other, want: true},
+		{name: "image after loose text in a wrapper", raw: `<div>text <figure><img src="b.jpg"></figure><p>t</p></div>`, imageURL: other, want: true},
+		{name: "heading, loose text, image", raw: `<h2>h</h2>text <img src="b.jpg">`, imageURL: other, want: true},
+		{name: "loose text then a paragraph then an image", raw: `text <p>more</p><img src="b.jpg">`, imageURL: other, want: false},
+		{name: "paragraph then loose text then an image", raw: `<p>intro</p>more <img src="b.jpg">`, imageURL: other, want: false},
+		{name: "image inside loose text", raw: `text <span>with <img src="b.jpg"> in it</span><p>t</p>`, imageURL: other, want: false},
+		{name: "image after an inline element holding a block", raw: `<span><p>card</p></span><img src="b.jpg">`, imageURL: other, want: false},
+		{name: "image after a video", raw: `<video src="v.mp4"></video><img src="b.jpg"><p>t</p>`, imageURL: other, want: false},
+		{name: "loose text only", raw: `just text`, imageURL: other, want: false},
+		{name: "linked image after loose text", raw: `text <a href="x"><img src="b.jpg"></a><p>t</p>`, imageURL: other, want: true},
+		{name: "image after loose text ending in a line break", raw: `text<br><img src="b.jpg">`, imageURL: other, want: true},
+		{name: "image after loose paragraphs split by line breaks", raw: `One.<br><br>Two.<br><br><img src="b.jpg">`, imageURL: other, want: false},
+		{name: "image after loose paragraphs split by a blank line", raw: "One.\n\nTwo. <img src=\"b.jpg\">", imageURL: other, want: false},
+		{name: "image after loose text ending in a blank line", raw: "One.\n\n<img src=\"b.jpg\">", imageURL: other, want: true},
+		{name: "image after loose text with one line break", raw: `One.<br>Two.<br><img src="b.jpg">`, imageURL: other, want: true},
+		{name: "image inside the opening line", raw: `Great news <img src="b.jpg"> for everyone.<p>Second</p>`, imageURL: other, want: false},
+		{name: "image after a paragraph, then text", raw: `<p>intro</p><img src="b.jpg"> more text`, imageURL: other, want: false},
+		{name: "image after loose text, then a line break and text", raw: `text<br><img src="b.jpg"><br>more`, imageURL: other, want: true},
+		{name: "tracking pixel after loose text", raw: `Summary of the post.<img src="http://feeds.feedburner.com/~r/X/~4/abc" height="1" width="1" alt=""/>`, imageURL: other, want: false},
+		{name: "tracking pixel first", raw: `<img src="https://example.com/p.gif" width="0" height="0"><p>t</p>`, imageURL: other, want: false},
+		{name: "emoji after loose text", raw: `Thanks! <img class="wp-smiley emoji" src="https://s.w.org/images/core/emoji/smile.png" alt="🙂"><p>Second</p>`, imageURL: other, want: false},
+		{name: "sized image after loose text", raw: `text <img src="b.jpg" width="600" height="400">`, imageURL: other, want: true},
+		{name: "empty anchor before the first paragraph", raw: `<a id="top"></a><p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
+		{name: "nbsp before the first paragraph", raw: `&nbsp;<p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
+		{
+			name:     "real case: loose text, then a resized copy of the card image",
+			raw:      `You don&#39;t have to leave your precious PS5 behind when flying, but you will need to take some precautions or opt for a long-distance streaming relationship. <p><img src="https://www.engadget.com/img/gallery/what-is-the-best-way-to-secure-your-playstation-5-for-a-flight/intro-1794602643.jpg" /></p>`,
+			imageURL: "https://www.engadget.com/img/gallery/what-is-the-best-way-to-secure-your-playstation-5-for-a-flight/l-intro-1794602643.jpg",
+			want:     true,
+		},
+
 		// The same image anywhere.
 		{name: "same URL", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: true},
 		{name: "different query", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg?w=600">`, imageURL: "https://example.com/photo.jpg", want: true},
@@ -961,6 +994,7 @@ func TestShowsImage(t *testing.T) {
 		{name: "empty imageURL, leading image", raw: `<img src="a.jpg"><p>t</p>`, want: true},
 		{name: "empty imageURL, image after first paragraph", raw: `<p>intro</p><img src="a.jpg">`, want: true},
 		{name: "empty imageURL, image later on", raw: `<p>one</p><p>two</p><img src="a.jpg">`, want: false},
+		{name: "empty imageURL, image after loose text", raw: `text <p><img src="b.jpg"></p>`, want: true},
 		{name: "empty imageURL, img with empty src later on", raw: `<p>one</p><p>two</p><img src="">`, want: false},
 
 		// Lazy-loaded images.

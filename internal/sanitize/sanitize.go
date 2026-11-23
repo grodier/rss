@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
@@ -102,9 +103,9 @@ func parse(raw string) (*html.Node, error) {
 // ShowsImage reports whether the article HTML raw already shows an image
 // where a lead image would go, so the page shouldn't add imageURL above it:
 // its first block is an image, or the block right after its first paragraph
-// is one, or any <img> in it is the same image as imageURL. Relative URLs
-// resolve against base (nil leaves them as they are). An empty imageURL only
-// checks the first two.
+// is one (see imageAfterFirstParagraph), or any <img> in it is the same image
+// as imageURL. Relative URLs resolve against base (nil leaves them as they
+// are). An empty imageURL only checks the first two.
 //
 // Blocks are read as firstBlocks reads them.
 func ShowsImage(raw string, base *url.URL, imageURL string) bool {
@@ -117,13 +118,8 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	if len(bs) > 0 && isImageBlock(bs[0]) {
 		return true
 	}
-	for i, b := range bs {
-		if b.DataAtom == atom.P && !isImageBlock(b) {
-			if i+1 < len(bs) && isImageBlock(bs[i+1]) {
-				return true
-			}
-			break
-		}
+	if imageAfterFirstParagraph(bs) {
+		return true
 	}
 
 	if imageURL == "" {
@@ -134,6 +130,112 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 		return false
 	}
 	return hasImage(root, base, want)
+}
+
+// imageAfterFirstParagraph reports whether the block right after the first
+// paragraph of bs is an image block, and not one inside a line of text: more
+// loose text right after it means it sits in that line (an emoji, an icon).
+// The first paragraph is the first <p> that isn't an image block, or the
+// first run of loose text (see looseRun) with visible text, whichever comes
+// first: feeds often send their opening text outside a <p>. Blocks before it
+// are skipped: headings, lists, images, and runs with nothing to read (an
+// empty anchor, a stray &nbsp;). A run of several paragraphs has text, not
+// an image, after its first.
+func imageAfterFirstParagraph(bs []*html.Node) bool {
+	for i := 0; i < len(bs); i++ {
+		switch {
+		case bs[i].DataAtom == atom.P && !isImageBlock(bs[i]):
+		case isLooseText(bs[i]):
+			end, visible, paragraphs := looseRun(bs[i:])
+			i += end - 1
+			if !visible {
+				continue
+			}
+			if paragraphs > 1 {
+				return false
+			}
+		default:
+			continue
+		}
+		if i+1 >= len(bs) || !isImageBlock(bs[i+1]) {
+			return false
+		}
+		return i+2 >= len(bs) || !isLooseText(bs[i+2]) || !hasVisibleText(bs[i+2])
+	}
+	return false
+}
+
+// looseRun reads the run of loose text (see isLooseText) and <br>s that bs
+// starts with. It returns the number of blocks in it, whether any has visible
+// text, and how many paragraphs that text makes: a blank line in a text node
+// (reflow's paragraph break, counted even where reflow doesn't apply, which
+// errs towards showing the lead image) or two <br>s in a row start a new one.
+func looseRun(bs []*html.Node) (end int, visible bool, paragraphs int) {
+	brk := false // a break since the last visible text
+	brs := 0     // <br>s in a row
+	for end = 0; end < len(bs); end++ {
+		n := bs[end]
+		if n.Type == html.ElementNode && n.DataAtom == atom.Br {
+			if brs++; brs >= 2 {
+				brk = true
+			}
+			continue
+		}
+		if !isLooseText(n) {
+			break
+		}
+		brs = 0
+		parts := []string{textContent(n)}
+		if n.Type == html.TextNode {
+			parts = blankLine.Split(n.Data, -1)
+		}
+		for i, part := range parts {
+			if i > 0 {
+				brk = true
+			}
+			if strings.TrimSpace(part) == "" {
+				continue
+			}
+			if !visible || brk {
+				paragraphs++
+			}
+			visible, brk = true, false
+		}
+	}
+	return end, visible, paragraphs
+}
+
+// hasVisibleText reports whether n's text has anything but whitespace,
+// counting &nbsp; as whitespace.
+func hasVisibleText(n *html.Node) bool {
+	if n.Type == html.TextNode {
+		return strings.TrimSpace(n.Data) != ""
+	}
+	return strings.TrimSpace(textContent(n)) != ""
+}
+
+// inlineAtoms are the elements that sit inside a line of text.
+var inlineAtoms = map[atom.Atom]bool{
+	atom.A: true, atom.Abbr: true, atom.B: true, atom.Bdi: true, atom.Bdo: true,
+	atom.Cite: true, atom.Code: true, atom.Data: true, atom.Del: true,
+	atom.Dfn: true, atom.Em: true, atom.Font: true, atom.I: true, atom.Ins: true,
+	atom.Kbd: true, atom.Mark: true, atom.Q: true, atom.S: true, atom.Samp: true,
+	atom.Small: true, atom.Span: true, atom.Strike: true, atom.Strong: true,
+	atom.Sub: true, atom.Sup: true, atom.Time: true, atom.U: true, atom.Var: true,
+}
+
+// isLooseText reports whether n, a block from blocks, is text outside any
+// block element: a text node, or an inline element (see inlineAtoms) that
+// isn't an image block and holds no block element. ShowsImage reads a run of
+// them as a paragraph.
+func isLooseText(n *html.Node) bool {
+	switch n.Type {
+	case html.TextNode:
+		return true
+	case html.ElementNode:
+		return inlineAtoms[n.DataAtom] && !isImageBlock(n) && !hasBlock(n)
+	}
+	return false
 }
 
 // firstBlocks returns the blocks an article starts with: root's children,
@@ -234,7 +336,8 @@ func blocks(n *html.Node) []*html.Node {
 }
 
 // isImageBlock reports whether n is an <img> with a source (see
-// imageSource) or a <picture>, or a <figure>,
+// imageSource) that isn't decorative (see isDecorativeImage) or a <picture>,
+// or a <figure>,
 // <p>, <a> or <span> whose only content (besides whitespace, comments and,
 // in a <figure>, a <figcaption>) is an image block.
 func isImageBlock(n *html.Node) bool {
@@ -244,7 +347,7 @@ func isImageBlock(n *html.Node) bool {
 	switch n.DataAtom {
 	case atom.Img:
 		_, ok := imageSource(n, nil)
-		return ok
+		return ok && !isDecorativeImage(n)
 	case atom.Picture:
 		return true
 	case atom.Figure, atom.P, atom.A, atom.Span:
@@ -259,6 +362,26 @@ func isImageBlock(n *html.Node) bool {
 		content = append(content, c)
 	}
 	return len(content) == 1 && isImageBlock(content[0])
+}
+
+// isDecorativeImage reports whether img is too small to stand for a lead
+// image: a tracking pixel (a width or height of 1 or less, as Feedburner's
+// summaries end with) or an emoji WordPress drew as an image.
+func isDecorativeImage(img *html.Node) bool {
+	for _, key := range []string{"width", "height"} {
+		if v, ok := attr(img, key); ok {
+			if px, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && px <= 1 {
+				return true
+			}
+		}
+	}
+	class, _ := attr(img, "class")
+	for _, c := range strings.Fields(class) {
+		if c == "emoji" || c == "wp-smiley" {
+			return true
+		}
+	}
+	return false
 }
 
 // hasImage reports whether an <img> under n shows an image (see

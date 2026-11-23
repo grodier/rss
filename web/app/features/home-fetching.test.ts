@@ -5,9 +5,9 @@ isolate();
 
 const waitingPage = `
   <main class="column">
-    <div class="empty home-empty" data-home-fetching="/timelines/all">
+    <div class="empty empty-state" data-home-fetching="/timelines/all">
       <div class="spinner"></div>
-      <p class="home-empty-lead">Getting the latest from A and B…</p>
+      <p class="empty-state-lead">Getting the latest from A and B…</p>
     </div>
   </main>`;
 

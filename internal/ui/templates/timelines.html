@@ -58,9 +58,7 @@
       </ul>
 
       {{if not .Custom}}
-      <div class="empty">
-        <p>You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.</p>
-      </div>
+      {{template "empty-state" (emptyState "timeline" "You don't have any timelines yet." "A timeline shows some of your feeds, for example everything tagged “News”.")}}
       {{end}}
     </main>
   </div>

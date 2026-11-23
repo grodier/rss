@@ -59,9 +59,7 @@
           {{end}}
         </ul>
         {{else}}
-        <div class="empty">
-          <p>You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them.</p>
-        </div>
+        {{template "empty-state" (emptyState "tag" "You don't have any tags yet." `Tags group your feeds, for example "News" or "AI", so you can make timelines from them.`)}}
         {{end}}
       </section>
     </main>

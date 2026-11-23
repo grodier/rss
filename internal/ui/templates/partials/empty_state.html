@@ -1,0 +1,25 @@
+{{/* A page with nothing to show yet: data is an emptyState, built with
+     the emptyState function (internal/server/html.go): its section's icon,
+     the lead in the text color, the muted line and up to two actions, the
+     first one primary. Empty states inside a page, under a list's head,
+     are a quiet <p class="empty"> instead (#757). empty.css styles it. */}}
+{{define "empty-state"}}
+<div class="empty empty-state">
+  {{if eq .Icon "rss"}}{{template "icon-rss"}}
+  {{else if eq .Icon "bookmark"}}{{template "icon-bookmark"}}
+  {{else if eq .Icon "star"}}{{template "icon-star"}}
+  {{else if eq .Icon "feeds"}}{{template "icon-feeds"}}
+  {{else if eq .Icon "tag"}}{{template "icon-tag"}}
+  {{else if eq .Icon "timeline"}}{{template "icon-timeline"}}
+  {{else if eq .Icon "clock"}}{{template "icon-clock"}}
+  {{end}}
+  <p class="empty-state-lead">{{.Lead}}</p>
+  {{with .Line}}<p>{{.}}</p>{{end}}
+  {{with .Actions}}
+  <div class="empty-state-actions">
+    {{range .}}<a class="btn{{if .Primary}} btn-primary{{end}}" href="{{.Href}}">{{.Label}}</a>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}

@@ -199,10 +199,9 @@ func TestTimelinesHandler(t *testing.T) {
 		s := newTestServer(t)
 		rr, _ := serveTimeline(t, s, s.timelinesHandler, "/timelines", "", nil)
 		body := rr.Body.String()
-		assertBodyContains(t, body,
-			`<a class="timeline-row-name" href="/timelines/all">`,
-			"You don't have any timelines yet. A timeline shows some of your feeds, for example everything tagged “News”.")
-		if strings.Index(body, `href="/timelines/all">`) > strings.Index(body, "You don't have any timelines yet.") {
+		assertBodyContains(t, body, `<a class="timeline-row-name" href="/timelines/all">`)
+		assertEmptyState(t, body, "You don't have any timelines yet.", "A timeline shows some of your feeds, for example everything tagged “News”.")
+		if strings.Index(body, `href="/timelines/all">`) > strings.Index(body, `class="empty empty-state"`) {
 			t.Errorf("the empty state comes before Home's row: %s", body)
 		}
 	})
@@ -750,15 +749,15 @@ func TestTimelineHandler(t *testing.T) {
 	// A timeline of quiet feeds says what will show up, rather than that
 	// nothing has; one with words and no rate keeps the plain text.
 	for _, tt := range []struct {
-		name   string
-		filter rss.TimelineFilter
-		want   string
+		name       string
+		filter     rss.TimelineFilter
+		lead, line string
 	}{
 		{"empty, at most 2 posts a week", rss.TimelineFilter{MaxPostsPerWeek: 2, IncludeWords: []string{"AI"}},
-			"When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
+			"No quiet feeds yet.", "When a feed you follow posts at most 2 times a week, its articles show up here, so busy feeds never bury them."},
 		{"empty, at most 1 post a week", rss.TimelineFilter{MaxPostsPerWeek: 1},
-			"When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
-		{"empty, words only", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Nothing in this timeline yet."},
+			"No quiet feeds yet.", "When a feed you follow posts at most once a week, its articles show up here, so busy feeds never bury them."},
+		{"empty, words only", rss.TimelineFilter{IncludeWords: []string{"AI"}}, "Nothing in this timeline yet.", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			result = nil
@@ -766,7 +765,7 @@ func TestTimelineHandler(t *testing.T) {
 				TimelineService: userTimeline(rss.Timeline{Name: "Quiet", Filter: tt.filter})})
 			rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
 			body := rr.Body.String()
-			assertBodyContains(t, body, tt.want)
+			assertEmptyState(t, body, tt.lead, tt.line)
 			if tt.filter.MaxPostsPerWeek > 0 && strings.Contains(body, "Nothing in this timeline yet.") {
 				t.Errorf("also says nothing's here: %s", body)
 			}
@@ -778,8 +777,7 @@ func TestTimelineHandler(t *testing.T) {
 		s := newTestServerWith(t, Services{ArticleService: articles, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{},
 			TimelineService: userTimeline(rss.Timeline{Name: "AI", Filter: rss.TimelineFilter{OnlyIncluded: true, ExcludeTagIDs: []string{testTagID}}})})
 		rr, _ := serveTimeline(t, s, s.timelineHandler, "/timelines/"+testTimelineID, testTimelineID, nil)
-		assertBodyContains(t, rr.Body.String(),
-			`This timeline has no feeds to show. <a href="/timelines/`+testTimelineID+`/edit">Edit it</a> to choose some.`)
+		assertEmptyState(t, rr.Body.String(), "This timeline has no feeds to show.", "Edit it to choose some.", "/timelines/"+testTimelineID+"/edit")
 	})
 
 	for _, tt := range []struct{ name, id string }{
@@ -875,7 +873,7 @@ func TestStarredTimeline(t *testing.T) {
 	t.Run("empty state", func(t *testing.T) {
 		result = nil
 		body := get(t, "/timelines/"+testTimelineID).Body.String()
-		assertBodyContains(t, body, "Nothing starred here yet. Star articles in your timelines and they'll show up here.")
+		assertEmptyState(t, body, "Nothing starred yet.", "Star the articles you like most and they'll show up here.")
 		if strings.Contains(body, "Nothing in this timeline yet.") {
 			t.Errorf("shows the plain empty state: %s", body)
 		}

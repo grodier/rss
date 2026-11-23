@@ -29,6 +29,7 @@ var templateFuncs = template.FuncMap{
 	"avatarTone":  avatarTone,
 	"debugPanel":  newDebugPanel,
 	"discoverRow": newDiscoverRow,
+	"emptyState":  newEmptyState,
 	"followButton": func(feedID, label, returnTo string, following bool) followButton {
 		return followButton{FeedID: feedID, Label: label, ReturnTo: returnTo, Following: following}
 	},
@@ -38,6 +39,37 @@ var templateFuncs = template.FuncMap{
 	"sinceDate":   func(t time.Time) sinceView { return newSinceView(t, time.Now()) },
 	"siteName":    siteName,
 	"platform":    discovery.Platform,
+}
+
+// emptyState is a page with nothing to show yet, for the empty-state
+// partial: its section's icon, a lead that says what's empty, a line on
+// how things get there, and up to two actions, the first one primary
+// (#757, after #639's empty Home). An empty state inside a page, under a
+// list's head, is a quiet line instead, since it isn't the page's main
+// content.
+type emptyState struct {
+	Icon    string // the icon partial's name without "icon-": "bookmark", "star"
+	Lead    string
+	Line    string
+	Actions []emptyAction
+}
+
+type emptyAction struct {
+	Label, Href string
+	Primary     bool
+}
+
+// newEmptyState builds an emptyState in a template: actions are pairs of
+// a label and a link, at most two.
+func newEmptyState(icon, lead, line string, actions ...string) (emptyState, error) {
+	if len(actions)%2 != 0 || len(actions) > 4 {
+		return emptyState{}, fmt.Errorf("emptyState: want up to two label and link pairs, got %d values", len(actions))
+	}
+	e := emptyState{Icon: icon, Lead: lead, Line: line}
+	for i := 0; i < len(actions); i += 2 {
+		e.Actions = append(e.Actions, emptyAction{Label: actions[i], Href: actions[i+1], Primary: i == 0})
+	}
+	return e, nil
 }
 
 // siteName is how a site is named wherever it's listed: its title, else its

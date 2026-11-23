@@ -168,7 +168,7 @@ func TestSavedHandler(t *testing.T) {
 	t.Run("empty first page", func(t *testing.T) {
 		result, storeErr = nil, nil
 		body := getSaved(t, s, "/saved").Body.String()
-		assertBodyContains(t, body, "Nothing saved yet. Use the bookmark on any article to keep it here.")
+		assertEmptyState(t, body, "Nothing saved yet.", "Use the bookmark on any article to keep it here.")
 		if strings.Contains(body, `class="page-search"`) {
 			t.Errorf("search form shown with nothing to search: %s", body)
 		}

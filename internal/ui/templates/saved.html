@@ -43,10 +43,7 @@
       {{else if .Q}}
       <p class="empty">No saved articles match “{{.Q}}”.</p>
       {{else}}
-      <div class="empty">
-        {{template "icon-bookmark"}}
-        <p>Nothing saved yet. Use the bookmark on any article to keep it here.</p>
-      </div>
+      {{template "empty-state" (emptyState "bookmark" "Nothing saved yet." "Use the bookmark on any article to keep it here.")}}
       {{end}}
 
       {{if .Next}}

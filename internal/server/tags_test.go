@@ -109,8 +109,8 @@ func TestTagsHandler(t *testing.T) {
 	t.Run("empty state", func(t *testing.T) {
 		s := newTestServerWith(t, Services{TagService: &fakeTagStore{}})
 		rr, _ := serveTag(t, s, s.tagsHandler, "", nil)
-		assertBodyContains(t, rr.Body.String(),
-			`You don't have any tags yet. Tags group your feeds, for example "News" or "AI", so you can make timelines from them.`)
+		assertEmptyState(t, rr.Body.String(), "You don't have any tags yet.",
+			`Tags group your feeds, for example "News" or "AI", so you can make timelines from them.`)
 	})
 
 	t.Run("store error", func(t *testing.T) {

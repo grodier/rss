@@ -492,11 +492,15 @@ func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 		u = base.ResolveReference(u)
 	}
 	// u.Path is decoded, so an original sent as https%3A%2F%2F… matches too.
-	// The original is shorter than rawURL, so this ends.
+	// This ends: each call's original is a strict suffix of its own path,
+	// and the original is absolute, so no base lengthens it. An original
+	// that doesn't parse once decoded (its own %25 decoded to a bare %) is
+	// still the same for every copy of it, so it is the key as it is.
 	if m := originalImage.FindStringSubmatch(u.Path); m != nil {
 		if key, ok := imageKey(m[1], nil); ok {
 			return key, true
 		}
+		return m[1], true
 	}
 	if u.Scheme == "http" {
 		u.Scheme = "https"

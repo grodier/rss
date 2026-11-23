@@ -140,7 +140,7 @@ type siteFeedRow struct {
 	Feed   rss.Feed
 	Name   string // its title without the site's name (shortFeedName)
 	Facts  rss.FeedFacts
-	Follow followButton // Follow, or Following when the reader follows it
+	Follow followButton // Follow, or Following, which unfollows: this page manages the site's feeds
 }
 
 // Gone is whether the feed no longer exists (it answered 410).
@@ -167,6 +167,7 @@ func siteFeedRows(site rss.Site, feeds []rss.Feed, facts map[string]rss.FeedFact
 				Label:     rss.DiscoverFeed{Feed: f, Site: site}.Label(),
 				ReturnTo:  "/sites/" + site.ID + "#feed-" + f.ID,
 				Following: subscribed[f.ID],
+				Manage:    true,
 			},
 		}
 	}

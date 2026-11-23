@@ -22,17 +22,11 @@
       <section class="profile">
         <div class="profile-top">
           {{template "avatar" (avatar .Feed.SiteID (or .Feed.Title .Feed.Url) (index .Icons .Feed.SiteID))}}
-          {{if .Subscribed}}
-          <form action="/feeds/{{.Feed.ID}}/unsubscribe" method="post">
-            <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
-            <a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds/{{.Feed.ID}}">Edit</a>
-            <button class="btn-sm btn-danger-quiet" type="submit" aria-label="Unfollow {{or .Name .Feed.Title .Feed.Url}}">Unfollow</button>
-          </form>
-          {{else if .Feed.GoneAt.IsZero}}
-          <form action="/feeds/{{.Feed.ID}}/subscribe" method="post">
-            <input type="hidden" name="return_to" value="/feeds/{{.Feed.ID}}">
-            <button class="btn-primary btn-sm" type="submit" aria-label="Follow {{or .Name .Feed.Title .Feed.Url}}">Follow</button>
-          </form>
+          {{if or .Follow.Following .Feed.GoneAt.IsZero}}
+          <div class="head-actions">
+            {{if .Follow.Following}}<a class="btn btn-sm" href="/feeds/{{.Feed.ID}}/edit?return_to=/feeds/{{.Feed.ID}}">Edit</a>{{end}}
+            {{template "follow-form" .Follow}}
+          </div>
           {{end}}
         </div>
         <h1>{{or .Name .Feed.Title .Feed.Url}}</h1>

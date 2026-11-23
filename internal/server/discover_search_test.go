@@ -239,7 +239,27 @@ func searchRowFacts(r *html.Node) string {
 }
 
 func searchRowFollowing(r *html.Node) bool {
-	return len(findAll(r, func(n *html.Node) bool { return hasClass(n, "following-label") })) == 1
+	return len(findAll(r, isShownFollowingLabel)) == 1
+}
+
+// isShownFollowingLabel matches "✓ Following" shown, not the one a list's
+// Follow holds hidden until it's pressed.
+func isShownFollowingLabel(n *html.Node) bool {
+	return hasClass(n, "following-label") && !hasAttr(n, "hidden")
+}
+
+// checkFollowOnce checks that form is a list's Follow for feedID: posted
+// in place, holding "✓ Following" hidden, linking to the feed, for
+// save-star.ts to put in its place.
+func checkFollowOnce(t *testing.T, form *html.Node, feedID string) {
+	t.Helper()
+	if !hasAttr(form, "data-toggle") || !hasAttr(form, "data-follow-once") {
+		t.Errorf("Follow for %s: want data-toggle and data-follow-once", feedID)
+	}
+	labels := findAll(form, func(n *html.Node) bool { return hasClass(n, "following-label") })
+	if len(labels) != 1 || !hasAttr(labels[0], "hidden") || attr(labels[0], "href") != "/feeds/"+feedID {
+		t.Errorf("Follow for %s holds %d labels; want one, hidden, linking to /feeds/%s", feedID, len(labels), feedID)
+	}
 }
 
 // searchAnnounce is the results container's data-announce.
@@ -386,6 +406,9 @@ func TestDiscoverSearchResults(t *testing.T) {
 			}
 			if got := follow(r); got != tt.follow {
 				t.Errorf("%s: Follow = %q, want %q", tt.title, got, tt.follow)
+			}
+			for _, f := range findAll(r, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") }) {
+				checkFollowOnce(t, f, strings.TrimSuffix(strings.TrimPrefix(tt.follow, "/feeds/"), "/subscribe"))
 			}
 		}
 		if rowsTitled := findAll(doc, func(n *html.Node) bool { return hasClass(n, "search-result-title") && textContent(n) == "Breadline" }); len(rowsTitled) != 0 {

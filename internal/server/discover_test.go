@@ -566,7 +566,8 @@ func TestDiscoverSectionPage(t *testing.T) {
 		if len(ret) != 1 || attr(ret[0], "value") != "/discover/sections/science#feed-feed-1" {
 			t.Errorf("return_to = %v; want /discover/sections/science#feed-feed-1", ret)
 		}
-		label := findAll(doc, func(n *html.Node) bool { return hasClass(n, "following-label") })
+		checkFollowOnce(t, forms[0], "feed-1")
+		label := findAll(doc, isShownFollowingLabel)
 		if len(label) != 1 || attr(label[0], "href") != "/feeds/feed-2" || !strings.Contains(textContent(label[0]), "Following") {
 			t.Errorf("followed feed's label = %v; want one linking to /feeds/feed-2", label)
 		}
@@ -593,6 +594,7 @@ func TestDiscoverSectionPage(t *testing.T) {
 		if want := "/discover/sections/science/posts#article-art-0"; len(ret) != 1 || attr(ret[0], "value") != want {
 			t.Errorf("Follow's return_to = %v; want %q", ret, want)
 		}
+		checkFollowOnce(t, follow, "feed-1")
 		next := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && attr(n, "rel") == "next" })
 		if len(next) != 1 || !strings.HasPrefix(attr(next[0], "href"), "/discover/sections/science/posts?before=") {
 			t.Errorf("Older posts link = %v", next)

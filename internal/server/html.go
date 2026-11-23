@@ -29,8 +29,8 @@ var templateFuncs = template.FuncMap{
 	"avatarTone":  avatarTone,
 	"debugPanel":  newDebugPanel,
 	"discoverRow": newDiscoverRow,
-	"followButton": func(feedID, label, returnTo string) followButton {
-		return followButton{FeedID: feedID, Label: label, ReturnTo: returnTo}
+	"followButton": func(feedID, label, returnTo string, following bool) followButton {
+		return followButton{FeedID: feedID, Label: label, ReturnTo: returnTo, Following: following}
 	},
 	"homeName":    func() string { return homeName },
 	"monogram":    monogram,

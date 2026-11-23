@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - unfollow {{.Name}}</title>
+  {{template "assets" "settings"}}
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Unfollow {{.Name}}?</h1>
+      </header>
+
+      {{/* The feed as My feeds shows it: the reader's name for it, its
+           site, and its tags, which is what goes. */}}
+      <div class="feed-row">
+        {{template "avatar" (avatar .Sub.Feed.SiteID .Name (index .Icons .Sub.Feed.SiteID))}}
+        <div>
+          <a class="feed-row-title" href="/feeds/{{.Sub.Feed.ID}}">{{.Name}}</a>
+          <p>From {{siteName .Sub.Site}}{{if .Sub.Title}} · Feed title “{{or .Sub.Feed.Title .Sub.Feed.Url}}”{{end}}</p>
+          {{with .Sub.Tags}}<p class="feed-tags">{{range .}}<a href="/tags/{{.ID}}">{{.Name}}</a>{{end}}</p>{{end}}
+        </div>
+      </div>
+
+      <form class="settings-form" action="/feeds/{{.Sub.Feed.ID}}/unsubscribe" method="post">
+        {{with .Loses}}<p class="form-intro">Your {{.}} for it will be removed.</p>{{end}}
+        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+        <input type="hidden" name="confirm" value="true">
+        <div class="form-actions">
+          <button class="btn-danger-quiet" type="submit" aria-label="Unfollow {{.Name}}">Unfollow</button>
+          <a class="btn" href="{{.ReturnTo}}">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+
+</html>

@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isolate, liveRegion, submit } from "../../shared/test/setup";
+import { isolate, liveRegion, pageTransition, submit } from "../../shared/test/setup";
 
 isolate();
 
 let fetchMock: ReturnType<typeof vi.fn>;
+
+// redirect is what fetch resolves to on a redirect it doesn't follow
+// (redirect: "manual"), which Response's constructor can't make.
+const redirect = () => ({ type: "opaqueredirect", status: 0, ok: false, redirected: false }) as Response;
 let formSubmit: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
@@ -36,6 +40,7 @@ describe("save-star", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(new URL("/articles/a1/save", location.href).href);
     expect(init.method).toBe("POST");
+    expect(init.redirect).toBe("manual");
     expect([...(init.body as URLSearchParams)]).toEqual([["return_to", "/#article-a1"]]);
   });
 
@@ -85,20 +90,37 @@ describe("save-star", () => {
   it.each([
     ["a 200", () => new Response("<p>page</p>", { status: 200 })],
     ["a 500", () => new Response(null, { status: 500 })],
-    [
-      "a redirect to the login page",
-      () => {
-        const res = new Response("<p>Log in</p>", { status: 200 });
-        Object.defineProperty(res, "redirected", { value: true });
-        return res;
-      },
-    ],
+    ["a redirect, such as to the login page", () => redirect()],
   ])("submits the form normally on %s", async (_, response) => {
     fetchMock.mockImplementation(async () => response());
     submit(form(), button());
     await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
     expect(button().getAttribute("aria-pressed")).toBe("false");
     expect(button().getAttribute("aria-disabled")).toBe("true"); // stays busy while the page loads
+  });
+
+  it("gives the button back when the page comes back from the back/forward cache", async () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--delay-busy", "500ms");
+    fetchMock.mockImplementation(async () => redirect());
+    submit(form(), button());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(formSubmit).toHaveBeenCalledTimes(1);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
+
+    // A page left without being restored stays busy.
+    pageTransition("pageshow", false);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
+
+    pageTransition("pageshow", true);
+    expect(button().hasAttribute("aria-disabled")).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000); // the busy timer doesn't fire after
+    expect("busy" in button().dataset).toBe(false);
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    submit(form(), button());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button().getAttribute("aria-pressed")).toBe("true");
   });
 
   it("submits the form normally when the request fails", async () => {
@@ -109,7 +131,7 @@ describe("save-star", () => {
     await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
   });
 
-  describe("Follow", () => {
+  describe("Follow on a page that manages the feed", () => {
     beforeEach(() => {
       document.body.innerHTML = `
         <form class="follow-form" method="post" action="/feeds/f1/subscribe" data-toggle
@@ -134,11 +156,57 @@ describe("save-star", () => {
       expect(formSubmit).not.toHaveBeenCalled();
     });
 
+    it("goes to the confirmation, rather than toggling, when unfollowing redirects there", async () => {
+      form().setAttribute("action", "/feeds/f1/unsubscribe");
+      button().setAttribute("aria-pressed", "true");
+      fetchMock.mockImplementation(async () => redirect());
+      submit(form(), button());
+      await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+      expect(fetchMock.mock.calls[0][0]).toBe(new URL("/feeds/f1/unsubscribe", location.href).href);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe("/feeds/f1/unsubscribe");
+      expect(liveRegion()).not.toBe("Unfollowed Example");
+    });
+
     it("submits the form normally on anything but a 204, such as a gone feed's redirect", async () => {
-      fetchMock.mockImplementation(async () => new Response("<p>Feed</p>", { status: 200 }));
+      fetchMock.mockImplementation(async () => redirect());
       submit(form(), button());
       await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
       expect(button().getAttribute("aria-pressed")).toBe("false");
+    });
+  });
+
+  describe("Follow in a list for finding feeds", () => {
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <li id="feed-f1">
+          <form class="follow-form" method="post" action="/feeds/f1/subscribe" data-toggle data-follow-once
+              data-announce-pressed="Following Example" data-announce-unpressed="Unfollowed Example">
+            <input type="hidden" name="return_to" value="/discover#feed-f1">
+            <button class="follow-button" type="submit" aria-pressed="false" aria-label="Follow Example">Follow</button>
+            <a class="following-label" href="/feeds/f1" aria-label="Following Example: go to the feed" hidden>✓ Following</a>
+          </form>
+        </li>`;
+    });
+    const label = () => document.querySelector<HTMLAnchorElement>(".following-label")!;
+
+    it("puts the focused, shown ✓ Following in the form's place, and announces it", async () => {
+      expect(submit(form(), button())).toBe(true);
+      await vi.waitFor(() => expect(document.querySelector("form")).toBeNull());
+      expect(fetchMock.mock.calls[0][0]).toBe(new URL("/feeds/f1/subscribe", location.href).href);
+      expect(label().hidden).toBe(false);
+      expect(label().parentElement!.id).toBe("feed-f1");
+      expect(document.activeElement).toBe(label());
+      await vi.waitFor(() => expect(liveRegion()).toBe("Following Example"));
+      expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    it("keeps Follow and submits the form normally on anything but a 204", async () => {
+      fetchMock.mockImplementation(async () => redirect());
+      submit(form(), button());
+      await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(label().hidden).toBe(true);
     });
   });
 

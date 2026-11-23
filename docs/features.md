@@ -216,7 +216,7 @@ The same statement puts the sections in the reader's order: the most catalog fee
 It's computed on each load, so following a feed reorders nothing until the next one; when any section is out of its default place (`inDefaultOrder`, by `DiscoverSection.Position`), a quiet line under the chips says "Sections you follow most come first."
 The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest post {when}" (`postingRate`, and the `since-date` partial: `since`'s relative day, or past two months a month and year, with the date in its `title`), a "Latest posts" disclosure with the 3 titles, and Follow.
 Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
-With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
+With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), puts the "✓ Following" link the form holds hidden in its place (`data-follow-once`, see "Subscriptions"), focused, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash, without following the redirect itself (`redirect: "manual"`), so the page loads once.
 
 **Import on Discover.** With no query, Discover also says something about importing, decided by `discoverImportFor` from what the account has done, so it needs no stored state and no dismiss button.
 While the reader's latest import (`ImportRepository.ListByUser` with a limit of 1) has feeds pending or running, a card above the chips shows its progress as on load, without polling (its feeds done out of its total, and a `<progress>` bar), and links to its page, which updates in place.
@@ -300,7 +300,15 @@ With JavaScript, the button shows it's working ("Refreshing…") while the fetch
 
 ## Subscriptions
 
-**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on Edit subscription, which always returns to My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path, and redirect back with a flash.
+**Flow.** Follow is one partial (`follow-form`, its data a `followButton`) in two kinds, by the page it's on.
+On the pages that manage a feed, its own and its site's (`followButton.Manage`), it's Follow, then, pressed, "Following", which unfollows; on a site's page `save-star.ts` toggles it in place, and on the feed page it posts as a plain form (`followButton.Reload`), since Edit beside it is only for a followed feed.
+In the lists for finding feeds (Discover's rows, a section's Feeds and Recent posts, search results), it's Follow only: a followed feed shows "✓ Following" linking to its page (the `following-label` partial), and with JavaScript, a pressed Follow turns into that label in place (`data-follow-once`); without, the next load shows it, or, on Discover and Recent posts, which leave followed feeds' Follow out, nothing.
+Search shows it as plain text after a reload, since a followed feed's row is then the feed's own, which opens it.
+Either posts to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path and redirects back with a flash.
+Unfollowing a subscription with a name or tags doesn't unfollow at once: `feedUnsubscribeHandler` redirects to a confirmation, `GET /feeds/{id}/unfollow` (`feedUnfollowHandler`, `unfollow.html`), which shows the feed with the reader's name and tags, says which of them will be removed, and has a red Unfollow that posts again with `confirm=true` and Cancel, a link back to `return_to`.
+With JavaScript the redirect makes `save-star.ts` submit the form, so the browser goes there.
+Edit subscription's Unfollow, at its foot with its own warning, posts `confirm=true` too, and always returns to My feeds.
+Without a name or tags, Following unfollows at once, since nothing but the follow is lost.
 Gone feeds can't be subscribed to but can be unsubscribed from.
 My feeds (`/feeds`) lists the user's subscriptions grouped by site, with when each feed last posted (`since-date`), posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
 Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
@@ -312,10 +320,10 @@ Site, feed and search pages mark subscribed feeds with one extra query (`Subscri
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
 **Names.** A subscription can have the user's own name for the feed (`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed that changes its title still updates).
-Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"), and Unsubscribe at its foot; a blank name, or one equal to the feed's current title, is stored as `""`.
+Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"), and Unfollow at its foot; a blank name, or one equal to the feed's current title, is stored as `""`.
 The name shows wherever the user's own reading shows the feed: per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`) select `subscriptionTitle` as the feed's title, so rows and "Also in" show it without template changes, and the feed page, the article page and the OPML export use it too.
 Catalog pages (site, search) and debug panels keep the feed's own title.
-Unsubscribing drops the name and the subscription's tags.
+Unsubscribing drops the name and the subscription's tags, which is why unfollowing one that has them asks first (above).
 
 **Export.** `/settings/export` asks whether to turn tags into folders (the default) or ignore them, then downloads `/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription, gone feeds included, as OPML 2.0, one `<outline>` per feed with the user's name for it.
 With folders, feeds are nested in a folder per tag (a feed with two tags in both), then the untagged feeds at the top level.
@@ -336,12 +344,12 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Start at:**
 
-1. `internal/server/feeds.go`: subscribe and unsubscribe, `feedsHandler` (its sort and search), and the subscription edit handlers; `web/app/features/feeds-filter.ts`.
+1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its sort and search), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
 2. `internal/psql/subscriptions.go`.
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
+**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `discover_search_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/save-star.test.ts`, `feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

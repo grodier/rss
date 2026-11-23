@@ -24,6 +24,6 @@
     <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
     {{if or .Facts (not .LatestAt.IsZero)}}<p class="search-result-facts">{{range .Facts}}<span>{{.}}</span>{{end}}{{template "search-latest" .LatestAt}}</p>{{end}}
   </div>
-  {{if .Following}}<span class="following-label search-following">✓ Following</span>{{end}}
+  {{if .Following}}<span class="following-label">✓ Following</span>{{end}}
 </li>
 {{end}}

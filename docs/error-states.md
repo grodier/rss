@@ -209,7 +209,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | D7 Refresh a gone feed, or follow one | `curl` a post to `/feeds/{gone}/refresh` or `/subscribe` (the buttons aren't shown) | Feed page, flash | "This feed no longer exists, so it can't be refreshed."; "…so you can't follow it." | n/a | ok |
 | D8 Refresh rate limited | 11 refreshes in 10 minutes | Feed page, flash | "You've refreshed a lot of feeds recently. Please wait a few minutes and try again." | After the wait | ok |
 | D9 Refresh while one is running | Code read: click Refresh twice | The second waits, then gets D5 if the first succeeded | As D5 | Yes | ok |
-| D10 Feed page at 375 px, followed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Unfollow fit beside the avatar; no sideways scroll | ok (2026-10-31, #431: checked at 320, 360, 375 and 390 px, and the site page at 320 px) |
+| D10 Feed page at 375 px, followed | Any feed A follows, at 320, 360, 375 and 390 px | Feed page | n/a | Edit and Following fit beside the avatar; no sideways scroll | ok (2026-11-23, #752: checked at 320 and 390 px; #431 checked 320, 360, 375 and 390 px, and the site page at 320 px) |
 
 ## Discover
 
@@ -250,7 +250,9 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| U1 Follow or unfollow succeeds | Click Follow / Unfollow | Same page, flash | "Following {feed}."; "Unfollowed {feed}." | n/a | ok |
+| U1 Follow or unfollow succeeds | Click Follow, or Following on a feed's or site's page (Unfollow on Edit subscription or the confirmation); with JavaScript, Follow and Following on a site's page and in lists change in place instead | Same page, flash | "Following {feed}."; "Unfollowed {feed}." | n/a | ok |
+| U1a Unfollow a feed with a name or tags | Press Following on a feed you renamed or tagged, on its page or its site's, with or without JavaScript | Confirmation page, 200 (`/feeds/{id}/unfollow`) | "Unfollow {name}?"; "Your name and tags for it will be removed." (or only "name", or only "tags"), with red Unfollow and Cancel | Yes: Cancel goes back, changing nothing | new in #752, not reviewed |
+| U1b The confirmation for a feed you no longer follow | Unfollow in another tab, then open the confirmation | 404 (H3) | As H2 | Home only | new in #752, not reviewed |
 | U2 Follow an unknown feed | `curl` a post to `/feeds/{uuid}/subscribe` | 404 (H2) | As H2 | Home only | ok |
 | U3 Follow or unfollow fails | Code read: a store error | 500 (H8) | As H8 | As H8 | ok (see H1) |
 | U4 Edit: name too long | Edit subscription, name of 101 characters | 422, under Name | "Must be 100 characters or fewer." | Yes | ok |

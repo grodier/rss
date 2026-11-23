@@ -1,8 +1,9 @@
-/* Follow: Discover's and a site's page's Follow buttons, Discover's
-   "✓ Following" label, and Follow in an article row's foot. */
+/* Follow: the Follow button, the "✓ Following" label that lists for
+   finding feeds show for a followed feed, and Follow in an article row's
+   foot. */
 @layer components {
-  /* A followed feed on a section's page: a quiet label linking to the
-     feed, where Follow would be. */
+  /* A followed feed in a list for finding feeds: a quiet label linking to
+     the feed, where Follow would be. */
   .following-label {
     padding-block: 0.3125rem;
     color: var(--text-2);
@@ -19,8 +20,9 @@
 
   /* Follow in an article row's foot, on a section's Recent posts: an
      outlined button, as a page of posts repeats it on every row of a feed,
-     where a filled one would outshout the posts. */
-  .article-foot .follow-form {
+     where a filled one would outshout the posts. Once pressed, "✓
+     Following" takes its place. */
+  .article-foot :is(.follow-form, .following-label) {
     flex: none;
     margin-inline-start: auto;
   }
@@ -31,11 +33,12 @@
     color: var(--text);
   }
 
-  .article-foot .follow-form + .article-actions {
+  .article-foot :is(.follow-form, .following-label) + .article-actions {
     margin-inline-start: 0;
   }
 
-  /* Follow: a primary button until pressed, then a quiet "Following". */
+  /* Follow: a primary button until pressed, then, on a page that manages
+     the feed, a quiet "Following". */
   .follow-button[aria-pressed="false"] {
     border-color: var(--text);
     background: var(--text);

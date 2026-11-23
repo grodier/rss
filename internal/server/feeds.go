@@ -324,20 +324,23 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Rows           []articleRow
 		Before         bool
 		Next           string
-		Subscribed     bool
+		Follow         followButton // posted as a plain form: Edit shows only while following
 		RefreshPending bool
 		Flash          string
 		Debug          []debugField
 	}{
-		Nav:            s.nav(r, ""),
-		Feed:           feed,
-		Name:           sub.Title,
-		Site:           site,
-		Icons:          s.pageIcons(r, []string{site.ID}),
-		Rows:           rows,
-		Before:         !before.IsZero(),
-		Next:           next,
-		Subscribed:     subscribed,
+		Nav:    s.nav(r, ""),
+		Feed:   feed,
+		Name:   sub.Title,
+		Site:   site,
+		Icons:  s.pageIcons(r, []string{site.ID}),
+		Rows:   rows,
+		Before: !before.IsZero(),
+		Next:   next,
+		Follow: followButton{
+			FeedID: feed.ID, Label: cmp.Or(sub.Title, feedLabel(feed)), ReturnTo: "/feeds/" + feed.ID,
+			Following: subscribed, Manage: true, Reload: true,
+		},
 		RefreshPending: pending,
 		Flash:          flash,
 		Debug:          debug,
@@ -351,7 +354,8 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 // feedSubscribeHandler subscribes the user to a feed. Subscribing again is a
 // no-op with the same message.
 func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
-	feed, form, ok := s.subscriptionTarget(w, r)
+	var form returnForm
+	feed, ok := s.subscriptionTarget(w, r, &form)
 	if !ok {
 		return
 	}
@@ -375,19 +379,95 @@ func (s *Server) feedSubscribeHandler(w http.ResponseWriter, r *http.Request) {
 
 // feedUnsubscribeHandler removes the user's subscription to a feed, including
 // a gone one. Unsubscribing when not subscribed is a no-op with the same
-// message.
+// message. A subscription with a name or tags, which unfollowing would
+// lose, goes to the confirmation (feedUnfollowHandler) instead, unless the
+// form is that confirmation's, or Edit subscription's, whose Unfollow says
+// so (confirm=true). With fetch (save-star.ts) that's the same redirect,
+// which save-star.ts doesn't follow: it submits the form, so the browser
+// does.
 func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) {
-	feed, form, ok := s.subscriptionTarget(w, r)
+	var form unsubscribeForm
+	feed, ok := s.subscriptionTarget(w, r, &form)
 	if !ok {
 		return
 	}
 
 	userID, _ := s.authenticatedUserID(r)
+	if !form.Confirm {
+		sub, err := s.services.SubscriptionService.Get(r.Context(), userID, feed.ID)
+		switch {
+		case err == nil && losesOnUnfollow(sub):
+			u := "/feeds/" + feed.ID + "/unfollow?" + url.Values{"return_to": {safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID)}}.Encode()
+			http.Redirect(w, r, u, http.StatusSeeOther)
+			return
+		case err != nil && !errors.Is(err, rss.ErrNoRecord):
+			s.serverErrorHTML(w, r, err)
+			return
+		}
+	}
 	if err := s.services.SubscriptionService.Unsubscribe(r.Context(), userID, feed.ID); err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
-	s.toggledFeed(w, r, form, feed, "Unfollowed "+feedLabel(feed)+".")
+	s.toggledFeed(w, r, returnForm{ReturnTo: form.ReturnTo}, feed, "Unfollowed "+feedLabel(feed)+".")
+}
+
+// unsubscribeForm is what Following, Unfollow and the confirmation post.
+type unsubscribeForm struct {
+	ReturnTo string `form:"return_to"`
+	// Confirm is set by the forms that already warn that the name and tags
+	// go: the confirmation's and Edit subscription's.
+	Confirm bool `form:"confirm"`
+}
+
+// losesOnUnfollow reports whether unfollowing sub loses something the
+// reader made, its name or tags, so it needs confirming first.
+func losesOnUnfollow(sub rss.Subscription) bool {
+	return unfollowLoses(sub) != ""
+}
+
+// unfollowLoses is what unfollowing sub loses, as the confirmation says it
+// ("Your {it} for it will be removed."): "name and tags", "name", "tags",
+// or "" for nothing but the follow.
+func unfollowLoses(sub rss.Subscription) string {
+	switch {
+	case sub.Title != "" && len(sub.Tags) > 0:
+		return "name and tags"
+	case sub.Title != "":
+		return "name"
+	case len(sub.Tags) > 0:
+		return "tags"
+	}
+	return ""
+}
+
+// feedUnfollowHandler is the confirmation before unfollowing a feed whose
+// subscription has a name or tags: what goes, then Unfollow, which posts
+// to feedUnsubscribeHandler with confirm=true, and Cancel, back to
+// return_to. Not following the feed (unfollowed in another tab) is a 404.
+func (s *Server) feedUnfollowHandler(w http.ResponseWriter, r *http.Request) {
+	sub, ok := s.subscriptionFromURL(w, r)
+	if !ok {
+		return
+	}
+	data := struct {
+		Nav      navData
+		Sub      rss.Subscription
+		Name     string
+		Loses    string // unfollowLoses
+		Icons    map[string]string
+		ReturnTo string
+	}{
+		Nav:      s.nav(r, "feeds"),
+		Sub:      sub,
+		Name:     cmp.Or(sub.Title, feedLabel(sub.Feed)),
+		Loses:    unfollowLoses(sub),
+		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
+		ReturnTo: safeReturnPath(r.URL.Query().Get("return_to"), "/feeds/"+sub.Feed.ID),
+	}
+	if err := s.renderHTML(w, http.StatusOK, "unfollow.html", data); err != nil {
+		s.serverErrorHTML(w, r, err)
+	}
 }
 
 // toggledFeed answers a successful follow or unfollow: a 204 when save-star.ts
@@ -402,18 +482,18 @@ func (s *Server) toggledFeed(w http.ResponseWriter, r *http.Request, form return
 }
 
 // subscriptionTarget reads what the subscribe and unsubscribe handlers share:
-// the feed named in the URL and the posted form. If ok is false it has already
-// written the response.
-func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (feed rss.Feed, form returnForm, ok bool) {
+// the feed named in the URL, and the posted form, decoded into dst. If ok is
+// false it has already written the response.
+func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request, dst any) (feed rss.Feed, ok bool) {
 	id := chi.URLParam(r, "id")
 	if !validator.Matches(id, validator.UUIDRX) {
 		s.notFoundResponse(w, r)
-		return rss.Feed{}, returnForm{}, false
+		return rss.Feed{}, false
 	}
 
-	if err := s.decodePostForm(w, r, &form); err != nil {
+	if err := s.decodePostForm(w, r, dst); err != nil {
 		s.formErrorResponse(w, r, err)
-		return rss.Feed{}, returnForm{}, false
+		return rss.Feed{}, false
 	}
 
 	feed, err := s.services.FeedService.GetByID(r.Context(), id)
@@ -423,9 +503,9 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request) (fee
 		} else {
 			s.serverErrorHTML(w, r, err)
 		}
-		return rss.Feed{}, returnForm{}, false
+		return rss.Feed{}, false
 	}
-	return feed, form, true
+	return feed, true
 }
 
 // redirectWithFlash flashes msg and sends the user back to the page they

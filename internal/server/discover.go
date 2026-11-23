@@ -355,15 +355,30 @@ func newDiscoverRow(f rss.DiscoverFeed, icon, returnTo string) discoverRow {
 	return discoverRow{Feed: f, Icon: icon, ReturnTo: returnTo}
 }
 
-// followButton is Follow (partials/discover_feed.html's follow-form): in an
-// article row's foot, on a section's Recent posts, for a feed the reader
-// doesn't follow, and on a site's page for each of its feeds.
+// followButton is Follow for a feed (partials/discover_feed.html's
+// follow-form), in one of two kinds, by the page it's on (see "Following a
+// feed" in docs/decisions.md):
+//   - On a page that manages the feed, its own and its site's (Manage),
+//     Following is a pressed button that unfollows, by way of a
+//     confirmation when the subscription has a name or tags
+//     (feedUnsubscribeHandler).
+//   - In a list for finding feeds (Discover's rows, a section's Feeds and
+//     Recent posts, search results), a followed feed shows "✓ Following"
+//     linking to its page, where it's managed, and Follow turns into that
+//     label once pressed.
 type followButton struct {
 	FeedID   string
 	Label    string // rss.DiscoverFeed.Label
 	ReturnTo string
-	// Following renders it pressed, as "Following", which unfollows.
+	// Following is whether the reader follows the feed.
 	Following bool
+	// Manage makes Following a pressed button that unfollows, rather than
+	// a label.
+	Manage bool
+	// Reload posts it as a plain form, without save-star.ts's toggle in
+	// place, for a page whose other controls depend on following (the
+	// feed's page, whose Edit is only for a followed feed).
+	Reload bool
 }
 
 type discoverSectionData struct {

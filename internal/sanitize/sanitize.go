@@ -107,7 +107,8 @@ func parse(raw string) (*html.Node, error) {
 // as imageURL. Relative URLs resolve against base (nil leaves them as they
 // are). An empty imageURL only checks the first two.
 //
-// Blocks are read as firstBlocks reads them.
+// Blocks are read as firstBlocks reads them, so empty blocks before an
+// image don't hide it.
 func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	root, err := parse(raw)
 	if err != nil {
@@ -135,16 +136,17 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 // imageAfterFirstParagraph reports whether the block right after the first
 // paragraph of bs is an image block, and not one inside a line of text: more
 // loose text right after it means it sits in that line (an emoji, an icon).
-// The first paragraph is the first <p> that isn't an image block, or the
-// first run of loose text (see looseRun) with visible text, whichever comes
-// first: feeds often send their opening text outside a <p>. Blocks before it
-// are skipped: headings, lists, images, and runs with nothing to read (an
-// empty anchor, a stray &nbsp;). A run of several paragraphs has text, not
+// The first paragraph is the first <p> that isn't an image block or empty
+// (see isEmptyBlock), or the first run of loose text (see looseRun) with
+// visible text, whichever comes first: feeds often send their opening text
+// outside a <p>. Blocks before it are skipped: headings, lists, images, and
+// those with nothing to read (an empty anchor, a stray &nbsp;, a
+// <p>&nbsp;</p> spacer). A run of several paragraphs has text, not
 // an image, after its first.
 func imageAfterFirstParagraph(bs []*html.Node) bool {
 	for i := 0; i < len(bs); i++ {
 		switch {
-		case bs[i].DataAtom == atom.P && !isImageBlock(bs[i]):
+		case bs[i].DataAtom == atom.P && !isImageBlock(bs[i]) && !isEmptyBlock(bs[i]):
 		case isLooseText(bs[i]):
 			end, visible, paragraphs := looseRun(bs[i:])
 			i += end - 1
@@ -240,23 +242,60 @@ func isLooseText(n *html.Node) bool {
 
 // firstBlocks returns the blocks an article starts with: root's children,
 // or the children of its only element if that is a <div>, <article> or
-// <section> wrapper (see blocks).
+// <section> wrapper (see blocks), without the empty blocks they start with
+// (see isEmptyBlock), which show nothing to come first.
 func firstBlocks(root *html.Node) []*html.Node {
-	bs := blocks(root)
+	bs := skipEmptyBlocks(blocks(root))
 	if len(bs) == 1 {
 		switch bs[0].DataAtom {
 		case atom.Div, atom.Article, atom.Section:
-			bs = blocks(bs[0])
+			bs = skipEmptyBlocks(blocks(bs[0]))
 		}
 	}
 	return bs
 }
 
+// skipEmptyBlocks returns bs without the empty blocks it starts with.
+func skipEmptyBlocks(bs []*html.Node) []*html.Node {
+	for len(bs) > 0 && isEmptyBlock(bs[0]) {
+		bs = bs[1:]
+	}
+	return bs
+}
+
+// isEmptyBlock reports whether the block n shows nothing: a <br>, or a <p>
+// or loose text (see isLooseText) with no visible text and nothing but text
+// and inline elements in it, like an empty anchor, a stray &nbsp; or a
+// <p>&nbsp;</p> spacer.
+func isEmptyBlock(n *html.Node) bool {
+	if n.Type == html.ElementNode && n.DataAtom == atom.Br {
+		return true
+	}
+	if n.DataAtom != atom.P && !isLooseText(n) {
+		return false
+	}
+	return !hasVisibleText(n) && onlyText(n)
+}
+
+// onlyText reports whether every element under n is a <br> or an inline
+// element (see inlineAtoms).
+func onlyText(n *html.Node) bool {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode {
+			continue
+		}
+		if (c.DataAtom != atom.Br && !inlineAtoms[c.DataAtom]) || !onlyText(c) {
+			return false
+		}
+	}
+	return true
+}
+
 // dropRepeatedTitle removes root's first block when it's a heading (h1–h6)
 // whose text is title, so a feed that starts its content with the title
-// doesn't show it twice. Blocks are read as ShowsImage reads them: root's,
-// or those of its only element when that's a <div>, <article> or
-// <section>. The text matches when, with runs of whitespace as one space,
+// doesn't show it twice. Blocks are read as ShowsImage reads them (see
+// firstBlocks): root's, or those of its only element when that's a <div>,
+// <article> or <section>, after any empty blocks. The text matches when, with runs of whitespace as one space,
 // trimmed, compared case-insensitively and without a trailing "#", "¶",
 // "§" or "🔗" (permalink marks), it equals title. A heading that is the
 // only block is kept, so the article never ends up empty.

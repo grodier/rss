@@ -864,6 +864,18 @@ func TestHTMLDropsRepeatedTitle(t *testing.T) {
 			want:  `<p>Text</p>`,
 		},
 		{
+			name:  "after an empty anchor",
+			raw:   `<a id="top"></a><h2>The Big Story</h2><p>Text</p>`,
+			title: title,
+			want:  `<a id="body-top"></a><p>Text</p>`,
+		},
+		{
+			name:  "only block after an empty paragraph kept",
+			raw:   `<p>&nbsp;</p><h2>The Big Story</h2>`,
+			title: title,
+			want:  "<p>\u00a0</p><h2>The Big Story</h2>",
+		},
+		{
 			name:  "not first kept",
 			raw:   `<p>Intro</p><h2>The Big Story</h2>`,
 			title: title,
@@ -933,6 +945,13 @@ func TestShowsImage(t *testing.T) {
 		{name: "leading linked image in a paragraph", raw: `<p><a href="x"><img src="a.jpg"></a></p><p>t</p>`, imageURL: other, want: true},
 		{name: "leading picture", raw: "<!-- c -->\n<picture><img src=\"a.jpg\"></picture><p>t</p>", imageURL: other, want: true},
 		{name: "leading image in one wrapper", raw: `<div><img src="a.jpg"><p>t</p></div>`, imageURL: other, want: true},
+		{name: "empty anchor before a leading image", raw: `<a id="top"></a><img src="a.jpg"><p>t</p>`, imageURL: other, want: true},
+		{name: "nbsp before a leading image", raw: `&nbsp; <img src="a.jpg"><p>t</p>`, imageURL: other, want: true},
+		{name: "line break before a leading image", raw: `<br><img src="a.jpg"><p>t</p>`, imageURL: other, want: true},
+		{name: "empty paragraph before a leading image", raw: `<p>&nbsp;</p><figure><img src="a.jpg"></figure><p>t</p>`, imageURL: other, want: true},
+		{name: "empty anchor before a wrapper", raw: `<a id="top"></a><div><img src="a.jpg"><p>t</p></div>`, imageURL: other, want: true},
+		{name: "empty blocks inside a wrapper", raw: `<div><span></span><br><img src="a.jpg"><p>t</p></div>`, imageURL: other, want: true},
+		{name: "paragraph with an embed isn't empty", raw: `<p><iframe src="https://example.com/e"></iframe></p><p>intro</p><img src="a.jpg">`, imageURL: other, want: false},
 		{name: "only one wrapper level", raw: `<div><div><img src="a.jpg"></div><p>t</p></div>`, imageURL: other, want: false},
 		{name: "image with text in a paragraph", raw: `<p><img src="a.jpg"> text</p><p>t</p>`, imageURL: other, want: false},
 
@@ -965,6 +984,8 @@ func TestShowsImage(t *testing.T) {
 		{name: "tracking pixel first", raw: `<img src="https://example.com/p.gif" width="0" height="0"><p>t</p>`, imageURL: other, want: false},
 		{name: "emoji after loose text", raw: `Thanks! <img class="wp-smiley emoji" src="https://s.w.org/images/core/emoji/smile.png" alt="🙂"><p>Second</p>`, imageURL: other, want: false},
 		{name: "sized image after loose text", raw: `text <img src="b.jpg" width="600" height="400">`, imageURL: other, want: true},
+		{name: "empty paragraph before the first paragraph", raw: `<p>&nbsp;</p><p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
+		{name: "empty paragraph, then two paragraphs, then an image", raw: `<p>&nbsp;</p><p>intro</p><p>two</p><img src="b.jpg">`, imageURL: other, want: false},
 		{name: "empty anchor before the first paragraph", raw: `<a id="top"></a><p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
 		{name: "nbsp before the first paragraph", raw: `&nbsp;<p>intro</p><img src="b.jpg">`, imageURL: other, want: true},
 		{

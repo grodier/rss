@@ -644,7 +644,7 @@ Planned in #163 (issues #147–#162).
   No previous/next.
   Any logged-in user can open any article.
   (#152) The card image shows above the text as a lead image unless the content already shows it: the content starts with an image, has one right after its first paragraph, or contains the same image anywhere (#295).
-  The first paragraph is a `<p>` or opening text outside one, which summaries often send before a picture (#748); it's always the content's image that stays and the lead image that's left out, since the author put it there.
+  The first paragraph is a `<p>` or opening text outside one, which summaries often send before a picture, and blocks that show nothing (an empty anchor, a stray `&nbsp;`, a `<p>&nbsp;</p>` spacer) don't count as the start or as a paragraph (#748); it's always the content's image that stays and the lead image that's left out, since the author put it there.
   Where it's unclear (several paragraphs of loose text, an image inside a line, a tracking pixel or emoji), the lead image shows: a repeated picture is visible and harmless, a hidden one is missed (#748).
   With no content or summary, the page's description from enrichment is shown (#307).
 - **"Read on" names where the link goes** (planned in #344, issues #340–#343): the article's domain when its URL is on another site than the feed's (aggregators such as Hacker News), else the reader's name for the feed, else the site's title, else its host.

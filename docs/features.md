@@ -214,7 +214,7 @@ The seed list gets sites and their feeds into the database; the catalog is which
 A section with none of them is left out, chip and all; an empty catalog leaves the search box alone.
 The same statement puts the sections in the reader's order: the most catalog feeds they follow first (counted from a join on the subscriptions key, gone feeds aside), then, among equals, the sections they chose on the waitlist (`users.sections`, in its order, see "Waitlist"), then the default order (`position`).
 It's computed on each load, so following a feed reorders nothing until the next one; when any section is out of its default place (`inDefaultOrder`, by `DiscoverSection.Position`), a quiet line under the chips says "Sections you follow most come first."
-The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest {when}" (`postingRate`, `since`), a "Latest posts" disclosure with the 3 titles, and Follow.
+The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest post {when}" (`postingRate`, and the `since-date` partial: `since`'s relative day, or past two months a month and year, with the date in its `title`), a "Latest posts" disclosure with the 3 titles, and Follow.
 Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
 With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
 
@@ -231,7 +231,7 @@ Follow works as on Discover, with `return_to` the page and the row's anchor.
 **A site's page.** `GET /sites/{id}` (`siteHandler`) is where a reader picks which of a site's feeds to follow; Discover's rows, a section's page, search results and lookups all lead there.
 Its head is the site's avatar, name, host and description.
 Then its feeds (`ListBySite`), each with its catalog section and newest article's time (`FeedRepository.SiteFeedFacts`, one statement with a probe of `articles_feed_sort_idx` per feed), ordered by `siteFeedRows`: Discover's feeds first, then the others, then gone ones, each group most recently posting first.
-Each row shows the feed's title without the site's name (`shortFeedName`), "{Section} · About N posts a week · Latest {when}" (`postingRate`, `since`), and Follow, or a pressed "Following" that unfollows (`follow-form` with `followButton.Following`); `save-star.ts` toggles it without a reload, and without JavaScript it redirects back to the row with a flash.
+Each row shows the feed's title without the site's name (`shortFeedName`), "{Section} · About N posts a week · Latest post {when}" (`postingRate`, `since-date`), and Follow, or a pressed "Following" that unfollows (`follow-form` with `followButton.Following`); `save-star.ts` toggles it without a reload, and without JavaScript it redirects back to the row with a flash.
 The page lists the first 4 feeds (`siteFeedsShown`) and puts the rest in a "Show N more feeds" `<details>`; a site with a single feed shows its Follow and facts in the head instead, as a feed's page does, and a site with none just says so.
 Recent posts are the newest 10 (`sitePostsLimit`) of the site's live feeds in Discover's catalog, or of all its live feeds when none is (`sitePostFeeds`), read by `ArticleRepository.ListByFeeds` (the feed page's query over several feeds: one `articles_feed_sort_idx` scan per feed, merged), with the reader's read, saved and starred state; a copy in two of the feeds (same canonical URL) shows once, so the query asks for twice the limit.
 Posts name their feed (without an avatar, `articleRow.NoAvatar`) only when they come from more than one, and when they're from only some of the live feeds a line says which ("From Harbor Works, the feed Discover lists.").
@@ -302,7 +302,7 @@ With JavaScript, the button shows it's working ("Refreshing…") while the fetch
 
 **Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on Edit subscription, which always returns to My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path, and redirect back with a flash.
 Gone feeds can't be subscribed to but can be unsubscribed from.
-My feeds (`/feeds`) lists the user's subscriptions grouped by site, with each feed's latest article date, posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
+My feeds (`/feeds`) lists the user's subscriptions grouped by site, with when each feed last posted (`since-date`), posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
 Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
 Each row opens the feed page, through its title link stretched over the row (`.my-feed` in `feeds.css`), and has one control, an Edit pencil.
 Sort by Recently updated (`?sort=updated`) lists the feeds whose latest article is newest first, without site headers, so every row whose name differs from its site's says "From <site>"; feeds without articles come last, and Edit subscription returns to the sort.
@@ -445,7 +445,7 @@ Copies of one article (same `canonical_url`) collapse into the earliest: an entr
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
-Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials).
+Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials), on every page that shows one; a date-only feed's date (the `local-day` partial) takes the reader's date format but stays on its UTC day.
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) in the kicker after the time, through `articleRow.Byline`, which leaves them out when the only author is the feed's name the kicker shows.

@@ -691,10 +691,14 @@ Planned in #163 (issues #147–#162).
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor); infinite scroll enhances it.
   Logged-in pages keep `Cache-Control: no-store`; the script keeps the URL on the visible row so Back and reload land nearby.
   (#155, #159)
-- **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date and aren't localized.
-  No day headers or relative times.
-  (#157, #160) This covers every user-visible time, not just articles: feed and site status times ("Last fetched", "Next check around") and list dates ("Latest post") too, still absolute, with no time zone setting.
+- **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date, in the reader's date format but never moved to their time zone, since a day isn't an instant (the format was fixed as "9 Oct 2026" until a design review found it beside "Oct 9, 2026" on a US reader's timeline).
+  No day headers, and no relative times for events: an article's time and a feed's fetch times ("Last fetched", "Next check around") stay absolute, since there the exact time matters.
+  (#157, #160) This covers every user-visible time, not just articles, with no time zone setting.
   (#337)
+- **How recently a feed posted is relative: "Latest post 4 days ago"**, the same words and kind of date everywhere it's shown (My feeds, Discover, a section's Feeds, a site, search), because it answers "is this feed alive?", which a count of days answers at a glance and a date makes the reader work out (#755, the hybrid of option 1 of three at its design checkpoint, chosen over absolute everywhere and relative everywhere, the latter reopening the decision above).
+  From two months it's a month and year ("Latest post Sep 2025"), quicker to judge than "14 months ago", and the exact date (and, while relative, time) is in the `title` on hover; a tooltip never shows on touch or to the keyboard, so the text must stand without it.
+  "Today" and "yesterday" are 24-hour spans, not calendar days, since the server doesn't know the reader's time zone.
+  A fact is a fragment: none ends in a full stop, in a feed's or a site's head as in a row.
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 - **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
   It's stored per user on the server (`timeline_marks`), so it follows the reader across devices; a marker in the browser would need no schema but differ on every device.
@@ -1053,7 +1057,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
 - **Images in articles are left as they are in dark** (#413), even transparent diagrams and logos with black text, since a white tile behind every image looks worse for the common case; revisit if testers report them.
 - **The app is called Paper Round** (paperround.app, #408, #409), written as two capitalised words wherever users see it: page titles, the nav, emails, the OPML export, the shared feeds' generator and the fetcher's User-Agent.
   The repository, Go module, `rss` package and `RSS_` variables keep their names, since nobody outside the code sees them.
-- **Discover lists its catalog as sections of feed rows, each with a "Latest posts" peek** (#633, option (a) of three at its design checkpoint): a row shows the site and its host, the feed's own title when it isn't just the site's name, "About N posts a week · Latest 2 days ago", and a `<details>` with its 3 newest titles, then Follow.
+- **Discover lists its catalog as sections of feed rows, each with a "Latest posts" peek** (#633, option (a) of three at its design checkpoint): a row shows the site and its host, the feed's own title when it isn't just the site's name, "About N posts a week · Latest post 2 days ago", and a `<details>` with its 3 newest titles, then Follow.
   Section chips at the top scroll sideways on phones rather than wrapping; each section is a `list-head` and rows, like My feeds; three feeds a section.
   The meta line wraps between its parts, never inside one.
   A row's host never breaks inside itself (#758, the preferred option of three, picked by the owner without a checkpoint): below 34rem it has a line of its own under the name, as on a site's page, cut with an ellipsis when it's wider than the column (the full host is its `title`), and from 34rem it stays beside the name and moves whole to the next line when it doesn't fit.
@@ -1068,7 +1072,7 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   Feeds reuses Discover's rows, with a quiet "✓ Following" linking to the feed where Follow would be; Recent posts are article rows naming the feed as Follow does (site and feed title), with an outlined Follow before Star, Share and Save, since a filled pill on every row of an unfollowed feed outshouts the posts.
   The small "Discover" link is the only way up: no breadcrumb trail, since there's one level, and a back link is ruled out below.
 - **A site's page lists its feeds compactly above its recent posts** (#635, option (f) at its design checkpoint, after three rounds), since readers often come to a site to pick a feed to follow and also choose by reading: on a phone the choice and the first post share the first screen.
-  Each feed is a short row without an avatar (the site's is in the head): its name without the site's ("The Daily Ledger – Opinion" reads "Opinion"; Follow's accessible name keeps it), "{Section} · About N posts a week · Latest {when}", the section in the accent color and linking to its page so the feed Discover picked stands out, and Follow, or a pressed "Following" that unfollows, since this page is where a site's feeds are managed.
+  Each feed is a short row without an avatar (the site's is in the head): its name without the site's ("The Daily Ledger – Opinion" reads "Opinion"; Follow's accessible name keeps it), "{Section} · About N posts a week · Latest post {when}", the section in the accent color and linking to its page so the feed Discover picked stands out, and Follow, or a pressed "Following" that unfollows, since this page is where a site's feeds are managed.
   The list shows 4 feeds, Discover's first, then the most recently posting, with the rest behind "Show N more feeds", so a site with many feeds keeps its posts in view.
   A site with one feed has Follow and its facts in the site's head instead of a list, laid out as a feed's page's head: with nothing to choose between, following it can't pick the wrong feed (the concern that dropped "Follow the site", #629).
   Posts have neither Follow (the list holds it) nor an avatar, and name their feed only when they come from more than one; when they're from Discover's feeds only, a line says so, so the other feeds' missing posts aren't a mystery.

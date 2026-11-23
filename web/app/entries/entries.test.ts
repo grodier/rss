@@ -79,7 +79,7 @@ const entries: Record<string, string[]> = {
   timelines: ["rum", "back-forward", "timeline-form", "reorder"],
   account: ["rum", "local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
   login: ["rum", "back-forward", "busy-forms", "password-toggle", "recent-searches"],
-  settings: ["rum", "search-clear", "feeds-filter"],
+  settings: ["rum", "local-times", "search-clear", "feeds-filter"],
   solo: ["rum"],
 };
 

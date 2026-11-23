@@ -366,10 +366,10 @@ func TestDiscoverSearchResults(t *testing.T) {
 			title, facts, follow string
 			following            bool
 		}{
-			{"Bread & Pastry", "From The Daily Crumb" + "About 3 posts a week" + "Latest 2 days ago", "", true},
-			{"The Bread Lab", "About 3 posts a week" + "Latest 2 days ago", "", true},
-			{"Bread Gone", "From gone.example" + "About 3 posts a week" + "Latest 2 days ago" + "No longer exists", "", true},
-			{"Bread Failing", "From failing.example" + "About 3 posts a week" + "Latest 2 days ago" + "Failing to update", "", true},
+			{"Bread & Pastry", "From The Daily Crumb" + "About 3 posts a week" + "Latest post 2 days ago", "", true},
+			{"The Bread Lab", "About 3 posts a week" + "Latest post 2 days ago", "", true},
+			{"Bread Gone", "From gone.example" + "About 3 posts a week" + "Latest post 2 days ago" + "No longer exists", "", true},
+			{"Bread Failing", "From failing.example" + "About 3 posts a week" + "Latest post 2 days ago" + "Failing to update", "", true},
 			{"Bread Ahead", "Bread Ahead Journal" + "ahead.example", "/feeds/ahead-journal/subscribe", false},
 			{"Bread and Butter", "butter.example" + "2 feeds", "", false},
 			{"The Daily Crumb", "World" + "crumb.example" + "You follow its other feed", "/feeds/crumb-world/subscribe", false},
@@ -715,8 +715,8 @@ func TestDiscoverSuggestions(t *testing.T) {
 			title, facts string
 			following    bool
 		}{
-			{"Bread & Pastry", "From The Daily Crumb" + "Latest 2 days ago", true},
-			{"The Bread Lab", "Latest 2 days ago", true},
+			{"Bread & Pastry", "From The Daily Crumb" + "Latest post 2 days ago", true},
+			{"The Bread Lab", "Latest post 2 days ago", true},
 			{"Bread Ahead", "Bread Ahead Journal" + "ahead.example", false},
 			{"Bread and Butter", "butter.example" + "2 feeds", false},
 			{"The Daily Crumb", "World" + "crumb.example", false},

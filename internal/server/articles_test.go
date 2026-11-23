@@ -126,9 +126,10 @@ func TestArticleHandlerDateOnly(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	body := rr.Body.String()
-	assertBodyContains(t, body, `<p class="reader-dateline"><time datetime="2026-10-09">9 Oct 2026</time></p>`)
-	if strings.Contains(body, "data-local") || strings.Contains(body, "00:00 UTC") {
-		t.Errorf("date-only date is localized or shows a time: %s", body)
+	assertBodyContains(t, body, `<p class="reader-dateline"><time data-local="day" datetime="2026-10-09">9 Oct 2026</time></p>`)
+	// A calendar day: never an instant the script would move to the reader's zone.
+	if strings.Contains(body, "<time data-local datetime=") || strings.Contains(body, "00:00 UTC") {
+		t.Errorf("date-only date is shown as an instant or with a time: %s", body)
 	}
 	if strings.Contains(body, "reader-byline") {
 		t.Errorf("shows a byline for an article without authors: %s", body)

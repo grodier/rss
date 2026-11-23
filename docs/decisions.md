@@ -753,12 +753,15 @@ Planned in #309 (issues #299–#301).
 - **Saving covers every copy** (same `canonical_url`), like read state: `saves` keys on `article_id`, and copies are matched at query time.
   Saving a copy of an already saved article adds nothing; unsaving removes them all.
 - **With JavaScript, a Save or Star succeeds only on a `204`** (#429, from the first error-state pass, #392).
-  The toggle routes answer a script (`Sec-Fetch-Mode` `cors` or `same-origin`, which a page can't set) with `204` and a form submission with the `303` back to the row; `app.js` submits the form normally on anything else.
+  The toggle routes answer a script (`Sec-Fetch-Mode` `cors` or `same-origin`, which a page can't set) with `204` and a form submission with the `303` back to the row; `save-star.ts` submits the form normally on anything else.
+  Since #775 the button shows the press before the `204` arrives, but only a `204` confirms it (below).
   Before this, both a success and the redirect to the login page after a session ended came back to `fetch` as the same opaque redirect, so Save looked done when nothing was saved.
   A browser that doesn't send `Sec-Fetch-Mode` gets the `303` and falls back to a reload: slower, but right.
-- **Save and Star answer the press before the server does** (#775, planned in Roadmap 2's wave 18; how it looks is the issue's design checkpoint): they're the app's most frequent writes, and both routes are idempotent, so the button can show the result at once and put itself back on the rare failure.
+- **Save and Star answer the press before the server does** (#775, planned in Roadmap 2's wave 18 and approved at its design checkpoint; the look is under "Starring and saving" in "Motion and feedback"): they're the app's most frequent writes, and both routes are idempotent, so the button can show the result at once and put itself back on the rare failure.
   The `204` contract above stays: on anything else the button returns to the last state a `204` confirmed, and the form for the state the reader wanted is submitted normally.
   One request at a time per button, and the last press wins: when a request finishes and the reader now wants the other state, the script sends that one, so the server sees a button's requests in order.
+  The one exception is the page being hidden: a press still waiting behind a running request is sent at once (`keepalive`, like the running one) on `pagehide` or `visibilitychange`, since a phone may discard a hidden tab without a `pagehide` and the page may not be there to send it later.
+  The two can then reach the server in either order, so if the page is still there when the running request ends, the wanted state is sent once more; if it isn't, the order is a rarer loss than dropping the press.
   Follow keeps waiting for the server, since unfollowing a feed with a name or tags leads to a confirmation (#752) and Follow in a list becomes "✓ Following".
 - **Saved has its own nav entry**: Home, Saved, My feeds, Search.
   Newest saved first, paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt and feed title; a user's saves are a small set).
@@ -1214,8 +1217,9 @@ Each piece's look (its timing, curve and effect) is recorded here once the owner
   Buttons scale to 0.97, icon buttons take the hover background and their icon scales to 0.9, rows take their hover background, and the phone tab bar and timeline tabs take `--text` (the tab bar icon scales to 0.9).
   An article card firms its border and scales to 0.99 only while its own title link is pressed, and is never tinted, since the tint is the read marker.
   Presses go in over `--duration-press` and out over `--duration-quick`; colors apply under reduced motion, scales don't.
-- **Starring and saving** (#512): while the request runs the button is `aria-disabled` and dims to 0.6 only after `--delay-busy`.
-  Once a `204` turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
+- **Starring and saving** (#512; since #775, approved at its design checkpoint, the button answers the press, not the `204`): the button turns on and animates as it's pressed, with no busy state, since it already shows the result; a failure puts it back without an animation, and the page then loads the form's response.
+  Option 2, turning on at once in a pending look and animating on the `204`, was honest about the wait but answered twice on slow connections and needed a new state in both themes.
+  When a press turns Star on, the filled star scales from 0.4 on `--ease-spring` over `--duration-flourish` (to about 1.1, then 1), with a burst of five dots in `--brand-strong` at its points that travel 4 px outward, fading and shrinking, over 400 ms on `--ease-out` from 60 ms in.
   Turning Save on drops the bookmark 3 px into place over `--duration-base` on `--ease-out`, with no overshoot or burst, since saving is frequent.
   Turning either off doesn't animate, so only the reader's own change is marked.
 - **Live search while it's working** (#518, approved at its design checkpoint; this departs from the issue's spinner at the end of the box): while a request is in flight the results are `aria-busy`, and once it has taken `--delay-busy` the box's search icon fades into a small spinner in `--text-3` and the stale results dim to 0.6, both over `--duration-quick`.

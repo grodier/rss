@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isolate, liveRegion, pageTransition, submit } from "../../shared/test/setup";
 
 isolate();
@@ -22,10 +22,6 @@ beforeEach(async () => {
   (await import("./save-star")).init();
 });
 
-afterEach(() => {
-  document.documentElement.removeAttribute("style");
-});
-
 const form = () => document.querySelector<HTMLFormElement>("form")!;
 const button = () => document.querySelector<HTMLButtonElement>("button")!;
 const press = async () => {
@@ -33,102 +29,274 @@ const press = async () => {
   await vi.waitFor(() => expect(button().hasAttribute("aria-disabled")).toBe(false));
 };
 
+// pending makes fetch return promises the test resolves, one per call, in
+// order.
+function pending(): ((res: Response | Error) => Promise<void>)[] {
+  const responds: ((res: Response | Error) => Promise<void>)[] = [];
+  fetchMock.mockImplementation(
+    () =>
+      new Promise<Response>((resolve, reject) => {
+        responds.push(async (res) => {
+          if (res instanceof Error) reject(res);
+          else resolve(res);
+          await new Promise((r) => setTimeout(r, 0)); // let the script go on
+        });
+      }),
+  );
+  return responds;
+}
+
+const noContent = () => new Response(null, { status: 204 });
+const path = (call: number) => new URL(fetchMock.mock.calls[call][0] as string).pathname;
+
 describe("save-star", () => {
   it("posts the form with fetch", async () => {
-    await press();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(submit(form(), button())).toBe(true);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(new URL("/articles/a1/save", location.href).href);
     expect(init.method).toBe("POST");
     expect(init.redirect).toBe("manual");
+    expect(init.keepalive).toBe(true);
     expect([...(init.body as URLSearchParams)]).toEqual([["return_to", "/#article-a1"]]);
   });
 
-  it("flips aria-pressed and the action on a 204, and marks a button just turned on", async () => {
-    await press();
-    expect(button().getAttribute("aria-pressed")).toBe("true");
-    expect(form().getAttribute("action")).toBe("/articles/a1/unsave");
-    expect("justToggled" in button().dataset).toBe(true);
+  it.each([
+    ["Save", "/articles/a1/save", "/articles/a1/unsave"],
+    ["Star", "/articles/a1/star", "/articles/a1/unstar"],
+  ])(
+    "flips %s's aria-pressed and action before the server answers, and marks it just turned on",
+    async (_, on, off) => {
+      form().setAttribute("action", on);
+      form().dataset.announcePressed = "Saved";
+      form().dataset.announceUnpressed = "Unsaved";
+      const responds = pending();
 
-    await press();
+      expect(submit(form(), button())).toBe(true);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe(off);
+      expect("justToggled" in button().dataset).toBe(true);
+      expect(button().hasAttribute("aria-disabled")).toBe(false);
+      expect("busy" in button().dataset).toBe(false);
+      await vi.waitFor(() => expect(liveRegion()).toBe("Saved"));
+      expect(path(0)).toBe(on);
+
+      await responds[0](noContent());
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe(off);
+      expect(formSubmit).not.toHaveBeenCalled();
+
+      submit(form(), button());
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(form().getAttribute("action")).toBe(on);
+      expect("justToggled" in button().dataset).toBe(false);
+      await vi.waitFor(() => expect(liveRegion()).toBe("Unsaved"));
+      expect(path(1)).toBe(off);
+      await responds[1](noContent());
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(formSubmit).not.toHaveBeenCalled();
+    },
+  );
+
+  describe("on a failure", () => {
+    // submitted records the action the form had when it was submitted.
+    let submitted: string[];
+    beforeEach(() => {
+      submitted = [];
+      formSubmit.mockImplementation(function (this: HTMLFormElement) {
+        submitted.push(this.getAttribute("action")!);
+      });
+    });
+
+    it.each([
+      ["a redirect, such as to the login page", () => redirect()],
+      ["a 500", () => new Response(null, { status: 500 })],
+      ["a 200", () => new Response("<p>page</p>", { status: 200 })],
+      ["a failed request", () => new TypeError("network")],
+    ])("puts the button back and submits the form on %s", async (_, response) => {
+      const responds = pending();
+      submit(form(), button());
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+
+      await responds[0](response());
+      expect(submitted).toEqual(["/articles/a1/save"]);
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(form().getAttribute("action")).toBe("/articles/a1/save");
+      expect("justToggled" in button().dataset).toBe(false);
+      // Presses wait for the page to load.
+      expect(button().getAttribute("aria-disabled")).toBe("true");
+      expect(submit(form(), button())).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("goes back to the last confirmed state, not the one before the last press", async () => {
+      const responds = pending();
+      submit(form(), button()); // on
+      await responds[0](noContent());
+      submit(form(), button()); // off
+      await responds[1](redirect());
+      expect(submitted).toEqual(["/articles/a1/unsave"]);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe("/articles/a1/unsave");
+      expect("justToggled" in button().dataset).toBe(false);
+    });
+
+    it("submits the form for the state wanted, even when it's the confirmed one", async () => {
+      const responds = pending();
+      submit(form(), button()); // on
+      submit(form(), button()); // off again, while the first request runs
+      await responds[0](redirect());
+      expect(submitted).toEqual(["/articles/a1/unsave"]);
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(form().getAttribute("action")).toBe("/articles/a1/save");
+    });
+  });
+
+  it("sends a button's requests one at a time, the last press winning", async () => {
+    const responds = pending();
+    submit(form(), button()); // on
+    submit(form(), button()); // off
+    expect(button().getAttribute("aria-pressed")).toBe("false");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(path(0)).toBe("/articles/a1/save");
+
+    await responds[0](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(path(1)).toBe("/articles/a1/unsave");
+    submit(form(), button()); // on, while the second runs
+    submit(form(), button()); // off
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await responds[1](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(2); // off is confirmed
     expect(button().getAttribute("aria-pressed")).toBe("false");
     expect(form().getAttribute("action")).toBe("/articles/a1/save");
-    expect("justToggled" in button().dataset).toBe(false);
     expect(formSubmit).not.toHaveBeenCalled();
   });
 
-  it("flips Star's action too", async () => {
-    form().setAttribute("action", "/articles/a1/unstar");
-    button().setAttribute("aria-pressed", "true");
-    await press();
-    expect(form().getAttribute("action")).toBe("/articles/a1/star");
-  });
-
-  it("ignores presses while the request runs, and shows it's busy only after --delay-busy", async () => {
-    vi.useFakeTimers();
-    document.documentElement.style.setProperty("--delay-busy", "500ms");
-    let respond = (_: Response) => {};
-    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => (respond = resolve)));
-
-    submit(form(), button());
-    expect(button().getAttribute("aria-disabled")).toBe("true");
-    expect(submit(form(), button())).toBe(true);
+  it("sends a press waiting behind a running request at once when the page is hidden", async () => {
+    pending();
+    submit(form(), button()); // on
+    submit(form(), button()); // off, waiting for the first request
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(499);
-    expect("busy" in button().dataset).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    expect("busy" in button().dataset).toBe(true);
-
-    respond(new Response(null, { status: 204 }));
-    await vi.advanceTimersByTimeAsync(0);
-    expect("busy" in button().dataset).toBe(false);
-    expect(button().hasAttribute("aria-disabled")).toBe(false);
-    expect(button().getAttribute("aria-pressed")).toBe("true");
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(path(1)).toBe("/articles/a1/unsave");
+    expect(fetchMock.mock.calls[1][1].keepalive).toBe(true);
   });
 
-  it.each([
-    ["a 200", () => new Response("<p>page</p>", { status: 200 })],
-    ["a 500", () => new Response(null, { status: 500 })],
-    ["a redirect, such as to the login page", () => redirect()],
-  ])("submits the form normally on %s", async (_, response) => {
-    fetchMock.mockImplementation(async () => response());
+  it("sends nothing more when the page is hidden while the running request is the one wanted", async () => {
+    const responds = pending();
+    submit(form(), button()); // on
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Nor once it has finished.
+    await responds[0](noContent());
+    submit(form(), button()); // off
+    await responds[1](noContent());
+    pageTransition("pagehide", true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends a waiting press when the page is hidden without a pagehide, once", async () => {
+    let visibility: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    pending();
+    submit(form(), button()); // on
+    submit(form(), button()); // off, waiting
+
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(path(1)).toBe("/articles/a1/unsave");
+
+    // Hidden again, or then left, it isn't sent again.
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the wanted state once more after a press sent early, as the two may have crossed", async () => {
+    const responds = pending();
+    submit(form(), button()); // on: /save runs
+    submit(form(), button()); // off, waiting
+    pageTransition("pagehide", true); // /unsave sent early
+    pageTransition("pageshow", true); // back from the back/forward cache
+    submit(form(), button()); // on again, while /save still runs
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // /save ends, but the early /unsave may have reached the server after
+    // it, so /save goes again.
+    await responds[0](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(path(2)).toBe("/articles/a1/save");
+    await responds[2](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+    expect(form().getAttribute("action")).toBe("/articles/a1/unsave");
+    expect(formSubmit).not.toHaveBeenCalled();
+  });
+
+  it("sends early only the waiting presses, button by button", async () => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<form class="star-form" method="post" action="/articles/a1/star" data-toggle>
+        <button class="star-button" type="submit" aria-pressed="false" aria-label="Star" title="Star"></button>
+      </form>`,
+    );
+    const star = document.querySelector<HTMLFormElement>(".star-form")!;
+    pending();
+    submit(form(), button()); // Save on
+    submit(star, star.querySelector("button")!); // Star on
+    submit(form(), button()); // Save off, waiting; Star's request is the one wanted
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(path(2)).toBe("/articles/a1/unsave");
+  });
+
+  it("sends one request for three quick presses ending on", async () => {
+    const responds = pending();
     submit(form(), button());
-    await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
-    expect(button().getAttribute("aria-pressed")).toBe("false");
-    expect(button().getAttribute("aria-disabled")).toBe("true"); // stays busy while the page loads
+    submit(form(), button());
+    submit(form(), button());
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+    expect("justToggled" in button().dataset).toBe(true);
+
+    await responds[0](noContent());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+    expect(form().getAttribute("action")).toBe("/articles/a1/unsave");
   });
 
   it("gives the button back when the page comes back from the back/forward cache", async () => {
-    vi.useFakeTimers();
-    document.documentElement.style.setProperty("--delay-busy", "500ms");
     fetchMock.mockImplementation(async () => redirect());
     submit(form(), button());
-    await vi.advanceTimersByTimeAsync(0);
-    expect(formSubmit).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
     expect(button().getAttribute("aria-disabled")).toBe("true");
 
-    // A page left without being restored stays busy.
+    // A page left without being restored stays waiting.
     pageTransition("pageshow", false);
     expect(button().getAttribute("aria-disabled")).toBe("true");
 
     pageTransition("pageshow", true);
     expect(button().hasAttribute("aria-disabled")).toBe(false);
-    await vi.advanceTimersByTimeAsync(1000); // the busy timer doesn't fire after
-    expect("busy" in button().dataset).toBe(false);
+    expect(button().getAttribute("aria-pressed")).toBe("false");
 
-    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    fetchMock.mockImplementation(async () => noContent());
     submit(form(), button());
-    await vi.advanceTimersByTimeAsync(0);
     expect(button().getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("submits the form normally when the request fails", async () => {
-    fetchMock.mockImplementation(async () => {
-      throw new TypeError("network");
-    });
-    submit(form(), button());
-    await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(path(1)).toBe("/articles/a1/save");
+    expect(formSubmit).toHaveBeenCalledTimes(1);
   });
 
   describe("Follow on a page that manages the feed", () => {
@@ -154,6 +322,34 @@ describe("save-star", () => {
       expect(form().getAttribute("action")).toBe("/feeds/f1/subscribe");
       await vi.waitFor(() => expect(liveRegion()).toBe("Unfollowed Example"));
       expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    it("waits for the server, ignoring presses while the request runs", async () => {
+      const responds = pending();
+      submit(form(), button());
+      expect(button().getAttribute("aria-disabled")).toBe("true");
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(submit(form(), button())).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await responds[0](noContent());
+      expect(button().hasAttribute("aria-disabled")).toBe(false);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(fetchMock.mock.calls[0][1].keepalive).toBe(false);
+    });
+
+    it("stays waiting when the page comes back from the back/forward cache while its request runs", async () => {
+      const responds = pending();
+      submit(form(), button());
+      pageTransition("pagehide", true);
+      pageTransition("pageshow", true);
+      expect(button().getAttribute("aria-disabled")).toBe("true");
+      expect(submit(form(), button())).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await responds[0](noContent());
+      expect(button().hasAttribute("aria-disabled")).toBe(false);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
     });
 
     it("goes to the confirmation, rather than toggling, when unfollowing redirects there", async () => {

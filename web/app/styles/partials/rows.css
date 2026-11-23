@@ -436,6 +436,30 @@
     }
   }
 
+  /* Home's empty states: a lead line in the text color over the muted
+     explanation, and, when following nothing, the two ways in. */
+  .home-empty .home-empty-lead {
+    color: var(--text);
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+
+  .home-empty .home-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.625rem;
+    margin-block-start: 1.25rem;
+  }
+
+  /* The end of All feeds, after its last row. */
+  .timeline-end {
+    padding: 1.5rem 1rem 2rem;
+    color: var(--text-3);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
   /* Read rows are quieter: still a timeline, not an inbox. Both layouts dim
      the title, excerpt and picture; Headlines dims the kicker too, and
      Cards tints the card, darker than the page in both themes, so read

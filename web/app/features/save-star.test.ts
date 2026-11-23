@@ -57,6 +57,7 @@ describe("save-star", () => {
     expect(url).toBe(new URL("/articles/a1/save", location.href).href);
     expect(init.method).toBe("POST");
     expect(init.redirect).toBe("manual");
+    expect(init.keepalive).toBe(true);
     expect([...(init.body as URLSearchParams)]).toEqual([["return_to", "/#article-a1"]]);
   });
 
@@ -173,6 +174,32 @@ describe("save-star", () => {
     expect(button().getAttribute("aria-pressed")).toBe("false");
     expect(form().getAttribute("action")).toBe("/articles/a1/save");
     expect(formSubmit).not.toHaveBeenCalled();
+  });
+
+  it("sends a press waiting behind a running request at once when the page is hidden", async () => {
+    pending();
+    submit(form(), button()); // on
+    submit(form(), button()); // off, waiting for the first request
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(path(1)).toBe("/articles/a1/unsave");
+    expect(fetchMock.mock.calls[1][1].keepalive).toBe(true);
+  });
+
+  it("sends nothing more when the page is hidden while the running request is the one wanted", async () => {
+    const responds = pending();
+    submit(form(), button()); // on
+    pageTransition("pagehide", false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Nor once it has finished.
+    await responds[0](noContent());
+    submit(form(), button()); // off
+    await responds[1](noContent());
+    pageTransition("pagehide", true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("sends one request for three quick presses ending on", async () => {

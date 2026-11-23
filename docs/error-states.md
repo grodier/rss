@@ -250,7 +250,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| U1 Follow or unfollow succeeds | Click Follow / Unfollow | Same page, flash | "Following {feed}."; "Unfollowed {feed}." | n/a | ok |
+| U1 Follow or unfollow succeeds | Click Follow, or Following on a feed's or site's page (Unfollow on Edit subscription or the confirmation); with JavaScript, Follow and Following on a site's page and in lists change in place instead | Same page, flash | "Following {feed}."; "Unfollowed {feed}." | n/a | ok |
 | U1a Unfollow a feed with a name or tags | Press Following on a feed you renamed or tagged, on its page or its site's, with or without JavaScript | Confirmation page, 200 (`/feeds/{id}/unfollow`) | "Unfollow {name}?"; "Your name and tags for it will be removed." (or only "name", or only "tags"), with red Unfollow and Cancel | Yes: Cancel goes back, changing nothing | new in #752, not reviewed |
 | U1b The confirmation for a feed you no longer follow | Unfollow in another tab, then open the confirmation | 404 (H3) | As H2 | Home only | new in #752, not reviewed |
 | U2 Follow an unknown feed | `curl` a post to `/feeds/{uuid}/subscribe` | 404 (H2) | As H2 | Home only | ok |

@@ -23,7 +23,10 @@ import { busyDelay } from "../../shared/lib/busy-delay";
 // rows.css animates (the star's pop and burst, the bookmark's drop);
 // nothing depends on it, and it's cleared once the animations end (with
 // reduced motion none run, so it stays until the button is turned off).
+// A page restored from the back/forward cache after a submit, such as
+// coming Back from the confirmation, gets its buttons back (pageshow).
 export function init(): void {
+  const busyTimers = new WeakMap<HTMLButtonElement, ReturnType<typeof setTimeout>>();
   document.addEventListener("submit", async (e) => {
     const form = e.target;
     if (!(form instanceof HTMLFormElement) || !form.matches("form[data-toggle]")) return;
@@ -34,6 +37,7 @@ export function init(): void {
     const busyTimer = setTimeout(() => {
       button.dataset.busy = "";
     }, busyDelay());
+    busyTimers.set(button, busyTimer);
     try {
       const res = await fetch(form.action, {
         method: "POST",
@@ -74,6 +78,16 @@ export function init(): void {
     if (pressed) {
       void button.offsetWidth; // restart the animation
       button.dataset.justToggled = "";
+    }
+  });
+  addEventListener("pageshow", (e) => {
+    if (!e.persisted) return;
+    for (const button of document.querySelectorAll<HTMLButtonElement>(
+      'form[data-toggle] button[aria-disabled="true"]',
+    )) {
+      clearTimeout(busyTimers.get(button));
+      delete button.dataset.busy;
+      button.removeAttribute("aria-disabled");
     }
   });
   document.addEventListener("animationend", (e) => {

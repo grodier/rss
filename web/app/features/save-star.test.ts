@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isolate, liveRegion, submit } from "../../shared/test/setup";
+import { isolate, liveRegion, pageTransition, submit } from "../../shared/test/setup";
 
 isolate();
 
@@ -99,6 +99,30 @@ describe("save-star", () => {
     expect(button().getAttribute("aria-disabled")).toBe("true"); // stays busy while the page loads
   });
 
+  it("gives the button back when the page comes back from the back/forward cache", async () => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--delay-busy", "500ms");
+    fetchMock.mockImplementation(async () => redirect());
+    submit(form(), button());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(formSubmit).toHaveBeenCalledTimes(1);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
+
+    // A page left without being restored stays busy.
+    pageTransition("pageshow", false);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
+
+    pageTransition("pageshow", true);
+    expect(button().hasAttribute("aria-disabled")).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000); // the busy timer doesn't fire after
+    expect("busy" in button().dataset).toBe(false);
+
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    submit(form(), button());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("submits the form normally when the request fails", async () => {
     fetchMock.mockImplementation(async () => {
       throw new TypeError("network");
@@ -145,7 +169,7 @@ describe("save-star", () => {
     });
 
     it("submits the form normally on anything but a 204, such as a gone feed's redirect", async () => {
-      fetchMock.mockImplementation(async () => new Response("<p>Feed</p>", { status: 200 }));
+      fetchMock.mockImplementation(async () => redirect());
       submit(form(), button());
       await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
       expect(button().getAttribute("aria-pressed")).toBe("false");

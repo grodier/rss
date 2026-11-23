@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -1963,6 +1964,8 @@ func TestFeedUnfollowHandler(t *testing.T) {
 			buttons := findAll(forms[0], func(n *html.Node) bool { return n.Data == "button" })
 			if len(buttons) != 1 || !hasClass(buttons[0], "btn-danger-quiet") || textContent(buttons[0]) != "Unfollow" {
 				t.Errorf("want one red Unfollow button")
+			} else if got, want := attr(buttons[0], "aria-label"), "Unfollow "+cmp.Or(tt.sub.Title, feed.Title); got != want {
+				t.Errorf("Unfollow's aria-label = %q, want %q", got, want)
 			}
 			cancel := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && textContent(n) == "Cancel" })
 			if len(cancel) != 1 || attr(cancel[0], "href") != tt.returnTo {

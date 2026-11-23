@@ -1,8 +1,10 @@
-{{/* A page with nothing to show yet: data is an emptyState, built with
-     the emptyState function (internal/server/html.go): its section's icon,
-     the lead in the text color, the muted line and up to two actions, the
-     first one primary. Empty states inside a page, under a list's head,
-     are a quiet <p class="empty"> instead (#757). empty.css styles it. */}}
+{{/* A page with nothing to show yet (#757): data is an emptyState, built
+     with the emptyState function (internal/server/html.go): its section's
+     icon, the lead in the text color, the muted line and up to two
+     actions, the first one primary. An empty list inside a page, under its
+     head, is a quiet <p class="empty"> instead. Home's "Getting the latest
+     from …" has a spinner for its icon, so it writes the same classes by
+     hand. empty.css styles them. The icons are emptyStateIcons. */}}
 {{define "empty-state"}}
 <div class="empty empty-state">
   {{if eq .Icon "rss"}}{{template "icon-rss"}}

@@ -1,5 +1,6 @@
 /* Article rows, the "You were here" line, the end of All feeds, and the
-   rows' actions: Save, Star and Share (its copied label is in copied.css). Rows have two layouts, Headlines and Cards. */
+   rows' actions: Save, Star and Share (its copied label is in copied.css).
+   Rows have two layouts, Headlines and Cards. */
 @layer components {
   /* Article rows: a divided section per article. One markup
      (partials/article_row.html), two layouts, chosen in Settings > Reading:

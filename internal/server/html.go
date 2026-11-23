@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -48,9 +49,9 @@ var templateFuncs = template.FuncMap{
 // list's head, is a quiet line instead, since it isn't the page's main
 // content.
 type emptyState struct {
-	Icon    string // the icon partial's name without "icon-": "bookmark", "star"
+	Icon    string // one of emptyStateIcons
 	Lead    string
-	Line    string
+	Line    string // "" for none
 	Actions []emptyAction
 }
 
@@ -59,9 +60,18 @@ type emptyAction struct {
 	Primary     bool
 }
 
+// emptyStateIcons are the icons the empty-state partial draws, by their
+// partial's name without "icon-" (a template can't call a partial by a
+// computed name, so the partial picks each one by name).
+var emptyStateIcons = []string{"rss", "bookmark", "star", "feeds", "tag", "timeline", "clock"}
+
 // newEmptyState builds an emptyState in a template: actions are pairs of
-// a label and a link, at most two.
+// a label and a link, at most two. A wrong call fails the page's render,
+// which every page's tests catch.
 func newEmptyState(icon, lead, line string, actions ...string) (emptyState, error) {
+	if !slices.Contains(emptyStateIcons, icon) {
+		return emptyState{}, fmt.Errorf("emptyState: no icon %q", icon)
+	}
 	if len(actions)%2 != 0 || len(actions) > 4 {
 		return emptyState{}, fmt.Errorf("emptyState: want up to two label and link pairs, got %d values", len(actions))
 	}

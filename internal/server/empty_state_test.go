@@ -32,15 +32,15 @@ func assertEmptyState(t *testing.T, body, lead, line string, hrefs ...string) {
 			lines = append(lines, c)
 		}
 	}
-	if line == "" && len(lines) != 0 || line != "" && (len(lines) != 1 || textContent(lines[0]) != line) {
+	if (line == "" && len(lines) != 0) || (line != "" && (len(lines) != 1 || textContent(lines[0]) != line)) {
 		t.Errorf("line = %q, want %q", textsOf(lines), line)
 	}
 	links := findAll(state, func(n *html.Node) bool { return n.Data == "a" })
 	var got []string
 	for i, a := range links {
 		got = append(got, attr(a, "href"))
-		if hasClass(a, "btn-primary") != (i == 0) {
-			t.Errorf("action %d (%s): primary = %v, want %v", i, attr(a, "href"), !(i == 0), i == 0)
+		if primary := hasClass(a, "btn-primary"); primary != (i == 0) {
+			t.Errorf("action %d (%s): primary = %v, want %v", i, attr(a, "href"), primary, i == 0)
 		}
 	}
 	if !slices.Equal(got, hrefs) {
@@ -69,13 +69,44 @@ func TestNewEmptyState(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
 		actions []string
+		icon    string
 	}{
-		{"a label without a link", []string{"One"}},
-		{"three actions", []string{"One", "/one", "Two", "/two", "Three", "/three"}},
+		{"a label without a link", []string{"One"}, "star"},
+		{"three actions", []string{"One", "/one", "Two", "/two", "Three", "/three"}, "star"},
+		{"an unknown icon", nil, "stars"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := newEmptyState("star", "Lead.", "", tt.actions...); err == nil {
+			if _, err := newEmptyState(tt.icon, "Lead.", "", tt.actions...); err == nil {
 				t.Error("err = nil, want an error")
+			}
+		})
+	}
+}
+
+// TestEmptyStateIcons checks the empty-state partial draws every icon
+// newEmptyState accepts, so the list and the partial's names agree.
+func TestEmptyStateIcons(t *testing.T) {
+	s := newTestServer(t)
+	ts, ok := s.templates["saved.html"]
+	if !ok {
+		t.Fatal("no saved.html template")
+	}
+	for _, icon := range emptyStateIcons {
+		t.Run(icon, func(t *testing.T) {
+			e, err := newEmptyState(icon, "Lead.", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var b strings.Builder
+			if err := ts.ExecuteTemplate(&b, "empty-state", e); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := html.Parse(strings.NewReader(b.String()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if svgs := findAll(doc, func(n *html.Node) bool { return n.Data == "svg" }); len(svgs) != 1 {
+				t.Errorf("got %d icons, want 1: %s", len(svgs), b.String())
 			}
 		})
 	}

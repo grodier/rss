@@ -404,9 +404,25 @@
     text-decoration: underline;
   }
 
+  /* The site's key, after its name: whole, never broken at a hyphen, so
+     it moves to the next line when it doesn't fit, and cut with an
+     ellipsis only when it's wider than the column (the full key is its
+     title). On phones it has a line of its own, as on the site's page. */
   .discover-host {
+    display: inline-block;
+    max-inline-size: 100%;
+    overflow: hidden;
     color: var(--text-3);
     font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  @media (max-width: 33.99rem) {
+    .discover-host {
+      display: block;
+    }
   }
 
   .discover-feed-title {

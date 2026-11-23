@@ -11,7 +11,7 @@
 <li class="discover-feed" id="feed-{{$f.Feed.ID}}">
   {{template "avatar" (avatar $f.Site.ID $name .Icon)}}
   <div class="discover-feed-main">
-    <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host">{{$f.Site.Host}}</span></p>
+    <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host" title="{{$f.Site.Host}}">{{$f.Site.Host}}</span></p>
     {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
     <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
     {{if $f.Latest}}

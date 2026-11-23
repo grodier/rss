@@ -340,15 +340,22 @@ func newDiscoverRow(f rss.DiscoverFeed, icon, returnTo string) discoverRow {
 	return discoverRow{Feed: f, Icon: icon, ReturnTo: returnTo}
 }
 
-// followButton is Follow (partials/discover_feed.html's follow-form): in an
-// article row's foot, on a section's Recent posts, for a feed the reader
-// doesn't follow, and on a site's page for each of its feeds.
+// followButton is Follow, or, pressed, "Following", which unfollows
+// (partials/discover_feed.html's follow-form): the one control for
+// following a feed, wherever a page offers it (a feed's page and a site's,
+// Discover's rows, a section's Recent posts and search results).
+// Unfollowing a subscription with a name or tags goes to a confirmation
+// first (feedUnsubscribeHandler).
 type followButton struct {
 	FeedID   string
 	Label    string // rss.DiscoverFeed.Label
 	ReturnTo string
 	// Following renders it pressed, as "Following", which unfollows.
 	Following bool
+	// Reload posts it as a plain form, without save-star.ts's toggle in
+	// place, for a page whose other controls depend on following (the
+	// feed's page, whose Edit is only for a followed feed).
+	Reload bool
 }
 
 type discoverSectionData struct {
@@ -422,11 +429,9 @@ func (s *Server) discoverSectionPostsHandler(w http.ResponseWriter, r *http.Requ
 		feed := p.Feed.Feed
 		feed.Title = p.Feed.Label() // the site's name with the feed's, as on the Feeds tab
 		rows[i] = articleRow{Article: p.Article, Feed: feed, ReturnTo: r.URL.RequestURI()}
-		if !p.Feed.Following {
-			// Back to the row, as on the Feeds tab, so following without
-			// JavaScript doesn't lose the reader's place.
-			rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI() + "#article-" + p.Article.ID}
-		}
+		// Back to the row, as on the Feeds tab, so following without
+		// JavaScript doesn't lose the reader's place.
+		rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI() + "#article-" + p.Article.ID, Following: p.Feed.Following}
 		siteIDs[i] = p.Feed.Site.ID
 	}
 	data.Icons = s.pageIcons(r, siteIDs)

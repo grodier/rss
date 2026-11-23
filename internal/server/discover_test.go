@@ -557,18 +557,29 @@ func TestDiscoverSectionPage(t *testing.T) {
 		if got := currentTab(doc); got != "/discover/sections/science" {
 			t.Errorf("current tab = %q, want the Feeds tab", got)
 		}
-		// feed-1 has Follow, returning to its row; followed feed-2 links to its page.
+		// feed-1 has Follow and followed feed-2 Following, each returning to its row.
 		forms := findAll(doc, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })
-		if len(forms) != 1 || attr(forms[0], "action") != "/feeds/feed-1/subscribe" {
-			t.Fatalf("Follow forms = %d; want one, for feed-1", len(forms))
+		if len(forms) != 2 {
+			t.Fatalf("Follow forms = %d; want two, for feed-1 and feed-2", len(forms))
 		}
-		ret := findAll(forms[0], func(n *html.Node) bool { return attr(n, "name") == "return_to" })
-		if len(ret) != 1 || attr(ret[0], "value") != "/discover/sections/science#feed-feed-1" {
-			t.Errorf("return_to = %v; want /discover/sections/science#feed-feed-1", ret)
+		for i, want := range []struct{ action, pressed, returnTo string }{
+			{"/feeds/feed-1/subscribe", "false", "/discover/sections/science#feed-feed-1"},
+			{"/feeds/feed-2/unsubscribe", "true", "/discover/sections/science#feed-feed-2"},
+		} {
+			if got := attr(forms[i], "action"); got != want.action {
+				t.Errorf("form %d action = %q, want %q", i, got, want.action)
+			}
+			buttons := findAll(forms[i], func(n *html.Node) bool { return n.Data == "button" })
+			if len(buttons) != 1 || attr(buttons[0], "aria-pressed") != want.pressed {
+				t.Errorf("form %d: want one button with aria-pressed=%s", i, want.pressed)
+			}
+			ret := findAll(forms[i], func(n *html.Node) bool { return attr(n, "name") == "return_to" })
+			if len(ret) != 1 || attr(ret[0], "value") != want.returnTo {
+				t.Errorf("form %d return_to = %v; want %s", i, ret, want.returnTo)
+			}
 		}
-		label := findAll(doc, func(n *html.Node) bool { return hasClass(n, "following-label") })
-		if len(label) != 1 || attr(label[0], "href") != "/feeds/feed-2" || !strings.Contains(textContent(label[0]), "Following") {
-			t.Errorf("followed feed's label = %v; want one linking to /feeds/feed-2", label)
+		if label := findAll(doc, func(n *html.Node) bool { return hasClass(n, "following-label") }); len(label) != 0 {
+			t.Errorf("%d \"✓ Following\" labels, want none", len(label))
 		}
 	})
 
@@ -581,11 +592,14 @@ func TestDiscoverSectionPage(t *testing.T) {
 		if len(rows) != sectionPageSize {
 			t.Fatalf("%d rows, want %d", len(rows), sectionPageSize)
 		}
-		// Even rows are feed-1's (not followed): Follow; odd are feed-2's: none.
+		// Even rows are feed-1's (not followed): Follow; odd are feed-2's: Following.
 		for i, row := range rows[:2] {
 			forms := findAll(row, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })
-			if want := 1 - i; len(forms) != want {
-				t.Errorf("row %d has %d Follow forms, want %d", i, len(forms), want)
+			if len(forms) != 1 {
+				t.Fatalf("row %d has %d Follow forms, want 1", i, len(forms))
+			}
+			if got, want := pressedFollow(row), i == 1; got != want {
+				t.Errorf("row %d: Following = %v, want %v", i, got, want)
 			}
 		}
 		follow := findAll(rows[0], func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") })[0]

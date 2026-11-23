@@ -7,9 +7,11 @@ import { busyDelay } from "../../shared/lib/busy-delay";
 // stylesheet swaps the icon or the label) and the action, so the page
 // doesn't reload, and announce the form's data-announce-pressed or
 // data-announce-unpressed, if it has one, in the polite live region. Success is a 204; on anything else, including a
-// redirect to the login page, submit the form normally so the round trip
-// shows what happened. Delegated, so rows added by infinite scroll
-// work too.
+// redirect (to the login page, or to the confirmation before unfollowing
+// a feed with a name or tags), submit the form normally so the round trip
+// shows what happened. fetch doesn't follow the redirect itself, so the
+// page it leads to loads once, with its flash. Delegated, so rows added by
+// infinite scroll work too.
 // While the request runs the button is aria-disabled (not disabled, so
 // focus stays on it) and further presses are ignored; data-busy dims it
 // only once the request has taken --delay-busy, so a quick one never
@@ -31,6 +33,7 @@ export function init(): void {
     try {
       const res = await fetch(form.action, {
         method: "POST",
+        redirect: "manual",
         // FormData is a sequence of name and value pairs, which TypeScript's
         // types don't let URLSearchParams take.
         body: new URLSearchParams(new FormData(form) as unknown as string[][]),

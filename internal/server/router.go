@@ -71,6 +71,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/feeds/{id}/refresh", s.feedRefreshHandler)
 			r.Post("/feeds/{id}/subscribe", s.feedSubscribeHandler)
 			r.Post("/feeds/{id}/unsubscribe", s.feedUnsubscribeHandler)
+			r.Get("/feeds/{id}/unfollow", s.feedUnfollowHandler)
 			r.Get("/feeds/{id}/edit", s.subscriptionEditHandler)
 			r.Post("/feeds/{id}/edit", s.subscriptionEditPostHandler)
 			r.Get("/feeds", s.feedsHandler)

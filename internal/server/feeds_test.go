@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
+	"golang.org/x/net/html"
 )
 
 func assertNotFoundHTML(t *testing.T, rr *httptest.ResponseRecorder) {
@@ -411,7 +412,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 			t.Errorf("missing Back to newest link to %s: %s", feedPath, body)
 		}
 		// Paged views keep the feed's header.
-		if !strings.Contains(body, "Example Feed Title") || !strings.Contains(body, ">Follow</button>") {
+		if !strings.Contains(body, "Example Feed Title") || !strings.Contains(body, `aria-label="Follow Example Feed Title"`) {
 			t.Errorf("paged view lost the feed header: %s", body)
 		}
 	})
@@ -1766,6 +1767,206 @@ func TestFeedUnsubscribeHandler(t *testing.T) {
 	})
 }
 
+// postUnsubscribe posts form to feedUnsubscribeHandler for feedID as
+// user-1, with Sec-Fetch-Mode set to mode unless it's empty. It returns the
+// response and the flash left in the session.
+func postUnsubscribe(t *testing.T, s *Server, feedID string, form url.Values, mode string) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/feeds/x/unsubscribe", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if mode != "" {
+		req.Header.Set("Sec-Fetch-Mode", mode)
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", feedID)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+	var flash string
+	s.sessionManager.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.feedUnsubscribeHandler(w, r)
+		flash = s.sessionManager.GetString(r.Context(), "flash")
+	})).ServeHTTP(rr, req)
+	return rr, flash
+}
+
+func TestFeedUnsubscribeConfirmation(t *testing.T) {
+	feed := rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"}
+	named := rss.Subscription{Title: "My Example"}
+	tagged := rss.Subscription{Tags: []rss.Tag{{ID: "t1", Name: "News"}}}
+	both := rss.Subscription{Title: "My Example", Tags: []rss.Tag{{ID: "t1", Name: "News"}}}
+	confirmURL := func(returnTo string) string {
+		return "/feeds/" + testFeedID + "/unfollow?" + url.Values{"return_to": {returnTo}}.Encode()
+	}
+	tests := []struct {
+		name      string
+		sub       rss.Subscription
+		getErr    error
+		form      url.Values
+		mode      string
+		wantCode  int
+		wantLoc   string
+		wantFlash string
+		wantCalls int // Unsubscribe calls
+	}{
+		{"a name goes to the confirmation", named, nil, url.Values{"return_to": {"/discover"}}, "", http.StatusSeeOther, confirmURL("/discover"), "", 0},
+		{"tags go to the confirmation", tagged, nil, url.Values{"return_to": {"/discover"}}, "", http.StatusSeeOther, confirmURL("/discover"), "", 0},
+		{"a name and tags go to the confirmation", both, nil, url.Values{"return_to": {"/discover#feed-x"}}, "", http.StatusSeeOther, confirmURL("/discover#feed-x"), "", 0},
+		{"with fetch, it's the same redirect, not a 204", both, nil, url.Values{"return_to": {"/discover"}}, "same-origin", http.StatusSeeOther, confirmURL("/discover"), "", 0},
+		{"another site's return_to comes back to the feed", both, nil, url.Values{"return_to": {"https://evil.example/"}}, "", http.StatusSeeOther, confirmURL("/feeds/" + testFeedID), "", 0},
+		{"without a name or tags it unfollows at once", rss.Subscription{}, nil, url.Values{"return_to": {"/discover"}}, "", http.StatusSeeOther, "/discover", "Unfollowed Example Feed.", 1},
+		{"not following is the usual no-op", rss.Subscription{}, rss.ErrNoRecord, url.Values{"return_to": {"/discover"}}, "", http.StatusSeeOther, "/discover", "Unfollowed Example Feed.", 1},
+		{"confirmed, a name and tags go with it", both, nil, url.Values{"return_to": {"/discover"}, "confirm": {"true"}}, "", http.StatusSeeOther, "/discover", "Unfollowed Example Feed.", 1},
+		{"a failed read", both, errors.New("db down"), url.Values{"return_to": {"/discover"}}, "", http.StatusInternalServerError, "", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []subscriptionCall
+			s := subscriptionServer(t, feed, nil, &fakeSubscriptionStore{
+				getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+					return tt.sub, tt.getErr
+				},
+				unsubscribeFn: func(ctx context.Context, userID, feedID string) error {
+					calls = append(calls, subscriptionCall{userID, feedID})
+					return nil
+				},
+			})
+
+			rr, flash := postUnsubscribe(t, s, testFeedID, tt.form, tt.mode)
+
+			if rr.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantCode)
+			}
+			if loc := rr.Header().Get("Location"); loc != tt.wantLoc {
+				t.Errorf("Location = %q, want %q", loc, tt.wantLoc)
+			}
+			if flash != tt.wantFlash {
+				t.Errorf("flash = %q, want %q", flash, tt.wantFlash)
+			}
+			if len(calls) != tt.wantCalls {
+				t.Errorf("Unsubscribe calls = %+v, want %d", calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+func TestFeedUnfollowHandler(t *testing.T) {
+	serve := func(t *testing.T, sub rss.Subscription, getErr error, query string) *httptest.ResponseRecorder {
+		t.Helper()
+		sub.Feed.ID, sub.Feed.SiteID = testFeedID, testSiteID
+		sub.Site = rss.Site{ID: testSiteID, Host: "example.com", Title: "Example Site"}
+		s := newTestServerWith(t, Services{SubscriptionService: &fakeSubscriptionStore{
+			getFn: func(ctx context.Context, userID, feedID string) (rss.Subscription, error) {
+				if userID != "user-1" || feedID != testFeedID {
+					t.Errorf("Get(%q, %q), want (user-1, %s)", userID, feedID, testFeedID)
+				}
+				return sub, getErr
+			},
+		}})
+		req := httptest.NewRequest(http.MethodGet, "/feeds/x/unfollow"+query, nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", testFeedID)
+		ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+		req = req.WithContext(context.WithValue(ctx, authenticatedUserIDContextKey, "user-1"))
+		rr := httptest.NewRecorder()
+		s.feedUnfollowHandler(rr, req)
+		return rr
+	}
+	feed := rss.Feed{Title: "NBC Sports", Url: "https://example.com/feed.xml"}
+	tags := []rss.Tag{{ID: "t1", Name: "Sports"}, {ID: "t2", Name: "News"}}
+
+	tests := []struct {
+		name     string
+		sub      rss.Subscription
+		query    string
+		want     []string
+		notWant  []string
+		returnTo string
+	}{
+		{
+			name:  "a name and tags",
+			sub:   rss.Subscription{Title: "Pro Football Talk", Feed: feed, Tags: tags},
+			query: "?return_to=" + url.QueryEscape("/discover#feed-"+testFeedID),
+			want: []string{
+				"<h1>Unfollow Pro Football Talk?</h1>",
+				"Your name and tags for it will be removed.",
+				`Feed title “NBC Sports”`,
+				`<a href="/tags/t1">Sports</a><a href="/tags/t2">News</a>`,
+			},
+			returnTo: "/discover#feed-" + testFeedID,
+		},
+		{
+			name:     "a name only",
+			sub:      rss.Subscription{Title: "Pro Football Talk", Feed: feed},
+			query:    "?return_to=/discover",
+			want:     []string{"Your name for it will be removed."},
+			notWant:  []string{"feed-tags"},
+			returnTo: "/discover",
+		},
+		{
+			name:     "tags only, and no return_to comes back to the feed",
+			sub:      rss.Subscription{Feed: feed, Tags: tags},
+			want:     []string{"<h1>Unfollow NBC Sports?</h1>", "Your tags for it will be removed."},
+			notWant:  []string{"Feed title “"},
+			returnTo: "/feeds/" + testFeedID,
+		},
+		{
+			name:     "another site's return_to comes back to the feed",
+			sub:      rss.Subscription{Title: "Pro Football Talk", Feed: feed},
+			query:    "?return_to=" + url.QueryEscape("https://evil.example/"),
+			notWant:  []string{"evil.example"},
+			returnTo: "/feeds/" + testFeedID,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := serve(t, tt.sub, nil, tt.query)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			body := rr.Body.String()
+			assertBodyContains(t, body, tt.want...)
+			for _, w := range tt.notWant {
+				if strings.Contains(body, w) {
+					t.Errorf("body contains %q", w)
+				}
+			}
+			// Unfollow posts the confirmed form back to return_to; Cancel
+			// is a link there, so it changes nothing.
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			forms := findAll(doc, func(n *html.Node) bool {
+				return n.Data == "form" && attr(n, "action") == "/feeds/"+testFeedID+"/unsubscribe"
+			})
+			if len(forms) != 1 {
+				t.Fatalf("%d Unfollow forms, want 1", len(forms))
+			}
+			fields := map[string]string{}
+			for _, in := range findAll(forms[0], func(n *html.Node) bool { return n.Data == "input" }) {
+				fields[attr(in, "name")] = attr(in, "value")
+			}
+			if fields["confirm"] != "true" || fields["return_to"] != tt.returnTo {
+				t.Errorf("Unfollow's fields = %v, want confirm=true and return_to=%s", fields, tt.returnTo)
+			}
+			buttons := findAll(forms[0], func(n *html.Node) bool { return n.Data == "button" })
+			if len(buttons) != 1 || !hasClass(buttons[0], "btn-danger-quiet") || textContent(buttons[0]) != "Unfollow" {
+				t.Errorf("want one red Unfollow button")
+			}
+			cancel := findAll(doc, func(n *html.Node) bool { return n.Data == "a" && textContent(n) == "Cancel" })
+			if len(cancel) != 1 || attr(cancel[0], "href") != tt.returnTo {
+				t.Errorf("Cancel = %v, want a link to %s", cancel, tt.returnTo)
+			}
+		})
+	}
+
+	t.Run("not following", func(t *testing.T) {
+		assertNotFoundHTML(t, serve(t, rss.Subscription{}, rss.ErrNoRecord, ""))
+	})
+}
+
 func TestFeedHandlerSubscribeControl(t *testing.T) {
 	const (
 		subscribeForm   = `action="/feeds/` + testFeedID + `/subscribe"`
@@ -1781,17 +1982,20 @@ func TestFeedHandlerSubscribeControl(t *testing.T) {
 		{
 			name: "not subscribed",
 			feed: rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
-			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Follow Example Feed"`},
+			want: []string{subscribeForm, `value="/feeds/` + testFeedID + `"`, `aria-label="Follow Example Feed"`, `aria-pressed="false"`},
 			notWant: []string{
-				unsubscribeForm, "Following", "/edit",
+				unsubscribeForm, `aria-pressed="true"`, "/edit",
+				// A plain form: unfollowing in place would leave Edit behind.
+				"data-toggle",
 			},
 		},
 		{
 			name:       "subscribed",
 			feed:       rss.Feed{Title: "Example Feed", Url: "https://example.com/feed.xml"},
 			subscribed: true,
-			want:       []string{unsubscribeForm, `aria-label="Unfollow Example Feed"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
-			notWant:    []string{subscribeForm},
+			// Following, pressed, which unfollows, next to Edit.
+			want:    []string{unsubscribeForm, `aria-label="Follow Example Feed"`, `aria-pressed="true"`, `href="/feeds/` + testFeedID + `/edit?return_to=/feeds/` + testFeedID + `"`},
+			notWant: []string{subscribeForm, "btn-danger-quiet", "data-toggle"},
 		},
 		{
 			name: "empty title labels the button with the URL",
@@ -1869,7 +2073,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 			want: []string{
 				"<title>Paper Round - Pro Football Talk</title>",
 				"<h1>Pro Football Talk</h1>",
-				`aria-label="Unfollow Pro Football Talk"`,
+				`aria-label="Follow Pro Football Talk"`,
 				`From <a href="/sites/` + testSiteID + `">Example Site</a> ` + feedTitleLine + `</p>`,
 			},
 			notWant: []string{"<h1>Example Feed Title</h1>"},
@@ -1879,7 +2083,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 			get: func(context.Context, string, string) (rss.Subscription, error) {
 				return rss.Subscription{}, nil
 			},
-			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Unfollow Example Feed Title"`},
+			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Follow Example Feed Title"`, `aria-pressed="true"`},
 			notWant: []string{"Feed title “"},
 		},
 		{
@@ -1888,7 +2092,7 @@ func TestFeedHandlerSubscriptionName(t *testing.T) {
 				return rss.Subscription{}, rss.ErrNoRecord
 			},
 			want:    []string{"<h1>Example Feed Title</h1>", `aria-label="Follow Example Feed Title"`},
-			notWant: []string{"Feed title “", "Unfollow"},
+			notWant: []string{"Feed title “", `aria-pressed="true"`},
 		},
 	}
 	for _, tt := range tests {
@@ -2070,6 +2274,9 @@ func TestSubscriptionEdit(t *testing.T) {
 			"<code>https://example.com/feed.xml</code>",
 			`action="/feeds/` + testFeedID + `/edit"`,
 			`<a class="btn" href="/feeds">Cancel</a>`,
+			// Its Unfollow warns that the name and tags go, so it doesn't
+			// go to the confirmation.
+			`<input type="hidden" name="confirm" value="true">`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("body does not contain %q: %s", want, body)

@@ -4,6 +4,10 @@ import { isolate, liveRegion, submit } from "../../shared/test/setup";
 isolate();
 
 let fetchMock: ReturnType<typeof vi.fn>;
+
+// redirect is what fetch resolves to on a redirect it doesn't follow
+// (redirect: "manual"), which Response's constructor can't make.
+const redirect = () => ({ type: "opaqueredirect", status: 0, ok: false, redirected: false }) as Response;
 let formSubmit: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
@@ -36,6 +40,7 @@ describe("save-star", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(new URL("/articles/a1/save", location.href).href);
     expect(init.method).toBe("POST");
+    expect(init.redirect).toBe("manual");
     expect([...(init.body as URLSearchParams)]).toEqual([["return_to", "/#article-a1"]]);
   });
 
@@ -85,14 +90,7 @@ describe("save-star", () => {
   it.each([
     ["a 200", () => new Response("<p>page</p>", { status: 200 })],
     ["a 500", () => new Response(null, { status: 500 })],
-    [
-      "a redirect to the login page",
-      () => {
-        const res = new Response("<p>Log in</p>", { status: 200 });
-        Object.defineProperty(res, "redirected", { value: true });
-        return res;
-      },
-    ],
+    ["a redirect, such as to the login page", () => redirect()],
   ])("submits the form normally on %s", async (_, response) => {
     fetchMock.mockImplementation(async () => response());
     submit(form(), button());
@@ -132,6 +130,18 @@ describe("save-star", () => {
       expect(form().getAttribute("action")).toBe("/feeds/f1/subscribe");
       await vi.waitFor(() => expect(liveRegion()).toBe("Unfollowed Example"));
       expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    it("goes to the confirmation, rather than toggling, when unfollowing redirects there", async () => {
+      form().setAttribute("action", "/feeds/f1/unsubscribe");
+      button().setAttribute("aria-pressed", "true");
+      fetchMock.mockImplementation(async () => redirect());
+      submit(form(), button());
+      await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+      expect(fetchMock.mock.calls[0][0]).toBe(new URL("/feeds/f1/unsubscribe", location.href).href);
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(form().getAttribute("action")).toBe("/feeds/f1/unsubscribe");
+      expect(liveRegion()).not.toBe("Unfollowed Example");
     });
 
     it("submits the form normally on anything but a 204, such as a gone feed's redirect", async () => {

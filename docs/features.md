@@ -185,7 +185,7 @@ After them comes "Search everything", a link to the results' Top tab; with no fe
 
 **Discover's search.** With a query and `scope`, `discoverSearch` reads, in turn, the reader's subscriptions that match (`SubscriptionRepository.Search`: their name, feed title, site title or host), their saved articles that match (`ListSaved`, Saved's own search), the sites that match (`searchSites`: `SearchRepository.Search` and which of their feeds the reader follows), and whether they've saved anything at all (`HasSaves`).
 Each source returns up to 51 rows, ordered by how well the name matches (`matchOrder` in `internal/psql/search.go`), so the best are within the limit and 51 tells a tab's "50+" from 50.
-They become rows (`searchResult`): a followed feed with "✓ Following", a site with Follow for its one feed the reader doesn't follow or with its feed count when there are several (a site whose feeds they all follow is left out, its followed feeds being there), and a saved article with its excerpt.
+They become rows (`searchResult`): a followed feed with a pressed "Following" (`follow-form`, as on Discover; its suggestion says "✓ Following", since suggestions hold no buttons), a site with Follow for its one feed the reader doesn't follow or with its feed count when there are several (a site whose feeds they all follow is left out, its followed feeds being there), and a saved article with its excerpt.
 `rankResults` orders the feeds, and Top's mix of feeds and saved articles, by `matchRank` (the same order as `matchOrder`), the reader's own things, recency, then title (`searchScore`).
 The tabs, Top, Feeds and Saved (`?scope=`), are links in the timeline tabs' markup; a reader with no saves gets none and sees the feeds; Top shows 10 and links the tabs with more.
 Follow works as on Discover's rows (`save-star.ts`), returning to the results.
@@ -215,7 +215,7 @@ The same statement puts the sections in the reader's order: the most catalog fee
 It's computed on each load, so following a feed reorders nothing until the next one; when any section is out of its default place (`inDefaultOrder`, by `DiscoverSection.Position`), a quiet line under the chips says "Sections you follow most come first."
 The page shows the sections as chips linking to their anchors, then each section's rows: the site (linking to its page) and host, the feed's own title when it isn't just the site's name (`DiscoverFeed.FeedTitle`), its posting rate and "Latest post {when}" (`postingRate`, and the `since-date` partial: `since`'s relative day, or past two months a month and year, with the date in its `title`), a "Latest posts" disclosure with the 3 titles, and Follow.
 Follow posts to `/feeds/{id}/subscribe` with `return_to` the row's anchor; without JavaScript it redirects back and the flash says "Following {name}.", and the next load leaves the feed out.
-With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a gone feed's redirect makes it submit the form instead, for the flash.
+With JavaScript, `save-star.ts` posts it with fetch (the handlers answer fetch with a 204, `fetched`), flips the button to "Following" and its action to `/unsubscribe`, and announces "Following {name}" (`DiscoverFeed.Label`) in the polite live region, so the row stays in place until the next load; a redirect (a gone feed's, or the confirmation before unfollowing a feed with a name or tags, see "Subscriptions") makes it submit the form instead, without following the redirect itself (`redirect: "manual"`), so the page it leads to loads once, with its flash.
 
 **Import on Discover.** With no query, Discover also says something about importing, decided by `discoverImportFor` from what the account has done, so it needs no stored state and no dismiss button.
 While the reader's latest import (`ImportRepository.ListByUser` with a limit of 1) has feeds pending or running, a card above the chips shows its progress as on load, without polling (its feeds done out of its total, and a `<progress>` bar), and links to its page, which updates in place.
@@ -223,8 +223,8 @@ Otherwise a reader who has never imported and follows fewer than 10 feeds (`impo
 With a query, none of them shows, as live search replaces the container they're in.
 
 **A section's page.** Each section's head on Discover links "All {Total} ›" to its page, `GET /discover/sections/{slug}` (`discoverSectionHandler`), whose head has "Discover" as a small link above the section's name, then two tabs, Feeds and Recent posts, each its own page with `aria-current`, in the timeline tabs' style (`timeline-tabs.ts` slides the underline between them); an unknown slug is a 404 (`DiscoverRepository.Section`).
-Feeds lists every catalog feed in the section that isn't gone, followed or not (`SectionFeeds`), the most recently posting first, as Discover's rows (the `discover-feed` partial, shared with Discover); a feed the reader follows shows "✓ Following" linking to its page in place of Follow, since the page answers "what's in this section", not "what's new to me".
-Recent posts, `GET /discover/sections/{slug}/posts` (`discoverSectionPostsHandler`), is those feeds' articles, newest first, as article rows paged like a feed page (`SectionPosts`, one `articles_feed_sort_idx` scan per feed, merged; "Older posts" with infinite scroll); each row names its feed by `DiscoverFeed.Label` and has Follow in its foot, beside Star, Share and Save, when the reader doesn't follow the feed (`articleRow.Follow`).
+Feeds lists every catalog feed in the section that isn't gone, followed or not (`SectionFeeds`), the most recently posting first, as Discover's rows (the `discover-feed` partial, shared with Discover); a feed the reader follows shows Following, pressed, since the page answers "what's in this section", not "what's new to me".
+Recent posts, `GET /discover/sections/{slug}/posts` (`discoverSectionPostsHandler`), is those feeds' articles, newest first, as article rows paged like a feed page (`SectionPosts`, one `articles_feed_sort_idx` scan per feed, merged; "Older posts" with infinite scroll); each row names its feed by `DiscoverFeed.Label` and has Follow in its foot, beside Star, Share and Save, or Following when the reader follows the feed (`articleRow.Follow`).
 Follow works as on Discover, with `return_to` the page and the row's anchor.
 
 **A site's page.** `GET /sites/{id}` (`siteHandler`) is where a reader picks which of a site's feeds to follow; Discover's rows, a section's page, search results and lookups all lead there.
@@ -299,7 +299,11 @@ With JavaScript, the button shows it's working ("Refreshing…") while the fetch
 
 ## Subscriptions
 
-**Flow.** Subscribe and Unsubscribe buttons on the feed and site pages (and Unsubscribe on Edit subscription, which always returns to My feeds) post to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path, and redirect back with a flash.
+**Flow.** Following a feed has one control wherever a page offers it (`follow-form`, its data a `followButton`): Follow, then, pressed, "Following", which unfollows, on the feed page (beside Edit), the site page, Discover's rows, a section's Feeds and Recent posts, and search results.
+It posts to `/feeds/{id}/subscribe` or `/unsubscribe` with a `return_to` path and redirects back with a flash; with JavaScript `save-star.ts` toggles it in place instead (see "Discover"), except on the feed page (`followButton.Reload`), whose Edit is only for a followed feed.
+Unfollowing a subscription with a name or tags doesn't unfollow at once: `feedUnsubscribeHandler` redirects to a confirmation, `GET /feeds/{id}/unfollow` (`feedUnfollowHandler`, `unfollow.html`), which shows the feed with the reader's name and tags, says which of them will be removed, and has a red Unfollow that posts again with `confirm=true` and Cancel, a link back to `return_to`.
+Edit subscription's Unfollow, at its foot with its own warning, posts `confirm=true` too, and always returns to My feeds.
+Without a name or tags, Following unfollows at once, since nothing but the follow is lost.
 Gone feeds can't be subscribed to but can be unsubscribed from.
 My feeds (`/feeds`) lists the user's subscriptions grouped by site, with when each feed last posted (`since-date`), posting rate (`postingRate`, from `posts_per_week`) and a warning after 3 failed fetches in a row.
 Only a site with two or more subscriptions gets a header; a single subscription whose name differs from its site's says "From <site>" instead (`feeds.html`).
@@ -311,10 +315,10 @@ Site, feed and search pages mark subscribed feeds with one extra query (`Subscri
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
 **Names.** A subscription can have the user's own name for the feed (`subscriptions.title`, private to them; `""` means "use the feed's title", so a feed that changes its title still updates).
-Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"), and Unsubscribe at its foot; a blank name, or one equal to the feed's current title, is stored as `""`.
+Edit subscription (`/feeds/{id}/edit`) has a Name field and the subscription's tags (see "Tags"), and Unfollow at its foot; a blank name, or one equal to the feed's current title, is stored as `""`.
 The name shows wherever the user's own reading shows the feed: per-user list queries (`ListTimeline`, `fillAlsoIn`, `ListSaved`) select `subscriptionTitle` as the feed's title, so rows and "Also in" show it without template changes, and the feed page, the article page and the OPML export use it too.
 Catalog pages (site, search) and debug panels keep the feed's own title.
-Unsubscribing drops the name and the subscription's tags.
+Unsubscribing drops the name and the subscription's tags, which is why unfollowing one that has them asks first (above).
 
 **Export.** `/settings/export` asks whether to turn tags into folders (the default) or ignore them, then downloads `/settings/subscriptions.opml` (`exportOPMLHandler`): every subscription, gone feeds included, as OPML 2.0, one `<outline>` per feed with the user's name for it.
 With folders, feeds are nested in a folder per tag (a feed with two tags in both), then the untagged feeds at the top level.
@@ -335,12 +339,12 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Start at:**
 
-1. `internal/server/feeds.go`: subscribe and unsubscribe, `feedsHandler` (its sort and search), and the subscription edit handlers; `web/app/features/feeds-filter.ts`.
+1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its sort and search), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
 2. `internal/psql/subscriptions.go`.
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
+**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `discover_search_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/save-star.test.ts`, `feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

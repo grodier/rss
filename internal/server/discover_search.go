@@ -110,10 +110,11 @@ type searchResult struct {
 	// since-date partial).
 	Saved   bool
 	SavedAt time.Time
-	// Following marks a feed the reader follows ("✓ Following"); Follow is
-	// a site's one feed they don't follow yet. A site with several has
-	// neither: its row opens its page to choose (nothing guesses which,
-	// #629).
+	// Following marks a feed the reader follows: a result's Follow is
+	// pressed, and a suggestion, which has none, says "✓ Following". A
+	// site's one feed they don't follow yet has Follow too. A site with
+	// several has neither: its row opens its page to choose (nothing
+	// guesses which, #629).
 	Following bool
 	Follow    *followButton
 	Score     int
@@ -226,7 +227,7 @@ func (s *Server) discoverSearch(r *http.Request, q string) (discoverResults, err
 
 	var feeds, savedRows []searchResult
 	for _, sub := range subs {
-		feeds = append(feeds, followedFeedResult(sub, icons[sub.Site.ID], q, now))
+		feeds = append(feeds, followedFeedResult(sub, icons[sub.Site.ID], q, r.URL.RequestURI(), now))
 	}
 	for _, site := range found.Sites {
 		if res, ok := siteResult(site, found.Subscribed, icons[site.Site.ID], q, r.URL.RequestURI()); ok {
@@ -347,7 +348,7 @@ func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverRe
 
 	var rows []searchResult
 	for _, sub := range subs {
-		rows = append(rows, followedFeedResult(sub, icons[sub.Site.ID], q, now))
+		rows = append(rows, followedFeedResult(sub, icons[sub.Site.ID], q, r.URL.RequestURI(), now))
 	}
 	for _, site := range found.Sites {
 		if res, ok := siteResult(site, found.Subscribed, icons[site.Site.ID], q, r.URL.RequestURI()); ok {
@@ -368,10 +369,12 @@ func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverRe
 
 // followedFeedResult is a feed the reader follows: its name (theirs, else
 // its title), its site's when it differs, its posting rate and latest
-// article, and whether it's gone or failing.
-func followedFeedResult(sub rss.Subscription, icon, q string, now time.Time) searchResult {
+// article, whether it's gone or failing, and Following, which unfollows
+// and sends the reader back to returnTo.
+func followedFeedResult(sub rss.Subscription, icon, q, returnTo string, now time.Time) searchResult {
 	name := cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url)
 	res := searchResult{Href: "/feeds/" + sub.Feed.ID, Title: name, Avatar: avatar(sub.Feed.SiteID, name, icon), Following: true, LatestAt: sub.LatestArticleAt}
+	res.Follow = &followButton{FeedID: sub.Feed.ID, Label: name, ReturnTo: returnTo, Following: true}
 	if cmp.Or(sub.Site.Title, sub.Site.Host) != name {
 		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
 	} else if p := discovery.Platform(sub.Site.Host); p != "" {
@@ -558,11 +561,11 @@ func (s *Server) discoverSuggest(r *http.Request, q string) (discoverSuggestions
 }
 
 // followedFeedSuggestion is a feed the reader follows as a suggestion: as
-// its result, with only its site's name when it differs and its latest
-// article as facts.
+// its result, without Following, with only its site's name when it differs
+// and its latest article as facts.
 func followedFeedSuggestion(sub rss.Subscription, icon, q string, now time.Time) searchResult {
-	res := followedFeedResult(sub, icon, q, now)
-	res.Facts, res.Warning = nil, ""
+	res := followedFeedResult(sub, icon, q, "", now)
+	res.Facts, res.Warning, res.Follow = nil, "", nil
 	if cmp.Or(sub.Site.Title, sub.Site.Host) != res.Title {
 		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
 	} else if p := discovery.Platform(sub.Site.Host); p != "" {

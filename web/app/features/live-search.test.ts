@@ -13,8 +13,8 @@ beforeEach(async () => {
   history.replaceState(null, "", "/discover");
   document.body.innerHTML = `
     <form action="/discover" method="get" data-live-search>
-      <span class="error">Type at least 2 characters.</span>
-      <div class="search-field"><button class="search-submit" type="submit" aria-label="Search"><svg class="icon"></svg></button><input type="search" name="q"></div>
+      <div class="search-field"><button class="search-submit" type="submit" aria-label="Search"><svg class="icon"></svg></button><input type="search" id="q" name="q" aria-invalid="true" aria-describedby="q-error"></div>
+      <p class="error" id="q-error">Search must be 200 characters or fewer</p>
       <input type="hidden" name="scope" value="feeds">
     </form>
     <div data-search-results><p>Earlier results</p></div>`;
@@ -83,6 +83,8 @@ describe("live-search", () => {
     expect(results().textContent).not.toContain("Earlier results");
     expect(location.pathname + location.search).toBe("/discover?q=load");
     expect(document.querySelector("form .error")).toBeNull();
+    expect(input().hasAttribute("aria-invalid")).toBe(false);
+    expect(input().hasAttribute("aria-describedby")).toBe(false);
     await vi.advanceTimersByTimeAsync(50);
     expect(liveRegion()).toBe("2 sites");
   });

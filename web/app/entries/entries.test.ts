@@ -11,6 +11,7 @@ const modules: Record<string, string[]> = {
   "../../shared/lib/busy-forms": ["init"],
   "../../shared/lib/local-times": ["localizeTimes"],
   "../../shared/lib/password-toggle": ["init"],
+  "../../shared/lib/search-clear": ["init"],
   "../features/back-forward": ["init"],
   "../features/code-copy": ["init"],
   "../features/divider-draw": ["init"],
@@ -44,6 +45,7 @@ const entries: Record<string, string[]> = {
     "share",
     "code-copy",
     "busy-forms",
+    "search-clear",
     "video-embeds",
     "image-fallback",
     "timeline-tabs",
@@ -69,6 +71,7 @@ const entries: Record<string, string[]> = {
     "back-forward",
     "save-star",
     "busy-forms",
+    "search-clear",
     "live-search",
     "recent-searches",
     "lookup-status",
@@ -76,7 +79,7 @@ const entries: Record<string, string[]> = {
   timelines: ["rum", "back-forward", "timeline-form", "reorder"],
   account: ["rum", "local-times", "back-forward", "busy-forms", "import-status", "password-toggle"],
   login: ["rum", "back-forward", "busy-forms", "password-toggle", "recent-searches"],
-  settings: ["rum", "feeds-filter"],
+  settings: ["rum", "search-clear", "feeds-filter"],
   solo: ["rum"],
 };
 

@@ -26,14 +26,7 @@
 
       {{if .Search}}
       <form class="page-search" role="search" method="get" action="/saved">
-        <label for="saved-q" class="visually-hidden">Search saved articles</label>
-        <div class="search-row">
-          <div class="search-field">
-            <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
-            <input type="search" id="saved-q" name="q" value="{{.Q}}" placeholder="Search saved articles" />
-          </div>
-        </div>
-        {{if .Q}}<a href="/saved">Clear</a>{{end}}
+        {{template "search-box" .Box}}
       </form>
       {{end}}
 

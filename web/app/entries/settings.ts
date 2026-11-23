@@ -1,9 +1,11 @@
 // The pages that manage things (Settings, My feeds, tags) and have no
-// enhancement of their own beyond My feeds' search (those with password
+// enhancement of their own beyond My feeds' search and its clear button (those with password
 // fields or imports are account's). Their stylesheet is settings.css, by the
 // group's name. Every page works without this.
+import { init as initSearchClear } from "../../shared/lib/search-clear";
 import { init as initFeedsFilter } from "../features/feeds-filter";
 import { setupRUM } from "../features/rum";
 
 setupRUM();
+initSearchClear();
 initFeedsFilter();

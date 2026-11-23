@@ -2,6 +2,7 @@
 // the group's name. Every page works without them.
 import * as busyForms from "../../shared/lib/busy-forms";
 import { localizeTimes } from "../../shared/lib/local-times";
+import * as searchClear from "../../shared/lib/search-clear";
 import * as backForward from "../features/back-forward";
 import * as liveSearch from "../features/live-search";
 import * as lookupStatus from "../features/lookup-status";
@@ -14,6 +15,7 @@ localizeTimes(document);
 backForward.init();
 saveStar.init();
 busyForms.init();
+searchClear.init();
 liveSearch.init();
 recentSearches.init();
 lookupStatus.init();

@@ -25,13 +25,7 @@
 
       {{if .Sites}}
       <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
-        <label for="feeds-q" class="visually-hidden">Search my feeds</label>
-        <div class="search-row">
-          <div class="search-field">
-            <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
-            <input type="search" id="feeds-q" name="q" value="{{.Q}}" placeholder="Search my feeds" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" />
-          </div>
-        </div>
+        {{template "search-box" .Box}}
         {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
       </form>
       {{if gt .Total 1}}

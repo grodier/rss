@@ -76,6 +76,7 @@ func serve(cfg config, logger *slog.Logger) error {
 		Emails:   psql.NewEmailRepository(db),
 		Overview: psql.NewAdminOverviewRepository(db),
 		WebPerf:  psql.NewAdminWebPerfRepository(db),
+		Users:    psql.NewAdminUserRepository(db),
 
 		Feeds: psql.NewAdminFeedRepository(db),
 		// Refresh now fetches through internal/fetch, like www's

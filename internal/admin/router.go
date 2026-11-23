@@ -55,6 +55,8 @@ func (s *Server) router() http.Handler {
 			r.Get("/waitlist", s.waitlistHandler)
 			r.Post("/waitlist/review", s.waitlistReviewHandler)
 			r.Post("/waitlist/invite", s.waitlistInviteHandler)
+			r.Get("/users", s.usersHandler)
+			r.Get("/users/{id}", s.userHandler)
 			r.Get("/invites", s.invitesHandler)
 			r.Post("/invites/{id}/revoke", s.inviteRevokeHandler)
 			r.Post("/invites/{id}/resend", s.inviteResendHandler)

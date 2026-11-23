@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{with .User.Name}}{{.}}{{else}}{{.User.Email}}{{end}} - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      {{$now := .Now}}
+      {{with .User}}
+      <header class="page-head">
+        <h1>{{with .Name}}{{.}}{{else}}(no name){{end}}</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{$.History}}">History</a>
+        </div>
+        <p>{{.Email}}</p>
+      </header>
+
+      <section class="admin-section" aria-labelledby="account-heading">
+        <h2 id="account-heading">Account</h2>
+        {{/* A two-column list of facts on desktop, one on phones; dates
+             relative, with the UTC time beside them. */}}
+        <dl class="fact-list">
+          <div><dt>Name</dt><dd class="wrap">{{with .Name}}{{.}}{{else}}—{{end}}</dd></div>
+          <div><dt>Email</dt><dd class="wrap">{{.Email}}</dd></div>
+          <div><dt>Email confirmed</dt><dd>{{if .EmailConfirmedAt.IsZero}}<span class="status status-pending">Not confirmed</span>{{else}}{{ago $now .EmailConfirmedAt}} <small class="quiet">{{stamp .EmailConfirmedAt}} UTC</small>{{end}}</dd></div>
+          <div><dt>Joined</dt><dd>{{ago $now .CreatedAt}} <small class="quiet">{{stamp .CreatedAt}} UTC</small></dd></div>
+          <div><dt>Last seen</dt><dd>{{if .LastSeenAt.IsZero}}Never{{else}}{{ago $now .LastSeenAt}} <small class="quiet">{{stamp .LastSeenAt}} UTC</small>{{end}}</dd></div>
+          <div><dt>Invite</dt><dd class="wrap">
+            {{- with .Invite}}{{if .ID}}{{if .Wave}}Wave “{{.Wave}}”{{else if .Note}}Open invite: {{.Note}}{{else if .Email}}Sent to {{.Email}}{{else}}Open invite{{end}}, {{date .CreatedAt}}{{else}}None{{end}}{{end -}}
+          </dd></div>
+          <div><dt>ID</dt><dd><code>{{.ID}}</code></dd></div>
+        </dl>
+      </section>
+
+      <section class="admin-section" aria-labelledby="counts-heading">
+        <h2 id="counts-heading">Counts</h2>
+        {{template "stat-row" $.Counts}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="email-heading">
+        <h2 id="email-heading">Email</h2>
+        <h3 class="sub">Sent to {{.Email}}</h3>
+        {{if $.Emails}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Subject</th>
+                <th scope="col">Status</th>
+                <th scope="col">Queued</th>
+                <th scope="col">Sent</th>
+                <th scope="col" class="num">Attempts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range $.Emails}}
+              <tr>
+                <td class="wrap">{{.Subject}}</td>
+                <td><span class="status status-{{.Tone}}">{{.Status}}</span></td>
+                <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
+                <td>{{if .SentAt.IsZero}}—{{else}}<time datetime="{{.SentAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .SentAt}} UTC">{{ago $now .SentAt}}</time>{{end}}</td>
+                <td class="num">{{.Attempts}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <p class="missing">No emails to this address in the outbox, which keeps sent and failed emails for a week.</p>
+        {{end}}
+        {{if $.Emails}}<p class="missing">The outbox keeps sent and failed emails for a week.</p>{{end}}
+
+        <h3 class="sub">Email links not yet used</h3>
+        {{if $.Tokens}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Purpose</th>
+                <th scope="col">Sent to</th>
+                <th scope="col">Created</th>
+                <th scope="col">Expires</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range $.Tokens}}
+              <tr>
+                <td>{{.Purpose}}</td>
+                <td class="wrap">{{.Email}}</td>
+                <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
+                <td><time datetime="{{.ExpiresAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .ExpiresAt}} UTC">{{ago $now .ExpiresAt}}</time></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <p class="missing">No email links waiting to be used.</p>
+        {{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

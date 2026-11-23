@@ -1141,6 +1141,75 @@ type AdminSite struct {
 	Feeds  []AdminFeedRow
 }
 
+// AdminUserQuery selects a page of the admin's users list, newest first:
+// those whose email or name starts with Q (any case; "" for every user),
+// starting after the user After ("" for the first page).
+type AdminUserQuery struct {
+	Q     string
+	After string
+	Limit int
+}
+
+// AdminUserRow is a reader as the admin lists them: account facts only,
+// never their reading ("Admin" in docs/decisions.md).
+type AdminUserRow struct {
+	ID               string
+	Name             string
+	Email            string
+	EmailConfirmedAt time.Time // zero until confirmed
+	CreatedAt        time.Time
+	LastSeenAt       time.Time // the newest of their sessions' last_seen_at; zero with none
+}
+
+// AdminUser is one reader's admin page: their account, the invite they
+// signed up with (ID "" for none), their counts, the emails sent to their
+// address that the outbox still holds, and their outstanding email links.
+// Counts only: never their reads, saves, stars, tags, timelines or feeds.
+type AdminUser struct {
+	AdminUserRow
+	Invite Invite
+	Counts AdminUserCounts
+	Emails []AdminUserEmail
+	Tokens []AdminUserToken
+}
+
+// AdminUserCounts are a reader's counts on their admin page. Devices are
+// their sessions still within the reader's idle timeout; ImportedFeeds and
+// ImportFailures add up their imports' feeds subscribed to (or already
+// subscribed) and failed.
+type AdminUserCounts struct {
+	Devices         int
+	Subscriptions   int
+	Tags            int
+	Timelines       int
+	SharedTimelines int
+	Saved           int
+	Starred         int
+	Imports         int
+	ImportedFeeds   int
+	ImportFailures  int
+}
+
+// AdminUserEmail is an email in the outbox as a reader's admin page shows
+// it: never its body, which can carry a one-time link.
+type AdminUserEmail struct {
+	ID        string
+	Subject   string
+	Status    string // pending, sent or failed
+	Attempts  int
+	CreatedAt time.Time
+	SentAt    time.Time // zero until sent
+}
+
+// AdminUserToken is an outstanding email link as a reader's admin page
+// shows it: never its hash.
+type AdminUserToken struct {
+	Purpose   string // TokenConfirmEmail, TokenResetPassword or TokenChangeEmail
+	Email     string // the address it was sent to
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 // The admin's seed list's filters (AdminSeedQuery.Filter).
 const (
 	AdminSeedAll           = "all"

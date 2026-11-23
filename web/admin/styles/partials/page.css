@@ -1,6 +1,6 @@
 /* An admin page: its head (the reader's nameplate rule, smaller), sections,
    section subheadings, empty states, filter rows (fields, and segmented
-   links), what a section can't show, stat rows and color keys' swatches. Denser
+   links), what a section can't show, stat rows, fact lists and color keys' swatches. Denser
    than the reader: it's a working tool. */
 @layer layout {
   .admin-page {
@@ -285,6 +285,57 @@
 
   .stat-link a:focus-visible {
     outline: none;
+  }
+
+  /* A record's facts as a list: each its name, then its value, two
+     columns of them on wide screens and one on phones, with a divider
+     under each, pulled 1px down so the last row's meets the list's own. */
+  .fact-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 2rem;
+    overflow: hidden;
+    border-block: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+
+  .fact-list > div {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: baseline;
+    margin-block-end: -1px;
+    padding: 0.5rem 0;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .fact-list dt {
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .fact-list dd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fact-list .wrap {
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 47.99rem) {
+    .fact-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fact-list > div {
+      grid-template-columns: 7.5rem minmax(0, 1fr);
+    }
+
+    /* A date's UTC time goes under it, rather than wrapping mid-time. */
+    .fact-list dd small {
+      display: block;
+    }
   }
 
   /* A color key's swatch; its color comes from the class it's keyed to. */

@@ -10,6 +10,7 @@
 {{define "admin-links"}}<ul class="admin-links" role="list">
       <li><a href="/"{{if eq .Section "overview"}} aria-current="page"{{end}}>Overview</a></li>
       <li><a href="/waitlist"{{if eq .Section "waitlist"}} aria-current="page"{{end}}>Waitlist</a></li>
+      <li><a href="/users"{{if eq .Section "users"}} aria-current="page"{{end}}>Users</a></li>
       <li><a href="/feeds"{{if eq .Section "feeds"}} aria-current="page"{{end}}>Feeds</a></li>
       <li><a href="/sites"{{if eq .Section "sites"}} aria-current="page"{{end}}>Sites</a></li>
       <li><a href="/seed"{{if eq .Section "seed"}} aria-current="page"{{end}}>Seed list</a></li>

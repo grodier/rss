@@ -200,6 +200,7 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 	}{
 		{name: "image only in metadata", article: rss.Article{Title: "T", ImageURL: image, Content: "<p>Text</p>"}, want: true},
 		{name: "content starts with the image", article: rss.Article{Title: "T", ImageURL: image, Content: `<img src="/lead.jpg"><p>Text</p>`}, want: false},
+		{name: "image after loose opening text", article: rss.Article{Title: "T", ImageURL: image, Content: `Text <p><img src="https://example.com/other.jpg"></p>`}, want: false},
 		{name: "page image when the feed has none", article: rss.Article{Title: "T", PageImageURL: image, Content: "<p>Text</p>"}, want: true},
 		{name: "no image", article: rss.Article{Title: "T", Content: "<p>Text</p>"}, want: false},
 	}

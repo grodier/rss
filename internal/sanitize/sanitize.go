@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
@@ -102,11 +103,12 @@ func parse(raw string) (*html.Node, error) {
 // ShowsImage reports whether the article HTML raw already shows an image
 // where a lead image would go, so the page shouldn't add imageURL above it:
 // its first block is an image, or the block right after its first paragraph
-// is one, or any <img> in it is the same image as imageURL. Relative URLs
-// resolve against base (nil leaves them as they are). An empty imageURL only
-// checks the first two.
+// is one (see imageAfterFirstParagraph), or any <img> in it is the same image
+// as imageURL. Relative URLs resolve against base (nil leaves them as they
+// are). An empty imageURL only checks the first two.
 //
-// Blocks are read as firstBlocks reads them.
+// Blocks are read as firstBlocks reads them, so empty blocks (spacers,
+// tracking pixels) are skipped wherever they are.
 func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	root, err := parse(raw)
 	if err != nil {
@@ -117,13 +119,8 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	if len(bs) > 0 && isImageBlock(bs[0]) {
 		return true
 	}
-	for i, b := range bs {
-		if b.DataAtom == atom.P && !isImageBlock(b) {
-			if i+1 < len(bs) && isImageBlock(bs[i+1]) {
-				return true
-			}
-			break
-		}
+	if imageAfterFirstParagraph(bs) {
+		return true
 	}
 
 	if imageURL == "" {
@@ -136,25 +133,193 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	return hasImage(root, base, want)
 }
 
+// imageAfterFirstParagraph reports whether the block right after the first
+// paragraph of bs (past any <br>s) is an image block. The first paragraph is
+// the first <p> that isn't an image block, or the first run of loose text
+// (see looseRun), whichever comes first: feeds often send their opening text
+// outside a <p>. Blocks before it (headings, lists, images) are skipped, and
+// bs has no empty blocks (see firstBlocks).
+//
+// Where it's unclear the answer is false, so the lead image shows: a run of
+// several paragraphs has text, not an image, after its first, and an image
+// after a run with more loose text right after it may sit in that line (an
+// icon). After a <p>, text after the image is its credit.
+func imageAfterFirstParagraph(bs []*html.Node) bool {
+	for i := 0; i < len(bs); i++ {
+		loose := false
+		switch {
+		case bs[i].DataAtom == atom.P && !isImageBlock(bs[i]):
+		case isLooseText(bs[i]):
+			end, paragraphs := looseRun(bs[i:])
+			if paragraphs > 1 {
+				return false
+			}
+			i, loose = i+end-1, true
+		default:
+			continue
+		}
+		next := i + 1
+		for next < len(bs) && isBreak(bs[next]) {
+			next++
+		}
+		if next >= len(bs) || !isImageBlock(bs[next]) {
+			return false
+		}
+		return !loose || next+1 >= len(bs) || !isLooseText(bs[next+1])
+	}
+	return false
+}
+
+// looseRun reads the run of loose text (see isLooseText) and <br>s that bs
+// starts with. It returns the number of blocks in it and how many paragraphs
+// its text makes: a blank line in a text node (reflow's paragraph break,
+// counted even where reflow doesn't apply, which errs towards showing the
+// lead image) or two <br>s in a row start a new one.
+func looseRun(bs []*html.Node) (end, paragraphs int) {
+	brk := false // a break since the last text
+	brs := 0     // <br>s in a row
+	for end = 0; end < len(bs); end++ {
+		n := bs[end]
+		if isBreak(n) {
+			if brs++; brs >= 2 {
+				brk = true
+			}
+			continue
+		}
+		if !isLooseText(n) {
+			break
+		}
+		brs = 0
+		parts := []string{textContent(n)}
+		if n.Type == html.TextNode {
+			parts = blankLine.Split(n.Data, -1)
+		}
+		for i, part := range parts {
+			if i > 0 {
+				brk = true
+			}
+			if strings.TrimSpace(part) == "" {
+				continue
+			}
+			if paragraphs == 0 || brk {
+				paragraphs++
+			}
+			brk = false
+		}
+	}
+	return end, paragraphs
+}
+
+// isBreak reports whether n is a <br>.
+func isBreak(n *html.Node) bool {
+	return n.Type == html.ElementNode && n.DataAtom == atom.Br
+}
+
+// hasVisibleText reports whether n's text has anything but whitespace,
+// counting &nbsp; as whitespace.
+func hasVisibleText(n *html.Node) bool {
+	if n.Type == html.TextNode {
+		return strings.TrimSpace(n.Data) != ""
+	}
+	return strings.TrimSpace(textContent(n)) != ""
+}
+
+// inlineAtoms are the elements that sit inside a line of text.
+var inlineAtoms = map[atom.Atom]bool{
+	atom.A: true, atom.Abbr: true, atom.B: true, atom.Bdi: true, atom.Bdo: true,
+	atom.Cite: true, atom.Code: true, atom.Data: true, atom.Del: true,
+	atom.Dfn: true, atom.Em: true, atom.Font: true, atom.I: true, atom.Ins: true,
+	atom.Kbd: true, atom.Mark: true, atom.Q: true, atom.S: true, atom.Samp: true,
+	atom.Small: true, atom.Span: true, atom.Strike: true, atom.Strong: true,
+	atom.Sub: true, atom.Sup: true, atom.Time: true, atom.U: true, atom.Var: true,
+}
+
+// isLooseText reports whether n, a block from blocks, is text outside any
+// block element: a text node, or an inline element (see inlineAtoms) that
+// isn't an image block and holds no block element. ShowsImage reads a run of
+// them as a paragraph.
+func isLooseText(n *html.Node) bool {
+	switch n.Type {
+	case html.TextNode:
+		return true
+	case html.ElementNode:
+		return inlineAtoms[n.DataAtom] && !isImageBlock(n) && !hasBlock(n)
+	}
+	return false
+}
+
 // firstBlocks returns the blocks an article starts with: root's children,
-// or the children of its only element if that is a <div>, <article> or
-// <section> wrapper (see blocks).
+// or the children of its only other block if that is a <div>, <article> or
+// <section> wrapper (see blocks), without empty blocks (see isEmptyBlock),
+// which show nothing to come first or to read. <br>s stay, as looseRun
+// reads them, except at the start and the end.
 func firstBlocks(root *html.Node) []*html.Node {
-	bs := blocks(root)
+	bs := withoutEmptyBlocks(blocks(root))
 	if len(bs) == 1 {
 		switch bs[0].DataAtom {
 		case atom.Div, atom.Article, atom.Section:
-			bs = blocks(bs[0])
+			bs = withoutEmptyBlocks(blocks(bs[0]))
 		}
 	}
 	return bs
 }
 
+// withoutEmptyBlocks returns bs without its empty blocks, keeping the <br>s
+// that aren't at the start or the end.
+func withoutEmptyBlocks(bs []*html.Node) []*html.Node {
+	var kept []*html.Node
+	for _, b := range bs {
+		switch {
+		case isBreak(b):
+			if len(kept) > 0 {
+				kept = append(kept, b)
+			}
+		case !isEmptyBlock(b):
+			kept = append(kept, b)
+		}
+	}
+	for len(kept) > 0 && isBreak(kept[len(kept)-1]) {
+		kept = kept[:len(kept)-1]
+	}
+	return kept
+}
+
+// isEmptyBlock reports whether the block n shows nothing to read: a <br>,
+// an <img> without a source or that is decorative (see isDecorativeImage),
+// or a <p> or loose text (see isLooseText) with no visible text and nothing
+// in it but those and inline elements, like an empty anchor, a stray
+// &nbsp;, a <p>&nbsp;</p> spacer or a paragraph that only holds a tracking
+// pixel or an emoji.
+func isEmptyBlock(n *html.Node) bool {
+	if n.Type != html.ElementNode {
+		return n.Type == html.TextNode && !hasVisibleText(n)
+	}
+	switch {
+	case n.DataAtom == atom.Br:
+		return true
+	case n.DataAtom == atom.Img:
+		_, ok := imageSource(n, nil)
+		return !ok || isDecorativeImage(n)
+	case n.DataAtom == atom.P, inlineAtoms[n.DataAtom]:
+	default:
+		return false
+	}
+	if hasVisibleText(n) {
+		return false
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && !isEmptyBlock(c) {
+			return false
+		}
+	}
+	return true
+}
+
 // dropRepeatedTitle removes root's first block when it's a heading (h1–h6)
 // whose text is title, so a feed that starts its content with the title
-// doesn't show it twice. Blocks are read as ShowsImage reads them: root's,
-// or those of its only element when that's a <div>, <article> or
-// <section>. The text matches when, with runs of whitespace as one space,
+// doesn't show it twice. Blocks are read as ShowsImage reads them (see
+// firstBlocks): root's, or those of its only element when that's a <div>,
+// <article> or <section>, without empty blocks. The text matches when, with runs of whitespace as one space,
 // trimmed, compared case-insensitively and without a trailing "#", "¶",
 // "§" or "🔗" (permalink marks), it equals title. A heading that is the
 // only block is kept, so the article never ends up empty.
@@ -234,7 +399,8 @@ func blocks(n *html.Node) []*html.Node {
 }
 
 // isImageBlock reports whether n is an <img> with a source (see
-// imageSource) or a <picture>, or a <figure>,
+// imageSource) that isn't decorative (see isDecorativeImage) or a <picture>,
+// or a <figure>,
 // <p>, <a> or <span> whose only content (besides whitespace, comments and,
 // in a <figure>, a <figcaption>) is an image block.
 func isImageBlock(n *html.Node) bool {
@@ -244,7 +410,7 @@ func isImageBlock(n *html.Node) bool {
 	switch n.DataAtom {
 	case atom.Img:
 		_, ok := imageSource(n, nil)
-		return ok
+		return ok && !isDecorativeImage(n)
 	case atom.Picture:
 		return true
 	case atom.Figure, atom.P, atom.A, atom.Span:
@@ -259,6 +425,26 @@ func isImageBlock(n *html.Node) bool {
 		content = append(content, c)
 	}
 	return len(content) == 1 && isImageBlock(content[0])
+}
+
+// isDecorativeImage reports whether img is too small to stand for a lead
+// image: a tracking pixel (a width or height of 1 or less, as Feedburner's
+// summaries end with) or an emoji WordPress drew as an image.
+func isDecorativeImage(img *html.Node) bool {
+	for _, key := range []string{"width", "height"} {
+		if v, ok := attr(img, key); ok {
+			if px, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && px <= 1 {
+				return true
+			}
+		}
+	}
+	class, _ := attr(img, "class")
+	for _, c := range strings.Fields(class) {
+		if c == "emoji" || c == "wp-smiley" {
+			return true
+		}
+	}
+	return false
 }
 
 // hasImage reports whether an <img> under n shows an image (see

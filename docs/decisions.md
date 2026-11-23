@@ -727,14 +727,20 @@ Planned in #309 (issues #299–#301).
 - **Saved has its own nav entry**: Home, Saved, My feeds, Search.
   Newest saved first, paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt and feed title; a user's saves are a small set).
 - **Saved articles must survive article retention**, and go into the full data export.
-- **The Save button sits under the card, right-aligned, with icon and label** (owner's pick in #316, from three layouts: this bar, an icon on the card's corner, an icon in the meta line).
+- **The Save button sits under the card, right-aligned** (owner's pick in #316, from three layouts: this bar, an icon on the card's corner, an icon in the meta line).
+  #316 gave it a label too; #754 made it icon-only (see "Star, Share and Save are icon-only" below).
   The card's left edge stays clean, and it's under the thumb on phones.
   "Also in" shares its line, on the left.
   More actions (Share) join it to Save's left.
   On the article page it sits under the title, left-aligned with the heading.
 - **The Star is an icon-only button to Save's left** (owner's pick in #349, from three layouts: a labelled Star next to Save, this icon-only Star, a Star in the meta line).
-  It stays compact next to the labelled Save and leaves room for Share, which goes between them.
-  Its accessible name is its `aria-label`, "Star"; `aria-pressed` carries the state, as on Save.
+  It leaves room for Share, which goes between them.
+- **Star, Share and Save are icon-only, with tooltips** (owner's pick in #754, from three options: this, all three labelled, and Save's label saying its state).
+  Until #754 only Save had a label (#316), and the three were never chosen as a group: one look for all three reads as one group, and on phones leaves the most room for the source link and Follow, which Save's label squeezed on a Discover section's Recent posts.
+  Bookmark, star and share icons are common enough to need no words: the Saved tab teaches the bookmark, and starred rows are tomato.
+  All labelled would be about 100px wider, too wide for a row with Follow at 320px, so phones would drop the labels and make two looks again.
+  Each button's accessible name is its `aria-label` ("Star", "Share", "Save") and its `title` is the same word, like the other icon-only buttons (My feeds' pencil, the Timelines page's arrows), so hovering tells a mouse user what it does; `aria-pressed` carries Star's and Save's state.
+  It also leaves "Save" naming only forms' submit buttons on screen.
 
 ### Sharing articles
 

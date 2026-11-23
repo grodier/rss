@@ -7,7 +7,7 @@ const URL_ = "https://example.com/post";
 
 beforeEach(() => {
   document.body.innerHTML = `
-    <button class="share-button" type="button" aria-label="Share" data-share-url="${URL_}" data-share-title="A post" hidden>
+    <button class="share-button" type="button" aria-label="Share" title="Share" data-share-url="${URL_}" data-share-title="A post" hidden>
       <span class="copied-label" aria-hidden="true"></span>
     </button>`;
 });

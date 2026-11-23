@@ -1,33 +1,37 @@
-{{/* The Save and Star buttons, for an article row or the article page:
-     data with Article, Saved, Starred and ReturnTo. save-star.ts relies on
-     this markup: form[data-toggle], its /save, /unsave,
-     /star or /unstar action, the button's aria-pressed and the return_to
-     input. rows.css shows the outline or the filled icon from aria-pressed. */}}
+{{/* An article's actions, for an article row or the article page: Star,
+     Share and Save, all icon-only. Each is named by its aria-label and has
+     the same word as its title, so hovering shows what it does; aria-pressed
+     carries Star's and Save's state.
+
+     The Save button: data with Article, Saved, Starred and ReturnTo.
+     save-star.ts relies on this markup: form[data-toggle], its /save,
+     /unsave, /star or /unstar action, the button's aria-pressed and the
+     return_to input. rows.css shows the outline or the filled icon from
+     aria-pressed. */}}
 {{define "save-button"}}
 <form class="save-form" method="post" action="/articles/{{.Article.ID}}/{{if .Saved}}unsave{{else}}save{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="save-button" type="submit" aria-pressed="{{.Saved}}">{{template "icon-bookmark"}}{{template "icon-bookmark-fill"}}<span class="save-label">Save</span></button>
+  <button class="save-button" type="submit" aria-pressed="{{.Saved}}" aria-label="Save" title="Save">{{template "icon-bookmark"}}{{template "icon-bookmark-fill"}}</button>
 </form>
 {{end}}
 
-{{/* The Star button: icon-only, named by its aria-label. The star-burst
-     dots are drawn only while rows.css animates a star just turned on. */}}
+{{/* The Star button, like Save. The star-burst dots are drawn only while
+     rows.css animates a star just turned on. */}}
 {{define "star-button"}}
 <form class="star-form" method="post" action="/articles/{{.Article.ID}}/{{if .Starred}}unstar{{else}}star{{end}}" data-toggle>
   <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star">{{template "icon-star"}}{{template "icon-star-fill"}}{{template "star-burst"}}</button>
+  <button class="star-button" type="submit" aria-pressed="{{.Starred}}" aria-label="Star" title="Star">{{template "icon-star"}}{{template "icon-star-fill"}}{{template "star-burst"}}</button>
 </form>
 {{end}}
 
-{{/* The Share button: icon-only, named by its aria-label. Rendered hidden:
-     share.ts shows it and does the sharing, so it never
-     appears without JavaScript. Only for articles with a canonical URL. */}}
+{{/* The Share button, rendered hidden: share.ts shows it and does the
+     sharing, so it never appears without JavaScript. Only for articles with
+     a canonical URL. */}}
 {{define "share-button"}}
-{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}<span class="copied-label" aria-hidden="true"></span></button>{{end}}
+{{with .Article.CanonicalURL}}<button class="share-button" type="button" aria-label="Share" title="Share" data-share-url="{{.}}" data-share-title="{{$.Article.DisplayTitle}}" hidden>{{template "icon-share"}}{{template "icon-check"}}<span class="copied-label" aria-hidden="true"></span></button>{{end}}
 {{end}}
 
-{{/* The actions on an article: icon-only Star and Share left of a labelled
-     Save, in one group. */}}
+{{/* The actions on an article: Star, Share and Save, in one group. */}}
 {{define "article-actions"}}
 <div class="article-actions">{{template "star-button" .}}{{template "share-button" .}}{{template "save-button" .}}</div>
 {{end}}

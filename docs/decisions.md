@@ -691,7 +691,7 @@ Planned in #163 (issues #147–#162).
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor); infinite scroll enhances it.
   Logged-in pages keep `Cache-Control: no-store`; the script keeps the URL on the visible row so Back and reload land nearby.
   (#155, #159)
-- **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date and aren't localized.
+- **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date, in the reader's date format but never moved to their time zone, since a day isn't an instant (the format was fixed as "9 Oct 2026" until a design review found it beside "Oct 9, 2026" on a US reader's timeline).
   No day headers or relative times.
   (#157, #160) This covers every user-visible time, not just articles: feed and site status times ("Last fetched", "Next check around") and list dates ("Latest article") too, still absolute, with no time zone setting.
   (#337)

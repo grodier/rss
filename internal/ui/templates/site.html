@@ -37,14 +37,14 @@
         <p class="fetch-error">This feed no longer exists.</p>
         {{else}}
         <p class="facts">
-          {{with .Facts.Section.ID}}<span>{{template "icon-compass"}}In Discover under <a href="/discover/sections/{{$.OnlyFeed.Facts.Section.Slug}}">{{$.OnlyFeed.Facts.Section.Name}}</a>.</span>{{end}}
-          <span>{{template "icon-activity"}}{{postingRate .Feed.PostsPerWeek}}.</span>
-          {{if not .Facts.LatestAt.IsZero}}<span>{{template "icon-clock"}}Latest post {{since .Facts.LatestAt}}.</span>{{end}}
+          {{with .Facts.Section.ID}}<span>{{template "icon-compass"}}<span>In Discover under <a href="/discover/sections/{{$.OnlyFeed.Facts.Section.Slug}}">{{$.OnlyFeed.Facts.Section.Name}}</a>.</span></span>{{end}}
+          <span>{{template "icon-activity"}}<span>{{postingRate .Feed.PostsPerWeek}}.</span></span>
+          {{if not .Facts.LatestAt.IsZero}}<span>{{template "icon-clock"}}<span>Latest post {{since .Facts.LatestAt}}.</span></span>{{end}}
         </p>
         {{end}}
         {{end}}
         {{if .Checking}}
-        <p class="facts"><span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span></p>
+        <p class="facts"><span><span>Checking for new feeds… <a href="/lookups/{{.LookupID}}">see progress</a></span></span></p>
         {{end}}
       </section>
 

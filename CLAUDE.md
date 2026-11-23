@@ -113,7 +113,7 @@ Update docs in the same PR as the code or plan they describe.
 | `docs/backlog.md` | Work that has no issue yet, and the Performance watchlist | Work is identified but not filed (add it); an item gets an issue (delete it); a performance risk is found (add it with the issue that introduced it) or fixed (delete it; only a fix removes a watchlist entry) |
 | `CLAUDE.md` | Rules, commands and layout | A convention, command or the layout changes |
 
-The order of planned work isn't in a file: it's the [Roadmap issue](https://github.com/grodier/rss/issues/385), whose sub-issues are the planned issues, and, for the admin and its observability, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560) (see "Finding work").
+The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://github.com/grodier/rss/issues/770) (which continues the full [Roadmap, #385](https://github.com/grodier/rss/issues/385)), whose sub-issues are the planned issues, and, for the admin and its observability, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560) (see "Finding work").
 
 - Docs say what the code can't: reasons, flows that cross packages, and invariants that aren't obvious.
   Don't restate what lives in the code, templates, tests, the schema's comments or Terraform: user-facing strings, CSS classes, every helper or test name, column lists, configuration values.
@@ -239,7 +239,8 @@ The order of planned work isn't in a file: it's the [Roadmap issue](https://gith
 ## Finding work
 
 GitHub issues are the source of truth for scoped tasks.
-The [Roadmap issue (#385)](https://github.com/grodier/rss/issues/385) says what to do next and in which order: its sub-issues, grouped into waves that can be built in parallel.
+The [Roadmap 2 issue (#770)](https://github.com/grodier/rss/issues/770) says what to do next and in which order: its sub-issues, grouped into waves that can be built in parallel.
+It continues the [Roadmap (#385)](https://github.com/grodier/rss/issues/385), which is full (GitHub allows 100 sub-issues) and keeps waves 1–17 until they close.
 The [Admin Roadmap issue (#560)](https://github.com/grodier/rss/issues/560) does the same for the admin site (`cmd/admin`) and its observability, with the same rules.
 `docs/backlog.md` has work that isn't an issue yet, and the Performance watchlist of things to monitor as the app grows.
 Before working on a feature, read its section in `docs/features.md` (the flow and where the code is) and in `docs/decisions.md` (what's decided and why, so you don't reopen it); `docs/architecture.md` has the overall shape.
@@ -258,7 +259,7 @@ Issues are written for an implementer with no context from the planning conversa
 - Give new types and function signatures, SQL and user-facing strings verbatim.
 - Name each test and list its cases, including the failure cases; for bug fixes, say how to confirm the test fails before the fix.
 - Name dependencies on other issues ("Depends on #N") and what to do if an assumption turns out wrong (stop and ask, or note it in the PR).
-- File each issue as a sub-issue of the Roadmap (#385), or of the Admin Roadmap (#560) for the admin and its observability, and update its waves.
+- File each issue as a sub-issue of Roadmap 2 (#770), or of the Admin Roadmap (#560) for the admin and its observability, and update its waves; never add to the full Roadmap (#385).
 - Performance risks: when planning, look at what the planned work could cost as data and traffic grow (queries that can't use an index, unpaginated lists, writes on page views, polling, per-row loops, unbounded tables).
   Add each risk to the Performance watchlist in `docs/backlog.md`, as part of the same planning work, with what it is, the issue number, the signal that it has become a problem, and the planned fix.
   Don't fix risks early, but don't leave them unrecorded.

@@ -3,7 +3,7 @@
 Decisions made while planning, with the reason for each and the issue or PR where it was made.
 Don't reopen one without a new reason.
 A plan or PR that changes one edits it here and says so in its description.
-Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), and work without an issue is in [backlog.md](backlog.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
+Planned work is the [Roadmap 2 issue](https://github.com/grodier/rss/issues/770) (continuing the full [Roadmap, #385](https://github.com/grodier/rss/issues/385)), and work without an issue is in [backlog.md](backlog.md), under the same section names; how the code works is in [architecture.md](architecture.md) and [features.md](features.md).
 
 ## Overall
 
@@ -18,6 +18,11 @@ Planned work is the [Roadmap issue](https://github.com/grodier/rss/issues/385), 
 - **Server-rendered HTML; JavaScript is progressive enhancement.** Every page works without it.
   The rules that follow are in CLAUDE.md.
   (#50, #163; #543 reverses their "one plain file, no build step": see "Frontend assets")
+- **Not a single-page app: the browser's own features first, then small enhancements of our own** (planned with #773–#776, Roadmap 2's wave 18, #770).
+  Back restoring a page is the back/forward cache's job (#773), not ours; what a script still adds is a module per enhancement on server-rendered markup, sized to its one job, like live search or infinite scroll.
+  Rejected: htmx (version 4 is 11–16 KB gzipped, three to four times `web-vitals`, needs CSP settings changed, and would replace modules that already do what it does; its `hx-boost` is the navigation below), Turbo (it takes over every navigation with its own cache, so `back-forward.ts`, the view transitions and the real-user metrics would all need reworking, and `web-vitals` doesn't count its page changes as views), and our own navigation that fetches pages and swaps in their `<main>` (the most JavaScript, and focus, titles, announcements, history and scroll become ours to get right).
+  Turbo comes back into question only with the native app shell (backlog, "Native app shell"), if Hotwire Native is chosen.
+  A shared helper for forms that update in place waits until a second form needs it (backlog, "Forms that update in place").
 - **Outbound requests to user-influenced URLs only go through `internal/fetch`**, which blocks private addresses (SSRF) and limits time, size and redirects.
   (#50)
 - **Cross-site requests are blocked with Go's `http.CrossOriginProtection`** (`Sec-Fetch-Site` / `Origin` headers) rather than CSRF tokens, so forms and sessions carry no tokens.
@@ -256,6 +261,9 @@ Planned in #583 with the admin, which is where it's read.
   The server resolves the page's path to its route pattern and drops the path; another site's referrer is kept as a host only.
   So there are page views, not visitors or sessions.
   The beacon stores nothing in the browser either, so "no cookie banner" (under "Accounts") stands; the privacy policy says what's measured.
+- **A Back or Forward that loaded the page again says why it wasn't restored** (#771, planned with Roadmap 2's wave 18, whose #773 restores timelines from the back/forward cache): the top-level reasons' names Chrome reports (`notRestoredReasons`), at most 3, each a short lowercase name or dropped, on `back_forward` views only.
+  Not an allowlist, since Chrome adds reasons and an unknown one is what we'd want to see; the names are about the page, not the reader, so the beacon still carries no identifier.
+  Raw views only, for the 30 days they're kept: the reasons are for finding blockers now, and a dimension in `rum_daily` would multiply its rows.
 - **Every browser on iOS and iPadOS counts as Safari** (#565): they all use Safari's engine, so Chrome or Firefox there measures what Safari does (no LCP or INP before 26.2), and counting them under their own names would mix WebKit's gaps into Chrome's and Firefox's numbers.
   Only Safari's own User-Agent gives the engine's version, so the others' major version is 0 (unknown).
   Other browsers built on Chromium count as Chrome, by its version, except Edge and Samsung Internet, which have families of their own.
@@ -700,6 +708,13 @@ Planned in #163 (issues #147–#162).
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor); infinite scroll enhances it.
   Logged-in pages keep `Cache-Control: no-store`; the script keeps the URL on the visible row so Back and reload land nearby.
   (#155, #159)
+- **Back to a timeline is restored from the back/forward cache, starting with Chrome** (#773, planned in Roadmap 2's wave 18): it's the trip readers make most, and a restored page keeps the rows infinite scroll added, its scroll and its images, with no JavaScript of ours.
+  Chrome keeps `no-store` pages there, but drops one when a cookie changes, when the page received a `no-store` response to a script, or after 3 minutes.
+  So navigations stay `no-store`, and a logged-out page can't come back from any cache, while responses to a script's requests (`Sec-Fetch-Mode` present and not `navigate`) get `private, no-cache`, with the scripts' own `fetch`es asking for no copy (`cache: "no-store"`).
+  The `tab` cookie is set only on navigations; moving between tabs still changes it, so Back between two timeline tabs still loads the page: keeping the visit's tab somewhere else is a bigger change for a shorter trip.
+  Safari and Firefox don't restore `no-store` pages, or not dependably; whether to drop `no-store` on navigations for them (with `Clear-Site-Data` on logout) waits on how often Chrome restores once #773 ships, which the real-user metrics measure (`restore` against `back_forward`, and #771's reasons).
+- **A row is marked read as soon as its article is opened** (#774): by its title or its source link, before the server has recorded it, so a list that isn't rendered again (restored by Back, or left open while the source opens in a new tab) still shows what was read.
+  A failed navigation leaves the row marked until the next load, which is harmless for a quiet marker; other copies of the article get their marker on the next load, since matching copies in the browser would need their canonical URL in the markup.
 - **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date, in the reader's date format but never moved to their time zone, since a day isn't an instant (the format was fixed as "9 Oct 2026" until a design review found it beside "Oct 9, 2026" on a US reader's timeline).
   No day headers, and no relative times for events: an article's time and a feed's fetch times ("Last fetched", "Next check around") stay absolute, since there the exact time matters.
   (#157, #160) This covers every user-visible time, not just articles, with no time zone setting.
@@ -737,6 +752,10 @@ Planned in #309 (issues #299–#301).
   The toggle routes answer a script (`Sec-Fetch-Mode` `cors` or `same-origin`, which a page can't set) with `204` and a form submission with the `303` back to the row; `app.js` submits the form normally on anything else.
   Before this, both a success and the redirect to the login page after a session ended came back to `fetch` as the same opaque redirect, so Save looked done when nothing was saved.
   A browser that doesn't send `Sec-Fetch-Mode` gets the `303` and falls back to a reload: slower, but right.
+- **Save and Star answer the press before the server does** (#775, planned in Roadmap 2's wave 18; how it looks is the issue's design checkpoint): they're the app's most frequent writes, and both routes are idempotent, so the button can show the result at once and put itself back on the rare failure.
+  The `204` contract above stays: on anything else the button returns to the last state a `204` confirmed, and the form for the state the reader wanted is submitted normally.
+  One request at a time per button, and the last press wins: when a request finishes and the reader now wants the other state, the script sends that one, so the server sees a button's requests in order.
+  Follow keeps waiting for the server, since unfollowing a feed with a name or tags leads to a confirmation (#752) and Follow in a list becomes "✓ Following".
 - **Saved has its own nav entry**: Home, Saved, My feeds, Search.
   Newest saved first, paged like the timeline, with a search box (`ILIKE` over title, page title, excerpt and feed title; a user's saves are a small set).
 - **Saved articles must survive article retention**, and go into the full data export.
@@ -855,6 +874,11 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 - **The form reads itself back** (#483, the owner's approval at the design checkpoint): a summary box first says what the timeline shows in a sentence ("Articles mentioning “AI” from feeds tagged Tech, except The Verge.") and how many of the user's feeds it draws from, then Name, Feeds and Articles, then Save.
   The sentence spells out the rules the form can't show (Leave out wins; every ticked condition must hold), which is where a filter form goes wrong (Apple Mail's any/all menu is the cautionary case); the count answers "what number?" for the posting rate better than pointing at My feeds.
   It replaced one long page that asked everything at once in four styles: the tag list twice, hints in rows of their own, and Save above a Sharing section it didn't save.
+- **Unsaved changes to the form are kept in the tab** (#776, planned in Roadmap 2's wave 18; how they're offered back is the issue's design checkpoint): it's the app's longest form, and an accidental Back, a tap on the tab bar or a phone reloading a background tab loses it, since the page is `no-store`.
+  In `sessionStorage` only, one draft per form address, never sent to the server, and cleared by the logged-out pages as recent searches are; not `localStorage`, where a draft would outlive the visit and turn up later on a shared device.
+  It's offered only on a fresh load of the form (not on a 422 re-render, which shows what was posted, nor on a page restored with its fields), and dropped on submit, so a session that ended on submit loses it, which 90 days without use makes rare.
+  Values only, by name: never password, file or hidden inputs, which carry the server's state.
+  The module is generic (`form[data-draft]`), but other forms opt in only with their own design checkpoint.
 - **One pattern per kind of setting** (#483): "All my feeds" or "Only some" as one segmented control, with tags as wrapping pills and feeds folded away with a filter box; Leave out folded away, open when it holds something; and every condition a checkbox that reveals its setting.
   Reveals are CSS `:has()`, so no JavaScript is needed; since hidden fields still post, the server decides by the checkboxes, and an unticked condition stores nothing.
   The summary is built in Go and rebuilt by `app.js` with the same words; the Go tests are the spec.
@@ -1640,6 +1664,8 @@ The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md
 - **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
 - **The admin and its observability have their own roadmap**, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560), at the owner's request, so the reader's roadmap stays readable; it works like #385, and neither edits the other's waves.
   (#583)
+- **A full roadmap continues in a numbered successor** (#770): when the Roadmap reached GitHub's limit of 100 sub-issues, Roadmap 2 took over with the same rules, carrying on its wave numbers (from wave 18), while #385 keeps its open waves until they close.
+  Before that, each batch past the limit had a tracking issue of its own listed in a wave of #385 (#685, #718, #725, #751), which put a batch's issues two clicks from the roadmap and its progress bar on another page; a successor keeps one list to read, and the next one starts the same way.
 - **Measure the reading queries before planning load testing** (#388), with a dev-only seed tool outside `cmd/www`, so seeding code never ships, measuring the repository methods themselves rather than copied SQL.
   The timeline query collapses copies over a user's whole history before paginating, so it's the likeliest to break first; its numbers decide what load testing covers.
 - **The first error-state pass is by hand, with no tool** (#392), and fixes nothing itself: it shows how many states there are and how much needs work before deciding whether a walkthrough tool is worth building.

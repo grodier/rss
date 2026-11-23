@@ -245,7 +245,7 @@ CI sets it and fails if it is missing.
   Start here.
 - [`docs/features.md`](docs/features.md): how each feature works and where to start reading its code.
 - [`docs/decisions.md`](docs/decisions.md): decisions made while planning, and why.
-- [Roadmap (#385)](https://github.com/grodier/rss/issues/385): the planned issues, in order.
+- [Roadmap 2 (#770)](https://github.com/grodier/rss/issues/770): the planned issues, in order, continuing the full [Roadmap (#385)](https://github.com/grodier/rss/issues/385).
 - [`docs/backlog.md`](docs/backlog.md): work that has no issue yet, and the performance watchlist.
 - [`infra/README.md`](infra/README.md): production infrastructure on Render (Terraform) and how to run it.
 - [`CLAUDE.md`](CLAUDE.md): code, testing and PR conventions (for people and coding agents), and which docs to update when.

@@ -40,14 +40,13 @@ describe("localizeTimes", () => {
     expect(text).not.toBe(medium().format(day)); // 8 Oct in New York
   });
 
-  it("keeps a relative date's text and shows its date in the reader's format and zone in its title", async () => {
-    document.body.innerHTML = `<time data-local="since" datetime="2026-10-09T02:30:00Z" title="9 Oct 2026">4 days ago</time>`;
+  it("keeps a relative date's text and shows its date and time in the reader's format and zone in its title", async () => {
+    document.body.innerHTML = `<time data-local="since" datetime="2026-10-09T02:30:00Z" title="9 Oct 2026 02:30 UTC">4 days ago</time>`;
     const { localizeTimes } = await import("./local-times");
     localizeTimes(document);
     const el = document.querySelector("time")!;
     expect(el.textContent).toBe("4 days ago");
-    expect(el.title).toBe(medium().format(new Date("2026-10-09T02:30:00Z")));
-    expect(el.title).not.toBe("9 Oct 2026"); // 8 Oct in New York
+    expect(el.title).toBe(medium({ timeStyle: "short" }).format(new Date("2026-10-09T02:30:00Z")));
   });
 
   it("shows an older feed's month and year in the reader's format, and its date in its title", async () => {

@@ -58,7 +58,7 @@ func siteName(s rss.Site) string {
 const sinceRelativeFor = 60 * 24 * time.Hour
 
 // since says how recently t was, for "Latest post {when}" and "Saved
-// {when}": "today" (or a future t), "yesterday", "N days ago" up to two
+// {when}" (through the since-date partial): "today" (or a future t), "yesterday", "N days ago" up to two
 // weeks, then weeks, and from sinceRelativeFor its UTC month and year
 // ("Sep 2025", which local-times.ts shows in the reader's format through
 // the since-date partial). Days are 24-hour spans, not calendar days: the

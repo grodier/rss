@@ -61,7 +61,7 @@
 
   /* A fact is its icon beside a span of text. The text is in a span of its
      own so it flows as a sentence: as flex items, a link or time and the
-     full stop after it were set apart by the gap ("1:51 AM ."). */
+     words around it would be set apart by the gap. */
   .facts > span {
     display: inline-flex;
     align-items: center;

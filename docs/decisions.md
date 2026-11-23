@@ -696,7 +696,7 @@ Planned in #163 (issues #147–#162).
   (#157, #160) This covers every user-visible time, not just articles, with no time zone setting.
   (#337)
 - **How recently a feed posted is relative: "Latest post 4 days ago"**, the same words and kind of date everywhere it's shown (My feeds, Discover, a section's Feeds, a site, search), because it answers "is this feed alive?", which a count of days answers at a glance and a date makes the reader work out (#755, the hybrid of option 1 of three at its design checkpoint, chosen over absolute everywhere and relative everywhere, the latter reopening the decision above).
-  From two months it's a month and year ("Latest post Sep 2025"), quicker to judge than "14 months ago", and the exact date is in the `title` on hover; a tooltip never shows on touch or to the keyboard, so the text must stand without it.
+  From two months it's a month and year ("Latest post Sep 2025"), quicker to judge than "14 months ago", and the exact date (and, while relative, time) is in the `title` on hover; a tooltip never shows on touch or to the keyboard, so the text must stand without it.
   "Today" and "yesterday" are 24-hour spans, not calendar days, since the server doesn't know the reader's time zone.
   A fact is a fragment: none ends in a full stop, in a feed's or a site's head as in a row.
 - **New articles don't appear live** while you scroll; a reload shows them on top.

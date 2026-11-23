@@ -3,9 +3,9 @@
 // the reader's date format and time zone; data-local="date" shows the date
 // only, and data-local="day" a date-only feed's calendar day, in the
 // reader's format but never moved to their time zone. The since-date
-// partial's times show their date in their title: data-local="since" keeps
-// its relative text ("4 days ago"), and data-local="month" shows its month
-// and year. Takes a root so rows added to the page later can be enhanced
+// partial's times keep the exact time in their title: data-local="since"
+// keeps its relative text ("4 days ago") with its date and time in its
+// title, and data-local="month" shows its month and year with its date. Takes a root so rows added to the page later can be enhanced
 // too.
 let fmt: Intl.DateTimeFormat | undefined;
 let dateFmt: Intl.DateTimeFormat | undefined;
@@ -31,7 +31,8 @@ export function localizeTimes(root: ParentNode): void {
     const d = new Date(el.dateTime);
     if (Number.isNaN(d.getTime())) continue;
     const kind = el.dataset.local;
-    if (kind === "since" || kind === "month") el.title = formatter("date").format(d);
+    if (kind === "since") el.title = formatter(undefined).format(d);
+    else if (kind === "month") el.title = formatter("date").format(d);
     if (kind !== "since") el.textContent = formatter(kind).format(d);
   }
 }

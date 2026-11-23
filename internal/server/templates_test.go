@@ -605,7 +605,7 @@ func TestSinceDatePartial(t *testing.T) {
 		t    time.Time
 		want string
 	}{
-		{"relative", recent, `<time data-local="since" datetime="` + recent.UTC().Format(time.RFC3339) + `" title="` + recent.UTC().Format("2 Jan 2006") + `">2 days ago</time>`},
+		{"relative", recent, `<time data-local="since" datetime="` + recent.UTC().Format(time.RFC3339) + `" title="` + recent.UTC().Format("2 Jan 2006 15:04 UTC") + `">2 days ago</time>`},
 		{"month and year", old, `<time data-local="month" datetime="2025-09-14T08:00:00Z" title="14 Sep 2025">Sep 2025</time>`},
 	}
 	for _, tt := range tests {

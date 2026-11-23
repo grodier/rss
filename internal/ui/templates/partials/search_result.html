@@ -48,7 +48,7 @@
   <div class="search-result-main">
     <a class="search-result-title" href="{{.Href}}">{{.Title}}</a>
     {{with .Desc}}<p class="search-result-desc">{{.}}</p>{{end}}
-    <p class="search-result-facts">{{if .Saved}}{{template "icon-bookmark"}}{{end}}{{range .Facts}}<span>{{.}}</span>{{end}}{{template "search-latest" .LatestAt}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
+    <p class="search-result-facts">{{if .Saved}}{{template "icon-bookmark"}}<span>Saved {{template "since-date" .SavedAt}}</span>{{end}}{{range .Facts}}<span>{{.}}</span>{{end}}{{template "search-latest" .LatestAt}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
   {{if .Following}}<span class="following-label search-following">✓ Following</span>
   {{else if .Follow}}{{template "follow-form" .Follow}}{{end}}

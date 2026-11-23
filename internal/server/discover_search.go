@@ -105,8 +105,11 @@ type searchResult struct {
 	LatestAt time.Time
 	// Warning is a followed feed's problem, after the facts.
 	Warning string
-	// Saved marks a saved article, whose facts lead with Saved's bookmark.
-	Saved bool
+	// Saved marks a saved article, whose facts lead with Saved's bookmark
+	// and when it was saved, SavedAt ("Saved 3 days ago", through the
+	// since-date partial).
+	Saved   bool
+	SavedAt time.Time
 	// Following marks a feed the reader follows ("✓ Following"); Follow is
 	// a site's one feed they don't follow yet. A site with several has
 	// neither: its row opens its page to choose (nothing guesses which,
@@ -460,12 +463,13 @@ func groupResult(g rss.SiteGroup, sites []rss.SiteWithFeeds, icons map[string]st
 func savedResult(a rss.SavedArticle, icon, q string, now time.Time) searchResult {
 	title := a.Article.DisplayTitle()
 	res := searchResult{
-		Href:   "/articles/" + a.Article.ID,
-		Title:  title,
-		Desc:   a.Article.DisplayExcerpt(),
-		Avatar: avatar(a.Feed.SiteID, a.Feed.Title, icon),
-		Facts:  []string{"Saved " + since(a.SavedAt, now), a.Feed.Title},
-		Saved:  true,
+		Href:    "/articles/" + a.Article.ID,
+		Title:   title,
+		Desc:    a.Article.DisplayExcerpt(),
+		Avatar:  avatar(a.Feed.SiteID, a.Feed.Title, icon),
+		Facts:   []string{a.Feed.Title},
+		Saved:   true,
+		SavedAt: a.SavedAt,
 	}
 	// ListSaved only returns articles that matched somewhere.
 	res.Score = searchScore(matchRank(title, q), true, boostSaved, now.Sub(a.SavedAt) < recentWithin)

@@ -863,6 +863,10 @@ type RUMView struct {
 	TransferBytes *int64
 	LCPElement    string // tag name of the LCP element
 	INPTarget     string // data-* hook or tag name of the slowest interaction's target
+	// NotRestored names why a back_forward view wasn't restored from the
+	// back/forward cache, as the browser reports it (Chrome's
+	// notRestoredReasons); nil for every other view.
+	NotRestored []string
 }
 
 // WebPerfQuery says which real-user views the admin's web performance page
@@ -877,8 +881,8 @@ type WebPerfQuery struct {
 }
 
 // WebPerf is the real-user views of a WebPerfQuery. Installed, Referrers,
-// Protocols and Connections are only in rum_views, so they're nil from
-// rollups.
+// Protocols, Connections and BackForward are only in rum_views, so they're
+// nil (or zero) from rollups.
 type WebPerf struct {
 	Total       RUMGroup
 	Devices     []RUMGroup
@@ -890,6 +894,21 @@ type WebPerf struct {
 	Referrers   []RUMCount // the 20 with the most views, most first; never ""
 	Protocols   []RUMCount // Key "" when not reported
 	Connections []RUMCount // Key "" when not reported
+	BackForward RUMBackForward
+}
+
+// RUMBackForward is the Back and Forward views: those restored from the
+// back/forward cache, and those loaded again with why they weren't
+// restored.
+type RUMBackForward struct {
+	Restored    int // restore views
+	NotRestored int // back_forward views
+	// Unexplained is the back_forward views with no reason, where the
+	// browser reports none (Safari, Firefox) or gave none.
+	Unexplained int
+	// Reasons are the 20 reasons named by the most back_forward views,
+	// most first; a view can name up to 3.
+	Reasons []RUMCount
 }
 
 // RUMGroup is the views of one value of a dimension (a device, a browser,

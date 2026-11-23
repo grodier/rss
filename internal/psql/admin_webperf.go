@@ -46,6 +46,11 @@ func isVital(metric string) bool {
 // the most views: anyone can post a beacon, so there can be many.
 const webPerfReferrers = 20
 
+// webPerfReasons is how many reasons for not restoring a page from the
+// back/forward cache WebPerf returns, those named by the most views: it
+// isn't an allowlist, so there can be many.
+const webPerfReasons = 20
+
 // webPerfQuantiles are RUMStat's percentiles, in its order.
 var webPerfQuantiles = []float64{0.75, 0.90, 0.95}
 
@@ -252,7 +257,40 @@ func (r *AdminWebPerfRepository) raw(ctx context.Context, q rss.WebPerfQuery) (r
 	}
 	sortCounts(wp.Protocols)
 	sortCounts(wp.Connections)
-	return wp, nil
+
+	wp.BackForward, err = r.backForward(ctx, args)
+	return wp, err
+}
+
+// backForward reads the Back and Forward views picked by rawWhere's args:
+// how many were restored from the back/forward cache, and why the rest
+// weren't.
+func (r *AdminWebPerfRepository) backForward(ctx context.Context, args []any) (rss.RUMBackForward, error) {
+	var bf rss.RUMBackForward
+	err := r.DB.QueryRowContext(ctx, `SELECT
+	        count(*) FILTER (WHERE nav_type = 'restore')::int,
+	        count(*) FILTER (WHERE nav_type = 'back_forward')::int,
+	        count(*) FILTER (WHERE nav_type = 'back_forward' AND cardinality(not_restored) = 0)::int
+	    FROM rum_views
+	    WHERE `+rawWhere+` AND nav_type IN ('restore', 'back_forward')`, args...).
+		Scan(&bf.Restored, &bf.NotRestored, &bf.Unexplained)
+	if err != nil {
+		return bf, fmt.Errorf("web perf back and forward: %w", err)
+	}
+	rows, err := r.DB.QueryContext(ctx, `SELECT reason, count(*)::int AS n
+	    FROM rum_views, unnest(not_restored) AS reason
+	    WHERE `+rawWhere+` AND nav_type = 'back_forward'
+	    GROUP BY reason
+	    ORDER BY n DESC, reason
+	    LIMIT `+fmt.Sprint(webPerfReasons), args...)
+	if err != nil {
+		return bf, err
+	}
+	bf.Reasons, err = scanCounts(rows)
+	if err != nil {
+		return bf, fmt.Errorf("web perf not restored reasons: %w", err)
+	}
+	return bf, nil
 }
 
 // scanCounts reads rows of a key and its views.

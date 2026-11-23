@@ -141,6 +141,7 @@ func TestRUMRecord(t *testing.T) {
 		TransferBytes: new(int64(12345)),
 		LCPElement:    "img",
 		INPTarget:     "data-share-url",
+		NotRestored:   []string{"response-cache-control-no-store", "unload-listener"},
 	}
 	minimal := rss.RUMView{Route: "/", NavType: "navigate", Device: "desktop", Browser: "other"}
 	before := time.Now()
@@ -148,7 +149,7 @@ func TestRUMRecord(t *testing.T) {
 
 	rows, err := db.Query(`SELECT received_at, route, nav_type, device, browser, browser_major, installed,
 		    connection, protocol, referrer_host, ttfb_ms, fcp_ms, lcp_ms, inp_ms, cls, dcl_ms, load_ms,
-		    server_ms, transfer_bytes, lcp_element, inp_target
+		    server_ms, transfer_bytes, lcp_element, inp_target, not_restored
 		FROM rum_views ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
@@ -159,9 +160,13 @@ func TestRUMRecord(t *testing.T) {
 		var v rss.RUMView
 		err := rows.Scan(&v.ReceivedAt, &v.Route, &v.NavType, &v.Device, &v.Browser, &v.BrowserMajor, &v.Installed,
 			&v.Connection, &v.Protocol, &v.ReferrerHost, &v.TTFBMs, &v.FCPMs, &v.LCPMs, &v.INPMs, &v.CLS, &v.DCLMs, &v.LoadMs,
-			&v.ServerMs, &v.TransferBytes, &v.LCPElement, &v.INPTarget)
+			&v.ServerMs, &v.TransferBytes, &v.LCPElement, &v.INPTarget, pq.Array(&v.NotRestored))
 		if err != nil {
 			t.Fatal(err)
+		}
+		// An empty column reads back as an empty slice; the view had none.
+		if len(v.NotRestored) == 0 {
+			v.NotRestored = nil
 		}
 		got = append(got, v)
 	}

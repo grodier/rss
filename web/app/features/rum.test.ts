@@ -169,6 +169,54 @@ describe("rum", () => {
     expect(fields.load).toBe("500");
   });
 
+  describe("not_restored", () => {
+    const reasons = (...names: string[]) => names.map((reason) => ({ reason }));
+    const notRestoredReasons = {
+      reasons: reasons("response-cache-control-no-store", "unload-listener"),
+      children: [{ reasons: reasons("masked"), children: null }],
+    };
+
+    it("sends why a Back wasn't restored, the top-level frame's reasons only", async () => {
+      navigation = { type: "back_forward", notRestoredReasons };
+      await start();
+      hide();
+      const [fields] = sent();
+      expect(fields.nav).toBe("back_forward");
+      expect(fields.not_restored).toBe("response-cache-control-no-store,unload-listener");
+    });
+
+    it.each<[string, Partial<PerformanceNavigationTiming>]>([
+      ["no reasons", { type: "back_forward", notRestoredReasons: null }],
+      ["an empty list", { type: "back_forward", notRestoredReasons: { reasons: [], children: null } }],
+      ["no list", { type: "back_forward", notRestoredReasons: { reasons: null, children: null } }],
+      ["a browser without the field", { type: "back_forward" }],
+    ])("sends none for a Back with %s", async (_, entry) => {
+      navigation = entry;
+      await start();
+      hide();
+      expect(sent()[0]).not.toHaveProperty("not_restored");
+    });
+
+    it("sends none for another navigation", async () => {
+      navigation = { type: "navigate", notRestoredReasons };
+      await start();
+      hide();
+      expect(sent()[0]).not.toHaveProperty("not_restored");
+    });
+
+    it("sends none for a restored view", async () => {
+      navigation = { type: "back_forward", notRestoredReasons };
+      await start();
+      hide();
+      pageTransition("pageshow", true);
+      show();
+      hide();
+      const views = sent();
+      expect(views.map((v) => v.nav)).toEqual(["back_forward", "restore"]);
+      expect(views[1]).not.toHaveProperty("not_restored");
+    });
+  });
+
   it("names the interaction's target by its tag when its control has no data-*", async () => {
     await start();
     reports.INP({ value: 250, entries: [{ target: element(`<p><a href="/x"><span>Read</span></a></p>`, "span") }] });

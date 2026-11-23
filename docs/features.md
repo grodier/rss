@@ -798,15 +798,16 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 1. **Filters.** Three rows of links (`readWebPerfParams`, `webPerfParams.href`), so every view has its own URL and needs no script: the period (24h, 7d by default, 30d, 90d, 13m), the device (all, phone, tablet, desktop) and the percentile (p75 by default, p90, p95); a value the page doesn't offer is its default.
    Up to 30 days read `rum_views`, which keeps 30; 90d and 13m read `rum_daily`'s whole UTC days before today, in whole steps (13 months are 56 weeks), so no point is part of one (`webPeriod.query`).
-2. **Reading.** `AdminWebPerfRepository.WebPerf` returns every view's stats, the breakdowns by device, browser, installed and route (LCP, INP and CLS only), the metrics a step at a time, each route's views a step at a time, the 20 referrer hosts with the most views (anyone can post a beacon, so there can be many), and the protocols and connections.
+2. **Reading.** `AdminWebPerfRepository.WebPerf` returns every view's stats, the breakdowns by device, browser, installed and route (LCP, INP and CLS only), the metrics a step at a time, each route's views a step at a time, the 20 referrer hosts with the most views (anyone can post a beacon, so there can be many), the protocols and connections, and the Back and Forward views (`backForward`).
    From `rum_views` the percentiles are exact (`percentile_cont`), one query for the totals and one with grouping sets for the breakdowns; from `rum_daily` they're `metrics.Percentile` over the summed buckets, interpolated within a bucket, and a group's views are the most any of its metrics counted per day.
    Either way the shares of good, needs-improvement and poor views are exact, since `metrics.RUMThresholds` are among `metrics.RUMBounds`.
-   Whether a view was installed, its referrer, protocol and connection are only in `rum_views`, so those parts say so for 90d and 13m.
+   Whether a view was installed, its referrer, protocol and connection, and why a Back or Forward wasn't restored, are only in `rum_views`, so those parts say so for 90d and 13m.
 3. **Core Web Vitals.** A row per metric (`vital`): LCP, INP and CLS, then FCP and TTFB smaller, each with its value at the chosen percentile and its rating, the other two percentiles small beneath, the shares bar, how many views reported it, and its chart over time with the good and poor thresholds, a point per step of the period (`steps`), with a gap where a step had no views.
    Above them, the assessment (`assess`) passes when LCP, INP and CLS are all good at p75, as Google assesses them, whatever percentile is chosen.
    A rating (`rating`, at the precision the page shows, so "2.50 s" is never rated worse than 2.5 s; a value on a threshold is in the better rating) is never color alone: each has a shape (`rating-glyph`: a circle, a square, a triangle) and its words.
 4. **Breakdowns and pages.** The device, browser and installed tables, and the routes table (`routes`: sortable by each column through links, the top 20 with "Show all"), give the views and LCP, INP and CLS at the chosen percentile (`segmentRows`); a row under 100 views is dimmed and tagged "few views", Safari's row notes that its INP is known to over-report, and a row missing a metric says which.
    The page views chart (`routeViewsChart`) draws the three routes with the most views.
+5. **Back and Forward.** How many of the period's Back and Forward views were restored from the back/forward cache (`restore`) rather than loaded again (`back_forward`), then the reasons the browser gave for those loaded again, each with its views, most first, the 20 named by the most views (`backForwardData`); a view can name up to 3, so the reasons' shares can add up to more than 100%, and the views that named none (Safari and Firefox report none) come last.
 
 **Start at:**
 
@@ -814,7 +815,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. `internal/psql/admin_webperf.go` (`WebPerf`, `raw`, `rollups`).
 3. `internal/ui/admin/webperf.html`, `partials/rating.html` and `web/admin/styles/partials/webperf.css`.
 
-**Tests:** `internal/admin/webperf_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket); `internal/metrics/percentile_test.go`.
+**Tests:** `internal/admin/webperf_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket, and `TestAdminWebPerfBackForward`); `internal/metrics/percentile_test.go`.
 
 ### Service health
 
@@ -900,8 +901,9 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
    `web-vitals` reports every change to TTFB, FCP, LCP, INP and CLS, and `rum.ts` keeps the latest of each, the LCP element's tag name and the slowest interaction's target, named by its control's first `data-*` attribute or its tag.
 7. **The beacon.** The first time the page is hidden (`visibilitychange`, or `pagehide`), it sends the view once to `POST /rum` with `navigator.sendBeacon`: its path, the metrics, the navigation entry's type (or `prerender`), load timings, transfer size, protocol and `Server-Timing` `app` duration, and the viewport width, whether it's installed, the effective connection type and another site's referrer host.
    A page restored from the back/forward cache starts a new view, `nav=restore`, with only what `web-vitals` measures for the restore, sent when it's next hidden.
+   A Back or Forward that loaded the page again (`back_forward`) also sends why it wasn't restored, where the browser says (`notRestoredReasons`, Chrome only): the top-level frame's reasons, comma separated, never its frames'.
 8. **Storing it.** `rumHandler` (`internal/server/rum.go`) always answers 204; it drops the beacon over `rumLimiter`'s or `rumTotalLimiter`'s limit, or when its path resolves to no page (`rumRoute`), or its navigation type or width isn't valid.
-   It keeps the route pattern, a device class from the width, and the browser's family and major version from the User-Agent (`parseBrowser`), cuts numbers to their ranges (outside them, NULL) and checks every other field against a set or a pattern, then stores the row (`RUMRepository.Record`).
+   It keeps the route pattern, a device class from the width, and the browser's family and major version from the User-Agent (`parseBrowser`), cuts numbers to their ranges (outside them, NULL) and checks every other field against a set or a pattern, keeping a `back_forward` view's first 3 reasons that are reason names (`rumNotRestored`), then stores the row (`RUMRepository.Record`).
 9. **Rollup.** The housekeeper counts each UTC day's views into `rum_daily`, one row per route, device, browser and metric with its views per `metrics.RUMBounds` bucket, an hour after the day ends (`RUMRepository.RollUp`), deletes views after 30 days and daily rows after 13 months, and keeps at most the newest 500,000 views (`Trim`).
 10. **Availability.** With `-app-internal-url` set, `admin serve` runs `admin.Pinger`, which requests `www`'s `/healthcheck` every minute and stores the outcome in `availability_checks` (`AvailabilityRepository.Record`): ok when `www` answers `available` within 5 seconds, else its status, `timeout` or `error` (details under "Background work" in architecture.md).
     It deletes checks after 90 days.

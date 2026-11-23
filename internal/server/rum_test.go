@@ -285,6 +285,34 @@ func TestRUMContext(t *testing.T) {
 	}
 }
 
+// A back_forward view keeps the first 3 of the reasons it wasn't restored
+// from the back/forward cache that are reason names; other views keep none.
+func TestRUMNotRestored(t *testing.T) {
+	long := strings.Repeat("a", 65)
+	tests := []struct {
+		name, nav, reasons string
+		want               []string
+	}{
+		{"two reasons", "back_forward", "response-cache-control-no-store,unload-listener", []string{"response-cache-control-no-store", "unload-listener"}},
+		{"more than 3", "back_forward", "masked,unload-listener,cookie-disabled,broadcast-channel", []string{"masked", "unload-listener", "cookie-disabled"}},
+		{"names that aren't reasons", "back_forward", "Masked,unload listener," + long + ",cookie-disabled", []string{"cookie-disabled"}},
+		{"64 characters", "back_forward", long[1:], []string{long[1:]}},
+		{"invalid names don't count toward 3", "back_forward", "X,a,b,,c,d", []string{"a", "b", "c"}},
+		{"empty", "back_forward", "", nil},
+		{"navigate", "navigate", "unload-listener", nil},
+		{"restore", "restore", "unload-listener", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, h, store := newRUMTestServer(t)
+			postRUM(t, h, rumBeacon("/", "nav", tt.nav, "not_restored", tt.reasons), testChromeUA)
+			if got := onlyView(t, store).NotRestored; !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("not restored = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRUMBrowser(t *testing.T) {
 	tests := []struct {
 		ua      string

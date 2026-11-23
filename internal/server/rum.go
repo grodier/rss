@@ -35,6 +35,9 @@ type rumForm struct {
 	Transfer   string `form:"transfer"`
 	LCPElement string `form:"lcp_element"`
 	INPTarget  string `form:"inp_target"`
+	// NotRestored is the comma-separated reasons a back_forward view wasn't
+	// restored from the back/forward cache.
+	NotRestored string `form:"not_restored"`
 }
 
 // The largest values a beacon's numbers can have; anything outside 0 to
@@ -60,7 +63,14 @@ var (
 	rumNameRX = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 	// rumHostRX matches a host name, lowercased.
 	rumHostRX = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$`)
+	// rumReasonRX matches a reason a page wasn't restored from the
+	// back/forward cache, as Chrome names them.
+	rumReasonRX = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 )
+
+// rumMaxReasons is how many reasons a view not restored from the
+// back/forward cache keeps.
+const rumMaxReasons = 3
 
 // rumHandler stores a page view's real-user beacon, sent by rum.ts when the
 // page is hidden (see "Observability" in docs/decisions.md). It answers 204
@@ -124,6 +134,7 @@ func (s *Server) rumView(r *http.Request, f rumForm) (rss.RUMView, bool) {
 		TransferBytes: rumBytes(f.Transfer, rumMaxTransferBytes),
 		LCPElement:    rumName(f.LCPElement),
 		INPTarget:     rumName(f.INPTarget),
+		NotRestored:   rumNotRestored(f.Nav, f.NotRestored),
 	}, true
 }
 
@@ -186,6 +197,27 @@ func rumName(v string) string {
 		return ""
 	}
 	return v
+}
+
+// rumNotRestored returns the first rumMaxReasons of v's comma-separated
+// reasons that are reason names, for a back_forward view only: a restored
+// view has none, and other navigations aren't Back or Forward. It isn't an
+// allowlist: Chrome adds reasons, and a new one is what the admin wants to
+// see.
+func rumNotRestored(nav, v string) []string {
+	if nav != "back_forward" {
+		return nil
+	}
+	var out []string
+	for name := range strings.SplitSeq(v, ",") {
+		if len(out) == rumMaxReasons {
+			break
+		}
+		if rumReasonRX.MatchString(name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // oneOf returns v if it's one of allowed, else "".

@@ -346,3 +346,48 @@ func TestWebPerfStoreError(t *testing.T) {
 		t.Errorf("GET = %d, want 500", rr.Code)
 	}
 }
+
+// The Back and Forward section: the share restored from the back/forward
+// cache, then the reasons the rest weren't, most first, and the views with
+// none last; a line when there were none, or for rollups.
+func TestWebPerfBackForward(t *testing.T) {
+	wp := sampleWebPerf()
+	wp.BackForward = rss.RUMBackForward{
+		Restored: 300, NotRestored: 100, Unexplained: 20,
+		Reasons: []rss.RUMCount{{Key: "response-cache-control-no-store", Views: 70}, {Key: "unload-listener", Views: 15}},
+	}
+	b := webPerfServer(t, &fakeWebPerf{wp: wp})
+	body := b.get(t, "/web-performance").Body.String()
+	for _, want := range []string{
+		`<h2 id="back-forward">Back and Forward</h2>`,
+		`<dt>Restored from the cache</dt>`, `<dd>75%</dd>`, `300 of 400 Back and Forward views`,
+		`<dt>Loaded again</dt>`, `<dd>100</dd>`, `80 with a reason`,
+		`<tr><td>response-cache-control-no-store</td><td class="num">70</td><td class="num">70%</td></tr>` +
+			`<tr><td>unload-listener</td><td class="num">15</td><td class="num">15%</td></tr>` +
+			`<tr><td>No reason reported</td><td class="num">20</td><td class="num">20%</td></tr>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page is missing %q", want)
+		}
+	}
+
+	// Restored every time: no reasons to show.
+	wp.BackForward = rss.RUMBackForward{Restored: 12}
+	b = webPerfServer(t, &fakeWebPerf{wp: wp})
+	body = b.get(t, "/web-performance").Body.String()
+	if !strings.Contains(body, `<dd>100%</dd>`) || strings.Contains(body, "Why pages were loaded again") {
+		t.Error("a period where every Back and Forward was restored shows reasons, or not its share")
+	}
+
+	b = webPerfServer(t, &fakeWebPerf{wp: sampleWebPerf()})
+	body = b.get(t, "/web-performance").Body.String()
+	if !strings.Contains(body, `No Back or Forward in the last 7 days.`) || strings.Contains(body, "Restored from the cache") {
+		t.Error("a period with no Back or Forward doesn't say so")
+	}
+
+	b = webPerfServer(t, &fakeWebPerf{wp: wp})
+	body = b.get(t, "/web-performance?period=90d").Body.String()
+	if !strings.Contains(body, `Only the last 30 days’ views say whether Back and Forward restored the page`) || strings.Contains(body, "Restored from the cache") {
+		t.Error("the rollups' period doesn't say the reasons are kept 30 days")
+	}
+}

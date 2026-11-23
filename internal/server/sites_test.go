@@ -351,6 +351,9 @@ func TestSiteHandlerSubscribeControls(t *testing.T) {
 		`action="/feeds/` + goneID + `/subscribe"`,
 		`action="/feeds/` + goneID + `/unsubscribe"`,
 		`action="/feeds/` + goneFollowID + `/subscribe"`,
+		// The page manages the site's feeds: Following stays a button
+		// that unfollows, not a list's "✓ Following".
+		"data-follow-once", "following-label",
 	} {
 		if strings.Contains(body, notWant) {
 			t.Errorf("body contains %q: %s", notWant, body)
@@ -682,6 +685,9 @@ func TestSiteHandlerOneFeed(t *testing.T) {
 				if !strings.Contains(head, want) {
 					t.Errorf("head does not contain %q: %s", want, head)
 				}
+			}
+			if strings.Contains(head, "data-follow-once") || strings.Contains(head, "following-label") {
+				t.Errorf("the head's Follow isn't a button that unfollows when followed: %s", head)
 			}
 			if strings.Contains(body, `class="site-feeds"`) {
 				t.Errorf("a site with one feed lists its feeds: %s", body)

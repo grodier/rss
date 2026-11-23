@@ -30,7 +30,7 @@
       </div>
 
       <form class="settings-form" action="/feeds/{{.Sub.Feed.ID}}/unsubscribe" method="post">
-        <p class="form-intro">Your {{if and .Sub.Title .Sub.Tags}}name and tags{{else if .Sub.Title}}name{{else}}tags{{end}} for it will be removed.</p>
+        {{with .Loses}}<p class="form-intro">Your {{.}} for it will be removed.</p>{{end}}
         <input type="hidden" name="return_to" value="{{.ReturnTo}}">
         <input type="hidden" name="confirm" value="true">
         <div class="form-actions">

@@ -38,10 +38,10 @@
 {{/* search-result is a row of Discover's search; its data is a
      searchResult: the avatar, the title (a saved article's in the headline
      font, on two lines), a site's tagline or an article's excerpt, its
-     facts (a saved article's led by Saved's bookmark), and Follow: pressed,
-     "Following", for a feed the reader follows, or Follow for a site's one
-     feed they don't follow yet. The whole row opens the result; Follow
-     sits above the row's link. */}}
+     facts (a saved article's led by Saved's bookmark), and a feed's state:
+     a quiet "✓ Following", or Discover's Follow for a site's one feed the
+     reader doesn't follow yet. The whole row opens the result; Follow sits
+     above the row's link. */}}
 {{define "search-result"}}
 <li class="search-result{{if .Saved}} search-result-saved{{end}}">
   {{template "avatar" .Avatar}}
@@ -50,7 +50,8 @@
     {{with .Desc}}<p class="search-result-desc">{{.}}</p>{{end}}
     <p class="search-result-facts">{{if .Saved}}{{template "icon-bookmark"}}<span>Saved {{template "since-date" .SavedAt}}</span>{{end}}{{range .Facts}}<span>{{.}}</span>{{end}}{{template "search-latest" .LatestAt}}{{with .Warning}}<span class="fetch-error">{{.}}</span>{{end}}</p>
   </div>
-  {{with .Follow}}{{template "follow-form" .}}{{end}}
+  {{if .Following}}<span class="following-label">✓ Following</span>
+  {{else if .Follow}}{{template "follow-form" .Follow}}{{end}}
 </li>
 {{end}}
 

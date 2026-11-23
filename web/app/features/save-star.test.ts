@@ -107,7 +107,7 @@ describe("save-star", () => {
     await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
   });
 
-  describe("Follow", () => {
+  describe("Follow on a page that manages the feed", () => {
     beforeEach(() => {
       document.body.innerHTML = `
         <form class="follow-form" method="post" action="/feeds/f1/subscribe" data-toggle
@@ -149,6 +149,40 @@ describe("save-star", () => {
       submit(form(), button());
       await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
       expect(button().getAttribute("aria-pressed")).toBe("false");
+    });
+  });
+
+  describe("Follow in a list for finding feeds", () => {
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <li id="feed-f1">
+          <form class="follow-form" method="post" action="/feeds/f1/subscribe" data-toggle data-follow-once
+              data-announce-pressed="Following Example" data-announce-unpressed="Unfollowed Example">
+            <input type="hidden" name="return_to" value="/discover#feed-f1">
+            <button class="follow-button" type="submit" aria-pressed="false" aria-label="Follow Example">Follow</button>
+            <a class="following-label" href="/feeds/f1" aria-label="Following Example: go to the feed" hidden>✓ Following</a>
+          </form>
+        </li>`;
+    });
+    const label = () => document.querySelector<HTMLAnchorElement>(".following-label")!;
+
+    it("puts the focused, shown ✓ Following in the form's place, and announces it", async () => {
+      expect(submit(form(), button())).toBe(true);
+      await vi.waitFor(() => expect(document.querySelector("form")).toBeNull());
+      expect(fetchMock.mock.calls[0][0]).toBe(new URL("/feeds/f1/subscribe", location.href).href);
+      expect(label().hidden).toBe(false);
+      expect(label().parentElement!.id).toBe("feed-f1");
+      expect(document.activeElement).toBe(label());
+      await vi.waitFor(() => expect(liveRegion()).toBe("Following Example"));
+      expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    it("keeps Follow and submits the form normally on anything but a 204", async () => {
+      fetchMock.mockImplementation(async () => redirect());
+      submit(form(), button());
+      await vi.waitFor(() => expect(formSubmit).toHaveBeenCalledTimes(1));
+      expect(button().getAttribute("aria-pressed")).toBe("false");
+      expect(label().hidden).toBe(true);
     });
   });
 

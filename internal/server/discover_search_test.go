@@ -238,21 +238,28 @@ func searchRowFacts(r *html.Node) string {
 	return strings.ReplaceAll(facts, "\n", "")
 }
 
-// searchRowFollowing reports whether a row shows that the reader follows
-// its feed: a result's pressed Following, or a suggestion's "✓ Following".
 func searchRowFollowing(r *html.Node) bool {
-	return len(findAll(r, func(n *html.Node) bool { return hasClass(n, "following-label") })) == 1 || pressedFollow(r)
+	return len(findAll(r, isShownFollowingLabel)) == 1
 }
 
-// pressedFollow reports whether n holds follow-form pressed, as
-// "Following", which unfollows.
-func pressedFollow(n *html.Node) bool {
-	for _, f := range findAll(n, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") }) {
-		if strings.HasSuffix(attr(f, "action"), "/unsubscribe") && len(findAll(f, func(n *html.Node) bool { return n.Data == "button" && attr(n, "aria-pressed") == "true" })) == 1 {
-			return true
-		}
+// isShownFollowingLabel matches "✓ Following" shown, not the one a list's
+// Follow holds hidden until it's pressed.
+func isShownFollowingLabel(n *html.Node) bool {
+	return hasClass(n, "following-label") && !hasAttr(n, "hidden")
+}
+
+// checkFollowOnce checks that form is a list's Follow for feedID: posted
+// in place, holding "✓ Following" hidden, linking to the feed, for
+// save-star.ts to put in its place.
+func checkFollowOnce(t *testing.T, form *html.Node, feedID string) {
+	t.Helper()
+	if !hasAttr(form, "data-toggle") || !hasAttr(form, "data-follow-once") {
+		t.Errorf("Follow for %s: want data-toggle and data-follow-once", feedID)
 	}
-	return false
+	labels := findAll(form, func(n *html.Node) bool { return hasClass(n, "following-label") })
+	if len(labels) != 1 || !hasAttr(labels[0], "hidden") || attr(labels[0], "href") != "/feeds/"+feedID {
+		t.Errorf("Follow for %s holds %d labels; want one, hidden, linking to /feeds/%s", feedID, len(labels), feedID)
+	}
 }
 
 // searchAnnounce is the results container's data-announce.
@@ -379,10 +386,10 @@ func TestDiscoverSearchResults(t *testing.T) {
 			title, facts, follow string
 			following            bool
 		}{
-			{"Bread & Pastry", "From The Daily Crumb" + "About 3 posts a week" + "Latest post 2 days ago", "/feeds/pastry/unsubscribe", true},
-			{"The Bread Lab", "About 3 posts a week" + "Latest post 2 days ago", "/feeds/lab/unsubscribe", true},
-			{"Bread Gone", "From gone.example" + "About 3 posts a week" + "Latest post 2 days ago" + "No longer exists", "/feeds/gone/unsubscribe", true},
-			{"Bread Failing", "From failing.example" + "About 3 posts a week" + "Latest post 2 days ago" + "Failing to update", "/feeds/failing/unsubscribe", true},
+			{"Bread & Pastry", "From The Daily Crumb" + "About 3 posts a week" + "Latest post 2 days ago", "", true},
+			{"The Bread Lab", "About 3 posts a week" + "Latest post 2 days ago", "", true},
+			{"Bread Gone", "From gone.example" + "About 3 posts a week" + "Latest post 2 days ago" + "No longer exists", "", true},
+			{"Bread Failing", "From failing.example" + "About 3 posts a week" + "Latest post 2 days ago" + "Failing to update", "", true},
 			{"Bread Ahead", "Bread Ahead Journal" + "ahead.example", "/feeds/ahead-journal/subscribe", false},
 			{"Bread and Butter", "butter.example" + "2 feeds", "", false},
 			{"The Daily Crumb", "World" + "crumb.example" + "You follow its other feed", "/feeds/crumb-world/subscribe", false},
@@ -400,9 +407,9 @@ func TestDiscoverSearchResults(t *testing.T) {
 			if got := follow(r); got != tt.follow {
 				t.Errorf("%s: Follow = %q, want %q", tt.title, got, tt.follow)
 			}
-		}
-		if n := len(findAll(doc, func(n *html.Node) bool { return hasClass(n, "following-label") })); n != 0 {
-			t.Errorf("%d \"✓ Following\" labels in the results, want none: followed feeds have Following", n)
+			for _, f := range findAll(r, func(n *html.Node) bool { return n.Data == "form" && hasClass(n, "follow-form") }) {
+				checkFollowOnce(t, f, strings.TrimSuffix(strings.TrimPrefix(tt.follow, "/feeds/"), "/subscribe"))
+			}
 		}
 		if rowsTitled := findAll(doc, func(n *html.Node) bool { return hasClass(n, "search-result-title") && textContent(n) == "Breadline" }); len(rowsTitled) != 0 {
 			t.Error("a site whose feeds the reader all follows is listed")
@@ -891,7 +898,7 @@ func TestFollowedFeedPlatform(t *testing.T) {
 		{"an ordinary site named like it", sub("Plain", plain), "No posts in the last 30 days"},
 	}
 	for _, tt := range tests {
-		if got := followedFeedResult(tt.sub, "", "q", "", now).Facts[0]; got != tt.want {
+		if got := followedFeedResult(tt.sub, "", "q", now).Facts[0]; got != tt.want {
 			t.Errorf("%s: result's first fact = %q, want %q", tt.name, got, tt.want)
 		}
 		facts := followedFeedSuggestion(tt.sub, "", "q", now).Facts

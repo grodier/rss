@@ -149,7 +149,7 @@
     stroke-width: 2.25;
   }
 
-  .search-result :is(.follow-form, .search-following, form) {
+  .search-result :is(form, .following-label) {
     position: relative;
     z-index: 1;
     align-self: center;

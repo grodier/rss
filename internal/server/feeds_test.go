@@ -1912,6 +1912,15 @@ func TestFeedUnfollowHandler(t *testing.T) {
 			returnTo: "/feeds/" + testFeedID,
 		},
 		{
+			// Only reached by typing the address: nothing to warn about.
+			name:     "neither a name nor tags",
+			sub:      rss.Subscription{Feed: feed},
+			query:    "?return_to=/discover",
+			want:     []string{"<h1>Unfollow NBC Sports?</h1>"},
+			notWant:  []string{"will be removed"},
+			returnTo: "/discover",
+		},
+		{
 			name:     "another site's return_to comes back to the feed",
 			sub:      rss.Subscription{Title: "Pro Football Talk", Feed: feed},
 			query:    "?return_to=" + url.QueryEscape("https://evil.example/"),

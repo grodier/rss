@@ -340,18 +340,26 @@ func newDiscoverRow(f rss.DiscoverFeed, icon, returnTo string) discoverRow {
 	return discoverRow{Feed: f, Icon: icon, ReturnTo: returnTo}
 }
 
-// followButton is Follow, or, pressed, "Following", which unfollows
-// (partials/discover_feed.html's follow-form): the one control for
-// following a feed, wherever a page offers it (a feed's page and a site's,
-// Discover's rows, a section's Recent posts and search results).
-// Unfollowing a subscription with a name or tags goes to a confirmation
-// first (feedUnsubscribeHandler).
+// followButton is Follow for a feed (partials/discover_feed.html's
+// follow-form), in one of two kinds, by the page it's on (see "Following a
+// feed" in docs/decisions.md):
+//   - On a page that manages the feed, its own and its site's (Manage),
+//     Following is a pressed button that unfollows, by way of a
+//     confirmation when the subscription has a name or tags
+//     (feedUnsubscribeHandler).
+//   - In a list for finding feeds (Discover's rows, a section's Feeds and
+//     Recent posts, search results), a followed feed shows "✓ Following"
+//     linking to its page, where it's managed, and Follow turns into that
+//     label once pressed.
 type followButton struct {
 	FeedID   string
 	Label    string // rss.DiscoverFeed.Label
 	ReturnTo string
-	// Following renders it pressed, as "Following", which unfollows.
+	// Following is whether the reader follows the feed.
 	Following bool
+	// Manage makes Following a pressed button that unfollows, rather than
+	// a label.
+	Manage bool
 	// Reload posts it as a plain form, without save-star.ts's toggle in
 	// place, for a page whose other controls depend on following (the
 	// feed's page, whose Edit is only for a followed feed).
@@ -429,9 +437,11 @@ func (s *Server) discoverSectionPostsHandler(w http.ResponseWriter, r *http.Requ
 		feed := p.Feed.Feed
 		feed.Title = p.Feed.Label() // the site's name with the feed's, as on the Feeds tab
 		rows[i] = articleRow{Article: p.Article, Feed: feed, ReturnTo: r.URL.RequestURI()}
-		// Back to the row, as on the Feeds tab, so following without
-		// JavaScript doesn't lose the reader's place.
-		rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI() + "#article-" + p.Article.ID, Following: p.Feed.Following}
+		if !p.Feed.Following {
+			// Back to the row, as on the Feeds tab, so following without
+			// JavaScript doesn't lose the reader's place.
+			rows[i].Follow = &followButton{FeedID: feed.ID, Label: p.Feed.Label(), ReturnTo: r.URL.RequestURI() + "#article-" + p.Article.ID}
+		}
 		siteIDs[i] = p.Feed.Site.ID
 	}
 	data.Icons = s.pageIcons(r, siteIDs)

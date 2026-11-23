@@ -217,6 +217,9 @@ Each with when it pays off:
 - [ ] **Newsletters by email (needs planning).**
   Each user gets an address that turns the newsletters sent to it into a feed they subscribe to, as Feedbin and Inoreader do.
   Needs receiving email (an inbound webhook from the email provider, or Email Routing to a worker), a way to create feeds that discovery didn't find, spam and size limits, and sanitizing email HTML, which is messier than feed HTML.
+- [ ] **Unfollowing also takes the feed out of the reader's custom timelines, without saying so** (found in #752).
+  `timeline_feeds` cascades from the subscription, so a timeline that names the feed loses it; the confirmation before unfollowing (#752) asks only about a name or tags, and a feed in a timeline but with neither unfollows at once.
+  Decide whether being in a timeline counts as something lost (one more condition in `losesOnUnfollow`, and a line on the confirmation), and whether following again should put it back.
 
 ## Reading
 

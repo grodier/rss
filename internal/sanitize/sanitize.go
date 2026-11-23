@@ -36,8 +36,10 @@ func newPolicy() *bluemonday.Policy {
 	return p
 }
 
-// HTML returns raw as HTML that is safe to render: relative URLs in href and
-// src are resolved against base (left as is if base is nil), http images
+// HTML returns raw as HTML that is safe to render: a first heading that
+// repeats title, the title the page shows, is dropped (see
+// dropRepeatedTitle), every <h1> becomes an <h2>, since the page's own title
+// is its only <h1>, relative URLs in href and src are resolved against base (left as is if base is nil), http images
 // load over https (see httpsImage), posts embedded from X and Bluesky become
 // post cards (see xPost, blueskyPost and socialCard), YouTube and
 // Vimeo iframes become click-to-play previews (see videoEmbed), code blocks
@@ -52,20 +54,22 @@ func newPolicy() *bluemonday.Policy {
 //
 // It is the one place the app vouches for untrusted HTML: article HTML is
 // never converted to template.HTML anywhere else.
-func HTML(raw string, base *url.URL) template.HTML {
-	return template.HTML(policy.Sanitize(prepare(raw, base)))
+func HTML(raw string, base *url.URL, title string) template.HTML {
+	return template.HTML(policy.Sanitize(prepare(raw, base, title)))
 }
 
-// prepare parses raw as a fragment of a <div>, rewrites it (see rewrite),
+// prepare parses raw as a fragment of a <div>, drops a first heading that
+// repeats title (see dropRepeatedTitle), rewrites it (see rewrite),
 // drops images without a source (see dropEmptyImages), prefixes its ids and
 // makes links to them in-page links (see localAnchors), reflows it (see reflow), links its bare URLs (see linkify) and renders it
 // back. If raw can't be parsed or rendered it is returned as is;
 // the policy still makes it safe, it just misses the rewrites.
-func prepare(raw string, base *url.URL) string {
+func prepare(raw string, base *url.URL, title string) string {
 	root, err := parse(raw)
 	if err != nil {
 		return raw
 	}
+	dropRepeatedTitle(root, title)
 	rewrite(root, base)
 	dropEmptyImages(root)
 	localAnchors(root, base)
@@ -102,21 +106,14 @@ func parse(raw string) (*html.Node, error) {
 // resolve against base (nil leaves them as they are). An empty imageURL only
 // checks the first two.
 //
-// Blocks are root's children, or the children of its only element if that
-// is a <div>, <article> or <section> wrapper (see blocks).
+// Blocks are read as firstBlocks reads them.
 func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 	root, err := parse(raw)
 	if err != nil {
 		return false
 	}
 
-	bs := blocks(root)
-	if len(bs) == 1 {
-		switch bs[0].DataAtom {
-		case atom.Div, atom.Article, atom.Section:
-			bs = blocks(bs[0])
-		}
-	}
+	bs := firstBlocks(root)
 	if len(bs) > 0 && isImageBlock(bs[0]) {
 		return true
 	}
@@ -137,6 +134,88 @@ func ShowsImage(raw string, base *url.URL, imageURL string) bool {
 		return false
 	}
 	return hasImage(root, base, want)
+}
+
+// firstBlocks returns the blocks an article starts with: root's children,
+// or the children of its only element if that is a <div>, <article> or
+// <section> wrapper (see blocks).
+func firstBlocks(root *html.Node) []*html.Node {
+	bs := blocks(root)
+	if len(bs) == 1 {
+		switch bs[0].DataAtom {
+		case atom.Div, atom.Article, atom.Section:
+			bs = blocks(bs[0])
+		}
+	}
+	return bs
+}
+
+// dropRepeatedTitle removes root's first block when it's a heading (h1–h6)
+// whose text is title, so a feed that starts its content with the title
+// doesn't show it twice. Blocks are read as ShowsImage reads them: root's,
+// or those of its only element when that's a <div>, <article> or
+// <section>. The text matches when, with runs of whitespace as one space,
+// trimmed, compared case-insensitively and without a trailing "#", "¶",
+// "§" or "🔗" (permalink marks), it equals title. A heading that is the
+// only block is kept, so the article never ends up empty.
+func dropRepeatedTitle(root *html.Node, title string) {
+	want := collapseSpace(title)
+	if want == "" {
+		return
+	}
+	bs := firstBlocks(root)
+	if len(bs) < 2 || bs[0].Type != html.ElementNode {
+		return
+	}
+	switch bs[0].DataAtom {
+	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
+	default:
+		return
+	}
+	got := collapseSpace(textContent(bs[0]))
+	// A title can end in a mark itself ("Learning C#"), so the heading
+	// matches with or without it.
+	if strings.EqualFold(got, want) || strings.EqualFold(trimPermalinkMark(got), want) {
+		bs[0].Parent.RemoveChild(bs[0])
+	}
+}
+
+// permalinkMarks are the marks a heading's permalink often shows after its
+// text.
+var permalinkMarks = []string{"#", "¶", "§", "🔗"}
+
+// trimPermalinkMark returns s, which collapseSpace has trimmed, without a
+// trailing permalink mark and the whitespace before it.
+func trimPermalinkMark(s string) string {
+	for _, m := range permalinkMarks {
+		if t, ok := strings.CutSuffix(s, m); ok {
+			return strings.TrimRight(t, " ")
+		}
+	}
+	return s
+}
+
+// collapseSpace returns s trimmed, with each run of whitespace as one space.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// textContent returns the text under n.
+func textContent(n *html.Node) string {
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			switch c.Type {
+			case html.TextNode:
+				b.WriteString(c.Data)
+			case html.ElementNode:
+				walk(c)
+			}
+		}
+	}
+	walk(n)
+	return b.String()
 }
 
 // blocks returns the children of n that aren't comments or whitespace-only
@@ -242,7 +321,8 @@ func httpsImage(rawURL string) string {
 	return u.String()
 }
 
-// rewrite walks the children of n: it resolves href and src against base,
+// rewrite walks the children of n: it makes each <h1> an <h2>, resolves
+// href and src against base,
 // replaces embedded posts with post cards, replaces iframes with post cards,
 // video previews or links (or drops them), removes srcset and sizes, and
 // makes images show the image their lazy-loading attributes or <noscript>
@@ -280,6 +360,11 @@ func rewrite(n *html.Node, base *url.URL) {
 				n.RemoveChild(c)
 				c = next
 				continue
+			case atom.H1:
+				// The page's title is its only <h1>; a feed's is a section
+				// heading. Other levels stay, so the <h2>s of the many
+				// articles without an <h1> keep their size.
+				c.DataAtom, c.Data = atom.H2, atom.H2.String()
 			case atom.Img:
 				rewriteImage(c, base)
 			case atom.Pre:

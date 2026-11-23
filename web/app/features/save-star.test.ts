@@ -10,7 +10,7 @@ beforeEach(async () => {
   document.body.innerHTML = `
     <form class="save-form" method="post" action="/articles/a1/save" data-toggle>
       <input type="hidden" name="return_to" value="/#article-a1">
-      <button class="save-button" type="submit" aria-pressed="false">Save</button>
+      <button class="save-button" type="submit" aria-pressed="false" aria-label="Save" title="Save"></button>
     </form>`;
   fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
   vi.stubGlobal("fetch", fetchMock);

@@ -659,12 +659,13 @@ func TestArticleHandlerStarred(t *testing.T) {
 	})
 }
 
-// TestShareButton checks the Share button on a row and on the article page:
-// for an article with a canonical URL, a hidden icon-only button carrying the
-// URL and the title, between the Star and Save forms; for one without, no
-// button and Star and Save unchanged.
-func TestShareButton(t *testing.T) {
-	row := func(t *testing.T, a rss.Article) string {
+// actionSurfaces render an article's actions on Home's timeline (a row) and
+// on the article page, returning the page's body.
+var actionSurfaces = []struct {
+	name   string
+	render func(*testing.T, rss.Article) string
+}{
+	{"row", func(t *testing.T, a rss.Article) string {
 		t.Helper()
 		a.ID = testArticleID
 		s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{
@@ -673,19 +674,51 @@ func TestShareButton(t *testing.T) {
 			},
 		}})
 		return getHome(t, s, "/", true).Body.String()
-	}
-	page := func(t *testing.T, a rss.Article) string {
+	}},
+	{"article page", func(t *testing.T, a rss.Article) string {
 		t.Helper()
 		return serveArticle(t, articleServer(t, a, nil, nil, nil), testArticleID).Body.String()
-	}
+	}},
+}
 
-	for _, surface := range []struct {
-		name   string
-		render func(*testing.T, rss.Article) string
-	}{
-		{"row", row},
-		{"article page", page},
-	} {
+// TestArticleActionNames checks that Star, Share and Save, on a row and on
+// the article page, are icon-only buttons with no visible text, each named
+// by its aria-label and with the same word as its title (its tooltip).
+func TestArticleActionNames(t *testing.T) {
+	for _, surface := range actionSurfaces {
+		t.Run(surface.name, func(t *testing.T) {
+			body := surface.render(t, rss.Article{Title: "A post", CanonicalURL: "https://example.com/post"})
+			doc, err := html.Parse(strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for class, name := range map[string]string{"star-button": "Star", "share-button": "Share", "save-button": "Save"} {
+				buttons := findAll(doc, func(n *html.Node) bool { return n.Data == "button" && hasClass(n, class) })
+				if len(buttons) != 1 {
+					t.Errorf("found %d button.%s, want 1", len(buttons), class)
+					continue
+				}
+				b := buttons[0]
+				if got := attr(b, "aria-label"); got != name {
+					t.Errorf("%s aria-label = %q, want %q", class, got, name)
+				}
+				if got := attr(b, "title"); got != name {
+					t.Errorf("%s title = %q, want %q", class, got, name)
+				}
+				if got := strings.TrimSpace(textContent(b)); got != "" {
+					t.Errorf("%s text = %q, want none", class, got)
+				}
+			}
+		})
+	}
+}
+
+// TestShareButton checks the Share button on a row and on the article page:
+// for an article with a canonical URL, a hidden icon-only button carrying the
+// URL and the title, between the Star and Save forms; for one without, no
+// button and Star and Save unchanged.
+func TestShareButton(t *testing.T) {
+	for _, surface := range actionSurfaces {
 		t.Run(surface.name, func(t *testing.T) {
 			for _, tt := range []struct {
 				name      string

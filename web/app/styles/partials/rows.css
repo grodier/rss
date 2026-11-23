@@ -506,9 +506,9 @@
     text-decoration: underline;
   }
 
-  /* Article actions: icon-only Star and Share and a labelled Save, in one
-     row. Under the card on rows, under the title on the
-     article page. */
+  /* Article actions: icon-only Star, Share and Save, in one row, each
+     button a square around its icon. Under the card on rows, under the
+     title on the article page. */
   .article-actions {
     display: flex;
     align-items: center;
@@ -520,24 +520,16 @@
   .share-button {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.625rem 0.375rem 0.375rem;
+    padding: 0.375rem;
     border: 0;
     border-radius: var(--radius-control);
     background: none;
     color: var(--text-3);
     font: inherit;
-    font-size: 0.8125rem;
-    font-weight: 550;
     cursor: pointer;
     transition:
       background-color var(--duration-quick) var(--ease-out),
       color var(--duration-quick) var(--ease-out);
-  }
-
-  .star-button,
-  .share-button {
-    padding: 0.375rem;
   }
 
   /* The button's display would override hidden; share.ts unhides it. */

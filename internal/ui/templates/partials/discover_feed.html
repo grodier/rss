@@ -13,7 +13,7 @@
   <div class="discover-feed-main">
     <p class="discover-feed-name"><a href="/sites/{{$f.Site.ID}}">{{$name}}</a> <span class="discover-host" title="{{$f.Site.Host}}">{{$f.Site.Host}}</span></p>
     {{with $f.FeedTitle}}<p class="discover-feed-title">{{.}}</p>{{end}}
-    <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest {{since $f.LatestAt}}</span>{{end}}</p>
+    <p class="discover-meta"><span>{{postingRate $f.Feed.PostsPerWeek}}</span>{{if not $f.LatestAt.IsZero}} · <span>Latest post {{template "since-date" $f.LatestAt}}</span>{{end}}</p>
     {{if $f.Latest}}
     <details class="discover-peek">
       <summary>Latest posts</summary>

@@ -597,9 +597,9 @@ func TestSiteHandlerFeedRows(t *testing.T) {
 	t.Run("facts", func(t *testing.T) {
 		for _, want := range []string{
 			"<h2>4 feeds</h2>",
-			`<a class="site-feed-section" href="/discover/sections/technology">Technology</a> · <span>About 4 posts a week</span> · <span>Latest 2 days ago</span>`,
-			`<span>About 10 posts a week</span> · <span>Latest today</span>`,
-			`<span>Less than one post a week</span> · <span>Latest 12 days ago</span>`,
+			`<a class="site-feed-section" href="/discover/sections/technology">Technology</a> · <span>About 4 posts a week</span> · <span>Latest post <time data-local="since" datetime="` + now.Add(-50*time.Hour).UTC().Format(time.RFC3339) + `" title="` + now.Add(-50*time.Hour).UTC().Format("2 Jan 2006 15:04 UTC") + `">2 days ago</time></span>`,
+			`<span>About 10 posts a week</span> · <span>Latest post <time data-local="since" datetime="` + now.Add(-time.Hour).UTC().Format(time.RFC3339) + `" title="` + now.Add(-time.Hour).UTC().Format("2 Jan 2006 15:04 UTC") + `">today</time></span>`,
+			`<span>Less than one post a week</span> · <span>Latest post <time data-local="since" datetime="` + now.Add(-12*24*time.Hour).UTC().Format(time.RFC3339) + `" title="` + now.Add(-12*24*time.Hour).UTC().Format("2 Jan 2006 15:04 UTC") + `">12 days ago</time></span>`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("body does not contain %q: %s", want, body)
@@ -678,7 +678,7 @@ func TestSiteHandlerOneFeed(t *testing.T) {
 
 			head := body[strings.Index(body, `<section class="profile">`):]
 			head = head[:strings.Index(head, "</section>")]
-			for _, want := range []string{tt.want, `name="return_to" value="/sites/` + testSiteID + `"`, "About 1 post a week.</span>", "Latest post today.</span>"} {
+			for _, want := range []string{tt.want, `name="return_to" value="/sites/` + testSiteID + `"`, "<span>About 1 post a week</span>", ">today</time></span>"} {
 				if !strings.Contains(head, want) {
 					t.Errorf("head does not contain %q: %s", want, head)
 				}

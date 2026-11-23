@@ -41,12 +41,12 @@
         <p class="profile-desc">{{.}}</p>
         {{end}}
         <p class="facts">
-          <span>{{template "icon-link"}}<code>{{.Feed.Url}}</code></span>
+          <span>{{template "icon-link"}}<span><code>{{.Feed.Url}}</code></span></span>
           {{if .Feed.LastFetched.IsZero}}
-          <span>{{template "icon-clock"}}Never fetched.</span>
+          <span>{{template "icon-clock"}}<span>Never fetched</span></span>
           {{else}}
-          <span>{{template "icon-clock"}}Last fetched {{template "local-time" .Feed.LastFetched}}.</span>
-          <span>{{template "icon-activity"}}{{postingRate .Feed.PostsPerWeek}}.</span>
+          <span>{{template "icon-clock"}}<span>Last fetched {{template "local-time" .Feed.LastFetched}}</span></span>
+          <span>{{template "icon-activity"}}<span>{{postingRate .Feed.PostsPerWeek}}</span></span>
           {{end}}
         </p>
         {{if not .Feed.GoneAt.IsZero}}

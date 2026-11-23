@@ -1,2 +1,12 @@
 {{define "local-time"}}<time data-local datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
 {{define "local-date"}}<time data-local="date" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}
+{{/* local-day is a date-only feed's date: a calendar day, not an instant, so
+     local-times.ts shows it in the reader's date format but never moves it
+     to their time zone. */}}
+{{define "local-day"}}<time data-local="day" datetime="{{.UTC.Format "2006-01-02"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}
+{{/* since-date is how recently a feed posted, from since: relative ("4 days
+     ago") for two months, with its date and time in its title (with the
+     time, so "yesterday", which counts 24 hours, never seems to contradict
+     a calendar date), then a month and year ("Sep 2025") with its date.
+     local-times.ts shows them in the reader's format and time zone. */}}
+{{define "since-date"}}{{$s := sinceDate .}}<time data-local="{{if $s.Relative}}since{{else}}month{{end}}" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}" title="{{if $s.Relative}}{{.UTC.Format "2 Jan 2006 15:04 UTC"}}{{else}}{{.UTC.Format "2 Jan 2006"}}{{end}}">{{$s.Text}}</time>{{end}}

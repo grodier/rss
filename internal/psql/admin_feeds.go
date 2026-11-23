@@ -8,7 +8,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/seed"
@@ -411,7 +410,7 @@ func (r *AdminFeedRepository) SiteIcon(ctx context.Context, id string) (rss.Site
 // refresh runner fetches it next as if it had never failed, recorded as
 // feed.reset_backoff by by. rss.ErrNoRecord if the feed doesn't exist.
 func (r *AdminFeedRepository) ResetBackoff(ctx context.Context, id string, by rss.AuditActor) error {
-	return r.updateFeed(ctx, id, by, "feed.reset_backoff",
+	return r.updateRow(ctx, "feed", id, by, "feed.reset_backoff",
 		`SELECT consecutive_failures, next_fetch_at FROM feeds WHERE id = $1 FOR UPDATE`,
 		`UPDATE feeds SET consecutive_failures = 0, next_fetch_at = now() WHERE id = $1
 			RETURNING consecutive_failures, next_fetch_at`,
@@ -422,18 +421,19 @@ func (r *AdminFeedRepository) ResetBackoff(ctx context.Context, id string, by rs
 // feed.clear_gone by by. A feed that isn't gone is left alone, with no
 // record. rss.ErrNoRecord if the feed doesn't exist.
 func (r *AdminFeedRepository) ClearGone(ctx context.Context, id string, by rss.AuditActor) error {
-	return r.updateFeed(ctx, id, by, "feed.clear_gone",
+	return r.updateRow(ctx, "feed", id, by, "feed.clear_gone",
 		`SELECT gone_at, next_fetch_at FROM feeds WHERE id = $1 FOR UPDATE`,
 		`UPDATE feeds SET gone_at = NULL, next_fetch_at = now() WHERE id = $1 AND gone_at IS NOT NULL
 			RETURNING gone_at, next_fetch_at`,
 		"gone_at", "next_fetch_at")
 }
 
-// updateFeed runs an action on feed id in one transaction: it locks the
-// feed and reads fields with read, changes them with update, which returns
-// them, and records action by by with their values before and after. When
-// update changes no row, there's nothing to record.
-func (r *AdminFeedRepository) updateFeed(ctx context.Context, id string, by rss.AuditActor, action, read, update string, fields ...string) error {
+// updateRow runs an action on the targetType (feed or site) id in one
+// transaction: it locks the row and reads fields with read, changes them
+// with update, which returns them, and records action by by with their
+// values before and after. When update changes no row, there's nothing to
+// record.
+func (r *AdminFeedRepository) updateRow(ctx context.Context, targetType, id string, by rss.AuditActor, action, read, update string, fields ...string) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -455,7 +455,7 @@ func (r *AdminFeedRepository) updateFeed(ctx context.Context, id string, by rss.
 	if err != nil {
 		return err
 	}
-	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: action, TargetType: "feed", TargetID: id, Before: before, After: after})
+	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: action, TargetType: targetType, TargetID: id, Before: before, After: after})
 	if err != nil {
 		return err
 	}
@@ -480,31 +480,16 @@ func scanFields(row *sql.Row, fields []string) (map[string]any, error) {
 }
 
 // CheckIcon makes site id's icon due to be checked now, recorded as
-// site.check_icon by by. rss.ErrNoRecord if the site doesn't exist.
+// site.check_icon by by. It also clears icon_checked_at, so the site counts
+// as never checked and the icon runner takes it whether or not it has a
+// subscribed feed (siteIconDue); the runner sets it again when it records
+// the check. rss.ErrNoRecord if the site doesn't exist.
 func (r *AdminFeedRepository) CheckIcon(ctx context.Context, id string, by rss.AuditActor) error {
-	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	var before, after time.Time
-	err = tx.QueryRowContext(ctx, `SELECT icon_next_check_at FROM sites WHERE id = $1 FOR UPDATE`, id).Scan(&before)
-	if errors.Is(err, sql.ErrNoRows) {
-		return rss.ErrNoRecord
-	}
-	if err != nil {
-		return err
-	}
-	if err := tx.QueryRowContext(ctx, `UPDATE sites SET icon_next_check_at = now() WHERE id = $1 RETURNING icon_next_check_at`, id).Scan(&after); err != nil {
-		return err
-	}
-	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "site.check_icon", TargetType: "site", TargetID: id,
-		Before: map[string]any{"icon_next_check_at": before}, After: map[string]any{"icon_next_check_at": after}})
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return r.updateRow(ctx, "site", id, by, "site.check_icon",
+		`SELECT icon_checked_at, icon_next_check_at FROM sites WHERE id = $1 FOR UPDATE`,
+		`UPDATE sites SET icon_checked_at = NULL, icon_next_check_at = now() WHERE id = $1
+			RETURNING icon_checked_at, icon_next_check_at`,
+		"icon_checked_at", "icon_next_check_at")
 }
 
 // CheckForFeeds queues a lookup of site id's home page at a reader's

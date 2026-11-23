@@ -12,8 +12,8 @@ What's needed, after deployment, before other people use the app on a public URL
 Running it locally for yourself needs none of this.
 
 - [ ] **Review the privacy policy and terms** (`privacy.html`, `terms.html`, #269).
-  They were drafted without legal review and name George Rodier, in the United States, as who runs rss.
-  Before launch: put in the product's name, and a business if one runs it; name a state for governing law (the terms only say "the United States"); check each section against what the app then does (processors, retention, the Settings features it mentions); have them reviewed; and bump "Last updated".
+  They were drafted without legal review; they name Paper Round, run by George Rodier in the United States (last updated November 9, 2026).
+  Before launch: name a business if one runs it; name a state for governing law (the terms only say "the United States"); check each section against what the app then does (processors, retention, the Settings features it mentions); have them reviewed; and bump "Last updated".
 
 ## Accounts
 
@@ -109,7 +109,7 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Feed fixes:** change a feed's URL by hand (until permanent redirects are followed, under "Feed ingestion"), merge duplicates, pause a feed, delete one (showing its subscriber count), and a per-host view of feeds and failures.
 - [ ] **Feed triage, optional:** more on a feed's admin page than its current state (#581 shows the last error, failures in a row and the fetch times), to consider if that isn't enough to decide a fix.
   Three parts, each useful alone:
-  - the "Fetch history" under "Feed ingestion" (the last 20 or so attempts per feed: time, status, duration, size, items, new and updated, error) as a timeline on the feed's page, which reverses debug mode's "Nothing new is stored" ("Debug mode" in decisions.md) and adds a write per fetch for the watchlist;
+  - the "Fetch history" under "Feed ingestion", shown as a timeline on the feed's admin page;
   - the reader's live feed inspector on the admin's feed page (the fetch, its status, headers and redirects, and what was parsed, saving nothing), which means moving it out of `internal/server` into a package both sites use;
   - failing feeds grouped by their error at the top of the Failing filter ("12 feeds: no such host"), like #582's groups for the other queues.
 - [ ] **A model's suggestions for Discover's catalog** (from #649; after #712, once the owner has picked 200–300 feeds by hand).
@@ -154,9 +154,6 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Bring your web: the sites of people you follow elsewhere, and your bookmarks (needs planning).**
   From #450's prototypes: a Bluesky handle's follows through the public API (many handles are the person's own domain, so discovery can go straight to their site; Mastodon profiles carry website links too), and a browser bookmarks file, whose sites are looked up and offered ticked, like an import.
   Deferred because they help most once readers arrive from outside the owner's circle; both are lookups at scale (one per account followed or site bookmarked), and a bookmarks file is private, so it must be read and discarded.
-- [ ] **Lists readers make and share, to bring people in (needs planning).**
-  From #450: starter packs, reimagined as a reader's list of sites ("What I read on design") with a public page and "Follow all on Paper Round", which carries the list through the waitlist or signup so the newcomer's Home starts with it.
-  For the traction stage, not first run: unlisted links first, since discoverable lists bring the spam and impersonation that keep shared timelines out of Search; check it against "Shared timelines" and "Your friends' picks" so there aren't three sharing systems.
 - [ ] **Name → website suggestions.**
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
@@ -206,9 +203,9 @@ Each with when it pays off:
   Reading them in both formats, grouped or not, would cover Media RSS feeds that declare no thumbnail.
   When such a feed turns up.
 - [ ] **Fetch history.**
-  Keep the last N fetch attempts per feed, with status, bytes, items, new and updated counts, and duration, but no bodies.
-  Show them in the feed's debug panel.
-  Debug mode (#327–#330) deliberately stores nothing and inspects live.
+  Keep the last 20 or so fetch attempts per feed: time, status, duration, bytes, items, new and updated counts, and the error, but no bodies.
+  Show them on the feed's admin page (see "Feed triage" under Admin), and perhaps in the reader's debug panel.
+  It reverses debug mode's "Nothing new is stored" (#327–#330, "Debug mode" in decisions.md), which inspects live, and adds a write per fetch for the watchlist.
   Add this only if a problem comes and goes, so that a live fetch can't show it.
   Cap it per feed, since it's a table that grows with every fetch.
 
@@ -231,7 +228,7 @@ Each with when it pays off:
   Worth it once something reads the old archive: searching all articles, related articles, or saved articles from far back that look bare.
 - [ ] **Authors from the article's web page.**
   Feeds that name no author could get one from enrichment (`article:author`, `<meta name="author">`, JSON-LD), stored apart from the feed's authors like the other page values.
-  Only worth it if many feeds turn out to name none: `SELECT count(*) FILTER (WHERE authors = '{}') * 100 / count(*) FROM articles;`.
+  Only worth it if many articles turn out to name none ("Measure what articles carry", below).
 - [ ] **Load full article (on demand).**
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.
@@ -255,7 +252,7 @@ Each with when it pays off:
   Deferred from #438, which places undated articles without one.
 - [ ] **AI-assisted titles and summaries.**
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
-  Deferred from #306.
+  Deferred from #306; only worth it if many articles are untitled ("Measure what articles carry", below).
 - [ ] **More copies of one image recognized as the same.**
   `imageKey` treats URLs differing in scheme, `www.`, query or a WordPress size suffix as one image, and an image server's copies by the original their path names (#778), so a lead image isn't repeated when the content shows it anywhere.
   Image servers that name the original in the query instead (Next.js's `/_next/image?url=…&w=…`, `wsrv.nl/?url=…`, `image_uri=`) are worse than missed: dropping the query gives every image on such a site one key, so a content image hides a card image that's a different picture (noted in #778); keying them by their `url=` or `image_uri=` parameter would fix both.
@@ -264,8 +261,14 @@ Each with when it pays off:
 - [ ] **Generic `og:image` detection.**
   Some sites use one fallback `og:image` (their logo) for every page, so enrichment (#306) would give every card the same picture.
   If that shows up, ignore a page image that a feed's recent articles share.
-- [ ] **Measure embeds and media.**
-  Before building more embeds or a player, see what articles carry.
+- [ ] **Measure what articles carry (run on production).**
+  Production has real readers' articles now: run these once, record the numbers here, and use them to file or delete the items that wait on them (authors and titles above; the player, music embeds and social posts below).
+  Untitled and authorless articles:
+  ```sql
+  SELECT count(*) FILTER (WHERE title = '') * 100.0 / count(*) AS untitled,
+         count(*) FILTER (WHERE authors = '{}') * 100.0 / count(*) AS no_author
+  FROM articles;
+  ```
   Embedded iframes by host:
   ```sql
   SELECT substring(m[1] from '^(?:https?:)?//([^/?#]+)') AS host, count(DISTINCT id)
@@ -285,7 +288,7 @@ Each with when it pays off:
   SELECT split_part(media_type, '/', 1) AS kind, count(*), count(DISTINCT feed_id) AS feeds
   FROM articles WHERE media_type <> '' GROUP BY 1;
   ```
-  Use the numbers to order the next three items.
+  Use the embed and media numbers to order the next three items.
 - [ ] **Podcast and video player.**
   Keep the enclosure's URL, type and length (#297 only keeps the type), show the browser's own `<audio>` / `<video>` player on the article page, and an "Audio" or "Video" label on the card.
   Media loads from the publisher, so the CSP needs `media-src https:`.
@@ -307,8 +310,6 @@ Each with when it pays off:
   Save a link that isn't in any feed to Saved, from a bookmarklet, a "Save a link" form on Saved, or the phone's share sheet (a share target added to the manifest from #394).
   Read-later apps keep closing (Pocket in 2025), and Saved plus enrichment already shows a page's title, image and description.
   Needs articles without a feed, or a feed per user for saved links: decide in planning.
-- [ ] **Measure untitled articles.**
-  Before investing in better titles, query the share of articles with an empty title (`SELECT count(*) FILTER (WHERE title = '') * 100.0 / count(*) FROM articles`).
 - [ ] **Image proxy (needs planning).**
   Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times.
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
@@ -319,10 +320,6 @@ Each with when it pays off:
   E.g. `j`/`k` to move between rows, `o` or Enter to open, `v` to open the original, a key each for Star and Save, and `?` to list them; never while typing in a field or with a modifier held, and `j` on the last row loads the next page.
   Single-key shortcuts must be possible to turn off (WCAG 2.1.4: they collide with screen readers and speech input), so plan an off switch in Settings, a typed column on `users`.
   Deferred while planning #396 and #397; open questions are the letters for Star and Save (`s` meant star in older readers, but could read as Save).
-- [ ] **Unread filter.**
-  Maybe never; it pulls toward the inbox model.
-- [ ] **Timezone setting and day headers.**
-  Only if local times via JavaScript aren't enough (e.g. "Today"/"Yesterday" groups rendered server-side).
 - [ ] **Site names from `og:site_name`.**
   For articles on another site than their feed's, enrichment could store the page's `og:site_name` ("The New York Times") so "Read on" shows it instead of the domain (#341).
   Enrichment doesn't run for every article, so the domain stays the fallback.
@@ -343,35 +340,41 @@ The decisions are under "Filtering and timelines" in decisions.md.
   - *Signals across users:* articles starred together ("people who starred this also starred…", within a similar category), and a feed's category from the tags readers give it.
 
   The second needs real usage first, and the conditions under "Cross-user use" in decisions.md: anonymous totals above a minimum count, and a privacy policy update.
-- [ ] **Shared timelines in Search (needs planning).**
-  An opt-in "List in search" per shared timeline (#381), and a Timelines section in search results.
-  Plan moderation first: names and descriptions are the first user-written text strangers would see (spam, impersonation, reporting), and whether to show an owner name or profile.
-- [ ] **Your friends' picks (needs planning).**
-  Share the articles you star with people you choose, and follow friends' picks inside Paper Round, labelled with their name in your timeline.
-  It's the in-reader stream of friends' shared items that people still miss from Google Reader, and a way for the app to spread: every shared link shows someone who isn't a user what Paper Round is.
-  The pieces exist (stars, starred-only timelines, sharing as an Atom feed, #381), but sharing your picks takes six steps through the timeline form, and following them only works in another reader.
-  Needs #471 first: a shared link looked up or imported in Paper Round becomes a feed every account can find.
-  Thoughts so far, all to test in planning, none decided:
-  - *Sharing:* a "Your picks" page with one Share action (a name, an optional description, the link through the share sheet, and the email confirmation inline), perhaps as a second tab on Saved rather than a new nav item.
-    Any timeline stays shareable as now; picks is the obvious way in, not a second system.
-  - *The landing page* lists the newest picks, with "Follow in Paper Round" first and the feed link for other readers second.
-    It needs the session to know who's looking (the shared routes are outside the session group today), and it reverses #381's page without articles, whose reason (the feed is the better copy) doesn't hold for people without a feed reader.
-  - *Following natively, not as a feed:* a follows table, read as one more source in `ListTimeline`'s merge and positioned by `starred_at`, so a pick appears when it's picked.
-    It uses the real article rows, so read state, Save, Star and the article page just work, and an article already in one of your feeds gains "Picked by {name}" instead of a second row.
-    Following the Atom feed as an ordinary feed looks wrong: the app fetches itself over the internet, articles are duplicated with excerpts only, and rows can't say who picked them.
-  - *Reading:* a round avatar for people (sites stay squares, see "Design" in decisions.md), a People group in My feeds, and a "Picks from people I follow" condition on the timeline form.
-  - *No counts either way:* the sharer never sees who follows.
-    New link and Stop sharing delete the follows, so they still cut people off, and the follower is told the sharer stopped sharing rather than the row just disappearing.
-  - *Later:* a one-line note on a pick ("why I liked this"), which is what made Google Reader's sharing personal.
-  Open questions for planning: whether a shared link lets someone sign up while signup needs an invite (the growth case depends on it); where picks live (Saved or the nav); whether the sharer ever sees who follows; the privacy policy's new wording; and the cost each followed timeline adds to every Home page (a watchlist entry).
-  Its counterpart is "Shared timelines in Search" (above): this keeps links unlisted.
-- [ ] **Group timeline (needs planning).**
-  A shared timeline several people post to, for friends, a team or a family: each member adds articles and sees what the others add.
-  It's different from "Your friends' picks" (above): that is one person's stream that others follow, one-way and built from stars.
-  This one belongs to the group, so anyone in it can contribute, and it could also be offered as an Atom feed like other shared timelines (#381).
-  Nothing here is decided.
-  Questions for planning: how people join (invite link, email, or an owner adding them); roles (owner and members, who can remove an item or a member); how an item is added (a "Share to…" action on an article, pasting a URL, or both), and whether it can carry a note; whether members see who added what; how it relates to the "Shared timelines" and "Your friends' picks" work so there aren't three sharing systems; whether it's visible to people outside the group; and the privacy policy's wording.
-  Add its cost to Home pages and any moderation needs to the Performance watchlist when it's planned.
+- [ ] **Sharing (needs planning).**
+  Four ways for readers to share what they read, beside today's shared timelines (#381): plan them together, so they make one sharing system, not several.
+  Each also needs its cost to Home pages on the watchlist, and the privacy policy's wording.
+  - **Shared timelines in Search.**
+    An opt-in "List in search" per shared timeline (#381), and a Timelines section in search results.
+    Plan moderation first: names and descriptions are the first user-written text strangers would see (spam, impersonation, reporting), and whether to show an owner name or profile.
+  - **Your friends' picks.**
+    Share the articles you star with people you choose, and follow friends' picks inside Paper Round, labelled with their name in your timeline.
+    It's the in-reader stream of friends' shared items that people still miss from Google Reader, and a way for the app to spread: every shared link shows someone who isn't a user what Paper Round is.
+    The pieces exist (stars, starred-only timelines, sharing as an Atom feed, #381), but sharing your picks takes six steps through the timeline form, and following them only works in another reader.
+    Needs #471 first: a shared link looked up or imported in Paper Round becomes a feed every account can find.
+    Thoughts so far, all to test in planning, none decided:
+    - *Sharing:* a "Your picks" page with one Share action (a name, an optional description, the link through the share sheet, and the email confirmation inline), perhaps as a second tab on Saved rather than a new nav item.
+      Any timeline stays shareable as now; picks is the obvious way in, not a second system.
+    - *The landing page* lists the newest picks, with "Follow in Paper Round" first and the feed link for other readers second.
+      It needs the session to know who's looking (the shared routes are outside the session group today), and it reverses #381's page without articles, whose reason (the feed is the better copy) doesn't hold for people without a feed reader.
+    - *Following natively, not as a feed:* a follows table, read as one more source in `ListTimeline`'s merge and positioned by `starred_at`, so a pick appears when it's picked.
+      It uses the real article rows, so read state, Save, Star and the article page just work, and an article already in one of your feeds gains "Picked by {name}" instead of a second row.
+      Following the Atom feed as an ordinary feed looks wrong: the app fetches itself over the internet, articles are duplicated with excerpts only, and rows can't say who picked them.
+    - *Reading:* a round avatar for people (sites stay squares, see "Design" in decisions.md), a People group in My feeds, and a "Picks from people I follow" condition on the timeline form.
+    - *No counts either way:* the sharer never sees who follows.
+      New link and Stop sharing delete the follows, so they still cut people off, and the follower is told the sharer stopped sharing rather than the row just disappearing.
+    - *Later:* a one-line note on a pick ("why I liked this"), which is what made Google Reader's sharing personal.
+    Open questions for planning: whether a shared link lets someone sign up while signup needs an invite (the growth case depends on it); where picks live (Saved or the nav); whether the sharer ever sees who follows; the privacy policy's new wording; and the cost each followed timeline adds to every Home page (a watchlist entry).
+    Its counterpart is "Shared timelines in Search": this keeps links unlisted.
+  - **Group timeline.**
+    A shared timeline several people post to, for friends, a team or a family: each member adds articles and sees what the others add.
+    It's different from "Your friends' picks": that is one person's stream that others follow, one-way and built from stars.
+    This one belongs to the group, so anyone in it can contribute, and it could also be offered as an Atom feed like other shared timelines (#381).
+    Nothing here is decided.
+    Questions for planning: how people join (invite link, email, or an owner adding them); roles (owner and members, who can remove an item or a member); how an item is added (a "Share to…" action on an article, pasting a URL, or both), and whether it can carry a note; whether members see who added what; whether it's visible to people outside the group; and the privacy policy's wording.
+    Add its cost to Home pages and any moderation needs to the Performance watchlist when it's planned.
+  - **Lists readers make and share, to bring people in.**
+    From #450: starter packs, reimagined as a reader's list of sites ("What I read on design") with a public page and "Follow all on Paper Round", which carries the list through the waitlist or signup so the newcomer's Home starts with it.
+    For the traction stage, not first run: unlisted links first, since discoverable lists bring the spam and impersonation that keep shared timelines out of Search.
 - [ ] **More posting-frequency conditions.**
   Beyond "at most N posts a week" (#359): posts a day, "posted in the last N days", "hasn't posted for N months".
   When someone asks.
@@ -395,6 +398,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
 - [ ] **A dateline where the day changes in a timeline.**
   Mocked during #680 and liked, not built: a labelled rule ("Today · Monday 16 November") between days, so each row shows only its time.
   It marks time, not unread articles, so it fits "Reading"; it needs the reader's time zone, which only the browser knows, so it would be an enhancement like the local times.
+  Rendering it on the server instead ("Today" and "Yesterday" without JavaScript) would need a time zone setting; only if the enhancement isn't enough.
 - [ ] **Whether the admin takes the reader's shape.**
   #680 made the reader's corners nearly square and left the admin's as they were (it overrides the radius tokens); decide if the two should match.
 - [ ] **Generated avatars for sites without a usable icon.**
@@ -405,7 +409,6 @@ The decisions are under "Filtering and timelines" in decisions.md.
   RSS `<image>`, Atom `<icon>` / `<logo>` and JSON Feed `icon` as extra candidates for #304, if many sites end up without an icon.
 - [ ] **Design review leftovers.**
   Found in the design review that filed #419–#424 (#425), and not filed yet; each needs a design checkpoint ("Design" in decisions.md) unless it's copy only.
-  - Article rows repeat themselves: the feed name above the card and the domain inside it, a full date and time where a relative one may do, and the actions detached under the card.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
@@ -421,9 +424,6 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Text size, serif or sans (Newsreader is the default, #414), and line width on the article page (deferred from #295), as fieldsets in Settings → Reading's form (#446), next to the theme (#413).
   Stored as typed columns on `users`, not a key-value table ("Accounts" in decisions.md).
   obsidian-clipper's reader (#718) offers text size (9–24 px, plus `0.25vw` so it grows with the window), line height (1.1–2), line width (30–60em) and font, and sets them as custom properties from its script; here they'd be a few fixed steps rendered as `data-*` attributes on `<html>`, like `data-theme`, since pages work without JavaScript and the CSP blocks `style` attributes.
-- [ ] **Rebuild assets without restarting `go run`.**
-  Once Vite builds the frontend (#543), a development-only flag could serve `web/dist` from disk instead of the embedded copy, so `make assets/watch`'s output shows on reload.
-  Templates are embedded too, so it only helps with CSS and JavaScript changes; when restarting after each one gets in the way.
 - [ ] **Instant navigation (needs planning).**
   Make moving between pages feel instant, beyond the view transitions in #513; deferred from #507, since each option needs server work ("Motion and feedback" in decisions.md).
   The back-forward cache in Chrome is #773 (Roadmap 2's wave 18, with #771 measuring why a page isn't restored); our own navigation, htmx and Turbo were rejected in its planning ("Overall" in decisions.md).
@@ -446,14 +446,13 @@ The decisions are under "Filtering and timelines" in decisions.md.
 
 The plan, and why, is under "Mobile" in decisions.md; installing the web app is #394.
 
-- [ ] **Phone review pass.**
+- [ ] **Phone review pass (due now: #394 shipped on October 29).**
   Every page on a phone, in the browser and installed (#394): tap targets, the bottom tab bar over long pages and forms, the keyboard covering inputs, wide tables and code, and anything under the status bar or the home indicator.
-  By hand, like the first error-state pass (#392), listing fixes as issues; best done right after #394 ships.
-- [ ] **Tap targets on small buttons.**
-  `.btn-sm` (Edit, Unsubscribe, Subscribe, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in the stylesheets enlarges it for `(pointer: coarse)` (found in #431).
-  Making it 44 px there changes the height of every small button, so decide it with the phone review pass.
-  Plain buttons (Save, Log out, the Settings rows' "Log them out" and "Turn on") are 41 px, a little under too (#446).
-  The article actions' icon buttons (Star, Share) are 30 px with a 4 px gap, enough for WCAG 2.5.8 but close for a thumb; a wider gap under `(pointer: coarse)` would keep the tight group on desktop (found in #511).
+  By hand, like the first error-state pass (#392), in both themes and both article layouts, listing fixes as issues.
+  Known already, to decide in the pass, since each changes every page:
+  - `.btn-sm` (Edit, Follow, Refresh) is 35 px tall on touch screens too, under the 44 px usually recommended; nothing in the stylesheets enlarges it for `(pointer: coarse)` (found in #431).
+  - Plain buttons (Save, Log out, the Settings rows' "Log them out" and "Turn on") are 41 px, a little under too (#446).
+  - The article actions' icon buttons (Star, Share, Save) are 30 px with a 4 px gap, enough for WCAG 2.5.8 but close for a thumb; a wider gap under `(pointer: coarse)` would keep the tight group on desktop (found in #511).
 - [ ] **Install hint.**
   If testers don't find the browser's install, a short "Add Paper Round to your home screen" note in Settings with the steps for iOS and Android.
   Never a banner or a prompt on the timeline (see "Mobile" in decisions.md).
@@ -782,10 +781,10 @@ Pages and queries:
   Only words are left.
   #482 gives every new account a Quiet posters timeline, so the rate filter's query runs for everyone who opens that tab, not only those who made one.
   *Fix:* "Word filters from a full-text index" under Filtering and timelines.
-- [ ] **A write on every timeline view** (#493, #498, planned in #491).
-  The "seen" beacon reports when a timeline page is shown as well as when it's hidden (#493), and every 10 minutes while it's being used (#506), and each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice, plus six times an hour of reading.
-  *Signal:* `MarkSeen` in `pg_stat_statements` totals, or `timeline_marks` updates showing up in row-lock waits or WAL volume.
-  *Fix:* skip a report that changes nothing (the same position, `seen_at` under a minute old), or batch them in the browser.
+- [ ] **A write on every timeline view** (#397, #493, #498, planned in #491).
+  Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and the "seen" beacon (`seen-beacon.ts`) reports when a timeline page is shown as well as when it's hidden (#493), and every 10 minutes while it's being used (#506); each report upserts the user's `timeline_marks` row and the timeline's `timeline_lines` row (#498), so every timeline view writes at least twice, plus six times an hour of reading.
+  *Signal:* `MarkSeen` in `pg_stat_statements` totals, `timeline_marks` updates showing up in row-lock waits or WAL volume, or bloat on `timeline_marks` from frequent updates of the same rows.
+  *Fix:* skip a report that changes nothing (the same position, `seen_at` under a minute old), report at most once a minute per page, or batch them in the browser.
 - [ ] **Deleting a timeline scans `timeline_lines`** (#498).
   `timeline_lines.timeline_id` has no index of its own (its unique index leads with `user_id`), so the `ON DELETE CASCADE` from `timelines` reads the whole table, up to 21 rows per user.
   *Signal:* timeline deletes slow in the request logs, or that cascade's scan in `pg_stat_statements` totals.
@@ -832,10 +831,6 @@ Pages and queries:
   `saveArticles` runs one more statement per save: an indexed `UPDATE` that flags the saved articles' copies by `canonical_url`.
   *Signal:* `saveArticles` slower in the refresh logs, or that `UPDATE` in `pg_stat_statements` totals, especially for feeds that resend many edited items.
   *Fix:* only check the URLs of inserted rows and of updates that changed `canonical_url`.
-- [ ] **Timeline marks on every timeline view** (#397).
-  Each timeline page reads the user's `timeline_marks` row (a primary-key lookup), and each time a timeline page is hidden its beacon upserts that row, so an active reader writes it every few minutes.
-  *Signal:* `MarkSeen` in `pg_stat_statements` totals, or bloat on `timeline_marks` from frequent updates of the same rows.
-  *Fix:* have `seen-beacon.ts` skip the beacon when the position hasn't changed since its last report, or report at most once a minute per page.
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.
@@ -911,8 +906,3 @@ Hosting (once deployed; see Deployment in decisions.md):
   Production sets `RSS_DB_MAX_OPEN_CONNS=10`.
   *Signal:* "too many connections" errors, or connections waiting in `sql.DBStats`.
   *Fix:* lower it per instance, or a bigger plan.
-- [ ] **The database is never idle.**
-  Refresh workers poll every 15 seconds, so usage-billed databases that scale to zero (Neon and similar) would bill every hour of the month.
-  Not a problem on Render.
-  *Signal:* only matters if we move to such a database.
-  *Fix:* sleep until the next feed is due instead of polling.

@@ -111,6 +111,25 @@
         {{if .Routes.More}}<p class="more"><a href="{{.Routes.MoreHref}}">Show all {{count .Routes.More}} more routes</a></p>{{end}}
       </section>
 
+      <section class="admin-section" aria-labelledby="back-forward">
+        <h2 id="back-forward">Back and Forward</h2>
+        {{if .Period.Rollups}}<p class="missing">Only the last 30 days’ views say whether Back and Forward restored the page: choose 24h, 7d or 30d.</p>
+        {{else if not .BackForward.Views}}<p class="missing">No Back or Forward {{.Period.Label}}.</p>
+        {{else}}
+        {{template "stat-row" .BackForward.Stats}}
+        {{with .BackForward.Reasons}}
+        <h3 class="sub">Why pages were loaded again</h3>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">Reason</th><th scope="col" class="num">Views</th><th scope="col" class="num">Share</th></tr></thead>
+            <tbody>{{range .}}<tr><td>{{.Label}}</td><td class="num">{{count .Views}}</td><td class="num">{{.Share}}</td></tr>{{end}}</tbody>
+          </table>
+        </div>
+        <p class="vital-note">Chrome names up to 3 reasons for a view. Safari, Firefox and Chrome before 123 name none.</p>
+        {{end}}
+        {{end}}
+      </section>
+
       <section class="admin-section" aria-labelledby="sources">
         <h2 id="sources">Where visits come from, and how</h2>
         <div class="side-by-side">

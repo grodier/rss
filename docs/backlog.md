@@ -558,6 +558,7 @@ Admin and observability:
 - [ ] **The web performance page sorts every raw view per metric and group** (#578).
   Up to 30 days, the page reads `rum_views` with `percentile_cont`, which sorts each group's values: the totals, the breakdowns by device, browser, installed and route (LCP, INP and CLS only), and each step's points.
   With 300,000 views (`rum_views` caps at 500,000), on a 4-core laptop: 24h about 80 ms, 7d about 0.5 s, 30d about 2 s (1.1 s on one device); from `rum_daily`, 13m about 0.7 s with 180,000 daily rows.
+  The Back and Forward section (#771) adds two scans of the window's `restore` and `back_forward` views, a count and an `unnest` of their reasons, with no sorts per metric: about 5 ms at 24h, 25 ms at 7d and 50 ms at 30d with 300,000 views, a fifth of them Back or Forward.
   *Signal:* 7d, the default, takes over a second, or 30d over 5 s.
   *Fix:* finer buckets per hour (an `rum_hourly` rollup) for the breakdowns, keeping exact percentiles for the totals only.
 - [ ] **The service page counts 90 days of checks on every view** (#616).

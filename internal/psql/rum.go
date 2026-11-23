@@ -31,13 +31,13 @@ func (r *RUMRepository) Record(ctx context.Context, v rss.RUMView) error {
 		    (received_at, route, nav_type, device, browser, browser_major, installed,
 		     connection, protocol, referrer_host,
 		     ttfb_ms, fcp_ms, lcp_ms, inp_ms, cls, dcl_ms, load_ms, server_ms, transfer_bytes,
-		     lcp_element, inp_target)
+		     lcp_element, inp_target, not_restored)
 		VALUES (coalesce($1, now()), $2, $3, $4, $5, $6, $7, $8, $9, $10,
-		    $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+		    $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, coalesce($22::text[], '{}'))`,
 		receivedAt, v.Route, v.NavType, v.Device, v.Browser, v.BrowserMajor, v.Installed,
 		v.Connection, v.Protocol, v.ReferrerHost,
 		v.TTFBMs, v.FCPMs, v.LCPMs, v.INPMs, v.CLS, v.DCLMs, v.LoadMs, v.ServerMs, v.TransferBytes,
-		v.LCPElement, v.INPTarget)
+		v.LCPElement, v.INPTarget, pq.Array(v.NotRestored))
 	return err
 }
 

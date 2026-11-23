@@ -3,10 +3,11 @@
 // its loading timings and coarse context (see "Observability" in
 // docs/decisions.md). It carries no identifiers: the page's path, which the
 // server turns into its route pattern and drops, another site's referrer as
-// a host only, and tag or data-* names, never text or URLs. Nothing is
-// stored in the browser, and nothing is sent without sendBeacon. A page
-// restored from the back/forward cache is a new view, sent when it's next
-// hidden.
+// a host only, tag or data-* names, and the browser's names for why a Back
+// or Forward wasn't restored from the back/forward cache, never text or
+// URLs. Nothing is stored in the browser, and nothing is sent without
+// sendBeacon. A page restored from the back/forward cache is a new view,
+// sent when it's next hidden.
 import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals";
 
 // What one view has measured so far.
@@ -110,6 +111,7 @@ function fields(view: View): URLSearchParams {
     transfer: nav?.transferSize,
     lcp_element: view.lcpElement,
     inp_target: view.inpTarget,
+    not_restored: notRestored(nav),
   };
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(values)) {
@@ -123,6 +125,14 @@ function fields(view: View): URLSearchParams {
 function navigationType(nav: PerformanceNavigationTiming | undefined): string {
   if (!nav) return "navigate";
   return (nav.activationStart ?? 0) > 0 ? "prerender" : nav.type;
+}
+
+// notRestored names why a Back or Forward wasn't restored from the
+// back/forward cache (Chrome only): the top-level frame's reasons, comma
+// separated. Frames' reasons (children) are left out.
+function notRestored(nav: PerformanceNavigationTiming | undefined): string | undefined {
+  if (nav?.type !== "back_forward") return undefined;
+  return nav.notRestoredReasons?.reasons?.map((r) => r.reason).join(",");
 }
 
 // sinceActivation returns a navigation timing from when a prerendered page

@@ -108,6 +108,16 @@ type webPerfPage struct {
 	Referrers   []countRow
 	Protocols   []countRow
 	Connections []countRow
+	BackForward backForward
+}
+
+// backForward is the Back and Forward section: how many Back and Forward
+// views were restored from the back/forward cache, and why the rest
+// weren't, by the browser's reasons.
+type backForward struct {
+	Views   int // restored and loaded again
+	Stats   []statTile
+	Reasons []countRow // Share is of the views loaded again
 }
 
 // filterLink is one choice of a filter: its label, its URL (keeping the
@@ -332,7 +342,31 @@ func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod, steps [
 	}
 	page.Protocols = shares(wp.Protocols)
 	page.Connections = shares(wp.Connections)
+	page.BackForward = backForwardData(wp.BackForward)
 	return page
+}
+
+// backForwardData is the Back and Forward section's data from bf.
+func backForwardData(bf rss.RUMBackForward) backForward {
+	out := backForward{Views: bf.Restored + bf.NotRestored}
+	if out.Views == 0 {
+		return out
+	}
+	restored := share(bf.Restored, out.Views)
+	if restored == "100%" && bf.NotRestored > 0 {
+		restored = ">99%" // as share says "<1%" rather than 0% for a few
+	}
+	out.Stats = []statTile{
+		{Label: "Restored from the cache", Text: restored, Note: count(bf.Restored) + " of " + count(out.Views) + " Back and Forward views"},
+		{Label: "Loaded again", Value: bf.NotRestored, Note: count(bf.NotRestored-bf.Unexplained) + " with a reason"},
+	}
+	for _, c := range bf.Reasons {
+		out.Reasons = append(out.Reasons, countRow{Label: c.Key, Views: c.Views, Share: share(c.Views, bf.NotRestored)})
+	}
+	if bf.Unexplained > 0 {
+		out.Reasons = append(out.Reasons, countRow{Label: "No reason reported", Views: bf.Unexplained, Share: share(bf.Unexplained, bf.NotRestored)})
+	}
+	return out
 }
 
 // percentile is s's value at q (p75, p90 or p95).

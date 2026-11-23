@@ -3,6 +3,7 @@ package psql
 import (
 	"context"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -227,5 +228,64 @@ func TestAdminWebPerfThresholdEdges(t *testing.T) {
 			t.Errorf("rollups %v: CLS 0.1, 0.25 and 0.2501 rated %d good, %d needing improvement, %d poor; want 1 each",
 				rollups, s.Good, s.NeedsImprovement, s.Poor)
 		}
+	}
+}
+
+// The Back and Forward views: how many were restored, and the reasons the
+// rest weren't, most first, for the window and device only.
+func TestAdminWebPerfBackForward(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	perf := NewAdminWebPerfRepository(db)
+	ctx := context.Background()
+	day := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -3)
+	view := func(nav, device string, at time.Time, reasons ...string) rss.RUMView {
+		v := rumView(at, "/", nil)
+		v.NavType, v.Device, v.NotRestored = nav, device, reasons
+		return v
+	}
+	in := day.Add(time.Hour)
+	recordViews(t, repo,
+		view("restore", "desktop", in),
+		view("restore", "desktop", in),
+		view("restore", "phone", in),
+		view("back_forward", "desktop", in, "unload-listener", "masked"),
+		view("back_forward", "desktop", in, "unload-listener"),
+		view("back_forward", "phone", in, "response-cache-control-no-store"),
+		view("back_forward", "desktop", in), // Safari: no reasons
+		view("navigate", "desktop", in),
+		view("back_forward", "desktop", day.AddDate(0, 0, 1), "cookie-disabled"), // outside the window
+	)
+
+	wp, err := perf.WebPerf(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Step: 6 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := rss.RUMBackForward{
+		Restored: 3, NotRestored: 4, Unexplained: 1,
+		Reasons: []rss.RUMCount{{Key: "unload-listener", Views: 2}, {Key: "masked", Views: 1}, {Key: "response-cache-control-no-store", Views: 1}},
+	}
+	if !reflect.DeepEqual(wp.BackForward, want) {
+		t.Errorf("back and forward = %+v, want %+v", wp.BackForward, want)
+	}
+
+	wp, err = perf.WebPerf(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Device: "phone", Step: 6 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = rss.RUMBackForward{Restored: 1, NotRestored: 1, Reasons: []rss.RUMCount{{Key: "response-cache-control-no-store", Views: 1}}}
+	if !reflect.DeepEqual(wp.BackForward, want) {
+		t.Errorf("phone's back and forward = %+v, want %+v", wp.BackForward, want)
+	}
+
+	// The rollups don't keep them.
+	if err := repo.RollUp(ctx, day.AddDate(0, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	wp, err = perf.WebPerf(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Rollups: true, Step: 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(wp.BackForward, rss.RUMBackForward{}) {
+		t.Errorf("rollups' back and forward = %+v, want none", wp.BackForward)
 	}
 }

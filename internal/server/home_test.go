@@ -456,12 +456,14 @@ func TestHomeEmpty(t *testing.T) {
 		want       []string
 		wantNot    []string
 		wantAsked  bool // whether the page asks the store
+		wantEmpty  bool // whether it's Home's empty state, the empty-state partial
 	}{
 		{
 			name: "following nothing", target: "/",
 			want:      []string{nothing, "Follow sites and their new articles show up here.", discover, importBtn},
 			wantNot:   []string{fetching, refresh, endLine},
 			wantAsked: true,
+			wantEmpty: true,
 		},
 		{
 			name: "following only feeds that were fetched and had nothing", target: "/", following: rss.Following{Sites: 2},
@@ -567,6 +569,9 @@ func TestHomeEmpty(t *testing.T) {
 			}
 			body := rr.Body.String()
 			assertBodyContains(t, body, tt.want...)
+			if tt.wantEmpty {
+				assertEmptyState(t, body, nothing, "Follow sites and their new articles show up here.", "/discover", "/settings/import")
+			}
 			for _, no := range tt.wantNot {
 				if strings.Contains(body, no) {
 					t.Errorf("body contains %q", no)

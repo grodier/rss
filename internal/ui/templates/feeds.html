@@ -83,10 +83,7 @@
         </ul>
       </section>
       {{else}}
-      <div class="empty">
-        {{template "icon-feeds"}}
-        <p>You're not following any feeds yet. Find sites to follow in <a href="/discover">Discover</a>.</p>
-      </div>
+      {{template "empty-state" (emptyState "feeds" "You're not following any feeds yet." "" "Find sites in Discover" "/discover")}}
       {{end}}
       {{if .Sites}}
       <div class="empty" data-feeds-none{{if .Matches}} hidden{{end}}>

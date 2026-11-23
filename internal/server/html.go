@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ var templateFuncs = template.FuncMap{
 	"avatarTone":  avatarTone,
 	"debugPanel":  newDebugPanel,
 	"discoverRow": newDiscoverRow,
+	"emptyState":  newEmptyState,
 	"followButton": func(feedID, label, returnTo string, following bool) followButton {
 		return followButton{FeedID: feedID, Label: label, ReturnTo: returnTo, Following: following}
 	},
@@ -38,6 +40,45 @@ var templateFuncs = template.FuncMap{
 	"sinceDate":   func(t time.Time) sinceView { return newSinceView(t, time.Now()) },
 	"siteName":    siteName,
 	"platform":    discovery.Platform,
+}
+
+// emptyState is a page with nothing to show yet, for the empty-state
+// partial: its section's icon, a lead that says what's empty, a line on
+// how things get there, and up to two actions, the first one primary
+// (#757, after #639's empty Home). An empty list that's secondary to its
+// page, like a feed's posts, is a quiet line instead.
+type emptyState struct {
+	Icon    string // one of emptyStateIcons
+	Lead    string
+	Line    string // "" for none
+	Actions []emptyAction
+}
+
+type emptyAction struct {
+	Label, Href string
+	Primary     bool
+}
+
+// emptyStateIcons are the icons the empty-state partial draws, by their
+// partial's name without "icon-" (a template can't call a partial by a
+// computed name, so the partial picks each one by name).
+var emptyStateIcons = []string{"rss", "bookmark", "star", "feeds", "tag", "timeline", "clock"}
+
+// newEmptyState builds an emptyState in a template: actions are pairs of
+// a label and a link, at most two. A wrong call fails the page's render,
+// which every page's tests catch.
+func newEmptyState(icon, lead, line string, actions ...string) (emptyState, error) {
+	if !slices.Contains(emptyStateIcons, icon) {
+		return emptyState{}, fmt.Errorf("emptyState: no icon %q", icon)
+	}
+	if len(actions)%2 != 0 || len(actions) > 4 {
+		return emptyState{}, fmt.Errorf("emptyState: want up to two label and link pairs, got %d values", len(actions))
+	}
+	e := emptyState{Icon: icon, Lead: lead, Line: line}
+	for i := 0; i < len(actions); i += 2 {
+		e.Actions = append(e.Actions, emptyAction{Label: actions[i], Href: actions[i+1], Primary: i == 0})
+	}
+	return e, nil
 }
 
 // siteName is how a site is named wherever it's listed: its title, else its

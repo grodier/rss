@@ -1,0 +1,19 @@
+/* A page with nothing to show yet (partials/empty_state.html, #757, after
+   #639's empty Home): base.css's .empty with its icon, then a lead in the
+   text color over the muted line, and up to two actions, side by side on
+   wide screens and wrapping onto their own lines on phones. */
+@layer components {
+  .empty-state .empty-state-lead {
+    color: var(--text);
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+
+  .empty-state .empty-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.625rem;
+    margin-block-start: 1.25rem;
+  }
+}

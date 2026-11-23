@@ -257,8 +257,9 @@ Each with when it pays off:
   For untitled items, or alongside enrichment: heuristics over headings, URL path, images and text, or a model.
   Deferred from #306.
 - [ ] **More copies of one image recognized as the same.**
-  `imageKey` treats URLs differing in scheme, `www.`, query or a WordPress size suffix as one image, so a lead image isn't repeated when the content shows it anywhere.
-  Two more would catch copies further down the content, if real examples turn up (noted in #748, whose position rule covered the case seen): unwrapping image-proxy URLs that carry the original (in the path, or in a `url=` or `image_uri=` parameter), and size prefixes like Engadget's `l-intro-1794602643.jpg` for `intro-1794602643.jpg`.
+  `imageKey` treats URLs differing in scheme, `www.`, query or a WordPress size suffix as one image, and an image server's copies by the original their path names (#778), so a lead image isn't repeated when the content shows it anywhere.
+  Image servers that name the original in the query instead (Next.js's `/_next/image?url=…&w=…`, `wsrv.nl/?url=…`, `image_uri=`) are worse than missed: dropping the query gives every image on such a site one key, so a content image hides a card image that's a different picture (noted in #778); keying them by their `url=` or `image_uri=` parameter would fix both.
+  Smaller misses, if real examples turn up: an original encoded twice (`https%253A%252F%252F…`) or with its `//` collapsed (`/https:/host/…`), which #778 leaves as is, and size prefixes like Engadget's `l-intro-1794602643.jpg` for `intro-1794602643.jpg` (noted in #748, whose position rule covered the case seen).
   The prefix was left out because it encodes one site's naming, and a wrong match quietly hides a lead image that's a different picture, where a missed one only shows a duplicate.
 - [ ] **Generic `og:image` detection.**
   Some sites use one fallback `og:image` (their logo) for every page, so enrichment (#306) would give every card the same picture.

@@ -19,6 +19,7 @@ Their home page is a timeline of the articles in their subscriptions, newest arr
 - **Lookup:** a background job that finds a site's feeds.
   Its row is also the cached result for that site key, and records whether it ran on the site's root (`home_page`).
 - **Article:** one item of a feed.
+  The UI calls it a *post* where it's about what a site or feed publishes, and an *article* where it's about your reading (see "Design" in decisions.md).
   The same story in two feeds is two articles, *copies* matched by `canonical_url` (the article's URL without tracking parameters).
 - **Timeline position** (`timeline_at`): where an article sits in timelines, set once when it's first saved: for *news* (new items on a later save), its published date, but never below the later of the feed's previous fetch and 6 hours back (`rss.NewsWindow`), with news dated earlier spread above that floor and undated news at the save time; for *backlog* (older items, including every item on a feed's first save or on a save after two days without a fetch attempt, where undated ones get spaced-out positions at least a day back), its published date.
 - **Reader's position** (`timeline_entries.timeline_at`): where an article sits in one reader's timelines instead of its timeline position, for news that arrived while they were looking and a newly followed feed's recent posts, raised above what they've seen and set once (see "The reader's position" in features.md).

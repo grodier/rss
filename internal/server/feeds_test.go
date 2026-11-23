@@ -367,7 +367,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 		if got := strings.Count(body, `class="article-row"`); got != 30 {
 			t.Errorf("rows = %d, want 30", got)
 		}
-		if !strings.Contains(body, `rel="next"`) || !strings.Contains(body, "Older articles") {
+		if !strings.Contains(body, `rel="next"`) || !strings.Contains(body, "Older posts") {
 			t.Fatalf("no older link: %s", body)
 		}
 		href := olderHref(t, body)
@@ -390,7 +390,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 	t.Run("30 results gives no link", func(t *testing.T) {
 		result = feedArticles(30)
 		body := serveFeed(t, s, testFeedID).Body.String()
-		if strings.Contains(body, "Older articles") {
+		if strings.Contains(body, "Older posts") {
 			t.Errorf("unexpected older link")
 		}
 	})
@@ -430,7 +430,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 		result = nil
 		cur := encodeCursor(rss.ArticleCursor{At: time.Now(), ID: "123e4567-e89b-12d3-a456-426614174000"})
 		body := serveFeedQuery(t, s, testFeedID, "?before="+url.QueryEscape(cur)).Body.String()
-		if !strings.Contains(body, "No older articles.") || strings.Contains(body, "No articles yet.") {
+		if !strings.Contains(body, "No older posts.") || strings.Contains(body, "No posts yet.") {
 			t.Errorf("wrong empty message: %s", body)
 		}
 	})
@@ -438,7 +438,7 @@ func TestFeedHandlerPaging(t *testing.T) {
 	t.Run("empty without a cursor", func(t *testing.T) {
 		result = nil
 		body := serveFeed(t, s, testFeedID).Body.String()
-		if !strings.Contains(body, "No articles yet.") || strings.Contains(body, "No older articles.") {
+		if !strings.Contains(body, "No posts yet.") || strings.Contains(body, "No older posts.") {
 			t.Errorf("wrong empty message: %s", body)
 		}
 	})
@@ -542,8 +542,21 @@ func TestFeedHandlerPageMetadata(t *testing.T) {
 func TestFeedHandlerNoArticles(t *testing.T) {
 	rr := serveFeed(t, feedServer(t, nil), testFeedID)
 
-	if !strings.Contains(rr.Body.String(), "No articles yet.") {
-		t.Errorf("body does not contain %q: %s", "No articles yet.", rr.Body.String())
+	for _, want := range []string{"<h2>Recent posts</h2>", "No posts yet."} {
+		if !strings.Contains(rr.Body.String(), want) {
+			t.Errorf("body does not contain %q: %s", want, rr.Body.String())
+		}
+	}
+}
+
+func TestFeedHandlerInvalidCursor(t *testing.T) {
+	rr := serveFeedQuery(t, feedServer(t, nil), testFeedID, "?before=garbage")
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+	if want := "That link to older posts isn&#39;t valid."; !strings.Contains(rr.Body.String(), want) {
+		t.Errorf("body does not contain %q: %s", want, rr.Body.String())
 	}
 }
 
@@ -722,7 +735,7 @@ func TestFeedsHandler(t *testing.T) {
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One", PostsPerWeek: 3.4}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
 		))
-		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time> · About 3 posts a week</p>`, "<p>No articles yet.</p>")
+		assertContains(t, body, `Latest post <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time> · About 3 posts a week</p>`, "<p>No posts yet.</p>")
 		// The feed without articles shows no rate.
 		assertNotContains(t, body, "No posts in the last 30 days")
 	})
@@ -733,7 +746,7 @@ func TestFeedsHandler(t *testing.T) {
 		_, body := getFeeds(t, listing(
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: late},
 		))
-		assertContains(t, body, `Latest article <time data-local="date" datetime="2026-03-05T04:30:00Z">5 Mar 2026</time>`)
+		assertContains(t, body, `Latest post <time data-local="date" datetime="2026-03-05T04:30:00Z">5 Mar 2026</time>`)
 	})
 
 	health := []struct {
@@ -1209,7 +1222,7 @@ func TestFeedHandlerEmptyTitleShowsURL(t *testing.T) {
 func TestFeedHandlerRefreshRequest(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	future := time.Now().Add(time.Hour)
-	const checking = "Checking for new articles…"
+	const checking = "Checking for new posts…"
 
 	tests := []struct {
 		name        string
@@ -1277,11 +1290,11 @@ func TestRefreshFlash(t *testing.T) {
 		res  rss.FetchResult
 		want string
 	}{
-		{rss.FetchResult{}, "No new articles."},
-		{rss.FetchResult{New: 1}, "1 new article."},
-		{rss.FetchResult{New: 3}, "3 new articles."},
-		{rss.FetchResult{Updated: 2}, "No new articles, 2 updated."},
-		{rss.FetchResult{New: 3, Updated: 1}, "3 new articles, 1 updated."},
+		{rss.FetchResult{}, "No new posts."},
+		{rss.FetchResult{New: 1}, "1 new post."},
+		{rss.FetchResult{New: 3}, "3 new posts."},
+		{rss.FetchResult{Updated: 2}, "No new posts, 2 updated."},
+		{rss.FetchResult{New: 3, Updated: 1}, "3 new posts, 1 updated."},
 	}
 	for _, tt := range tests {
 		if got := refreshFlash(tt.res); got != tt.want {
@@ -1356,7 +1369,7 @@ func TestFeedRefreshHandler(t *testing.T) {
 		wantCode  int
 		wantFlash string
 	}{
-		{"success", rss.FetchResult{New: 3, Updated: 1}, nil, http.StatusSeeOther, "3 new articles, 1 updated."},
+		{"success", rss.FetchResult{New: 3, Updated: 1}, nil, http.StatusSeeOther, "3 new posts, 1 updated."},
 		{"unreachable", rss.FetchResult{}, fmt.Errorf("%w: status 500", ingest.ErrUnreachable), http.StatusSeeOther, "Couldn't reach this feed. Try again later."},
 		{"not a feed", rss.FetchResult{}, fmt.Errorf("%w: bad xml", ingest.ErrNotFeed), http.StatusSeeOther, "This feed's address didn't return a feed. Try again later."},
 		{"gone", rss.FetchResult{}, fmt.Errorf("%w: status 410", ingest.ErrGone), http.StatusSeeOther, "This feed no longer exists. We've stopped checking it."},
@@ -1476,7 +1489,7 @@ func TestFeedRefreshHandlerRateLimit(t *testing.T) {
 	s := refreshServer(t, rss.Feed{}, nil, ref)
 
 	for i := 1; i <= 10; i++ {
-		if _, flash := postRefresh(t, s, "user-1", testFeedID); flash != "No new articles." {
+		if _, flash := postRefresh(t, s, "user-1", testFeedID); flash != "No new posts." {
 			t.Fatalf("refresh %d: flash = %q", i, flash)
 		}
 	}
@@ -1488,7 +1501,7 @@ func TestFeedRefreshHandlerRateLimit(t *testing.T) {
 		t.Errorf("Refresh called %d times, want 10", len(ref.calls))
 	}
 
-	if _, flash := postRefresh(t, s, "user-2", testFeedID); flash != "No new articles." {
+	if _, flash := postRefresh(t, s, "user-2", testFeedID); flash != "No new posts." {
 		t.Errorf("other user: flash = %q", flash)
 	}
 }

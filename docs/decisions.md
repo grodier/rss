@@ -693,7 +693,7 @@ Planned in #163 (issues #147–#162).
   (#155, #159)
 - **Times are server-rendered in UTC** in a `<time>` the script localizes; date-only feed dates show just the date and aren't localized.
   No day headers or relative times.
-  (#157, #160) This covers every user-visible time, not just articles: feed and site status times ("Last fetched", "Next check around") and list dates ("Latest article") too, still absolute, with no time zone setting.
+  (#157, #160) This covers every user-visible time, not just articles: feed and site status times ("Last fetched", "Next check around") and list dates ("Latest post") too, still absolute, with no time zone setting.
   (#337)
 - **New articles don't appear live** while you scroll; a reload shows them on top.
 - **A "You were here" line marks where the previous visit ended**, with no counts (planned in #395, issue #397).
@@ -1080,6 +1080,10 @@ A modern, minimal look modelled on social timelines, from the redesign in #181, 
   Rejected: hiding the text button when scripting is on (the magnifier would do nothing, and a script that failed to load would leave no visible way to submit), an arrow button at the field's end (crowded beside the browser's clear ×), and a round icon button beside the field (two magnifiers side by side).
 - **"Log in" and "Log out" are verbs, and "Login" never appears in the UI** (headings, buttons, links, page titles), because buttons name actions.
   The `/login` route, `loginHandler` and other identifiers keep `login`: nobody sees them.
+- **"Posts" are what a site or feed publishes, "articles" are what you read** (#756): a feed page's and a site page's lists are "Recent posts", My feeds says "Latest post", and posting rates, Discover and the Refresh flash count posts, while timelines, Saved, the timeline form, Settings and the article page say "articles".
+  The feed page and My feeds said "articles" while the site page and Discover said "posts" for the same items.
+  Rejected: "posts" everywhere ("Search saved posts" and "Post layout" read oddly, for about thirty strings), and "articles" everywhere but posting rates ("Latest article 2 days ago" beside "About 3 posts a week" mixes the two in one line).
+  Routes and identifiers (`/articles/{id}`, `rss.Article`) keep `article`: nobody sees them.
 - **The logo is a round sunrise:** a circle in which the sun rises over an ink ground, whose two white lines, thick over thin like the nameplate rule, read as the sun's reflection and as lines of text (`web/app/public/img/logo.svg`).
   It's flat, with no outlines, and five shapes, so it reads at 16 px and the favicon is the same file.
   It replaced a front page (a newspaper with a P nameplate and the sunrise as its lead photo), whose dozen thin-stroked parts blurred at the rail's size.

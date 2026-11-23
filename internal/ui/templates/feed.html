@@ -62,7 +62,7 @@
             <button class="btn-sm" type="submit" data-busy-label="Refreshing…">{{template "icon-refresh"}}<span data-busy-text>Refresh</span></button>
           </form>
           {{if .RefreshPending}}
-          <p class="quiet">Checking for new articles…</p>
+          <p class="quiet">Checking for new posts…</p>
           {{else if not .Feed.NextFetch.IsZero}}
           <p class="quiet">Next check around {{template "local-time" .Feed.NextFetch}}.</p>
           {{end}}
@@ -79,19 +79,19 @@
       {{end}}
 
       <div class="list-head">
-        <h2>Articles</h2>
+        <h2>Recent posts</h2>
         {{if .Before}}<a href="/feeds/{{.Feed.ID}}">Back to newest</a>{{end}}
       </div>
       {{if .Rows}}
       <div class="article-list">{{range .Rows}}{{template "article-row" .}}{{end}}</div>
       {{else if .Before}}
-      <p class="empty">No older articles.</p>
+      <p class="empty">No older posts.</p>
       {{else}}
-      <p class="empty">No articles yet.</p>
+      <p class="empty">No posts yet.</p>
       {{end}}
 
       {{if .Next}}
-      <nav class="pager"><a class="btn" rel="next" href="/feeds/{{.Feed.ID}}?before={{.Next}}">Older articles</a></nav>
+      <nav class="pager"><a class="btn" rel="next" href="/feeds/{{.Feed.ID}}?before={{.Next}}">Older posts</a></nav>
       {{end}}
     </main>
   </div>

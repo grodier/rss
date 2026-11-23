@@ -70,7 +70,7 @@ func TestOverview(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<h2 id="people">People</h2>`,
-		`<dt>Confirmed accounts</dt>`, `<dd>1,201</dd>`, `of 1,284`,
+		`<dt><a href="/users">Confirmed accounts</a></dt>`, `<dd>1,201</dd>`, `of 1,284`,
 		`<dt>Signups in 7 days</dt>`, `<dd>12</dd>`, `57 in 30 days`,
 		`<dt>Active in 7 days, about</dt>`, `<dd>640</dd>`, `902 in 30 days`,
 		`<dt><a href="/waitlist">Waiting</a></dt>`, `<dd>3,412</dd>`,
@@ -89,8 +89,8 @@ func TestOverview(t *testing.T) {
 		}
 	}
 	// Only figures with a page are links.
-	if n := strings.Count(body, `class="stat stat-link"`); n != 5 {
-		t.Errorf("GET / has %d linked figures, want 5 (the service's two, Waiting, Invites pending and Feeds)", n)
+	if n := strings.Count(body, `class="stat stat-link"`); n != 6 {
+		t.Errorf("GET / has %d linked figures, want 6 (the service's two, Confirmed accounts, Waiting, Invites pending and Feeds)", n)
 	}
 }
 

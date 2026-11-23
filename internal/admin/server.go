@@ -163,6 +163,13 @@ type FeedStore interface {
 	Unskip(ctx context.Context, id string, by rss.AuditActor) error
 }
 
+// UserStore reads the users pages: account facts and counts, never a
+// reader's reading; *psql.AdminUserRepository is one.
+type UserStore interface {
+	ListUsers(ctx context.Context, q rss.AdminUserQuery) ([]rss.AdminUserRow, error)
+	User(ctx context.Context, id string) (rss.AdminUser, error)
+}
+
 // Refresher fetches a feed now and records the outcome on it;
 // *ingest.Refresher, with the admin's own fetch.Client, is one.
 type Refresher interface {
@@ -184,6 +191,7 @@ type Services struct {
 	Emails   EmailStore
 	Overview OverviewStore
 	WebPerf  WebPerfStore
+	Users    UserStore
 
 	Feeds     FeedStore
 	Refresher Refresher

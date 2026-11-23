@@ -167,9 +167,6 @@ func (s *Server) requireAuthentication(next http.Handler) http.Handler {
 	})
 }
 
-// sessionIdleTimeout ends a login that hasn't been used for this long.
-const sessionIdleTimeout = 90 * 24 * time.Hour
-
 // sessionTouchInterval is how out of date last_seen_at may get before a
 // request updates it.
 const sessionTouchInterval = 24 * time.Hour
@@ -203,7 +200,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		}
 
 		idle := time.Since(sess.LastSeenAt)
-		if idle > sessionIdleTimeout {
+		if idle > rss.SessionIdleTimeout {
 			if err := s.services.SessionService.Delete(ctx, id); err != nil {
 				s.logError(r, err)
 			}

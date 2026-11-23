@@ -160,7 +160,8 @@
     color: var(--on-danger-bg);
   }
 
-  /* An invite's status (.status, in table.css): its tones. */
+  /* An invite's status (.status, in table.css): its tones, which a user's
+     page's emails reuse. */
   .status-pending {
     background: var(--tone-3-bg);
     color: var(--tone-3);

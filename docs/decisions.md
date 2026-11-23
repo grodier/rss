@@ -141,6 +141,10 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
 - **Aggregates only: the admin never shows a reader's reads, saves, stars, tags, timelines or feed names.**
   A user's page shows account facts (dates, sessions, emails sent and their status, import outcomes) and counts.
   Seeing what someone reads has no clear use, and isn't what readers or the privacy policy expect; a later need names its use case and updates the policy first.
+- **A user's page is one page: Account as a list of facts, Counts as a stat row, Email as dense tables** (#579, approved at its design checkpoint, PR #783): Account is a two-column list of label and value on desktop (one column on phones, a date's UTC time under it), then Counts in #562's stat row, then the outbox's emails to them and the email links not yet used as two dense tables; #590's Actions go at the end.
+  A support question ("I never got the confirmation") is answered by reading the account's facts and its emails together, so they share one screen; dates and an invite's wave read as text, numbers as figures and emails as rows.
+  The users list is #562's dense table with the search as its filter row, matching the start of the email or the name.
+  Rejected: the facts as a stat row too (dates and an invite's wave in large type compete with the counts, and longer values don't fit a figure), and Account, Counts and Email as tabs (every support question takes a click, and comparing the confirmation with its email happens across tabs).
 - **The admin's skeleton (#562) set its layout, and later admin pages reuse it; a large feature that changes how the admin looks or works still gets its own design checkpoint** (the owner, at #562's checkpoint; planning had the skeleton as the admin's only one).
   A page built from the approved parts (tables, forms, stat rows) needs none.
   What the admin changes for readers (the waitlist form) keeps its checkpoint.

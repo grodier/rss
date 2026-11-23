@@ -25,7 +25,7 @@ Other methods aren't remembered, since replaying one as a GET would give a 405.
 A logged-in user who opens `/login` or `/signup` is sent to the timeline.
 
 **Sessions.** On every later request, `authenticate` loads the device's `user_sessions` row with its user in one query.
-A missing row, or one unused for 90 days (`sessionIdleTimeout`; the row is deleted), makes the request anonymous; otherwise it updates `last_seen_at` if it's over a day old and puts the user and session in the request context (`s.authenticatedUserID(r)`, `s.authenticatedSession(r)`).
+A missing row, or one unused for 90 days (`rss.SessionIdleTimeout`; the row is deleted), makes the request anonymous; otherwise it updates `last_seen_at` if it's over a day old and puts the user and session in the request context (`s.authenticatedUserID(r)`, `s.authenticatedSession(r)`).
 Logging out deletes the row and renews the token.
 A login lasts at most a year (scs's `Lifetime`).
 
@@ -682,7 +682,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview, Feeds and sites, the Seed list and Discover's catalog, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, and Web performance are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
    `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `feeds`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
@@ -706,7 +706,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 1. **Counting.** `AdminOverviewRepository.Overview` counts the People and Content sections in one query at the handler's `now`: small tables exactly, and `articles`, `reads` and `timeline_entries` from the planner's estimate (`estimatedRows`, `pg_class.reltuples`), since counting them reads them whole (the watchlist entry "The admin's overview counts big tables").
    Readers active count distinct `user_sessions.user_id` by `last_seen_at`, which moves at most once a day, so the label says "about"; waiting uses the waitlist's Waiting rule (`waitingEntry`).
-2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Waiting to `/waitlist`, Invites pending to `/invites`, Feeds to every feed on `/feeds`).
+2. **The page.** `peopleTiles` and `contentTiles` turn the counts into stat rows (the `stat-row` partial): a label, a number with thousands separators (`count`) and an optional second line, the label a link stretched over the figure where a page exists (Confirmed accounts to `/users`, Waiting to `/waitlist`, Invites pending to `/invites`, Feeds to every feed on `/feeds`).
    The head says the admin's build and when the page was rendered.
    The Service section, first, shows `www`'s uptime over 24 hours and its version from the pinger's checks (`serviceTiles`), linking to the service page, or "Not configured" without the pinger.
 3. **Queues.** `AdminOverviewRepository.Queues` counts each runner's due jobs and finds the oldest's due time in one query, with the same condition its claim query uses (`feedDue`, `siteIconDue`, `enrichJobDue`, `emailDue`, `lookupPending`, `importFeedPending`), so it counts what the runner would take next; lookups and import feeds are due from when they were asked for.
@@ -757,6 +757,31 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 3. `internal/ui/admin/feeds.html`, `sites.html`, `feed.html`, `site.html` and `partials/feeds.html`.
 
 **Tests:** `internal/admin/feeds_test.go`, `sites_test.go`; `internal/psql/admin_feeds_test.go`.
+
+### Users and support
+
+`GET /users` (`usersHandler`) finds a reader's account, and `GET /users/{id}` (`userHandler`) shows what state it's in, for answering someone who writes in; both are read-only, and #590 adds the actions.
+Aggregates only: a reader's page shows account facts and counts, never their reads, saves, stars, tags, timelines or feeds, and the admin never logs in as them ("Admin" in decisions.md).
+
+1. **The list.** Users have their own section in the sidebar, after Waitlist, and the Overview's Confirmed accounts links to it.
+   Readers newest first, 50 a page (`AdminUserRepository.ListUsers`), with a search that matches the start of the email or the name, in any case (`?q=`, LIKE wildcards escaped); the cursor (`?after=`, `userCursor`) is the last row's join time and ID, compared in that order since `users.created_at` is to the second, and carries the time so the next page still follows when that user is deleted in between.
+   Each row is the name, linking to the reader's page, the email, Confirmed or Not confirmed as a status label, when they joined and when they were last seen (the newest of their sessions' `last_seen_at`, "Never" without one), relative to now with the UTC time on hover.
+   It reads every user (the watchlist entry "The admin's users list").
+2. **A reader's page.** `AdminUserRepository.User` reads, in a few statements:
+   - **Account**, a two-column list of facts (one column on phones): name, email, when the email was confirmed (or "Not confirmed"), joined, last seen, the invite they signed up with (its wave, or an open invite's note, and when it was made; `invites.user_id`) and the ID.
+   - **Counts**, a stat row (`userCounts`): devices logged in (sessions seen within `rss.SessionIdleTimeout`, 90 days, since an older one is only deleted at the next login), subscriptions, tags, timelines with how many are shared, saved and starred articles, and imports with their feeds subscribed (or already subscribed) and failed, over all of them.
+   - **Email**: their email links that haven't expired (purpose, the address it went to, created and expires; never hashes), and the newest 50 emails in the outbox to the reader's address or a link's, so a change of address's confirmation to the new one shows (subject, to, status, queued, sent, attempts; never bodies, which can carry one-time links), noting the outbox keeps finished ones for a week (`mail.Runner.KeepFor`).
+     Only emails queued since they joined count: `emails.to_address` isn't a foreign key, so an address reused within the week after its account was deleted would otherwise show that account's emails.
+   - A History link to the reader's entries in the audit log (`target_type=user`).
+   `userPage` holds only these: `TestUserPageHoldsNoReading` walks its type and fails on any list but counts, emails and links, or a field named for a body or hash.
+
+**Start at:**
+
+1. `internal/admin/users.go` (`usersHandler`, `userHandler`, `userCounts`).
+2. `internal/psql/admin_users.go` (`ListUsers`, `User`).
+3. `internal/ui/admin/users.html` and `user.html`.
+
+**Tests:** `internal/admin/users_test.go`; `internal/psql/admin_users_test.go`.
 
 ### Seed list and Discover's catalog
 

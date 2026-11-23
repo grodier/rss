@@ -113,10 +113,10 @@ func (s *Server) serviceTiles(ctx context.Context, now time.Time) ([]statTile, e
 }
 
 // peopleTiles are the People section's figures. Accounts link to the users
-// page once #579 adds it.
+// page.
 func peopleTiles(p rss.OverviewPeople) []statTile {
 	return []statTile{
-		{Label: "Confirmed accounts", Value: p.ConfirmedAccounts, Note: "of " + count(p.Accounts)},
+		{Label: "Confirmed accounts", Value: p.ConfirmedAccounts, Note: "of " + count(p.Accounts), Href: "/users"},
 		{Label: "Signups in 7 days", Value: p.Signups7, Note: count(p.Signups30) + " in 30 days"},
 		// Sessions' last_seen_at moves at most once a day.
 		{Label: "Active in 7 days, about", Value: p.Active7, Note: count(p.Active30) + " in 30 days"},

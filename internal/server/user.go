@@ -289,7 +289,7 @@ func (s *Server) startSession(r *http.Request, userID string) error {
 		return err
 	}
 
-	id, err := s.services.SessionService.Create(r.Context(), userID, time.Now().Add(-sessionIdleTimeout))
+	id, err := s.services.SessionService.Create(r.Context(), userID, time.Now().Add(-rss.SessionIdleTimeout))
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Users - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Users</h1>
+        <p>Every reader’s account, newest first. Open one to see its state and the emails sent to it; hover a time for its UTC date.</p>
+      </header>
+
+      <section class="admin-section" aria-labelledby="users-heading">
+        <h2 id="users-heading" class="visually-hidden">Users</h2>
+        <form class="filters" action="/users" method="get" role="search" aria-label="Search users">
+          <div>
+            <label for="q">Email or name starts with</label>
+            <input type="search" id="q" name="q" value="{{.Q}}" autocapitalize="none" spellcheck="false" />
+          </div>
+          <button class="btn btn-sm" type="submit">Search</button>
+          {{if .Q}}<a class="btn btn-sm" href="/users">Clear</a>{{end}}
+        </form>
+
+        {{if .Rows}}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Confirmed</th>
+                <th scope="col">Joined</th>
+                <th scope="col">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{$now := .Now}}
+              {{range .Rows}}
+              <tr>
+                <td class="wrap"><a href="/users/{{.ID}}">{{with .Name}}{{.}}{{else}}(no name){{end}}</a></td>
+                <td class="wrap">{{.Email}}</td>
+                <td>{{if .EmailConfirmedAt.IsZero}}<span class="status status-pending">Not confirmed</span>{{else}}<span class="status status-redeemed">Confirmed</span>{{end}}</td>
+                <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
+                <td>{{if .LastSeenAt.IsZero}}Never{{else}}<time datetime="{{.LastSeenAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .LastSeenAt}} UTC">{{ago $now .LastSeenAt}}</time>{{end}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Older</a>
+        </div>
+        {{end}}
+        {{else}}
+        <p class="empty">{{if .Q}}No users’ email or name starts with “{{.Q}}”.{{else}}No users yet.{{end}}</p>
+        {{end}}
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

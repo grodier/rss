@@ -228,7 +228,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | R2e No suggestions | `/discover?q=zzzz`, or type `zzzz` (with JavaScript, suggestions update as you type) | Discover, 200 | Only the last row, "Search everything for “zzzz”" (with Look up above it for an address); live search announces "No feeds" | Yes, the row or Enter shows the results (R2) | new (#666) |
 | R2f No sites on a shared host | `/discover?q=bsky&scope=feeds&host=nope.example`: a group row's link whose sites no longer match, or any other `host` | Discover, 200 | "No sites on {host} match “{q}”.", under "Sites on {host} that match “{q}” · All results" | Yes, All results | new (#739) |
 | R3 Special characters | `/discover?q=%25`, `_`, `"<script>\` | Discover, 200 | As R2; matched literally and escaped | Yes | ok |
-| R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, under the search box | "Search must be 200 characters or fewer"; the input is `aria-invalid`, described by the error and focused; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept, and the clear button empties it | tied to the input (search box consistency PR); not announced beyond focus |
+| R4 Query over 200 characters | `/discover?q=` + 201 letters | Discover, 422, under the search box | "Search must be 200 characters or fewer"; the input is `aria-invalid`, described by the error and focused; while typing, live search ignores the 422 and leaves the last results until the form is submitted | Yes; the query is kept, and the clear button empties it | tied to the input (#764); not announced beyond focus |
 
 ## Empty states
 

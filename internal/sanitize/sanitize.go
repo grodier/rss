@@ -472,10 +472,17 @@ func hasImage(n *html.Node, base *url.URL, want string) bool {
 // image, before the extension: photo-1024x768.jpg is a copy of photo.jpg.
 var sizeSuffix = regexp.MustCompile(`-\d+x\d+(\.[^./]+)$`)
 
+// originalImage matches the address of the original image that an image
+// server's copy names at the end of its path, as Substack's and Cloudinary's
+// do (/image/fetch/<size, format>/https%3A%2F%2F…): from the first slash
+// followed by an http(s) address.
+var originalImage = regexp.MustCompile(`(?i)/(https?://[^/].*)$`)
+
 // imageKey returns rawURL, resolved against base, in a form that is the same
-// for copies of one image: https for http (see httpsImage), the host
-// lowercased and without "www.", no query or fragment, and no WordPress size
-// suffix. ok is false if rawURL doesn't parse.
+// for copies of one image: the original's key for an image server's copy
+// that names it (see originalImage), https for http (see httpsImage), the
+// host lowercased and without "www.", no query or fragment, and no WordPress
+// size suffix. ok is false if rawURL doesn't parse.
 func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -483,6 +490,13 @@ func imageKey(rawURL string, base *url.URL) (key string, ok bool) {
 	}
 	if base != nil {
 		u = base.ResolveReference(u)
+	}
+	// u.Path is decoded, so an original sent as https%3A%2F%2F… matches too.
+	// The original is shorter than rawURL, so this ends.
+	if m := originalImage.FindStringSubmatch(u.Path); m != nil {
+		if key, ok := imageKey(m[1], nil); ok {
+			return key, true
+		}
 	}
 	if u.Scheme == "http" {
 		u.Scheme = "https"

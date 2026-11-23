@@ -61,6 +61,8 @@ export function init(): void {
   };
   const show = (q: string, container: Element) => {
     form.querySelector(".error")?.remove();
+    input.removeAttribute("aria-invalid");
+    input.removeAttribute("aria-describedby");
     results.replaceChildren(...container.childNodes);
     localizeTimes(results);
     enhancePings(results);

@@ -180,10 +180,8 @@ func TestSavedHandler(t *testing.T) {
 		assertBodyContains(t, body,
 			`<form class="page-search" role="search" method="get" action="/saved">`,
 			`<label for="saved-q" class="visually-hidden">Search saved articles</label>`,
-			`<input type="search" id="saved-q" name="q" value="" placeholder="Search saved articles" />`)
-		if strings.Contains(body, ">Clear</a>") {
-			t.Errorf("Clear shown without a query: %s", body)
-		}
+			`<input type="search" id="saved-q" name="q" value="" placeholder="Search saved articles" enterkeyhint="search" />`,
+			`<a class="search-clear" href="/saved" aria-label="Clear search" title="Clear search" data-search-clear="" hidden>`)
 	})
 
 	t.Run("q is trimmed and passed through", func(t *testing.T) {
@@ -192,7 +190,8 @@ func TestSavedHandler(t *testing.T) {
 		if gotQ != "zebra crossing" {
 			t.Errorf("store q = %q, want %q", gotQ, "zebra crossing")
 		}
-		assertBodyContains(t, body, `value="zebra crossing"`, `<a href="/saved">Clear</a>`)
+		assertBodyContains(t, body, `value="zebra crossing"`,
+			`<a class="search-clear" href="/saved" aria-label="Clear search" title="Clear search" data-search-clear="">`)
 		forms := saveForms(t, body)
 		want := "/saved?q=" + url.QueryEscape("  zebra crossing \t")
 		if got := forms[result[0].Article.ID].ReturnTo; got != want {
@@ -224,7 +223,7 @@ func TestSavedHandler(t *testing.T) {
 		body := getSaved(t, s, "/saved?q="+url.QueryEscape(`<b>"x"</b>`)).Body.String()
 		assertBodyContains(t, body,
 			`No saved articles match “&lt;b&gt;&#34;x&#34;&lt;/b&gt;”.`,
-			`<a href="/saved">Clear</a>`,
+			`<a class="search-clear" href="/saved" aria-label="Clear search" title="Clear search" data-search-clear="">`,
 			`class="page-search"`)
 		if strings.Contains(body, "<b>") || strings.Contains(body, "Nothing saved yet") {
 			t.Errorf("wrong or unescaped empty message: %s", body)

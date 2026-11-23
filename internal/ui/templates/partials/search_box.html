@@ -1,0 +1,15 @@
+{{/* A page's search box (searchBox), inside the page's form: the magnifier
+     at the field's start submits, and the clear button at its end, shown
+     while there's a query, links to the page without it; search-clear.ts
+     shows and hides it as the reader types, and clears in place where the
+     page updates as they type (data-search-clear="in-place"). The browser's
+     own clear button is hidden (base.css), so every browser shows this one. */}}
+{{define "search-box"}}
+<label for="{{.ID}}" class="visually-hidden">{{.Label}}</label>
+<div class="search-field">
+  <button class="search-submit" type="submit" aria-label="Search">{{template "icon-search"}}</button>
+  <input type="search" id="{{.ID}}" name="q" value="{{.Value}}" placeholder="{{.Placeholder}}" enterkeyhint="search"{{if not .Prose}} autocapitalize="none" autocorrect="off" spellcheck="false"{{end}}{{if .Error}} aria-invalid="true" aria-describedby="{{.ID}}-error" autofocus{{end}} />
+  <a class="search-clear" href="{{.ClearURL}}" aria-label="Clear search" title="Clear search" data-search-clear="{{if .InPlace}}in-place{{end}}"{{if not .Value}} hidden{{end}}>{{template "icon-close"}}</a>
+</div>
+{{with .Error}}<p class="error" id="{{$.ID}}-error">{{.}}</p>{{end}}
+{{end}}

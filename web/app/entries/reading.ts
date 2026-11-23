@@ -4,6 +4,7 @@
 // the group's name. Every page works without them.
 import * as busyForms from "../../shared/lib/busy-forms";
 import { localizeTimes } from "../../shared/lib/local-times";
+import * as searchClear from "../../shared/lib/search-clear";
 import * as codeCopy from "../features/code-copy";
 import * as backForward from "../features/back-forward";
 import * as dividerDraw from "../features/divider-draw";
@@ -26,6 +27,7 @@ saveStar.init();
 share.init();
 codeCopy.init();
 busyForms.init(); // after saveStar: it skips the submits saveStar takes over
+searchClear.init();
 videoEmbeds.init();
 imageFallback.init();
 timelineTabs.init(); // after backForward, as both listen for pageswap and pagereveal

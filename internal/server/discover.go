@@ -56,6 +56,7 @@ type discoverData struct {
 	Reordered bool
 	// Import is what Discover says about importing, with no query.
 	Import discoverImport
+	Box    searchBox
 }
 
 // Scope is the form's hidden scope field, which only a submit sends: the
@@ -186,8 +187,22 @@ func (s *Server) discoverHandler(w http.ResponseWriter, r *http.Request) {
 		data.Searched = true
 	}
 
+	data.Box = discoverBox(data.Form)
 	if err := s.renderHTML(w, status, "discover.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// discoverBox is Discover's search box for form: its query and error.
+func discoverBox(form searchForm) searchBox {
+	return searchBox{
+		ID:          "q",
+		Label:       "Search",
+		Placeholder: "Search or paste a link",
+		Value:       form.Q,
+		ClearURL:    "/discover",
+		InPlace:     true,
+		Error:       form.FieldErrors["q"],
 	}
 }
 

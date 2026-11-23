@@ -298,6 +298,10 @@ Each with when it pays off:
   Deferred from #699.
 - [ ] **Excerpts of articles that open with an embedded post.**
   The excerpt is plain text cut at ingest, so an article that opens with an X post shows the post's text and its "— Name (@handle) date" byline in its row (noticed in #698).
+- [ ] **Saved's search as you type.**
+  Discover's and My feeds' boxes update as the reader types; Saved's still searches only on Enter (the magnifier or a phone keyboard's Search key), so it's the one box that behaves differently, and its clear button reloads `/saved` when the page shows a query's results (#764).
+  Live search's pattern would fit: fetch `/saved?q=…` once typing pauses and swap in the article list, as infinite scroll swaps in the next page, with the URL following the query.
+  It searches article text, so each pause costs the watchlist's "Saved search scans with `ILIKE`" query; plan it with that entry's fix, and add a watchlist entry for reads per pause, as Discover's has.
 - [ ] **Save any web page.**
   Save a link that isn't in any feed to Saved, from a bookmarklet, a "Save a link" form on Saved, or the phone's share sheet (a share target added to the manifest from #394).
   Read-later apps keep closing (Pocket in 2025), and Saved plus enrichment already shows a page's title, image and description.

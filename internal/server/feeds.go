@@ -182,6 +182,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		ByName, ByUpdated string
 		// ReturnTo brings Edit subscription back to this sort.
 		ReturnTo string
+		Box      searchBox
 	}{
 		Nav:              s.nav(r, "feeds"),
 		Sites:            sites,
@@ -195,6 +196,14 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		ByName:           feedsURL("", q),
 		ByUpdated:        feedsURL(feedsSortUpdated, q),
 		ReturnTo:         feedsURL(sort, ""),
+		Box: searchBox{
+			ID:          "feeds-q",
+			Label:       "Search my feeds",
+			Placeholder: "Search my feeds",
+			Value:       q,
+			ClearURL:    feedsURL(sort, ""),
+			InPlace:     true,
+		},
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "feeds.html", data); err != nil {

@@ -155,6 +155,7 @@ The Waitlist and review tables show each entry's sections by name, read with the
 
 **Flow.** Discover (`GET /discover`, the fourth tab, with the magnifier) shows Discover's catalog by section when there's no query, and is the whole app's search when there is one (`?q=…`; see "Discover's search" below).
 The box submits from the magnifier at its start, with Enter, or with a phone keyboard's Search key; there's no Search button.
+The box is the search-box partial (`partials/search_box.html`, `searchBox`) that My feeds and Saved use too: while it has text, a clear button at its end links to the page without the query, and with JavaScript `search-clear.ts` shows and hides it as the reader types and clears the box in place on pages that update as you type (Discover, My feeds), sending the same `input` event as typing, so they react as they do to an emptied box; Escape in a box with text does the same. On Saved, whose results change only on Enter, it reloads `/saved` when the page shows a query's results. The browser's own clear button is hidden, so every browser shows this one.
 With JavaScript, suggestions update as you type: live search (`live-search.ts`) fetches the same page with `q` alone once typing pauses, swaps in its results container (`data-search-results`) and announces its `data-announce`, with the URL following the query; emptying the box fetches the no-query page at once, so the sections come back without the feeds followed meanwhile.
 Enter (or the magnifier) submits the form with its hidden `scope`, the tab shown, and gets the results (see "Discover's search" below).
 While a search is slower than `--delay-busy`, a spinner takes the place of the box's search icon and the stale results dim until the new ones arrive.
@@ -238,7 +239,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 
 **Start at:**
 
-1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `discover_search.go` (`discoverSuggest`, `discoverSearch`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, recent searches `recent-searches.ts`, Follow's toggle `save-star.ts`.
+1. `internal/server/discover.go` (`discoverHandler`, `discoverSectionHandler`, `discoverSectionPostsHandler`), `discover_search.go` (`discoverSuggest`, `discoverSearch`), `internal/psql/search.go` and `discover.go` (`Sections`, `SectionFeeds`, `SectionPosts`); live search is `web/app/features/live-search.ts`, recent searches `recent-searches.ts`, the search box `partials/search_box.html` (`internal/server/search_box.go`) and its clear button `web/shared/lib/search-clear.ts`, Follow's toggle `save-star.ts`.
    The search: `internal/server/discover_search.go` (`discoverSearch`, `matchRank`, `rankResults`), `internal/psql/subscriptions.go` (`Search`) and `saves.go` (`HasSaves`), and `partials/search_result.html`.
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
@@ -247,7 +248,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 
-**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `recent-searches.test.ts`, `save-star.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
+**Tests:** `internal/server/discover_test.go`, `discover_search_test.go`, `search_box_test.go`, `lookups_test.go`, `sites_test.go`; `web/app/features/live-search.test.ts`, `recent-searches.test.ts`, `save-star.test.ts`, `web/shared/lib/search-clear.test.ts`; `internal/psql/discover_test.go`; `internal/rss/sections_test.go`; `internal/lookup`; `internal/discovery`; `internal/feedparse` (fixtures in `testdata/`); `internal/psql/search_test.go`, `subscriptions_test.go` (`TestSubscriptionRepositorySearch`), `saves_test.go` (`TestSaveRepositoryHasSaves`), `lookups_test.go`, `discoveries_test.go`, `sites_test.go`, `feeds_test.go` (`TestFeedRepositorySiteFeedFacts`), `articles_test.go` (`TestListByFeeds`).
 
 **Why:** "Feed discovery" in decisions.md, and "OPML import" for where import is offered.
 
@@ -549,7 +550,7 @@ It never talks to the server: nothing about a share is recorded.
 
 **Saved page** (`/saved`). Modelled on the timeline: `ListSaved` returns the user's saves newest first, paged by `(saved_at, article_id)` (served by `saves_user_saved_at_idx`), and left-joins the user's subscriptions so a named feed shows its name.
 Unsaving from the page keeps the row until reload when JavaScript is on, so an accidental unsave can be undone in place.
-Search (`/saved?q=…`, submitted by Enter or the box's magnifier, as on Discover) trims `q` and cuts it to 200 runes, then matches it with `ILIKE` (`likePattern` escapes the wildcards) against the article's title, page title and excerpt, the feed's title and the user's name for it.
+Search (`/saved?q=…`, submitted by Enter or the box's magnifier, in the search box Discover and My feeds share, its clear button included; see "Discover, site lookups and discovery") trims `q` and cuts it to 200 runes, then matches it with `ILIKE` (`likePattern` escapes the wildcards) against the article's title, page title and excerpt, the feed's title and the user's name for it.
 There's no count anywhere.
 
 **Start at:**

@@ -1019,9 +1019,26 @@ func TestShowsImage(t *testing.T) {
 		{name: "relative src", raw: `<p>one</p><p>two</p><img src="/photo.jpg">`, base: base, imageURL: "https://example.com/photo.jpg", want: true},
 		{name: "WordPress size suffix", raw: `<p>one</p><p>two</p><img src="https://example.com/wp/photo-1024x768.jpg">`, imageURL: "https://example.com/wp/photo.jpg", want: true},
 		{name: "nested in a table", raw: `<p>one</p><table><tr><td><img src="https://example.com/photo.jpg"></td></tr></table>`, imageURL: "https://example.com/photo.jpg", want: true},
+		{name: "image server copies with other sizes", raw: `<p>one</p><p>two</p><img src="https://cdn.example.net/fetch/w_1456,f_auto/https%3A%2F%2Fmedia.example.org%2Fphoto.png">`, imageURL: "https://cdn.example.net/fetch/f_auto/https%3A%2F%2Fmedia.example.org%2Fphoto.png", want: true},
+		{name: "image server copy and the original", raw: `<p>one</p><p>two</p><img src="https://cdn.example.net/fetch/w_600/https%3A%2F%2Fmedia.example.org%2Fphoto.png">`, imageURL: "http://www.media.example.org/photo.png", want: true},
+		{name: "image server copy naming an unescaped original", raw: `<p>one</p><p>two</p><img src="https://res.example.net/demo/image/fetch/w_300/https://media.example.org/photo.png">`, imageURL: "https://res.example.net/demo/image/fetch/w_800,q_auto/https://media.example.org/photo.png", want: true},
+		{name: "image server copy of a sized original", raw: `<p>one</p><p>two</p><img src="https://cdn.example.net/fetch/w_600/https%3A%2F%2Fmedia.example.org%2Fphoto.png%3Fw%3D600">`, imageURL: "https://cdn.example.net/fetch/w_1200/https%3A%2F%2Fmedia.example.org%2Fphoto.png", want: true},
+		{name: "image server copies of an original with an escape", raw: `<p>one</p><p>two</p><img src="https://cdn.example.net/fetch/w_600/https%3A%2F%2Fmedia.example.org%2F100%25.png">`, imageURL: "https://cdn.example.net/fetch/f_auto/https%3A%2F%2Fmedia.example.org%2F100%25.png", want: true},
+		{
+			name: "real case: Substack's captioned image, another size of the card image",
+			raw: `<div class="captioned-image-container"><figure><a class="image-link image2 is-viewable-img" target="_blank" href="https://substackcdn.com/image/fetch/$s_!bVT4!,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F8e84c98e-a1cb-4ac0-949b-e4306e105231_2048x1130.png"><div class="image2-inset"><picture>` +
+				`<source type="image/webp" srcset="https://substackcdn.com/image/fetch/$s_!bVT4!,w_424,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F8e84c98e-a1cb-4ac0-949b-e4306e105231_2048x1130.png 424w" sizes="100vw">` +
+				`<img src="https://substackcdn.com/image/fetch/$s_!bVT4!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F8e84c98e-a1cb-4ac0-949b-e4306e105231_2048x1130.png" width="2048" height="1130" class="sizing-normal" alt="" sizes="100vw" fetchpriority="high"></picture>` +
+				`<div class="image-link-expand"><div class="pencraft pc-display-flex pc-gap-8 pc-reset"><button class="pencraft pc-reset pencraft icon-container view-image" tabindex="0" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"></polyline></svg></button></div></div></div></a></figure></div>` +
+				`<p>This past weekend, <em>I Play Rocky</em>, a biographical drama about the making of 1976&#8217;s <em>Rocky</em>, rumbled into theaters.</p><p>Here are exactly 20 notes about the movie:</p><ol><li><p><strong>Yes. </strong><em>I Play Rocky</em> is good.</p></li></ol>`,
+			imageURL: "https://substackcdn.com/image/fetch/$s_!bVT4!,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F8e84c98e-a1cb-4ac0-949b-e4306e105231_2048x1130.png",
+			want:     true,
+		},
 
 		// No match.
 		{name: "different file", raw: `<p>one</p><p>two</p><img src="https://example.com/photo2.jpg">`, imageURL: "https://example.com/photo.jpg", want: false},
+		{name: "image server copies of different originals", raw: `<p>one</p><p>two</p><img src="https://cdn.example.net/fetch/w_600/https%3A%2F%2Fmedia.example.org%2Fphoto2.png">`, imageURL: "https://cdn.example.net/fetch/w_600/https%3A%2F%2Fmedia.example.org%2Fphoto.png", want: false},
+		{name: "http in a file name isn't an original", raw: `<p>one</p><p>two</p><img src="https://example.com/img/https-guide.png">`, imageURL: "https://example.com/img/http-guide.png", want: false},
 		{name: "relative src without base", raw: `<p>one</p><p>two</p><img src="/photo.jpg">`, imageURL: "https://example.com/photo.jpg", want: false},
 		{name: "unparseable imageURL", raw: `<p>one</p><p>two</p><img src="https://example.com/photo.jpg">`, imageURL: "https://example.com/%zz", want: false},
 		{name: "empty content", raw: ``, imageURL: "https://example.com/photo.jpg", want: false},

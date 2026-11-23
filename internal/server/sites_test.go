@@ -678,7 +678,7 @@ func TestSiteHandlerOneFeed(t *testing.T) {
 
 			head := body[strings.Index(body, `<section class="profile">`):]
 			head = head[:strings.Index(head, "</section>")]
-			for _, want := range []string{tt.want, `name="return_to" value="/sites/` + testSiteID + `"`, "About 1 post a week.</span>", "Latest post today.</span>"} {
+			for _, want := range []string{tt.want, `name="return_to" value="/sites/` + testSiteID + `"`, "<span>About 1 post a week.</span>", "<span>Latest post today.</span>"} {
 				if !strings.Contains(head, want) {
 					t.Errorf("head does not contain %q: %s", want, head)
 				}

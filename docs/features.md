@@ -444,7 +444,7 @@ Copies of one article (same `canonical_url`) collapse into the earliest: an entr
 `fillAlsoIn` then lists the other subscribed feeds that carry each entry.
 Feed pages work the same way with `ListByFeed`, but in publication order and without collapsing copies.
 List queries never load `summary` or `content`.
-Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials).
+Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and `local-date` partials), on every page that shows one; a date-only feed's date (the `local-day` partial) takes the reader's date format but stays on its UTC day.
 
 **Card values.** Rows and the article page show an article through accessors on `rss.Article`, so every page agrees: `CardImageURL` (the feed's image, else the page's, over https), `DisplayTitle` (the title, else the page's title, else the start of the excerpt) and `DisplayExcerpt` (the excerpt, else the page's description).
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) in the kicker after the time, through `articleRow.Byline`, which leaves them out when the only author is the feed's name the kicker shows.

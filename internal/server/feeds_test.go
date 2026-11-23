@@ -209,11 +209,12 @@ func TestFeedHandlerDateOnlyRows(t *testing.T) {
 	}
 	body := rr.Body.String()
 	assertBodyContains(t, body,
-		`<time datetime="2026-10-09">9 Oct 2026</time>`,
+		`<time data-local="day" datetime="2026-10-09">9 Oct 2026</time>`,
 		`<time data-local datetime="2024-03-02T10:00:00Z">2 Mar 2024 10:00 UTC</time>`,
 	)
-	if n := strings.Count(body, "data-local"); n != 1 {
-		t.Errorf("data-local attributes = %d, want 1 (the timed row only)", n)
+	// A calendar day: never an instant the script would move to the reader's zone.
+	if n := strings.Count(body, "<time data-local datetime="); n != 1 {
+		t.Errorf("instants = %d, want 1 (the timed row only)", n)
 	}
 	if strings.Contains(body, "00:00 UTC") {
 		t.Errorf("date-only row shows a time: %s", body)
@@ -1072,9 +1073,9 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 		want        []string
 		wantNot     []string
 	}{
-		{"never fetched", time.Time{}, []string{"Never fetched."}, []string{"posts a week"}},
-		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`, "About 3 posts a week."}, nil},
-		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.`}, nil},
+		{"never fetched", time.Time{}, []string{"<span>Never fetched.</span>"}, []string{"posts a week"}},
+		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.</span>`, "<span>About 3 posts a week.</span>"}, nil},
+		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.</span>`}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

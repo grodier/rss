@@ -1,2 +1,6 @@
 {{define "local-time"}}<time data-local datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006 15:04 UTC"}}</time>{{end}}
 {{define "local-date"}}<time data-local="date" datetime="{{.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}
+{{/* local-day is a date-only feed's date: a calendar day, not an instant, so
+     local-times.ts shows it in the reader's date format but never moves it
+     to their time zone. */}}
+{{define "local-day"}}<time data-local="day" datetime="{{.UTC.Format "2006-01-02"}}">{{.UTC.Format "2 Jan 2006"}}</time>{{end}}

@@ -397,7 +397,6 @@ The decisions are under "Filtering and timelines" in decisions.md.
   RSS `<image>`, Atom `<icon>` / `<logo>` and JSON Feed `icon` as extra candidates for #304, if many sites end up without an icon.
 - [ ] **Design review leftovers.**
   Found in the design review that filed #419–#424 (#425), and not filed yet; each needs a design checkpoint ("Design" in decisions.md) unless it's copy only.
-  - Dates differ: rows and feed pages say "Oct 29, 2026, 2:22 AM", My feeds "29 Oct 2026"; a feed page's facts end "Last fetched … ." with a stray spaced full stop, and "About 5 posts a week." has a full stop My feeds doesn't.
   - Article rows repeat themselves: the feed name above the card and the domain inside it, a full date and time where a relative one may do, and the actions detached under the card.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).

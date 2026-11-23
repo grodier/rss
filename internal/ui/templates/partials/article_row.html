@@ -8,7 +8,7 @@
     <p class="article-meta">
       {{if .Feed.ID}}<a class="article-feed" href="/feeds/{{.Feed.ID}}">{{or .Feed.Title .Feed.Url}}</a>{{end}}
       {{if or $dated $byline}}{{if .Feed.ID}}<span aria-hidden="true">·</span>{{end}}<span class="article-when">
-        {{- if $dated}}{{if .Article.PublishedDateOnly}}<time datetime="{{.Article.PublishedAt.UTC.Format "2006-01-02"}}">{{.Article.PublishedAt.UTC.Format "2 Jan 2006"}}</time>{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
+        {{- if $dated}}{{if .Article.PublishedDateOnly}}{{template "local-day" .Article.PublishedAt}}{{else}}{{template "local-time" .Article.PublishedAt}}{{end}}{{end}}
         {{- if and $dated $byline}}<span aria-hidden="true">·</span>{{end}}
         {{- with $byline}}<span class="article-author"{{if gt (len $.Article.Authors) 2}} title="{{$.Article.Byline}}"{{end}}>{{.}}</span>{{end -}}
       </span>{{end}}

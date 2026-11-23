@@ -100,6 +100,9 @@ type searchResult struct {
 	Desc string
 	// Facts are the line under it, joined with " · ".
 	Facts []string
+	// LatestAt is when a followed feed last posted, the facts' last
+	// ("Latest post 2 days ago", through the since-date partial).
+	LatestAt time.Time
 	// Warning is a followed feed's problem, after the facts.
 	Warning string
 	// Saved marks a saved article, whose facts lead with Saved's bookmark.
@@ -365,16 +368,13 @@ func (s *Server) discoverHostSearch(r *http.Request, q, host string) (discoverRe
 // article, and whether it's gone or failing.
 func followedFeedResult(sub rss.Subscription, icon, q string, now time.Time) searchResult {
 	name := cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url)
-	res := searchResult{Href: "/feeds/" + sub.Feed.ID, Title: name, Avatar: avatar(sub.Feed.SiteID, name, icon), Following: true}
+	res := searchResult{Href: "/feeds/" + sub.Feed.ID, Title: name, Avatar: avatar(sub.Feed.SiteID, name, icon), Following: true, LatestAt: sub.LatestArticleAt}
 	if cmp.Or(sub.Site.Title, sub.Site.Host) != name {
 		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
 	} else if p := discovery.Platform(sub.Site.Host); p != "" {
 		res.Facts = append(res.Facts, "On "+p)
 	}
 	res.Facts = append(res.Facts, postingRate(sub.Feed.PostsPerWeek))
-	if !sub.LatestArticleAt.IsZero() {
-		res.Facts = append(res.Facts, "Latest "+since(sub.LatestArticleAt, now))
-	}
 	switch {
 	case !sub.Feed.GoneAt.IsZero():
 		res.Warning = "No longer exists"
@@ -563,9 +563,6 @@ func followedFeedSuggestion(sub rss.Subscription, icon, q string, now time.Time)
 		res.Facts = append(res.Facts, "From "+siteName(sub.Site))
 	} else if p := discovery.Platform(sub.Site.Host); p != "" {
 		res.Facts = append(res.Facts, "On "+p)
-	}
-	if !sub.LatestArticleAt.IsZero() {
-		res.Facts = append(res.Facts, "Latest "+since(sub.LatestArticleAt, now))
 	}
 	return res
 }

@@ -736,7 +736,8 @@ func TestFeedsHandler(t *testing.T) {
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One", PostsPerWeek: 3.4}, LatestArticleAt: latest},
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: otherID, Title: "Two"}},
 		))
-		assertContains(t, body, `Latest post <time data-local="date" datetime="2026-03-04T10:00:00Z">4 Mar 2026</time> · About 3 posts a week</p>`, "<p>No posts yet.</p>")
+		// Relative, with the exact date on hover.
+		assertContains(t, body, `Latest post <time data-local="since" datetime="2026-03-04T10:00:00Z" title="4 Mar 2026">`+since(latest, time.Now())+`</time> · About 3 posts a week</p>`, "<p>No posts yet.</p>")
 		// The feed without articles shows no rate.
 		assertNotContains(t, body, "No posts in the last 30 days")
 	})
@@ -747,7 +748,7 @@ func TestFeedsHandler(t *testing.T) {
 		_, body := getFeeds(t, listing(
 			rss.Subscription{Site: a, Feed: rss.Feed{ID: testFeedID, Title: "One"}, LatestArticleAt: late},
 		))
-		assertContains(t, body, `Latest post <time data-local="date" datetime="2026-03-05T04:30:00Z">5 Mar 2026</time>`)
+		assertContains(t, body, `Latest post <time data-local="since" datetime="2026-03-05T04:30:00Z" title="5 Mar 2026">`)
 	})
 
 	health := []struct {
@@ -1073,9 +1074,9 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 		want        []string
 		wantNot     []string
 	}{
-		{"never fetched", time.Time{}, []string{"<span>Never fetched.</span>"}, []string{"posts a week"}},
-		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.</span>`, "<span>About 3 posts a week.</span>"}, nil},
-		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time>.</span>`}, nil},
+		{"never fetched", time.Time{}, []string{"<span>Never fetched</span>"}, []string{"posts a week"}},
+		{"fetched", time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time></span>`, "<span>About 3 posts a week</span>"}, nil},
+		{"fetched in another zone", time.Date(2026, 1, 2, 11, 4, 0, 0, time.FixedZone("EDT", -4*60*60)), []string{`<span>Last fetched <time data-local datetime="2026-01-02T15:04:00Z">2 Jan 2026 15:04 UTC</time></span>`}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

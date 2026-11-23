@@ -40,6 +40,16 @@ describe("localizeTimes", () => {
     expect(text).not.toBe(medium().format(day)); // 8 Oct in New York
   });
 
+  it("keeps a relative date's text and shows its date in the reader's format and zone in its title", async () => {
+    document.body.innerHTML = `<time data-local="since" datetime="2026-10-09T02:30:00Z" title="9 Oct 2026">4 days ago</time>`;
+    const { localizeTimes } = await import("./local-times");
+    localizeTimes(document);
+    const el = document.querySelector("time")!;
+    expect(el.textContent).toBe("4 days ago");
+    expect(el.title).toBe(medium().format(new Date("2026-10-09T02:30:00Z")));
+    expect(el.title).not.toBe("9 Oct 2026"); // 8 Oct in New York
+  });
+
   it("leaves a time it can't read and one without data-local as the server wrote them", async () => {
     document.body.innerHTML =
       `<time data-local datetime="not a time">as written</time>` + `<time datetime="2026-10-09">9 Oct 2026</time>`;

@@ -153,7 +153,7 @@ func TestDiscoverNoQuery(t *testing.T) {
 		if got := textOf(r1, "discover-feed-title"); got != "" {
 			t.Errorf("feed-1 shows its title %q, though it's the site's name", got)
 		}
-		if got, want := textOf(r1, "discover-meta"), "About 4 posts a week · Latest 2 days ago"; got != want {
+		if got, want := textOf(r1, "discover-meta"), "About 4 posts a week · Latest post 2 days ago"; got != want {
 			t.Errorf("feed-1 meta = %q, want %q", got, want)
 		}
 		peek := findAll(r1, func(n *html.Node) bool { return n.Data == "details" && hasClass(n, "discover-peek") })

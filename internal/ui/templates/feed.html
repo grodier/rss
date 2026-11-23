@@ -43,10 +43,10 @@
         <p class="facts">
           <span>{{template "icon-link"}}<code>{{.Feed.Url}}</code></span>
           {{if .Feed.LastFetched.IsZero}}
-          <span>{{template "icon-clock"}}<span>Never fetched.</span></span>
+          <span>{{template "icon-clock"}}<span>Never fetched</span></span>
           {{else}}
-          <span>{{template "icon-clock"}}<span>Last fetched {{template "local-time" .Feed.LastFetched}}.</span></span>
-          <span>{{template "icon-activity"}}<span>{{postingRate .Feed.PostsPerWeek}}.</span></span>
+          <span>{{template "icon-clock"}}<span>Last fetched {{template "local-time" .Feed.LastFetched}}</span></span>
+          <span>{{template "icon-activity"}}<span>{{postingRate .Feed.PostsPerWeek}}</span></span>
           {{end}}
         </p>
         {{if not .Feed.GoneAt.IsZero}}

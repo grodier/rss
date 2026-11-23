@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -18,13 +19,53 @@ func userID(n int) string { return fmt.Sprintf("40000000-0000-4000-8000-%012d", 
 
 // fakeUsers is a UserStore: ListUsers returns rows, at most the query's
 // limit, keeping the query it was asked; User returns user when its ID
-// matches, else rss.ErrNoRecord; both return err when it's set.
+// matches, else rss.ErrNoRecord; both return err when it's set. The actions
+// keep each call and return actionErr when it's set: LogOutEverywhere
+// returns devices, and Delete the user as rss.User.
 type fakeUsers struct {
-	mu      sync.Mutex
-	rows    []rss.AdminUserRow
-	queries []rss.AdminUserQuery
-	user    rss.AdminUser
-	err     error
+	mu        sync.Mutex
+	rows      []rss.AdminUserRow
+	queries   []rss.AdminUserQuery
+	user      rss.AdminUser
+	err       error
+	actionErr error
+	devices   int
+	calls     []userCall
+}
+
+// userCall is an action asked of fakeUsers: its method, the user's ID, who
+// asked, and SendLink's token and email.
+type userCall struct {
+	method, id string
+	by         rss.AuditActor
+	token      rss.Token
+	email      mail.Message
+}
+
+func (f *fakeUsers) call(c userCall) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, c)
+	return f.actionErr
+}
+
+func (f *fakeUsers) SendLink(_ context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error {
+	return f.call(userCall{method: "SendLink", id: t.UserID, by: by, token: t, email: m})
+}
+
+func (f *fakeUsers) MarkConfirmed(_ context.Context, id string, by rss.AuditActor) (time.Time, error) {
+	return time.Now(), f.call(userCall{method: "MarkConfirmed", id: id, by: by})
+}
+
+func (f *fakeUsers) LogOutEverywhere(_ context.Context, id string, by rss.AuditActor) (int, error) {
+	return f.devices, f.call(userCall{method: "LogOutEverywhere", id: id, by: by})
+}
+
+func (f *fakeUsers) Delete(_ context.Context, id string, by rss.AuditActor) (rss.User, error) {
+	if err := f.call(userCall{method: "Delete", id: id, by: by}); err != nil {
+		return rss.User{}, err
+	}
+	return rss.User{ID: f.user.ID, Name: f.user.Name, Email: f.user.Email}, nil
 }
 
 func (f *fakeUsers) ListUsers(_ context.Context, q rss.AdminUserQuery) ([]rss.AdminUserRow, error) {

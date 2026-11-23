@@ -1,7 +1,8 @@
 /* An admin page: its head (the reader's nameplate rule, smaller), sections,
    section subheadings, empty states, filter rows (fields, and segmented
-   links), what a section can't show, stat rows, fact lists and color keys' swatches. Denser
-   than the reader: it's a working tool. */
+   links), what a section can't show, stat rows, fact lists, action lists,
+   forms' introductions and color keys' swatches. Denser than the reader:
+   it's a working tool. */
 @layer layout {
   .admin-page {
     max-inline-size: 80rem;
@@ -341,6 +342,50 @@
     .fact-list dd small {
       display: block;
     }
+  }
+
+  /* A record's actions as a list: each its button, then a line on what it
+     does, the buttons in one column on wide screens and above their line
+     on phones, with a divider under each. */
+  .action-list {
+    padding: 0;
+    list-style: none;
+    border-block: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+
+  .action-list > li {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    gap: 0.375rem 1rem;
+    align-items: baseline;
+    padding: 0.625rem 0;
+  }
+
+  .action-list > li + li {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .action-list .btn {
+    justify-self: start;
+  }
+
+  .action-list p {
+    color: var(--text-2);
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 47.99rem) {
+    .action-list > li {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* What a form does, above its fields. */
+  .admin-form .form-intro {
+    margin-block-end: 1rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   /* A color key's swatch; its color comes from the class it's keyed to. */

@@ -413,30 +413,29 @@ func (r *UserRepository) Delete(ctx context.Context, userID, pw string) (rss.Use
 	}
 	defer tx.Rollback()
 
-	var feedIDs []string
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(array_agg(feed_id::text), '{}') FROM subscriptions WHERE user_id = $1`, userID).
-		Scan(pq.Array(&feedIDs))
-	if err != nil {
-		return rss.User{}, err
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
-	if err != nil {
-		return rss.User{}, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return rss.User{}, err
-	}
-	if n == 0 {
-		return rss.User{}, rss.ErrNoRecord
-	}
-	if err := dropUnwantedEnrichJobs(ctx, tx, feedIDs); err != nil {
+	if err := deleteUser(ctx, tx, userID); err != nil {
 		return rss.User{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return rss.User{}, err
 	}
 	return u, nil
+}
+
+// deleteUser deletes user userID in tx, as Delete describes, or returns
+// rss.ErrNoRecord. The admin's delete (AdminUserRepository.Delete) shares
+// it, so both delete an account the same way.
+func deleteUser(ctx context.Context, tx *sql.Tx, userID string) error {
+	var feedIDs []string
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(array_agg(feed_id::text), '{}') FROM subscriptions WHERE user_id = $1`, userID).
+		Scan(pq.Array(&feedIDs))
+	if err != nil {
+		return err
+	}
+	if err := execOne(ctx, tx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
+		return err
+	}
+	return dropUnwantedEnrichJobs(ctx, tx, feedIDs)
 }
 
 // CheckPassword returns nil if password is the user's. ErrWrongPassword if it

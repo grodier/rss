@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Delete {{with .User.Name}}{{.}}{{else}}{{.User.Email}}{{end}}’s account - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      {{with .User}}
+      <header class="page-head">
+        <h1>Delete account</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="/users/{{.ID}}">Back to the account</a>
+        </div>
+        <p>{{with .Name}}{{.}}, {{end}}{{.Email}}</p>
+      </header>
+
+      <section class="admin-section">
+        {{$focus := $.Form.FirstError "email"}}
+        <form class="admin-form" action="/users/{{.ID}}/delete" method="post">
+          {{range $.Form.NonFieldErrors}}
+          <div class="error" role="alert">{{.}}</div>
+          {{end}}
+          <p class="form-intro">This permanently deletes their account: their subscriptions, tags, timelines, saved and starred articles and reading history, and logs them out everywhere. Feeds and articles stay, because other readers share them. It can’t be undone.</p>
+          <p class="form-intro">We’ll email {{.Email}} to say the account is gone, as when readers delete their own.</p>
+          <div class="field">
+            <label for="email">Type their email to confirm</label>
+            <input type="text" id="email" name="email" value="{{$.Form.Email}}" autocomplete="off" autocapitalize="none" spellcheck="false"
+              aria-describedby="email-hint{{with $.Form.FieldErrors.email}} email-error{{end}}"
+              {{with $.Form.FieldErrors.email}}aria-invalid="true"{{end}}
+              {{if eq $focus "email"}}autofocus{{end}} />
+            <p class="hint" id="email-hint">{{.Email}}</p>
+            {{with $.Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button class="btn-danger" type="submit">Delete account</button>
+            <a class="btn" href="/users/{{.ID}}">Cancel</a>
+          </div>
+        </form>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

@@ -14,31 +14,13 @@ import (
 	"github.com/grodier/rss/internal/validator"
 )
 
-// resetLinkTTL is how long a password reset link works.
-const resetLinkTTL = time.Hour
-
 // sendPasswordReset emails user a link to choose a new password.
 func (s *Server) sendPasswordReset(ctx context.Context, user rss.User) error {
-	plain, hash, err := token.New()
+	link, err := s.accountEmails.PasswordReset(user, time.Now())
 	if err != nil {
 		return err
 	}
-
-	err = s.services.TokenService.Create(ctx, rss.Token{
-		Hash:      hash,
-		UserID:    user.ID,
-		Purpose:   rss.TokenResetPassword,
-		Email:     user.Email,
-		ExpiresAt: time.Now().Add(resetLinkTTL),
-	})
-	if err != nil {
-		return err
-	}
-
-	return s.sendEmail(ctx, user.Email, "reset_password", struct{ Name, URL string }{
-		Name: user.Name,
-		URL:  s.absoluteURL("/password/reset?token=" + plain),
-	})
+	return s.sendLink(ctx, link)
 }
 
 // sendPasswordChanged tells user their password was changed, with a link to

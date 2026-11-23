@@ -67,7 +67,7 @@ A runner worker claims the email, sends it and records the outcome: sent, retrie
 The cap, retries, lease and retention are under "Background work" and "Security measures" in [architecture.md](architecture.md).
 
 **Email confirmation.** Confirmation is soft: nothing requires it yet, except sharing a timeline.
-After signup, `sendConfirmation` makes a token with `token.New` (only its SHA-256 is stored), saves it (purpose `confirm_email`, the address it's sent to, 7 days) and queues the link `<base URL>/confirm-email?token=<token>`.
+After signup, `sendConfirmation` has `accounts.Emails.Confirmation` make a token with `token.New` (only its SHA-256 is stored), saves it (purpose `confirm_email`, the address it's sent to, 7 days) and queues the link `<base URL>/confirm-email?token=<token>`.
 If that fails, signup still succeeds and the error is logged.
 Asking again doesn't cancel earlier links, since emails arrive out of order.
 Until the address is confirmed, the timeline and Settings show a notice with a Resend button (`confirmResendHandler`, 3 per user per hour).
@@ -80,7 +80,7 @@ Confirming while logged in as that account redirects Home with a flash.
 Anyone else (logged out, or logged in as another account) is redirected to `GET /confirm-email/done` (`confirmEmailDoneHandler`), a static page saying the address is confirmed, with a link to log in or, if logged in, to Home; confirming never logs anyone in.
 An unknown, expired, used or outdated token gets the expired-link page (410), built by `linkExpiredPage`, which the other email links reuse.
 
-**Password reset.** `/password/forgot` asks for the account's email (prefilled from `?email=`), checks the per-IP and per-email limits, finds the account (an unknown email gets a field error), and `sendPasswordReset` queues a link with a 1-hour token.
+**Password reset.** `/password/forgot` asks for the account's email (prefilled from `?email=`), checks the per-IP and per-email limits, finds the account (an unknown email gets a field error), and `sendPasswordReset` queues a link with a 1-hour token (`accounts.Emails.PasswordReset`).
 The address is kept in the session as `resetSentTo` for the "sent" page, which can send the link again.
 Both pages show the support address for people who can't get into their email.
 `GET /password/reset` checks the token like confirmation (no-referrer, no-store, no writes) and shows a new-password form with the token's address read-only.
@@ -760,7 +760,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 
 ### Users and support
 
-`GET /users` (`usersHandler`) finds a reader's account, and `GET /users/{id}` (`userHandler`) shows what state it's in, for answering someone who writes in; both are read-only, and #590 adds the actions.
+`GET /users` (`usersHandler`) finds a reader's account, and `GET /users/{id}` (`userHandler`) shows what state it's in and acts on it, for answering someone who writes in ("I never got the confirmation", "I can't get in", "please delete my account").
 Aggregates only: a reader's page shows account facts and counts, never their reads, saves, stars, tags, timelines or feeds, and the admin never logs in as them ("Admin" in decisions.md).
 
 1. **The list.** Users have their own section in the sidebar, after Waitlist, and the Overview's Confirmed accounts links to it.
@@ -774,14 +774,22 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
      Only emails queued since they joined count: `emails.to_address` isn't a foreign key, so an address reused within the week after its account was deleted would otherwise show that account's emails.
    - A History link to the reader's entries in the audit log (`target_type=user`).
    `userPage` holds only these: `TestUserPageHoldsNoReading` walks its type and fails on any list but counts, emails and links, or a field named for a body or hash.
+3. **Actions.** The page ends with them, each a POST back to the page with its outcome in a flash, and each recorded in the audit log by its `AdminUserRepository` method, in its own transaction, which first locks the user's row (`lockUser`):
+   - **Resend confirmation** and **Send a password reset link** make the same emails as `www`'s signup and "Forgot password?", from `internal/accounts` (`Emails.Confirmation`, `Emails.PasswordReset`), which builds the token and the email; `www` stores them with its token and email stores (`sendLink`), and the admin with `SendLink`, which stores the token and queues the email in one transaction with `user.resend_confirmation` or `user.send_password_reset`.
+     The admin runs no mail runner: `www`'s sends the email from the outbox, as it does invites.
+     Resend refuses a confirmed address (`rss.ErrAlreadyConfirmed`), and both refuse an address over the outbox's per-address cap, sending nothing.
+   - **Mark confirmed** (`MarkConfirmed`, `user.mark_confirmed`) sets `email_confirmed_at` and deletes the confirmation links, as confirming with one does; it refuses a confirmed address.
+   - **Log out everywhere** (`LogOutEverywhere`, `user.log_out_everywhere`) deletes all their `user_sessions` rows and says how many devices that logged out, counting them as the page does.
+   - **Delete account** is its own page, `GET /users/{id}/delete`, behind `requireRecentCode` like its form: typing the account's email (`confirmDestructive`, any case) deletes it with `Delete` (`user.delete`, keeping the address in the entry), which shares `deleteUser` with the reader's own delete, then queues `account_deleted` to the old address (`Emails.AccountDeleted`), as the reader's own delete does; the flash says when that email couldn't be queued, since the account is gone either way.
 
 **Start at:**
 
-1. `internal/admin/users.go` (`usersHandler`, `userHandler`, `userCounts`).
-2. `internal/psql/admin_users.go` (`ListUsers`, `User`).
-3. `internal/ui/admin/users.html` and `user.html`.
+1. `internal/admin/users.go` (`usersHandler`, `userHandler`, `userCounts`) and `user_actions.go`.
+2. `internal/psql/admin_users.go` (`ListUsers`, `User`) and `admin_user_actions.go`.
+3. `internal/accounts/accounts.go`.
+4. `internal/ui/admin/users.html`, `user.html` and `user_delete.html`.
 
-**Tests:** `internal/admin/users_test.go`; `internal/psql/admin_users_test.go`.
+**Tests:** `internal/admin/users_test.go`; `internal/admin/user_actions_test.go`; `internal/psql/admin_users_test.go`; `internal/psql/admin_user_actions_test.go`; `internal/accounts/accounts_test.go`.
 
 ### Seed list and Discover's catalog
 

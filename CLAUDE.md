@@ -74,6 +74,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, and its rate-limit key, for both servers
 - `internal/ratelimit`: in-memory fixed-window rate limiters, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
+- `internal/accounts`: makes the account emails `www` and the admin both send (a confirmation link, a reset link, the account-deleted notice), each link with its token
 - `internal/mail`: renders emails from embedded templates, queues them in the outbox (`Queue`) and sends them from a background worker (`Runner`) over SMTP (or logs them when there's no SMTP host)
 - `internal/metrics`: counts `www`'s requests and background jobs and samples its runtime, writes them once a minute, keeps its recent server errors, and rolls up and deletes old metrics and real-user views in the background; the real-user metrics' buckets and thresholds, and percentiles from buckets
 - `internal/lookup`: runs the site lookups queued in the `lookups` table

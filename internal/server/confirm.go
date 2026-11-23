@@ -10,31 +10,13 @@ import (
 	"github.com/grodier/rss/internal/token"
 )
 
-// confirmLinkTTL is how long a confirmation link works.
-const confirmLinkTTL = 7 * 24 * time.Hour
-
 // sendConfirmation emails user a link to confirm their address.
 func (s *Server) sendConfirmation(ctx context.Context, user rss.User) error {
-	plain, hash, err := token.New()
+	link, err := s.accountEmails.Confirmation(user, time.Now())
 	if err != nil {
 		return err
 	}
-
-	err = s.services.TokenService.Create(ctx, rss.Token{
-		Hash:      hash,
-		UserID:    user.ID,
-		Purpose:   rss.TokenConfirmEmail,
-		Email:     user.Email,
-		ExpiresAt: time.Now().Add(confirmLinkTTL),
-	})
-	if err != nil {
-		return err
-	}
-
-	return s.sendEmail(ctx, user.Email, "confirm_email", struct{ Name, URL string }{
-		Name: user.Name,
-		URL:  s.absoluteURL("/confirm-email?token=" + plain),
-	})
+	return s.sendLink(ctx, link)
 }
 
 // confirmNotice is what the confirm-notice partial shows: the address to

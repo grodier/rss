@@ -291,6 +291,7 @@ func testFeed() rss.AdminFeed {
 			Feed: rss.Feed{
 				ID: feedID(1), SiteID: siteID(1), Url: "https://example.com/feed.xml", Title: "Example feed",
 				LastError: `<script>alert("feed")</script>`, ConsecutiveFailures: 4, PostsPerWeek: 2.25,
+				Categories:  []string{"Tech", "<i>News</i>"},
 				LastFetched: testNow.Add(-50 * time.Hour), LastAttempt: testNow.Add(-30 * time.Minute), NextFetch: testNow.Add(time.Hour),
 			},
 			SiteHost: "example.com", Subscribers: 1234,
@@ -460,6 +461,7 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 		`href="/audit?target_id=` + feedID(1) + `&amp;target_type=feed">History</a>`,
 		`/feeds/` + feedID(1) + `/refresh`, `/feeds/` + feedID(1) + `/reset-backoff`,
 		`<dd>1,234</dd>`, `<dd>42</dd>`, `<dd>2.2</dd>`,
+		`<tr><th scope="row">Categories</th><td class="wrap">Tech, &lt;i&gt;News&lt;/i&gt;</td></tr>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("feed page lacks %s", want)
@@ -467,6 +469,9 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	}
 	if strings.Contains(body, "<script>alert") {
 		t.Error("feed page renders last_error as markup")
+	}
+	if strings.Contains(body, "<i>News</i>") {
+		t.Error("feed page renders a category as markup")
 	}
 	// Clear gone only for a gone feed.
 	if strings.Contains(body, "/clear-gone") {
@@ -752,6 +757,7 @@ func TestFeedPageStates(t *testing.T) {
 	fine.LastFetched = testNow.Add(-36 * time.Minute)
 	gone.GoneAt, gone.LastError = testNow.Add(-24*time.Hour), "status 410"
 	never.LastFetched, never.LastAttempt = time.Time{}, time.Time{}
+	never.Categories = nil
 	tests := []struct {
 		name          string
 		feed          rss.AdminFeed
@@ -761,7 +767,8 @@ func TestFeedPageStates(t *testing.T) {
 		{"late", late, []string{`class="health-title">Last fetched 2 days ago</h2>`, `Last success 2 days ago; next fetch in 1 h.`}, true, false},
 		{"fine", fine, []string{`class="health-title">Fetching normally</h2>`, `Last success 36 min ago; next fetch in 1 h.`}, true, false},
 		{"gone", gone, []string{`health-bad`, `class="health-title">Gone since 8 Nov 2026</h2>`, `It answered 410 Gone on 2026-11-08 12:00 UTC, so it isn’t fetched any more. Its last success was 2 days ago.`}, false, true},
-		{"never fetched", never, []string{`class="health-title">Never fetched</h2>`, `No fetch has worked yet, and none has been tried. Next try in 1 h.`}, true, false},
+		{"never fetched", never, []string{`class="health-title">Never fetched</h2>`, `No fetch has worked yet, and none has been tried. Next try in 1 h.`,
+			`<tr><th scope="row">Categories</th><td class="wrap">None</td></tr>`}, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

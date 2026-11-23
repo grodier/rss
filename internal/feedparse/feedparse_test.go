@@ -37,6 +37,7 @@ func TestParse(t *testing.T) {
 		want    Meta
 	}{
 		{
+			// Its item categories are on one item each: no categories.
 			file:    "rss2.xml",
 			feedURL: "https://example.com/feed.xml",
 			want: Meta{
@@ -110,6 +111,59 @@ func TestParse(t *testing.T) {
 				SiteURL:     "http://example.com/home",
 			},
 		},
+		{
+			// RSS channel categories (collapsed; an empty one dropped),
+			// then itunes:category at every level, not itunes:keywords;
+			// then items' categories on at least two items, most items
+			// first, ties by first appearance, each counted once per item
+			// ("Solo" and "TECHNOLOGY" are on one). Duplicates in another
+			// case keep the first spelling.
+			file:    "rss-categories.xml",
+			feedURL: "https://example.com/feed.xml",
+			want: Meta{
+				Format:  "rss",
+				Title:   "Categories",
+				SiteURL: "https://example.com/",
+				Categories: []string{
+					"Technology", "Open Source", "Software How-To", "News", "Tech News", "Deep",
+					"Go", "Postgres", "design", "Rare",
+				},
+			},
+		},
+		{
+			// At most 10, each cut to 100 bytes without splitting a
+			// character.
+			file:    "rss-categories-many.xml",
+			feedURL: "https://example.com/feed.xml",
+			want: Meta{
+				Format: "rss",
+				Title:  "Many categories",
+				Categories: []string{
+					strings.Repeat("x", 95) + " éé",
+					"Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+				},
+			},
+		},
+		{
+			// Atom term, else label.
+			file:    "atom-categories.xml",
+			feedURL: "https://example.net/atom.xml",
+			want: Meta{
+				Format:     "atom",
+				Title:      "Atom categories",
+				Categories: []string{"tech", "Only label", "go", "Labelled"},
+			},
+		},
+		{
+			// JSON Feed has no feed-level categories, only items' tags.
+			file:    "jsonfeed-tags.json",
+			feedURL: "https://example.com/feed.json",
+			want: Meta{
+				Format:     "json",
+				Title:      "JSON tags",
+				Categories: []string{"web", "go"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,7 +172,7 @@ func TestParse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
-			if got.Meta != tt.want {
+			if !reflect.DeepEqual(got.Meta, tt.want) {
 				t.Errorf("Parse:\n got %+v\nwant %+v", got.Meta, tt.want)
 			}
 		})

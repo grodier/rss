@@ -49,6 +49,7 @@ type FeedInfo struct {
 	Title       string // feedparse Meta.Title, else Candidate.Title, else URL
 	Description string
 	SiteURL     string           // Meta.SiteURL (may be "")
+	Categories  []string         // Meta.Categories
 	Items       []feedparse.Item // the feed's items as parsed during discovery
 }
 
@@ -312,6 +313,7 @@ func feedInfo(finalURL *url.URL, parsed feedparse.Feed, candidateTitle string) F
 		Title:       parsed.Title,
 		Description: parsed.Description,
 		SiteURL:     parsed.SiteURL,
+		Categories:  parsed.Categories,
 		Items:       parsed.Items,
 	}
 	if f.Title == "" {

@@ -218,6 +218,7 @@ func (r *Refresher) fetch(ctx context.Context, feed rss.Feed) (*fetch.Response, 
 		Title:        parsed.Title,
 		Description:  parsed.Description,
 		SiteUrl:      parsed.SiteURL,
+		Categories:   parsed.Categories,
 		ETag:         resp.Header.Get("ETag"),
 		LastModified: resp.Header.Get("Last-Modified"),
 	}

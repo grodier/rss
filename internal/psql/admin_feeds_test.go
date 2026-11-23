@@ -235,7 +235,7 @@ func TestAdminFeedRepositoryFeedAndSite(t *testing.T) {
 	repo := NewAdminFeedRepository(db)
 	siteID, host := adminFeedsSite(t, db)
 	u := newTestUser(t, db)
-	feedID := adminFeed(t, db, siteID, "B feed", `last_error = 'status 500'`, u)
+	feedID := adminFeed(t, db, siteID, "B feed", `last_error = 'status 500', categories = '{Tech,News}'`, u)
 	other := adminFeed(t, db, siteID, "A feed", ``)
 
 	published := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -256,6 +256,9 @@ func TestAdminFeedRepositoryFeedAndSite(t *testing.T) {
 	}
 	if f.Title != "B feed" || f.LastError != "status 500" || f.SiteHost != host || f.Site.ID != siteID || f.Site.Host != host || f.Subscribers != 1 {
 		t.Errorf("Feed = %+v", f)
+	}
+	if want := []string{"Tech", "News"}; !slices.Equal(f.Categories, want) {
+		t.Errorf("Feed categories = %q, want %q", f.Categories, want)
 	}
 	if f.Articles != 2 || f.EnrichJobs != 1 || f.OldestEnrichJob.IsZero() {
 		t.Errorf("Feed counts: %d articles, %d jobs, oldest %v; want 2, 1, set", f.Articles, f.EnrichJobs, f.OldestEnrichJob)

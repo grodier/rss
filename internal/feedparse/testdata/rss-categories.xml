@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Categories</title>
+    <link>https://example.com/</link>
+    <category>Technology</category>
+    <category>  Open
+      Source </category>
+    <category></category>
+    <itunes:keywords>not, a, category</itunes:keywords>
+    <itunes:category text="technology">
+      <itunes:category text="Software How-To"/>
+    </itunes:category>
+    <itunes:category text="News">
+      <itunes:category text="Tech News">
+        <itunes:category text="Deep"/>
+      </itunes:category>
+    </itunes:category>
+    <item>
+      <title>1</title>
+      <category>Go</category>
+      <category>Postgres</category>
+      <category>design</category>
+      <category>Solo</category>
+    </item>
+    <item>
+      <title>2</title>
+      <category>postgres</category>
+      <category>Design</category>
+      <category>Go</category>
+    </item>
+    <item>
+      <title>3</title>
+      <category>Go</category>
+      <category>GO</category>
+    </item>
+    <item>
+      <title>4</title>
+      <category>Rare</category>
+      <category>TECHNOLOGY</category>
+    </item>
+    <item>
+      <title>5</title>
+      <category>rare</category>
+    </item>
+  </channel>
+</rss>

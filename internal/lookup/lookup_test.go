@@ -460,7 +460,7 @@ func TestToSave(t *testing.T) {
 	res := discovery.Result{
 		Site: discovery.SiteInfo{Key: "a.example.com", URL: "https://a.example.com/", Title: "A", Description: "Site A"},
 		Feeds: []discovery.FeedInfo{
-			{URL: "https://a.example.com/feed.xml", Title: "Posts", Description: "All posts", SiteURL: "https://a.example.com/", Items: items},
+			{URL: "https://a.example.com/feed.xml", Title: "Posts", Description: "All posts", SiteURL: "https://a.example.com/", Categories: []string{"Tech"}, Items: items},
 			{URL: "https://a.example.com/comments.xml", Title: "Comments"},
 		},
 	}
@@ -481,7 +481,7 @@ func TestToSave(t *testing.T) {
 	}
 	wantFeeds := []rss.FeedWithArticles{
 		{
-			Feed:     rss.Feed{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts"},
+			Feed:     rss.Feed{Url: "https://a.example.com/feed.xml", SiteUrl: "https://a.example.com/", Title: "Posts", Description: "All posts", Categories: []string{"Tech"}},
 			Articles: ingest.Articles(items),
 		},
 		{Feed: rss.Feed{Url: "https://a.example.com/comments.xml", Title: "Comments"}, Articles: []rss.Article{}},

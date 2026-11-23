@@ -15,6 +15,7 @@ type Feed struct {
 	SiteUrl     string
 	Title       string
 	Description string
+	Categories  []string // what it says it's about (see feedparse.Meta.Categories); shown only to admins; nil if none
 	LastFetched time.Time
 
 	LastAttempt         time.Time // zero if never attempted
@@ -1232,6 +1233,7 @@ type AdminPickFeed struct {
 	LatestPost     time.Time // zero when it has no articles
 	Latest         []string  // its 3 newest titles
 	Comments       bool      // its title or address mentions comments
+	Categories     []string  // see Feed.Categories
 }
 
 // DiscoverPick is a feed put in Discover's catalog from the picking page.

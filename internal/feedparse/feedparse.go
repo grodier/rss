@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/textcut"
 	"github.com/mmcdole/gofeed"
 	"github.com/mmcdole/gofeed/atom"
 	ext "github.com/mmcdole/gofeed/extensions"
@@ -29,11 +30,12 @@ var ErrNotFeed = errors.New("feedparse: not a feed")
 
 // Meta is the feed-level metadata of a parsed feed.
 type Meta struct {
-	Format      string // "rss", "atom", "rdf" or "json"
-	Title       string // plain text, whitespace-trimmed and collapsed; may be ""
-	Description string // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
-	SiteURL     string // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
-	Image       string // absolute http(s) URL of the feed's own picture: RSS channel <image><url> (else itunes:image), Atom <icon> (square, else <logo>), JSON "icon"; "" if none
+	Format      string   // "rss", "atom", "rdf" or "json"
+	Title       string   // plain text, whitespace-trimmed and collapsed; may be ""
+	Description string   // RSS <description>, Atom <subtitle>, JSON "description"; plain text, trimmed and collapsed
+	SiteURL     string   // absolute; RSS channel <link>, Atom <link rel="alternate"> (or a <link> without rel), JSON "home_page_url"; "" if missing
+	Image       string   // absolute http(s) URL of the feed's own picture: RSS channel <image><url> (else itunes:image), Atom <icon> (square, else <logo>), JSON "icon"; "" if none
+	Categories  []string // channel categories, then items' most common (see feedCategories); nil if none
 }
 
 // Feed is a parsed feed: its metadata and its items in document order.
@@ -221,6 +223,7 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 			Description: desc,
 			SiteURL:     resolveHTTP(feedURL, link),
 			Image:       resolveHTTP(feedURL, feedImage(f)),
+			Categories:  feedCategories(f),
 		},
 		Items: items,
 	}, f, indexes, nil
@@ -242,6 +245,147 @@ func feedImage(f *gofeed.Feed) string {
 		return strings.TrimSpace(r.ITunesExt.Image)
 	}
 	return ""
+}
+
+// MaxCategories is the most categories kept for a feed, and
+// maxCategoryBytes the longest one.
+const (
+	MaxCategories    = 10
+	maxCategoryBytes = 100
+)
+
+// feedCategories returns what a feed says it's about: its channel's
+// categories, then its items' categories found on at least two items, most
+// items first, ties in order of first appearance. The channel's are, in
+// document order, an RSS channel's <category> then its itunes:category text
+// (each level, nested ones too), or an Atom feed's <category> term (else its
+// label); the items' are RSS and Atom <category> (as the channel's) and
+// JSON Feed tags. gofeed's own Categories aren't used: they mix in
+// itunes:keywords and dc:subject, prefer an Atom label to its term, and
+// keep one level of itunes:category. Each is trimmed and collapsed and cut
+// to maxCategoryBytes, duplicates are dropped ignoring case (the first
+// spelling kept), and at most MaxCategories are kept. nil if none.
+func feedCategories(f *gofeed.Feed) []string {
+	var channel []string
+	var items [][]string // each item's categories
+	switch o := f.OriginalFeed().(type) {
+	case *rss.Feed:
+		channel = rssCategories(o.Categories)
+		channel = append(channel, itunesCategories(o.Extensions["itunes"]["category"])...)
+		for _, it := range o.Items {
+			if it != nil {
+				items = append(items, rssCategories(it.Categories))
+			}
+		}
+	case *atom.Feed:
+		channel = atomCategories(o.Categories)
+		for _, e := range o.Entries {
+			if e != nil {
+				items = append(items, atomCategories(e.Categories))
+			}
+		}
+	case *jsonfeed.Feed:
+		for _, it := range o.Items {
+			if it != nil {
+				items = append(items, it.Tags)
+			}
+		}
+	}
+
+	var cats categorySet
+	for _, c := range channel {
+		cats.add(c)
+	}
+
+	// The items' categories, each counted once per item, in order of first
+	// appearance.
+	var common categorySet
+	counts := map[string]int{}
+	for _, it := range items {
+		var seen categorySet
+		for _, c := range it {
+			if seen.add(c) {
+				common.add(c)
+			}
+		}
+		for _, c := range seen.names {
+			counts[strings.ToLower(c)]++
+		}
+	}
+	common.names = slices.DeleteFunc(common.names, func(c string) bool { return counts[strings.ToLower(c)] < 2 })
+	slices.SortStableFunc(common.names, func(a, b string) int {
+		return counts[strings.ToLower(b)] - counts[strings.ToLower(a)]
+	})
+	for _, c := range common.names {
+		cats.add(c)
+	}
+
+	if len(cats.names) > MaxCategories {
+		return cats.names[:MaxCategories:MaxCategories]
+	}
+	return cats.names
+}
+
+// categorySet is a list of categories without duplicates, ignoring case.
+type categorySet struct {
+	names []string
+	keys  map[string]bool // lowercase names
+}
+
+// add trims and collapses c, cuts it to maxCategoryBytes and appends it
+// unless it is empty or already there, reporting whether it did.
+func (s *categorySet) add(c string) bool {
+	c = textcut.Bytes(collapseSpace(c), maxCategoryBytes)
+	// The cut may end the name on a space.
+	c = strings.TrimSpace(c)
+	key := strings.ToLower(c)
+	if c == "" || s.keys[key] {
+		return false
+	}
+	if s.keys == nil {
+		s.keys = map[string]bool{}
+	}
+	s.keys[key] = true
+	s.names = append(s.names, c)
+	return true
+}
+
+// rssCategories returns the values of RSS <category> elements.
+func rssCategories(cats []*rss.Category) []string {
+	var out []string
+	for _, c := range cats {
+		if c != nil {
+			out = append(out, c.Value)
+		}
+	}
+	return out
+}
+
+// atomCategories returns the term of each Atom <category>, else its label.
+func atomCategories(cats []*atom.Category) []string {
+	var out []string
+	for _, c := range cats {
+		if c == nil {
+			continue
+		}
+		if strings.TrimSpace(c.Term) != "" {
+			out = append(out, c.Term)
+		} else {
+			out = append(out, c.Label)
+		}
+	}
+	return out
+}
+
+// itunesCategories returns the text of itunes:category elements and of the
+// ones nested in them, depth first.
+func itunesCategories(cats []ext.Extension) []string {
+	var out []string
+	for _, c := range cats {
+		out = append(out, c.Attrs["text"])
+		out = append(out, itunesCategories(c.Children["category"])...)
+	}
+	return out
 }
 
 // itemImage returns the URL of the image an item declares, unresolved, from

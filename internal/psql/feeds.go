@@ -10,6 +10,7 @@ import (
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/textcut"
+	"github.com/lib/pq"
 )
 
 // feedColumnNames are the columns scanFeed reads, in order.
@@ -82,6 +83,7 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 }
 
 // Upsert inserts a feed or updates its metadata by URL and returns its ID.
+// Its categories are replaced, also with none.
 // An existing site_id is kept (a feed belongs to the first site it was
 // discovered from), unless it is a shared host's own site and f's site has
 // a path on that host ("medium.com" -> "medium.com/@alice"): the feed then
@@ -98,8 +100,8 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 	// except that it moves from a shared host's own site to a site with a
 	// path on that host (medium.com -> medium.com/@alice), never between two
 	// sites with a path or two hosts.
-	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id, next_fetch_at)
-		VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()))
+	stmt := `INSERT INTO feeds (url, site_url, title, description, site_id, next_fetch_at, categories)
+		VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()), $7)
 		ON CONFLICT (url) DO UPDATE SET
 			site_id = CASE WHEN (SELECT host FROM sites WHERE id = feeds.site_id)
 					= split_part((SELECT host FROM sites WHERE id = EXCLUDED.site_id), '/', 1)
@@ -108,13 +110,14 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 			site_url = EXCLUDED.site_url,
 			title = COALESCE(NULLIF(EXCLUDED.title, ''), feeds.title),
 			description = COALESCE(NULLIF(EXCLUDED.description, ''), feeds.description),
+			categories = EXCLUDED.categories,
 			next_fetch_at = EXCLUDED.next_fetch_at,
 			gone_at = NULL
 		RETURNING id`
 
 	nextFetch := sql.NullTime{Time: f.NextFetch, Valid: !f.NextFetch.IsZero()}
 	var id string
-	if err := q.QueryRowContext(ctx, stmt, f.Url, f.SiteUrl, f.Title, f.Description, f.SiteID, nextFetch).Scan(&id); err != nil {
+	if err := q.QueryRowContext(ctx, stmt, f.Url, f.SiteUrl, f.Title, f.Description, f.SiteID, nextFetch, categories(f.Categories)).Scan(&id); err != nil {
 		return "", err
 	}
 
@@ -123,7 +126,8 @@ func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 
 // SaveFetch records a successful fetch of feed f.ID in one transaction:
 // updates the feed's title, description and site URL (keeping the current
-// value when the new one is empty), overwrites etag and last_modified with
+// value when the new one is empty), replaces its categories (also with
+// none, since the feed dropped them), overwrites etag and last_modified with
 // f.ETag and f.LastModified, saves articles and records the successful
 // attempt (see saveArticles), then sets next_fetch_at to catchUp if the
 // result is Behind, else to f.NextFetch, either no sooner than
@@ -149,10 +153,11 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 			site_url = COALESCE(NULLIF($4, ''), site_url),
 			etag = $5,
 			last_modified = $6,
+			categories = $7,
 			refresh_requested_at = NULL
 		WHERE id = $1`
 
-	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.ETag, f.LastModified)
+	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.ETag, f.LastModified, categories(f.Categories))
 	if err != nil {
 		return rss.FetchResult{}, err
 	}
@@ -182,6 +187,15 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 	}
 
 	return res, nil
+}
+
+// categories is a feed's categories as a query argument: an empty array, not
+// NULL, when there are none.
+func categories(c []string) any {
+	if c == nil {
+		c = []string{}
+	}
+	return pq.Array(c)
 }
 
 // RecordFailure records a failed fetch of feed id: sets last_attempt_at,

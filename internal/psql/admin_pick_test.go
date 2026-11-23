@@ -110,7 +110,7 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 	adminFeed(t, db, mixedID, "Gone", "gone_at = now()")
 	// Skipped, then gone: unskipping it wouldn't put it back in the queue.
 	skipFeed(t, repo, adminFeed(t, db, mixedID, "Skipped and gone", "gone_at = now()"))
-	candidate := adminFeed(t, db, mixedID, "Candidate", "posts_per_week = 2.5")
+	candidate := adminFeed(t, db, mixedID, "Candidate", "posts_per_week = 2.5, categories = '{Tech,News}'")
 	seedPick(t, repo, mixed, mixedID, "", "IndieWeb list", now.Add(-2*time.Hour))
 
 	hintedID, hinted := adminFeedsSite(t, db)
@@ -191,6 +191,9 @@ func TestAdminFeedRepositoryPickSites(t *testing.T) {
 		}
 		if f := m.Feeds[0]; f.Title != "Candidate" || f.PostsPerWeek != 2.5 || !f.LatestPost.IsZero() || len(f.Latest) != 0 || f.Comments {
 			t.Errorf("candidate = %+v", f)
+		}
+		if want := []string{"Tech", "News"}; !slices.Equal(m.Feeds[0].Categories, want) {
+			t.Errorf("candidate's categories = %q, want %q", m.Feeds[0].Categories, want)
 		}
 		if m.Source != "IndieWeb list" || m.More != 0 {
 			t.Errorf("mixed site's source %q, more %d", m.Source, m.More)

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom categories</title>
+  <id>urn:example:atom-categories</id>
+  <category term="tech" label="Technology"/>
+  <category label="Only label"/>
+  <entry>
+    <id>1</id>
+    <title>1</title>
+    <category term="go"/>
+    <category label="Labelled"/>
+  </entry>
+  <entry>
+    <id>2</id>
+    <title>2</title>
+    <category term="go" label="Go language"/>
+    <category label="Labelled"/>
+    <category term="once"/>
+  </entry>
+</feed>

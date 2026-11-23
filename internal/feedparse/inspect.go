@@ -96,15 +96,18 @@ var rssItemFields = append([]string{
 	"enclosure@url", "enclosure@type",
 	"media:content@url", // a media:content image is gofeed's item image
 	"itunes:image@href",
+	"category", // feedCategories
 }, mediaItemFields...)
 
 // rssChannelFields are the paths Parse reads in an RSS channel, including
 // gofeed's fallbacks (title: dc:title; description: itunes:summary; link:
-// an atom:link without rel or with rel="alternate").
+// an atom:link without rel or with rel="alternate"), and its categories
+// (feedCategories).
 var rssChannelFields = []string{
 	"title", "dc:title",
 	"description", "itunes:summary",
 	"link", "atom:link@href", "atom:link@rel",
+	"category", "itunes:category@text", "itunes:category/itunes:category@text",
 }
 
 // usedChannelFields and usedItemFields are the paths Parse reads, by
@@ -121,6 +124,7 @@ var (
 			"title", "title@type",
 			"subtitle", "subtitle@type",
 			"link@href", "link@rel",
+			"category@term", "category@label", // feedCategories
 		),
 		"json": pathSet(
 			"version", // recognizes the document as a JSON Feed
@@ -141,6 +145,7 @@ var (
 			"content", "content@type",
 			"published", "updated",
 			"author/name",
+			"category@term", "category@label", // feedCategories
 		}, mediaItemFields...)...),
 		"json": pathSet(
 			"id", "url", "external_url", "title", "summary",
@@ -149,6 +154,7 @@ var (
 			"authors[].name", "author.name", // JSON Feed 1.0 has one author
 			"image", "banner_image",
 			"attachments[].url", "attachments[].mime_type",
+			"tags", // feedCategories
 		),
 	}
 )

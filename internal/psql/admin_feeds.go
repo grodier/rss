@@ -191,16 +191,18 @@ func (r *AdminFeedRepository) Feed(ctx context.Context, id string) (rss.AdminFee
 			(SELECT count(*) FROM articles a WHERE a.feed_id = f.id),
 			(SELECT max(COALESCE(a.published_at, a.created_at)) FROM articles a WHERE a.feed_id = f.id),
 			(SELECT count(*) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id),
-			(SELECT min(j.created_at) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id)
+			(SELECT min(j.created_at) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id),
+			f.categories
 		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
 		WHERE f.id = $1`
 
 	var feed rss.AdminFeed
 	var newest, oldestJob sql.NullTime
+	var categories []string
 	site := &feed.Site
 	row, err := scanAdminFeedRow(r.DB.QueryRowContext(ctx, stmt, id),
 		&site.ID, &site.URL, &site.Title, &site.Description, &site.CreatedAt, &site.UpdatedAt,
-		&feed.Articles, &newest, &feed.EnrichJobs, &oldestJob)
+		&feed.Articles, &newest, &feed.EnrichJobs, &oldestJob, pq.Array(&categories))
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.AdminFeed{}, rss.ErrNoRecord
 	}
@@ -208,6 +210,7 @@ func (r *AdminFeedRepository) Feed(ctx context.Context, id string) (rss.AdminFee
 		return rss.AdminFeed{}, err
 	}
 	feed.AdminFeedRow = row
+	feed.Categories = categories
 	site.Host = row.SiteHost
 	feed.NewestArticleAt, feed.OldestEnrichJob = newest.Time, oldestJob.Time
 	return feed, nil
@@ -757,7 +760,7 @@ func (r *AdminFeedRepository) PickSites(ctx context.Context, q rss.AdminPickQuer
 	}
 
 	feeds := `WITH listed AS (
-			SELECT f.id, f.site_id, f.title, f.url, f.posts_per_week, newest.at, ` + adminPickComments + ` AS comments,
+			SELECT f.id, f.site_id, f.title, f.url, f.posts_per_week, f.categories, newest.at, ` + adminPickComments + ` AS comments,
 				row_number() OVER (PARTITION BY f.site_id
 					ORDER BY ` + adminPickComments + `, newest.at DESC NULLS LAST, f.id) AS n,
 				count(*) OVER (PARTITION BY f.site_id) AS total
@@ -765,7 +768,7 @@ func (r *AdminFeedRepository) PickSites(ctx context.Context, q rss.AdminPickQuer
 			LEFT JOIN LATERAL (` + newestArticle + `) newest ON true
 			WHERE f.site_id = ANY($1::uuid[]) AND ` + feedCond + `
 		)
-		SELECT v.site_id, v.id, v.title, v.url, v.posts_per_week, v.at, v.comments, v.total,
+		SELECT v.site_id, v.id, v.title, v.url, v.posts_per_week, v.categories, v.at, v.comments, v.total,
 			ARRAY(SELECT COALESCE(NULLIF(a.title, ''), a.page_title) FROM articles a WHERE a.feed_id = v.id
 				ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC LIMIT $3)
 		FROM listed v
@@ -781,7 +784,7 @@ func (r *AdminFeedRepository) PickSites(ctx context.Context, q rss.AdminPickQuer
 		var f rss.AdminPickFeed
 		var latest sql.NullTime
 		var total int
-		if err := frows.Scan(&siteID, &f.ID, &f.Title, &f.URL, &f.PostsPerWeek, &latest, &f.Comments, &total,
+		if err := frows.Scan(&siteID, &f.ID, &f.Title, &f.URL, &f.PostsPerWeek, pq.Array(&f.Categories), &latest, &f.Comments, &total,
 			pq.Array(&f.Latest)); err != nil {
 			return nil, err
 		}

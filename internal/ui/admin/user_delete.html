@@ -33,11 +33,10 @@
           <div class="field">
             <label for="email">Type their email to confirm</label>
             <input type="text" id="email" name="email" value="{{$.Form.Email}}" autocomplete="off" autocapitalize="none" spellcheck="false"
-              aria-describedby="email-hint{{with $.Form.FieldErrors.email}} email-error{{end}}"
-              {{with $.Form.FieldErrors.email}}aria-invalid="true"{{end}}
+              {{with $.Form.FieldErrors.email}}aria-invalid="true" aria-describedby="email-error"{{else}}aria-describedby="email-hint"{{end}}
               {{if eq $focus "email"}}autofocus{{end}} />
-            <p class="hint" id="email-hint">{{.Email}}</p>
-            {{with $.Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{end}}
+            {{/* The error names the address too, so it takes the hint's place. */}}
+            {{with $.Form.FieldErrors.email}}<p class="error" id="email-error">{{.}}</p>{{else}}<p class="hint" id="email-hint">{{$.User.Email}}</p>{{end}}
           </div>
           <div class="form-actions">
             <button class="btn-danger" type="submit">Delete account</button>

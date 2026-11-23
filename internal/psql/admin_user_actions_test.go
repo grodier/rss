@@ -170,16 +170,15 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 		reset := createToken(t, tokens, id, rss.TokenResetPassword, email, time.Now().Add(time.Hour))
 		by := testActor(t, db)
 
-		at, err := repo.MarkConfirmed(t.Context(), id, by)
-		if err != nil {
+		if err := repo.MarkConfirmed(t.Context(), id, by); err != nil {
 			t.Fatalf("MarkConfirmed: %v", err)
 		}
 		var stored sql.NullTime
 		if err := db.QueryRow(`SELECT email_confirmed_at FROM users WHERE id = $1`, id).Scan(&stored); err != nil {
 			t.Fatal(err)
 		}
-		if !stored.Valid || !stored.Time.Equal(at) || time.Since(at) > time.Minute {
-			t.Errorf("email_confirmed_at = %v, returned %v; want now", stored, at)
+		if !stored.Valid || time.Since(stored.Time) > time.Minute {
+			t.Errorf("email_confirmed_at = %v, want now", stored)
 		}
 		if tokenExists(t, tokens, confirm) {
 			t.Error("the confirmation link still works")
@@ -197,7 +196,7 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 		confirmedAt := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
 		id, _ := actionTestUser(t, db, confirmedAt)
 		by := testActor(t, db)
-		if _, err := repo.MarkConfirmed(t.Context(), id, by); !errors.Is(err, rss.ErrAlreadyConfirmed) {
+		if err := repo.MarkConfirmed(t.Context(), id, by); !errors.Is(err, rss.ErrAlreadyConfirmed) {
 			t.Fatalf("MarkConfirmed = %v, want %v", err, rss.ErrAlreadyConfirmed)
 		}
 		var stored time.Time
@@ -213,14 +212,14 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 	})
 
 	t.Run("unknown user", func(t *testing.T) {
-		if _, err := repo.MarkConfirmed(t.Context(), "00000000-0000-4000-8000-000000000000", testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
+		if err := repo.MarkConfirmed(t.Context(), "00000000-0000-4000-8000-000000000000", testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("MarkConfirmed = %v, want %v", err, rss.ErrNoRecord)
 		}
 	})
 
 	t.Run("not recorded, not confirmed", func(t *testing.T) {
 		id, _ := actionTestUser(t, db, nil)
-		if _, err := repo.MarkConfirmed(t.Context(), id, brokenActor(t, db)); err == nil {
+		if err := repo.MarkConfirmed(t.Context(), id, brokenActor(t, db)); err == nil {
 			t.Fatal("MarkConfirmed with a broken actor worked")
 		}
 		if n := countRows(t, db, `SELECT count(*) FROM users WHERE id = $1 AND email_confirmed_at IS NOT NULL`, id); n != 0 {

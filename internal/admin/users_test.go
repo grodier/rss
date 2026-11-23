@@ -53,8 +53,8 @@ func (f *fakeUsers) SendLink(_ context.Context, t rss.Token, m mail.Message, by 
 	return f.call(userCall{method: "SendLink", id: t.UserID, by: by, token: t, email: m})
 }
 
-func (f *fakeUsers) MarkConfirmed(_ context.Context, id string, by rss.AuditActor) (time.Time, error) {
-	return time.Now(), f.call(userCall{method: "MarkConfirmed", id: id, by: by})
+func (f *fakeUsers) MarkConfirmed(_ context.Context, id string, by rss.AuditActor) error {
+	return f.call(userCall{method: "MarkConfirmed", id: id, by: by})
 }
 
 func (f *fakeUsers) LogOutEverywhere(_ context.Context, id string, by rss.AuditActor) (int, error) {

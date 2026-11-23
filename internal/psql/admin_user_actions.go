@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/grodier/rss/internal/mail"
@@ -45,7 +46,7 @@ var linkActions = map[string]string{
 func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error {
 	action, ok := linkActions[t.Purpose]
 	if !ok {
-		return errors.New("psql: SendLink of a " + t.Purpose + " link")
+		return fmt.Errorf("psql: SendLink of a %s link", t.Purpose)
 	}
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -83,36 +84,35 @@ func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.
 
 // MarkConfirmed confirms user id's address now, for one confirmed another
 // way, and, as confirming with a link does, deletes their confirmation
-// links; recorded as user.mark_confirmed by by. It returns when it was
-// confirmed. rss.ErrNoRecord if there's no such user; rss.ErrAlreadyConfirmed
-// if it's already confirmed.
-func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) (time.Time, error) {
+// links; recorded as user.mark_confirmed by by. rss.ErrNoRecord if there's
+// no such user; rss.ErrAlreadyConfirmed if it's already confirmed.
+func (r *AdminUserRepository) MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return time.Time{}, err
+		return err
 	}
 	defer tx.Rollback()
 
 	u, err := lockUser(ctx, tx, id)
 	if err != nil {
-		return time.Time{}, err
+		return err
 	}
 	if !u.EmailConfirmedAt.IsZero() {
-		return time.Time{}, rss.ErrAlreadyConfirmed
+		return rss.ErrAlreadyConfirmed
 	}
 	var at time.Time
 	if err := tx.QueryRowContext(ctx, `UPDATE users SET email_confirmed_at = now() WHERE id = $1 RETURNING email_confirmed_at`, id).Scan(&at); err != nil {
-		return time.Time{}, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_tokens WHERE user_id = $1 AND purpose = 'confirm_email'`, id); err != nil {
-		return time.Time{}, err
+		return err
 	}
 	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "user.mark_confirmed", TargetType: "user", TargetID: id,
 		Before: map[string]any{"email_confirmed_at": nil}, After: map[string]any{"email_confirmed_at": at}})
 	if err != nil {
-		return time.Time{}, err
+		return err
 	}
-	return at, tx.Commit()
+	return tx.Commit()
 }
 
 // LogOutEverywhere deletes all of user id's sessions, recorded as

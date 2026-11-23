@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/grodier/rss/internal/accounts"
 	"github.com/grodier/rss/internal/rss"
@@ -30,11 +31,15 @@ func (s *Server) userBack(w http.ResponseWriter, r *http.Request, user rss.Admin
 	s.backTo(w, r, "/users/"+user.ID, msg)
 }
 
-// sendUserLink emails user the link made, saying sent when it's queued.
-func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, user rss.AdminUser, link accounts.Link, err error, sent string) {
-	if err == nil {
-		err = s.services.Users.SendLink(r.Context(), link.Token, link.Email, s.actor(r))
+// sendUserLink emails user the link newLink makes, an accounts.Emails
+// method, and says sent once it's queued.
+func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, user rss.AdminUser, newLink func(rss.User, time.Time) (accounts.Link, error), sent string) {
+	link, err := newLink(rss.User{ID: user.ID, Name: user.Name, Email: user.Email}, s.now())
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
 	}
+	err = s.services.Users.SendLink(r.Context(), link.Token, link.Email, s.actor(r))
 	switch {
 	case errors.Is(err, rss.ErrAlreadyConfirmed):
 		s.userBack(w, r, user, alreadyConfirmedMessage)
@@ -50,11 +55,6 @@ func (s *Server) sendUserLink(w http.ResponseWriter, r *http.Request, user rss.A
 	}
 }
 
-// accountUser is the reader as the account emails greet them.
-func accountUser(u rss.AdminUser) rss.User {
-	return rss.User{ID: u.ID, Name: u.Name, Email: u.Email}
-}
-
 // userResendConfirmationHandler emails the reader {id} a new link to
 // confirm their address, the email www sends at signup, recorded as
 // user.resend_confirmation. It refuses a confirmed address.
@@ -67,8 +67,7 @@ func (s *Server) userResendConfirmationHandler(w http.ResponseWriter, r *http.Re
 		s.userBack(w, r, user, alreadyConfirmedMessage)
 		return
 	}
-	link, err := s.accountEmails.Confirmation(accountUser(user), s.now())
-	s.sendUserLink(w, r, user, link, err, "Confirmation sent to "+user.Email+".")
+	s.sendUserLink(w, r, user, s.accountEmails.Confirmation, "Confirmation sent to "+user.Email+".")
 }
 
 // userSendPasswordResetHandler emails the reader {id} a link to choose a
@@ -79,8 +78,7 @@ func (s *Server) userSendPasswordResetHandler(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	link, err := s.accountEmails.PasswordReset(accountUser(user), s.now())
-	s.sendUserLink(w, r, user, link, err, "Reset link sent to "+user.Email+".")
+	s.sendUserLink(w, r, user, s.accountEmails.PasswordReset, "Reset link sent to "+user.Email+".")
 }
 
 // userMarkConfirmedHandler confirms the reader {id}'s address without a
@@ -95,8 +93,7 @@ func (s *Server) userMarkConfirmedHandler(w http.ResponseWriter, r *http.Request
 		s.userBack(w, r, user, alreadyConfirmedMessage)
 		return
 	}
-	_, err := s.services.Users.MarkConfirmed(r.Context(), user.ID, s.actor(r))
-	switch {
+	switch err := s.services.Users.MarkConfirmed(r.Context(), user.ID, s.actor(r)); {
 	case errors.Is(err, rss.ErrAlreadyConfirmed):
 		s.userBack(w, r, user, alreadyConfirmedMessage)
 	case errors.Is(err, rss.ErrNoRecord):

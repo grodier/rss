@@ -172,7 +172,7 @@ type UserStore interface {
 	ListUsers(ctx context.Context, q rss.AdminUserQuery) ([]rss.AdminUserRow, error)
 	User(ctx context.Context, id string) (rss.AdminUser, error)
 	SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error
-	MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) (time.Time, error)
+	MarkConfirmed(ctx context.Context, id string, by rss.AuditActor) error
 	LogOutEverywhere(ctx context.Context, id string, by rss.AuditActor) (int, error)
 	Delete(ctx context.Context, id string, by rss.AuditActor) (rss.User, error)
 }

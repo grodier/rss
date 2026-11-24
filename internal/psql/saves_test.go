@@ -23,6 +23,7 @@ func saveCount(t *testing.T, db *sql.DB, userID string) int {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)
 	ctx := t.Context()
@@ -46,7 +47,7 @@ func TestSaveRepository(t *testing.T) {
 	// canonical URL, and an unrelated article.
 	copies := func(t *testing.T) (a, b, unrelated string) {
 		t.Helper()
-		canonical := fmt.Sprintf("example.com/saved-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("example.com/saved-%d", psqltest.Unique())
 		a = newTestArticleWithCanonical(t, db, canonical)
 		b = newTestArticleWithCanonical(t, db, canonical)
 		unrelated = newTestArticleWithCanonical(t, db, canonical+"-other")
@@ -183,6 +184,7 @@ func TestSaveRepository(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveRepositoryHasSaves(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)
 	ctx := t.Context()
@@ -204,6 +206,7 @@ func TestSaveRepositoryHasSaves(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListSaved(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)
 	ctx := t.Context()
@@ -318,6 +321,7 @@ func TestListSaved(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListSavedSearch(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)
 	ctx := t.Context()
@@ -411,6 +415,7 @@ func TestListSavedSearch(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListSavedSubscriptionNames(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSaveRepository(db)
 	subs := NewSubscriptionRepository(db)

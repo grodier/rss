@@ -157,7 +157,7 @@ func TestAdminOverviewRepositoryQueues(t *testing.T) {
 	user := newTestUser(t, db)
 
 	// Lookups: one pending, one running.
-	key := fmt.Sprintf("queues-test-%d.example.com", time.Now().UnixNano())
+	key := fmt.Sprintf("queues-test-%d.example.com", psqltest.Unique())
 	exec(`INSERT INTO lookups (site_key, url, requested_at) VALUES ($1, 'https://x/', $2), ($1 || '/running', 'https://x/', $2)`, key, longAgo)
 	exec(`UPDATE lookups SET status = 'running' WHERE site_key = $1 || '/running'`, key)
 	cleanupExec(t, db, `DELETE FROM lookups WHERE site_key IN ($1, $1 || '/running')`, key)
@@ -197,7 +197,7 @@ func TestAdminOverviewRepositoryQueues(t *testing.T) {
 	setIcon(gone.SiteID, false, later)
 
 	// Emails: pending and due, pending later, and sent.
-	addr := fmt.Sprintf("queues-test-%d@example.com", time.Now().UnixNano())
+	addr := fmt.Sprintf("queues-test-%d@example.com", psqltest.Unique())
 	exec(`INSERT INTO emails (to_address, subject, text_body, html_body, status, next_attempt_at)
 		VALUES ($1, 's', '', '', 'pending', $2), ($1, 's', '', '', 'pending', $3), ($1, 's', '', '', 'sent', $2)`, addr, longAgo, later)
 	cleanupExec(t, db, `DELETE FROM emails WHERE to_address = $1`, addr)
@@ -237,7 +237,7 @@ func TestAdminOverviewRepositoryJobs(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewAdminOverviewRepository(db)
 	since := time.Date(2001, 1, 1, 12, 0, 0, 0, time.UTC)
-	tag := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	tag := fmt.Sprintf("test-%d", psqltest.Unique())
 	saved, failed := tag+"-saved", tag+"-failed"
 
 	insert := func(resolution string, at time.Time, outcome string, jobs int) {

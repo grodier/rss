@@ -415,16 +415,6 @@ func TestSearchAppLink(t *testing.T) {
 	}
 }
 
-func TestSearchInputAttributes(t *testing.T) {
-	s := newTestServerWith(t, Services{SearchService: failingSearchStore(t)})
-	body := discoverRequest(t, s, "").Body.String()
-	for _, want := range []string{`type="search" id="q"`, `autocapitalize="none"`, `autocorrect="off"`, `spellcheck="false"`, `enterkeyhint="search"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("search input missing %s", want)
-		}
-	}
-}
-
 func TestSearchStoreError(t *testing.T) {
 	store := &fakeSearchStore{searchFn: func(context.Context, string, string, string, int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 		return nil, nil, errors.New("boom")

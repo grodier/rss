@@ -18,7 +18,7 @@ import (
 // returns its ID and host.
 func adminFeedsSite(t *testing.T, db *sql.DB) (id, host string) {
 	t.Helper()
-	host = fmt.Sprintf("admin-feeds-%d.example.com", time.Now().UnixNano())
+	host = fmt.Sprintf("admin-feeds-%d.example.com", psqltest.Unique())
 	id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/"}, true)
 	if err != nil {
 		t.Fatalf("Upsert site: %v", err)
@@ -40,7 +40,7 @@ func adminFeed(t *testing.T, db *sql.DB, siteID, title, set string, subscribers 
 	t.Helper()
 	id, err := upsertFeed(t.Context(), db, rss.Feed{
 		SiteID: siteID, Title: title,
-		Url: fmt.Sprintf("https://example.com/admin-feeds-%d.xml", time.Now().UnixNano()),
+		Url: fmt.Sprintf("https://example.com/admin-feeds-%d.xml", psqltest.Unique()),
 	})
 	if err != nil {
 		t.Fatalf("Upsert feed: %v", err)
@@ -584,7 +584,7 @@ func TestAdminFeedRepositoryListSites(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewAdminFeedRepository(db)
 	// Hosts start with prefix, so a search for it finds only this test's.
-	prefix := fmt.Sprintf("admin-sites-%d-", time.Now().UnixNano())
+	prefix := fmt.Sprintf("admin-sites-%d-", psqltest.Unique())
 	u1, u2 := newTestUser(t, db), newTestUser(t, db)
 
 	// withIcon has an icon, a lookup that found it and one feed u1 follows.

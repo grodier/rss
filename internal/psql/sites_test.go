@@ -19,7 +19,7 @@ func TestSiteRepository(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewSiteRepository(db)
 
-	host := fmt.Sprintf("site-%d.example.com", time.Now().UnixNano())
+	host := fmt.Sprintf("site-%d.example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM sites WHERE host = $1`, host); err != nil {
 			t.Errorf("cleanup site: %v", err)
@@ -102,7 +102,7 @@ func TestSiteRepository(t *testing.T) {
 	})
 
 	t.Run("Feed with site scans SiteID", func(t *testing.T) {
-		url := fmt.Sprintf("https://%s/feed-%d.xml", host, time.Now().UnixNano())
+		url := fmt.Sprintf("https://%s/feed-%d.xml", host, psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM feeds WHERE url = $1`, url); err != nil {
 				t.Errorf("cleanup feed: %v", err)

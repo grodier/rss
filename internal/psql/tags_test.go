@@ -70,6 +70,7 @@ func sorted(ids ...string) []string {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagCreate(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()
@@ -112,6 +113,7 @@ func TestTagCreate(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagList(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	user := newTestUser(t, db)
@@ -145,6 +147,7 @@ func TestTagList(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagGet(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	user := newTestUser(t, db)
@@ -165,6 +168,7 @@ func TestTagGet(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagRename(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()
@@ -212,6 +216,7 @@ func TestTagRename(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagDelete(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()
@@ -247,6 +252,7 @@ func TestTagDelete(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagFeedIDs(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	user := newTestUser(t, db)
@@ -274,6 +280,7 @@ func TestTagFeedIDs(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTagSetFeeds(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()
@@ -395,6 +402,7 @@ func tagCount(t *testing.T, db *sql.DB, userID string) int {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSetForSubscription(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()
@@ -541,6 +549,7 @@ func TestSetForSubscription(t *testing.T) {
 }
 
 func TestAddToSubscription(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTagRepository(db)
 	ctx := t.Context()

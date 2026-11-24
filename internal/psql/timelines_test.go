@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
@@ -87,6 +86,7 @@ func assertSources(t *testing.T, got, want rss.TimelineFilter) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineCreate(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -202,7 +202,7 @@ func TestTimelineCreate(t *testing.T) {
 	})
 
 	t.Run("the limit counts a new account's default timelines", func(t *testing.T) {
-		email := fmt.Sprintf("defaults-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("defaults-%d@example.com", psqltest.Unique())
 		user, _, err := NewUserRepository(db).Create(ctx, "Defaults", email, "correct-horse-battery", nil)
 		if err != nil {
 			t.Fatalf("Create user: %v", err)
@@ -264,6 +264,7 @@ func TestTimelineCreate(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineGet(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -332,6 +333,7 @@ func TestTimelineGet(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineUpdate(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -383,6 +385,7 @@ func TestTimelineUpdate(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineList(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	ctx := t.Context()
@@ -444,6 +447,7 @@ func TestTimelineList(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineListWithFilters(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -516,6 +520,7 @@ func TestTimelineListWithFilters(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineDelete(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -548,6 +553,7 @@ func TestTimelineDelete(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineMove(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	ctx := t.Context()
@@ -660,6 +666,7 @@ func TestTimelineMove(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineReorder(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	ctx := t.Context()
@@ -750,6 +757,7 @@ func shareToken(t *testing.T) string {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineSharing(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -846,6 +854,7 @@ func TestTimelineSharing(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineCascades(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
 	tags := NewTagRepository(db)
@@ -878,6 +887,7 @@ func TestTimelineCascades(t *testing.T) {
 }
 
 func TestWordsPattern(t *testing.T) {
+	t.Parallel()
 	const before, after = `(?<![[:alnum:]])(?:`, `)(?![[:alnum:]])`
 	tests := []struct {
 		words []string
@@ -908,6 +918,7 @@ func TestWordsPattern(t *testing.T) {
 // Requires a migrated database; see psqltest.NewDB. Checks wordsPattern's
 // patterns with Postgres's regular expressions and the database's locale.
 func TestWordsPatternMatches(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 
 	tests := []struct {

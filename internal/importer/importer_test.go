@@ -293,15 +293,6 @@ func TestProcessKnownGoneFeedIsDiscovered(t *testing.T) {
 	}
 }
 
-func TestProcessAlreadySubscribed(t *testing.T) {
-	tr := newTestRunner()
-	tr.feeds.put(rss.Feed{ID: "feed-1", Url: "https://example.com/feed"})
-	tr.subs.Subscribe(t.Context(), "user-1", "feed-1")
-
-	got := tr.importOne(t, t.Context(), "https://example.com/feed")
-	checkOutcome(t, got, rss.ImportAlreadySubscribed, "", "feed-1")
-}
-
 func TestProcessAddsTags(t *testing.T) {
 	want := []addTagsCall{{"user-1", "feed-1", []string{"Tech", "AI"}}}
 

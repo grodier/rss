@@ -12,9 +12,10 @@ import (
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestFeedUpsertAndListBySite(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
-	n := time.Now().UnixNano()
+	n := psqltest.Unique()
 
 	newSite := func(name string) string {
 		t.Helper()
@@ -120,9 +121,10 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 }
 
 func TestDiscoveryRepositorySave(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewDiscoveryRepository(db)
-	n := time.Now().UnixNano()
+	n := psqltest.Unique()
 
 	host := fmt.Sprintf("disc-%d.example.com", n)
 	site := rss.Site{Host: host, URL: "https://" + host + "/", Title: "Disc"}
@@ -262,9 +264,10 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 // A feed moves from a shared host's own site to a site with a path on that
 // host, and never between two sites with a path or two hosts.
 func TestFeedUpsertMovesToSharedHostSite(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
-	n := time.Now().UnixNano()
+	n := psqltest.Unique()
 	host := fmt.Sprintf("shared-%d.example.com", n)
 
 	var siteIDs []string

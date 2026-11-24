@@ -15,7 +15,7 @@ import (
 func pickArticle(t *testing.T, repo *AdminFeedRepository, id, title string, at time.Time) {
 	t.Helper()
 	if _, err := repo.DB.Exec(`INSERT INTO articles (feed_id, external_id, title, published_at, timeline_at) VALUES ($1, $2, $3, $4, $4)`,
-		id, fmt.Sprintf("pick-%d", time.Now().UnixNano()), title, at); err != nil {
+		id, fmt.Sprintf("pick-%d", psqltest.Unique()), title, at); err != nil {
 		t.Fatalf("insert article: %v", err)
 	}
 }

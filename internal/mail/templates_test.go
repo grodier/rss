@@ -38,6 +38,7 @@ func TestRender(t *testing.T) {
 		}
 		for _, want := range []string{
 			`<a href="https://rss.example.com">https://rss.example.com</a>`,
+			`<a href="https://rss.example.com/privacy"`,
 			"write to help@example.com.",
 		} {
 			if !strings.Contains(m.HTML, want) {
@@ -250,25 +251,6 @@ func TestRender(t *testing.T) {
 			t.Error(`Render("missing") error = nil, want an error`)
 		}
 	})
-}
-
-// TestEmailFooterLinksPrivacy checks that the layout's footers link to the
-// privacy policy.
-func TestEmailFooterLinksPrivacy(t *testing.T) {
-	ts, err := ParseTemplates(ui.Emails, testApp)
-	if err != nil {
-		t.Fatalf("ParseTemplates() error = %v", err)
-	}
-	m, err := ts.Render("test", nil)
-	if err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-	if want := "Privacy: https://rss.example.com/privacy\n"; !strings.Contains(m.Text, want) {
-		t.Errorf("Text = %q, want it to contain %q", m.Text, want)
-	}
-	if want := `<a href="https://rss.example.com/privacy"`; !strings.Contains(m.HTML, want) {
-		t.Errorf("HTML = %q, want it to contain %q", m.HTML, want)
-	}
 }
 
 func TestParseTemplatesRequiresBlocks(t *testing.T) {

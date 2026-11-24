@@ -129,34 +129,27 @@ func TestHealthcheckDatabaseDown(t *testing.T) {
 }
 
 func TestHealthcheckDatabaseTimeout(t *testing.T) {
-	var hadDeadline bool
+	// The ping gets healthcheckTimeout's deadline, so a hung database can't
+	// hang the healthcheck. The fake reports the timeout at once rather than
+	// waiting for it; TestHealthcheckDatabaseDown covers how a failed ping
+	// is reported.
+	var deadline time.Time
 	db := &fakeDatabase{pingFn: func(ctx context.Context) error {
-		_, hadDeadline = ctx.Deadline()
-		<-ctx.Done()
-		return ctx.Err()
+		deadline, _ = ctx.Deadline()
+		return context.DeadlineExceeded
 	}}
 	s := newTestServerWith(t, Services{Database: db})
 
 	rr := httptest.NewRecorder()
-	start := time.Now()
 	s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthcheck", nil))
 
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("took %v; want under 2s", elapsed)
+	if deadline.IsZero() {
+		t.Fatal("ping context has no deadline")
 	}
-	if !hadDeadline {
-		t.Error("ping context has no deadline")
+	if latest := time.Now().Add(healthcheckTimeout); deadline.After(latest) {
+		t.Errorf("ping deadline %v is more than %v away", deadline, healthcheckTimeout)
 	}
-	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d; want %d", rr.Code, http.StatusOK)
-	}
-	var body struct {
-		Status string `json:"status"`
-	}
-	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body.Status != "degraded" {
-		t.Errorf("status = %q; want %q", body.Status, "degraded")
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"status":"degraded"`) {
+		t.Errorf("status = %d, body = %s; want 200 and degraded", rr.Code, rr.Body)
 	}
 }

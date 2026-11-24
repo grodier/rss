@@ -56,7 +56,7 @@ func (f *fakeAdmins) Authenticate(_ context.Context, email, pw string) (rss.Admi
 	if a == nil {
 		return rss.Admin{}, rss.ErrNoAccount
 	}
-	ok, err := password.Verify(pw, a.hashedPassword)
+	ok, err := verifyPassword(pw, a.hashedPassword)
 	if err != nil {
 		return rss.Admin{}, err
 	}
@@ -64,6 +64,26 @@ func (f *fakeAdmins) Authenticate(_ context.Context, email, pw string) (rss.Admi
 		return rss.Admin{}, rss.ErrWrongPassword
 	}
 	return f.Get(context.Background(), a.ID)
+}
+
+// verified caches password.Verify's results by password and hash: Argon2id
+// is slow, and most tests log in as the test admin with one of a few passwords.
+var verified sync.Map // verifyKey → bool
+
+type verifyKey struct{ pw, hash string }
+
+// verifyPassword is password.Verify, remembering its result for pw and hash.
+func verifyPassword(pw, hash string) (bool, error) {
+	k := verifyKey{pw, hash}
+	if ok, found := verified.Load(k); found {
+		return ok.(bool), nil
+	}
+	ok, err := password.Verify(pw, hash)
+	if err != nil {
+		return false, err
+	}
+	verified.Store(k, ok)
+	return ok, nil
 }
 
 func (f *fakeAdmins) Get(_ context.Context, id string) (rss.Admin, error) {

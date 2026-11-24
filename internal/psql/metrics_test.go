@@ -90,6 +90,7 @@ func listJobs(t *testing.T, db *sql.DB, resolution string, from, to time.Time) (
 }
 
 func TestMetricsSaveRequests(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	minute := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
@@ -133,6 +134,7 @@ func TestMetricsSaveRequests(t *testing.T) {
 }
 
 func TestMetricsRollUp(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	hour := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
@@ -197,6 +199,7 @@ func TestMetricsRollUp(t *testing.T) {
 }
 
 func TestMetricsDeleteBefore(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -289,6 +292,7 @@ func TestMetricsDeleteBefore(t *testing.T) {
 }
 
 func TestMetricsSaveRuntime(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	minute := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
@@ -333,6 +337,7 @@ func jobRow(period time.Time, instance, runner, outcome string, jobs int, bucket
 }
 
 func TestMetricsSaveJobs(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	minute := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
@@ -377,6 +382,7 @@ func TestMetricsSaveJobs(t *testing.T) {
 }
 
 func TestMetricsSaveJobsRejectsUnknownRunner(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	err := repo.SaveJobs(context.Background(), []metrics.JobRow{jobRow(time.Now(), "web-1", "nope", "saved", 1)})
 	if err == nil {
@@ -385,6 +391,7 @@ func TestMetricsSaveJobsRejectsUnknownRunner(t *testing.T) {
 }
 
 func TestMetricsRollUpJobs(t *testing.T) {
+	t.Parallel()
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
 	hour := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)

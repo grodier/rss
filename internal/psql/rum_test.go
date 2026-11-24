@@ -118,6 +118,7 @@ func showView(v rss.RUMView) string {
 }
 
 func TestRUMRecord(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 
 	full := rss.RUMView{
@@ -193,6 +194,7 @@ func TestRUMRecord(t *testing.T) {
 }
 
 func TestRUMRollUp(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	ctx := context.Background()
 	day := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
@@ -257,6 +259,7 @@ func TestRUMRollUp(t *testing.T) {
 }
 
 func TestRUMTrim(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	ctx := context.Background()
 	now := time.Now()
@@ -282,6 +285,7 @@ func TestRUMTrim(t *testing.T) {
 }
 
 func TestRUMDeleteBefore(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	ctx := context.Background()
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)

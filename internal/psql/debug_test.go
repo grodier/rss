@@ -13,6 +13,7 @@ import (
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestDebugRepositorySiteDebug(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewDebugRepository(db)
 
@@ -76,6 +77,7 @@ func TestDebugRepositorySiteDebug(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestDebugRepositoryFeedDebug(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewDebugRepository(db)
 
@@ -133,6 +135,7 @@ func TestDebugRepositoryFeedDebug(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestDebugRepositoryArticlesByExternalID(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewDebugRepository(db)
 	feeds := NewFeedRepository(db)
@@ -187,6 +190,7 @@ func insertDebugArticle(t *testing.T, db *sql.DB, feedID, externalID, canonicalU
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestDebugRepositoryArticleDebug(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewDebugRepository(db)
 	at := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
@@ -229,7 +233,7 @@ func TestDebugRepositoryArticleDebug(t *testing.T) {
 	})
 
 	t.Run("copies in other feeds", func(t *testing.T) {
-		canonical := fmt.Sprintf("https://example.com/copies-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("https://example.com/copies-%d", psqltest.Unique())
 		feed, second, third := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
 		id := insertDebugArticle(t, db, feed.ID, "a", canonical, at.Add(time.Minute))
 		later := insertDebugArticle(t, db, third.ID, "a", canonical, at.Add(2*time.Minute))
@@ -253,7 +257,7 @@ func TestDebugRepositoryArticleDebug(t *testing.T) {
 	})
 
 	t.Run("feed title falls back to its URL", func(t *testing.T) {
-		canonical := fmt.Sprintf("https://example.com/untitled-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("https://example.com/untitled-%d", psqltest.Unique())
 		feed, untitled := newTestFeed(t, db), newTestFeed(t, db)
 		if _, err := db.Exec(`UPDATE feeds SET title = '' WHERE id = $1`, untitled.ID); err != nil {
 			t.Fatalf("update feed: %v", err)
@@ -283,7 +287,7 @@ func TestDebugRepositoryArticleDebug(t *testing.T) {
 	})
 
 	t.Run("copies are capped", func(t *testing.T) {
-		canonical := fmt.Sprintf("https://example.com/capped-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("https://example.com/capped-%d", psqltest.Unique())
 		feed, other := newTestFeed(t, db), newTestFeed(t, db)
 		id := insertDebugArticle(t, db, feed.ID, "a", canonical, at)
 		for i := range maxArticleCopies + 1 {

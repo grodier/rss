@@ -179,7 +179,7 @@ func TestDeleteUserDropsEnrichment(t *testing.T) {
 	ctx := t.Context()
 
 	const password = "correct-horse-battery"
-	email := fmt.Sprintf("test-delete-enrich-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("test-delete-enrich-%d@example.com", psqltest.Unique())
 	gone, _, err := users.Create(ctx, "Leaving", email, password, nil)
 	if err != nil {
 		t.Fatalf("Create: %v", err)

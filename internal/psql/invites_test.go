@@ -305,7 +305,7 @@ func TestInviteWaves(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewInviteRepository(db)
 	joined := time.Now().Add(-time.Hour)
-	label := fmt.Sprintf("Wave test %d", time.Now().UnixNano())
+	label := fmt.Sprintf("Wave test %d", psqltest.Unique())
 
 	ada, grace, hedy := confirmedEntry(t, db, "Ada", joined), confirmedEntry(t, db, "Grace", joined), confirmedEntry(t, db, "Hedy", joined)
 	w := testWave(t, label, ada, grace, hedy)

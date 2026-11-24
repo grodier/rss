@@ -44,6 +44,7 @@ func serverErrorMessages(t *testing.T, db *sql.DB) []string {
 }
 
 func TestServerErrorRecord(t *testing.T) {
+	t.Parallel()
 	repo, db := newServerErrorRepo(t)
 	ctx := context.Background()
 	at := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
@@ -68,6 +69,7 @@ func TestServerErrorRecord(t *testing.T) {
 }
 
 func TestServerErrorRecordCutsMessage(t *testing.T) {
+	t.Parallel()
 	repo, db := newServerErrorRepo(t)
 	ctx := context.Background()
 
@@ -104,6 +106,7 @@ func TestServerErrorRecordCutsMessage(t *testing.T) {
 }
 
 func TestServerErrorTrim(t *testing.T) {
+	t.Parallel()
 	repo, db := newServerErrorRepo(t)
 	ctx := context.Background()
 	start := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)

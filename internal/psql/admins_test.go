@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/grodier/rss/internal/password"
 	"github.com/grodier/rss/internal/psql/psqltest"
@@ -27,10 +26,11 @@ func newAdminCredentials(t *testing.T, pw, secret string, codeHashes ...string) 
 }
 
 func TestAdminRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewAdminRepository(db)
 
-	email := fmt.Sprintf("admin-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("admin-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM admins WHERE email = $1`, email); err != nil {
 			t.Errorf("cleanup admin: %v", err)
@@ -108,7 +108,7 @@ func TestAdminRepository(t *testing.T) {
 	})
 
 	t.Run("Reset replaces the credentials and ends admin sessions", func(t *testing.T) {
-		token := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
+		token := fmt.Sprintf("test-session-%d", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM admin_sessions WHERE token = $1`, token); err != nil {
 				t.Errorf("cleanup session: %v", err)

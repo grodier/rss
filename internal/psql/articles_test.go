@@ -21,7 +21,7 @@ func newTestFeed(t *testing.T, db *sql.DB) rss.Feed {
 	siteID := newTestSite(t, db)
 	f := rss.Feed{
 		SiteID:      siteID,
-		Url:         fmt.Sprintf("https://example.com/articles-%d.xml", time.Now().UnixNano()),
+		Url:         fmt.Sprintf("https://example.com/articles-%d.xml", psqltest.Unique()),
 		SiteUrl:     "https://example.com/",
 		Title:       "Old title",
 		Description: "Old description",
@@ -57,6 +57,7 @@ func articleByExternalID(t *testing.T, articles []rss.Article, externalID string
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetch(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -513,6 +514,7 @@ func TestSaveFetch(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListByFeed(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -673,6 +675,7 @@ func TestListByFeed(t *testing.T) {
 }
 
 func TestTimelineAt(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	prev := now.Add(-6 * time.Hour)
 	us := time.Microsecond
@@ -825,6 +828,7 @@ func TestTimelineAt(t *testing.T) {
 }
 
 func TestIsBacklog(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	prev := now.Add(-time.Hour)
 	art := func(published time.Time) rss.Article { return rss.Article{PublishedAt: published} }
@@ -852,6 +856,7 @@ func TestIsBacklog(t *testing.T) {
 }
 
 func TestRaisePositions(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	m := time.Minute
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
@@ -988,6 +993,7 @@ func insertPositionedArticle(t *testing.T, db *sql.DB, feedID, externalID string
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetchWritesReaderPositions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1136,6 +1142,7 @@ func TestSaveFetchWritesReaderPositions(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestReaderPositionsDeletedWith(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feed := newTestFeed(t, db)
 
@@ -1182,6 +1189,7 @@ func TestReaderPositionsDeletedWith(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestArticleRepositoryGetByID(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1235,6 +1243,7 @@ func TestArticleRepositoryGetByID(t *testing.T) {
 }
 
 func TestListTimeline(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1349,6 +1358,7 @@ func TestListTimeline(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineReaderPositions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1658,7 +1668,7 @@ func TestListTimelineReaderPositions(t *testing.T) {
 		f1, f2 := newTestFeed(t, db), newTestFeed(t, db)
 		reader := newTestUser(t, db)
 		follow(t, reader, f1, f2)
-		canonical := fmt.Sprintf("https://example.com/copy-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("https://example.com/copy-%d", psqltest.Unique())
 		// By shared positions A is the earlier copy; by the reader's, B.
 		a := insert(t, f1.ID, "A", at(8, 0), canonical)
 		b := insert(t, f2.ID, "B", at(9, 0), canonical)
@@ -1705,6 +1715,7 @@ func TestListTimelineReaderPositions(t *testing.T) {
 // the reader saw, and its older posts stay at their dates: both keep their
 // places on the next look.
 func TestListTimelineNewlyFollowedFeed(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1776,6 +1787,7 @@ func TestListTimelineNewlyFollowedFeed(t *testing.T) {
 }
 
 func TestListTimelineCollapsesCopies(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1794,7 +1806,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 		}
 	}
 
-	nano := time.Now().UnixNano()
+	nano := psqltest.Unique()
 	postX := fmt.Sprintf("https://example.com/post-x-%d", nano)
 	postZ := fmt.Sprintf("https://example.com/post-z-%d", nano)
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1935,6 +1947,7 @@ func TestListTimelineCollapsesCopies(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineFillsPagePastCopies(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -1951,7 +1964,7 @@ func TestListTimelineFillsPagePastCopies(t *testing.T) {
 
 	// B has b1…b8 at 1…8 h. A has later copies of them, a11…a18 at 11…18 h,
 	// so A's newest entries all collapse, and a9 (no copy) at 0.5 h.
-	nano := time.Now().UnixNano()
+	nano := psqltest.Unique()
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	type item struct {
 		feed   rss.Feed
@@ -2022,6 +2035,7 @@ func TestListTimelineFillsPagePastCopies(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineSubscriptionNames(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -2045,7 +2059,7 @@ func TestListTimelineSubscriptionNames(t *testing.T) {
 		}
 	}
 
-	post := fmt.Sprintf("https://example.com/post-%d", time.Now().UnixNano())
+	post := fmt.Sprintf("https://example.com/post-%d", psqltest.Unique())
 	for _, f := range []rss.Feed{feedA, feedB} {
 		batch := []rss.Article{{ExternalID: "shared", CanonicalURL: post}, {ExternalID: "own"}}
 		if _, err := feeds.SaveFetch(ctx, f, batch, f.NextFetch); err != nil {
@@ -2111,6 +2125,7 @@ func enrichJobs(t *testing.T, db *sql.DB, feedID string) map[string]int {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetchQueuesEnrichment(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	ctx := t.Context()
@@ -2232,6 +2247,7 @@ func TestSaveFetchQueuesEnrichment(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSaveFetchAfterNoAttempts(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -2362,6 +2378,7 @@ func TestSaveFetchAfterNoAttempts(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestGetByIDReadsPageColumns(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	id := newTestArticles(t, db, 1)[0]
 	if _, err := db.Exec(`UPDATE articles SET page_image_url = 'https://example.com/p.jpg', page_title = 'Page title', page_description = 'Page description' WHERE id = $1`, id); err != nil {
@@ -2379,6 +2396,7 @@ func TestGetByIDReadsPageColumns(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineFilter(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -2398,7 +2416,7 @@ func TestListTimelineFilter(t *testing.T) {
 	mustSetFeeds(t, tags, user, t1.ID, feedOf["A"])
 	mustSetFeeds(t, tags, user, t2.ID, feedOf["B"], feedOf["C"])
 
-	postX := fmt.Sprintf("https://example.com/filter-x-%d", time.Now().UnixNano())
+	postX := fmt.Sprintf("https://example.com/filter-x-%d", psqltest.Unique())
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, c := range []struct {
 		feed, ext, url string
@@ -2549,6 +2567,7 @@ func newConditionArticles(t *testing.T, db *sql.DB, userID string) (feedName, ar
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineConditions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	articles := NewArticleRepository(db)
 	user := newTestUser(t, db)
@@ -2615,6 +2634,7 @@ func setConditionTexts(t *testing.T, db *sql.DB, articleID map[string]string) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListTimelineWords(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	articles := NewArticleRepository(db)
 	user := newTestUser(t, db)
@@ -2663,6 +2683,7 @@ func TestListTimelineWords(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListShared(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
 	articles := NewArticleRepository(db)
@@ -2778,6 +2799,7 @@ func TestListShared(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListByFeeds(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	articles := NewArticleRepository(db)
 	ctx := t.Context()

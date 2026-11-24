@@ -67,6 +67,7 @@ func readAt(t *testing.T, db *sql.DB, userID, articleID string) time.Time {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestReadRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	ctx := t.Context()
@@ -152,7 +153,7 @@ func TestReadRepository(t *testing.T) {
 	// canonical URL, and an unrelated article.
 	copies := func(t *testing.T) (a, b, unrelated string) {
 		t.Helper()
-		canonical := fmt.Sprintf("example.com/post-%d", time.Now().UnixNano())
+		canonical := fmt.Sprintf("example.com/post-%d", psqltest.Unique())
 		a = newTestArticleWithCanonical(t, db, canonical)
 		b = newTestArticleWithCanonical(t, db, canonical)
 		unrelated = newTestArticleWithCanonical(t, db, canonical+"-other")
@@ -272,6 +273,7 @@ func newTestTimeline(t *testing.T, db *sql.DB, userID, name string) string {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineLine(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	ctx := t.Context()
@@ -340,6 +342,7 @@ func TestTimelineLine(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestMarkSeenLines(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	ctx := t.Context()
@@ -466,6 +469,7 @@ func TestMarkSeenLines(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestMarkSeen(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	ctx := t.Context()
@@ -520,6 +524,7 @@ func TestMarkSeen(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestMarkSeenNewVisit(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	ctx := t.Context()
@@ -547,6 +552,7 @@ func TestMarkSeenNewVisit(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineMarkDeletedWithUser(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	user := newTestUser(t, db)
 	if err := NewReadRepository(db).MarkSeen(t.Context(), user, "", time.Now()); err != nil {
@@ -563,6 +569,7 @@ func TestTimelineMarkDeletedWithUser(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestMarkSeenTrimsReaderPositions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewReadRepository(db)
 	subs := NewSubscriptionRepository(db)

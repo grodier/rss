@@ -74,8 +74,11 @@ func TestSearchBox(t *testing.T) {
 					t.Errorf("input %s = %q, want %q", key, got, want)
 				}
 			}
-			if got := hasAttr(in, "spellcheck"); got == tt.prose {
-				t.Errorf("input has spellcheck set: %v, want %v (prose %v)", got, !tt.prose, tt.prose)
+			// A query isn't prose: no capitals, corrections or spellcheck.
+			for key, off := range map[string]string{"autocapitalize": "none", "autocorrect": "off", "spellcheck": "false"} {
+				if got := attr(in, key); (got == off) == tt.prose || hasAttr(in, key) == tt.prose {
+					t.Errorf("input %s = %q (set %v), want %q unless prose (prose %v)", key, got, hasAttr(in, key), off, tt.prose)
+				}
 			}
 			if hasAttr(in, "aria-invalid") || hasAttr(in, "autofocus") {
 				t.Error("a valid query's input is aria-invalid or autofocused")

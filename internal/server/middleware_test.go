@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -388,10 +389,61 @@ func TestRequireAuthentication(t *testing.T) {
 		if !called {
 			t.Error("next handler not called")
 		}
-		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("Cache-Control = %q, want no-store", got)
-		}
 	})
+}
+
+// TestCacheControl checks that logged-in pages, and /, are kept out of every
+// cache: no-store for a navigation, and private, no-cache for a script's
+// request (a fetch or a beacon), which Chrome needs to keep the page that
+// sent it in its back/forward cache.
+func TestCacheControl(t *testing.T) {
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}})
+	authenticated := s.sessionManager.LoadAndSave(s.requireAuthentication(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
+	home := s.sessionManager.LoadAndSave(http.HandlerFunc(s.homeHandler))
+	loggedIn := func(r *http.Request) *http.Request {
+		return r.WithContext(context.WithValue(r.Context(), authenticatedUserIDContextKey, "user-1"))
+	}
+
+	routes := []struct {
+		name    string
+		handler http.Handler
+		login   bool
+	}{
+		{"a route that needs login", authenticated, true},
+		{"/ logged in", home, true},
+		{"/ logged out", home, false},
+	}
+	modes := []struct {
+		mode string // Sec-Fetch-Mode; "" sends none
+		want string
+	}{
+		{"", "no-store"},
+		{"navigate", "no-store"},
+		{"cors", "private, no-cache"},
+		{"same-origin", "private, no-cache"},
+		{"no-cors", "private, no-cache"},
+	}
+	for _, route := range routes {
+		for _, m := range modes {
+			t.Run(route.name+" "+cmp.Or(m.mode, "no header"), func(t *testing.T) {
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				if route.login {
+					r = loggedIn(r)
+				}
+				if m.mode != "" {
+					r.Header.Set("Sec-Fetch-Mode", m.mode)
+				}
+				rr := httptest.NewRecorder()
+				route.handler.ServeHTTP(rr, r)
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d", rr.Code)
+				}
+				if got := rr.Header().Values("Cache-Control"); len(got) != 1 || got[0] != m.want {
+					t.Errorf("Cache-Control = %q, want %q", got, m.want)
+				}
+			})
+		}
+	}
 }
 
 func TestCommonHeadersCSP(t *testing.T) {

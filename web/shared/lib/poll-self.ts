@@ -39,7 +39,8 @@ export function pollSelf({
     inFlight = true;
     polls++;
     try {
-      const res = await fetch(url ?? location.href, { credentials: "same-origin" });
+      // No copy in any cache (the server sends a script private, no-cache; see setCacheControl).
+      const res = await fetch(url ?? location.href, { credentials: "same-origin", cache: "no-store" });
       if (res.redirected) {
         finished = true;
         onRedirect(res.url);

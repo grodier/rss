@@ -109,7 +109,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 ## Waitlist
 
 **Joining.** The logged-out home page (`/`, `homeHandler`) is the landing page, and it hosts the waitlist form, a partial (`waitlist-form`) so the owner's landing page can take it later.
-`/` stays one address for two pages: the timeline when logged in, the landing page when not; both are sent with `Cache-Control: no-store`, since a cache can't tell them apart.
+`/` stays one address for two pages: the timeline when logged in, the landing page when not; neither is kept by any cache, since a cache can't tell them apart (`setCacheControl`: `no-store` on navigations, as for every logged-in page).
 A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field and stored as the entry's source.
 `POST /waitlist` (`waitlistJoinHandler`) sends a logged-in user home, then answers a filled honeypot field as if it worked (storing and sending nothing), then checks the per-IP limit, the fields and whether the address has an account.
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
@@ -150,7 +150,7 @@ The Waitlist and review tables show each entry's sections by name, read with the
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
 4. The admin's side: `internal/admin/waitlist.go`, `invites.go`, `limits.go` and `seed_add.go` (`seedAddWaitlistHandler`), `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`, `TestWaitlistRepositorySitesAnswers`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go`, `limits_test.go` and `seed_add_test.go` (`TestSeedAddWaitlist`); `internal/rss/rss_test.go` (`TestSplitSitesAnswer`); `web/admin/features/select.test.ts`.
+**Tests:** `internal/server/waitlist_test.go` and `middleware_test.go` (`TestCacheControl`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`, `TestWaitlistRepositorySitesAnswers`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go`, `limits_test.go` and `seed_add_test.go` (`TestSeedAddWaitlist`); `internal/rss/rss_test.go` (`TestSplitSitesAnswer`); `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 
@@ -515,14 +515,18 @@ Without JavaScript a `<noscript>` meta refresh reloads it every 5 s.
 The last page of Home, for every account, ends with a line counting the sites the reader follows and linking to Discover; other timelines have none, and on a store error it's left out, since it's decoration.
 
 **Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager, or, from Home's last page, its end line.
-It keeps the address bar on the topmost visible row (`history.replaceState`), so reload and Back land nearby.
+It keeps the address bar on the topmost visible row (`history.replaceState`), so reload, and Back where the page isn't restored, land nearby.
+
+**Back.** In Chrome, Back to a timeline (or a feed, a site or Saved) restores the page from the back/forward cache as the reader left it: the rows infinite scroll added, the scroll position and the images, with no request.
+Navigations stay `no-store`; what keeps the page restorable is that nothing it sends after loading changes a cookie or gets a `no-store` answer: the pages infinite scroll and Home's polls fetch, Save, Star and Follow, and the beacons are answered `private, no-cache` (`setCacheControl`), and only a navigation sets the `tab` cookie.
+Chrome still loads the page again after 3 minutes, after logging out or in (the session cookie changed), and after moving to another tab of the timeline (the `tab` cookie changed); Safari and Firefox always load it again.
 Without JavaScript the link just works.
 
 **Start at:**
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
+3. `internal/server/articles.go` (`articleHandler`, `articleRow`, `setCacheControl`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`), `code.go` (`labelCode`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 

@@ -63,6 +63,8 @@ describe("live-search", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(new URL("/discover?q=loa", location.href).href);
     expect(init.credentials).toBe("same-origin");
+    // No copy kept: a cached results page could outlive logging out.
+    expect(init.cache).toBe("no-store");
   });
 
   it("aborts a request still in flight", async () => {

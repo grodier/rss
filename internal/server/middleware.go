@@ -161,7 +161,7 @@ func (s *Server) requireAuthentication(next http.Handler) http.Handler {
 			return
 		}
 
-		w.Header().Add("Cache-Control", "no-store")
+		setCacheControl(w, r)
 
 		next.ServeHTTP(w, r)
 	})

@@ -33,7 +33,7 @@ describe("pollSelf", () => {
     await vi.advanceTimersByTimeAsync(1999);
     expect(fetchMock).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledWith(location.href, { credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledWith(location.href, { credentials: "same-origin", cache: "no-store" });
     expect(onPage).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(2000 * 10);
     expect(fetchMock).toHaveBeenCalledTimes(11);
@@ -44,7 +44,7 @@ describe("pollSelf", () => {
     await vi.advanceTimersByTimeAsync(2999);
     expect(fetchMock).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledWith("/timelines/all", { credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledWith("/timelines/all", { credentials: "same-origin", cache: "no-store" });
   });
 
   it("stops when onPage says so", async () => {

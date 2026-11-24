@@ -75,7 +75,8 @@ export function init(): void {
     loader.unobserve(link);
     const pageUrl = withoutHash(link.href);
     try {
-      const res = await fetch(pageUrl, { credentials: "same-origin" });
+      // No copy in any cache (the server sends a script private, no-cache; see setCacheControl).
+      const res = await fetch(pageUrl, { credentials: "same-origin", cache: "no-store" });
       // A redirect (e.g. to the login page) isn't the page we asked for.
       if (res.status !== 200 || res.redirected) throw new Error(`status ${res.status}`);
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");

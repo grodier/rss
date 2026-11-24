@@ -34,7 +34,7 @@ const tabCookie = "tab"
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	// One address, two pages that depend on the session (and the landing
 	// page can carry a flash): no cache may keep either.
-	w.Header().Set("Cache-Control", "no-store")
+	setCacheControl(w, r)
 
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
@@ -215,15 +215,21 @@ func (s *Server) renderTimelineWith(w http.ResponseWriter, r *http.Request, user
 		SeenUpTo:      seenUpTo,
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     tabCookie,
-		Value:    tabID(current),
-		Path:     "/",
-		MaxAge:   int(rss.VisitGap / time.Second),
-		HttpOnly: true,
-		Secure:   s.sessionManager.Cookie.Secure,
-		SameSite: http.SameSiteLaxMode,
-	})
+	// Only a navigation moves the reader to a tab. A script's fetch of a
+	// page (infinite scroll, Home's polls) doesn't, and changing a cookie
+	// would make Chrome drop the page that sent it from the back/forward
+	// cache.
+	if !scripted(r) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     tabCookie,
+			Value:    tabID(current),
+			Path:     "/",
+			MaxAge:   int(rss.VisitGap / time.Second),
+			HttpOnly: true,
+			Secure:   s.sessionManager.Cookie.Secure,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 	if err := s.renderHTML(w, http.StatusOK, "timeline.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}

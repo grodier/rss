@@ -748,7 +748,7 @@ Planned in #163 (issues #147–#162).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.
   No player yet.
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor); infinite scroll enhances it.
-  Logged-in pages keep `Cache-Control: no-store`; the script keeps the URL on the visible row so Back and reload land nearby.
+  Logged-in navigations keep `Cache-Control: no-store`, and Chrome restores the page from its back/forward cache (#773); the script keeps the URL on the visible row so reload, and Back where it isn't restored, land nearby.
   (#155, #159)
 - **Back to a timeline is restored from the back/forward cache, starting with Chrome** (#773, planned in Roadmap 2's wave 18): it's the trip readers make most, and a restored page keeps the rows infinite scroll added, its scroll and its images, with no JavaScript of ours.
   Chrome keeps `no-store` pages there, but drops one when a cookie changes, when the page received a `no-store` response to a script, or after 3 minutes.

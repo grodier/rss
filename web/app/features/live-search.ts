@@ -74,7 +74,8 @@ export function init(): void {
     inFlight = controller;
     startBusy();
     try {
-      const res = await fetch(pageURL(q), { credentials: "same-origin", signal: controller.signal });
+      // No copy in any cache (the server sends a script private, no-cache; see setCacheControl).
+      const res = await fetch(pageURL(q), { credentials: "same-origin", cache: "no-store", signal: controller.signal });
       if (res.status !== 200 || res.redirected) throw new Error(`status ${res.status}`);
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
       const container = doc.querySelector("[data-search-results]");

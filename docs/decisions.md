@@ -1587,7 +1587,7 @@ Planned in #583.
 - **Single-use invites replace the shared invite code** (#569): `RSS_INVITE_CODE` goes.
   An invite is bound to a waitlist entry's email (signup fills it in and locks it, and the account starts confirmed, since the address was confirmed when joining) or open, for people the owner invites by hand.
   Invites expire and can be revoked; the token is stored hashed, like email links.
-- **Only a confirmed waitlist entry gets a bound invite** (#569): a bound invite's account starts confirmed, so `admin invite create -email` refuses an address that isn't confirmed on the waitlist; anyone else gets an open invite, with a note.
+- **Only a confirmed waitlist entry gets a bound invite** (#569): a bound invite's account starts confirmed, so making one refuses an address that isn't confirmed on the waitlist (first in the invite command, removed in #796, now on Invites → New); anyone else gets an open invite, with a note.
 - **Signing up deletes the account's waitlist entry**, by the invite's entry and by the account's address (#569): someone with an account no longer waits, and joining already refuses addresses with accounts.
 - **An unusable invite says why, with no form** (#569): expired, used ("Log in"), or no longer valid (revoked or unknown), as 410 Gone like the expired email links; `/signup` with no invite says the app is invite-only and links to the waitlist.
   Redemption is one conditional `UPDATE`, so two signups racing on one invite can't both succeed; the loser sees "already been used".
@@ -1608,7 +1608,7 @@ Planned in #583.
   Rejected: the counts as a row of figures that are the tabs, with the actions in the page head, which crowds the head on phones and scrolls the button away.
 - **The review shows the day's limit as a bar** (#574, approved at its design checkpoint): what's used, this wave, the reserve at its end and the 80% mark, over the issue's sentence, which carries the same numbers for screen readers; people who don't fit today are dimmed and marked "Waits".
   Rejected: the numbers as a row of figures, which leaves the sums to the reader.
-- **An invite made by hand with an email needs a confirmed waitlist entry with no pending invite** (#607), as `admin invite create -email` needs a confirmed one: its account starts confirmed, and a second pending invite would only duplicate the first, which can be resent instead.
+- **An invite made by hand with an email needs a confirmed waitlist entry with no pending invite** (#607), as the removed invite command (#796) needed a confirmed one: its account starts confirmed, and a second pending invite would only duplicate the first, which can be resent instead.
 - **Invites are made only in the admin** (#796, planned with Roadmap 2's refactor wave, #770): the `admin invite` command goes, since the Invites page lists, revokes, resends and makes invites by hand (#607), and the two had drifted: the command never checked for a pending invite.
   Locally, `admin create-user` makes accounts for testing without one.
 - **Resending replaces the invite's token and expiry, 14 days from then** (#607), rather than making a new invite, so the wave's summary still counts it once; it's checked against the limits like a wave.

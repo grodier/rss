@@ -14,7 +14,7 @@ A pass repeats every row and moves the date above; the fixes it finds become iss
 
 - Start from an empty database (`make db/reset`, which also starts Mailpit) and run the app: `go run ./cmd/www`.
   With the README's `RSS_SMTP_` settings, emails and their links show up in Mailpit (http://localhost:8025); without an SMTP host, they're written to the app's log.
-- Make two accounts with open invites from `go run ./cmd/admin invite create` (one per account; each prints a `/signup?invite=<token>` link): **A**, the one you review with, and **B**, to open A's pages as someone else.
+- Make two accounts with `go run ./cmd/admin create-user` (see the README): **A**, the one you review with, and **B**, to open A's pages as someone else.
   A new account is unconfirmed, which the confirmation rows need; confirm A when you get to E4.
 - Rate limits are in memory and per process, so hitting one locks you out of that flow until the window ends; do those rows last, or restart the app (which resets them) between them.
 - Feed states need rows the refresh workers won't touch.
@@ -67,9 +67,9 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | F5 Signup: name blank or too long | Name blank, or 101 characters | Signup, 422, under Name | "Name is required"; "Name must not be more than 100 characters long" | Yes | ok |
 | F6 Signup: no invite | `/signup` without `?invite=` | Message page, 200, with a "Join the waitlist" button, no form | "Paper Round is invite-only for now" | Yes, by joining the waitlist | new (#569), not yet reviewed |
 | F7 Signup: email already has an account | A's email | Signup, 422, under Email, with links to log in and reset the password | "There's already an account with this email." | Yes | ok (says so on purpose; "Accounts" in decisions.md) |
-| F8 Signup: invite expired | `go run ./cmd/admin invite create -expires 1s`, wait, open the link | Message page, 410, no form | "This invite has expired" / "Ask whoever invited you for a new one." | Only with a new invite | new (#569), not yet reviewed |
+| F8 Signup: invite expired | In the admin, Invites → New with the shortest expiry (1 day), then expire it in the local database (`UPDATE invites SET expires_at = now() WHERE id = '<id>'`) and open its link | Message page, 410, no form | "This invite has expired" / "Ask whoever invited you for a new one." | Only with a new invite | new (#569), not yet reviewed |
 | F10 Signup: invite already used | Open the link of an invite someone signed up with | Message page, 410, with a "Log in" button, no form | "This invite has already been used" | Yes, if it was theirs: by logging in | new (#569), not yet reviewed |
-| F11 Signup: invite revoked or unknown | `go run ./cmd/admin invite revoke <id>`, open its link; or `?invite=wrong` | Message page, 410, no form | "This invite is no longer valid" | Only with a new invite | new (#569), not yet reviewed |
+| F11 Signup: invite revoked or unknown | Revoke an invite on the admin's Invites page, open its link; or `?invite=wrong` | Message page, 410, no form | "This invite is no longer valid" | Only with a new invite | new (#569), not yet reviewed |
 | F12 Signup: invite used up while the form was open | Open one invite's link in two tabs, sign up in one, then submit the other | Message page, 422, with a "Log in" button, no form | "This invite has already been used" | As F10 | new (#569), not yet reviewed |
 | F9 Signup: rate limited | 11 signup posts from one IP in an hour, valid or not | Signup, 429 with `Retry-After`, alert above the form | "Too many attempts. Try again in 60 minutes." | Yes, after the wait; fields kept, alert announced | ok |
 | F10 Login: unknown email | Log in as `nobody@example.com` | Login, 422, under Email | "There's no account with this email." | Yes | ok |

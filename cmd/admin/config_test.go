@@ -133,6 +133,7 @@ func TestParseConfig(t *testing.T) {
 		{name: "base URL with a path", args: []string{"-base-url", "https://example.com/admin"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must not have a path"},
 		{name: "http base URL in production", args: []string{"-env", "production"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: "must be set to an https URL in production"},
 		{name: "http app URL in production", env: map[string]string{"RSS_DB_DSN": dsn, "RSS_ENV": "production", "RSS_BASE_URL": "https://admin.example.com", "RSS_SECRET_KEY": strings.Repeat("ab", 32)}, wantErr: "-app-url (RSS_APP_URL) must be an https URL in production"},
+		{name: "relative app URL", args: []string{"-app-url", "app.example.com"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app URL "app.example.com"`},
 		{name: "app URL with a path", args: []string{"-app-url", "https://example.com/app"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app URL "https://example.com/app"`},
 		{name: "app internal URL with a path", args: []string{"-app-internal-url", "http://rss-abcd:8080/healthcheck"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app internal URL "http://rss-abcd:8080/healthcheck"`},
 		{name: "app internal URL with an empty fragment", args: []string{"-app-internal-url", "http://rss-abcd:8080#"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid app internal URL "http://rss-abcd:8080#"`},

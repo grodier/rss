@@ -69,7 +69,6 @@ On SIGINT or SIGTERM the server drains requests for up to 30 seconds and the pin
 It refuses to start in production without `-secret-key`, the key admins' TOTP secrets are sealed with; in development it makes one for the run, with a warning.
 `admin enroll` (`cmd/admin/enroll.go`) enrolls an admin, the only way one is made (see "Admin" in features.md).
 `admin create-user` (`cmd/admin/create_user.go`) creates a reader's account with the password on the first line of stdin, with the same checks as signup; it's for local development (`make db/seed`).
-`admin invite create`, `list` and `revoke` (`cmd/admin/invite.go`) make, list and revoke signup invites; `create` prints the link, built from `-app-url`, the reader's URL (the admin's own `-base-url` is its own host).
 `admin send-test-email` (`cmd/admin/send_test_email.go`) renders the `test` email and sends it with `www`'s mail flags (`cli.Mail`, shared with `www`'s configuration), without opening the database, to check the mail settings (locally against Mailpit, in production against Resend).
 
 ## Packages

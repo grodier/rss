@@ -319,18 +319,8 @@ A dump restores cleanly only into a database with the same migrations, so check 
 ## Signing up
 
 Signup needs a single-use invite; no page links to `/signup`, so each person gets their own link.
-Until the admin's pages send invites (#574), make them from the `rss-admin` service's **Shell** in Render's dashboard (its `RSS_APP_URL` is `https://paperround.app`, for the links):
-
-```sh
-/admin invite create -email someone@example.com   # bound to their confirmed waitlist entry
-/admin invite create -note "Grace, by hand"       # open: they type their own email
-/admin invite list
-/admin invite revoke <id>
-```
-
-`create` prints `https://paperround.app/signup?invite=<token>`; send it to the person yourself.
+Make invites on the admin's Invites page: a wave from the waitlist, or Invites → New for one by hand; the `rss-admin` service's `RSS_APP_URL` (`https://paperround.app`) builds their links.
 A bound invite fills in their name and address, and their account starts confirmed; an open one works for any address, which they confirm afterwards.
-Each works once and expires after 14 days (`-expires` changes that); the README's "`admin invite`" has the details.
 Each person chooses their own password.
 
 Someone who forgets their password resets it themselves with "Forgot password?" on the login page, which emails them a link; nothing needs changing in the database.

@@ -226,25 +226,33 @@ func (s *Server) endpointsHandler(w http.ResponseWriter, r *http.Request) {
 // out is logged and said on the page, as on the service page; the error
 // returned is the database's.
 func (s *Server) markDeploys(r *http.Request, charts []endpointChart, from, now time.Time) (deployState, error) {
+	markers, state, err := s.deploysSince(r, from, now)
+	for i := range charts {
+		charts[i].Markers = markers
+	}
+	return state, err
+}
+
+// deploysSince are the markers of the deploys that went live from from on,
+// read from Render when the admin has its settings, for a page's charts.
+// Render failing or timing out is logged and said in the state, as on the
+// service page; the error returned is the database's.
+func (s *Server) deploysSince(r *http.Request, from, now time.Time) ([]chart.Marker, deployState, error) {
 	if s.services.Render == nil {
-		return deployState{}, nil
+		return nil, deployState{}, nil
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), renderTimeout)
 	defer cancel()
 	deploys, err := s.services.Render.Deploys(ctx, deploysFetched)
 	if err != nil {
-		s.logger.Warn("endpoints page: read Render's deploys", "error", err)
-		return deployState{Rendering: true, Failed: true}, nil
+		s.logger.Warn("read Render's deploys", "path", r.URL.Path, "error", err)
+		return nil, deployState{Rendering: true, Failed: true}, nil
 	}
 	versions, err := s.deployVersions(r.Context(), deploys, now, s.config.AppInternalURL != "")
 	if err != nil {
-		return deployState{}, err
+		return nil, deployState{}, err
 	}
-	markers := deployMarkers(deploys, versions, from)
-	for i := range charts {
-		charts[i].Markers = markers
-	}
-	return deployState{Rendering: true}, nil
+	return deployMarkers(deploys, versions, from), deployState{Rendering: true}, nil
 }
 
 // endpointStep is a step of the charts: its requests, and how much of it
@@ -467,23 +475,38 @@ func routeRows(routes []rss.EndpointRoute, params endpointsParams) []routeRow {
 	return rows
 }
 
+// webPerfLink is route's web performance page for period, or "" when it
+// had no page views in the period the link opens: only the reader's pages
+// send them.
+func (s *Server) webPerfLink(r *http.Request, route string, period endpointPeriod, now time.Time) (string, error) {
+	params := webPerfParamsFor(period)
+	ok, err := s.services.WebPerf.HasViews(r.Context(), route, params.periodOf().query(now, "").From)
+	if err != nil || !ok {
+		return "", err
+	}
+	return webPerfRouteHref(route, params), nil
+}
+
 // routePage is a route's page's data.
 type routePage struct {
 	Nav           navData
 	Route, Method string
 	Back          string // the overview, for the same period
-	Periods       []filterLink
-	Period        endpointPeriod
-	Total         rss.RequestStats
-	Charts        []endpointChart
-	Deploys       deployState
-	Histogram     chart.Histogram
-	Statuses      []countRow
-	Instances     []instanceRow
-	Errors        []errorRow
-	MoreErrors    bool // the list stopped at ErrorsShown
-	ErrorsShown   int  // maxRouteErrors
-	ErrorsKept    int  // how many server errors www keeps, across routes
+	// WebPerf is the route's web performance page, for a page the reader
+	// shows: a GET route with page views in the period.
+	WebPerf     string
+	Periods     []filterLink
+	Period      endpointPeriod
+	Total       rss.RequestStats
+	Charts      []endpointChart
+	Deploys     deployState
+	Histogram   chart.Histogram
+	Statuses    []countRow
+	Instances   []instanceRow
+	Errors      []errorRow
+	MoreErrors  bool // the list stopped at ErrorsShown
+	ErrorsShown int  // maxRouteErrors
+	ErrorsKept  int  // how many server errors www keeps, across routes
 }
 
 // instanceRow is an instance's requests on the route.
@@ -541,6 +564,13 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		next := params
 		next.period = p
 		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, next), Current: p.Key == period.Key})
+	}
+	if method == http.MethodGet {
+		page.WebPerf, err = s.webPerfLink(r, route, period, now)
+		if err != nil {
+			s.serverErrorHTML(w, r, err)
+			return
+		}
 	}
 	for _, e := range errs[:min(len(errs), maxRouteErrors)] {
 		first, _, _ := strings.Cut(strings.TrimSpace(e.Message), "\n")

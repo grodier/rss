@@ -31,62 +31,12 @@
       {{else}}
       <section class="admin-section" aria-labelledby="vitals">
         <h2 id="vitals">Core Web Vitals</h2>
-        <p class="assessment{{with .Assessment.Rating}} r-{{.}}{{end}}">
-          {{if eq .Assessment.Rating "good"}}{{template "rating-glyph" "good"}}<strong>Passed</strong>
-          {{else if .Assessment.Rating}}{{template "rating-glyph" .Assessment.Rating}}<strong>Not passed</strong>
-          {{else}}<strong>Not assessed</strong>{{end}}
-          <span>{{.Assessment.Text}}</span>
-        </p>
-        {{range .Vitals}}
-        <div class="vital{{if .Minor}} vital-minor{{end}}">
-          <div class="vital-summary">
-            <h3>{{.Name}} <span class="vital-full">{{.Full}}</span></h3>
-            <p class="vital-value">
-              <strong>{{.Selected.Value}}</strong>
-              <span class="vital-q">{{.Selected.Percentile}}</span>
-              {{with .Selected.Rating}}<span class="rating r-{{.}}">{{template "rating-glyph" .}}{{ratingWord .}}</span>{{end}}
-            </p>
-            <p class="vital-others">{{range .Others}}<span><span class="vital-q">{{.Percentile}}</span> {{template "rated-value" .}}</span>{{end}}</p>
-            {{if .Views}}
-            <svg class="shares" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="{{.Shares}}" focusable="false"><title>{{.Shares}}</title><rect class="bar-track" x="0" y="0" width="100" height="6" />{{range .Bar}}<rect class="share-{{.Rating}}" x="{{.Start}}" y="0" width="{{.Width}}" height="6" />{{end}}</svg>
-            <p class="vital-note">{{.Shares}}</p>
-            <p class="vital-note">{{count .Views}} views reported {{.Name}}</p>
-            {{else}}
-            <p class="vital-note">No view reported {{.Name}}.</p>
-            {{end}}
-          </div>
-          <div class="vital-chart">{{with .Chart}}{{chart .}}{{end}}</div>
-        </div>
-        {{end}}
+        {{template "vital-rows" .}}
       </section>
 
       <section class="admin-section" aria-labelledby="breakdowns">
         <h2 id="breakdowns">Breakdowns</h2>
-        {{range .Breakdowns}}
-        <h3 class="sub">{{.Title}}</h3>
-        {{if .Missing}}
-        <p class="missing">{{.Missing}}</p>
-        {{else}}
-        <div class="table-wrap">
-          <table class="data breakdown">
-            <colgroup><col class="col-name" /><col class="col-views" /><col /><col /><col /><col class="col-note" /></colgroup>
-            <thead>
-              <tr>
-                <th scope="col">{{.Column}}</th>
-                <th scope="col" class="num">Views</th>
-                <th scope="col" class="num">{{$.Percentile}} LCP</th>
-                <th scope="col" class="num">{{$.Percentile}} INP</th>
-                <th scope="col" class="num">{{$.Percentile}} CLS</th>
-                <th scope="col"><span class="visually-hidden">Note</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Rows}}{{template "segment-row" .}}{{end}}
-            </tbody>
-          </table>
-        </div>
-        {{end}}
-        {{end}}
+        {{template "breakdowns" .}}
       </section>
 
       <section class="admin-section" aria-labelledby="pages">
@@ -154,21 +104,3 @@
 </body>
 
 </html>
-
-{{/* segment-row is a breakdown's or the routes table's row (dot: a
-     segmentRow); one with few views is dimmed and tagged. */}}
-{{define "segment-row"}}<tr{{if .Few}} class="few"{{end}}>
-                <td>{{.Label}}{{if .Few}} <span class="tag">few views</span>{{end}}</td>
-                <td class="num">{{count .Views}}</td>
-                {{range .Values}}<td class="num">{{template "rated-value" .}}</td>{{end}}
-                <td class="note">{{.Note}}</td>
-              </tr>{{end}}
-
-{{/* count-table is a small table of values and their views or shares (dot:
-     countTable's map). */}}
-{{define "count-table"}}<div class="table-wrap">
-              <table class="data">
-                <thead><tr><th scope="col">{{.Name}}</th><th scope="col" class="num">{{.Column}}</th></tr></thead>
-                <tbody>{{$share := .Share}}{{range .Rows}}<tr><td>{{.Label}}</td><td class="num">{{if $share}}{{.Share}}{{else}}{{count .Views}}{{end}}</td></tr>{{end}}</tbody>
-              </table>
-            </div>{{end}}

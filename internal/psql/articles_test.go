@@ -27,7 +27,7 @@ func newTestFeed(t *testing.T, db *sql.DB) rss.Feed {
 		Description: "Old description",
 		NextFetch:   time.Now().Add(time.Hour),
 	}
-	id, err := NewFeedRepository(db).Upsert(t.Context(), f)
+	id, err := upsertFeed(t.Context(), db, f)
 	if err != nil {
 		t.Fatalf("Upsert feed: %v", err)
 	}

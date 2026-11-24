@@ -568,6 +568,11 @@ Admin and observability:
   The Back and Forward section (#771) adds two scans of the window's `restore` and `back_forward` views, a count and an `unnest` of their reasons, with no sorts per metric: about 5 ms at 24h, 25 ms at 7d and 50 ms at 30d with 300,000 views, a fifth of them Back or Forward.
   *Signal:* 7d, the default, takes over a second, or 30d over 5 s.
   *Fix:* finer buckets per hour (an `rum_hourly` rollup) for the breakdowns, keeping exact percentiles for the totals only.
+- [ ] **A route's web performance page scans the window's views for one route** (#589).
+  `rum_views` has no index on `route`, so each of the route page's queries reads every view in the window through `rum_views_received_at_idx` and keeps the route's, then sorts them per metric for `percentile_cont`, as the page does; a route's endpoints page adds an `EXISTS` for GET routes that scans the window when the route has no views (`/healthcheck`, files).
+  With 300,000 views and the busiest route at 120,000 of them, on a 4-core container: 24h about 60 ms, 7d about 0.4 s, 30d about 1.8 s, 13m from `rum_daily` about 150 ms; the `EXISTS` about 20 ms at 30 days.
+  *Signal:* a route's page at 7d takes over a second, or `/endpoints/route` over half a second.
+  *Fix:* an index on `rum_views (route, received_at)` (one more index on the beacon's insert), or the per-hour rollup above.
 - [ ] **The service page counts 90 days of checks on every view** (#616).
   `AvailabilityRepository.Uptime` counts the four windows in one pass over up to 90 days of `availability_checks` (about 130,000 rows, one a minute), and 90d's `Incidents` runs two window functions over the same rows, whatever is on screen.
   *Signal:* the service page takes over half a second, or `availability_checks` holds more than one check a minute (several pingers).
@@ -860,6 +865,7 @@ Pages and queries:
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.
+  #789 shares the first three's code but keeps their three queries.
   *Signal:* they show up in `pg_stat_statements`, or slow for users with many reads or saves.
   *Fix:* fold them into the page's main query, or store the canonical URL on `reads` and `saves`.
 - [ ] **Saved search scans with `ILIKE`** (#301).

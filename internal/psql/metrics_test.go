@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/metrics"
+	"github.com/lib/pq"
 )
 
 // newMetricsRepo returns a repository on a freshly migrated schema of its
@@ -36,6 +37,58 @@ func requestRow(period time.Time, instance, route string, requests int, buckets 
 	}
 }
 
+// listRequests returns the request rows of resolution ("minute" or "hour")
+// whose period starts in [from, to), oldest first.
+func listRequests(t *testing.T, db *sql.DB, resolution string, from, to time.Time) ([]metrics.RequestRow, error) {
+	t.Helper()
+	rows, err := db.QueryContext(t.Context(), `SELECT period_start, instance, route, method, status_class,
+		    requests, duration_ms_sum, bytes_sum, buckets
+		FROM request_metrics
+		WHERE resolution = $1 AND period_start >= $2 AND period_start < $3
+		ORDER BY period_start, instance, route, method, status_class`, resolution, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []metrics.RequestRow
+	for rows.Next() {
+		var m metrics.RequestRow
+		err := rows.Scan(&m.PeriodStart, &m.Instance, &m.Route, &m.Method, &m.StatusClass,
+			&m.Requests, &m.DurationMsSum, &m.BytesSum, pq.Array(&m.Buckets))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// listJobs returns the job rows of resolution ("minute" or "hour") whose
+// period starts in [from, to), oldest first.
+func listJobs(t *testing.T, db *sql.DB, resolution string, from, to time.Time) ([]metrics.JobRow, error) {
+	t.Helper()
+	rows, err := db.QueryContext(t.Context(), `SELECT period_start, instance, runner, outcome, jobs, duration_ms_sum, buckets
+		FROM job_metrics
+		WHERE resolution = $1 AND period_start >= $2 AND period_start < $3
+		ORDER BY period_start, instance, runner, outcome`, resolution, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []metrics.JobRow
+	for rows.Next() {
+		var m metrics.JobRow
+		err := rows.Scan(&m.PeriodStart, &m.Instance, &m.Runner, &m.Outcome, &m.Jobs, &m.DurationMsSum, pq.Array(&m.Buckets))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func TestMetricsSaveRequests(t *testing.T) {
 	repo, _ := newMetricsRepo(t)
 	ctx := context.Background()
@@ -53,9 +106,9 @@ func TestMetricsSaveRequests(t *testing.T) {
 		t.Fatalf("SaveRequests again: %v", err)
 	}
 
-	got, err := repo.ListRequests(ctx, "minute", minute, minute.Add(time.Minute))
+	got, err := listRequests(t, repo.DB, "minute", minute, minute.Add(time.Minute))
 	if err != nil {
-		t.Fatalf("ListRequests: %v", err)
+		t.Fatalf("listRequests: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %d rows, want 2: %+v", len(got), got)
@@ -105,9 +158,9 @@ func TestMetricsRollUp(t *testing.T) {
 		t.Fatalf("RollUp again: %v", err)
 	}
 
-	got, err := repo.ListRequests(ctx, "hour", hour.Add(-24*time.Hour), hour.Add(24*time.Hour))
+	got, err := listRequests(t, repo.DB, "hour", hour.Add(-24*time.Hour), hour.Add(24*time.Hour))
 	if err != nil {
-		t.Fatalf("ListRequests: %v", err)
+		t.Fatalf("listRequests: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %d hourly rows, want 2: %+v", len(got), got)
@@ -134,9 +187,9 @@ func TestMetricsRollUp(t *testing.T) {
 	if err := repo.RollUp(ctx, hour.Add(150*time.Minute)); err != nil {
 		t.Fatalf("RollUp next hour: %v", err)
 	}
-	got, err = repo.ListRequests(ctx, "hour", hour.Add(time.Hour), hour.Add(2*time.Hour))
+	got, err = listRequests(t, repo.DB, "hour", hour.Add(time.Hour), hour.Add(2*time.Hour))
 	if err != nil {
-		t.Fatalf("ListRequests: %v", err)
+		t.Fatalf("listRequests: %v", err)
 	}
 	if len(got) != 1 || got[0].Requests != 5 {
 		t.Errorf("next hour = %+v, want one row of 5 requests", got)
@@ -191,9 +244,9 @@ func TestMetricsDeleteBefore(t *testing.T) {
 	}
 
 	routes := func(resolution string) []string {
-		rows, err := repo.ListRequests(ctx, resolution, ago(365*day), now)
+		rows, err := listRequests(t, repo.DB, resolution, ago(365*day), now)
 		if err != nil {
-			t.Fatalf("ListRequests: %v", err)
+			t.Fatalf("listRequests: %v", err)
 		}
 		var out []string
 		for _, r := range rows {
@@ -209,9 +262,9 @@ func TestMetricsDeleteBefore(t *testing.T) {
 		t.Errorf("hour routes = %v, want %v", got, want)
 	}
 	outcomes := func(resolution string) []string {
-		rows, err := repo.ListJobs(ctx, resolution, ago(365*day), now)
+		rows, err := listJobs(t, repo.DB, resolution, ago(365*day), now)
 		if err != nil {
-			t.Fatalf("ListJobs: %v", err)
+			t.Fatalf("listJobs: %v", err)
 		}
 		var out []string
 		for _, r := range rows {
@@ -297,9 +350,9 @@ func TestMetricsSaveJobs(t *testing.T) {
 		t.Fatalf("SaveJobs again: %v", err)
 	}
 
-	got, err := repo.ListJobs(ctx, "minute", minute, minute.Add(time.Minute))
+	got, err := listJobs(t, repo.DB, "minute", minute, minute.Add(time.Minute))
 	if err != nil {
-		t.Fatalf("ListJobs: %v", err)
+		t.Fatalf("listJobs: %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("got %d rows, want 3: %+v", len(got), got)
@@ -356,9 +409,9 @@ func TestMetricsRollUpJobs(t *testing.T) {
 		t.Fatalf("RollUp again: %v", err)
 	}
 
-	got, err := repo.ListJobs(ctx, "hour", hour.Add(-24*time.Hour), hour.Add(24*time.Hour))
+	got, err := listJobs(t, repo.DB, "hour", hour.Add(-24*time.Hour), hour.Add(24*time.Hour))
 	if err != nil {
-		t.Fatalf("ListJobs: %v", err)
+		t.Fatalf("listJobs: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("got %d hourly rows, want 2: %+v", len(got), got)
@@ -385,9 +438,9 @@ func TestMetricsRollUpJobs(t *testing.T) {
 	if err := repo.RollUp(ctx, hour.Add(150*time.Minute)); err != nil {
 		t.Fatalf("RollUp next hour: %v", err)
 	}
-	got, err = repo.ListJobs(ctx, "hour", hour.Add(time.Hour), hour.Add(2*time.Hour))
+	got, err = listJobs(t, repo.DB, "hour", hour.Add(time.Hour), hour.Add(2*time.Hour))
 	if err != nil {
-		t.Fatalf("ListJobs: %v", err)
+		t.Fatalf("listJobs: %v", err)
 	}
 	if len(got) != 1 || got[0].Jobs != 5 {
 		t.Errorf("next hour = %+v, want one row of 5 jobs", got)

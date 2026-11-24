@@ -17,6 +17,7 @@
         <h1 class="endpoint-title">{{template "endpoint-route" .}}</h1>
         <div class="head-actions">
           <a class="btn btn-sm" href="{{.Back}}">All endpoints</a>
+          {{with .WebPerf}}<a class="btn btn-sm" href="{{.}}">Web performance</a>{{end}}
         </div>
         <p>{{if .Total.Requests}}{{count .Total.Requests}} requests {{.Period.Label}}.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests {{.Period.Label}}.{{end}}</p>
       </header>

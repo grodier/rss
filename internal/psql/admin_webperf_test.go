@@ -2,6 +2,7 @@ package psql
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -46,6 +47,17 @@ func webPerfViews(t *testing.T, repo *RUMRepository, day time.Time, n int) {
 		if i%3 == 0 {
 			v.ReferrerHost = "news.example"
 		}
+		// What only a route's page reads.
+		v.ServerMs = at(2, 400)
+		v.LCPElement = []string{"img", "h1", "p"}[i%3]
+		if v.INPMs != nil {
+			v.INPTarget = []string{"button", "data-save"}[(i/4)%2]
+		}
+		if i%10 == 0 {
+			v.NavType = "reload"
+		}
+		size := int64(i%4) * 9000 // a quarter from the cache
+		v.TransferBytes = &size
 		recordViews(t, repo, v)
 	}
 }
@@ -287,5 +299,193 @@ func TestAdminWebPerfBackForward(t *testing.T) {
 	}
 	if !reflect.DeepEqual(wp.BackForward, rss.RUMBackForward{}) {
 		t.Errorf("rollups' back and forward = %+v, want none", wp.BackForward)
+	}
+}
+
+// A route's views from rum_views and from rum_daily agree as the page's do,
+// with the same buckets, and only the raw views know what was slow.
+func TestAdminWebPerfRouteRawAndRollupsAgree(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	perf := NewAdminWebPerfRepository(db)
+	ctx := context.Background()
+	day := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -3)
+	webPerfViews(t, repo, day, 600)
+	if err := repo.RollUp(ctx, day.AddDate(0, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+
+	q := rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Step: 24 * time.Hour}
+	raw, err := perf.WebPerfRoute(ctx, q, "/")
+	if err != nil {
+		t.Fatalf("raw: %v", err)
+	}
+	q.Rollups = true
+	rolled, err := perf.WebPerfRoute(ctx, q, "/")
+	if err != nil {
+		t.Fatalf("rollups: %v", err)
+	}
+
+	if raw.Total.Views != 300 || rolled.Total.Views != 300 {
+		t.Errorf("views: raw %d, rollups %d, want the route's 300 of 600", raw.Total.Views, rolled.Total.Views)
+	}
+	compareStats(t, "total", raw.Total.Metrics, rolled.Total.Metrics, 6)
+	if s := raw.Total.Metrics["server"]; s.Good+s.NeedsImprovement+s.Poor != 0 || s.Views != 300 {
+		t.Errorf("raw server = %+v, want 300 views and none by rating", s)
+	}
+	if !reflect.DeepEqual(raw.Buckets, rolled.Buckets) {
+		t.Errorf("buckets: raw %v, rollups %v", raw.Buckets, rolled.Buckets)
+	}
+	for metric, s := range raw.Total.Metrics {
+		n := 0
+		for _, c := range raw.Buckets[metric] {
+			n += c
+		}
+		if n != s.Views {
+			t.Errorf("%s's buckets hold %d views, want %d", metric, n, s.Views)
+		}
+	}
+	for _, dim := range []struct {
+		name        string
+		raw, rolled []rss.RUMGroup
+	}{
+		{"device", raw.Devices, rolled.Devices},
+		{"browser", raw.Browsers, rolled.Browsers},
+	} {
+		if len(dim.raw) != 2 || len(dim.rolled) != 2 {
+			t.Fatalf("%s groups: raw %d, rollups %d, want 2", dim.name, len(dim.raw), len(dim.rolled))
+		}
+		for i := range dim.raw {
+			r, o := dim.raw[i], dim.rolled[i]
+			if r.Key != o.Key || r.Views != o.Views {
+				t.Errorf("%s %d: raw %s with %d views, rollups %s with %d", dim.name, i, r.Key, r.Views, o.Key, o.Views)
+			}
+			compareStats(t, dim.name+" "+r.Key, r.Metrics, o.Metrics, 3)
+		}
+	}
+	if len(raw.Series) != 1 || len(rolled.Series) != 1 || !raw.Series[0].T.Equal(day) || !rolled.Series[0].T.Equal(day) {
+		t.Fatalf("series: raw %+v, rollups %+v, want one point at %v", raw.Series, rolled.Series, day)
+	}
+	compareStats(t, "series", raw.Series[0].Metrics, rolled.Series[0].Metrics, 6)
+
+	// Only the raw views know what was slow, how they came and their size.
+	if len(raw.LCPElements) != 3 || len(raw.INPTargets) != 2 || len(raw.NavTypes) != 2 || raw.Transfer.Views != 300 {
+		t.Errorf("raw has %d LCP elements, %d INP targets, nav types %v, transfer %+v; want 3, 2, two types and 300 sizes",
+			len(raw.LCPElements), len(raw.INPTargets), raw.NavTypes, raw.Transfer)
+	}
+	if rolled.LCPElements != nil || rolled.INPTargets != nil || rolled.NavTypes != nil || rolled.Transfer != (rss.RUMTransfer{}) {
+		t.Errorf("rollups have LCP elements %v, INP targets %v, nav types %v, transfer %+v; want none",
+			rolled.LCPElements, rolled.INPTargets, rolled.NavTypes, rolled.Transfer)
+	}
+}
+
+// What a route's raw views say about what was slow: the LCP elements, the
+// slowest interactions' targets with the most slow ones first, the
+// navigation types and the transfer sizes, of the route, window and device
+// only.
+func TestAdminWebPerfRouteDetails(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	perf := NewAdminWebPerfRepository(db)
+	ctx := context.Background()
+	day := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -3)
+	in := day.Add(time.Hour)
+	f := func(v float64) *float64 { return &v }
+	size := func(n int64) *int64 { return &n }
+	view := func(nav, element string, lcp *float64, target string, inp *float64, transfer *int64) rss.RUMView {
+		v := rumView(in, "/feeds/{id}", lcp)
+		v.NavType, v.LCPElement, v.INPTarget, v.INPMs, v.TransferBytes = nav, element, target, inp, transfer
+		return v
+	}
+	other := view("navigate", "img", f(9000), "button", f(900), size(1))
+	other.Route = "/"
+	phone := view("navigate", "img", f(9000), "button", f(900), size(1))
+	phone.Device = "phone"
+	late := view("navigate", "img", f(9000), "button", f(900), size(1))
+	late.ReceivedAt = day.AddDate(0, 0, 1)
+	recordViews(t, repo,
+		view("navigate", "img", f(3000), "button", f(100), size(0)),
+		view("navigate", "img", f(3000), "button", f(100), size(0)),
+		view("reload", "img", f(1000), "button", f(100), size(1000)),
+		view("navigate", "h1", f(800), "data-save", f(600), size(2000)),
+		view("reload", "", f(900), "data-save", f(300), size(3000)),
+		view("restore", "", nil, "", nil, nil), // restored: no LCP, no size
+		other, phone, late,
+	)
+
+	wr, err := perf.WebPerfRoute(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Device: "desktop", Step: 6 * time.Hour}, "/feeds/{id}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wr.Total.Views != 6 {
+		t.Errorf("views = %d, want 6", wr.Total.Views)
+	}
+	keys := func(gs []rss.RUMGroup) []string {
+		var out []string
+		for _, g := range gs {
+			out = append(out, fmt.Sprintf("%s:%d", g.Key, g.Views))
+		}
+		return out
+	}
+	if got, want := keys(wr.LCPElements), []string{"img:3", ":1", "h1:1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("LCP elements = %v, want %v", got, want)
+	}
+	if s := wr.LCPElements[0].Metrics["lcp"]; s.Views != 3 || s.Good != 1 || s.NeedsImprovement != 2 {
+		t.Errorf("img's LCP = %+v, want 3 views, 1 good and 2 needing improvement", s)
+	}
+	// data-save's 2 slow interactions come before button's 3 fast ones.
+	if got, want := keys(wr.INPTargets), []string{"data-save:2", "button:3"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("INP targets = %v, want %v", got, want)
+	}
+	if s := wr.INPTargets[0].Metrics["inp"]; s.NeedsImprovement != 1 || s.Poor != 1 {
+		t.Errorf("data-save's INP = %+v, want 1 needing improvement and 1 poor", s)
+	}
+	wantNav := []rss.RUMCount{{Key: "navigate", Views: 3}, {Key: "reload", Views: 2}, {Key: "restore", Views: 1}}
+	if !reflect.DeepEqual(wr.NavTypes, wantNav) {
+		t.Errorf("nav types = %v, want %v", wr.NavTypes, wantNav)
+	}
+	if want := (rss.RUMTransfer{Views: 5, Cached: 2, P50: 2000, P75: 2500, P95: 2900}); wr.Transfer != want {
+		t.Errorf("transfer = %+v, want %+v", wr.Transfer, want)
+	}
+	if n := wr.Buckets["lcp"]; len(n) != len(metrics.RUMBounds["lcp"])+1 || n[7] != 1 || n[8] != 2 || n[12] != 2 {
+		t.Errorf("LCP buckets = %v, want 800 in the 800 bucket, 900 and 1000 in the 1000 bucket, and two 3000s in the 3000 bucket", n)
+	}
+
+	// A route with no views has nothing, from either source.
+	for _, rollups := range []bool{false, true} {
+		q := rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1), Rollups: rollups, Step: 24 * time.Hour}
+		empty, err := perf.WebPerfRoute(ctx, q, "/nowhere")
+		if err != nil {
+			t.Fatalf("an unknown route (rollups %v): %v", rollups, err)
+		}
+		if empty.Total.Views != 0 || len(empty.Total.Metrics) != 0 || empty.Series != nil || empty.Buckets != nil || empty.Devices != nil {
+			t.Errorf("an unknown route (rollups %v) = %+v, want nothing", rollups, empty)
+		}
+	}
+	if _, err := perf.WebPerfRoute(ctx, rss.WebPerfQuery{From: day, To: day.AddDate(0, 0, 1)}, "/"); err == nil {
+		t.Error("a query with no step: no error")
+	}
+}
+
+func TestAdminWebPerfHasViews(t *testing.T) {
+	repo, db := newRUMRepo(t)
+	perf := NewAdminWebPerfRepository(db)
+	ctx := context.Background()
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	recordViews(t, repo, rumView(at, "/feeds/{id}", nil))
+	for _, tt := range []struct {
+		route string
+		since time.Time
+		want  bool
+	}{
+		{"/feeds/{id}", at, true},
+		{"/feeds/{id}", at.Add(time.Second), false},
+		{"/healthcheck", at.Add(-time.Hour), false},
+	} {
+		got, err := perf.HasViews(ctx, tt.route, tt.since)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tt.want {
+			t.Errorf("HasViews(%s, %v) = %v, want %v", tt.route, tt.since, got, tt.want)
+		}
 	}
 }

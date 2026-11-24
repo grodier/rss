@@ -20,11 +20,6 @@ func NewSiteRepository(db *sql.DB) *SiteRepository {
 	return &SiteRepository{DB: db}
 }
 
-// Upsert inserts the site or updates it by host and returns its ID.
-func (r *SiteRepository) Upsert(ctx context.Context, s rss.Site) (string, error) {
-	return upsertSite(ctx, r.DB, s, true)
-}
-
 // upsertSite inserts the site or updates it by host and returns its ID. An
 // empty title or description doesn't overwrite a known one. Only details
 // read from the site's home page (fromHome, discovery.Result.HomePage)
@@ -58,14 +53,6 @@ func (r *SiteRepository) GetByID(ctx context.Context, id string) (rss.Site, erro
 		WHERE id = $1`
 
 	return r.get(ctx, stmt, id)
-}
-
-func (r *SiteRepository) GetByHost(ctx context.Context, host string) (rss.Site, error) {
-	stmt := `SELECT id, host, url, title, description, created_at, updated_at
-		FROM sites
-		WHERE host = $1`
-
-	return r.get(ctx, stmt, host)
 }
 
 func (r *SiteRepository) get(ctx context.Context, stmt string, arg any) (rss.Site, error) {

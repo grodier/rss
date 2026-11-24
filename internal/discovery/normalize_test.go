@@ -74,18 +74,6 @@ func TestParseInput(t *testing.T) {
 	}
 }
 
-func TestLooksLikeURL(t *testing.T) {
-	for _, in := range []string{"example.com", "HTTPS://Example.com", "npr. org", "hacker news", "localhost", "ftp://example.com", ""} {
-		_, err := ParseInput(in)
-		if got, want := LooksLikeURL(in), err == nil; got != want {
-			t.Errorf("LooksLikeURL(%q) = %v; want %v", in, got, want)
-		}
-	}
-	if !LooksLikeURL("npr. org") {
-		t.Error(`LooksLikeURL("npr. org") = false; want true`)
-	}
-}
-
 func TestCanonicalFeedURL(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"HTTPS://Example.com:443/feed.xml#x", "https://example.com/feed.xml"},

@@ -14,13 +14,12 @@ import (
 func TestFeedUpsertAndListBySite(t *testing.T) {
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
-	sites := NewSiteRepository(db)
 	n := time.Now().UnixNano()
 
 	newSite := func(name string) string {
 		t.Helper()
 		host := fmt.Sprintf("%s-%d.example.com", name, n)
-		id, err := sites.Upsert(t.Context(), rss.Site{Host: host, URL: "https://" + host + "/"})
+		id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/"}, true)
 		if err != nil {
 			t.Fatalf("Upsert site: %v", err)
 		}
@@ -48,12 +47,12 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 
 	t.Run("same URL updates title and keeps ID", func(t *testing.T) {
 		f := rss.Feed{Url: prefix + "one", SiteUrl: "https://x/", Title: "Old", SiteID: siteA}
-		id, err := feeds.Upsert(t.Context(), f)
+		id, err := upsertFeed(t.Context(), db, f)
 		if err != nil || id == "" {
 			t.Fatalf("Upsert: id %q, err %v", id, err)
 		}
 		f.Title = "New"
-		id2, err := feeds.Upsert(t.Context(), f)
+		id2, err := upsertFeed(t.Context(), db, f)
 		if err != nil {
 			t.Fatalf("Upsert again: %v", err)
 		}
@@ -67,12 +66,12 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 
 	t.Run("empty title keeps the old one", func(t *testing.T) {
 		f := rss.Feed{Url: prefix + "two", Title: "Keep", Description: "Desc", SiteID: siteA}
-		id, err := feeds.Upsert(t.Context(), f)
+		id, err := upsertFeed(t.Context(), db, f)
 		if err != nil {
 			t.Fatalf("Upsert: %v", err)
 		}
 		f.Title, f.Description = "", ""
-		if _, err := feeds.Upsert(t.Context(), f); err != nil {
+		if _, err := upsertFeed(t.Context(), db, f); err != nil {
 			t.Fatalf("Upsert again: %v", err)
 		}
 		if got := get(t, id); got.Title != "Keep" || got.Description != "Desc" {
@@ -82,12 +81,12 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 
 	t.Run("existing site is kept", func(t *testing.T) {
 		attached := rss.Feed{Url: prefix + "attached", SiteID: siteA}
-		id, err := feeds.Upsert(t.Context(), attached)
+		id, err := upsertFeed(t.Context(), db, attached)
 		if err != nil {
 			t.Fatalf("Upsert: %v", err)
 		}
 		attached.SiteID = siteB
-		if _, err := feeds.Upsert(t.Context(), attached); err != nil {
+		if _, err := upsertFeed(t.Context(), db, attached); err != nil {
 			t.Fatalf("Upsert again: %v", err)
 		}
 		if got := get(t, id).SiteID; got != siteA {
@@ -106,7 +105,7 @@ func TestFeedUpsertAndListBySite(t *testing.T) {
 			{Url: prefix + "c1", Title: "Alpha", SiteID: siteC},
 			{Url: prefix + "other", Title: "Aaa", SiteID: siteA},
 		} {
-			if _, err := feeds.Upsert(t.Context(), f); err != nil {
+			if _, err := upsertFeed(t.Context(), db, f); err != nil {
 				t.Fatalf("Upsert: %v", err)
 			}
 		}
@@ -228,9 +227,9 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 		})
 		get := func(t *testing.T) rss.Site {
 			t.Helper()
-			got, err := NewSiteRepository(db).GetByHost(t.Context(), h)
+			got, err := siteByHost(t, db, h)
 			if err != nil {
-				t.Fatalf("GetByHost: %v", err)
+				t.Fatalf("siteByHost: %v", err)
 			}
 			return got
 		}
@@ -265,14 +264,13 @@ func TestDiscoveryRepositorySave(t *testing.T) {
 func TestFeedUpsertMovesToSharedHostSite(t *testing.T) {
 	db := psqltest.NewDB(t)
 	feeds := NewFeedRepository(db)
-	sites := NewSiteRepository(db)
 	n := time.Now().UnixNano()
 	host := fmt.Sprintf("shared-%d.example.com", n)
 
 	var siteIDs []string
 	newSite := func(t *testing.T, key string) string {
 		t.Helper()
-		id, err := sites.Upsert(t.Context(), rss.Site{Host: key, URL: "https://" + key})
+		id, err := upsertSite(t.Context(), db, rss.Site{Host: key, URL: "https://" + key}, true)
 		if err != nil {
 			t.Fatalf("Upsert site %s: %v", key, err)
 		}
@@ -306,12 +304,12 @@ func TestFeedUpsertMovesToSharedHostSite(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := rss.Feed{Url: fmt.Sprintf("%s%d", prefix, i), Title: "F", SiteID: tt.from}
-			id, err := feeds.Upsert(t.Context(), f)
+			id, err := upsertFeed(t.Context(), db, f)
 			if err != nil {
 				t.Fatalf("Upsert: %v", err)
 			}
 			f.SiteID = tt.to
-			if _, err := feeds.Upsert(t.Context(), f); err != nil {
+			if _, err := upsertFeed(t.Context(), db, f); err != nil {
 				t.Fatalf("Upsert again: %v", err)
 			}
 			got, err := feeds.GetByID(t.Context(), id)

@@ -15,12 +15,11 @@ func TestSiteRepositoryRekey(t *testing.T) {
 	db := newMigrateDB(t)
 	mustMigrate(t, db)
 	sites := NewSiteRepository(db)
-	feeds := NewFeedRepository(db)
 	ctx := t.Context()
 
 	addSite := func(host string) string {
 		t.Helper()
-		id, err := sites.Upsert(ctx, rss.Site{Host: host, URL: "https://" + host + "/", Title: host})
+		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: host}, true)
 		if err != nil {
 			t.Fatalf("Upsert site %s: %v", host, err)
 		}
@@ -28,7 +27,7 @@ func TestSiteRepositoryRekey(t *testing.T) {
 	}
 	addFeed := func(siteID, url, siteURL string) string {
 		t.Helper()
-		id, err := feeds.Upsert(ctx, rss.Feed{SiteID: siteID, Url: url, SiteUrl: siteURL, Title: url})
+		id, err := upsertFeed(ctx, db, rss.Feed{SiteID: siteID, Url: url, SiteUrl: siteURL, Title: url})
 		if err != nil {
 			t.Fatalf("Upsert feed %s: %v", url, err)
 		}

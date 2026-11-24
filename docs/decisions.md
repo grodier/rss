@@ -720,8 +720,16 @@ Planned in #163 (issues #147–#162).
   The language comes from what the common highlighters write (`language-go` and the like, on the block, its `<code>` or a wrapper, `data-lang`, and SyntaxHighlighter's `brush:`), read by the sanitizer into a display name from a fixed list, kept in `data-lang` on the `<pre>`: no class from the feed reaches the page, and an unknown or plain-text token gets no label rather than the feed's spelling.
   File names aren't shown: no highlighter marks them in a standard way.
   The bar is the `<pre>`'s `::before`, so it's never part of the copied or selected text, and without JavaScript a block whose language is known still shows it.
-- **Long articles get a contents list rendered by the server** (#723), from their `<h2>`s and `<h3>`s when there are at least three, so it works without JavaScript and doesn't shift the page; how it looks is #723's design checkpoint.
-  No current section that follows the scroll: it changes on every scroll, like the progress bar rejected in "Motion and feedback" (an idea in backlog.md).
+- **Long articles get a contents list rendered by the server** (#723), from their `<h2>`s and `<h3>`s when there are at least three, so it works without JavaScript and doesn't shift the page.
+  Headings inside a quote, a post card or anything the sanitizer drops aren't listed, and a heading without an id gets one from its text, so every entry has a target.
+- **The contents list is a rail beside the column, from 80rem only** (the owner's pick at #723's design checkpoint, over a closed `Contents` disclosure above the text and an open list there): in view while reading a long piece, where jumping is most useful, in the shell's otherwise empty right-hand track.
+  Narrower screens get none, rather than the disclosure as a second placement; it's in backlog.md if it's missed.
+  It's quiet at rest, in `--text-3`, so it competes with the text as little as a standing list can, and hiding it is for later (a setting, or a zen mode, both in backlog.md).
+- **The rail marks the section being read** (#723; this reverses the plan's "no current section", which compared it to the progress bar rejected in "Motion and feedback"): beside the text, a list that doesn't say where you are is half as useful, and the mark is a color, weight and sunrise edge, like the nav's current section, that changes without moving.
+  Only the current section's `<h3>`s show, so the rail stays short; reaching an `<h3>` elsewhere takes its section first, as on docs sites.
+  A section is being read once its heading passes 30% of the way down the screen; right after following a link to a heading, that heading's, even when a short first subsection below it has passed the line too; and at the end of the page, the last one on screen.
+  When an `<h3>` is being read, its `<h2>` firms up too, so its section shows.
+  Without JavaScript the rail shows every `<h3>` and marks none.
 - **Not taken from obsidian-clipper's reader** (#718): blending images into the page (`mix-blend-mode: multiply` in Light), since Light's `--bg` is nearly white so it would change almost nothing, and images in Dark stay as they are (#413, under "Design"); and its theme presets, custom CSS and font detection, which aren't this product.
 - **Reading preferences** (text size, serif or sans, line width) **wait for themes**; the article page gets better defaults first: wide tables scroll inside the column, styled code, lists and rules (#295).
 - **Audio and video are measured before they're built** (#297): only the media type of an item's first audio or video enclosure is stored, so the owner can see how common they are, alongside queries over stored HTML for embeds.

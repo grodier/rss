@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/sanitize"
 )
 
 const testArticleID = "22222222-2222-4222-8222-222222222222"
@@ -290,7 +291,7 @@ func TestArticleHandlerRepeatedTitle(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	body := rr.Body.String()
-	assertBodyContains(t, body, "<h1>The Big Story</h1>", "<h2>A section</h2>")
+	assertBodyContains(t, body, "<h1>The Big Story</h1>", `<h2 id="body-a-section">A section</h2>`)
 	if n := strings.Count(body, "The Big Story"); n != 2 {
 		// The <title> and the page's <h1>.
 		t.Errorf("title shown %d times, want 2 (<title> and <h1>): %s", n, body)
@@ -1109,6 +1110,109 @@ func TestArticleRowByline(t *testing.T) {
 			r := articleRow{Article: rss.Article{Authors: tt.authors}, Feed: tt.feed}
 			if got := r.Byline(); got != tt.want {
 				t.Errorf("Byline() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArticlePageOutline(t *testing.T) {
+	t.Run("three headings", func(t *testing.T) {
+		article := rss.Article{
+			Title:   "A long read",
+			Content: `<h2>One</h2><p>a</p><h3>Two</h3><p>b</p><h2>Three</h2><p>c</p>`,
+		}
+		rr := serveArticle(t, articleServer(t, article, nil, nil, nil), testArticleID)
+		doc, err := html.Parse(rr.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		navs := findAll(doc, func(n *html.Node) bool { return n.Data == "nav" && hasClass(n, "reader-contents") })
+		if len(navs) != 1 {
+			t.Fatalf("found %d nav.reader-contents, want 1", len(navs))
+		}
+		if got := attr(navs[0], "aria-label"); got != "Contents" {
+			t.Errorf("nav aria-label = %q, want %q", got, "Contents")
+		}
+
+		ids := map[string]bool{}
+		for _, n := range findAll(doc, func(n *html.Node) bool { return attr(n, "id") != "" }) {
+			ids[attr(n, "id")] = true
+		}
+		type link struct {
+			href, text string
+			nested     bool
+		}
+		var got []link
+		for _, a := range findAll(navs[0], func(n *html.Node) bool { return n.Data == "a" }) {
+			href := attr(a, "href")
+			if !strings.HasPrefix(href, "#body-") || !ids[strings.TrimPrefix(href, "#")] {
+				t.Errorf("link %q doesn't point at an id in the page", href)
+			}
+			// A nested link's <li> is in an <ol> in an <li>.
+			nested := a.Parent.Parent.Parent != nil && a.Parent.Parent.Parent.Data == "li"
+			got = append(got, link{href, textContent(a), nested})
+		}
+		want := []link{
+			{"#body-one", "One", false},
+			{"#body-two", "Two", true},
+			{"#body-three", "Three", false},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("links = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("two headings", func(t *testing.T) {
+		article := rss.Article{
+			Title:   "A short read",
+			Content: `<h2>One</h2><p>a</p><h3>Two</h3><p>b</p>`,
+		}
+		rr := serveArticle(t, articleServer(t, article, nil, nil, nil), testArticleID)
+		if body := rr.Body.String(); strings.Contains(body, "reader-contents") {
+			t.Errorf("page has a contents list for 2 headings: %s", body)
+		}
+	})
+}
+
+func TestContents(t *testing.T) {
+	h := func(id string, level int) sanitize.Heading {
+		return sanitize.Heading{ID: id, Text: id, Level: level}
+	}
+	tests := []struct {
+		name     string
+		headings []sanitize.Heading
+		want     []outlineItem
+	}{
+		{
+			name:     "fewer than outlineMin",
+			headings: []sanitize.Heading{h("a", 2), h("b", 2)},
+		},
+		{
+			name:     "h3s nest under the h2 before them",
+			headings: []sanitize.Heading{h("a", 2), h("b", 3), h("c", 3), h("d", 2)},
+			want: []outlineItem{
+				{Heading: h("a", 2), Children: []sanitize.Heading{h("b", 3), h("c", 3)}},
+				{Heading: h("d", 2)},
+			},
+		},
+		{
+			name:     "h3s before any h2 are top level",
+			headings: []sanitize.Heading{h("a", 3), h("b", 3), h("c", 2), h("d", 3)},
+			want: []outlineItem{
+				{Heading: h("a", 3)},
+				{Heading: h("b", 3)},
+				{Heading: h("c", 2), Children: []sanitize.Heading{h("d", 3)}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := contents(tt.headings)
+			if !slices.EqualFunc(got, tt.want, func(a, b outlineItem) bool {
+				return a.Heading == b.Heading && slices.Equal(a.Children, b.Children)
+			}) {
+				t.Errorf("contents() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

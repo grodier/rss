@@ -56,6 +56,28 @@
           {{end}}
         </details>
         {{end}}
+        {{- with .Contents}}
+        {{/* The contents list, beside the column on wide screens (article.css);
+             contents.ts marks the section being read. */}}
+        <div class="reader-rail">
+          <nav class="reader-contents" aria-label="Contents" data-contents>
+            <p class="reader-contents-title" aria-hidden="true">Contents</p>
+            <ol class="reader-contents-list" role="list">
+              {{- range .}}
+              <li><a href="#{{.ID}}">{{.Text}}</a>
+                {{- with .Children}}
+                <ol role="list">
+                  {{- range .}}
+                  <li><a href="#{{.ID}}">{{.Text}}</a></li>
+                  {{- end}}
+                </ol>
+                {{- end}}
+              </li>
+              {{- end}}
+            </ol>
+          </nav>
+        </div>
+        {{- end}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}"{{with $.LeadImageFallback}} data-fallback-src="{{.}}"{{end}} alt="" fetchpriority="high" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>

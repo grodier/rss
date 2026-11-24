@@ -114,7 +114,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		debug = newArticleDebugView(article, d, body, leadImage, time.Now())
+		debug = newArticleDebugView(article, d, body.HTML, leadImage, time.Now())
 		// Rendering only: the list line's link opens the panel.
 		debug.Open = r.URL.Query().Get("debug") == "1"
 	}
@@ -129,6 +129,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		LeadImage         string
 		LeadImageFallback string
 		Body              template.HTML
+		Contents          []outlineItem
 		Saved             bool
 		Starred           bool
 		ReturnTo          string
@@ -142,7 +143,8 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		Icons:             s.pageIcons(r, []string{site.ID}),
 		LeadImage:         leadImage,
 		LeadImageFallback: leadImageFallback,
-		Body:              body,
+		Body:              body.HTML,
+		Contents:          contents(body.Outline),
 		Saved:             saved[article.ID],
 		Starred:           starred[article.ID],
 		ReturnTo:          r.URL.RequestURI(),
@@ -152,6 +154,37 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderHTML(w, http.StatusOK, "article.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
+}
+
+// outlineMin is how many section headings an article needs for its page to
+// show a contents list: with fewer, it's a short piece and a list is noise.
+const outlineMin = 3
+
+// outlineItem is one entry in an article's contents list: a section heading
+// and the <h3>s under it.
+type outlineItem struct {
+	sanitize.Heading
+	Children []sanitize.Heading
+}
+
+// contents returns the article page's contents list for the headings of
+// its body (sanitize.Body's Outline): nil with fewer than outlineMin, else
+// each <h3> under the <h2> before it, and an <h3> before any <h2> at the top
+// level.
+func contents(headings []sanitize.Heading) []outlineItem {
+	if len(headings) < outlineMin {
+		return nil
+	}
+	var items []outlineItem
+	for _, h := range headings {
+		if h.Level == 3 && len(items) > 0 && items[len(items)-1].Level == 2 {
+			last := &items[len(items)-1]
+			last.Children = append(last.Children, h)
+			continue
+		}
+		items = append(items, outlineItem{Heading: h})
+	}
+	return items
 }
 
 // readOnLabel returns the name the article page's "Read on" button shows:

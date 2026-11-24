@@ -427,7 +427,7 @@ func TestHTML(t *testing.T) {
 				`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 				`<blockquote>quote</blockquote><pre><code>x := 1</code></pre>` +
 				`<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>d</td></tr></tbody></table>`,
-			want: ptr(`<h2>Title</h2><p>Some <strong>bold</strong> and <em>italic</em> text.</p>` +
+			want: ptr(`<h2 id="body-title">Title</h2><p>Some <strong>bold</strong> and <em>italic</em> text.</p>` +
 				`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 				`<blockquote>quote</blockquote><pre><code>x := 1</code></pre>` +
 				`<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>d</td></tr></tbody></table>`),
@@ -547,7 +547,7 @@ func TestHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(HTML(tt.raw, tt.base, ""))
+			got := string(HTML(tt.raw, tt.base, "").HTML)
 			if tt.want != nil && got != *tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, *tt.want)
 			}
@@ -669,7 +669,7 @@ func TestHTMLLazyImages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, base, "")); got != tt.want {
+			if got := string(HTML(tt.raw, base, "").HTML); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
 			}
 		})
@@ -786,7 +786,7 @@ func TestHTMLLocalAnchors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, tt.base, "")); got != tt.want {
+			if got := string(HTML(tt.raw, tt.base, "").HTML); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
 			}
 		})
@@ -805,17 +805,17 @@ func TestHTMLDemotesH1(t *testing.T) {
 		{
 			name: "every h1",
 			raw:  `<h1>One</h1><p>a</p><div><h1>Two</h1></div>`,
-			want: `<h2>One</h2><p>a</p><div><h2>Two</h2></div>`,
+			want: `<h2 id="body-one">One</h2><p>a</p><div><h2 id="body-two">Two</h2></div>`,
 		},
 		{
 			name: "other levels unchanged",
 			raw:  `<h2>2</h2><h3>3</h3><h4>4</h4><h5>5</h5><h6>6</h6>`,
-			want: `<h2>2</h2><h3>3</h3><h4>4</h4><h5>5</h5><h6>6</h6>`,
+			want: `<h2 id="body-2">2</h2><h3 id="body-3">3</h3><h4>4</h4><h5>5</h5><h6>6</h6>`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, nil, "")); got != tt.want {
+			if got := string(HTML(tt.raw, nil, "").HTML); got != tt.want {
 				t.Errorf("HTML(%q)\n got: %s\nwant: %s", tt.raw, got, tt.want)
 			}
 		})
@@ -873,25 +873,25 @@ func TestHTMLDropsRepeatedTitle(t *testing.T) {
 			name:  "only block after an empty paragraph kept",
 			raw:   `<p>&nbsp;</p><h2>The Big Story</h2>`,
 			title: title,
-			want:  "<p>\u00a0</p><h2>The Big Story</h2>",
+			want:  "<p>\u00a0</p><h2 id=\"body-the-big-story\">The Big Story</h2>",
 		},
 		{
 			name:  "only block before a spacer and a tracking pixel kept",
 			raw:   `<h2>The Big Story</h2><p>&nbsp;</p><img src="https://example.com/p.gif" width="1" height="1">`,
 			title: title,
-			want:  `<h2>The Big Story</h2><p>` + "\u00a0" + `</p><img src="https://example.com/p.gif" width="1" height="1" loading="lazy" referrerpolicy="no-referrer"/>`,
+			want:  `<h2 id="body-the-big-story">The Big Story</h2><p>` + "\u00a0" + `</p><img src="https://example.com/p.gif" width="1" height="1" loading="lazy" referrerpolicy="no-referrer"/>`,
 		},
 		{
 			name:  "not first kept",
 			raw:   `<p>Intro</p><h2>The Big Story</h2>`,
 			title: title,
-			want:  `<p>Intro</p><h2>The Big Story</h2>`,
+			want:  `<p>Intro</p><h2 id="body-the-big-story">The Big Story</h2>`,
 		},
 		{
 			name:  "another heading kept",
 			raw:   `<h2>Another heading</h2><p>Text</p>`,
 			title: title,
-			want:  `<h2>Another heading</h2><p>Text</p>`,
+			want:  `<h2 id="body-another-heading">Another heading</h2><p>Text</p>`,
 		},
 		{
 			name:  "a paragraph repeating the title kept",
@@ -903,18 +903,18 @@ func TestHTMLDropsRepeatedTitle(t *testing.T) {
 			name:  "only block kept",
 			raw:   `<h1>The Big Story</h1>`,
 			title: title,
-			want:  `<h2>The Big Story</h2>`,
+			want:  `<h2 id="body-the-big-story">The Big Story</h2>`,
 		},
 		{
 			name:  "no title",
 			raw:   `<h2>The Big Story</h2><p>Text</p>`,
 			title: "",
-			want:  `<h2>The Big Story</h2><p>Text</p>`,
+			want:  `<h2 id="body-the-big-story">The Big Story</h2><p>Text</p>`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := string(HTML(tt.raw, nil, tt.title)); got != tt.want {
+			if got := string(HTML(tt.raw, nil, tt.title).HTML); got != tt.want {
 				t.Errorf("HTML(%q, %q)\n got: %s\nwant: %s", tt.raw, tt.title, got, tt.want)
 			}
 		})

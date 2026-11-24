@@ -141,10 +141,12 @@ type manifestEntry struct {
 // pollSelf into the reading entry for Home's "Getting the latest…", and #565
 // the real-user metrics, web-vitals and rum.ts, 3,971 bytes of it). The reading pages are where readers spend
 // their time, so growing them is a decision: raise a budget only in a PR
-// that says why in its description.
+// that says why in its description. The CSS budget was raised by #723's
+// contents rail (about 240 bytes) only enough to fit it, rather than to its
+// measurement plus 10%, so the next addition is weighed again.
 const (
 	readingJSBudget  = 13060 // 11875 measured
-	readingCSSBudget = 11415 // 10378 measured
+	readingCSSBudget = 11560 // 10378 measured; 11505 with #723
 )
 
 // The admin's build has a manifest, with its page group's entry and the base

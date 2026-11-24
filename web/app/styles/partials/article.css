@@ -68,6 +68,94 @@
     border-radius: var(--radius-sm);
   }
 
+  /* A long article's contents list: its sections' titles as links, in the
+     interface's face so it doesn't read as part of the article. Only on
+     wide screens, in the shell's free right-hand track (shell.css), held in
+     view while reading. Quiet until pointed at, except the section being
+     read, which contents.ts marks; it also folds the <h3>s of the other
+     sections (data-tracking). */
+  .reader-rail {
+    display: none;
+  }
+
+  @media (min-width: 80rem) {
+    .column:has(.reader-rail) {
+      position: relative;
+    }
+
+    /* As tall as the column, so the list can stick within it. */
+    .reader-rail {
+      display: block;
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 100%;
+      inline-size: min(18rem, calc((100vw - var(--column)) / 2 - 1rem));
+      padding: 1rem 0.75rem 2.25rem 1.5rem;
+    }
+
+    /* Its padding keeps the links' focus rings inside the scrolling box,
+       which would clip them. */
+    .reader-contents {
+      position: sticky;
+      inset-block-start: 1rem;
+      max-block-size: calc(100vh - 2rem);
+      padding: 0.25rem;
+      overflow-y: auto;
+      font-family: var(--font);
+    }
+
+    .reader-contents-title {
+      margin-block-end: 0.5rem;
+      color: var(--text-3);
+      font-size: 0.75rem;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .reader-contents-list {
+      border-inline-start: 1px solid var(--border);
+    }
+
+    .reader-contents-list a {
+      display: block;
+      margin-inline-start: -1px;
+      padding: 0.3125rem 0 0.3125rem 0.875rem;
+      border-inline-start: 2px solid transparent;
+      color: var(--text-3);
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: color var(--duration-quick) var(--ease-out);
+    }
+
+    /* An <h3>, under its <h2>. */
+    .reader-contents-list ol a {
+      padding-inline-start: 1.75rem;
+      font-size: 0.8125rem;
+      font-weight: 400;
+    }
+
+    /* Pointed at, or the section holding the <h3> being read. */
+    .reader-contents-list a:hover,
+    .reader-contents-list li[data-open] > a {
+      color: var(--text);
+    }
+
+    /* The section being read: firm, with a sunrise edge on the rule, like
+       the nav's current section. */
+    .reader-contents-list a[aria-current] {
+      border-inline-start-color: var(--brand);
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .reader-contents[data-tracking] li:not([data-open]) > ol {
+      display: none;
+    }
+  }
+
   .article-body {
     margin-block-start: 1.5rem;
     font-family: var(--font-reading);

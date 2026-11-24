@@ -249,8 +249,15 @@ Each with when it pays off:
   The sanitizer already names a block's language in `data-lang` on its `<pre>` (#722), from a fixed list, which a highlighter would map to its own names.
   obsidian-clipper highlights in the browser with highlight.js, a runtime library we'd have to justify ("Code conventions" in CLAUDE.md); on the server (`alecthomas/chroma`) it adds to the cost of sanitizing on every view (see the watchlist).
   Worth it only if code-heavy feeds turn out to be common.
-- [ ] **Contents: the current section.**
-  #723's contents list could mark the section being read, as obsidian-clipper's outline does with an `IntersectionObserver`, and add "back to contents" links; it changes on every scroll, which "Motion and feedback" in decisions.md weighed against a progress bar, so it needs the owner's call after #723 has been used.
+- [ ] **Contents: a setting to hide it.**
+  #723's contents list sits beside the column on wide screens and takes some attention from the text; if readers want it gone, a Settings → Reading choice ("Contents beside articles: Show / Hide"), stored and rendered by the server like the theme and the layout, is preferred over a button on the list itself, which would need storage and its own design.
+  Wait until the list has been read with for a while; zen mode (below) may make it unnecessary.
+- [ ] **Contents on narrower screens.**
+  #723 shows the contents list only from 80rem (1280 px), where the shell has room beside the column; phones, tablets and narrower windows get none.
+  If it's missed there, a closed `Contents` disclosure above the text was the option weighed at #723's checkpoint.
+- [ ] **Zen mode for reading.**
+  A way to read an article with nothing but the text: no nav rail and no contents list beside it, for long reads.
+  Needs a design checkpoint: how it's turned on and off (a button on the article page, a setting, or both), and whether it's remembered.
 - [ ] **Dates for undated articles from their pages.**
   Enrichment could read a page's `article:published_time` and fill an undated article's `published_at`, so rows and feed pages show a date; its timeline position wouldn't move (it's set once), and many pages have no date.
   Deferred from #438, which places undated articles without one.
@@ -835,8 +842,13 @@ Pages and queries:
 - [ ] **Sanitizing article HTML on every view** (#151).
   `sanitize.HTML` parses and renders the article with `x/net/html`, then bluemonday parses it again, on each article page view; cost grows with the size of the HTML, which feeds don't bound.
   #719, #721 and #723 add passes over the parsed tree (ids and links, lazy images, headings), each linear in its size.
+  #723's `outline` is two of them: one collecting the ids, one over the headings.
   *Signal:* article page p95 latency or CPU rising, especially for long articles.
   *Fix:* cache the sanitized HTML per article (keyed by a policy version, so a policy change still applies everywhere), or cap the HTML size we render.
+- [ ] **The contents list reads every heading's position while scrolling** (#723).
+  On wide screens `contents.ts` reads the top of each heading in the list once a frame during a scroll; an article's headings aren't bounded, so a very long one could make scrolling janky.
+  *Signal:* INP or long-animation-frame reports on article pages, or a slow scroll by hand on an article with hundreds of headings.
+  *Fix:* an `IntersectionObserver` on the headings instead, or a cap on the headings listed.
 - [ ] **Read writes on article views** (#156, #158).
   Opening an article page, and each click through to the original, runs an `INSERT … ON CONFLICT DO NOTHING` on `reads`.
   *Signal:* `MarkRead` in `pg_stat_statements` totals, or lock waits on `reads`.

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"golang.org/x/net/html"
 
 	"github.com/grodier/rss/internal/rss"
@@ -47,21 +48,6 @@ func getHome(t *testing.T, s *Server, target string, loggedIn bool) *httptest.Re
 	rr := httptest.NewRecorder()
 	s.sessionManager.LoadAndSave(http.HandlerFunc(s.homeHandler)).ServeHTTP(rr, req)
 	return rr
-}
-
-// TestHomeHandlerNoStore checks that / is never cached: it's a different
-// page logged in and out.
-func TestHomeHandlerNoStore(t *testing.T) {
-	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}})
-	for _, loggedIn := range []bool{false, true} {
-		rr := getHome(t, s, "/", loggedIn)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("logged in %v: status = %d", loggedIn, rr.Code)
-		}
-		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("logged in %v: Cache-Control = %q, want no-store", loggedIn, got)
-		}
-	}
 }
 
 func TestHomeHandlerTimeline(t *testing.T) {
@@ -806,6 +792,8 @@ func TestTimelineTabCookie(t *testing.T) {
 		{"Home at /timelines/all", serve(s.allTimelineHandler, "/timelines/all", ""), "all"},
 		{"a custom timeline", serve(s.timelineHandler, "/timelines/"+aiID, aiID), aiID},
 		{"an older page", serve(s.timelineHandler, "/timelines/"+aiID+"?before="+cur, aiID), aiID},
+		// Infinite scroll's fetch of the next page isn't a move to a tab.
+		{"an older page fetched by a script", fetchTimeline(t, s, s.timelineHandler, "/timelines/"+aiID+"?before="+cur, aiID), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -818,6 +806,12 @@ func TestTimelineTabCookie(t *testing.T) {
 					got = c
 				}
 			}
+			if tt.want == "" {
+				if got != nil {
+					t.Errorf("cookie = %+v, want none", got)
+				}
+				return
+			}
 			if got == nil {
 				t.Fatal("no tab cookie")
 			}
@@ -826,6 +820,21 @@ func TestTimelineTabCookie(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fetchTimeline is serveTimeline for a GET sent by a script's fetch
+// (Sec-Fetch-Mode: cors), as infinite scroll sends.
+func fetchTimeline(t *testing.T, s *Server, handler http.HandlerFunc, target, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	ctx := context.WithValue(req.Context(), authenticatedUserIDContextKey, "user-1")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(handler).ServeHTTP(rr, req)
+	return rr
 }
 
 // dividerItems returns timeline items at the given positions, titled

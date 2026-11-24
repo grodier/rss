@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -388,10 +389,56 @@ func TestRequireAuthentication(t *testing.T) {
 		if !called {
 			t.Error("next handler not called")
 		}
-		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("Cache-Control = %q, want no-store", got)
-		}
 	})
+}
+
+// TestCacheControl checks that logged-in pages, and /, are kept out of every
+// cache: no-store for a navigation, and private, no-cache for a script's
+// request (a fetch or a beacon), which Chrome needs to keep the page that
+// sent it in its back/forward cache. It goes through the router, so it also
+// checks those routes have privateCache.
+func TestCacheControl(t *testing.T) {
+	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}})
+	routes := []struct {
+		name   string
+		target string
+		login  bool
+	}{
+		{"a route that needs login", "/timelines/all", true},
+		{"/ logged in", "/", true},
+		{"/ logged out", "/", false},
+	}
+	modes := []struct {
+		mode string // Sec-Fetch-Mode; "" sends none
+		want string
+	}{
+		{"", "no-store"},
+		{"navigate", "no-store"},
+		{"cors", "private, no-cache"},
+		{"same-origin", "private, no-cache"},
+		{"no-cors", "private, no-cache"},
+	}
+	for _, route := range routes {
+		for _, m := range modes {
+			t.Run(route.name+" "+cmp.Or(m.mode, "no header"), func(t *testing.T) {
+				r := httptest.NewRequest(http.MethodGet, route.target, nil)
+				if route.login {
+					r = r.WithContext(context.WithValue(r.Context(), authenticatedUserIDContextKey, "user-1"))
+				}
+				if m.mode != "" {
+					r.Header.Set("Sec-Fetch-Mode", m.mode)
+				}
+				rr := httptest.NewRecorder()
+				s.router().ServeHTTP(rr, r)
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d", rr.Code)
+				}
+				if got := rr.Header().Values("Cache-Control"); len(got) != 1 || got[0] != m.want {
+					t.Errorf("Cache-Control = %q, want %q", got, m.want)
+				}
+			})
+		}
+	}
 }
 
 func TestCommonHeadersCSP(t *testing.T) {

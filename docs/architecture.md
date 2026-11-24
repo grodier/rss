@@ -153,7 +153,7 @@ The admin's middleware (`internal/admin/router.go`) is the same chain without `r
 Then the reader's routes are split into groups.
 `/static/*`, `/manifest.webmanifest`, `/sites/{id}/icon`, `/healthcheck`, `/rum`, `/privacy`, `/terms` and the shared timeline routes have no session.
 All other routes load the session (`sessionManager.LoadAndSave`) and `authenticate` (see "Accounts and sessions" in features.md).
-Routes in the `requireAuthentication` group redirect anonymous users to `/login` and set `Cache-Control: no-store`.
+Routes in the `requireAuthentication` group redirect anonymous users to `/login`, and `privateCache` keeps their responses, and `/`'s, out of every cache: `Cache-Control: no-store` on navigations, and `private, no-cache` on a script's requests (`Sec-Fetch-Mode` present and not `navigate`: fetches and beacons), since Chrome drops a page from its back/forward cache when a script it ran got a `no-store` response.
 Routes under `/debug/` are a group inside it with `requireDebug`, which answers 404 unless debug mode is on (see "Debug mode" in features.md).
 
 **Routes** (the handler is the route's name in `router.go`; features.md has the flows):
@@ -168,7 +168,7 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `GET /privacy`, `GET /terms` | no | Privacy policy, terms of use |
 | `GET /shared/{token}` | no | A shared timeline's landing page |
 | `GET /shared/{token}/feed.atom` | no | A shared timeline's Atom feed |
-| `GET /` | no | Landing page, with the waitlist form; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row; never cached (`no-store`) |
+| `GET /` | no | Landing page, with the waitlist form; when logged in, the start tab (the visit's, from the `tab` cookie, else the first) under the tab row; never cached (`privateCache`, as for the logged-in routes) |
 | `GET, POST /signup` | no | Sign up with an invite (`?invite=<token>`); without a usable one, a page saying why |
 | `GET, POST /login`, `POST /logout` | no | |
 | `GET, POST /confirm-email` | no | A confirmation link's page, and confirming |
@@ -528,6 +528,9 @@ Beyond those:
   The crossfade is the browser's own, which blends the two pages so that whatever is the same on both, the nav included, stays still; `shell.css` only sets its timing on `::view-transition-group(root)`, which the images inherit.
   Only the tab row's underline has a `view-transition-name` (see the tab row below): a named element is drawn from a snapshot during the transition, and the frosted bars' snapshots don't match them live, so they'd jump at the start and end.
   Back and Forward cut: `back-forward.ts` skips the transition for traverse navigations (see below), so it never plays after a browser's own swipe-back animation.
+- **Back and Forward** (#773): Chrome restores logged-in pages from its back/forward cache although they're `no-store`, unless a cookie changed while the page was cached, a script on it got a `no-store` response, or it was cached for more than 3 minutes; Safari and Firefox load them again.
+  So responses to a script's requests are `private, no-cache` (`privateCache`), the scripts' own `fetch`es ask for no copy (`cache: "no-store"`), and the `tab` cookie is set only on navigations, not on the pages infinite scroll and Home's polls fetch.
+  A restored page carries on as one being shown again: `rum.ts` starts a `restore` view, `seen-beacon.ts` reports on `pageshow` and its heartbeat resumes, `back-forward.ts` skips the crossfade, and the busy and Save buttons are given back.
   Browsers without cross-document view transitions, and readers who ask for less motion, navigate with a plain cut; `html` reserves the scrollbar gutter so the column doesn't shift between short and long pages.
 - **The nav** (`partials/nav.html`, `app-nav`) has four section links (Home, Saved, My feeds, Search) and an account entry (the user's letter avatar, labelled Settings).
   Wide screens put it in a rail, medium screens show icons only, phones put it in a top bar.

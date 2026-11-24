@@ -66,7 +66,7 @@ func (s *Server) router() http.Handler {
 		r.Use(s.authenticate)
 
 		r.Group(func(r chi.Router) {
-			r.Use(s.requireAuthentication)
+			r.Use(s.requireAuthentication, s.privateCache)
 			r.Get("/feeds/{id}", s.feedHandler)
 			r.Post("/feeds/{id}/refresh", s.feedRefreshHandler)
 			r.Post("/feeds/{id}/subscribe", s.feedSubscribeHandler)
@@ -175,7 +175,9 @@ func (s *Server) router() http.Handler {
 			// and login's returnTo brings people back.
 			r.Get("/.well-known/change-password", s.changePasswordWellKnownHandler)
 
-			r.Get("/", s.homeHandler)
+			// One address, two pages that depend on the session (and the
+			// landing page can carry a flash): no cache may keep either.
+			r.With(s.privateCache).Get("/", s.homeHandler)
 		})
 	})
 

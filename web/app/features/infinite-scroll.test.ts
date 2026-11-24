@@ -62,6 +62,14 @@ describe("infinite-scroll", () => {
     );
   });
 
+  it("fetches the next page without keeping a copy", async () => {
+    await loadNext(`<main><div class="article-list">${row("a2")}</div></main>`);
+    expect(fetchMock).toHaveBeenCalledWith(new URL("/timelines/all?before=c1", location.href).href, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  });
+
   it("puts the last page's end line where the pager was", async () => {
     await loadNext(`<main>
       <div class="article-list">${row("a2")}</div>

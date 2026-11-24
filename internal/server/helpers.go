@@ -81,6 +81,23 @@ func (s *Server) isAuthenticated(r *http.Request) bool {
 	return ok
 }
 
+// fetched reports whether r was sent by a script's fetch rather than a form
+// submission or a navigation, from its Sec-Fetch-Mode: a handler answers
+// it with a 204 instead of a redirect. A beacon isn't fetched (see
+// scripted).
+func fetched(r *http.Request) bool {
+	m := r.Header.Get("Sec-Fetch-Mode")
+	return m == "cors" || m == "same-origin"
+}
+
+// scripted reports whether r was sent by a script (a fetch or a beacon,
+// whose mode is no-cors) rather than a navigation, from its
+// Sec-Fetch-Mode. A request without the header isn't.
+func scripted(r *http.Request) bool {
+	m := r.Header.Get("Sec-Fetch-Mode")
+	return m != "" && m != "navigate"
+}
+
 // returnForm is a form whose only field says where to go back to: the
 // subscribe, unsubscribe, save and unsave buttons post it.
 type returnForm struct {

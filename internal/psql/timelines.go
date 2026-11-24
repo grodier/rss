@@ -78,19 +78,23 @@ func createTimeline(ctx context.Context, tx *sql.Tx, userID string, t rss.Timeli
 	return id, nil
 }
 
-// Get returns userID's timeline id with its filter. rss.ErrNoRecord if it
-// doesn't exist or is another user's.
+// Get returns userID's timeline id with its filter, its sources included,
+// in one statement. rss.ErrNoRecord if it doesn't exist or is another
+// user's.
 func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Timeline, error) {
 	stmt := `SELECT id, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
-			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at
-		FROM timelines
-		WHERE id = $2 AND user_id = $1`
+			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at,
+			` + timelineSourceColumns + `
+		FROM timelines t
+		WHERE t.id = $2 AND t.user_id = $1`
 
 	var t rss.Timeline
 	var allFeeds bool
 	err := r.DB.QueryRowContext(ctx, stmt, userID, id).Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
 		&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly,
-		pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt)
+		pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt,
+		pq.Array(&t.Filter.IncludeTagIDs), pq.Array(&t.Filter.ExcludeTagIDs),
+		pq.Array(&t.Filter.IncludeFeedIDs), pq.Array(&t.Filter.ExcludeFeedIDs))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Timeline{}, rss.ErrNoRecord
@@ -98,15 +102,7 @@ func (r *TimelineRepository) Get(ctx context.Context, userID, id string) (rss.Ti
 		return rss.Timeline{}, err
 	}
 	t.Filter.OnlyIncluded = !allFeeds
-
-	stmt = `SELECT tag_id, exclude FROM timeline_tags WHERE timeline_id = $1 ORDER BY tag_id`
-	if err := scanTimelineSources(ctx, r.DB, stmt, id, &t.Filter.IncludeTagIDs, &t.Filter.ExcludeTagIDs); err != nil {
-		return rss.Timeline{}, err
-	}
-	stmt = `SELECT feed_id, exclude FROM timeline_feeds WHERE timeline_id = $1 ORDER BY feed_id`
-	if err := scanTimelineSources(ctx, r.DB, stmt, id, &t.Filter.IncludeFeedIDs, &t.Filter.ExcludeFeedIDs); err != nil {
-		return rss.Timeline{}, err
-	}
+	nilEmptySources(&t.Filter)
 	return t, nil
 }
 
@@ -145,18 +141,18 @@ func (r *TimelineRepository) List(ctx context.Context, userID string) ([]rss.Tim
 }
 
 // ListWithFilters returns userID's tabs in order, Home included, like List,
-// each with its filter (Home's is zero): what /timelines needs. It
-// reads the timelines, then their tags and their feeds, three queries in
-// all rather than a Get per timeline. The sources are joined to the user's
-// timelines rather than filtered on their own user_id, which
-// timeline_tags has no index for.
+// each with its filter (Home's is zero): what /timelines needs. One
+// statement reads the timelines with their sources, rather than a Get per
+// timeline.
 func (r *TimelineRepository) ListWithFilters(ctx context.Context, userID string) ([]rss.Timeline, error) {
 	stmt := `SELECT id::text, name, description, position, all_feeds, starred_only, max_posts_per_week, media_only,
-			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at, false AS home
-		FROM timelines
-		WHERE user_id = $1
+			include_words, exclude_words, COALESCE(share_token, ''), created_at, updated_at, false AS home,
+			` + timelineSourceColumns + `
+		FROM timelines t
+		WHERE t.user_id = $1
 		UNION ALL
-		SELECT '', '', '', home_position, true, false, 0, false, '{}', '{}', '', created_at, created_at, true
+		SELECT '', '', '', home_position, true, false, 0, false, '{}', '{}', '', created_at, created_at, true,
+			'{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[]
 		FROM users
 		WHERE id = $1
 		ORDER BY position, home DESC, created_at`
@@ -173,49 +169,16 @@ func (r *TimelineRepository) ListWithFilters(ctx context.Context, userID string)
 		var allFeeds, home bool
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Position, &allFeeds,
 			&t.Filter.StarredOnly, &t.Filter.MaxPostsPerWeek, &t.Filter.MediaOnly,
-			pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt, &home); err != nil {
+			pq.Array(&t.Filter.IncludeWords), pq.Array(&t.Filter.ExcludeWords), &t.ShareToken, &t.CreatedAt, &t.UpdatedAt, &home,
+			pq.Array(&t.Filter.IncludeTagIDs), pq.Array(&t.Filter.ExcludeTagIDs),
+			pq.Array(&t.Filter.IncludeFeedIDs), pq.Array(&t.Filter.ExcludeFeedIDs)); err != nil {
 			return nil, err
 		}
 		t.Filter.OnlyIncluded = !allFeeds
+		nilEmptySources(&t.Filter)
 		timelines = append(timelines, t)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(timelines) == 0 {
-		return nil, nil
-	}
-
-	byID := make(map[string]*rss.TimelineFilter, len(timelines))
-	for i := range timelines {
-		byID[timelines[i].ID] = &timelines[i].Filter
-	}
-	stmt = `SELECT s.timeline_id, s.tag_id, s.exclude
-		FROM timeline_tags s
-		JOIN timelines t ON t.id = s.timeline_id
-		WHERE t.user_id = $1
-		ORDER BY s.timeline_id, s.tag_id`
-	err = scanTimelinesSources(ctx, r.DB, stmt, userID, byID, func(f *rss.TimelineFilter, exclude bool) *[]string {
-		if exclude {
-			return &f.ExcludeTagIDs
-		}
-		return &f.IncludeTagIDs
-	})
-	if err != nil {
-		return nil, err
-	}
-	stmt = `SELECT s.timeline_id, s.feed_id, s.exclude
-		FROM timeline_feeds s
-		JOIN timelines t ON t.id = s.timeline_id
-		WHERE t.user_id = $1
-		ORDER BY s.timeline_id, s.feed_id`
-	err = scanTimelinesSources(ctx, r.DB, stmt, userID, byID, func(f *rss.TimelineFilter, exclude bool) *[]string {
-		if exclude {
-			return &f.ExcludeFeedIDs
-		}
-		return &f.IncludeFeedIDs
-	})
-	if err != nil {
 		return nil, err
 	}
 	return timelines, nil
@@ -488,54 +451,23 @@ func timelineSources(include, exclude []string) ([]string, []bool) {
 	return ids, flags
 }
 
-// scanTimelineSources runs stmt (selecting an ID and its exclude flag for
-// timelineID) and appends each ID to include or exclude.
-func scanTimelineSources(ctx context.Context, db *sql.DB, stmt, timelineID string, include, exclude *[]string) error {
-	rows, err := db.QueryContext(ctx, stmt, timelineID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+// timelineSourceColumns selects timeline t's included tags, excluded tags,
+// included feeds and excluded feeds, in that order, each sorted by ID, as
+// four uuid[] columns. Each subquery is an index scan on timeline_tags_pkey
+// or timeline_feeds_pkey (timeline_id first).
+const timelineSourceColumns = `ARRAY(SELECT tag_id FROM timeline_tags WHERE timeline_id = t.id AND NOT exclude ORDER BY tag_id),
+			ARRAY(SELECT tag_id FROM timeline_tags WHERE timeline_id = t.id AND exclude ORDER BY tag_id),
+			ARRAY(SELECT feed_id FROM timeline_feeds WHERE timeline_id = t.id AND NOT exclude ORDER BY feed_id),
+			ARRAY(SELECT feed_id FROM timeline_feeds WHERE timeline_id = t.id AND exclude ORDER BY feed_id)`
 
-	for rows.Next() {
-		var id string
-		var ex bool
-		if err := rows.Scan(&id, &ex); err != nil {
-			return err
-		}
-		if ex {
-			*exclude = append(*exclude, id)
-		} else {
-			*include = append(*include, id)
+// nilEmptySources sets f's empty source lists, which an empty array scans
+// to, to nil, so a timeline without sources has the zero filter's lists.
+func nilEmptySources(f *rss.TimelineFilter) {
+	for _, ids := range []*[]string{&f.IncludeTagIDs, &f.ExcludeTagIDs, &f.IncludeFeedIDs, &f.ExcludeFeedIDs} {
+		if len(*ids) == 0 {
+			*ids = nil
 		}
 	}
-	return rows.Err()
-}
-
-// scanTimelinesSources runs stmt (selecting a timeline ID, a source ID and
-// its exclude flag for userID's timelines) and appends each source ID to
-// the list field picks from its timeline's filter in byID. Rows for a
-// timeline not in byID (made after the timelines were read) are skipped.
-func scanTimelinesSources(ctx context.Context, db *sql.DB, stmt, userID string, byID map[string]*rss.TimelineFilter,
-	field func(f *rss.TimelineFilter, exclude bool) *[]string) error {
-	rows, err := db.QueryContext(ctx, stmt, userID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var timelineID, id string
-		var exclude bool
-		if err := rows.Scan(&timelineID, &id, &exclude); err != nil {
-			return err
-		}
-		if f, ok := byID[timelineID]; ok {
-			list := field(f, exclude)
-			*list = append(*list, id)
-		}
-	}
-	return rows.Err()
 }
 
 // words returns s as a TEXT[] parameter: '{}' rather than NULL when it's

@@ -66,6 +66,25 @@ func assertFilter(t *testing.T, got, want rss.TimelineFilter) {
 	}
 }
 
+// assertSources checks got's source lists against want's exactly: the same
+// IDs in the same order, and nil where want's list is nil.
+func assertSources(t *testing.T, got, want rss.TimelineFilter) {
+	t.Helper()
+	for _, c := range []struct {
+		name      string
+		got, want []string
+	}{
+		{"IncludeTagIDs", got.IncludeTagIDs, want.IncludeTagIDs},
+		{"ExcludeTagIDs", got.ExcludeTagIDs, want.ExcludeTagIDs},
+		{"IncludeFeedIDs", got.IncludeFeedIDs, want.IncludeFeedIDs},
+		{"ExcludeFeedIDs", got.ExcludeFeedIDs, want.ExcludeFeedIDs},
+	} {
+		if !slices.Equal(c.got, c.want) || (c.got == nil) != (c.want == nil) {
+			t.Errorf("%s = %#v, want %#v", c.name, c.got, c.want)
+		}
+	}
+}
+
 // Requires a migrated database; see psqltest.NewDB.
 func TestTimelineCreate(t *testing.T) {
 	db := psqltest.NewDB(t)
@@ -247,6 +266,7 @@ func TestTimelineCreate(t *testing.T) {
 func TestTimelineGet(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewTimelineRepository(db)
+	tags := NewTagRepository(db)
 	ctx := t.Context()
 
 	user, other := newTestUser(t, db), newTestUser(t, db)
@@ -256,6 +276,57 @@ func TestTimelineGet(t *testing.T) {
 		if _, err := repo.Get(ctx, other, id); !errors.Is(err, rss.ErrNoRecord) {
 			t.Errorf("err = %v, want ErrNoRecord", err)
 		}
+	})
+
+	t.Run("an unknown ID is ErrNoRecord", func(t *testing.T) {
+		if _, err := repo.Get(ctx, user, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("err = %v, want ErrNoRecord", err)
+		}
+	})
+
+	t.Run("each source list is sorted", func(t *testing.T) {
+		feeds := newTestSubscriptions(t, db, user, 6)
+		var tagIDs []string
+		for _, name := range []string{"A", "B", "C", "D"} {
+			tagIDs = append(tagIDs, mustCreateTag(t, tags, user, name).ID)
+		}
+		// Unsorted on the way in.
+		filter := rss.TimelineFilter{
+			OnlyIncluded:   true,
+			IncludeTagIDs:  []string{tagIDs[2], tagIDs[0]},
+			ExcludeTagIDs:  []string{tagIDs[3], tagIDs[1]},
+			IncludeFeedIDs: []string{feeds[4], feeds[0], feeds[2]},
+			ExcludeFeedIDs: []string{feeds[5], feeds[3], feeds[1]},
+		}
+		id := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Sorted", Filter: filter})
+		sorted := func(ids []string) []string { return slices.Sorted(slices.Values(ids)) }
+		assertSources(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{
+			IncludeTagIDs:  sorted(filter.IncludeTagIDs),
+			ExcludeTagIDs:  sorted(filter.ExcludeTagIDs),
+			IncludeFeedIDs: sorted(filter.IncludeFeedIDs),
+			ExcludeFeedIDs: sorted(filter.ExcludeFeedIDs),
+		})
+	})
+
+	t.Run("no sources is nil lists", func(t *testing.T) {
+		got := mustGetTimeline(t, repo, user, id)
+		assertSources(t, got.Filter, rss.TimelineFilter{})
+	})
+
+	t.Run("an ID both included and excluded is read back only as excluded", func(t *testing.T) {
+		feed := newTestSubscriptions(t, db, user, 1)
+		both := mustCreateTag(t, tags, user, "Both")
+		id := mustCreateTimeline(t, repo, user, rss.Timeline{Name: "Both", Filter: rss.TimelineFilter{
+			OnlyIncluded:   true,
+			IncludeTagIDs:  []string{both.ID},
+			ExcludeTagIDs:  []string{both.ID},
+			IncludeFeedIDs: feed,
+			ExcludeFeedIDs: feed,
+		}})
+		assertSources(t, mustGetTimeline(t, repo, user, id).Filter, rss.TimelineFilter{
+			ExcludeTagIDs:  []string{both.ID},
+			ExcludeFeedIDs: feed,
+		})
 	})
 }
 
@@ -417,13 +488,23 @@ func TestTimelineListWithFilters(t *testing.T) {
 		t.Fatalf("ListWithFilters IDs = %v, want %v, in List's order %v (no other user's)", ids, want, listedIDs)
 	}
 	assertFilter(t, got[0].Filter, rss.TimelineFilter{})
+	assertSources(t, got[0].Filter, rss.TimelineFilter{})
 	for _, tl := range got[1:] {
 		want := mustGetTimeline(t, repo, user, tl.ID)
 		if tl.Name != want.Name || tl.Position != want.Position || tl.ShareToken != want.ShareToken {
 			t.Errorf("ListWithFilters %s = %+v, Get = %+v", tl.ID, tl, want)
 		}
 		assertFilter(t, tl.Filter, want.Filter)
+		assertSources(t, tl.Filter, want.Filter)
 	}
+	sorted := func(ids ...string) []string { return slices.Sorted(slices.Values(ids)) }
+	assertSources(t, got[1].Filter, rss.TimelineFilter{
+		IncludeTagIDs:  []string{ai.ID},
+		ExcludeTagIDs:  []string{news.ID},
+		IncludeFeedIDs: sorted(feeds[0], feeds[1]),
+		ExcludeFeedIDs: []string{feeds[2]},
+	})
+	assertSources(t, got[3].Filter, rss.TimelineFilter{})
 
 	t.Run("none is Home alone", func(t *testing.T) {
 		got, err := repo.ListWithFilters(ctx, newTestUser(t, db))

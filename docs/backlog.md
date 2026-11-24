@@ -20,6 +20,10 @@ Running it locally for yourself needs none of this.
 Deferred while planning account management (#270).
 The decisions are under "Accounts" in decisions.md.
 
+- [ ] **Logged-out-only routes in one middleware (needs the owner's call).**
+  `loginHandler`, `signupHandler` and `waitlistJoinHandler` each send a logged-in reader home themselves, while `POST /login` and `POST /signup` don't.
+  A middleware on those routes, like `requireAuthentication` the other way round, would do it in one place, but it changes behavior: the two POSTs would start redirecting a logged-in reader.
+  Found by the second refactor review (#807–#810), which left it out of the behavior-neutral wave.
 - [ ] **Passkeys.**
   Log in with Face ID, a fingerprint or a security key, with no password to make up at signup, and phishing-proof.
   Offered alongside the password form, since WebAuthn needs JavaScript.
@@ -143,6 +147,9 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 
 ## Feed discovery
 
+- [ ] **`appLinkMessage` to `lookups.go`.**
+  It's defined in `internal/server/discover.go` but only `lookups.go` uses it; move it in the next PR that touches either.
+  Found by the second refactor review (#807–#810).
 - [ ] **Live updates for feed refreshes.**
   Update a feed page in place once the background refresh it requested (#137) finishes: the request is pending while `feeds.refresh_requested_at` is set.
   The lookup page's polling (#515) is the pattern, but polling the feed page itself would run `feedHandler`'s upkeep (queuing a refresh of a stale feed) on every poll, so this likely needs a small status endpoint: server work, deferred from #507.
@@ -224,6 +231,10 @@ Each with when it pays off:
 
 ## Reading
 
+- [ ] **One text helper in `internal/sanitize`.**
+  `textOf` (`social.go`) and `textContent` (`sanitize.go`) both return the text under a node; keep one in `sanitize.go`.
+  They differ only on a bare text node, which `textOf` returns and `textContent` doesn't, so check the post cards' callers before merging them.
+  Found by the second refactor review (#807–#810); small enough to fold into the next PR that touches `sanitize`.
 - [ ] **A Paper Round blog, followed by new accounts by default.**
   From #450: its welcome post replaces the pinned Getting started guide (#641), and occasional round-ups ("Five sites worth following this week") bring discovery into the timeline in the app's own medium.
   Needs someone to write it regularly, and a host outside the app's own site key, since discovery refuses links to the app (#471).

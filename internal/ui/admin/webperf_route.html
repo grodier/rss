@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{.Route}} - Web performance - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1 class="endpoint-title"><code>{{slashBreaks .Route}}</code></h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{.Back}}">All routes</a>
+          <a class="btn btn-sm" href="{{.Endpoint}}">Endpoint</a>
+        </div>
+        <p>{{if .Views}}{{count .Views}} page views from real visitors {{.Period.Label}}.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No page views {{.Period.Label}}.{{end}}</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Period" .Periods)}}
+        {{template "segmented" (segmented "Device" .Devices)}}
+        {{template "segmented" (segmented "Percentile" .Percentiles)}}
+      </div>
+
+      {{if not .Views}}
+      <section class="admin-section">
+        <p class="empty">No page views of <code>{{.Route}}</code>{{with .DeviceOn}} {{.}}{{end}} {{.Period.Label}}.{{if .DeviceOn}} Choose All to see every device.{{else if ne .Period.Key "13m"}} Choose a longer period to look further back.{{end}} Only the reader’s pages send them, one when each is hidden.</p>
+      </section>
+      {{else}}
+      {{if .Few}}<p class="few-note">Only {{count .Views}} page views: percentiles from so few shift a lot from one view to the next.</p>{{end}}
+
+      <section class="admin-section" aria-labelledby="vitals">
+        <h2 id="vitals">Core Web Vitals</h2>
+        {{template "vital-rows" .}}
+        {{template "deploys-note" .Deploys}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="distributions">
+        <h2 id="distributions">Distributions</h2>
+        <div class="distributions">
+          {{range .Distributions}}
+          <figure class="endpoint-chart">
+            <figcaption><h3>{{.Name}} <span class="vital-full">{{.Full}}</span></h3> <span class="unit">{{.Note}}</span></figcaption>
+            {{with .Histogram}}{{chart .}}{{end}}
+          </figure>
+          {{end}}
+        </div>
+        <p class="missing">Each bar counts the views up to the bound under it, and the last those above it; dashed lines mark the good and poor thresholds.</p>
+      </section>
+
+      <section class="admin-section" aria-labelledby="server-network">
+        <h2 id="server-network">Server and network</h2>
+        {{template "stat-row" .Server.Stats}}
+        {{with .Server.Chart}}
+        <h3 class="sub">TTFB and server time, {{$.Percentile}} over time</h3>
+        {{chart .}}
+        <p class="missing">{{count $.Server.ServerViews}} of {{count $.Views}} views reported the server’s time. The difference is between the two {{$.Percentile}}s, not each view’s.</p>
+        {{else}}
+        <p class="missing">No view reported the server’s time: it comes from the page’s Server-Timing header.</p>
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="breakdowns">
+        <h2 id="breakdowns">Breakdowns</h2>
+        {{template "breakdowns" .}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="slow">
+        <h2 id="slow">What’s slow</h2>
+        {{if .Period.Rollups}}
+        <p class="missing">Only the last 30 days’ views say what their LCP element and slowest interaction were, how they were loaded and their size: choose 24h, 7d or 30d.</p>
+        {{else}}
+        <div class="slow-grid">
+          <div>
+            <h3 class="sub">LCP element</h3>
+            {{if .LCPElements}}
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Element</th><th scope="col" class="num">Views</th><th scope="col" class="num">Share</th><th scope="col" class="num">{{.Percentile}} LCP</th></tr></thead>
+                <tbody>{{range .LCPElements}}{{template "detail-row" .}}{{end}}</tbody>
+              </table>
+            </div>
+            {{else}}<p class="missing">No view reported its LCP.</p>{{end}}
+          </div>
+          <div>
+            <h3 class="sub">Slowest interactions</h3>
+            {{if .INPTargets}}
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Target</th><th scope="col" class="num">Views</th><th scope="col" class="num">Slow</th><th scope="col" class="num">{{.Percentile}} INP</th></tr></thead>
+                <tbody>{{range .INPTargets}}{{template "detail-row" .}}{{end}}</tbody>
+              </table>
+            </div>
+            <p class="vital-note">Each view’s slowest interaction, by its control’s data-* hook or tag. Slow is the share over 200 ms; the most slow first.</p>
+            {{else}}<p class="missing">No view had an interaction.</p>{{end}}
+          </div>
+          <div>
+            <h3 class="sub">How they were loaded</h3>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Navigation</th><th scope="col" class="num">Views</th><th scope="col" class="num">Share</th></tr></thead>
+                <tbody>{{range .NavTypes}}<tr><td>{{.Label}}</td><td class="num">{{count .Views}}</td><td class="num">{{.Share}}</td></tr>{{end}}</tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 class="sub">Transfer size</h3>
+            {{with .Transfer}}{{template "stat-row" .}}
+            <p class="vital-note">The page’s HTML over the network, headers included; the median and percentiles leave out what came from the cache.</p>
+            {{else}}<p class="missing">No view reported its size: a page restored from the back/forward cache has none.</p>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{/* detail-row is an LCP element's or an interaction target's row (dot: a
+     detailRow); one with few views is dimmed. */}}
+{{define "detail-row"}}<tr{{if .Few}} class="few"{{end}}><td>{{if .Label}}<code>{{.Label}}</code>{{else}}Not reported{{end}}</td><td class="num">{{count .Views}}</td><td class="num">{{if .Slow}}{{.Slow}}{{else}}{{.Share}}{{end}}</td><td class="num">{{template "rated-value" .Value}}</td></tr>{{end}}

@@ -46,8 +46,8 @@ type Marker struct {
 	Label string
 }
 
-// Threshold is a horizontal line at a value, e.g. a Core Web Vital's "good"
-// limit, with its label.
+// Threshold is a line at a value, e.g. a Core Web Vital's "good" limit, with
+// its label: across a line chart, or up a histogram at the bound it is.
 type Threshold struct {
 	Value float64
 	Label string
@@ -73,6 +73,9 @@ type Histogram struct {
 	Bounds []float64
 	Counts []int
 	Height int // in pixels, 200 by default
+	// Thresholds are drawn after the bucket whose bound they are; one
+	// that isn't among Bounds isn't drawn.
+	Thresholds []Threshold
 }
 
 const (
@@ -423,6 +426,22 @@ func (h Histogram) SVG() template.HTML {
 			labels[i] = bucketLabel(h.Bounds, i)
 			pcts[i] = (float64(i) + 0.5) * slot
 		}
+		// Each threshold up the plot after its bucket, its label at the top,
+		// over the bars (chart-labels gives it a halo).
+		var thLabels strings.Builder
+		for _, th := range h.Thresholds {
+			i := slices.Index(h.Bounds, th.Value)
+			if i < 0 {
+				continue
+			}
+			x := num(float64(i+1) * slot)
+			fmt.Fprintf(&b, `<line class="chart-threshold" x1="%s%%" x2="%s%%" y1="%d" y2="%s"/>`, x, x, plotTop, num(plotBottom))
+			fmt.Fprintf(&thLabels, `<text x="%s%%" y="%d" dx="4">%s</text>`, x, plotTop+10, esc(th.Label))
+		}
+		if thLabels.Len() > 0 {
+			fmt.Fprintf(&b, `<g class="chart-labels">%s</g>`, thLabels.String())
+		}
+
 		classes := thin(labels, pcts, 0)
 		b.WriteString(`<g class="chart-labels chart-x">`)
 		for i, label := range labels {
@@ -462,11 +481,21 @@ func (h Histogram) describe() string {
 	case len(h.Bounds) > 0:
 		bucket = "in the bucket above " + withUnit(formatValue(h.Bounds[len(h.Bounds)-1]), h.Unit)
 	}
-	return fmt.Sprintf("%s %s; median about %s, 95th percentile about %s; the most, %s, %s.",
+	d := fmt.Sprintf("%s %s; median about %s, 95th percentile about %s; the most, %s, %s.",
 		formatValue(float64(total)), values,
 		withUnit(formatValue(metrics.Percentile(h.Bounds, h.Counts, 0.5)), h.Unit),
 		withUnit(formatValue(metrics.Percentile(h.Bounds, h.Counts, 0.95)), h.Unit),
 		formatValue(float64(h.Counts[fullest])), bucket)
+	var ts []string
+	for _, th := range h.Thresholds {
+		if slices.Contains(h.Bounds, th.Value) {
+			ts = append(ts, fmt.Sprintf("%s at %s", th.Label, withUnit(formatValue(th.Value), h.Unit)))
+		}
+	}
+	if len(ts) > 0 {
+		d += " Thresholds: " + strings.Join(ts, ", ") + "."
+	}
+	return d
 }
 
 // Ticks returns round values from at most lo up to at least hi, about n of

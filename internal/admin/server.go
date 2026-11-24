@@ -117,6 +117,10 @@ type OverviewStore interface {
 // *psql.AdminWebPerfRepository is one.
 type WebPerfStore interface {
 	WebPerf(ctx context.Context, q rss.WebPerfQuery) (rss.WebPerf, error)
+	WebPerfRoute(ctx context.Context, q rss.WebPerfQuery, route string) (rss.WebPerfRoute, error)
+	// HasViews says whether route had a view from since on: whether it's
+	// a page, for the endpoints pages' link to its web performance.
+	HasViews(ctx context.Context, route string, since time.Time) (bool, error)
 }
 
 // EndpointsStore reads the request metrics and recent server errors for

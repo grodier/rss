@@ -249,9 +249,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 // feedPage is a feed's page.
 type feedPage struct {
-	Nav   navData
-	Flash string
-	Feed  rss.AdminFeed
+	Nav    navData
+	Crumbs []crumb
+	Flash  string
+	Feed   rss.AdminFeed
 	// Problem is what's wrong with it, and Heading its status panel's
 	// heading: the problem, or when it was last fetched if that's late,
 	// or that it's fetching normally.
@@ -268,6 +269,31 @@ type feedPage struct {
 	// Discover is the Discover panel's form, Sections its choices.
 	Discover discoverForm
 	Sections []rss.Section
+}
+
+// crumb is one step of a page's breadcrumbs; Href is "" for the current page.
+type crumb struct {
+	Label, Href string
+}
+
+// feedCrumbs is where feed's page sits: under its site, under Sites. The
+// trail is the page's place, not the way the admin came, so it starts at
+// Sites though the sidebar keeps Feeds current.
+func feedCrumbs(feed rss.AdminFeed) []crumb {
+	label := feed.Title
+	if label == "" {
+		label = feed.Url
+	}
+	return []crumb{
+		{Label: "Sites", Href: "/sites"},
+		{Label: feed.Site.Host, Href: "/sites/" + feed.Site.ID},
+		{Label: label},
+	}
+}
+
+// siteCrumbs is where site's page sits: under Sites.
+func siteCrumbs(site rss.Site) []crumb {
+	return []crumb{{Label: "Sites", Href: "/sites"}, {Label: site.Host}}
 }
 
 // discoverForm puts a feed in Discover's catalog under the section with
@@ -318,6 +344,7 @@ func (s *Server) renderFeed(w http.ResponseWriter, r *http.Request, status int, 
 	now := s.now()
 	data := feedPage{
 		Nav:       s.nav(r, "feeds"),
+		Crumbs:    feedCrumbs(feed),
 		Flash:     s.sessionManager.PopString(r.Context(), sessionFlash),
 		Feed:      feed,
 		Problem:   problemOf(feed.AdminFeedRow),
@@ -542,10 +569,11 @@ func (s *Server) feedAction(w http.ResponseWriter, r *http.Request, feed rss.Adm
 
 // sitePage is a site's page.
 type sitePage struct {
-	Nav   navData
-	Flash string
-	Site  rss.AdminSite
-	Feeds feedTable
+	Nav    navData
+	Crumbs []crumb
+	Flash  string
+	Site   rss.AdminSite
+	Feeds  feedTable
 	// Lookup says how the site's lookup stands, in the feeds' Problem
 	// style.
 	Lookup feedProblem
@@ -586,6 +614,7 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	data := sitePage{
 		Nav:       s.nav(r, "sites"),
+		Crumbs:    siteCrumbs(site.Site),
 		Flash:     s.sessionManager.PopString(r.Context(), sessionFlash),
 		Site:      site,
 		Feeds:     feedTable{Columns: feedTableColumns(nil), Rows: feedRows(site.Feeds, now), Now: now},

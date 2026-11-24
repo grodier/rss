@@ -16,6 +16,7 @@
       {{$now := .Now}}
       {{with .Feed}}
       <header class="page-head">
+        {{template "breadcrumbs" $.Crumbs}}
         <h1>{{with .Title}}{{.}}{{else}}Feed{{end}}</h1>
         <div class="head-actions">
           <a class="btn btn-sm" href="{{$.ReaderURL}}">In the reader</a>

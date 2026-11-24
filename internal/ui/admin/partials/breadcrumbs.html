@@ -1,0 +1,5 @@
+{{/* breadcrumbs is where a page sits among the admin's pages, at the top of
+     its head (dot: []crumb, the last the page itself, with no link). */}}
+{{define "breadcrumbs"}}<nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol>{{range .}}<li>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}<span aria-current="page">{{.Label}}</span>{{end}}</li>{{end}}</ol>
+        </nav>{{end}}

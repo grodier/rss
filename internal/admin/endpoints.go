@@ -127,11 +127,15 @@ func (p endpointsParams) href() string {
 	return "/endpoints?" + v.Encode()
 }
 
-// routeHref is a route's page's URL, for period.
-func routeHref(route, method string, period endpointPeriod) string {
+// routeHref is a route's page's URL, with p's period, and its sort for
+// the way back to the overview, leaving defaults out.
+func routeHref(route, method string, p endpointsParams) string {
 	v := url.Values{"route": {route}, "method": {method}}
-	if period.Key != defaultEndpointPeriod {
-		v.Set("period", period.Key)
+	if p.period.Key != defaultEndpointPeriod {
+		v.Set("period", p.period.Key)
+	}
+	if p.sort != defaultRouteSort {
+		v.Set("sort", p.sort)
 	}
 	return "/endpoints/route?" + v.Encode()
 }
@@ -191,13 +195,8 @@ func (s *Server) endpointsHandler(w http.ResponseWriter, r *http.Request) {
 		next.period = p
 		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: next.href(), Current: p.Key == params.period.Key})
 	}
-	if t := ep.Total; t.Requests > 0 {
-		steps := endpointSteps(ep.Series, from, to, now, params.period)
-		page.Charts = []endpointChart{
-			{requestsChart(steps, params.period), "Total", count(t.Requests)},
-			{errorRateChart(steps, false), "Overall", percentOf(t.Classes[4], t.Requests)},
-			{latencyChart(steps, []float64{0.95}), "Overall", ms(percentileOf(t.Buckets, 0.95)) + " ms"},
-		}
+	if ep.Total.Requests > 0 {
+		page.Charts = endpointCharts(ep, from, to, now, params.period, false)
 		page.Deploys, err = s.markDeploys(r, page.Charts, from, now)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
@@ -277,6 +276,30 @@ func endpointSteps(series []rss.EndpointPoint, from, to, now time.Time, p endpoi
 }
 
 const endpointChartHeight = 140
+
+// endpointCharts are the period's charts of ep, from from to to: requests,
+// the 5xx rate and p95 for the overview, and for a route's page the 4xx
+// rate and p50 and p99 too. Each series ends with a gap at to, so the time
+// axis spans the whole period and a deploy in its last step is marked.
+func endpointCharts(ep rss.Endpoints, from, to, now time.Time, p endpointPeriod, route bool) []endpointChart {
+	steps := endpointSteps(ep.Series, from, to, now, p)
+	t := ep.Total
+	charts := []endpointChart{
+		{requestsChart(steps, p), "Total", count(t.Requests)},
+		{errorRateChart(steps, false), "Overall", percentOf(t.Classes[4], t.Requests)},
+		{latencyChart(steps, []float64{0.95}), "Overall", ms(percentileOf(t.Buckets, 0.95)) + " ms"},
+	}
+	if route {
+		charts[1] = endpointChart{errorRateChart(steps, true), "Overall", percentOf(t.Classes[4], t.Requests) + " 5xx · " + percentOf(t.Classes[3], t.Requests) + " 4xx"}
+		charts[2] = endpointChart{latencyChart(steps, []float64{0.5, 0.95, 0.99}), "Overall", "p95 " + ms(percentileOf(t.Buckets, 0.95)) + " ms"}
+	}
+	for i := range charts {
+		for j := range charts[i].Series {
+			charts[i].Series[j].Points = append(charts[i].Series[j].Points, chart.Point{T: to, V: math.NaN()})
+		}
+	}
+	return charts
+}
 
 // requestsChart charts the requests per minute or hour: each step's
 // requests over the minutes or hours of it that have passed.
@@ -358,8 +381,10 @@ func ms(v float64) string {
 	return count(int(math.Round(v)))
 }
 
-// percentOf is part's share of whole for error rates, precise where it
-// matters: "0%", "<0.1%", "2.4%", "12%"; "—" when whole is 0.
+// percentOf is part's share of whole, precise near the ends, where error
+// rates and status mixes are: "0%", "<0.1%", "2.4%", "12%", "99.8%",
+// ">99.9%", "100%"; only none or all of it are 0% or 100%. "—" when whole
+// is 0.
 func percentOf(part, whole int) string {
 	if whole == 0 {
 		return "—"
@@ -368,9 +393,13 @@ func percentOf(part, whole int) string {
 	switch {
 	case part == 0:
 		return "0%"
+	case part == whole:
+		return "100%"
 	case p < 0.05:
 		return "<0.1%"
-	case p < 9.95:
+	case p >= 99.95:
+		return ">99.9%"
+	case p < 9.95 || p >= 90.05:
 		return strconv.FormatFloat(p, 'f', 1, 64) + "%"
 	}
 	return strconv.Itoa(int(math.Round(p))) + "%"
@@ -425,7 +454,7 @@ func routeRows(routes []rss.EndpointRoute, params endpointsParams) []routeRow {
 	rows := make([]routeRow, len(sorted))
 	for i, r := range sorted {
 		rows[i] = routeRow{
-			Route: r.Route, Method: r.Method, Href: routeHref(r.Route, r.Method, params.period),
+			Route: r.Route, Method: r.Method, Href: routeHref(r.Route, r.Method, params),
 			Requests:     r.Requests,
 			ClientErrors: percentOf(r.Classes[3], r.Requests),
 			ServerErrors: percentOf(r.Classes[4], r.Requests),
@@ -452,7 +481,8 @@ type routePage struct {
 	Statuses      []countRow
 	Instances     []instanceRow
 	Errors        []errorRow
-	MoreErrors    bool // the list stopped at maxRouteErrors
+	MoreErrors    bool // the list stopped at ErrorsShown
+	ErrorsShown   int  // maxRouteErrors
 	ErrorsKept    int  // how many server errors www keeps, across routes
 }
 
@@ -484,7 +514,8 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		s.notFoundResponse(w, r)
 		return
 	}
-	period := readPeriod(r)
+	params := readEndpointsParams(r)
+	period := params.period
 	now := s.now().UTC().Truncate(time.Second)
 	from, to := period.window(now)
 	ep, err := s.services.Endpoints.Endpoints(r.Context(), rss.EndpointQuery{
@@ -501,14 +532,15 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	back := endpointsParams{period: period, sort: defaultRouteSort}
 	page := routePage{
 		Nav: s.nav(r, "endpoints"), Route: route, Method: method,
-		Back: back.href(), Period: period, Total: ep.Total,
-		MoreErrors: len(errs) > maxRouteErrors, ErrorsKept: metrics.ErrorsKept,
+		Back: params.href(), Period: period, Total: ep.Total,
+		MoreErrors: len(errs) > maxRouteErrors, ErrorsShown: maxRouteErrors, ErrorsKept: metrics.ErrorsKept,
 	}
 	for _, p := range endpointPeriods {
-		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, p), Current: p.Key == period.Key})
+		next := params
+		next.period = p
+		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, next), Current: p.Key == period.Key})
 	}
 	for _, e := range errs[:min(len(errs), maxRouteErrors)] {
 		first, _, _ := strings.Cut(strings.TrimSpace(e.Message), "\n")
@@ -519,12 +551,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if t := ep.Total; t.Requests > 0 {
-		steps := endpointSteps(ep.Series, from, to, now, period)
-		page.Charts = []endpointChart{
-			{requestsChart(steps, period), "Total", count(t.Requests)},
-			{errorRateChart(steps, true), "Overall", percentOf(t.Classes[4], t.Requests) + " 5xx · " + percentOf(t.Classes[3], t.Requests) + " 4xx"},
-			{latencyChart(steps, []float64{0.5, 0.95, 0.99}), "Overall", "p95 " + ms(percentileOf(t.Buckets, 0.95)) + " ms"},
-		}
+		page.Charts = endpointCharts(ep, from, to, now, period, true)
 		page.Deploys, err = s.markDeploys(r, page.Charts, from, now)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)

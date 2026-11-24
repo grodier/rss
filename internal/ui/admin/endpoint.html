@@ -103,7 +103,7 @@
             </tbody>
           </table>
         </div>
-        <p class="missing">Times are UTC.{{if .MoreErrors}} Showing the 50 most recent.{{end}} www keeps its newest {{count .ErrorsKept}} server errors across every route.</p>
+        <p class="missing">Times are UTC.{{if .MoreErrors}} Showing the {{.ErrorsShown}} most recent.{{end}} www keeps its newest {{count .ErrorsKept}} server errors across every route.</p>
         {{else}}
         <p class="missing">No server errors kept for this route. www keeps its newest {{count .ErrorsKept}} across every route.</p>
         {{end}}

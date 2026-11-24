@@ -134,7 +134,8 @@ func TestEndpointsSortsRoutes(t *testing.T) {
 		`<td class="num">10%</td>
                 <td class="num">10%</td>
                 <td class="num">175</td>`,
-		`href="/endpoints/route?method=GET&amp;route=%2Ffeeds%2F%7Bid%7D"`,
+		// A route's link keeps the sort for its way back.
+		`href="/endpoints/route?method=GET&amp;route=%2Ffeeds%2F%7Bid%7D&amp;sort=p95"`,
 		`114 requests to www in the last 24 hours`,
 		// Each chart's figure for the period, labelled.
 		`<p class="endpoint-figure"><span>Total</span> 114</p>`,
@@ -363,7 +364,8 @@ func TestEndpointFormats(t *testing.T) {
 		part, whole int
 		want        string
 	}{
-		{0, 0, "—"}, {0, 10, "0%"}, {1, 10000, "<0.1%"}, {24, 1000, "2.4%"}, {12, 100, "12%"}, {10, 10, "100%"},
+		{0, 0, "—"}, {0, 10, "0%"}, {1, 10000, "<0.1%"}, {24, 1000, "2.4%"}, {12, 100, "12%"}, {90, 100, "90%"},
+		{14137, 14161, "99.8%"}, {9999, 10000, ">99.9%"}, {10, 10, "100%"},
 	} {
 		if got := percentOf(tt.part, tt.whole); got != tt.want {
 			t.Errorf("percentOf(%d, %d) = %q, want %q", tt.part, tt.whole, got, tt.want)
@@ -397,6 +399,36 @@ func TestSlashBreaks(t *testing.T) {
 	} {
 		if got := breaks(in); got != want {
 			t.Errorf("slashBreaks(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestEndpointsMarksLastStepsDeploy: a deploy after the last step's start,
+// within the period, is marked, as the time axis runs to the period's end.
+// At 30d the last 4-hour step starts at 09:00 and the window ends at 13:00.
+func TestEndpointsMarksLastStepsDeploy(t *testing.T) {
+	live := testNow.Add(-2 * time.Hour)
+	deploys := []render.Deploy{{ID: "dep-1", Status: "live", Image: newDigest, CreatedAt: live.Add(-5 * time.Minute), FinishedAt: live}}
+	for _, path := range []string{"/endpoints?period=30d", "/endpoints/route?route=/&method=GET&period=30d"} {
+		f := &fakeEndpoints{ep: sampleEndpoints()}
+		body := endpointsServer(t, f, &fakeRender{deploys: deploys}).get(t, path).Body.String()
+		if n := strings.Count(body, `class="chart-marker"`); n != 3 {
+			t.Errorf("%s: %d markers, want one on each of 3 charts", path, n)
+		}
+	}
+}
+
+// TestRoutePageKeepsSort: a route's page keeps the overview's sort in its
+// period links and its way back.
+func TestRoutePageKeepsSort(t *testing.T) {
+	f := &fakeEndpoints{ep: rss.Endpoints{Total: requests(20, 3, 0, 0, 100)}}
+	body := endpointsServer(t, f, nil).get(t, "/endpoints/route?route=/&method=GET&period=7d&sort=p95").Body.String()
+	for _, want := range []string{
+		`<a class="btn btn-sm" href="/endpoints?period=7d&amp;sort=p95">All endpoints</a>`,
+		`href="/endpoints/route?method=GET&amp;route=%2F&amp;sort=p95"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("route page: missing %q", want)
 		}
 	}
 }

@@ -437,6 +437,37 @@ func assertReadMarkers(t *testing.T, body, readID, unreadID string) {
 	}
 }
 
+// TestArticleRowReadMarkup pins a row's title, read and unread, to the markup
+// read-pings.ts (initReadMarks) gives a row when the reader opens its article:
+// the hidden " (read)" right after the title's link. Change both together.
+func TestArticleRowReadMarkup(t *testing.T) {
+	s := newTestServer(t)
+	ts, ok := s.templates["timeline.html"]
+	if !ok {
+		t.Fatal("no timeline.html template")
+	}
+	tests := []struct {
+		name string
+		read bool
+		want string
+	}{
+		{"unread", false, `<h3 class="article-title"><a href="/articles/a1">Title</a></h3>`},
+		{"read", true, `<h3 class="article-title"><a href="/articles/a1">Title</a><span class="visually-hidden"> (read)</span></h3>`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b strings.Builder
+			row := articleRow{Article: rss.Article{ID: "a1", Title: "Title"}, Read: tt.read}
+			if err := ts.ExecuteTemplate(&b, "article-row", row); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(b.String(), tt.want) {
+				t.Errorf("title isn't %s:\n%s", tt.want, b.String())
+			}
+		})
+	}
+}
+
 func postArticleRead(t *testing.T, s *Server, userID, id string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/articles/x/read", strings.NewReader("PING"))

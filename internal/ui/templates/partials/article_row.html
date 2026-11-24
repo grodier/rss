@@ -16,6 +16,9 @@
     <div class="article-card">
       {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}"{{with $.Article.CardImageFallbackURL}} data-fallback-src="{{.}}"{{end}} alt="" {{if $.Eager}}fetchpriority="high"{{else}}loading="lazy"{{end}} referrerpolicy="no-referrer">{{end}}
       <div class="article-text">
+        {{- /* A read row's hidden " (read)" is also added by read-pings.ts
+             (initReadMarks) when the reader opens the article; keep the two
+             in step (TestArticleRowReadMarkup). */}}
         <h3 class="article-title"><a href="/articles/{{.Article.ID}}">{{.Article.DisplayTitle}}</a>{{if .Read}}<span class="visually-hidden"> (read)</span>{{end}}</h3>
         {{with .Article.DisplayExcerpt}}<p class="article-excerpt">{{.}}</p>{{end}}
       </div>

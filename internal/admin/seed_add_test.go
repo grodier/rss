@@ -6,9 +6,11 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/seed"
 )
 
@@ -245,5 +247,120 @@ func TestSeedPageHintAndSource(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("seed page lacks %s", want)
 		}
+	}
+}
+
+// seedWaitlistServer returns a logged-in browser to a server with the
+// waitlist wl and the seed list's fake feeds.
+func seedWaitlistServer(t *testing.T, wl *fakeWaitlist) *browser {
+	t.Helper()
+	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001", AppURL: testAppURL}
+	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Feeds: &fakeFeeds{}, Waitlist: wl, Audit: &fakeAudit{}})
+	return loggedIn(t, s)
+}
+
+func TestSeedAddWaitlistButton(t *testing.T) {
+	b := waitlistServer(t, testWaitlist(), &fakeInvites{}, &fakeEmails{})
+	body := b.get(t, "/waitlist").Body.String()
+	// In the selection form, so it posts the ticked entries' id fields.
+	form := body[strings.Index(body, `<form id="selection"`):]
+	form = form[:strings.Index(form, "</form>")]
+	if !strings.Contains(form, `name="id" value="`+entryID(1)+`"`) ||
+		!strings.Contains(form, `<button class="btn btn-sm" type="submit" formaction="/seed/add/waitlist">Add their sites to the seed list</button>`) {
+		t.Errorf("the waitlist's selection form lacks the button or the IDs:\n%s", form)
+	}
+	if body := b.get(t, "/waitlist?tab=invited").Body.String(); strings.Contains(body, "/seed/add/waitlist") {
+		t.Error("the Invited tab offers adding sites; only the Waiting tab selects people")
+	}
+}
+
+func TestSeedAddWaitlist(t *testing.T) {
+	first, second, third, unselected := waitingRow(1), waitingRow(2), waitingRow(3), waitingRow(4)
+	first.Sites = "lwn.net, Gopher Days; https://www.example.com/blog\nthe long feild"
+	second.Sites = "LWN.net;example.com, <b>Gopher</b> & co, gopher days,npr. org"
+	third.Sites = ""
+	unselected.Sites = "unselected.example"
+	b := seedWaitlistServer(t, &fakeWaitlist{rows: []rss.WaitlistRow{first, second, third, unselected}})
+
+	rr := b.post(t, "/seed/add/waitlist", url.Values{"id": {entryID(1), entryID(2), entryID(3)}})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST /seed/add/waitlist = %d, want 200:\n%s", rr.Code, rr.Body)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`<form class="seed-add" action="/seed/add" method="post" data-busy>`,
+		// Two of the three answered.
+		"Sites from 2 waitlist entries.",
+		// Each site once, with its first spelling, one per line; LWN.net
+		// and example.com are the same sites as earlier lines.
+		">\nlwn.net\nhttps://www.example.com/blog\nnpr.org</textarea>",
+		`<input type="text" id="source" name="source" value="waitlist"`,
+		// The rest, once each, escaped.
+		`<p class="hint" id="not-addresses">Not website addresses, to look up and paste by hand:</p>`,
+		"<li>Gopher Days</li><li>the long feild</li><li>&lt;b&gt;Gopher&lt;/b&gt; &amp; co</li>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the filled-in form lacks %q", want)
+		}
+	}
+	for _, unwanted := range []string{"unselected.example", "<b>Gopher</b>", "gopher days"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("the filled-in form has %q", unwanted)
+		}
+	}
+
+	// Nobody who answered: the form, empty, says so.
+	rr = b.post(t, "/seed/add/waitlist", url.Values{"id": {entryID(3)}})
+	if body := rr.Body.String(); rr.Code != http.StatusOK || !strings.Contains(body, "None of the people selected named any sites.") || strings.Contains(body, "not-addresses") {
+		t.Errorf("POST with no answers = %d, want 200 saying no one named any sites:\n%s", rr.Code, body)
+	}
+	// One entry.
+	if body := b.post(t, "/seed/add/waitlist", url.Values{"id": {entryID(4)}}).Body.String(); !strings.Contains(body, "Sites from 1 waitlist entry.") {
+		t.Error("the form doesn't say it's from 1 waitlist entry")
+	}
+}
+
+func TestSeedAddWaitlistSelection(t *testing.T) {
+	b := seedWaitlistServer(t, testWaitlist())
+
+	rr := b.post(t, "/seed/add/waitlist", url.Values{})
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/waitlist" {
+		t.Fatalf("POST with no one selected = %d to %q, want 303 to /waitlist", rr.Code, rr.Header().Get("Location"))
+	}
+	if body := b.get(t, "/waitlist").Body.String(); !strings.Contains(body, "Select at least one person.") {
+		t.Error("the waitlist doesn't flash that no one was selected")
+	}
+
+	many := url.Values{}
+	for i := range maxWave + 1 {
+		many.Add("id", entryID(i))
+	}
+	for name, form := range map[string]url.Values{
+		"not a UUID": {"id": {entryID(1), "x"}},
+		"too many":   many,
+	} {
+		if rr := b.post(t, "/seed/add/waitlist", form); rr.Code != http.StatusBadRequest {
+			t.Errorf("POST %s = %d, want 400", name, rr.Code)
+		}
+	}
+}
+
+func TestSeedAddWaitlistFails(t *testing.T) {
+	b := seedWaitlistServer(t, &fakeWaitlist{sitesErr: errors.New("boom")})
+	if rr := b.post(t, "/seed/add/waitlist", url.Values{"id": {entryID(1)}}); rr.Code != http.StatusInternalServerError {
+		t.Errorf("POST with the store failing = %d, want 500", rr.Code)
+	}
+}
+
+func TestSplitWaitlistSites(t *testing.T) {
+	sites, other := splitWaitlistSites([]string{"a.example, Name; b.example", "A.EXAMPLE\nname\nwww.b.example, c . example"})
+	if want := []string{"a.example", "b.example", "c.example"}; !slices.Equal(sites, want) {
+		t.Errorf("sites = %q, want %q", sites, want)
+	}
+	if want := []string{"Name"}; !slices.Equal(other, want) {
+		t.Errorf("not addresses = %q, want %q", other, want)
+	}
+	if sites, other := splitWaitlistSites(nil); sites != nil || other != nil {
+		t.Errorf("splitWaitlistSites(nil) = %q, %q, want none", sites, other)
 	}
 }

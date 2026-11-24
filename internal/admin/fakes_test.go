@@ -306,10 +306,12 @@ func loggedIn(t *testing.T, s *Server) *browser {
 
 // fakeWaitlist is an in-memory WaitlistStore: its rows, oldest first, are
 // on a tab by their confirmation and their latest invite's status at
-// testNow, as the repository puts them.
+// testNow, as the repository puts them. sitesErr, when set, is what
+// SitesAnswers returns.
 type fakeWaitlist struct {
-	mu   sync.Mutex
-	rows []rss.WaitlistRow
+	mu       sync.Mutex
+	rows     []rss.WaitlistRow
+	sitesErr error
 }
 
 func waitlistTabOf(r rss.WaitlistRow) string {
@@ -373,6 +375,21 @@ func (f *fakeWaitlist) GetByEmail(_ context.Context, email string) (rss.Waitlist
 		}
 	}
 	return rss.WaitlistEntry{}, rss.ErrNoRecord
+}
+
+func (f *fakeWaitlist) SitesAnswers(_ context.Context, ids []string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sitesErr != nil {
+		return nil, f.sitesErr
+	}
+	var out []string
+	for _, r := range f.rows {
+		if r.Sites != "" && slices.Contains(ids, r.ID) {
+			out = append(out, r.Sites)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeWaitlist) Oldest(_ context.Context, n int) ([]rss.WaitlistEntry, error) {

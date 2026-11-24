@@ -1554,7 +1554,8 @@ Planned in #583.
 - **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
 - **Joining asks for an email, a name and one optional question, "A few sites you'd like to follow"** (#566, approved at its design checkpoint; #583 had planned up to two questions).
   Its answers are used: the sites go on the seed list, so their lookups have run before the person arrives, and checking that discovery finds their feeds before their wave is invited catches failures before a new reader's first search.
-  The admin sends the selected entries' addresses to the seed list's upload form (#714).
+  The admin sends the selected entries' addresses to the seed list's upload form (#714), which it fills in for the owner to preview and add rather than adding them, since joins are public input; the parts that aren't addresses are listed to look up by hand, as turning names into addresses is left for later.
+  Answers are split by commas, semicolons and new lines, in one function (`rss.SplitSitesAnswer`), which following them at signup (#640) is to use too, so both read an answer alike.
   Rejected: "Which feed reader do you use now?", whose answer wouldn't change anything we do; "What do you mostly read?", too vague to act on; and "How many feeds do you follow now?", useful only for planning waves by load, which one more field on the form doesn't justify yet.
   Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
   Every waitlist email has a link to leave the list.

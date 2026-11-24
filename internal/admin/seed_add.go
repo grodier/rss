@@ -98,6 +98,19 @@ type seedAddPage struct {
 	Counts    []statTile
 	// Adds is how many lines Add would add; Add is offered when it's over 0.
 	Adds int
+	// Waitlist is set when the form was filled in from waitlist entries'
+	// answers, by seedAddWaitlistHandler.
+	Waitlist *waitlistSites
+}
+
+// waitlistSites is what the form says about the waitlist answers it was
+// filled in from.
+type waitlistSites struct {
+	// Entries is how many of the selected entries named any sites.
+	Entries int
+	// NotAddresses are the answers' parts that aren't website addresses,
+	// once each, to look up and paste by hand.
+	NotAddresses []string
 }
 
 // seedAddHandler shows the form.
@@ -194,6 +207,72 @@ func (s *Server) seedAddFormHandler(w http.ResponseWriter, r *http.Request) {
 		msg = "Added " + count(n) + " sites to the seed list; their lookups are queued."
 	}
 	s.backTo(w, r, "/seed", msg)
+}
+
+// waitlistSitesForm is what the waitlist's selection posts to
+// /seed/add/waitlist: the selected entries' IDs.
+type waitlistSitesForm struct {
+	IDs []string `form:"id"`
+}
+
+// seedAddWaitlistHandler fills the add form in from the sites answers of
+// the waitlist entries selected: each address once, one per line, with the
+// source "waitlist", and the parts that aren't addresses listed under it.
+// Like any upload, nothing is added until the admin previews and adds.
+func (s *Server) seedAddWaitlistHandler(w http.ResponseWriter, r *http.Request) {
+	var form waitlistSitesForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	if len(form.IDs) == 0 {
+		s.backTo(w, r, "/waitlist", "Select at least one person.")
+		return
+	}
+	// The waitlist's page has at most a wave's worth of checkboxes.
+	if len(form.IDs) > maxWave || slices.ContainsFunc(form.IDs, func(id string) bool { return !validator.Matches(id, validator.UUIDRX) }) {
+		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That selection isn't valid.")
+		return
+	}
+
+	answers, err := s.services.Waitlist.SitesAnswers(r.Context(), form.IDs)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	sites, notAddresses := splitWaitlistSites(answers)
+	s.renderSeedAdd(w, r, http.StatusOK, seedAddPage{
+		Form:     seedAddForm{Sites: strings.Join(sites, "\n"), Source: "waitlist"},
+		Waitlist: &waitlistSites{Entries: len(answers), NotAddresses: notAddresses},
+	})
+}
+
+// splitWaitlistSites splits waitlist sites answers (rss.SplitSitesAnswer)
+// into the website addresses, a line each for the add form, each site key
+// once with its first spelling, and the other parts, each once, in order.
+// An address's whitespace, which discovery.ParseInput allows only next to
+// a separator ("npr. org"), is dropped, so seed.Parse reads the line as one
+// address.
+func splitWaitlistSites(answers []string) (sites, notAddresses []string) {
+	seenKey := map[string]bool{}
+	seenText := map[string]bool{}
+	for _, a := range answers {
+		for _, part := range rss.SplitSitesAnswer(a) {
+			u, err := discovery.ParseInput(part)
+			if err != nil {
+				if k := strings.ToLower(part); !seenText[k] {
+					seenText[k] = true
+					notAddresses = append(notAddresses, part)
+				}
+				continue
+			}
+			if key := discovery.SiteKey(u); !seenKey[key] {
+				seenKey[key] = true
+				sites = append(sites, strings.Join(strings.Fields(part), ""))
+			}
+		}
+	}
+	return sites, notAddresses
 }
 
 // seedAddPreview is the add form's data for a preview of lines, adds of

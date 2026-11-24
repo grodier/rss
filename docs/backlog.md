@@ -865,6 +865,7 @@ Pages and queries:
 - [ ] **`ReadArticleIDs` on every list page** (#156, #161).
   One query per timeline or feed page, matching reads across copies by `canonical_url` (#161).
   Saves add `SavedArticleIDs` (#299), stars add `StarredArticleIDs` (#349) and icons add `IconHashes` (#305), each one more query per page with the same shape.
+  #789 shares the first three's code but keeps their three queries.
   *Signal:* they show up in `pg_stat_statements`, or slow for users with many reads or saves.
   *Fix:* fold them into the page's main query, or store the canonical URL on `reads` and `saves`.
 - [ ] **Saved search scans with `ILIKE`** (#301).

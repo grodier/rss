@@ -30,7 +30,7 @@
 
       {{if not .Views}}
       <section class="admin-section">
-        <p class="empty">No page views of <code>{{.Route}}</code> {{.Period.Label}}.{{if ne .Period.Key "13m"}} Choose a longer period to look further back.{{end}} Only the reader’s pages send them, one when each is hidden.</p>
+        <p class="empty">No page views of <code>{{.Route}}</code>{{with .DeviceOn}} {{.}}{{end}} {{.Period.Label}}.{{if .DeviceOn}} Choose All to see every device.{{else if ne .Period.Key "13m"}} Choose a longer period to look further back.{{end}} Only the reader’s pages send them, one when each is hidden.</p>
       </section>
       {{else}}
       {{if .Few}}<p class="few-note">Only {{count .Views}} page views: percentiles from so few shift a lot from one view to the next.</p>{{end}}

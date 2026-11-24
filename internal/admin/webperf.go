@@ -276,7 +276,7 @@ func (p webPerfParams) values() url.Values {
 	return v
 }
 
-// period is p's period: readWebPerfParams has made it one of webPeriods.
+// periodOf is p's period: readWebPerfParams has made it one of webPeriods.
 func (p webPerfParams) periodOf() webPeriod {
 	for _, wp := range webPeriods {
 		if wp.Key == p.period {

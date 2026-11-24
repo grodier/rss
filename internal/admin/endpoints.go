@@ -475,14 +475,16 @@ func routeRows(routes []rss.EndpointRoute, params endpointsParams) []routeRow {
 	return rows
 }
 
-// webPerfLink is route's web performance page, or "" when it had no page
-// views from from on: only the reader's pages send them.
-func (s *Server) webPerfLink(r *http.Request, route string, period endpointPeriod, from time.Time) (string, error) {
-	ok, err := s.services.WebPerf.HasViews(r.Context(), route, from)
+// webPerfLink is route's web performance page for period, or "" when it
+// had no page views in the period the link opens: only the reader's pages
+// send them.
+func (s *Server) webPerfLink(r *http.Request, route string, period endpointPeriod, now time.Time) (string, error) {
+	params := webPerfParamsFor(period)
+	ok, err := s.services.WebPerf.HasViews(r.Context(), route, params.periodOf().query(now, "").From)
 	if err != nil || !ok {
 		return "", err
 	}
-	return webPerfRouteLink(route, period), nil
+	return webPerfRouteHref(route, params), nil
 }
 
 // routePage is a route's page's data.
@@ -564,7 +566,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, next), Current: p.Key == period.Key})
 	}
 	if method == http.MethodGet {
-		page.WebPerf, err = s.webPerfLink(r, route, period, from)
+		page.WebPerf, err = s.webPerfLink(r, route, period, now)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return

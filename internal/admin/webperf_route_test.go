@@ -166,6 +166,11 @@ func TestWebPerfRouteUnknown(t *testing.T) {
 	if strings.Contains(body, "Choose a longer period") {
 		t.Error("13m: asks for a longer period")
 	}
+	// On one device, it's the device to change.
+	body = webPerfRouteServer(t, &fakeWebPerf{}, nil).get(t, "/web-performance/route?route=/nowhere&device=tablet").Body.String()
+	if want := `No page views of <code>/nowhere</code> on tablets in the last 7 days. Choose All to see every device.`; !strings.Contains(body, want) {
+		t.Errorf("unknown route on tablets: missing %q", want)
+	}
 }
 
 // A route with no LCP reported, and few views, says so where LCP would be.
@@ -247,5 +252,24 @@ func TestWebPerfRouteErrors(t *testing.T) {
 	}
 	if rr := webPerfRouteServer(t, &fakeWebPerf{err: errors.New("boom")}, nil).get(t, "/web-performance/route?route=/"); rr.Code != http.StatusInternalServerError {
 		t.Errorf("the store failing: %d, want 500", rr.Code)
+	}
+}
+
+// An element's share is of every view that reported LCP, not of the top
+// elements the store returns.
+func TestDetailRows(t *testing.T) {
+	groups := []rss.RUMGroup{
+		{Key: "img", Views: 100, Metrics: map[string]rss.RUMStat{"inp": stat(100, 300, 400, 500)}},
+		{Key: "", Views: 50},
+	}
+	rows := detailRows(groups, "inp", 400, "p75", true)
+	if rows[0].Share != "25%" || rows[1].Share != "13%" {
+		t.Errorf("shares = %s, %s; want 25%% and 13%% of 400", rows[0].Share, rows[1].Share)
+	}
+	if rows[0].Slow != "30%" || rows[0].Value.Value != "300 ms" || rows[0].Value.Rating != "needs-improvement" || rows[0].Few {
+		t.Errorf("img = %+v, want 30%% slow, 300 ms needing improvement, not few views", rows[0])
+	}
+	if rows[1].Slow != "" || rows[1].Value.Value != "—" || !rows[1].Few {
+		t.Errorf("a target reporting no INP = %+v, want no slow share, — and few views", rows[1])
 	}
 }

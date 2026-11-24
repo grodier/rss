@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/admin/chart"
@@ -35,7 +36,8 @@ type webPerfRoutePage struct {
 	Period     webPeriod
 	Percentile string
 	Views      int
-	Few        bool // under fewViews views
+	Few        bool   // under fewViews views
+	DeviceOn   string // "on phones" when a device is chosen, for the empty state
 	Assessment assessment
 	Vitals     []vitalRow
 	Deploys    deployState
@@ -150,6 +152,9 @@ func webPerfRouteData(wr rss.WebPerfRoute, route string, params webPerfParams, p
 		Period:         period, Percentile: params.percentile, Views: wr.Total.Views,
 		Few: wr.Total.Views > 0 && wr.Total.Views < fewViews,
 	}
+	if params.device != "" {
+		page.DeviceOn = "on " + strings.ToLower(deviceLabel(params.device)) + "s"
+	}
 	if wr.Total.Views == 0 {
 		return page
 	}
@@ -168,8 +173,8 @@ func webPerfRouteData(wr rss.WebPerfRoute, route string, params webPerfParams, p
 		{Title: "By device", Column: "Device", Rows: segmentRows(wr.Devices, params.percentile, deviceLabel)},
 		{Title: "By browser", Column: "Browser", Rows: segmentRows(wr.Browsers, params.percentile, browserLabel)},
 	}
-	page.LCPElements = detailRows(wr.LCPElements, "lcp", params.percentile, false)
-	page.INPTargets = detailRows(wr.INPTargets, "inp", params.percentile, true)
+	page.LCPElements = detailRows(wr.LCPElements, "lcp", wr.Total.Metrics["lcp"].Views, params.percentile, false)
+	page.INPTargets = detailRows(wr.INPTargets, "inp", wr.Total.Metrics["inp"].Views, params.percentile, true)
 	page.NavTypes = shares(wr.NavTypes)
 	for i, c := range wr.NavTypes {
 		if l, ok := navTypeLabels[c.Key]; ok {
@@ -262,13 +267,10 @@ func serverVsNetwork(wr rss.WebPerfRoute, q string, steps []time.Time) serverNet
 	return sn
 }
 
-// detailRows are groups' rows, each with metric at q and its share of the
-// views; slow adds the share of views that weren't good.
-func detailRows(groups []rss.RUMGroup, metric, q string, slow bool) []detailRow {
-	total := 0
-	for _, g := range groups {
-		total += g.Views
-	}
+// detailRows are groups' rows, each with metric at q and its share of
+// total, the views that reported metric (groups are only the top ones);
+// slow adds the share of a group's views that weren't good.
+func detailRows(groups []rss.RUMGroup, metric string, total int, q string, slow bool) []detailRow {
 	rows := make([]detailRow, len(groups))
 	for i, g := range groups {
 		s, ok := g.Metrics[metric]
@@ -299,12 +301,12 @@ func transferTiles(t rss.RUMTransfer) []statTile {
 	}
 }
 
-// webPerfRouteLink is route's page for the endpoints pages' period p:
-// the same period, or 24h for their last hour.
-func webPerfRouteLink(route string, p endpointPeriod) string {
+// webPerfParamsFor are the route page's default filters at the endpoints
+// pages' period p: the same period, or 24h for their last hour.
+func webPerfParamsFor(p endpointPeriod) webPerfParams {
 	key := p.Key
 	if key == "1h" {
 		key = "24h"
 	}
-	return webPerfRouteHref(route, webPerfParams{period: key, percentile: "p75", sort: "views"})
+	return webPerfParams{period: key, percentile: "p75", sort: "views"}
 }

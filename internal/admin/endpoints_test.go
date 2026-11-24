@@ -449,8 +449,9 @@ func TestRoutePageLinksWebPerf(t *testing.T) {
 	if want := `<a class="btn btn-sm" href="/web-performance/route?period=24h&amp;route=%2Ffeeds%2F%7Bid%7D">Web performance</a>`; !strings.Contains(body, want) {
 		t.Errorf("a page's route is missing %q", want)
 	}
-	if wp.route != "/feeds/{id}" || !wp.since.Equal(testNow.Add(-time.Hour)) {
-		t.Errorf("HasViews asked for %s since %v, want /feeds/{id} since the period's start", wp.route, wp.since)
+	// At 1h it opens the route's 24 hours, so it asks about them.
+	if wp.route != "/feeds/{id}" || !wp.since.Equal(testNow.Add(-24*time.Hour)) {
+		t.Errorf("HasViews asked for %s since %v, want /feeds/{id} since the 24 hours' start", wp.route, wp.since)
 	}
 	body = endpointsServerWith(t, f, nil, wp).get(t, "/endpoints/route?route=/feeds/{id}&method=GET&period=7d").Body.String()
 	if want := `href="/web-performance/route?route=%2Ffeeds%2F%7Bid%7D">Web performance</a>`; !strings.Contains(body, want) {

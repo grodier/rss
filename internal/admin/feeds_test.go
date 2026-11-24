@@ -454,6 +454,8 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<h1>Example feed</h1>`,
+		// Its site is in the breadcrumbs, so the subtitle is its URL.
+		`<p><code>https://example.com/feed.xml</code></p>`,
 		`<section class="admin-section health health-bad"`, `<h2 id="health-heading" class="health-title">Failing 4×</h2>`,
 		`Last success 2 days ago, last try 30 min ago; next try in 1 h.`,
 		`<pre class="health-error"><code>&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</code></pre>`,

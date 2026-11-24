@@ -115,7 +115,7 @@ A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field 
 `POST /waitlist` (`waitlistJoinHandler`) sends a logged-in user home, then answers a filled honeypot field as if it worked (storing and sending nothing), then checks the per-IP limit, the fields and whether the address has an account.
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
 `WaitlistRepository.Join` inserts the entry unconfirmed in one statement: an unconfirmed entry with the same address is refreshed with the new details and token, so only the newest link works, and a confirmed one is `rss.ErrDuplicateEmail`.
-The optional sites answer is kept as typed, for the owner to add to the seed list and to check discovery against before inviting; nothing reads it automatically.
+The optional sites answer is kept as typed, for the owner to send to the seed list from the admin (below) and to check discovery against before inviting; nothing reads it when someone joins.
 The optional "What do you like to read?" offers Discover's sections as check pills, like the timeline form's tags (`DiscoverRepository.ListSections`, read for every logged-out `/` and every join); the handler keeps only the IDs of sections that exist, once each, in the sections' order (`chosenSections`), and stores them on the entry, replaced like the other answers when joining again.
 The handler then queues `waitlist_confirm`, keeps the address in the session as `waitlistJoinedTo` and redirects to `/waitlist/joined`.
 Log in links to the form for people who arrive there without an account.
@@ -133,6 +133,10 @@ The review lists who's still waiting among them, a label ("Wave {date}") and an 
 `POST /waitlist/invite` (`waitlistInviteHandler`) makes each invite's token and the entry's new link token, renders the `invite` email with both (`newWave`), and `InviteRepository.SendWave` stores the invites, replaces the entries' tokens, queues the emails and records one `invite.wave` audit entry in one transaction, after checking the limits again under an advisory lock and that every entry is still waiting.
 If either check fails, nothing is sent and the review comes back (409) with the numbers as they are now; otherwise it redirects to the Invited tab with a flash, and `www`'s mail runner sends the emails.
 
+**Sending their sites to the seed list.** The Waiting tab's selection has a second button, Add their sites to the seed list, which posts the same IDs to `POST /seed/add/waitlist` (`seedAddWaitlistHandler`, nothing selected goes back with a flash).
+`WaitlistRepository.SitesAnswers` reads the selected entries' non-empty answers, oldest first, and `splitWaitlistSites` splits each with `rss.SplitSitesAnswer` (commas, semicolons and new lines, the split signup will use too), keeping the parts `discovery.ParseInput` accepts, each site key once with its first spelling, as the lines of the seed list's Add sites form (see "Seed list and Discover's catalog"), with the source "waitlist".
+The other parts ("Gopher Days") are listed under the text area to look up by hand; the form is only filled in, and nothing is added until the owner previews and adds, as with any paste.
+
 **Invites in the admin.** `GET /invites` (`invitesHandler`) shows each wave's summary (`InviteRepository.Waves`: sent, signed up, and accounts with a session seen 7 or more days after signing up), then every invite, newest first, 100 a page by the last invite's ID (`List`).
 Each row offers what its status allows, posting to `POST /invites/{id}/resend` (a bound invite, pending or expired) or `POST /invites/{id}/revoke` (a pending one), which redirect back with a flash.
 Resending (`inviteResendHandler`) renders a new email with a new token, expiring 14 days from now, through the same `newInviteEmail` as a wave, and `InviteRepository.Resend` replaces the invite's token and expiry, gives its entry a new link token if it still has one, and queues the email, checked against the limits under the same lock; the old link stops working.
@@ -143,11 +147,11 @@ The Waitlist and review tables show each entry's sections by name, read with the
 **Start at:**
 
 1. `internal/server/home.go` (`homeHandler`) and `internal/server/waitlist.go` (`waitlistJoinHandler`, `renderWaitlistHost`, `waitlistActionHandler`).
-2. `internal/psql/waitlist.go` (`Join`, and the admin's `Counts`, `List`, `ListWaiting` and `Oldest`).
+2. `internal/psql/waitlist.go` (`Join`, and the admin's `Counts`, `List`, `ListWaiting`, `Oldest` and `SitesAnswers`).
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
-4. The admin's side: `internal/admin/waitlist.go`, `invites.go` and `limits.go`, `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
+4. The admin's side: `internal/admin/waitlist.go`, `invites.go`, `limits.go` and `seed_add.go` (`seedAddWaitlistHandler`), `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go` and `limits_test.go`; `web/admin/features/select.test.ts`.
+**Tests:** `internal/server/waitlist_test.go` and `home_test.go` (`TestHomeHandlerNoStore`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`, `TestWaitlistRepositorySitesAnswers`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go`, `limits_test.go` and `seed_add_test.go` (`TestSeedAddWaitlist`); `internal/rss/rss_test.go` (`TestSplitSitesAnswer`); `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 
@@ -805,7 +809,7 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
 5. **The catalog.** `AdminFeedRepository.Catalog` returns every Discover section in its order with its feeds by title (site, posts a week, latest article, subscribers as a count), empty sections included; the page offers a filter link per section with its count, and All, the default, adds a Section column.
    A gone feed still in the catalog is listed, marked as hidden from Discover (whose queries skip gone feeds), so the owner can take it out.
    Each feed links to its admin page, whose Discover panel (above) puts it in a section or takes it out.
-6. **Adding sites.** The list's Add sites goes to `GET /seed/add` (`seedAddHandler`), a text area for a pasted list and an optional source ("waitlist", "IndieWeb list"); `POST /seed/add` (`seedAddFormHandler`) reads up to 1 MiB (`maxSeedUploadBytes`, over every other form's 64 KiB) and 10,000 lines.
+6. **Adding sites.** The list's Add sites goes to `GET /seed/add` (`seedAddHandler`), a text area for a pasted list and an optional source ("waitlist", "IndieWeb list"), which the waitlist can also fill in from its answers (see "Waitlist"); `POST /seed/add` (`seedAddFormHandler`) reads up to 1 MiB (`maxSeedUploadBytes`, over every other form's 64 KiB) and 10,000 lines.
    `seed.Parse` reads the text with no database: one address per line (a home page, or a feed's address, which adds only that feed, as its lookup runs on it), optionally followed by a comma or tab and a section's slug or name in any case, blank and `#` lines skipped; each line gets an outcome: can be added, not an address (`discovery.ParseInput`), names no section, an address on the reader's own site (`-app-url`), or the same site as an earlier line that can be added.
    The handler then asks `AdminFeedRepository.SeedOnList` which sites are already on the list.
    Preview (the form's first button, so Enter in Source is Preview) re-renders the form with the text kept, counts per outcome and every line in a table, problems first, then line order, with an Add button counting the lines that can be added.

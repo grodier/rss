@@ -349,3 +349,51 @@ func TestWaitlistAdminQueries(t *testing.T) {
 		}
 	})
 }
+
+func TestWaitlistRepositorySitesAnswers(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewWaitlistRepository(db)
+	ctx := t.Context()
+
+	// joined adds an entry with the sites answer sites, joined on day d of
+	// 1990; it's confirmed or not, since the answers are read from either.
+	joined := func(sites string, d int, confirm bool) rss.WaitlistEntry {
+		t.Helper()
+		hash := newWaitlistHash(t)
+		e, err := repo.Join(ctx, rss.WaitlistEntry{Email: newWaitlistEmail(t, db), Name: "Sites", Sites: sites}, hash)
+		if err != nil {
+			t.Fatalf("Join: %v", err)
+		}
+		if confirm {
+			if err := repo.Confirm(ctx, hash); err != nil {
+				t.Fatalf("Confirm: %v", err)
+			}
+		}
+		if _, err := db.Exec(`UPDATE waitlist SET created_at = $2 WHERE id = $1`, e.ID, time.Date(1990, 1, d, 0, 0, 0, 0, time.UTC)); err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	newer := joined("newer.example, Gopher Days", 3, true)
+	older := joined("older.example", 1, true)
+	empty := joined("", 2, true)
+	joined("not-selected.example", 4, true)
+	unconfirmed := joined("unconfirmed.example", 5, false)
+
+	got, err := repo.SitesAnswers(ctx, []string{newer.ID, older.ID, empty.ID, unconfirmed.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"older.example", "newer.example, Gopher Days", "unconfirmed.example"}
+	if !slices.Equal(got, want) {
+		t.Errorf("SitesAnswers = %q, want %q (only the selected, empty ones left out, oldest first)", got, want)
+	}
+
+	got, err = repo.SitesAnswers(ctx, []string{empty.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("SitesAnswers(only an empty answer) = %q, want none", got)
+	}
+}

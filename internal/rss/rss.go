@@ -606,6 +606,20 @@ type WaitlistEntry struct {
 	CreatedAt    time.Time
 }
 
+// SplitSitesAnswer splits a waitlist's sites answer into its parts: by
+// commas, semicolons and new lines, trimmed, empty ones dropped, in order.
+func SplitSitesAnswer(answer string) []string {
+	var parts []string
+	for _, p := range strings.FieldsFunc(answer, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	}) {
+		if p = strings.TrimSpace(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return parts
+}
+
 // The admin's waitlist tabs: confirmed entries with no pending invite
 // (WaitlistWaiting), confirmed entries with one (WaitlistInvited), and
 // entries not yet confirmed (WaitlistUnconfirmed).

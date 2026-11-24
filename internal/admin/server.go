@@ -85,6 +85,7 @@ type WaitlistStore interface {
 	ListWaiting(ctx context.Context, ids []string) ([]rss.WaitlistEntry, error)
 	Oldest(ctx context.Context, n int) ([]rss.WaitlistEntry, error)
 	GetByEmail(ctx context.Context, email string) (rss.WaitlistEntry, error)
+	SitesAnswers(ctx context.Context, ids []string) ([]string, error)
 }
 
 // InviteStore is the invites' repository; *psql.InviteRepository is one.

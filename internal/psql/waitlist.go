@@ -218,6 +218,29 @@ func (r *WaitlistRepository) Oldest(ctx context.Context, n int) ([]rss.WaitlistE
 	return r.listEntries(ctx, stmt, n)
 }
 
+// SitesAnswers returns the sites answers of the entries among ids, which
+// must be UUIDs, leaving out those that didn't answer, oldest entry first.
+func (r *WaitlistRepository) SitesAnswers(ctx context.Context, ids []string) ([]string, error) {
+	stmt := `SELECT sites FROM waitlist
+		WHERE id = ANY($1::uuid[]) AND sites <> ''
+		ORDER BY created_at, id`
+	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var answers []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		answers = append(answers, a)
+	}
+	return answers, rows.Err()
+}
+
 func (r *WaitlistRepository) listEntries(ctx context.Context, stmt string, args ...any) ([]rss.WaitlistEntry, error) {
 	rows, err := r.DB.QueryContext(ctx, stmt, args...)
 	if err != nil {

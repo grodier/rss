@@ -14,17 +14,31 @@ import (
 	"github.com/grodier/rss/internal/rss"
 )
 
-// fakeWebPerf is a WebPerfStore returning wp, or err, and remembering the
-// query it was asked.
+// fakeWebPerf is a WebPerfStore returning wp, wr and views, or err, and
+// remembering what it was asked.
 type fakeWebPerf struct {
-	wp  rss.WebPerf
-	err error
-	q   rss.WebPerfQuery
+	wp    rss.WebPerf
+	wr    rss.WebPerfRoute
+	views bool // HasViews' answer
+	err   error
+	q     rss.WebPerfQuery
+	route string
+	since time.Time
 }
 
 func (f *fakeWebPerf) WebPerf(_ context.Context, q rss.WebPerfQuery) (rss.WebPerf, error) {
 	f.q = q
 	return f.wp, f.err
+}
+
+func (f *fakeWebPerf) WebPerfRoute(_ context.Context, q rss.WebPerfQuery, route string) (rss.WebPerfRoute, error) {
+	f.q, f.route = q, route
+	return f.wr, f.err
+}
+
+func (f *fakeWebPerf) HasViews(_ context.Context, route string, since time.Time) (bool, error) {
+	f.route, f.since = route, since
+	return f.views, f.err
 }
 
 func webPerfServer(t *testing.T, f *fakeWebPerf) *browser {
@@ -118,6 +132,8 @@ func TestWebPerfPage(t *testing.T) {
 		`<th scope="col" class="num" aria-sort="descending"><a href="/web-performance">Views`,
 		`<a href="/web-performance?sort=lcp">p75 LCP</a>`,
 		`Page views per 6 hours, top routes`,
+		// Each route links to its page.
+		`<td><a href="/web-performance/route?route=%2Farticles%2F%7Bid%7D">/articles/{id}</a></td>`,
 		// Sources, escaped.
 		`<td>news.example</td>`, `&lt;script&gt;alert(1)&lt;/script&gt;.example`,
 		`<td>h2</td><td class="num">62%</td>`, `<td>Not reported</td><td class="num">&lt;1%</td>`,
@@ -129,7 +145,7 @@ func TestWebPerfPage(t *testing.T) {
 	if strings.Contains(body, `<script>alert(1)`) {
 		t.Error("a referrer host isn't escaped")
 	}
-	if strings.Index(body, "<td>/</td>") > strings.Index(body, "<td>/articles/{id}</td>") {
+	if strings.Index(body, `">/</a>`) > strings.Index(body, `">/articles/{id}</a>`) {
 		t.Error("routes aren't sorted by views")
 	}
 }

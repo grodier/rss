@@ -13,8 +13,12 @@
           </figure>
           {{end}}
         </div>
-        {{if not .Deploys.Rendering}}<p class="missing endpoint-note">Deploys aren’t marked: set -render-api-key (RSS_RENDER_API_KEY) and -render-service-id (RSS_RENDER_SERVICE_ID) to read them from Render.</p>
-        {{else if .Deploys.Failed}}<p class="missing endpoint-note">Couldn’t reach Render, so deploys aren’t marked.</p>{{end}}{{end}}
+        {{template "deploys-note" .Deploys}}{{end}}
+
+{{/* deploys-note says why a page's charts don't mark deploys, when they
+     don't (dot: a deployState). */}}
+{{define "deploys-note"}}{{if not .Rendering}}<p class="missing endpoint-note">Deploys aren’t marked: set -render-api-key (RSS_RENDER_API_KEY) and -render-service-id (RSS_RENDER_SERVICE_ID) to read them from Render.</p>
+        {{else if .Failed}}<p class="missing endpoint-note">Couldn’t reach Render, so deploys aren’t marked.</p>{{end}}{{end}}
 
 {{/* endpoint-route is a route and its method, as the tables and the route
      page's head show it (dot: a map of Route and Method). */}}

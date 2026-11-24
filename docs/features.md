@@ -844,16 +844,20 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
    Above them, the assessment (`assess`) passes when LCP, INP and CLS are all good at p75, as Google assesses them, whatever percentile is chosen.
    A rating (`rating`, at the precision the page shows, so "2.50 s" is never rated worse than 2.5 s; a value on a threshold is in the better rating) is never color alone: each has a shape (`rating-glyph`: a circle, a square, a triangle) and its words.
 4. **Breakdowns and pages.** The device, browser and installed tables, and the routes table (`routes`: sortable by each column through links, the top 20 with "Show all"), give the views and LCP, INP and CLS at the chosen percentile (`segmentRows`); a row under 100 views is dimmed and tagged "few views", Safari's row notes that its INP is known to over-report, and a row missing a metric says which.
-   The page views chart (`routeViewsChart`) draws the three routes with the most views.
+   The page views chart (`routeViewsChart`) draws the three routes with the most views, and each route links to its page, keeping the filters.
 5. **Back and Forward.** How many of the period's Back and Forward views were restored from the back/forward cache (`restore`) rather than loaded again (`back_forward`), then the reasons the browser gave for those loaded again, each with its views, most first, the 20 named by the most views (`backForwardData`); a view can name up to 3, so the reasons' shares can add up to more than 100%, and the views with no reason kept (Safari, Firefox and Chrome before 123 report none) come last.
+
+6. **A route's page.** `GET /web-performance/route?route=<pattern>` (`webPerfRouteHandler`) has the same filters, its links keeping the route, and reads the route's views (`AdminWebPerfRepository.WebPerfRoute`, from `rum_views` or `rum_daily` as above): its vitals' rows, as on the page, their charts marked with deploys as on the endpoints pages (`deploysSince`); each metric's distribution, the server's time too, as a histogram of `metrics.RUMBounds` buckets (`distributionOf`; raw views are counted into the buckets as the rollup counts them, `rawBuckets`); TTFB beside the server's time (Server-Timing's `app`) at the chosen percentile, with their difference and both over time (`serverVsNetwork`); the device and browser breakdowns; and, from `rum_views` only, the LCP elements, the slowest interactions' targets (the most slow ones first, slow being over INP's good threshold), the navigation types and the HTML's transfer size, with the share that came from the browser's cache (`webPerfRouteData`).
+   A route under 100 views says its percentiles shift; one with none in the period, or never, is an empty state, not a 404, and no route is a 404.
+   Its head links back to the page, with its filters, and to the route's endpoints page for a GET at the nearest period (`endpointHref`), whose page links back here (`webPerfLink`).
 
 **Start at:**
 
-1. `internal/admin/webperf.go` (`webPerfHandler`, `webPerfData`).
-2. `internal/psql/admin_webperf.go` (`WebPerf`, `raw`, `rollups`).
-3. `internal/ui/admin/webperf.html`, `partials/rating.html` and `web/admin/styles/partials/webperf.css`.
+1. `internal/admin/webperf.go` (`webPerfHandler`, `webPerfData`) and `webperf_route.go` (`webPerfRouteHandler`, `webPerfRouteData`).
+2. `internal/psql/admin_webperf.go` (`WebPerf`, `raw`, `rollups`) and `admin_webperf_route.go` (`WebPerfRoute`, `routeRaw`, `routeRollups`).
+3. `internal/ui/admin/webperf.html`, `webperf_route.html`, `partials/webperf.html`, `partials/rating.html` and `web/admin/styles/partials/webperf.css`.
 
-**Tests:** `internal/admin/webperf_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket, and `TestAdminWebPerfBackForward`); `internal/metrics/percentile_test.go`.
+**Tests:** `internal/admin/webperf_test.go` and `webperf_route_test.go`; `internal/psql/admin_webperf_test.go` (raw and rolled-up percentiles agree within a bucket, for the page and a route, `TestAdminWebPerfBackForward` and `TestAdminWebPerfRouteDetails`); `internal/metrics/percentile_test.go`.
 
 ### Service health
 
@@ -895,6 +899,7 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
    Each route links to its page.
 5. **A route's page.** Its charts, its latency histogram for the period, its requests by status class, its instances when there are several (minute rows only), and its 50 most recent server errors (`AdminEndpointsRepository.RouteErrors`, by route and method), which are kept by count, not age, so they don't follow the period: time, instance, panic or error, and the message's first line, cut to the column, with the whole message in a `<details>`.
    A route with no requests in the period, or none ever, shows that as an empty state, not a 404; a missing route or a method `metrics.NormalizeMethod` wouldn't record is a 404.
+   A GET route with page views in the period, which only the reader's pages send, links to its web performance page (`webPerfLink`, `AdminWebPerfRepository.HasViews`).
 
 **Start at:**
 

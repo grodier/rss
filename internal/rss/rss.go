@@ -901,6 +901,38 @@ type WebPerf struct {
 	BackForward RUMBackForward
 }
 
+// WebPerfRoute is one route's real-user views in a WebPerfQuery.
+// LCPElements, INPTargets, NavTypes and Transfer are only in rum_views, so
+// they're nil (or zero) from rollups.
+type WebPerfRoute struct {
+	// Total's Metrics are every metric's: ttfb, fcp, lcp, inp and cls, and
+	// server, the server's time from Server-Timing, which has no
+	// thresholds, so no views by rating.
+	Total RUMGroup
+	// Buckets are each metric's views per metrics.RUMBounds bucket, for
+	// its distribution, by metric; one no view reported is missing.
+	Buckets  map[string][]int
+	Devices  []RUMGroup
+	Browsers []RUMGroup
+	Series   []RUMPoint // every metric's, server included
+	// LCPElements are the LCP element's tag names, with LCP's stats, and
+	// INPTargets the slowest interaction's targets, with INP's: the 20
+	// with the most views, and for targets the most slow ones (needing
+	// improvement or poor) first. Key "" when not reported.
+	LCPElements []RUMGroup
+	INPTargets  []RUMGroup
+	NavTypes    []RUMCount // navigate, reload, back_forward, prerender, restore; most first
+	Transfer    RUMTransfer
+}
+
+// RUMTransfer is the size of the views' HTML documents over the network.
+type RUMTransfer struct {
+	Views  int // that reported a size
+	Cached int // of them, 0 bytes: from the browser's cache
+	// P50, P75 and P95 are the sizes of the rest, in bytes.
+	P50, P75, P95 float64
+}
+
 // RUMBackForward is the Back and Forward views: those restored from the
 // back/forward cache, and those loaded again with why they weren't
 // restored.

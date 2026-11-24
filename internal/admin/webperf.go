@@ -176,6 +176,7 @@ type breakdown struct {
 // its views and its LCP, INP and CLS at the chosen percentile.
 type segmentRow struct {
 	Label  string
+	Href   string // the route's page, for a route
 	Views  int
 	Values []ratedValue // LCP, INP, CLS
 	Note   string
@@ -244,6 +245,15 @@ func readWebPerfParams(r *http.Request) webPerfParams {
 
 // href is the page's URL with p's filters, leaving defaults out.
 func (p webPerfParams) href() string {
+	v := p.values()
+	if len(v) == 0 {
+		return "/web-performance"
+	}
+	return "/web-performance?" + v.Encode()
+}
+
+// values are p's filters as query parameters, leaving defaults out.
+func (p webPerfParams) values() url.Values {
 	v := url.Values{}
 	if p.period != defaultWebPeriod {
 		v.Set("period", p.period)
@@ -260,10 +270,7 @@ func (p webPerfParams) href() string {
 	if p.allRoutes {
 		v.Set("routes", "all")
 	}
-	if len(v) == 0 {
-		return "/web-performance"
-	}
-	return "/web-performance?" + v.Encode()
+	return v
 }
 
 // webPerfHandler shows the web performance page.
@@ -639,6 +646,9 @@ func routes(groups []rss.RUMGroup, params webPerfParams) routesTable {
 		sorted = sorted[:topRoutes]
 	}
 	t.Rows = segmentRows(sorted, params.percentile, func(k string) string { return k })
+	for i := range t.Rows {
+		t.Rows[i].Href = webPerfRouteHref(t.Rows[i].Label, params)
+	}
 	for _, c := range routeSorts {
 		next := params
 		next.sort = c.key

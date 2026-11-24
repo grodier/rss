@@ -92,6 +92,7 @@ func (s *Server) router() http.Handler {
 			r.Get("/endpoints", s.endpointsHandler)
 			r.Get("/endpoints/route", s.routeHandler)
 			r.Get("/web-performance", s.webPerfHandler)
+			r.Get("/web-performance/route", s.webPerfRouteHandler)
 			r.Get("/audit", s.auditHandler)
 		})
 	})

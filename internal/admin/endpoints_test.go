@@ -41,8 +41,14 @@ func (f *fakeEndpoints) RouteErrors(_ context.Context, route, method string, lim
 
 func endpointsServer(t *testing.T, f *fakeEndpoints, r RenderReader) *browser {
 	t.Helper()
+	return endpointsServerWith(t, f, r, &fakeWebPerf{})
+}
+
+// endpointsServerWith is endpointsServer with wp for the real-user views.
+func endpointsServerWith(t *testing.T, f *fakeEndpoints, r RenderReader, wp *fakeWebPerf) *browser {
+	t.Helper()
 	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001"}
-	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Endpoints: f, Render: r})
+	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Endpoints: f, Render: r, WebPerf: wp})
 	return loggedIn(t, s)
 }
 
@@ -430,5 +436,38 @@ func TestRoutePageKeepsSort(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("route page: missing %q", want)
 		}
+	}
+}
+
+// A GET route with page views links to its web performance page, for the
+// nearest period; one without (an API, a file), or any other method,
+// doesn't.
+func TestRoutePageLinksWebPerf(t *testing.T) {
+	f := &fakeEndpoints{ep: rss.Endpoints{Total: requests(20, 3, 0, 0, 100)}}
+	wp := &fakeWebPerf{views: true}
+	body := endpointsServerWith(t, f, nil, wp).get(t, "/endpoints/route?route=/feeds/{id}&method=GET&period=1h").Body.String()
+	if want := `<a class="btn btn-sm" href="/web-performance/route?period=24h&amp;route=%2Ffeeds%2F%7Bid%7D">Web performance</a>`; !strings.Contains(body, want) {
+		t.Errorf("a page's route is missing %q", want)
+	}
+	if wp.route != "/feeds/{id}" || !wp.since.Equal(testNow.Add(-time.Hour)) {
+		t.Errorf("HasViews asked for %s since %v, want /feeds/{id} since the period's start", wp.route, wp.since)
+	}
+	body = endpointsServerWith(t, f, nil, wp).get(t, "/endpoints/route?route=/feeds/{id}&method=GET&period=7d").Body.String()
+	if want := `href="/web-performance/route?route=%2Ffeeds%2F%7Bid%7D">Web performance</a>`; !strings.Contains(body, want) {
+		t.Errorf("7d, the web performance page's default, is missing %q", want)
+	}
+
+	for name, path := range map[string]string{
+		"no views": "/endpoints/route?route=/healthcheck&method=GET",
+		"a POST":   "/endpoints/route?route=/feeds/{id}&method=POST",
+	} {
+		wp := &fakeWebPerf{views: name != "no views"}
+		body := endpointsServerWith(t, f, nil, wp).get(t, path).Body.String()
+		if strings.Contains(body, `class="btn btn-sm" href="/web-performance/route`) {
+			t.Errorf("%s: links to web performance", name)
+		}
+	}
+	if rr := endpointsServerWith(t, f, nil, &fakeWebPerf{err: errors.New("boom")}).get(t, "/endpoints/route?route=/&method=GET"); rr.Code != http.StatusInternalServerError {
+		t.Errorf("HasViews failing: %d, want 500", rr.Code)
 	}
 }

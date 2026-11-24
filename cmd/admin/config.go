@@ -207,3 +207,15 @@ func parseSecretKey(s string) ([]byte, error) {
 	}
 	return key, nil
 }
+
+// checkAppURL returns appURL without a trailing slash if it's an absolute
+// http or https URL with no path, query or fragment.
+func checkAppURL(appURL string) (string, error) {
+	appURL = strings.TrimSuffix(appURL, "/")
+	u, err := url.Parse(appURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return "", fmt.Errorf("invalid app URL %q: must be an absolute http or https URL with no path", appURL)
+	}
+	return appURL, nil
+}

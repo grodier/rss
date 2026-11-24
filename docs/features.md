@@ -8,7 +8,7 @@ User-facing strings, CSS classes and every helper's name live in the code and te
 
 ## Accounts and sessions
 
-**Signup and login.** Signup needs a single-use invite (an `invites` row), and no page links to it: people arrive through `/signup?invite=<token>`, the link `admin invite create` prints.
+**Signup and login.** Signup needs a single-use invite (an `invites` row), and no page links to it: people arrive through `/signup?invite=<token>`, the link the admin's invite email or its Invites page gives.
 `signupHandler` looks the invite up by the token's hash (`signupInvite`) and, if it's usable, shows the form with the token in a hidden field; a bound invite (one with an email, sent to a confirmed waitlist entry) fills in the entry's name and its email, locked (`readonly`).
 Without a token the page says the app is invite-only and links to the waitlist; an expired, used, revoked or unknown invite gets a page that says which, with no form (410; `renderInviteUnusable`).
 The page with a token, and the POST, send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, like the email links.
@@ -33,9 +33,8 @@ Both forms follow the field pattern in CLAUDE.md, and signup shows the name and 
 With JavaScript, their buttons show they're working while the password is hashed ("Logging in…", "Signing up…"; busy forms (`form[data-busy]`, `busy-forms.ts`)).
 The other way to make an account is `admin create-user` (`runCreateUser` in `cmd/admin`), for your local account: it reads the password from stdin and uses the same checks and `Create`; `make db/seed` runs it from `.env`, and `make db/reset` runs `db/seed` when `RSS_DEV_EMAIL` is set.
 
-**Invites.** Until the admin's pages send them (#574), invites are made from the command line: `admin invite create` (`runInviteCreate` in `cmd/admin/invite.go`) stores one with a new token (`token.New`; only its SHA-256 is stored) and prints its link, built from `-app-url`, the reader's URL.
-With `-email` it's bound to that address's waitlist entry, which must be confirmed; without, it's open, with `-note` saying who it's for.
-It expires after `-expires` (14 days by default); `admin invite list` shows each invite's status (`rss.Invite.Status`), and `admin invite revoke <id>` stops an unused one working.
+**Invites.** Invites are made in the admin: in waves from the waitlist, or by hand with Invites → New (`newInviteFormHandler` in `internal/admin/invites.go`, see "Invites in the admin" under Admin), which stores one with a new token (`token.New`; only its SHA-256 is stored) and shows its link once, built from `-app-url`, the reader's URL.
+The Invites page shows each invite's status (`rss.Invite.Status`), and Revoke stops an unused one working.
 Creating and revoking are recorded in the admin's audit log (see "Audit log" under Admin).
 
 **Settings.** The nav's account entry opens the Settings home (`/settings`, `settingsHandler`): the account as its first row (avatar, name and email), then Reading, Your data and Help, each with a one-line summary, then Log out.
@@ -97,7 +96,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 **Start at:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`), `internal/validator/account.go` (`CheckNewAccount`), and for invites `internal/psql/invites.go`, `UserRepository.CreateFromInvite` and `cmd/admin/invite.go`.
+2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`), `internal/validator/account.go` (`CheckNewAccount`), and for invites `internal/psql/invites.go`, `UserRepository.CreateFromInvite` and `internal/admin/invites.go`.
 3. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and `internal/psql/user_sessions.go`.
 4. `internal/server/settings.go`, then `confirm.go`, `password_reset.go` and `email_change.go`, with `internal/psql/users.go` and `tokens.go`.
 5. Email: `internal/server/email.go` (`sendEmail`), then `internal/mail` (`Queue`, `Runner`, `ParseTemplates`).
@@ -939,7 +938,7 @@ Every admin action and login is recorded in `admin_audit` (see "The admin's audi
 1. **Logins.** `loginFormHandler` records a wrong email or password as `login_failed` with the submitted email, and `loginCodeFormHandler` a wrong code as `login_failed` with the admin; both through `s.audit`, which records them by the request's actor (`s.actor`: the logged-in admin, `via = 'web'` and the client IP) or, before anyone is logged in, by the admin or email given, and a failure to record is logged, not shown.
    A correct code records `login` before the session holds the admin, so a login that can't be recorded fails (500); `logoutHandler` records `logout`, and logs out even when that can't be recorded.
 2. **Actions.** An action that changes something passes who did it, an `rss.AuditActor`, to the repository method that makes the change, which records what it did (the action, the target, and the fields it changed before and after) in the same transaction, so the same change is recorded the same way from the web or the command line.
-   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), `admin create-user` (`user.create`) and `admin invite create` and `revoke` (`invite.create`, `invite.revoke`); web actions pass `s.actor(r)`, like sending a wave of invites (`invite.wave`, with its label, count and entries) or the feeds and sites pages' fixes (`feed.reset_backoff` and others, under "Feeds and sites").
+   The commands that write pass `cliActor` (`via = 'cli'`, no admin): `admin enroll` (`admin.create`, `admin.reset`, from `Enrollment.Finish`), and `admin create-user` (`user.create`); web actions pass `s.actor(r)`, like sending a wave of invites (`invite.wave`, with its label, count and entries) or the feeds and sites pages' fixes (`feed.reset_backoff` and others, under "Feeds and sites").
 3. **Typed confirmation.** A destructive action's form has a field where the admin types the target's name, and `confirmDestructive` checks it (ignoring case and the spaces around it) before acting, with "Type {name} to confirm."; no action uses it yet.
 4. **The page.** `GET /audit` (`auditHandler`) lists entries newest first, 100 at a time, with an Older link whose cursor (`?before=`) is the last entry's ID (`AuditRepository.List`, keyed on `occurred_at` and `id`), filtered by `?action=`, `?target_type=` and `?target_id=`.
    Each row shows the time (UTC), the admin, the action, the target with a History link (`auditHistoryURL`, which a record's admin page links to once one exists) and each changed field's values before and after as JSON, and the client IP or "Command line".

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"fmt"
 	"io"
 	"slices"
@@ -95,4 +96,33 @@ func TestReadLine(t *testing.T) {
 			t.Errorf("readLine(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
+}
+
+// cliAudit returns the actions the audit log recorded from the command line
+// for the target, oldest first, and deletes their rows when the test ends.
+func cliAudit(t *testing.T, db *sql.DB, targetType, targetID string) []string {
+	t.Helper()
+	t.Cleanup(func() {
+		if _, err := db.Exec(`DELETE FROM admin_audit WHERE target_type = $1 AND target_id = $2`, targetType, targetID); err != nil {
+			t.Errorf("cleanup audit: %v", err)
+		}
+	})
+	rows, err := db.QueryContext(t.Context(), `SELECT action FROM admin_audit
+		WHERE target_type = $1 AND target_id = $2 AND via = 'cli' ORDER BY id`, targetType, targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			t.Fatal(err)
+		}
+		actions = append(actions, a)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return actions
 }

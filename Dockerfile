@@ -24,7 +24,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/ ./cmd/www ./cmd/admin
 
 # The admin's image (docker build --target admin), for its own service. Unlike
-# www's it has a shell, so the admin's commands (admin enroll, admin invite) run
+# www's it has a shell, so the admin's commands (admin enroll, admin send-test-email) run
 # from Render's Shell: Render's Shell needs a login shell for the running user
 # and a ~/.ssh it owns, which distroless images don't have. See "Admin" in
 # docs/decisions.md.

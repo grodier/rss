@@ -61,32 +61,6 @@ func (r *MetricsRepository) SaveRequests(ctx context.Context, rows []metrics.Req
 	return tx.Commit()
 }
 
-// ListRequests returns the request rows of resolution ("minute" or "hour")
-// whose period starts in [from, to), oldest first.
-func (r *MetricsRepository) ListRequests(ctx context.Context, resolution string, from, to time.Time) ([]metrics.RequestRow, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT period_start, instance, route, method, status_class,
-		    requests, duration_ms_sum, bytes_sum, buckets
-		FROM request_metrics
-		WHERE resolution = $1 AND period_start >= $2 AND period_start < $3
-		ORDER BY period_start, instance, route, method, status_class`, resolution, from, to)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []metrics.RequestRow
-	for rows.Next() {
-		var m metrics.RequestRow
-		err := rows.Scan(&m.PeriodStart, &m.Instance, &m.Route, &m.Method, &m.StatusClass,
-			&m.Requests, &m.DurationMsSum, &m.BytesSum, pq.Array(&m.Buckets))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
-}
-
 // SaveJobs saves minute rows. A row whose period, instance, runner and
 // outcome are already there adds to it, as SaveRequests does.
 func (r *MetricsRepository) SaveJobs(ctx context.Context, rows []metrics.JobRow) error {
@@ -123,30 +97,6 @@ func (r *MetricsRepository) SaveJobs(ctx context.Context, rows []metrics.JobRow)
 		}
 	}
 	return tx.Commit()
-}
-
-// ListJobs returns the job rows of resolution ("minute" or "hour") whose
-// period starts in [from, to), oldest first.
-func (r *MetricsRepository) ListJobs(ctx context.Context, resolution string, from, to time.Time) ([]metrics.JobRow, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT period_start, instance, runner, outcome, jobs, duration_ms_sum, buckets
-		FROM job_metrics
-		WHERE resolution = $1 AND period_start >= $2 AND period_start < $3
-		ORDER BY period_start, instance, runner, outcome`, resolution, from, to)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []metrics.JobRow
-	for rows.Next() {
-		var m metrics.JobRow
-		err := rows.Scan(&m.PeriodStart, &m.Instance, &m.Runner, &m.Outcome, &m.Jobs, &m.DurationMsSum, pq.Array(&m.Buckets))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
 }
 
 // SaveRuntime saves a runtime sample; a second sample for the same minute

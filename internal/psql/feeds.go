@@ -82,7 +82,7 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 	return &FeedRepository{DB: db}
 }
 
-// Upsert inserts a feed or updates its metadata by URL and returns its ID.
+// upsertFeed inserts a feed or updates its metadata by URL and returns its ID.
 // Its categories are replaced, also with none.
 // An existing site_id is kept (a feed belongs to the first site it was
 // discovered from), unless it is a shared host's own site and f's site has
@@ -90,10 +90,6 @@ func NewFeedRepository(db *sql.DB) *FeedRepository {
 // moves to f's site. next_fetch_at is set to f.NextFetch, or now() for a new
 // feed when f.NextFetch is zero. It clears gone_at: the caller just parsed a
 // feed at that URL, so it's back.
-func (r *FeedRepository) Upsert(ctx context.Context, f rss.Feed) (string, error) {
-	return upsertFeed(ctx, r.DB, f)
-}
-
 func upsertFeed(ctx context.Context, q querier, f rss.Feed) (string, error) {
 	// The caller just fetched the feed, so a conflict takes its next_fetch_at
 	// and clears gone_at. A feed keeps the first site it was discovered from,

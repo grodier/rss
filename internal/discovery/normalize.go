@@ -16,13 +16,6 @@ const maxInputLen = 2048
 // ErrNotURL is returned by ParseInput when the input is not a website address.
 var ErrNotURL = errors.New("discovery: not a website address")
 
-// LooksLikeURL reports whether q should be offered as a website lookup.
-// It is ParseInput(q) == nil.
-func LooksLikeURL(q string) bool {
-	_, err := ParseInput(q)
-	return err == nil
-}
-
 // spaceAroundSeparators matches a ".", "/" or ":" with the whitespace around
 // it, which phone keyboards insert ("npr. org").
 var spaceAroundSeparators = regexp.MustCompile(`\s*([./:])\s*`)

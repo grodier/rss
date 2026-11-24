@@ -22,8 +22,6 @@ func TestLikePattern(t *testing.T) {
 func TestSearchRepository(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewSearchRepository(db)
-	sites := NewSiteRepository(db)
-	feeds := NewFeedRepository(db)
 	ctx := t.Context()
 
 	tok := fmt.Sprintf("zq%d", time.Now().UnixNano())
@@ -34,7 +32,7 @@ func TestSearchRepository(t *testing.T) {
 
 	addSite := func(host, title string) string {
 		t.Helper()
-		id, err := sites.Upsert(ctx, rss.Site{Host: host, URL: "https://" + host + "/", Title: title})
+		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
 		if err != nil {
 			t.Fatalf("Upsert site: %v", err)
 		}
@@ -42,7 +40,7 @@ func TestSearchRepository(t *testing.T) {
 	}
 	addFeed := func(siteID, url, title string) {
 		t.Helper()
-		if _, err := feeds.Upsert(ctx, rss.Feed{SiteID: siteID, Url: url, Title: title}); err != nil {
+		if _, err := upsertFeed(ctx, db, rss.Feed{SiteID: siteID, Url: url, Title: title}); err != nil {
 			t.Fatalf("Upsert feed: %v", err)
 		}
 	}
@@ -116,7 +114,7 @@ func TestSearchRepository(t *testing.T) {
 
 	t.Run("by site description", func(t *testing.T) {
 		hostF := "f-" + tok + ".example"
-		if _, err := sites.Upsert(ctx, rss.Site{Host: hostF, URL: "https://" + hostF + "/", Title: "Untitled", Description: "Weekly notes on " + tok + "gardening"}); err != nil {
+		if _, err := upsertSite(ctx, db, rss.Site{Host: hostF, URL: "https://" + hostF + "/", Title: "Untitled", Description: "Weekly notes on " + tok + "gardening"}, true); err != nil {
 			t.Fatal(err)
 		}
 		if got := siteHosts(search(tok+"GARDENING", 10)); len(got) != 1 || got[0] != hostF {
@@ -128,7 +126,7 @@ func TestSearchRepository(t *testing.T) {
 		hostG := "g-" + tok + ".example"
 		siteG := addSite(hostG, "Untitled")
 		addFeed(siteG, "https://"+hostG+"/other.xml", "Other")
-		if _, err := feeds.Upsert(ctx, rss.Feed{SiteID: siteG, Url: "https://" + hostG + "/feed.xml", Title: "Main", Description: "Episodes about " + tok + "beekeeping"}); err != nil {
+		if _, err := upsertFeed(ctx, db, rss.Feed{SiteID: siteG, Url: "https://" + hostG + "/feed.xml", Title: "Main", Description: "Episodes about " + tok + "beekeeping"}); err != nil {
 			t.Fatal(err)
 		}
 		res := search(tok+"beekeeping", 10)

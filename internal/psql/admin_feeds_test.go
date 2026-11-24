@@ -19,7 +19,7 @@ import (
 func adminFeedsSite(t *testing.T, db *sql.DB) (id, host string) {
 	t.Helper()
 	host = fmt.Sprintf("admin-feeds-%d.example.com", time.Now().UnixNano())
-	id, err := NewSiteRepository(db).Upsert(t.Context(), rss.Site{Host: host, URL: "https://" + host + "/"})
+	id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/"}, true)
 	if err != nil {
 		t.Fatalf("Upsert site: %v", err)
 	}
@@ -38,7 +38,7 @@ func adminFeedsSite(t *testing.T, db *sql.DB) (id, host string) {
 // set (an UPDATE's SET list, "" for none) and subscribes subscribers to it.
 func adminFeed(t *testing.T, db *sql.DB, siteID, title, set string, subscribers ...string) string {
 	t.Helper()
-	id, err := NewFeedRepository(db).Upsert(t.Context(), rss.Feed{
+	id, err := upsertFeed(t.Context(), db, rss.Feed{
 		SiteID: siteID, Title: title,
 		Url: fmt.Sprintf("https://example.com/admin-feeds-%d.xml", time.Now().UnixNano()),
 	})
@@ -564,7 +564,7 @@ func TestAdminFeedRepositorySetDiscoverSection(t *testing.T) {
 func adminSitesSite(t *testing.T, db *sql.DB, prefix, name, title string) string {
 	t.Helper()
 	host := prefix + name + ".example.com"
-	id, err := NewSiteRepository(db).Upsert(t.Context(), rss.Site{Host: host, URL: "https://" + host + "/", Title: title})
+	id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
 	if err != nil {
 		t.Fatalf("Upsert site: %v", err)
 	}

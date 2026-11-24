@@ -225,7 +225,7 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 	newSite := func(t *testing.T, tag, title string) string {
 		t.Helper()
 		host := fmt.Sprintf("%s-%d.example.com", tag, time.Now().UnixNano())
-		id, err := NewSiteRepository(db).Upsert(ctx, rss.Site{Host: host, URL: "https://" + host + "/", Title: title})
+		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
 		if err != nil {
 			t.Fatalf("Upsert site: %v", err)
 		}
@@ -234,7 +234,7 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 	}
 	newFeed := func(t *testing.T, siteID, title string) string {
 		t.Helper()
-		id, err := NewFeedRepository(db).Upsert(ctx, rss.Feed{
+		id, err := upsertFeed(ctx, db, rss.Feed{
 			SiteID: siteID, Title: title, NextFetch: time.Now().Add(time.Hour),
 			Url: fmt.Sprintf("https://example.com/%s-%d.xml", title, time.Now().UnixNano()),
 		})
@@ -379,7 +379,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 	tag := fmt.Sprintf("srch%d", time.Now().UnixNano())
 	newSite := func(t *testing.T, host, title string) string {
 		t.Helper()
-		id, err := NewSiteRepository(db).Upsert(ctx, rss.Site{Host: host, URL: "https://" + host + "/", Title: title})
+		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
 		if err != nil {
 			t.Fatalf("Upsert site: %v", err)
 		}
@@ -388,7 +388,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 	}
 	newFeed := func(t *testing.T, siteID, title string) string {
 		t.Helper()
-		id, err := NewFeedRepository(db).Upsert(ctx, rss.Feed{
+		id, err := upsertFeed(ctx, db, rss.Feed{
 			SiteID: siteID, Title: title, NextFetch: time.Now().Add(time.Hour),
 			Url: fmt.Sprintf("https://example.com/search-%d.xml", time.Now().UnixNano()),
 		})

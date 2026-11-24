@@ -32,12 +32,12 @@ func TestSiteRepository(t *testing.T) {
 		Title:       "Example",
 		Description: "An example site",
 	}
-	id, err := repo.Upsert(t.Context(), want)
+	id, err := upsertSite(t.Context(), db, want, true)
 	if err != nil {
-		t.Fatalf("Upsert: %v", err)
+		t.Fatalf("upsertSite: %v", err)
 	}
 	if id == "" {
-		t.Fatal("Upsert returned an empty id")
+		t.Fatal("upsertSite returned an empty id")
 	}
 
 	check := func(t *testing.T, got rss.Site, want rss.Site) {
@@ -53,42 +53,42 @@ func TestSiteRepository(t *testing.T) {
 		}
 	}
 
-	t.Run("GetByID and GetByHost return the inserted site", func(t *testing.T) {
+	t.Run("GetByID and siteByHost return the inserted site", func(t *testing.T) {
 		got, err := repo.GetByID(t.Context(), id)
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)
 		}
 		check(t, got, want)
 
-		got, err = repo.GetByHost(t.Context(), host)
+		got, err = siteByHost(t, db, host)
 		if err != nil {
-			t.Fatalf("GetByHost: %v", err)
+			t.Fatalf("siteByHost: %v", err)
 		}
 		check(t, got, want)
 	})
 
-	t.Run("Upsert same host updates fields", func(t *testing.T) {
+	t.Run("upsertSite with the same host updates fields", func(t *testing.T) {
 		want.URL = "https://" + host + "/"
 		want.Title = "New title"
-		gotID, err := repo.Upsert(t.Context(), want)
+		gotID, err := upsertSite(t.Context(), db, want, true)
 		if err != nil {
-			t.Fatalf("Upsert: %v", err)
+			t.Fatalf("upsertSite: %v", err)
 		}
 		if gotID != id {
 			t.Errorf("id = %q; want %q", gotID, id)
 		}
 
-		got, err := repo.GetByHost(t.Context(), host)
+		got, err := siteByHost(t, db, host)
 		if err != nil {
-			t.Fatalf("GetByHost: %v", err)
+			t.Fatalf("siteByHost: %v", err)
 		}
 		check(t, got, want)
 	})
 
-	t.Run("Upsert with empty title and description keeps previous values", func(t *testing.T) {
-		gotID, err := repo.Upsert(t.Context(), rss.Site{Host: host, URL: want.URL})
+	t.Run("upsertSite with empty title and description keeps previous values", func(t *testing.T) {
+		gotID, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: want.URL}, true)
 		if err != nil {
-			t.Fatalf("Upsert: %v", err)
+			t.Fatalf("upsertSite: %v", err)
 		}
 		if gotID != id {
 			t.Errorf("id = %q; want %q", gotID, id)
@@ -132,11 +132,16 @@ func TestSiteRepositoryMissing(t *testing.T) {
 	if _, err := repo.GetByID(t.Context(), "00000000-0000-0000-0000-000000000000"); !errors.Is(err, rss.ErrNoRecord) {
 		t.Errorf("GetByID err = %v; want rss.ErrNoRecord", err)
 	}
+}
 
-	host := fmt.Sprintf("missing-%d.example.com", time.Now().UnixNano())
-	if _, err := repo.GetByHost(t.Context(), host); !errors.Is(err, rss.ErrNoRecord) {
-		t.Errorf("GetByHost err = %v; want rss.ErrNoRecord", err)
-	}
+// siteByHost returns the site with host, or rss.ErrNoRecord.
+func siteByHost(t *testing.T, db *sql.DB, host string) (rss.Site, error) {
+	t.Helper()
+	stmt := `SELECT id, host, url, title, description, created_at, updated_at
+		FROM sites
+		WHERE host = $1`
+
+	return NewSiteRepository(db).get(t.Context(), stmt, host)
 }
 
 // setIconCheck sets site id's icon_checked_at (NULL if checked is zero) and

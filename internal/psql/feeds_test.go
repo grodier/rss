@@ -20,7 +20,7 @@ import (
 func newTestSite(t *testing.T, db *sql.DB) string {
 	t.Helper()
 	host := fmt.Sprintf("feeds-test-%d.example.com", time.Now().UnixNano())
-	id, err := NewSiteRepository(db).Upsert(t.Context(), rss.Site{Host: host, URL: "https://" + host + "/"})
+	id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/"}, true)
 	if err != nil {
 		t.Fatalf("Upsert site: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 	t.Run("skips the catalog feed's site's other feeds", func(t *testing.T) {
 		catalog, subscribed := newTestFeed(t, db), newSubscribedFeed(t, db, userID)
 		addToDiscover(t, db, catalog.ID)
-		sibling, err := repo.Upsert(t.Context(), rss.Feed{
+		sibling, err := upsertFeed(t.Context(), db, rss.Feed{
 			SiteID: catalog.SiteID,
 			Url:    fmt.Sprintf("https://example.com/sibling-%d.xml", time.Now().UnixNano()),
 		})
@@ -661,12 +661,12 @@ func TestFeedRepositoryCategories(t *testing.T) {
 	f := newTestFeed(t, db)
 	check("new feed without categories", f.ID, []string{})
 	f.Categories = []string{"Tech", "News"}
-	if _, err := repo.Upsert(ctx, f); err != nil {
+	if _, err := upsertFeed(ctx, db, f); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 	check("Upsert", f.ID, []string{"Tech", "News"})
 	f.Categories = nil
-	if _, err := repo.Upsert(ctx, f); err != nil {
+	if _, err := upsertFeed(ctx, db, f); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 	check("Upsert with none", f.ID, []string{})
@@ -910,7 +910,7 @@ func TestFeedRepositoryMarkGone(t *testing.T) {
 		if err := repo.MarkGone(ctx, feed.ID); err != nil {
 			t.Fatalf("MarkGone: %v", err)
 		}
-		if _, err := repo.Upsert(ctx, feed); err != nil {
+		if _, err := upsertFeed(ctx, db, feed); err != nil {
 			t.Fatalf("Upsert: %v", err)
 		}
 		got, err := repo.GetByID(ctx, feed.ID)
@@ -993,7 +993,7 @@ func newTestFeedOn(t *testing.T, db *sql.DB, siteID string) rss.Feed {
 		Title:     "Feed",
 		NextFetch: time.Now().Add(time.Hour),
 	}
-	id, err := NewFeedRepository(db).Upsert(t.Context(), f)
+	id, err := upsertFeed(t.Context(), db, f)
 	if err != nil {
 		t.Fatalf("Upsert feed: %v", err)
 	}

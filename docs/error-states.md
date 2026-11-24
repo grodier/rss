@@ -166,7 +166,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | State | Trigger | Where (page, status) | Message | Can the user recover? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | L1 Query that isn't a website address | Search `zzzz` | Discover, 200 | "No sites or feeds match “zzzz”." and no lookup offered | The search box's placeholder mentions addresses; the result doesn't | ok |
-| L2 Address that can't be looked up | Search `127.0.0.1`, `localhost:8080` or `ftp://example.com` | Discover, 200, no lookup offered | As L1 | As L1 | ok (`LooksLikeURL` refuses them; a hostname that resolves to a private address fails as L4) |
+| L2 Address that can't be looked up | Search `127.0.0.1`, `localhost:8080` or `ftp://example.com` | Discover, 200, no lookup offered | As L1 | As L1 | ok (`discovery.ParseInput` refuses them; a hostname that resolves to a private address fails as L4) |
 | L2a Link to the app itself | Run with `-base-url http://paperround.test:8080` (`localhost` is L2) and search `paperround.test:8080/shared/x` | Discover, 200, in place of Look up | "That's a Paper Round link. To follow a shared timeline, paste its link into another feed reader." | Yes: it says where to follow it | new (#471) |
 | L3 Invalid address posted | Code read: only a crafted post to `/lookups` | Discover, 422, under the search box | "Enter a website address like example.com" | Yes | tied to the input as R4 |
 | L3a Link to the app itself posted | As L2a, then a crafted post of that address to `/lookups` | Discover, 422, under the search box | As L2a; not counted by the lookup limit | Yes | new (#471); tied to the input, as L3 |

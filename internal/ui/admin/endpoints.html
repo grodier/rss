@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Endpoints - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Endpoints</h1>
+        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests to www {{.Period.Label}}, by route.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests to www {{.Period.Label}}.{{end}}</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Period" .Periods)}}
+      </div>
+
+      {{if not .Total.Requests}}
+      <section class="admin-section">
+        <p class="empty">No requests {{.Period.Label}}. www writes its request metrics once a minute, and they show up here.</p>
+      </section>
+      {{else}}
+      <section class="admin-section" aria-labelledby="over-time">
+        <h2 id="over-time">Over time</h2>
+        {{template "endpoint-charts" .}}
+      </section>
+      <section class="admin-section" aria-labelledby="routes">
+        <h2 id="routes">Routes</h2>
+        <div class="table-wrap">
+          <table class="data endpoint-routes">
+            <thead>
+              <tr>
+                {{range .Columns}}<th scope="col"{{if .Numeric}} class="num"{{end}}{{with .Sort}} aria-sort="{{.}}"{{end}}><a href="{{.Href}}">{{.Label}}{{if .Sort}} <span aria-hidden="true">{{if eq .Sort "ascending"}}↑{{else}}↓{{end}}</span>{{end}}</a></th>{{end}}
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Routes}}
+              <tr>
+                <th scope="row"><a href="{{.Href}}">{{template "endpoint-route" .}}</a></th>
+                <td class="num">{{count .Requests}}</td>
+                <td class="num">{{.ClientErrors}}</td>
+                <td class="num">{{.ServerErrors}}</td>
+                <td class="num">{{.P50}}</td>
+                <td class="num">{{.P95}}</td>
+                <td class="num">{{.P99}}</td>
+                <td class="num">{{.Size}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{template "buckets-note"}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

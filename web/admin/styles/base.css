@@ -2,8 +2,8 @@
    reset, fonts, tokens and base styles), then the admin's own, in this
    order: shell (the sidebar and the phone menu), page (heads, sections,
    empty states, filters, stat rows), table, chart, waitlist (the waitlist
-   and invites), webperf (web performance), service (the service page)
-   and feeds (the feeds and sites pages).
+   and invites), webperf (web performance), service (the service page),
+   endpoints (the endpoints pages) and feeds (the feeds and sites pages).
    Vite inlines each @import when it builds, so it's one file. A later admin
    page group's sheet imports the partials its pages need in the same
    order. */
@@ -19,4 +19,5 @@
 @import "./partials/waitlist.css";
 @import "./partials/webperf.css";
 @import "./partials/service.css";
+@import "./partials/endpoints.css";
 @import "./partials/feeds.css";

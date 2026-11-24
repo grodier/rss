@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{.Method}} {{.Route}} - Endpoints - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1 class="endpoint-title">{{template "endpoint-route" .}}</h1>
+        <div class="head-actions">
+          <a class="btn btn-sm" href="{{.Back}}">All endpoints</a>
+        </div>
+        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests {{.Period.Label}}.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests {{.Period.Label}}.{{end}}</p>
+      </header>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Period" .Periods)}}
+      </div>
+
+      {{if not .Total.Requests}}
+      <section class="admin-section">
+        <p class="empty">No requests to <code>{{.Method}} {{.Route}}</code> {{.Period.Label}}.{{if ne .Period.Key "30d"}} Choose a longer period to look further back.{{end}}</p>
+      </section>
+      {{else}}
+      <section class="admin-section" aria-labelledby="over-time">
+        <h2 id="over-time">Over time</h2>
+        {{template "endpoint-charts" .}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="distribution">
+        <h2 id="distribution">Latency and status</h2>
+        <div class="side-by-side endpoint-mix">
+          <figure class="endpoint-chart">
+            <figcaption><h3>Latency {{.Period.Label}}</h3> <span class="unit">requests per bucket</span></figcaption>
+            {{chart .Histogram}}
+          </figure>
+          <div>
+            <h3 class="sub">Status</h3>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Class</th><th scope="col" class="num">Requests</th><th scope="col" class="num">Share</th></tr></thead>
+                <tbody>{{range .Statuses}}<tr><td>{{.Label}}</td><td class="num">{{count .Views}}</td><td class="num">{{.Share}}</td></tr>{{end}}</tbody>
+              </table>
+            </div>
+            {{if .Instances}}
+            <h3 class="sub">Instances</h3>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">Instance</th><th scope="col" class="num">Requests</th><th scope="col" class="num">Share</th><th scope="col" class="num">5xx %</th><th scope="col" class="num">p95 ms</th></tr></thead>
+                <tbody>{{range .Instances}}<tr><td><code>{{.Instance}}</code></td><td class="num">{{count .Requests}}</td><td class="num">{{.Share}}</td><td class="num">{{.ServerErrors}}</td><td class="num">{{.P95}}</td></tr>{{end}}</tbody>
+              </table>
+            </div>
+            {{else if .Period.Hourly}}
+            <p class="missing endpoint-note">Hourly metrics don’t say which instance served a request: choose 1h or 24h to see the instances.</p>
+            {{end}}
+          </div>
+        </div>
+        {{template "buckets-note"}}
+      </section>
+      {{end}}
+
+      {{template "errors-section" .}}
+    </main>
+  </div>
+</body>
+
+</html>
+
+{{/* errors-section is the route's most recent server errors, newest first:
+     each message's first line, cut to the column, with all of it in a
+     <details>. They're kept by
+     count, not by period, so the list doesn't follow the period. */}}
+{{define "errors-section"}}<section class="admin-section" aria-labelledby="errors">
+        <h2 id="errors">Recent server errors</h2>
+        {{if .Errors}}
+        <div class="table-wrap">
+          <table class="data endpoint-errors">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Instance</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Errors}}
+              <tr>
+                <td><time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z"}}">{{.At.UTC.Format "2006-01-02 15:04:05"}}</time></td>
+                <td><code>{{.Instance}}</code></td>
+                <td>{{if .Panic}}<span class="status status-danger">Panic</span>{{else}}Error{{end}}</td>
+                <td class="error-message"><details><summary><code>{{.FirstLine}}</code></summary><pre><code>{{.Message}}</code></pre></details></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <p class="missing">Times are UTC.{{if .MoreErrors}} Showing the {{.ErrorsShown}} most recent.{{end}} www keeps its newest {{count .ErrorsKept}} server errors across every route.</p>
+        {{else}}
+        <p class="missing">No server errors kept for this route. www keeps its newest {{count .ErrorsKept}} across every route.</p>
+        {{end}}
+      </section>{{end}}

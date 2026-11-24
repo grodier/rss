@@ -78,6 +78,8 @@ func serve(cfg config, logger *slog.Logger) error {
 		WebPerf:  psql.NewAdminWebPerfRepository(db),
 		Users:    psql.NewAdminUserRepository(db),
 
+		Endpoints: psql.NewAdminEndpointsRepository(db),
+
 		Feeds: psql.NewAdminFeedRepository(db),
 		// Refresh now fetches through internal/fetch, like www's
 		// refreshes, with the admin's own client.

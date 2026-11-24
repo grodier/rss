@@ -1,0 +1,25 @@
+{{/* endpoint-charts are the endpoints pages' charts, each under its title
+     and the period's figure, its unit on its axis, three to a row on wide
+     screens, then a line when deploys aren't marked (dot: the page, with
+     its Charts and Deploys). */}}
+{{define "endpoint-charts"}}<div class="endpoint-charts">
+          {{range .Charts}}
+          <figure class="endpoint-chart">
+            <figcaption>
+              <h3>{{.Title}}</h3>
+              <p class="endpoint-figure"><span>{{.FigureLabel}}</span> {{.Figure}}</p>
+            </figcaption>
+            {{chart .LineChart}}
+          </figure>
+          {{end}}
+        </div>
+        {{if not .Deploys.Rendering}}<p class="missing endpoint-note">Deploys aren’t marked: set -render-api-key (RSS_RENDER_API_KEY) and -render-service-id (RSS_RENDER_SERVICE_ID) to read them from Render.</p>
+        {{else if .Deploys.Failed}}<p class="missing endpoint-note">Couldn’t reach Render, so deploys aren’t marked.</p>{{end}}{{end}}
+
+{{/* endpoint-route is a route and its method, as the tables and the route
+     page's head show it (dot: a map of Route and Method). */}}
+{{define "endpoint-route"}}<span class="method">{{.Method}}</span> <code>{{slashBreaks .Route}}</code>{{end}}
+
+{{/* buckets-note says where the percentiles come from, under a table of
+     them. */}}
+{{define "buckets-note"}}<p class="missing">Percentiles are estimated from latency buckets between 5 ms and 10 s.</p>{{end}}

@@ -89,6 +89,8 @@ func (s *Server) router() http.Handler {
 			r.Post("/discover/pick", s.pickFormHandler)
 			r.Post("/discover/pick/unskip", s.unskipHandler)
 			r.Get("/service", s.serviceHandler)
+			r.Get("/endpoints", s.endpointsHandler)
+			r.Get("/endpoints/route", s.routeHandler)
 			r.Get("/web-performance", s.webPerfHandler)
 			r.Get("/audit", s.auditHandler)
 		})

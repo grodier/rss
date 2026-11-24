@@ -686,9 +686,9 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, Web performance, Service health and Endpoints are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, Queues, Web performance, Service health and Endpoints are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `endpoints`, `feeds`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `endpoints`, `feeds`, `queues`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
    The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
    Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
@@ -714,7 +714,7 @@ Locally it runs with `make run/admin` (http://localhost:4001).
    The head says the admin's build and when the page was rendered.
    The Service section, first, shows `www`'s uptime over 24 hours and its version from the pinger's checks (`serviceTiles`), linking to the service page, or "Not configured" without the pinger.
 3. **Queues.** `AdminOverviewRepository.Queues` counts each runner's due jobs and finds the oldest's due time in one query, with the same condition its claim query uses (`feedDue`, `siteIconDue`, `enrichJobDue`, `emailDue`, `lookupPending`, `importFeedPending`), so it counts what the runner would take next; lookups and import feeds are due from when they were asked for.
-   `queueRows` says how long the oldest has waited (`wait`), and a queue is behind when that's over `rss.QueueBehindAfter` (15 minutes).
+   `queueRows` says how long the oldest has waited (`wait`), and a queue is behind when that's over `rss.QueueBehindAfter` (15 minutes); each queue but refresh links to its section of the queues page.
 4. **Jobs.** `AdminOverviewRepository.Jobs` sums `job_metrics`' minute rows of the last 24 hours by runner and outcome; minute rows are kept 7 days, so the window needs no hourly rollups.
    `jobRows` sorts each shown runner's outcomes (refresh, lookups, enrichment, email) into the buckets they all share (`jobRunners`: done, failed, and other for the rest), and `bucketBar` draws them as one bar per runner, failures first and at least 3% wide, with the per-outcome breakdown as the bar's tooltip and label; the Failed column gives the exact share, and with no job metrics at all, the section says so.
 
@@ -832,6 +832,29 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
 3. `internal/ui/admin/seed.html`, `seed_add.html`, `discover.html` and `pick.html`.
 
 **Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`, `pick_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`, `admin_pick_test.go`.
+
+### Queues
+
+`GET /queues` (`queuesHandler`) shows each background queue's jobs and its failures grouped by cause, so a cause that spreads (a host down, a parser bug) is acted on at once ("Admin" in decisions.md).
+
+1. **Figures.** `AdminQueuesRepository.Counts` counts each queue's jobs by state in one query: pending with its claim query's condition (as the Overview's do), running for the queues with a status (lookups, imports), failed (failed lookups and import feeds, enrichment jobs that failed and wait to be tried again, emails given up on), and, for icons, which store no error, the checks overdue by `rss.QueueBehindAfter`; `queueTiles` adds how long the oldest pending job has waited.
+   `JobsPerHour` sums `job_metrics`' minute rows of the last 24 hours into hours that end at now less a whole number of hours, so the last isn't cut short, and `jobsChart` draws each queue's as a line, 0 for an hour with none.
+2. **Failures.** For lookups, imports and enrichment, `AdminQueuesRepository.Failures` reads every failed job, newest first, and `groupFailures` groups them by `normalizeError` of their error (an import feed's failure kind first): exact text split one cause into a group per site, since errors carry addresses, so it replaces addresses with `<url>`, unknown hosts (and the resolver asked) with `<host>`, IPv6 addresses with `<ip>` and numbers standing alone with `<n>`.
+   The page lists the 20 largest groups (ties: the most recent failure first), each with its error escaped and cut to 200 characters (whole on hover), its count, its oldest and newest failure (enrichment jobs: when queued), and its 5 newest jobs: a lookup's address with its site's page, an import feed's address with its import's date and its feed's page, an article's ID and address with its feed's page.
+   An enrichment job on its first attempt has no error yet and isn't a failure; emails' failures are for the email page, so Email shows its figures only.
+3. **Actions.** `POST /queues/{queue}/retry` and `/delete` (`queueAction`) take one job (`id`) or a group's (`ids`, space-separated, with the group's error): a group's are the IDs its form listed when the page was rendered, the newest 1,000 at most, never what matches when the post arrives, and its count must be typed to confirm (commas allowed), else the page is shown again with the error on that group's field (422); more than 1,000, or IDs that aren't the queue's, are refused (400).
+   `AdminQueuesRepository.Retry` and `Delete` change only the jobs still failed and record `queue.retry` or `queue.delete` with the count, on the job (`lookup`, `import_feed` as `{import_id}.{position}`, or `enrich_job`) for one, or with the group's error for a group, in the same transaction; with nothing changed, nothing's recorded.
+   Retry makes a lookup or import feed pending again with its attempts and error cleared (a lookup also re-requested now), and an enrichment job due now; Delete deletes a lookup, which is also its site key's cache, so the next lookup runs afresh, or an enrichment job, whose article keeps what it has.
+   Import feeds can't be deleted, since they're their import's results page.
+   Each action goes back to the queue's section with a flash saying how many changed.
+
+**Start at:**
+
+1. `internal/admin/queues.go` (`renderQueues`, `groupFailures`, `normalizeError`, `queueAction`).
+2. `internal/psql/admin_queues.go`.
+3. `internal/ui/admin/queues.html` and `web/admin/styles/partials/queues.css`.
+
+**Tests:** `internal/admin/queues_test.go` (with `TestNormalizeError`); `internal/psql/admin_queues_test.go`.
 
 ### Web performance
 

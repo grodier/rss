@@ -140,10 +140,11 @@ func contentTiles(c rss.OverviewContent) []statTile {
 
 // queueRow is one queue in the Queues section: its name, how many jobs are
 // due, how long the oldest has waited ("—" for none), and whether it's
-// behind (rss.QueueBehindAfter). Each links to the Queues page once #582
-// adds it.
+// behind (rss.QueueBehindAfter). Href is its section of the queues page,
+// "" for refresh, which has none (the feeds page shows feeds' failures).
 type queueRow struct {
 	Label  string
+	Href   string
 	Jobs   int
 	Wait   string
 	Behind bool
@@ -168,6 +169,9 @@ func queueRows(queues []rss.QueueStatus, now time.Time) []queueRow {
 			label = q.Name
 		}
 		rows[i] = queueRow{Label: label, Jobs: q.Jobs, Wait: "—", Behind: q.Behind(now)}
+		if q.Name != "refresh" {
+			rows[i].Href = "/queues#" + q.Name
+		}
 		if q.Jobs > 0 {
 			rows[i].Wait = wait(now.Sub(q.Oldest))
 		}

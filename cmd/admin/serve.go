@@ -80,7 +80,8 @@ func serve(cfg config, logger *slog.Logger) error {
 
 		Endpoints: psql.NewAdminEndpointsRepository(db),
 
-		Feeds: psql.NewAdminFeedRepository(db),
+		Feeds:  psql.NewAdminFeedRepository(db),
+		Queues: psql.NewAdminQueuesRepository(db),
 		// Refresh now fetches through internal/fetch, like www's
 		// refreshes, with the admin's own client.
 		Refresher: &ingest.Refresher{Fetcher: fetch.New(fetch.Options{}), Store: psql.NewFeedRepository(db)},

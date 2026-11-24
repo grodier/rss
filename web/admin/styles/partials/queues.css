@@ -1,0 +1,63 @@
+/* The queues page: each queue's jobs-per-hour chart, and its failures'
+   groups, a list separated by dividers, each its error in a fixed-width
+   face, its count and times, its newest jobs and its group form. */
+@layer components {
+  .queue-chart {
+    margin-block-start: 1.25rem;
+  }
+
+  .queue-chart figcaption {
+    margin-block-end: 0.375rem;
+  }
+
+  .queue-chart h3 {
+    font-size: 0.8125rem;
+    font-weight: 650;
+  }
+
+  .queue-group {
+    padding-block: 1rem;
+  }
+
+  .queue-group + .queue-group {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .queue-error code {
+    font-size: 0.8125rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .queue-group-meta {
+    margin-block: 0.25rem 0.625rem;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  .queue-group-meta strong {
+    color: var(--text);
+  }
+
+  .queue-jobs .queue-job small {
+    display: block;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .queue-group-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    margin-block-start: 0.75rem;
+  }
+
+  .queue-group-form .field {
+    flex: 0 1 18rem;
+  }
+
+  .queue-group-form .form-actions {
+    margin-block-start: 0;
+  }
+}

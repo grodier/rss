@@ -48,7 +48,7 @@
             <tbody>
               {{range .Queues}}
               <tr>
-                <td>{{.Label}}</td>
+                <td>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</td>
                 <td class="num">{{count .Jobs}}</td>
                 <td>{{.Wait}}</td>
                 <td>{{if .Behind}}<span class="status status-danger">Behind</span>{{else}}<span class="status">OK</span>{{end}}</td>

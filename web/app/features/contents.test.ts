@@ -93,11 +93,32 @@ describe("contents", () => {
     expect(open()).toEqual([]);
   });
 
+  it("marks the section the URL points at while its heading is near the top", async () => {
+    // Just after following "One": its first <h3> is close below and has
+    // passed the reading line too.
+    at(16, 120, 1800);
+    location.hash = "#body-one";
+    await start();
+    expect(marked()).toEqual(["One"]);
+
+    at(-200, -80, 1600);
+    await scroll();
+    expect(marked()).toEqual(["Two"]);
+    location.hash = "";
+  });
+
   it("marks the last section on screen at the end of the page", async () => {
     at(-900, -400, 700);
     Object.defineProperty(window, "scrollY", { value: 4000, configurable: true });
     await start();
     expect(marked()).toEqual(["Café"]);
+  });
+
+  it("doesn't count a page that fits the screen as at its end before it's scrolled", async () => {
+    at(500, 600, 700);
+    Object.defineProperty(document.documentElement, "scrollHeight", { value: 1000, configurable: true });
+    await start();
+    expect(marked()).toEqual([]);
   });
 
   it("does nothing while the list isn't shown", async () => {
@@ -124,6 +145,14 @@ describe("readingSection", () => {
     expect(readingSection([300, 800], 300)).toBe(0);
     expect(readingSection([-500, 100, 800], 300)).toBe(1);
     expect(readingSection([], 300)).toBe(-1);
+  });
+
+  it("is the target while its heading is between the top of the screen and the line", async () => {
+    const { readingSection } = await import("./contents");
+    expect(readingSection([16, 120, 800], 300, undefined, 0)).toBe(0);
+    expect(readingSection([-200, 120, 800], 300, undefined, 0)).toBe(1);
+    expect(readingSection([-900, -400, 500], 300, undefined, 2)).toBe(1);
+    expect(readingSection([-900, 100, 200], 300, 1000, 1)).toBe(1);
   });
 
   it("is the last heading on screen at the end of the page", async () => {

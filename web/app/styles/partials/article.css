@@ -90,13 +90,16 @@
       inset-block: 0;
       inset-inline-start: 100%;
       inline-size: min(18rem, calc((100vw - var(--column)) / 2 - 1rem));
-      padding: 1.25rem 1rem 2.5rem 1.75rem;
+      padding: 1rem 0.75rem 2.25rem 1.5rem;
     }
 
+    /* Its padding keeps the links' focus rings inside the scrolling box,
+       which would clip them. */
     .reader-contents {
       position: sticky;
-      inset-block-start: 1.25rem;
-      max-block-size: calc(100vh - 2.5rem);
+      inset-block-start: 1rem;
+      max-block-size: calc(100vh - 2rem);
+      padding: 0.25rem;
       overflow-y: auto;
       font-family: var(--font);
     }
@@ -134,7 +137,9 @@
       font-weight: 400;
     }
 
-    .reader-contents-list a:hover {
+    /* Pointed at, or the section holding the <h3> being read. */
+    .reader-contents-list a:hover,
+    .reader-contents-list li[data-open] > a {
       color: var(--text);
     }
 

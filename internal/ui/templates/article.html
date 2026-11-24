@@ -61,7 +61,7 @@
              contents.ts marks the section being read. */}}
         <div class="reader-rail">
           <nav class="reader-contents" aria-label="Contents" data-contents>
-            <p class="reader-contents-title">Contents</p>
+            <p class="reader-contents-title" aria-hidden="true">Contents</p>
             <ol class="reader-contents-list" role="list">
               {{- range .}}
               <li><a href="#{{.ID}}">{{.Text}}</a>

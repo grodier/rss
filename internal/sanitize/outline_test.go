@@ -68,11 +68,17 @@ func TestHTMLOutline(t *testing.T) {
 		{
 			name: "long heading",
 			raw:  `<h2>` + long + `</h2>`,
+			// The text cut to 97 bytes, then "…" (3 bytes).
 			want: []Heading{{
 				ID:    "body-" + strings.TrimSuffix(strings.Repeat("word-", 12), "-"),
-				Text:  strings.TrimSpace(long)[:100],
+				Text:  strings.TrimSpace(long)[:97] + "…",
 				Level: 2,
 			}},
+		},
+		{
+			name: "long heading cut after a space",
+			raw:  `<h2>` + strings.Repeat("a", 96) + ` bcdef</h2>`,
+			want: []Heading{{ID: "body-" + strings.Repeat("a", 60), Text: strings.Repeat("a", 96) + "…", Level: 2}},
 		},
 		{
 			name: "inline markup and whitespace in the text",
@@ -100,6 +106,11 @@ func TestHTMLOutline(t *testing.T) {
 			// and nothing in the card is the article's.
 			name: "in a post card",
 			raw:  `<figure class="social-post" data-social="x"><figcaption><h3>Name</h3></figcaption></figure><h2>Own</h2>`,
+			want: []Heading{{ID: "body-own", Text: "Own", Level: 2}},
+		},
+		{
+			name: "in an element the policy removes with its content",
+			raw:  `<object data="x.swf"><h2>Flash</h2></object><nostyle><h2>Unstyled</h2></nostyle><h2>Own</h2>`,
 			want: []Heading{{ID: "body-own", Text: "Own", Level: 2}},
 		},
 		{

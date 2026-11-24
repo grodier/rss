@@ -71,7 +71,7 @@ type Body struct {
 // Heading is one of an article's section headings, for its contents list.
 type Heading struct {
 	ID    string // the heading's id, with its "body-" prefix
-	Text  string // its text, whitespace collapsed, at most 100 bytes (textcut.Bytes)
+	Text  string // its text, whitespace collapsed, at most 100 bytes, ending in "…" if cut
 	Level int    // 2 or 3
 }
 

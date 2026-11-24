@@ -27,8 +27,9 @@ const (
 // "-3"… when that id is taken, or "body-section-N" when the slug is empty,
 // N being the heading's place in the outline. Headings inside a
 // <blockquote> or a post card (see socialCard) are quoted, not the
-// article's, and headings with no text have nothing to list: both are
-// skipped and get no id.
+// article's, headings the policy removes with what holds them (see
+// droppedWithContent) aren't shown, and headings with no text have nothing
+// to list: all are skipped and get no id.
 func outline(root *html.Node) []Heading {
 	taken := make(map[string]bool)
 	collectIDs(root, taken)
@@ -36,7 +37,7 @@ func outline(root *html.Node) []Heading {
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if c.Type != html.ElementNode || isQuoted(c) {
+			if c.Type != html.ElementNode || isQuoted(c) || droppedWithContent[c.Data] {
 				continue
 			}
 			level := 0
@@ -60,13 +61,22 @@ func outline(root *html.Node) []Heading {
 			}
 			headings = append(headings, Heading{
 				ID:    id,
-				Text:  textcut.Bytes(text, headingTextMax),
+				Text:  headingText(text),
 				Level: level,
 			})
 		}
 	}
 	walk(root)
 	return headings
+}
+
+// headingText returns text, a heading's collapsed text, cut to at most
+// headingTextMax bytes (textcut.Bytes), ending in "…" when it was cut.
+func headingText(text string) string {
+	if len(text) <= headingTextMax {
+		return textcut.Bytes(text, headingTextMax)
+	}
+	return strings.TrimRight(textcut.Bytes(text, headingTextMax-len("…")), " ") + "…"
 }
 
 // isQuoted reports whether n holds someone else's words: a <blockquote> or
@@ -77,6 +87,15 @@ func isQuoted(n *html.Node) bool {
 	}
 	class, _ := attr(n, "class")
 	return n.DataAtom == atom.Figure && class == "social-post"
+}
+
+// droppedWithContent are the elements bluemonday's policy removes with
+// everything in them (bluemonday's addDefaultSkipElementContent), so a
+// heading inside one never reaches the page.
+var droppedWithContent = map[string]bool{
+	"frame": true, "frameset": true, "iframe": true, "noembed": true,
+	"noframes": true, "noscript": true, "nostyle": true, "object": true,
+	"script": true, "style": true, "title": true,
 }
 
 // collectIDs adds the id of every element under n to ids.

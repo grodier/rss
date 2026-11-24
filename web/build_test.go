@@ -143,9 +143,11 @@ type manifestEntry struct {
 // their time, so growing them is a decision: raise a budget only in a PR
 // that says why in its description. The CSS budget was raised by #723's
 // contents rail (about 240 bytes) only enough to fit it, rather than to its
-// measurement plus 10%, so the next addition is weighed again.
+// measurement plus 10%, so the next addition is weighed again, and the
+// JavaScript budget the same way by #774's read marks on opening an article
+// (initReadMarks, about 165 bytes).
 const (
-	readingJSBudget  = 13060 // 11875 measured
+	readingJSBudget  = 13240 // 11875 measured; 13058 before #774, 13223 with it
 	readingCSSBudget = 11560 // 10378 measured; 11505 with #723
 )
 

@@ -23,7 +23,7 @@ const modules: Record<string, string[]> = {
   "../features/infinite-scroll": ["init"],
   "../features/live-search": ["init"],
   "../features/lookup-status": ["init"],
-  "../features/read-pings": ["enhancePings"],
+  "../features/read-pings": ["enhancePings", "initReadMarks"],
   "../features/recent-searches": ["init", "clearRecentSearches"],
   "../features/reorder": ["init"],
   "../features/rum": ["setupRUM"],
@@ -40,6 +40,7 @@ const entries: Record<string, string[]> = {
   reading: [
     "rum",
     "local-times",
+    "read-pings",
     "read-pings",
     "back-forward",
     "save-star",
@@ -59,6 +60,7 @@ const entries: Record<string, string[]> = {
   section: [
     "rum",
     "local-times",
+    "read-pings",
     "read-pings",
     "back-forward",
     "save-star",

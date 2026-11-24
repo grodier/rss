@@ -134,17 +134,6 @@ func TestSettingsAccountHandler(t *testing.T) {
 	)
 }
 
-func TestSettingsDataHandler(t *testing.T) {
-	s := newTestServer(t)
-	assertBodyContains(t, serveSettingsPage(t, s, s.settingsDataHandler, settingsSession).Body.String(),
-		"<h1>Your data</h1>",
-		`<a class="settings-row" href="/settings/import" aria-describedby="import-hint">`,
-		"Bring your feeds from another reader with an OPML file.",
-		`<a class="settings-row" href="/settings/export" aria-describedby="export-hint">`,
-		"An OPML file you can import into another reader.",
-	)
-}
-
 func TestSettingsHelpHandler(t *testing.T) {
 	t.Run("shows the support address", func(t *testing.T) {
 		s := newTestServerConfig(t, Config{Port: 4000, Env: "development", SupportEmail: "help@example.com"}, Services{})

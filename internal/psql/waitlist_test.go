@@ -20,7 +20,7 @@ import (
 // test ends.
 func newWaitlistEmail(t *testing.T, db *sql.DB) string {
 	t.Helper()
-	email := fmt.Sprintf("test-waitlist-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("test-waitlist-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM waitlist WHERE email = $1`, email); err != nil {
 			t.Errorf("cleanup waitlist: %v", err)

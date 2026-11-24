@@ -63,6 +63,7 @@ func webPerfViews(t *testing.T, repo *RUMRepository, day time.Time, n int) {
 }
 
 func TestAdminWebPerfRawAndRollupsAgree(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -178,6 +179,7 @@ func bucketOf(bounds []float64, v float64) (float64, float64) {
 }
 
 func TestAdminWebPerfDeviceAndWindow(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -218,6 +220,7 @@ func TestAdminWebPerfDeviceAndWindow(t *testing.T) {
 // A value on a threshold is in the better rating, from raw views as from
 // rollups, though the columns are real and the thresholds aren't.
 func TestAdminWebPerfThresholdEdges(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -246,6 +249,7 @@ func TestAdminWebPerfThresholdEdges(t *testing.T) {
 // The Back and Forward views: how many were restored, and the reasons the
 // rest weren't, most first, for the window and device only.
 func TestAdminWebPerfBackForward(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -305,6 +309,7 @@ func TestAdminWebPerfBackForward(t *testing.T) {
 // A route's views from rum_views and from rum_daily agree as the page's do,
 // with the same buckets, and only the raw views know what was slow.
 func TestAdminWebPerfRouteRawAndRollupsAgree(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -383,6 +388,7 @@ func TestAdminWebPerfRouteRawAndRollupsAgree(t *testing.T) {
 // navigation types and the transfer sizes, of the route, window and device
 // only.
 func TestAdminWebPerfRouteDetails(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()
@@ -466,6 +472,7 @@ func TestAdminWebPerfRouteDetails(t *testing.T) {
 }
 
 func TestAdminWebPerfHasViews(t *testing.T) {
+	t.Parallel()
 	repo, db := newRUMRepo(t)
 	perf := NewAdminWebPerfRepository(db)
 	ctx := context.Background()

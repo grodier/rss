@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/grodier/rss/internal/psql/psqltest"
 	"github.com/grodier/rss/internal/rss"
 )
 
 func TestLikePattern(t *testing.T) {
+	t.Parallel()
 	got := likePattern(`50%_off\`)
 	want := `%50\%\_off\\%`
 	if got != want {
@@ -20,11 +20,12 @@ func TestLikePattern(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSearchRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSearchRepository(db)
 	ctx := t.Context()
 
-	tok := fmt.Sprintf("zq%d", time.Now().UnixNano())
+	tok := fmt.Sprintf("zq%d", psqltest.Unique())
 	t.Cleanup(func() {
 		db.Exec(`DELETE FROM feeds WHERE url LIKE $1`, "%"+tok+"%")
 		db.Exec(`DELETE FROM sites WHERE host LIKE $1`, "%"+tok+"%")
@@ -305,6 +306,7 @@ func addSiteHost(t *testing.T, addSite func(host, title string) string, host, ti
 }
 
 func TestMatchPatterns(t *testing.T) {
+	t.Parallel()
 	if got, want := prefixPattern(`50%_off`), `50\%\_off%`; got != want {
 		t.Errorf("prefixPattern = %q; want %q", got, want)
 	}

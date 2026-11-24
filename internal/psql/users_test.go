@@ -15,10 +15,11 @@ import (
 )
 
 func TestUserRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)
 
-	email := fmt.Sprintf("test-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("test-%d@example.com", psqltest.Unique())
 	const password = "correct-horse-battery"
 
 	t.Cleanup(func() {
@@ -200,6 +201,7 @@ func TestUserRepository(t *testing.T) {
 }
 
 func TestUserRepositoryChangePassword(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)
 	sessions := NewUserSessionRepository(db)
@@ -210,7 +212,7 @@ func TestUserRepositoryChangePassword(t *testing.T) {
 	// the user's email and the sessions' IDs.
 	newUser := func(t *testing.T) (email, userID, keep, other string) {
 		t.Helper()
-		email = fmt.Sprintf("test-password-%d@example.com", time.Now().UnixNano())
+		email = fmt.Sprintf("test-password-%d@example.com", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 				t.Errorf("cleanup user: %v", err)
@@ -275,6 +277,7 @@ func TestUserRepositoryChangePassword(t *testing.T) {
 }
 
 func TestUserRepositoryCheckPassword(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)
 	userID, _ := newTokenUser(t, repo)
@@ -299,6 +302,7 @@ func TestUserRepositoryCheckPassword(t *testing.T) {
 }
 
 func TestDeleteUser(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewUserRepository(db)
 	sessions := NewUserSessionRepository(db)
@@ -322,7 +326,7 @@ func TestDeleteUser(t *testing.T) {
 	// user's ID and email.
 	newUser := func(t *testing.T, articleID string) (string, string) {
 		t.Helper()
-		email := fmt.Sprintf("test-delete-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("test-delete-%d@example.com", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 				t.Errorf("cleanup user: %v", err)
@@ -414,6 +418,7 @@ func TestDeleteUser(t *testing.T) {
 }
 
 func TestCreateFromInvite(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	const password = "correct-horse-battery"
@@ -422,7 +427,7 @@ func TestCreateFromInvite(t *testing.T) {
 	// test ends.
 	newUserEmail := func(t *testing.T) string {
 		t.Helper()
-		email := fmt.Sprintf("test-invite-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("test-invite-%d@example.com", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 				t.Errorf("cleanup user: %v", err)

@@ -19,7 +19,7 @@ import (
 // newTestSite inserts a site and deletes it (and its feeds) on cleanup.
 func newTestSite(t *testing.T, db *sql.DB) string {
 	t.Helper()
-	host := fmt.Sprintf("feeds-test-%d.example.com", time.Now().UnixNano())
+	host := fmt.Sprintf("feeds-test-%d.example.com", psqltest.Unique())
 	id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/"}, true)
 	if err != nil {
 		t.Fatalf("Upsert site: %v", err)
@@ -241,7 +241,7 @@ func TestFeedRepositoryClaimDue(t *testing.T) {
 		addToDiscover(t, db, catalog.ID)
 		sibling, err := upsertFeed(t.Context(), db, rss.Feed{
 			SiteID: catalog.SiteID,
-			Url:    fmt.Sprintf("https://example.com/sibling-%d.xml", time.Now().UnixNano()),
+			Url:    fmt.Sprintf("https://example.com/sibling-%d.xml", psqltest.Unique()),
 		})
 		if err != nil {
 			t.Fatalf("Upsert sibling: %v", err)
@@ -501,7 +501,7 @@ func TestSaveFetchMarksCopies(t *testing.T) {
 	ctx := t.Context()
 	feedA, feedB, feedC := newTestFeed(t, db), newTestFeed(t, db), newTestFeed(t, db)
 
-	nano := time.Now().UnixNano()
+	nano := psqltest.Unique()
 	post := fmt.Sprintf("https://example.com/copies-%d", nano)
 	other := fmt.Sprintf("https://example.com/copies-other-%d", nano)
 	moved := fmt.Sprintf("https://example.com/copies-moved-%d", nano)
@@ -935,7 +935,7 @@ func TestFeedRepositoryOmittedOptionalColumns(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewFeedRepository(db)
 
-	url := fmt.Sprintf("https://example.com/feed-%d.xml", time.Now().UnixNano())
+	url := fmt.Sprintf("https://example.com/feed-%d.xml", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM feeds WHERE url = $1`, url); err != nil {
 			t.Errorf("cleanup feed: %v", err)
@@ -989,7 +989,7 @@ func newTestFeedOn(t *testing.T, db *sql.DB, siteID string) rss.Feed {
 	t.Helper()
 	f := rss.Feed{
 		SiteID:    siteID,
-		Url:       fmt.Sprintf("https://example.com/site-feed-%d.xml", time.Now().UnixNano()),
+		Url:       fmt.Sprintf("https://example.com/site-feed-%d.xml", psqltest.Unique()),
 		Title:     "Feed",
 		NextFetch: time.Now().Add(time.Hour),
 	}

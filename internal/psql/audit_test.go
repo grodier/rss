@@ -16,7 +16,7 @@ import (
 // the rows it's recorded in are deleted when the test ends.
 func testActor(t *testing.T, db *sql.DB) rss.AuditActor {
 	t.Helper()
-	email := fmt.Sprintf("audit-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("audit-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := db.Exec(`DELETE FROM admin_audit WHERE admin_email = $1`, email); err != nil {
 			t.Errorf("cleanup audit: %v", err)
@@ -57,8 +57,8 @@ func cleanupExec(t *testing.T, db *sql.DB, stmt string, args ...any) {
 func TestAuditRepository(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewAuditRepository(db)
-	action := fmt.Sprintf("test.%d", time.Now().UnixNano())
-	target := fmt.Sprintf("target-%d", time.Now().UnixNano())
+	action := fmt.Sprintf("test.%d", psqltest.Unique())
+	target := fmt.Sprintf("target-%d", psqltest.Unique())
 
 	first := rss.AuditEntry{AuditActor: testActor(t, db), Action: action, TargetType: "user", TargetID: target,
 		Before: map[string]any{"name": "<b>Ada</b>", "admin": false},
@@ -118,7 +118,7 @@ func TestAuditRepository(t *testing.T) {
 	})
 
 	t.Run("Record fills the admin's email from its ID", func(t *testing.T) {
-		email := fmt.Sprintf("admin-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("admin-%d@example.com", psqltest.Unique())
 		cleanupExec(t, db, `DELETE FROM admins WHERE email = $1`, email)
 		cleanupExec(t, db, `DELETE FROM admin_audit WHERE admin_email = $1`, email)
 		id, err := NewAdminRepository(db).Create(t.Context(), email, newAdminCredentials(t, "pw", "s"), testActor(t, db))
@@ -211,7 +211,7 @@ func TestAuditInTransaction(t *testing.T) {
 	})
 
 	t.Run("AdminRepository.Create and Reset", func(t *testing.T) {
-		email := fmt.Sprintf("admin-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("admin-%d@example.com", psqltest.Unique())
 		cleanupExec(t, db, `DELETE FROM admins WHERE email = $1`, email)
 		repo := NewAdminRepository(db)
 
@@ -245,7 +245,7 @@ func TestAuditInTransaction(t *testing.T) {
 	})
 
 	t.Run("UserRepository.Create", func(t *testing.T) {
-		email := fmt.Sprintf("user-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("user-%d@example.com", psqltest.Unique())
 		cleanupExec(t, db, `DELETE FROM users WHERE email = $1`, email)
 		repo := NewUserRepository(db)
 

@@ -22,18 +22,6 @@ func TestRunMigrateRequiresDSN(t *testing.T) {
 
 func TestRunMigrate(t *testing.T) {
 	dsn := psqltest.NewSchemaDSN(t)
-
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"migrate", "-db-dsn", dsn}, noEnv, &stdout, &stderr); code != 0 {
-		t.Fatalf("run() = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
-	}
-	if out := stdout.String(); !strings.Contains(out, "database migrated") {
-		t.Errorf("want the migration logged; stdout:\n%s", out)
-	}
-}
-
-func TestRunMigrateRekeys(t *testing.T) {
-	dsn := psqltest.NewSchemaDSN(t)
 	migrate := func() string {
 		t.Helper()
 		var stdout, stderr bytes.Buffer
@@ -43,8 +31,8 @@ func TestRunMigrateRekeys(t *testing.T) {
 		return stdout.String()
 	}
 
-	if out := migrate(); !strings.Contains(out, "site keys: re-keyed") {
-		t.Errorf("first migrate: want the re-key logged; stdout:\n%s", out)
+	if out := migrate(); !strings.Contains(out, "database migrated") || !strings.Contains(out, "site keys: re-keyed") {
+		t.Errorf("first migrate: want the migration and the re-key logged; stdout:\n%s", out)
 	}
 	if out := migrate(); strings.Contains(out, "re-keyed") {
 		t.Errorf("second migrate: re-keyed again; stdout:\n%s", out)

@@ -9,6 +9,7 @@ import (
 
 // Requires a database; see psqltest.DSN.
 func TestOpenDBTurnsOffJIT(t *testing.T) {
+	t.Parallel()
 	db, err := OpenDB(psqltest.DSN(t), 1, 1, time.Minute)
 	if err != nil {
 		t.Fatalf("OpenDB: %v", err)

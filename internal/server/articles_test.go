@@ -778,6 +778,11 @@ func TestShareButton(t *testing.T) {
 					if !hasAttr(share, "hidden") {
 						t.Error("Share button isn't hidden")
 					}
+					// share.ts relies on it: showCopied fills it.
+					labels := findAll(share, func(n *html.Node) bool { return n.Data == "span" && hasClass(n, "copied-label") })
+					if len(labels) != 1 || attr(labels[0], "aria-hidden") != "true" {
+						t.Error(`Share button has no span.copied-label[aria-hidden="true"]`)
+					}
 				})
 			}
 		})

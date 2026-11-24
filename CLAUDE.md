@@ -202,6 +202,8 @@ The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://gi
 - DB tests: `psqltest.NewDB(t)` (`internal/psql/psqltest`).
   They skip locally without `RSS_TEST_DB_DSN` and fail in CI without it.
   Create uniquely-named rows, delete them in `t.Cleanup`, never truncate.
+  Name them with `psqltest.Unique()`, not `time.Now().UnixNano()`, which two parallel tests can share.
+  A DB test that touches only its own rows, or runs in its own schema (`psqltest.NewSchemaDSN`), calls `t.Parallel()`; one that reads whole tables (counts, a queue's `Claim…`, unfiltered lists, Discover's sections) doesn't, so it runs before the parallel ones, and neither do the others in its file.
 - Bug fixes come with a test that fails before the fix, where feasible.
 - Test behavior the app has, not behavior it no longer has.
   When code is removed, delete its tests; don't add tests asserting that a removed route, handler or function is gone (e.g. "`GET /old` returns 404").

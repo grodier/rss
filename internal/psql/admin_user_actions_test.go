@@ -19,7 +19,7 @@ import (
 // daily counts) on cleanup, and returns its ID and address.
 func actionTestUser(t *testing.T, db *sql.DB, confirmedAt any) (string, string) {
 	t.Helper()
-	email := fmt.Sprintf("action-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("action-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() { deleteEmailsTo(t, db, email) })
 	return adminTestUser(t, db, "Action User", email, time.Now().Add(-time.Hour), confirmedAt), email
 }
@@ -60,6 +60,7 @@ func onlyEntry(t *testing.T, db *sql.DB, by rss.AuditActor, action, id string) r
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestAdminUserRepositorySendLink(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
 
@@ -170,6 +171,7 @@ func TestAdminUserRepositorySendLink(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
 	tokens := NewTokenRepository(db)
@@ -255,6 +257,7 @@ func TestAdminUserRepositoryMarkConfirmed(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestAdminUserRepositoryLogOutEverywhere(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
 
@@ -324,6 +327,7 @@ func TestAdminUserRepositoryLogOutEverywhere(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestAdminUserRepositoryDelete(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
 	subs := NewSubscriptionRepository(db)

@@ -17,7 +17,7 @@ import (
 // deletes it on cleanup, after the feeds under it (registered later).
 func newTestSection(t *testing.T, db *sql.DB, name string, position int) rss.Section {
 	t.Helper()
-	sec := rss.Section{Slug: fmt.Sprintf("test-%d", time.Now().UnixNano()), Name: fmt.Sprintf("%s %d", name, time.Now().UnixNano())}
+	sec := rss.Section{Slug: fmt.Sprintf("test-%d", psqltest.Unique()), Name: fmt.Sprintf("%s %d", name, psqltest.Unique())}
 	if err := db.QueryRow(`INSERT INTO discover_sections (slug, name, position) VALUES ($1, $2, $3) RETURNING id`,
 		sec.Slug, sec.Name, 1_000_000+position).Scan(&sec.ID); err != nil {
 		t.Fatalf("insert section: %v", err)
@@ -88,7 +88,7 @@ func TestDiscoverRepositorySections(t *testing.T) {
 		t.Fatal(err)
 	}
 	// second: a feed of followed's site, which still shows.
-	sibling, err := upsertFeed(t.Context(), db, rss.Feed{SiteID: followed.SiteID, Url: fmt.Sprintf("https://example.com/sibling-%d.xml", time.Now().UnixNano()), Title: "Sibling"})
+	sibling, err := upsertFeed(t.Context(), db, rss.Feed{SiteID: followed.SiteID, Url: fmt.Sprintf("https://example.com/sibling-%d.xml", psqltest.Unique()), Title: "Sibling"})
 	if err != nil {
 		t.Fatal(err)
 	}

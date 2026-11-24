@@ -37,7 +37,7 @@ func TestAdminUserRepositoryListUsers(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
 	// A prefix unique to the test, so a search for it finds only its users.
-	p := fmt.Sprintf("au%d", time.Now().UnixNano())
+	p := fmt.Sprintf("au%d", psqltest.Unique())
 	base := time.Now().Add(-time.Hour).Truncate(time.Second)
 
 	oldest := adminTestUser(t, db, p+" Zed", "zed-"+p+"@example.com", base, nil)
@@ -167,7 +167,7 @@ func TestAdminUserRepositoryListUsers(t *testing.T) {
 func TestAdminUserRepositoryUser(t *testing.T) {
 	db := psqltest.NewDB(t)
 	repo := NewAdminUserRepository(db)
-	p := fmt.Sprintf("au%d", time.Now().UnixNano())
+	p := fmt.Sprintf("au%d", psqltest.Unique())
 	email := p + "@example.com"
 	created := time.Now().Add(-24 * time.Hour).Truncate(time.Second)
 	id := adminTestUser(t, db, "Reader", email, created, created.Add(time.Minute))

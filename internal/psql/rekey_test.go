@@ -12,6 +12,7 @@ import (
 // Requires a test database; runs in its own schema (newMigrateDB), since
 // Rekey reads every feed and the one site_key_rules row.
 func TestSiteRepositoryRekey(t *testing.T) {
+	t.Parallel()
 	db := newMigrateDB(t)
 	mustMigrate(t, db)
 	sites := NewSiteRepository(db)

@@ -11,13 +11,14 @@ import (
 )
 
 func TestUserSessionRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	repo := NewUserSessionRepository(db)
 
 	newUser := func(t *testing.T) (string, string) {
 		t.Helper()
-		email := fmt.Sprintf("test-session-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("test-session-%d@example.com", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 				t.Errorf("cleanup user: %v", err)

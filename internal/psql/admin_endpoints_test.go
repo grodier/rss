@@ -29,6 +29,7 @@ func ints(n ...int) []int {
 // TestAdminEndpointsMinute reads minute rows: totals, steps, routes and
 // instances, with each group's buckets summed element-wise.
 func TestAdminEndpointsMinute(t *testing.T) {
+	t.Parallel()
 	metricsRepo, db := newMetricsRepo(t)
 	repo := NewAdminEndpointsRepository(db)
 	ctx := context.Background()
@@ -122,6 +123,7 @@ func TestAdminEndpointsMinute(t *testing.T) {
 // TestAdminEndpointsHourly reads the hourly rows of the hours rolled up,
 // and the minute rows of the hours after them, once each.
 func TestAdminEndpointsHourly(t *testing.T) {
+	t.Parallel()
 	metricsRepo, db := newMetricsRepo(t)
 	repo := NewAdminEndpointsRepository(db)
 	ctx := context.Background()
@@ -175,6 +177,7 @@ func TestAdminEndpointsHourly(t *testing.T) {
 }
 
 func TestAdminEndpointsRejectsNoStep(t *testing.T) {
+	t.Parallel()
 	_, db := newMetricsRepo(t)
 	if _, err := NewAdminEndpointsRepository(db).Endpoints(context.Background(), rss.EndpointQuery{}); err == nil {
 		t.Error("Endpoints with no step: want an error")
@@ -182,6 +185,7 @@ func TestAdminEndpointsRejectsNoStep(t *testing.T) {
 }
 
 func TestAdminEndpointsRouteErrors(t *testing.T) {
+	t.Parallel()
 	_, db := newMetricsRepo(t)
 	errs := NewServerErrorRepository(db)
 	repo := NewAdminEndpointsRepository(db)

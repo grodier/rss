@@ -25,7 +25,7 @@ func starCount(t *testing.T, db *sql.DB, userID string) int {
 // canonical URL, and an unrelated article.
 func starCopies(t *testing.T, db *sql.DB) (a, b, unrelated string) {
 	t.Helper()
-	canonical := fmt.Sprintf("example.com/starred-%d", time.Now().UnixNano())
+	canonical := fmt.Sprintf("example.com/starred-%d", psqltest.Unique())
 	a = newTestArticleWithCanonical(t, db, canonical)
 	b = newTestArticleWithCanonical(t, db, canonical)
 	unrelated = newTestArticleWithCanonical(t, db, canonical+"-other")
@@ -50,6 +50,7 @@ func starredIDs(t *testing.T, repo *StarRepository, userID string, ids ...string
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestStar(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewStarRepository(db)
 	ctx := t.Context()
@@ -107,6 +108,7 @@ func TestStar(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestUnstar(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewStarRepository(db)
 	ctx := t.Context()
@@ -162,6 +164,7 @@ func TestUnstar(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestStarredArticleIDs(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewStarRepository(db)
 	ctx := t.Context()
@@ -225,6 +228,7 @@ func TestStarredArticleIDs(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListStarred(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewStarRepository(db)
 	feeds := NewFeedRepository(db)
@@ -387,6 +391,7 @@ func TestListStarred(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestListStarredConditions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewStarRepository(db)
 	user := newTestUser(t, db)

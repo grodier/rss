@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func NewDB(t *testing.T) *sql.DB {
 func NewSchemaDSN(t *testing.T) string {
 	t.Helper()
 	admin := NewDB(t)
-	schema := fmt.Sprintf("schema_test_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("schema_test_%d", Unique())
 	name := pq.QuoteIdentifier(schema)
 	if _, err := admin.Exec(`CREATE SCHEMA ` + name); err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -69,6 +70,22 @@ func NewSchemaDSN(t *testing.T) string {
 		}
 	})
 	return withSearchPath(DSN(t), schema+",public")
+}
+
+// last is the last value Unique returned.
+var last atomic.Int64
+
+// Unique returns the current time in nanoseconds, or one more than the last
+// value it returned if that is later, for tests to name rows with: unlike
+// time.Now().UnixNano(), two parallel tests never get the same value.
+func Unique() int64 {
+	for {
+		prev := last.Load()
+		next := max(time.Now().UnixNano(), prev+1)
+		if last.CompareAndSwap(prev, next) {
+			return next
+		}
+	}
 }
 
 // withSearchPath adds search_path to dsn, in either of lib/pq's DSN forms.

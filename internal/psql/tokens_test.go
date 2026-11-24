@@ -16,7 +16,7 @@ import (
 // the test ends, and returns its ID and email.
 func newTokenUser(t *testing.T, users *UserRepository) (string, string) {
 	t.Helper()
-	email := fmt.Sprintf("test-token-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("test-token-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := users.DB.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 			t.Errorf("cleanup user: %v", err)
@@ -52,6 +52,7 @@ func tokenExists(t *testing.T, repo *TokenRepository, hash []byte) bool {
 }
 
 func TestTokenRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	repo := NewTokenRepository(db)
@@ -133,6 +134,7 @@ func TestTokenRepository(t *testing.T) {
 }
 
 func TestConfirmEmail(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	tokens := NewTokenRepository(db)
@@ -218,6 +220,7 @@ func TestConfirmEmail(t *testing.T) {
 }
 
 func TestResetPassword(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	tokens := NewTokenRepository(db)
@@ -327,6 +330,7 @@ func TestResetPassword(t *testing.T) {
 }
 
 func TestChangeEmail(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	users := NewUserRepository(db)
 	tokens := NewTokenRepository(db)
@@ -336,7 +340,7 @@ func TestChangeEmail(t *testing.T) {
 	// that has it when the test ends.
 	newAddress := func(t *testing.T) string {
 		t.Helper()
-		email := fmt.Sprintf("test-new-%d@example.com", time.Now().UnixNano())
+		email := fmt.Sprintf("test-new-%d@example.com", psqltest.Unique())
 		t.Cleanup(func() {
 			if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 				t.Errorf("cleanup user: %v", err)

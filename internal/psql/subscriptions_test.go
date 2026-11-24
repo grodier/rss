@@ -20,7 +20,7 @@ import (
 // timelines; it can't log in.
 func newTestUser(t *testing.T, db *sql.DB) string {
 	t.Helper()
-	email := fmt.Sprintf("subs-test-%d@example.com", time.Now().UnixNano())
+	email := fmt.Sprintf("subs-test-%d@example.com", psqltest.Unique())
 	var id string
 	err := db.QueryRowContext(t.Context(), `INSERT INTO users (name, email, hashed_password) VALUES ('Test User', $1, '') RETURNING id`, email).Scan(&id)
 	if err != nil {
@@ -45,6 +45,7 @@ func subscriptionCount(t *testing.T, db *sql.DB, userID, feedID string) int {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionRepository(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -217,6 +218,7 @@ func TestSubscriptionRepository(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionRepositoryListByUser(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -224,7 +226,7 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 	// newSite inserts a site with the given title; empty means no title.
 	newSite := func(t *testing.T, tag, title string) string {
 		t.Helper()
-		host := fmt.Sprintf("%s-%d.example.com", tag, time.Now().UnixNano())
+		host := fmt.Sprintf("%s-%d.example.com", tag, psqltest.Unique())
 		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
 		if err != nil {
 			t.Fatalf("Upsert site: %v", err)
@@ -236,7 +238,7 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 		t.Helper()
 		id, err := upsertFeed(ctx, db, rss.Feed{
 			SiteID: siteID, Title: title, NextFetch: time.Now().Add(time.Hour),
-			Url: fmt.Sprintf("https://example.com/%s-%d.xml", title, time.Now().UnixNano()),
+			Url: fmt.Sprintf("https://example.com/%s-%d.xml", title, psqltest.Unique()),
 		})
 		if err != nil {
 			t.Fatalf("Upsert feed: %v", err)
@@ -371,12 +373,13 @@ func TestSubscriptionRepositoryListByUser(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionRepositorySearch(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	ctx := t.Context()
 
 	// Hosts and titles carry a unique tag, so only this test's rows match.
-	tag := fmt.Sprintf("srch%d", time.Now().UnixNano())
+	tag := fmt.Sprintf("srch%d", psqltest.Unique())
 	newSite := func(t *testing.T, host, title string) string {
 		t.Helper()
 		id, err := upsertSite(ctx, db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
@@ -390,7 +393,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 		t.Helper()
 		id, err := upsertFeed(ctx, db, rss.Feed{
 			SiteID: siteID, Title: title, NextFetch: time.Now().Add(time.Hour),
-			Url: fmt.Sprintf("https://example.com/search-%d.xml", time.Now().UnixNano()),
+			Url: fmt.Sprintf("https://example.com/search-%d.xml", psqltest.Unique()),
 		})
 		if err != nil {
 			t.Fatalf("Upsert feed: %v", err)
@@ -420,7 +423,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 
 	t.Run("matches the name, feed title, site title and host, ordered by name", func(t *testing.T) {
 		user := newTestUser(t, db)
-		plain := newSite(t, fmt.Sprintf("plain-%d.example.com", time.Now().UnixNano()), "Plain")
+		plain := newSite(t, fmt.Sprintf("plain-%d.example.com", psqltest.Unique()), "Plain")
 		byFeedTitle := newFeed(t, plain, "Bravo "+tag)
 		byName := newFeed(t, plain, "Unrelated")
 		subscribe(t, user, byName)
@@ -428,7 +431,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 			t.Fatalf("Rename: %v", err)
 		}
 		byHost := newFeed(t, newSite(t, tag+"-host.example.com", ""), "Delta")
-		bySiteTitle := newFeed(t, newSite(t, fmt.Sprintf("titled-%d.example.com", time.Now().UnixNano()), "Site "+tag), "Charlie")
+		bySiteTitle := newFeed(t, newSite(t, fmt.Sprintf("titled-%d.example.com", psqltest.Unique()), "Site "+tag), "Charlie")
 		unmatched := newFeed(t, plain, "Nothing")
 		subscribe(t, user, byFeedTitle, byHost, bySiteTitle, unmatched)
 
@@ -442,7 +445,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 	t.Run("ordered by how well the name matches, then by name", func(t *testing.T) {
 		user := newTestUser(t, db)
 		w := "mq" + tag
-		site := newSite(t, fmt.Sprintf("order-%d.example.com", time.Now().UnixNano()), "")
+		site := newSite(t, fmt.Sprintf("order-%d.example.com", psqltest.Unique()), "")
 		inside, word, prefix, exact := newFeed(t, site, "A"+w+"x"), newFeed(t, site, "B "+w), newFeed(t, site, w+" Z"), newFeed(t, site, strings.ToUpper(w))
 		subscribe(t, user, inside, word, prefix, exact)
 		if got, want := search(t, user, w, 10), []string{exact, prefix, word, inside}; fmt.Sprint(got) != fmt.Sprint(want) {
@@ -542,6 +545,7 @@ func TestSubscriptionRepositorySearch(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionGet(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -587,6 +591,7 @@ func TestSubscriptionGet(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionRename(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -649,6 +654,7 @@ func tagNames(tags []rss.Tag) []string {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscriptionTags(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	repo := NewSubscriptionRepository(db)
 	tags := NewTagRepository(db)
@@ -745,6 +751,7 @@ func TestSubscriptionTags(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestSubscribeWritesReaderPositions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	subs := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -815,6 +822,7 @@ func TestSubscribeWritesReaderPositions(t *testing.T) {
 
 // Requires a migrated database; see psqltest.NewDB.
 func TestUnsubscribeKeepsReaderPositions(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	subs := NewSubscriptionRepository(db)
 	ctx := t.Context()
@@ -851,6 +859,7 @@ func TestUnsubscribeKeepsReaderPositions(t *testing.T) {
 }
 
 func TestSubscribeKeepsCopiesInPlace(t *testing.T) {
+	t.Parallel()
 	db := psqltest.NewDB(t)
 	subs := NewSubscriptionRepository(db)
 	articles := NewArticleRepository(db)

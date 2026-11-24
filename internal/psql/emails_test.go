@@ -25,7 +25,7 @@ var emailsDueAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 // test ends.
 func newEmailAddress(t *testing.T, repo *EmailRepository) string {
 	t.Helper()
-	addr := fmt.Sprintf("em-%d@example.com", time.Now().UnixNano())
+	addr := fmt.Sprintf("em-%d@example.com", psqltest.Unique())
 	t.Cleanup(func() { deleteEmailsTo(t, repo.DB, addr) })
 	return addr
 }

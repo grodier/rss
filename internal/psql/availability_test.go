@@ -49,6 +49,7 @@ func availabilityChecks(t *testing.T, db *sql.DB) []rss.AvailabilityCheck {
 }
 
 func TestAvailabilityRecord(t *testing.T) {
+	t.Parallel()
 	repo, db := newAvailabilityRepo(t)
 	ctx := context.Background()
 	at := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
@@ -70,6 +71,7 @@ func TestAvailabilityRecord(t *testing.T) {
 }
 
 func TestAvailabilityRecordCutsText(t *testing.T) {
+	t.Parallel()
 	repo, db := newAvailabilityRepo(t)
 	at := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
 	c := rss.AvailabilityCheck{CheckedAt: at, Status: strings.Repeat("é", 80), Version: "v\xff" + strings.Repeat("v", 150)}
@@ -86,6 +88,7 @@ func TestAvailabilityRecordCutsText(t *testing.T) {
 }
 
 func TestAvailabilityDeleteBefore(t *testing.T) {
+	t.Parallel()
 	repo, db := newAvailabilityRepo(t)
 	ctx := context.Background()
 	cutoff := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
@@ -120,6 +123,7 @@ func recordCheck(t *testing.T, repo *AvailabilityRepository, at time.Time, ok bo
 }
 
 func TestAvailabilityUptime(t *testing.T) {
+	t.Parallel()
 	repo, _ := newAvailabilityRepo(t)
 	ctx := context.Background()
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -152,6 +156,7 @@ func TestAvailabilityUptime(t *testing.T) {
 }
 
 func TestAvailabilityIncidents(t *testing.T) {
+	t.Parallel()
 	repo, _ := newAvailabilityRepo(t)
 	ctx := context.Background()
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -230,6 +235,7 @@ func TestAvailabilityIncidents(t *testing.T) {
 }
 
 func TestAvailabilityLatestVersion(t *testing.T) {
+	t.Parallel()
 	repo, _ := newAvailabilityRepo(t)
 	ctx := context.Background()
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -255,6 +261,7 @@ func TestAvailabilityLatestVersion(t *testing.T) {
 }
 
 func TestAvailabilityVersionsIn(t *testing.T) {
+	t.Parallel()
 	repo, _ := newAvailabilityRepo(t)
 	ctx := context.Background()
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

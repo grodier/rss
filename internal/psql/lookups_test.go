@@ -23,7 +23,7 @@ const (
 // test ends.
 func newLookupKey(t *testing.T, repo *LookupRepository) string {
 	t.Helper()
-	key := fmt.Sprintf("lk-%d.example.com", time.Now().UnixNano())
+	key := fmt.Sprintf("lk-%d.example.com", psqltest.Unique())
 	t.Cleanup(func() {
 		if _, err := repo.DB.Exec(`DELETE FROM lookups WHERE site_key = $1`, key); err != nil {
 			t.Errorf("cleanup lookup: %v", err)

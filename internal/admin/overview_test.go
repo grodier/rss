@@ -155,12 +155,12 @@ func TestOverviewQueues(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<h2 id="queues">Queues</h2>`,
-		"<td>Lookups</td>\n                <td class=\"num\">2</td>\n                <td>under 1 min</td>",
-		"<td>Imports</td>\n                <td class=\"num\">0</td>\n                <td>—</td>",
+		"<td><a href=\"/queues#lookup\">Lookups</a></td>\n                <td class=\"num\">2</td>\n                <td>under 1 min</td>",
+		"<td><a href=\"/queues#import\">Imports</a></td>\n                <td class=\"num\">0</td>\n                <td>—</td>",
 		"<td>Refresh</td>\n                <td class=\"num\">1,284</td>\n                <td>15 min</td>\n                <td><span class=\"status status-danger\">Behind</span></td>",
-		"<td>Icons</td>\n                <td class=\"num\">7</td>\n                <td>3 min</td>",
-		"<td>Enrichment</td>\n                <td class=\"num\">40</td>\n                <td>5 h</td>\n                <td><span class=\"status status-danger\">Behind</span></td>",
-		"<td>Email</td>\n                <td class=\"num\">1</td>\n                <td>15 min</td>\n                <td><span class=\"status\">OK</span></td>",
+		"<td><a href=\"/queues#icon\">Icons</a></td>\n                <td class=\"num\">7</td>\n                <td>3 min</td>",
+		"<td><a href=\"/queues#enrich\">Enrichment</a></td>\n                <td class=\"num\">40</td>\n                <td>5 h</td>\n                <td><span class=\"status status-danger\">Behind</span></td>",
+		"<td><a href=\"/queues#mail\">Email</a></td>\n                <td class=\"num\">1</td>\n                <td>15 min</td>\n                <td><span class=\"status\">OK</span></td>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET / lacks %q", want)

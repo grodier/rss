@@ -177,6 +177,16 @@ type FeedStore interface {
 	Unskip(ctx context.Context, id string, by rss.AuditActor) error
 }
 
+// QueueStore reads the queues page and retries or deletes failed jobs;
+// *psql.AdminQueuesRepository is one.
+type QueueStore interface {
+	Counts(ctx context.Context) ([]rss.AdminQueueCounts, error)
+	JobsPerHour(ctx context.Context, since, now time.Time) ([]rss.JobsHour, error)
+	Failures(ctx context.Context, queue string) ([]rss.QueueFailure, error)
+	Retry(ctx context.Context, queue string, ids []string, group string, by rss.AuditActor) (int, error)
+	Delete(ctx context.Context, queue string, ids []string, group string, by rss.AuditActor) (int, error)
+}
+
 // UserStore reads the users pages, account facts and counts, never a
 // reader's reading, and makes a reader's page's actions;
 // *psql.AdminUserRepository is one.
@@ -216,6 +226,7 @@ type Services struct {
 
 	Feeds     FeedStore
 	Refresher Refresher
+	Queues    QueueStore
 
 	Availability AvailabilityReader
 	Runtime      RuntimeReader

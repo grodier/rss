@@ -622,6 +622,10 @@ Admin and observability:
   Measured in #710 on 5,000 entries with no feeds: a page and the counts took under 5 ms each.
   *Signal:* the list passes about 20,000 entries, or `/seed` takes over 200ms.
   *Fix:* keep each found site's feed and catalog counts on `sites` (or in a table the catalog's edits update), and count the filters from those.
+- [ ] **The admin's queues page reads every failed job** (#582).
+  Each view of `/queues` reads every failed lookup, import feed and enrichment job (`AdminQueuesRepository.Failures`) to group them in Go by their normalized error, and counts each queue's jobs by state over the whole of `lookups` and `import_feeds` (`Counts`), which keep finished rows: lookups are also the sites' cache, and import feeds their imports' results.
+  *Signal:* failed lookups or import feeds pass about 10,000, or `/queues` takes over 200ms.
+  *Fix:* store the normalized error in a column when a job fails, with a partial index on failed rows, and group and count in SQL.
 - [ ] **A seed upload's audit entry lists every site key it added** (#711).
   One `seed.add` holds up to 10,000 site keys, which the audit log shows in full: measured on a 10,000-line add, the entry took 45 KB stored and about 260 KB of page text, and the add itself 260 ms (the preview's check of the list, 10 ms).
   *Signal:* the audit log's pages get slow to load or scroll, or `admin_audit` grows by megabytes a week from uploads.

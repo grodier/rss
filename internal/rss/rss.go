@@ -1110,6 +1110,52 @@ func (q QueueStatus) Behind(now time.Time) bool {
 	return q.Jobs > 0 && now.Sub(q.Oldest) > QueueBehindAfter
 }
 
+// The queues whose failed jobs the admin's queues page groups, retries and
+// deletes, named after their runners, as job_metrics names them.
+const (
+	QueueLookup = "lookup"
+	QueueImport = "import"
+	QueueEnrich = "enrich"
+)
+
+// AdminQueueCounts are one background queue's jobs on the admin's queues
+// page. Name is its runner (lookup, import, enrich, icon or mail); Pending
+// are the jobs due now; Running those claimed, for the queues with a
+// status (lookups and imports); Failed the lookups and import feeds that
+// failed, the enrichment jobs that failed and wait to be tried again, and
+// the emails given up on; Overdue the icon checks due over
+// QueueBehindAfter ago; and Oldest when the oldest pending job was due,
+// zero when none is.
+type AdminQueueCounts struct {
+	Name                              string
+	Pending, Running, Failed, Overdue int
+	Oldest                            time.Time
+}
+
+// JobsHour is how many jobs a runner finished in the hour ending at End.
+type JobsHour struct {
+	Runner string
+	End    time.Time
+	Jobs   int
+}
+
+// QueueFailure is one failed job on the admin's queues page. ID is the
+// lookup's ID, the import feed's import ID and position
+// ("{import_id}.{position}") or the enrichment job's article ID. Error is
+// its stored error and Failure an import feed's kind of failure (unreachable,
+// not_feed, …). At is when it failed (lookups, import feeds) or was queued
+// (enrichment jobs, whose failures aren't timed). URL is the address the
+// job fetches; SiteID a lookup's site, FeedID an import feed's subscribed
+// feed or an enrichment job's article's feed, "" for none; and ImportedAt an
+// import feed's import's date.
+type QueueFailure struct {
+	ID, Error, Failure string
+	At                 time.Time
+	URL                string
+	SiteID, FeedID     string
+	ImportedAt         time.Time
+}
+
 // JobOutcomes are one runner's finished jobs in a window, by outcome, as
 // job_metrics counts them (see "Background work" in docs/architecture.md):
 // Runner is lookup, import, refresh, icon, enrich or mail, and Total the

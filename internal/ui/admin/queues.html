@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Queues - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Queues</h1>
+        <p>Each background queue’s jobs, its jobs per hour over the last 24 hours, and its failures grouped by error, the largest groups first. Retry or delete one job, or a whole group, which takes the jobs listed when this page was made. Hover a time for its UTC date.</p>
+      </header>
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}</div>
+      {{end}}
+
+      {{$now := .Now}}
+      {{range .Queues}}
+      {{$q := .}}
+      <section class="admin-section" id="{{.Name}}" aria-labelledby="{{.Name}}-heading">
+        <h2 id="{{.Name}}-heading">{{.Label}}</h2>
+        {{template "stat-row" .Tiles}}
+        <figure class="queue-chart">
+          <figcaption><h3>Jobs per hour</h3></figcaption>
+          {{chart .Chart}}
+        </figure>
+        {{if eq .Name "icon"}}
+        <p class="missing">Icon checks store no error, so there are no failures to list.</p>
+        {{end}}
+        {{if .Failures}}
+        <h3 class="sub">Failures by error</h3>
+        {{if .Groups}}
+        <div class="queue-groups">
+          {{range .Groups}}
+          {{$id := print $q.Name "-" .Index}}
+          <div class="queue-group">
+            <p class="queue-error"{{if ne .Error .Key}} title="{{.Key}}"{{end}}><code>{{if .Error}}{{.Error}}{{else}}(no error){{end}}</code></p>
+            <p class="queue-group-meta"><strong>{{count .Count}}</strong> {{if eq .Count 1}}{{$q.One}}{{else}}{{$q.Many}}{{end}} · {{if eq $q.Name "enrich"}}queued{{else}}failed{{end}} from <time datetime="{{.Oldest.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .Oldest}} UTC">{{ago $now .Oldest}}</time> to <time datetime="{{.Newest.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .Newest}} UTC">{{ago $now .Newest}}</time></p>
+            <div class="table-wrap">
+              <table class="data queue-jobs">
+                <thead>
+                  <tr>
+                    <th scope="col">{{if eq $q.Name "enrich"}}Article{{else}}Address{{end}}</th>
+                    <th scope="col">{{if eq $q.Name "enrich"}}Queued{{else}}Failed{{end}}</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{range .Examples}}
+                  {{$job := .}}
+                  <tr>
+                    <td class="wrap queue-job">
+                      {{if eq $q.Name "enrich"}}<code>{{.ID}}</code><small>{{.URL}}{{with .FeedID}} · <a href="/feeds/{{.}}">Feed</a>{{end}}</small>
+                      {{else}}{{.URL}}{{if or .SiteID .FeedID (not .ImportedAt.IsZero)}}<small>{{if not .ImportedAt.IsZero}}Imported {{date .ImportedAt}}{{end}}{{with .SiteID}}<a href="/sites/{{.}}">Site</a>{{end}}{{with .FeedID}}{{if not $job.ImportedAt.IsZero}} · {{end}}<a href="/feeds/{{.}}">Feed</a>{{end}}</small>{{end}}{{end}}
+                    </td>
+                    <td>{{if .At.IsZero}}—{{else}}<time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .At}} UTC">{{ago $now .At}}</time>{{end}}</td>
+                    <td>
+                      <div class="row-actions">
+                        <form action="/queues/{{$q.Name}}/retry" method="post">
+                          <input type="hidden" name="id" value="{{.ID}}" />
+                          <button class="btn btn-sm" type="submit">Retry</button>
+                        </form>
+                        {{if $q.Delete}}
+                        <form action="/queues/{{$q.Name}}/delete" method="post">
+                          <input type="hidden" name="id" value="{{.ID}}" />
+                          <button class="btn btn-sm btn-danger-quiet" type="submit">Delete</button>
+                        </form>
+                        {{end}}
+                      </div>
+                    </td>
+                  </tr>
+                  {{end}}
+                </tbody>
+              </table>
+            </div>
+            <form class="queue-group-form" action="/queues/{{$q.Name}}/retry" method="post">
+              <input type="hidden" name="group" value="{{.Key}}" />
+              <input type="hidden" name="ids" value="{{.IDs}}" />
+              <div class="field">
+                <label for="confirm-{{$id}}">Type {{count .Acts}} to act on {{if lt .Acts .Count}}the newest {{count .Acts}}{{else if eq .Acts 1}}it{{else}}all {{count .Acts}}{{end}}</label>
+                <input type="text" id="confirm-{{$id}}" name="confirm" value="{{.Confirm}}" inputmode="numeric" autocomplete="off"
+                  {{if or (lt .Acts .Count) .ConfirmError}}aria-describedby="{{if lt .Acts .Count}}confirm-{{$id}}-hint{{end}}{{if and (lt .Acts .Count) .ConfirmError}} {{end}}{{if .ConfirmError}}confirm-{{$id}}-error{{end}}"{{end}}
+                  {{if .ConfirmError}}aria-invalid="true" autofocus{{end}} />
+                {{if lt .Acts .Count}}<p class="hint" id="confirm-{{$id}}-hint">A group action takes at most 1,000 jobs: run it again for the rest.</p>{{end}}
+                {{with .ConfirmError}}<p class="error" id="confirm-{{$id}}-error">{{.}}</p>{{end}}
+              </div>
+              <div class="form-actions">
+                <button class="btn btn-sm" type="submit">Retry {{count .Acts}}</button>
+                {{if $q.Delete}}<button class="btn btn-sm btn-danger-quiet" type="submit" formaction="/queues/{{$q.Name}}/delete">Delete {{count .Acts}}</button>{{end}}
+              </div>
+            </form>
+          </div>
+          {{end}}
+        </div>
+        {{with .MoreGroups}}<p class="missing">And {{count .}} smaller {{if eq . 1}}group{{else}}groups{{end}}, not listed.</p>{{end}}
+        {{else}}
+        <p class="empty">No failed {{.Many}}.</p>
+        {{end}}
+        {{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

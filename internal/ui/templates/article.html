@@ -56,6 +56,24 @@
           {{end}}
         </details>
         {{end}}
+        {{- with .Contents}}
+        {{- if eq $.ContentsOption "2"}}
+        {{template "contents-disclosure" .}}
+        <div class="reader-rail">
+          <nav class="reader-contents reader-contents-side" aria-label="Contents">
+            <p class="reader-contents-title">Contents</p>
+            {{template "contents-list" .}}
+          </nav>
+        </div>
+        {{- else if eq $.ContentsOption "3"}}
+        <nav class="reader-contents reader-contents-open" aria-label="Contents">
+          <h2 class="reader-contents-title">Contents</h2>
+          {{template "contents-list" .}}
+        </nav>
+        {{- else}}
+        {{template "contents-disclosure" .}}
+        {{- end}}
+        {{- end}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}"{{with $.LeadImageFallback}} data-fallback-src="{{.}}"{{end}} alt="" fetchpriority="high" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}
         <div class="article-body">{{.Body}}</div>

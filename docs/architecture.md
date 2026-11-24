@@ -98,7 +98,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/mail` | Render emails, queue them in the outbox, send them over SMTP or to the log | `rss` |
 | `internal/accounts` | Make the account emails `www` and the admin both send (a confirmation link, a reset link, the notice that an account was deleted), each link with its token; the caller stores and queues them | `mail`, `rss`, `token` |
 | `internal/metrics` | Count requests and background jobs and sample the runtime once a minute; keep recent server errors; roll up and delete old metrics and real-user views (`RUMBounds`); the real-user thresholds (`RUMThresholds`) and percentiles from histogram buckets (`Percentile`) | `rss` |
-| `internal/sanitize` | Make article HTML safe to render (bluemonday) | — |
+| `internal/sanitize` | Make article HTML safe to render (bluemonday), and read its outline | `textcut` |
 | `internal/password` | Argon2id hashing, after NFKC normalization | — |
 | `internal/textcut` | Cut untrusted text to a size in bytes as valid UTF-8 without NUL bytes, which Postgres text refuses (`Bytes`) | — |
 | `internal/token` | Random tokens for share links (`Random`) and email links (`New`, `Hash`) | — |

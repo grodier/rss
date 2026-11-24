@@ -835,6 +835,7 @@ Pages and queries:
 - [ ] **Sanitizing article HTML on every view** (#151).
   `sanitize.HTML` parses and renders the article with `x/net/html`, then bluemonday parses it again, on each article page view; cost grows with the size of the HTML, which feeds don't bound.
   #719, #721 and #723 add passes over the parsed tree (ids and links, lazy images, headings), each linear in its size.
+  #723's `outline` is two of them: one collecting the ids, one over the headings.
   *Signal:* article page p95 latency or CPU rising, especially for long articles.
   *Fix:* cache the sanitized HTML per article (keyed by a policy version, so a policy change still applies everywhere), or cap the HTML size we render.
 - [ ] **Read writes on article views** (#156, #158).

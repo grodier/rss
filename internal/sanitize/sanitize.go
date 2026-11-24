@@ -50,39 +50,58 @@ func newPolicy() *bluemonday.Policy {
 // http(s) URLs become links (see linkify), images a script would have
 // lazy-loaded show (see imageSource and noscriptImage), images left without an
 // http(s) source are removed (see dropEmptyImages), ids get the prefix
-// "body-" and links to them stay on the page (see localAnchors), and everything bluemonday's policy
-// doesn't allow is removed.
+// "body-" and links to them stay on the page (see localAnchors), the <h2>s
+// and <h3>s get ids and make the outline (see outline), and everything
+// bluemonday's policy doesn't allow is removed.
 //
 // It is the one place the app vouches for untrusted HTML: article HTML is
 // never converted to template.HTML anywhere else.
-func HTML(raw string, base *url.URL, title string) template.HTML {
-	return template.HTML(policy.Sanitize(prepare(raw, base, title)))
+func HTML(raw string, base *url.URL, title string) Body {
+	prepared, headings := prepare(raw, base, title)
+	return Body{HTML: template.HTML(policy.Sanitize(prepared)), Outline: headings}
+}
+
+// Body is an article's sanitized HTML and the <h2> and <h3> headings in it,
+// in order (see outline).
+type Body struct {
+	HTML    template.HTML
+	Outline []Heading
+}
+
+// Heading is one of an article's section headings, for its contents list.
+type Heading struct {
+	ID    string // the heading's id, with its "body-" prefix
+	Text  string // its text, whitespace collapsed, at most 100 bytes (textcut.Bytes)
+	Level int    // 2 or 3
 }
 
 // prepare parses raw as a fragment of a <div>, drops a first heading that
 // repeats title (see dropRepeatedTitle), rewrites it (see rewrite),
 // drops images without a source (see dropEmptyImages), prefixes its ids and
-// makes links to them in-page links (see localAnchors), reflows it (see reflow), links its bare URLs (see linkify) and renders it
-// back. If raw can't be parsed or rendered it is returned as is;
-// the policy still makes it safe, it just misses the rewrites.
-func prepare(raw string, base *url.URL, title string) string {
+// makes links to them in-page links (see localAnchors), collects its outline
+// (see outline), reflows it (see reflow), links its bare URLs (see linkify)
+// and renders it back. If raw can't be parsed or rendered it is returned as
+// is, with no outline; the policy still makes it safe, it just misses the
+// rewrites.
+func prepare(raw string, base *url.URL, title string) (string, []Heading) {
 	root, err := parse(raw)
 	if err != nil {
-		return raw
+		return raw, nil
 	}
 	dropRepeatedTitle(root, title)
 	rewrite(root, base)
 	dropEmptyImages(root)
 	localAnchors(root, base)
+	headings := outline(root)
 	reflow(root)
 	linkify(root)
 	var b strings.Builder
 	for n := root.FirstChild; n != nil; n = n.NextSibling {
 		if err := html.Render(&b, n); err != nil {
-			return raw
+			return raw, nil
 		}
 	}
-	return b.String()
+	return b.String(), headings
 }
 
 // parse parses raw as the children of a <div>, which it returns.

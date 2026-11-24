@@ -243,7 +243,11 @@ Planned in #583, from the owner's list and must-haves; the issues are on the [Ad
   The admin serves the images itself (`GET /sites/{id}/icon`), since its CSP allows only its own images, versioned by each icon's hash so the browser keeps it until it changes.
   Rejected: one Problem column, like Feeds ("Lookup failed" or "No icon"; triage first, but many sites normally have no icon, and a working lookup disappears), no lookup or icon columns (the narrowest, but each site has to be opened to see its state), the icon's size in words only (it can't show the wrong logo), and the image in the Icon column (off-screen on phones).
   Rejected: only linking hosts from the Feeds list (sites stay reachable only through their feeds), and grouping the Feeds list by site (it's triage first, and grouping buries failing feeds under healthy sites).
-  Breadcrumbs (#655) follow where a page sits, not how it was reached: `Sites › host` and `Sites › host › feed`.
+- **A feed's and a site's page open with breadcrumbs above the h1** (#655, approved at its design checkpoint in #805): Sites › the site › the feed, since at #628's checkpoint a feed's page read as the feeds list (Feeds is current in the sidebar on both).
+  The trail is where the page sits, not the way the admin came, so a feed's starts at Sites though its sidebar item stays Feeds.
+  The parents are quiet links and the page itself is dimmer and cut to one line, as the h1 under it repeats it; with its site in the trail, the feed's subtitle is just its URL.
+  Rejected: a back link to the parent (it names one level, and reads as the way back when the admin may have come from elsewhere), and the trail in place of the subtitle (the page still opens on the h1, and the trail sits under the buttons, away from the title).
+  Other nested admin pages reuse the `breadcrumbs` partial.
 - **Discover's catalog grows from the admin in three steps** (#649): sites are added to the seed list in bulk (#711), their lookups find the feeds, and an admin picks feeds for Discover a page of sites at a time (#712).
   Bulk upload and picking come first; a model's suggestions wait in the backlog until the owner's own picks can measure one (below).
 - **Sites are added to the seed list by pasting, then previewing, then adding** (#711): one site per line, optionally followed by a comma or tab and a Discover section, with a source naming the batch; the preview says what each line will do, and only Add writes.

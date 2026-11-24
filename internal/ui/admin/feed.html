@@ -16,12 +16,13 @@
       {{$now := .Now}}
       {{with .Feed}}
       <header class="page-head">
+        {{template "breadcrumbs" $.Crumbs}}
         <h1>{{with .Title}}{{.}}{{else}}Feed{{end}}</h1>
         <div class="head-actions">
           <a class="btn btn-sm" href="{{$.ReaderURL}}">In the reader</a>
           <a class="btn btn-sm" href="{{$.History}}">History</a>
         </div>
-        <p>A feed of <a href="/sites/{{.Site.ID}}">{{.SiteHost}}</a>, <code>{{.Url}}</code></p>
+        <p><code>{{.Url}}</code></p>
       </header>
       {{with $.Flash}}
       <div class="flash" role="status">{{.}}</div>

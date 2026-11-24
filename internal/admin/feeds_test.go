@@ -454,6 +454,8 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 	body := rr.Body.String()
 	for _, want := range []string{
 		`<h1>Example feed</h1>`,
+		// Its site is in the breadcrumbs, so the subtitle is its URL.
+		`<p><code>https://example.com/feed.xml</code></p>`,
 		`<section class="admin-section health health-bad"`, `<h2 id="health-heading" class="health-title">Failing 4×</h2>`,
 		`Last success 2 days ago, last try 30 min ago; next try in 1 h.`,
 		`<pre class="health-error"><code>&lt;script&gt;alert(&#34;feed&#34;)&lt;/script&gt;</code></pre>`,
@@ -511,6 +513,58 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 		if rr := b.get(t, path); rr.Code != http.StatusNotFound {
 			t.Errorf("GET %s = %d, want 404", path, rr.Code)
 		}
+	}
+}
+
+// TestBreadcrumbs checks a feed's page sits under its site's, and a site's
+// under Sites, with the page itself current and unlinked and every label
+// escaped.
+func TestBreadcrumbs(t *testing.T) {
+	trail := func(steps ...string) string {
+		return `<ol>` + strings.Join(steps, "") + `</ol>`
+	}
+	untitled := testFeed()
+	untitled.Title = ""
+	markup := testFeed()
+	markup.Title = `<b>Food</b>`
+	markup.Site.Host = `"><i>x</i>`
+	tests := []struct {
+		name string
+		feed rss.AdminFeed
+		path string
+		want string
+	}{
+		{"feed", testFeed(), "/feeds/" + feedID(1), trail(
+			`<li><a href="/sites">Sites</a></li>`,
+			`<li><a href="/sites/`+siteID(1)+`">example.com</a></li>`,
+			`<li><span aria-current="page">Example feed</span></li>`)},
+		{"feed without a title", untitled, "/feeds/" + feedID(1), trail(
+			`<li><a href="/sites">Sites</a></li>`,
+			`<li><a href="/sites/`+siteID(1)+`">example.com</a></li>`,
+			`<li><span aria-current="page">Feed</span></li>`)},
+		{"feed with markup", markup, "/feeds/" + feedID(1), trail(
+			`<li><a href="/sites">Sites</a></li>`,
+			`<li><a href="/sites/`+siteID(1)+`">&#34;&gt;&lt;i&gt;x&lt;/i&gt;</a></li>`,
+			`<li><span aria-current="page">&lt;b&gt;Food&lt;/b&gt;</span></li>`)},
+		{"site", testFeed(), "/sites/" + siteID(1), trail(
+			`<li><a href="/sites">Sites</a></li>`,
+			`<li><span aria-current="page">example.com</span></li>`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := feedsServer(t, &fakeFeeds{feed: tt.feed, site: testSite()}, &fakeRefresher{}, &fakeAudit{})
+			rr := b.get(t, tt.path)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("GET %s = %d, want 200", tt.path, rr.Code)
+			}
+			body := rr.Body.String()
+			if !strings.Contains(body, `<nav class="breadcrumbs" aria-label="Breadcrumb">`) || !strings.Contains(body, tt.want) {
+				t.Errorf("GET %s lacks the breadcrumbs\n%s", tt.path, tt.want)
+			}
+			if strings.Contains(body, "<b>Food") || strings.Contains(body, "<i>x") {
+				t.Errorf("GET %s renders a breadcrumb as markup", tt.path)
+			}
+		})
 	}
 }
 

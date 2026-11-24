@@ -289,34 +289,6 @@ func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ct
 	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
 }
 
-// fetched reports whether r was sent by a script's fetch rather than a form
-// submission or a navigation, from its Sec-Fetch-Mode.
-func fetched(r *http.Request) bool {
-	m := r.Header.Get("Sec-Fetch-Mode")
-	return m == "cors" || m == "same-origin"
-}
-
-// scripted reports whether r was sent by a script (a fetch or a beacon)
-// rather than a navigation, from its Sec-Fetch-Mode. A request without
-// the header isn't.
-func scripted(r *http.Request) bool {
-	m := r.Header.Get("Sec-Fetch-Mode")
-	return m != "" && m != "navigate"
-}
-
-// setCacheControl keeps logged-in pages out of every cache: no-store on
-// navigations, and private, no-cache on a script's requests, since a
-// no-store response to a script makes Chrome drop the page that sent it
-// from the back/forward cache. The scripts' fetches ask for no copy
-// themselves (cache: "no-store").
-func setCacheControl(w http.ResponseWriter, r *http.Request) {
-	if scripted(r) {
-		w.Header().Set("Cache-Control", "private, no-cache")
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-}
-
 // withFragment returns path with its fragment, if any, replaced by fragment.
 func withFragment(path, fragment string) string {
 	if i := strings.IndexByte(path, '#'); i >= 0 {

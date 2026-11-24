@@ -109,7 +109,7 @@ Links sent to the old address stop working by themselves, since tokens are only 
 ## Waitlist
 
 **Joining.** The logged-out home page (`/`, `homeHandler`) is the landing page, and it hosts the waitlist form, a partial (`waitlist-form`) so the owner's landing page can take it later.
-`/` stays one address for two pages: the timeline when logged in, the landing page when not; neither is kept by any cache, since a cache can't tell them apart (`setCacheControl`: `no-store` on navigations, as for every logged-in page).
+`/` stays one address for two pages: the timeline when logged in, the landing page when not; neither is kept by any cache, since a cache can't tell them apart (`privateCache`: `no-store` on navigations, as for every logged-in page).
 A `?ref=` on the page that passes `waitlistSource` is carried in a hidden field and stored as the entry's source.
 `POST /waitlist` (`waitlistJoinHandler`) sends a logged-in user home, then answers a filled honeypot field as if it worked (storing and sending nothing), then checks the per-IP limit, the fields and whether the address has an account.
 Invalid or refused, it re-renders the page that hosts the form (`renderWaitlistHost`) with 422 (429 when limited), so moving the form means changing only that function.
@@ -518,7 +518,7 @@ The last page of Home, for every account, ends with a line counting the sites th
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload, and Back where the page isn't restored, land nearby.
 
 **Back.** In Chrome, Back to a timeline (or a feed, a site or Saved) restores the page from the back/forward cache as the reader left it: the rows infinite scroll added, the scroll position and the images, with no request.
-Navigations stay `no-store`; what keeps the page restorable is that nothing it sends after loading changes a cookie or gets a `no-store` answer: the pages infinite scroll and Home's polls fetch, Save, Star and Follow, and the beacons are answered `private, no-cache` (`setCacheControl`), and only a navigation sets the `tab` cookie.
+Navigations stay `no-store`; what keeps the page restorable is that nothing it sends after loading changes a cookie or gets a `no-store` answer: the pages infinite scroll and Home's polls fetch, Save, Star and Follow, and the beacons are answered `private, no-cache` (`privateCache`, in `middleware.go`), and only a navigation sets the `tab` cookie.
 Chrome still loads the page again after 3 minutes, after logging out or in (the session cookie changed), and after moving to another tab of the timeline (the `tab` cookie changed); Safari and Firefox always load it again.
 Without JavaScript the link just works.
 
@@ -526,7 +526,7 @@ Without JavaScript the link just works.
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`, `setCacheControl`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
+3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`), `code.go` (`labelCode`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 

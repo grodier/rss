@@ -161,7 +161,22 @@ func (s *Server) requireAuthentication(next http.Handler) http.Handler {
 			return
 		}
 
-		setCacheControl(w, r)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// privateCache keeps a page that depends on the session out of every cache:
+// no-store on navigations, and private, no-cache on a script's requests,
+// since a no-store response to a script makes Chrome drop the page that
+// sent it from the back/forward cache. The scripts' fetches ask for no copy
+// themselves (cache: "no-store").
+func (s *Server) privateCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if scripted(r) {
+			w.Header().Set("Cache-Control", "private, no-cache")
+		} else {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 
 		next.ServeHTTP(w, r)
 	})

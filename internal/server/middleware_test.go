@@ -395,23 +395,18 @@ func TestRequireAuthentication(t *testing.T) {
 // TestCacheControl checks that logged-in pages, and /, are kept out of every
 // cache: no-store for a navigation, and private, no-cache for a script's
 // request (a fetch or a beacon), which Chrome needs to keep the page that
-// sent it in its back/forward cache.
+// sent it in its back/forward cache. It goes through the router, so it also
+// checks those routes have privateCache.
 func TestCacheControl(t *testing.T) {
 	s := newTestServerWith(t, Services{ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}, ArticleService: &fakeArticleStore{}})
-	authenticated := s.sessionManager.LoadAndSave(s.requireAuthentication(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
-	home := s.sessionManager.LoadAndSave(http.HandlerFunc(s.homeHandler))
-	loggedIn := func(r *http.Request) *http.Request {
-		return r.WithContext(context.WithValue(r.Context(), authenticatedUserIDContextKey, "user-1"))
-	}
-
 	routes := []struct {
-		name    string
-		handler http.Handler
-		login   bool
+		name   string
+		target string
+		login  bool
 	}{
-		{"a route that needs login", authenticated, true},
-		{"/ logged in", home, true},
-		{"/ logged out", home, false},
+		{"a route that needs login", "/timelines/all", true},
+		{"/ logged in", "/", true},
+		{"/ logged out", "/", false},
 	}
 	modes := []struct {
 		mode string // Sec-Fetch-Mode; "" sends none
@@ -426,15 +421,15 @@ func TestCacheControl(t *testing.T) {
 	for _, route := range routes {
 		for _, m := range modes {
 			t.Run(route.name+" "+cmp.Or(m.mode, "no header"), func(t *testing.T) {
-				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				r := httptest.NewRequest(http.MethodGet, route.target, nil)
 				if route.login {
-					r = loggedIn(r)
+					r = r.WithContext(context.WithValue(r.Context(), authenticatedUserIDContextKey, "user-1"))
 				}
 				if m.mode != "" {
 					r.Header.Set("Sec-Fetch-Mode", m.mode)
 				}
 				rr := httptest.NewRecorder()
-				route.handler.ServeHTTP(rr, r)
+				s.router().ServeHTTP(rr, r)
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d", rr.Code)
 				}

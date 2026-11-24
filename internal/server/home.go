@@ -32,10 +32,6 @@ const tabCookie = "tab"
 // redirect, so opening the app costs one request; its own address stays its
 // tab's (see renderTimeline).
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
-	// One address, two pages that depend on the session (and the landing
-	// page can carry a flash): no cache may keep either.
-	setCacheControl(w, r)
-
 	userID, ok := s.authenticatedUserID(r)
 	if !ok {
 		sections, err := s.services.DiscoverService.ListSections(r.Context())

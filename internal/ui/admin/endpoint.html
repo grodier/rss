@@ -18,26 +18,18 @@
         <div class="head-actions">
           <a class="btn btn-sm" href="{{.Back}}">All endpoints</a>
         </div>
-        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests {{.Period.Label}}.{{if .Charts}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests {{.Period.Label}}.{{end}}</p>
+        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests {{.Period.Label}}.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests {{.Period.Label}}.{{end}}</p>
       </header>
 
       <div class="segments">
         {{template "segmented" (segmented "Period" .Periods)}}
       </div>
 
-      {{if eq .Design "b"}}{{template "errors-section" .}}{{end}}
-
       {{if not .Total.Requests}}
       <section class="admin-section">
         <p class="empty">No requests to <code>{{.Method}} {{.Route}}</code> {{.Period.Label}}.{{if ne .Period.Key "30d"}} Choose a longer period to look further back.{{end}}</p>
       </section>
       {{else}}
-      {{if eq .Design "c"}}
-      <section class="admin-section" aria-labelledby="summary">
-        <h2 id="summary">Summary</h2>
-        {{template "stat-row" .Stats}}
-      </section>
-      {{end}}
       <section class="admin-section" aria-labelledby="over-time">
         <h2 id="over-time">Over time</h2>
         {{template "endpoint-charts" .}}
@@ -75,7 +67,7 @@
       </section>
       {{end}}
 
-      {{if ne .Design "b"}}{{template "errors-section" .}}{{end}}
+      {{template "errors-section" .}}
     </main>
   </div>
 </body>
@@ -84,13 +76,13 @@
 
 {{/* errors-section is the route's most recent server errors, newest first:
      each message's first line, cut to the column, with all of it in a
-     <details> (or, in design b, every message in full). They're kept by
+     <details>. They're kept by
      count, not by period, so the list doesn't follow the period. */}}
 {{define "errors-section"}}<section class="admin-section" aria-labelledby="errors">
         <h2 id="errors">Recent server errors</h2>
         {{if .Errors}}
         <div class="table-wrap">
-          <table class="data endpoint-errors{{if eq .Design "b"}} endpoint-errors-full{{end}}">
+          <table class="data endpoint-errors">
             <thead>
               <tr>
                 <th scope="col">Time</th>
@@ -105,7 +97,7 @@
                 <td><time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z"}}">{{.At.UTC.Format "2006-01-02 15:04:05"}}</time></td>
                 <td><code>{{.Instance}}</code></td>
                 <td>{{if .Panic}}<span class="status status-danger">Panic</span>{{else}}Error{{end}}</td>
-                <td class="error-message">{{if eq $.Design "b"}}<pre><code>{{.Message}}</code></pre>{{else}}<details><summary><code>{{.FirstLine}}</code></summary><pre><code>{{.Message}}</code></pre></details>{{end}}</td>
+                <td class="error-message"><details><summary><code>{{.FirstLine}}</code></summary><pre><code>{{.Message}}</code></pre></details></td>
               </tr>
               {{end}}
             </tbody>

@@ -136,6 +136,9 @@ func TestEndpointsSortsRoutes(t *testing.T) {
                 <td class="num">175</td>`,
 		`href="/endpoints/route?method=GET&amp;route=%2Ffeeds%2F%7Bid%7D"`,
 		`114 requests to www in the last 24 hours`,
+		// Each chart's figure for the period, labelled.
+		`<p class="endpoint-figure"><span>Total</span> 114</p>`,
+		`<p class="endpoint-figure"><span>Overall</span> 0.9%</p>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET /endpoints?sort=p95: missing %q", want)
@@ -199,18 +202,21 @@ func TestEndpointsDeployMarkers(t *testing.T) {
 	if !strings.Contains(body, "Deploys aren’t marked: set -render-api-key") {
 		t.Error("without Render: no note on the markers")
 	}
+	if strings.Contains(body, "Dashed lines") {
+		t.Error("without Render: the head says dashed lines mark deploys")
+	}
 
 	body = endpointsServer(t, &fakeEndpoints{ep: ep}, &fakeRender{deploys: deploys}).get(t, "/endpoints").Body.String()
 	if n := strings.Count(body, `class="chart-marker"`); n != 3 {
 		t.Errorf("with Render: %d markers, want one on each of 3 charts", n)
 	}
-	if strings.Contains(body, "aren’t marked") {
-		t.Error("with Render: says deploys aren't marked")
+	if strings.Contains(body, "aren’t marked") || !strings.Contains(body, "Dashed lines on the charts mark deploys") {
+		t.Error("with Render: says deploys aren't marked, or not that they are")
 	}
 
 	body = endpointsServer(t, &fakeEndpoints{ep: ep}, &fakeRender{deploysErr: errors.New("down")}).get(t, "/endpoints").Body.String()
-	if !strings.Contains(body, "Couldn’t reach Render, so deploys aren’t marked.") {
-		t.Error("Render failing: not said")
+	if !strings.Contains(body, "Couldn’t reach Render, so deploys aren’t marked.") || strings.Contains(body, "Dashed lines") {
+		t.Error("Render failing: not said, or the head says dashed lines mark deploys")
 	}
 }
 

@@ -1,13 +1,13 @@
 {{/* endpoint-charts are the endpoints pages' charts, each under its title
-     and the period's figure, its unit on its axis (dot: the page, with its
-     Charts, Deploys and Design), three to a row on wide screens, or one in
-     the wide layout (design c). */}}
-{{define "endpoint-charts"}}<div class="endpoint-charts{{if eq .Design "c"}} endpoint-charts-wide{{end}}">
+     and the period's figure, its unit on its axis, three to a row on wide
+     screens, then a line when deploys aren't marked (dot: the page, with
+     its Charts and Deploys). */}}
+{{define "endpoint-charts"}}<div class="endpoint-charts">
           {{range .Charts}}
           <figure class="endpoint-chart">
             <figcaption>
               <h3>{{.Title}}</h3>
-              {{if ne $.Design "c"}}<p class="endpoint-figure">{{.Figure}}</p>{{end}}
+              <p class="endpoint-figure"><span>{{.FigureLabel}}</span> {{.Figure}}</p>
             </figcaption>
             {{chart .LineChart}}
           </figure>

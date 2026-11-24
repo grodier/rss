@@ -1,6 +1,6 @@
 /* The endpoints pages: their charts, three to a row where each stays wide
-   enough for its labels and one on narrower screens (or always one, in the
-   wide layout), each under its title and the period's figure; the routes
+   enough for its labels and one on narrower screens, each under its title
+   and the period's figure; the routes
    table, its route column pinned on phones; a route and its method; and a
    server error's message cut to one line, opening to all of it, each
    error a block on phones. */
@@ -14,13 +14,6 @@
   @media (min-width: 75rem) {
     .endpoint-charts {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  /* The wide layout (design c): one chart to a row at every width. */
-  @media (min-width: 75rem) {
-    .endpoint-charts-wide {
-      grid-template-columns: minmax(0, 1fr);
     }
   }
 
@@ -42,12 +35,19 @@
     font-size: 0.75rem;
   }
 
-  /* The period's figure: at the caption's end, or under it when narrow. */
+  /* The period's figure, after its label ("Total", "Overall"): at the
+     caption's end, or under it when narrow. */
   .endpoint-figure {
     margin-inline-start: auto;
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
     font-weight: 650;
+  }
+
+  .endpoint-figure span {
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 500;
   }
 
   .endpoint-note {
@@ -160,17 +160,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* Every message in full (design b): no box, wrapping in the column. */
-  .endpoint-errors-full .error-message {
-    max-inline-size: 40rem;
-  }
-
-  .endpoint-errors-full .error-message pre {
-    margin: 0;
-    padding: 0;
-    background: none;
-  }
-
   /* On phones each error is a block rather than a row that scrolls, so
      its message has the screen's width: its time and kind, its instance,
      then its message. The headers stay for screen readers. */
@@ -220,10 +209,6 @@
       min-inline-size: 0;
       max-inline-size: none;
       margin-block-start: 0.25rem;
-    }
-
-    .endpoint-errors-full .error-message pre {
-      white-space: pre-wrap;
     }
   }
 }

@@ -15,7 +15,7 @@
     <main class="admin-main admin-page">
       <header class="page-head">
         <h1>Endpoints</h1>
-        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests to www {{.Period.Label}}, by route. Dashed lines on the charts mark deploys: hover one to see which.{{else}}No requests to www {{.Period.Label}}.{{end}}</p>
+        <p>{{if .Total.Requests}}{{count .Total.Requests}} requests to www {{.Period.Label}}, by route.{{if .Deploys.Marked}} Dashed lines on the charts mark deploys: hover one to see which.{{end}}{{else}}No requests to www {{.Period.Label}}.{{end}}</p>
       </header>
 
       <div class="segments">
@@ -27,28 +27,11 @@
         <p class="empty">No requests {{.Period.Label}}. www writes its request metrics once a minute, and they show up here.</p>
       </section>
       {{else}}
-      {{if eq .Design "c"}}
-      <section class="admin-section" aria-labelledby="summary">
-        <h2 id="summary">Summary</h2>
-        {{template "stat-row" .Stats}}
-      </section>
-      {{end}}
-      {{if eq .Design "b"}}{{template "routes-section" .}}{{end}}
       <section class="admin-section" aria-labelledby="over-time">
         <h2 id="over-time">Over time</h2>
         {{template "endpoint-charts" .}}
       </section>
-      {{if ne .Design "b"}}{{template "routes-section" .}}{{end}}
-      {{end}}
-    </main>
-  </div>
-</body>
-
-</html>
-
-{{/* routes-section is the routes table, sortable by each column through
-     its header's link. */}}
-{{define "routes-section"}}<section class="admin-section" aria-labelledby="routes">
+      <section class="admin-section" aria-labelledby="routes">
         <h2 id="routes">Routes</h2>
         <div class="table-wrap">
           <table class="data endpoint-routes">
@@ -74,4 +57,10 @@
           </table>
         </div>
         {{template "buckets-note"}}
-      </section>{{end}}
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

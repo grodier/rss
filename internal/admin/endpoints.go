@@ -62,9 +62,8 @@ func (p endpointPeriod) window(now time.Time) (from, to time.Time) {
 
 // endpointsParams are the overview's query parameters, defaults filled in.
 type endpointsParams struct {
-	period, sort string
-	// design picks the checkpoint's option: "" (A), "b" or "c".
-	design string
+	period endpointPeriod
+	sort   string
 }
 
 // routeSortColumns are the routes table's columns: their sort key, their
@@ -101,16 +100,14 @@ func readPeriod(r *http.Request) endpointPeriod {
 	panic("no default endpoint period")
 }
 
+// readEndpointsParams reads the overview's parameters; an unknown sort is
+// the default, as an unknown period is.
 func readEndpointsParams(r *http.Request) endpointsParams {
-	p := endpointsParams{period: readPeriod(r).Key, sort: defaultRouteSort}
+	p := endpointsParams{period: readPeriod(r), sort: defaultRouteSort}
 	for _, c := range routeSortColumns {
 		if r.URL.Query().Get("sort") == c.key {
 			p.sort = c.key
 		}
-	}
-	switch d := r.URL.Query().Get("design"); d {
-	case "b", "c":
-		p.design = d
 	}
 	return p
 }
@@ -118,14 +115,11 @@ func readEndpointsParams(r *http.Request) endpointsParams {
 // href is the overview's URL with p's parameters, leaving defaults out.
 func (p endpointsParams) href() string {
 	v := url.Values{}
-	if p.period != defaultEndpointPeriod {
-		v.Set("period", p.period)
+	if p.period.Key != defaultEndpointPeriod {
+		v.Set("period", p.period.Key)
 	}
 	if p.sort != defaultRouteSort {
 		v.Set("sort", p.sort)
-	}
-	if p.design != "" {
-		v.Set("design", p.design)
 	}
 	if len(v) == 0 {
 		return "/endpoints"
@@ -133,14 +127,11 @@ func (p endpointsParams) href() string {
 	return "/endpoints?" + v.Encode()
 }
 
-// routeHref is a route's page's URL, for period and design.
-func routeHref(route, method, period, design string) string {
+// routeHref is a route's page's URL, for period.
+func routeHref(route, method string, period endpointPeriod) string {
 	v := url.Values{"route": {route}, "method": {method}}
-	if period != defaultEndpointPeriod {
-		v.Set("period", period)
-	}
-	if design != "" {
-		v.Set("design", design)
+	if period.Key != defaultEndpointPeriod {
+		v.Set("period", period.Key)
 	}
 	return "/endpoints/route?" + v.Encode()
 }
@@ -148,28 +139,30 @@ func routeHref(route, method, period, design string) string {
 // endpointsPage is the overview's data.
 type endpointsPage struct {
 	Nav     navData
-	Design  string
 	Periods []filterLink
 	Period  endpointPeriod
 	Total   rss.RequestStats
-	Stats   []statTile
 	Charts  []endpointChart
 	Deploys deployState
 	Routes  []routeRow
 	Columns []sortColumn
 }
 
-// endpointChart is a chart with its caption's figure for the period:
-// "18,204 requests".
+// endpointChart is a chart with the period's figure for its caption, so
+// it isn't taken for the line's latest value: "Total" and "21,887", or
+// "Overall" and "146 ms".
 type endpointChart struct {
 	chart.LineChart
-	Figure string
+	FigureLabel, Figure string
 }
 
 // deployState says whether the charts mark deploys, and why not.
 type deployState struct {
 	Rendering, Failed bool
 }
+
+// Marked is whether the charts mark the deploys.
+func (d deployState) Marked() bool { return d.Rendering && !d.Failed }
 
 // routeRow is a route and method's row in the routes table.
 type routeRow struct {
@@ -184,41 +177,32 @@ type routeRow struct {
 // endpointsHandler shows every route's requests.
 func (s *Server) endpointsHandler(w http.ResponseWriter, r *http.Request) {
 	params := readEndpointsParams(r)
-	period := readPeriod(r)
 	now := s.now().UTC().Truncate(time.Second)
-	from, to := period.window(now)
-	ep, err := s.services.Endpoints.Endpoints(r.Context(), rss.EndpointQuery{From: from, To: to, Hourly: period.Hourly, Step: period.Step})
+	from, to := params.period.window(now)
+	ep, err := s.services.Endpoints.Endpoints(r.Context(), rss.EndpointQuery{From: from, To: to, Hourly: params.period.Hourly, Step: params.period.Step})
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
 
-	page := endpointsPage{Nav: s.nav(r, "endpoints"), Design: params.design, Period: period, Total: ep.Total}
+	page := endpointsPage{Nav: s.nav(r, "endpoints"), Period: params.period, Total: ep.Total}
 	for _, p := range endpointPeriods {
 		next := params
-		next.period = p.Key
-		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: next.href(), Current: p.Key == period.Key})
+		next.period = p
+		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: next.href(), Current: p.Key == params.period.Key})
 	}
-	if ep.Total.Requests > 0 {
-		markers, deploys, err := s.endpointMarkers(r, from, now)
+	if t := ep.Total; t.Requests > 0 {
+		steps := endpointSteps(ep.Series, from, to, now, params.period)
+		page.Charts = []endpointChart{
+			{requestsChart(steps, params.period), "Total", count(t.Requests)},
+			{errorRateChart(steps, false), "Overall", percentOf(t.Classes[4], t.Requests)},
+			{latencyChart(steps, []float64{0.95}), "Overall", ms(percentileOf(t.Buckets, 0.95)) + " ms"},
+		}
+		page.Deploys, err = s.markDeploys(r, page.Charts, from, now)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		page.Deploys = deploys
-		steps := endpointSteps(ep.Series, from, to, now, period)
-		page.Charts = []endpointChart{
-			{requestsChart(steps, period), count(ep.Total.Requests) + " requests"},
-			{errorRateChart(steps, false), percentOf(ep.Total.Classes[4], ep.Total.Requests) + " 5xx"},
-			{latencyChart(steps, []float64{0.95}), "p95 " + ms(percentileOf(ep.Total.Buckets, 0.95)) + " ms"},
-		}
-		for i := range page.Charts {
-			page.Charts[i].Markers = markers
-			if params.design == "c" {
-				page.Charts[i].Height = wideChartHeight
-			}
-		}
-		page.Stats = requestTiles(ep.Total, period)
 		page.Routes = routeRows(ep.Routes, params)
 	}
 	for _, c := range routeSortColumns {
@@ -238,28 +222,30 @@ func (s *Server) endpointsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// endpointMarkers are the markers of the deploys that went live from from
-// on, from Render when the admin has its settings. Render failing or
-// timing out is logged and says so on the page, as on the service page;
-// the error returned is the database's.
-func (s *Server) endpointMarkers(r *http.Request, from, now time.Time) ([]chart.Marker, deployState, error) {
+// markDeploys marks charts with the deploys that went live from from on,
+// from Render when the admin has its settings. Render failing or timing
+// out is logged and said on the page, as on the service page; the error
+// returned is the database's.
+func (s *Server) markDeploys(r *http.Request, charts []endpointChart, from, now time.Time) (deployState, error) {
 	if s.services.Render == nil {
-		return nil, deployState{}, nil
+		return deployState{}, nil
 	}
-	state := deployState{Rendering: true}
 	ctx, cancel := context.WithTimeout(r.Context(), renderTimeout)
 	defer cancel()
 	deploys, err := s.services.Render.Deploys(ctx, deploysFetched)
 	if err != nil {
 		s.logger.Warn("endpoints page: read Render's deploys", "error", err)
-		state.Failed = true
-		return nil, state, nil
+		return deployState{Rendering: true, Failed: true}, nil
 	}
 	versions, err := s.deployVersions(r.Context(), deploys, now, s.config.AppInternalURL != "")
 	if err != nil {
-		return nil, state, err
+		return deployState{}, err
 	}
-	return deployMarkers(deploys, versions, from), state, nil
+	markers := deployMarkers(deploys, versions, from)
+	for i := range charts {
+		charts[i].Markers = markers
+	}
+	return deployState{Rendering: true}, nil
 }
 
 // endpointStep is a step of the charts: its requests, and how much of it
@@ -291,10 +277,6 @@ func endpointSteps(series []rss.EndpointPoint, from, to, now time.Time, p endpoi
 }
 
 const endpointChartHeight = 140
-
-// wideChartHeight is the charts' height in the wide layout (design c),
-// one to a row.
-const wideChartHeight = 180
 
 // requestsChart charts the requests per minute or hour: each step's
 // requests over the minutes or hours of it that have passed.
@@ -402,19 +384,6 @@ func kb(bytes int64, requests int) string {
 	return strconv.FormatFloat(float64(bytes)/float64(requests)/1024, 'f', 1, 64)
 }
 
-// requestTiles are the period's figures as a stat row.
-func requestTiles(t rss.RequestStats, p endpointPeriod) []statTile {
-	return []statTile{
-		{Label: "Requests", Value: t.Requests, Note: strings.TrimPrefix(p.Label, "in ")},
-		{Label: "5xx", Text: percentOf(t.Classes[4], t.Requests), Note: count(t.Classes[4]) + " requests"},
-		{Label: "4xx", Text: percentOf(t.Classes[3], t.Requests), Note: count(t.Classes[3]) + " requests"},
-		{Label: "p50", Text: ms(percentileOf(t.Buckets, 0.5)) + " ms"},
-		{Label: "p95", Text: ms(percentileOf(t.Buckets, 0.95)) + " ms"},
-		{Label: "p99", Text: ms(percentileOf(t.Buckets, 0.99)) + " ms"},
-		{Label: "Average size", Text: kb(t.BytesSum, t.Requests) + " KB"},
-	}
-}
-
 // routeRows are routes' rows sorted by params.sort: by route, or by a
 // number, most first, with routes missing it (no requests) last; ties by
 // route and method.
@@ -456,7 +425,7 @@ func routeRows(routes []rss.EndpointRoute, params endpointsParams) []routeRow {
 	rows := make([]routeRow, len(sorted))
 	for i, r := range sorted {
 		rows[i] = routeRow{
-			Route: r.Route, Method: r.Method, Href: routeHref(r.Route, r.Method, params.period, params.design),
+			Route: r.Route, Method: r.Method, Href: routeHref(r.Route, r.Method, params.period),
 			Requests:     r.Requests,
 			ClientErrors: percentOf(r.Classes[3], r.Requests),
 			ServerErrors: percentOf(r.Classes[4], r.Requests),
@@ -472,13 +441,11 @@ func routeRows(routes []rss.EndpointRoute, params endpointsParams) []routeRow {
 // routePage is a route's page's data.
 type routePage struct {
 	Nav           navData
-	Design        string
 	Route, Method string
 	Back          string // the overview, for the same period
 	Periods       []filterLink
 	Period        endpointPeriod
 	Total         rss.RequestStats
-	Stats         []statTile
 	Charts        []endpointChart
 	Deploys       deployState
 	Histogram     chart.Histogram
@@ -499,15 +466,12 @@ type instanceRow struct {
 }
 
 // errorRow is a server error as the route's page shows it: its message's
-// first line, cut by the stylesheet, and all of it.
+// first line, which the stylesheet cuts to the column, and all of it.
 type errorRow struct {
-	At        time.Time
-	Instance  string
-	Panic     bool
-	FirstLine string
-	Message   string
-	// Long is whether the first line isn't all of the message.
-	Long bool
+	At                 time.Time
+	Instance           string
+	Panic              bool
+	FirstLine, Message string
 }
 
 // routeHandler shows a route's requests and recent server errors. A route
@@ -521,7 +485,6 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	period := readPeriod(r)
-	params := readEndpointsParams(r)
 	now := s.now().UTC().Truncate(time.Second)
 	from, to := period.window(now)
 	ep, err := s.services.Endpoints.Endpoints(r.Context(), rss.EndpointQuery{
@@ -538,43 +501,35 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	back := endpointsParams{period: period.Key, sort: defaultRouteSort, design: params.design}
+	back := endpointsParams{period: period, sort: defaultRouteSort}
 	page := routePage{
-		Nav: s.nav(r, "endpoints"), Design: params.design, Route: route, Method: method,
+		Nav: s.nav(r, "endpoints"), Route: route, Method: method,
 		Back: back.href(), Period: period, Total: ep.Total,
 		MoreErrors: len(errs) > maxRouteErrors, ErrorsKept: metrics.ErrorsKept,
 	}
 	for _, p := range endpointPeriods {
-		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, p.Key, params.design), Current: p.Key == period.Key})
+		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: routeHref(route, method, p), Current: p.Key == period.Key})
 	}
 	for _, e := range errs[:min(len(errs), maxRouteErrors)] {
-		first, _, long := strings.Cut(strings.TrimSpace(e.Message), "\n")
+		first, _, _ := strings.Cut(strings.TrimSpace(e.Message), "\n")
 		page.Errors = append(page.Errors, errorRow{
 			At: e.OccurredAt, Instance: e.Instance, Panic: e.Panic,
-			FirstLine: first, Message: e.Message, Long: long,
+			FirstLine: first, Message: e.Message,
 		})
 	}
 
 	if t := ep.Total; t.Requests > 0 {
-		markers, deploys, err := s.endpointMarkers(r, from, now)
+		steps := endpointSteps(ep.Series, from, to, now, period)
+		page.Charts = []endpointChart{
+			{requestsChart(steps, period), "Total", count(t.Requests)},
+			{errorRateChart(steps, true), "Overall", percentOf(t.Classes[4], t.Requests) + " 5xx · " + percentOf(t.Classes[3], t.Requests) + " 4xx"},
+			{latencyChart(steps, []float64{0.5, 0.95, 0.99}), "Overall", "p95 " + ms(percentileOf(t.Buckets, 0.95)) + " ms"},
+		}
+		page.Deploys, err = s.markDeploys(r, page.Charts, from, now)
 		if err != nil {
 			s.serverErrorHTML(w, r, err)
 			return
 		}
-		page.Deploys = deploys
-		steps := endpointSteps(ep.Series, from, to, now, period)
-		page.Charts = []endpointChart{
-			{requestsChart(steps, period), count(t.Requests) + " requests"},
-			{errorRateChart(steps, true), percentOf(t.Classes[4], t.Requests) + " 5xx · " + percentOf(t.Classes[3], t.Requests) + " 4xx"},
-			{latencyChart(steps, []float64{0.5, 0.95, 0.99}), "p95 " + ms(percentileOf(t.Buckets, 0.95)) + " ms"},
-		}
-		for i := range page.Charts {
-			page.Charts[i].Markers = markers
-			if params.design == "c" {
-				page.Charts[i].Height = wideChartHeight
-			}
-		}
-		page.Stats = requestTiles(t, period)
 		page.Histogram = chart.Histogram{Title: "Latency", Unit: "ms", Bounds: metrics.DurationBounds, Counts: t.Buckets, Height: 180}
 		for i, n := range t.Classes {
 			if n > 0 {

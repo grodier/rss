@@ -47,7 +47,7 @@ func endpointRows(hourly bool) string {
 // The rows are read as they are, a step's start beside each, and summed
 // here, latency buckets element-wise: on a few days of local data that
 // was 2 to 3 times faster than summing the buckets in SQL, which unnests
-// every row's array (see "Admin: endpoints" in docs/features.md).
+// every row's array (see "Endpoints" in docs/features.md).
 func (r *AdminEndpointsRepository) Endpoints(ctx context.Context, q rss.EndpointQuery) (rss.Endpoints, error) {
 	if q.Step <= 0 {
 		return rss.Endpoints{}, fmt.Errorf("endpoints: step %v", q.Step)

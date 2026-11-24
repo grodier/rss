@@ -57,22 +57,26 @@
         </details>
         {{end}}
         {{- with .Contents}}
-        {{- if eq $.ContentsOption "2"}}
-        {{template "contents-disclosure" .}}
+        {{/* The contents list, beside the column on wide screens (article.css);
+             contents.ts marks the section being read. */}}
         <div class="reader-rail">
-          <nav class="reader-contents reader-contents-side" aria-label="Contents">
+          <nav class="reader-contents" aria-label="Contents" data-contents>
             <p class="reader-contents-title">Contents</p>
-            {{template "contents-list" .}}
+            <ol class="reader-contents-list" role="list">
+              {{- range .}}
+              <li><a href="#{{.ID}}">{{.Text}}</a>
+                {{- with .Children}}
+                <ol role="list">
+                  {{- range .}}
+                  <li><a href="#{{.ID}}">{{.Text}}</a></li>
+                  {{- end}}
+                </ol>
+                {{- end}}
+              </li>
+              {{- end}}
+            </ol>
           </nav>
         </div>
-        {{- else if eq $.ContentsOption "3"}}
-        <nav class="reader-contents reader-contents-open" aria-label="Contents">
-          <h2 class="reader-contents-title">Contents</h2>
-          {{template "contents-list" .}}
-        </nav>
-        {{- else}}
-        {{template "contents-disclosure" .}}
-        {{- end}}
         {{- end}}
         {{with .LeadImage}}<img class="reader-image" src="{{.}}"{{with $.LeadImageFallback}} data-fallback-src="{{.}}"{{end}} alt="" fetchpriority="high" referrerpolicy="no-referrer">{{end}}
         {{if .Body}}

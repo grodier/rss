@@ -130,7 +130,6 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		LeadImageFallback string
 		Body              template.HTML
 		Contents          []outlineItem
-		ContentsOption    string // design checkpoint only: ?contents=1, 2 or 3
 		Saved             bool
 		Starred           bool
 		ReturnTo          string
@@ -146,7 +145,6 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		LeadImageFallback: leadImageFallback,
 		Body:              body.HTML,
 		Contents:          contents(body.Outline),
-		ContentsOption:    contentsOption(r),
 		Saved:             saved[article.ID],
 		Starred:           starred[article.ID],
 		ReturnTo:          r.URL.RequestURI(),
@@ -187,17 +185,6 @@ func contents(headings []sanitize.Heading) []outlineItem {
 		items = append(items, outlineItem{Heading: h})
 	}
 	return items
-}
-
-// contentsOption returns the design checkpoint's option for the contents
-// list, from ?contents=: "1" (a closed disclosure, the default), "2" (a side
-// rail on wide screens) or "3" (an open list). Removed once one is picked.
-func contentsOption(r *http.Request) string {
-	switch o := r.URL.Query().Get("contents"); o {
-	case "2", "3":
-		return o
-	}
-	return "1"
 }
 
 // readOnLabel returns the name the article page's "Read on" button shows:

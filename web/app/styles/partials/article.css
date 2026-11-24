@@ -68,115 +68,12 @@
     border-radius: var(--radius-sm);
   }
 
-  /* The contents list of a long article: its sections' titles as links, in
-     the interface's face so it doesn't read as part of the article. */
-  .reader-contents {
-    margin-block-start: 1rem;
-    font-family: var(--font);
-  }
-
-  .reader-contents-list a {
-    display: block;
-    padding-block: 0.3125rem;
-    color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    line-height: 1.35;
-    text-decoration: none;
-  }
-
-  .reader-contents-list a:hover {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-  }
-
-  /* An <h3>, under its <h2>. */
-  .reader-contents-list ol {
-    padding-inline-start: 1rem;
-  }
-
-  .reader-contents-list ol a {
-    color: var(--text-2);
-    font-size: 0.875rem;
-    font-weight: 400;
-  }
-
-  .reader-contents-title {
-    color: var(--text-3);
-    font-size: 0.75rem;
-    font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  /* Folded: a line between rules that says how many sections there are,
-     opening to the list. */
-  .reader-contents-fold details {
-    border-block: 1px solid var(--border);
-  }
-
-  .reader-contents-fold summary {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-block-size: 2.75rem;
-    color: var(--text);
-    font-size: 0.9375rem;
-    font-weight: 650;
-    list-style: none;
-    cursor: pointer;
-  }
-
-  .reader-contents-fold summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .reader-contents-fold summary:hover .reader-contents-label {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-  }
-
-  .reader-contents-fold summary .icon {
-    inline-size: 1rem;
-    block-size: 1rem;
-    color: var(--text-3);
-    stroke-width: 2.25;
-  }
-
-  .reader-contents-fold details[open] summary .icon {
-    transform: rotate(90deg);
-  }
-
-  .reader-contents-count {
-    color: var(--text-3);
-    font-weight: 400;
-  }
-
-  /* The list lines up with the summary's label, past the chevron. */
-  .reader-contents-fold .reader-contents-list {
-    padding: 0 0 0.75rem 1.5rem;
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .reader-contents-fold summary .icon {
-      transition: transform var(--duration-base) var(--ease-out);
-    }
-  }
-
-  /* Open at the top, like a printed contents page. */
-  .reader-contents-open {
-    margin-block-start: 1.25rem;
-    padding-block: 0.875rem 1rem;
-    border-block: 1px solid var(--border);
-    border-block-start-color: var(--border-strong);
-  }
-
-  .reader-contents-open .reader-contents-title {
-    margin-block-end: 0.375rem;
-  }
-
-  /* Beside the column on wide screens: in the shell's free right-hand track
-     (shell.css), held in view while reading. Below that, folded. */
+  /* A long article's contents list: its sections' titles as links, in the
+     interface's face so it doesn't read as part of the article. Only on
+     wide screens, in the shell's free right-hand track (shell.css), held in
+     view while reading. Quiet until pointed at, except the section being
+     read, which contents.ts marks; it also folds the <h3>s of the other
+     sections (data-tracking). */
   .reader-rail {
     display: none;
   }
@@ -184,10 +81,6 @@
   @media (min-width: 80rem) {
     .column:has(.reader-rail) {
       position: relative;
-    }
-
-    .reader-contents-fold:has(+ .reader-rail) {
-      display: none;
     }
 
     /* As tall as the column, so the list can stick within it. */
@@ -200,40 +93,61 @@
       padding: 1.25rem 1rem 2.5rem 1.75rem;
     }
 
-    .reader-contents-side {
+    .reader-contents {
       position: sticky;
       inset-block-start: 1.25rem;
       max-block-size: calc(100vh - 2.5rem);
-      margin: 0;
       overflow-y: auto;
+      font-family: var(--font);
     }
 
-    .reader-contents-side .reader-contents-title {
+    .reader-contents-title {
       margin-block-end: 0.5rem;
+      color: var(--text-3);
+      font-size: 0.75rem;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
 
-    .reader-contents-side .reader-contents-list {
+    .reader-contents-list {
       border-inline-start: 1px solid var(--border);
     }
 
-    .reader-contents-side .reader-contents-list a {
-      padding-inline-start: 0.875rem;
-      color: var(--text-2);
-      font-size: 0.875rem;
-    }
-
-    .reader-contents-side .reader-contents-list ol a {
-      padding-inline-start: 0;
+    .reader-contents-list a {
+      display: block;
+      margin-inline-start: -1px;
+      padding: 0.3125rem 0 0.3125rem 0.875rem;
+      border-inline-start: 2px solid transparent;
       color: var(--text-3);
-      font-size: 0.8125rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: color var(--duration-quick) var(--ease-out);
     }
 
-    .reader-contents-side .reader-contents-list ol {
+    /* An <h3>, under its <h2>. */
+    .reader-contents-list ol a {
       padding-inline-start: 1.75rem;
+      font-size: 0.8125rem;
+      font-weight: 400;
     }
 
-    .reader-contents-side .reader-contents-list a:hover {
+    .reader-contents-list a:hover {
       color: var(--text);
+    }
+
+    /* The section being read: firm, with a sunrise edge on the rule, like
+       the nav's current section. */
+    .reader-contents-list a[aria-current] {
+      border-inline-start-color: var(--brand);
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .reader-contents[data-tracking] li:not([data-open]) > ol {
+      display: none;
     }
   }
 

@@ -144,7 +144,7 @@ type manifestEntry struct {
 // that says why in its description.
 const (
 	readingJSBudget  = 13060 // 11875 measured
-	readingCSSBudget = 11700 // DRAFT (#723): holds all three contents options; reset once one is picked
+	readingCSSBudget = 11700 // DRAFT (#723): the contents rail is 74 bytes over 11415; settled at the checkpoint
 )
 
 // The admin's build has a manifest, with its page group's entry and the base

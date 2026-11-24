@@ -282,7 +282,7 @@ type crumb struct {
 func feedCrumbs(feed rss.AdminFeed) []crumb {
 	label := feed.Title
 	if label == "" {
-		label = feed.Url
+		label = "Feed" // as its h1 says; its URL is the subtitle
 	}
 	return []crumb{
 		{Label: "Sites", Href: "/sites"},

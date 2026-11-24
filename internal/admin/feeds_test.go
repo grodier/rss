@@ -521,9 +521,7 @@ func TestFeedAndSitePagesEscape(t *testing.T) {
 // escaped.
 func TestBreadcrumbs(t *testing.T) {
 	trail := func(steps ...string) string {
-		return `<nav class="breadcrumbs" aria-label="Breadcrumb">
-          <ol>` + strings.Join(steps, "") + `</ol>
-        </nav>`
+		return `<ol>` + strings.Join(steps, "") + `</ol>`
 	}
 	untitled := testFeed()
 	untitled.Title = ""
@@ -543,7 +541,7 @@ func TestBreadcrumbs(t *testing.T) {
 		{"feed without a title", untitled, "/feeds/" + feedID(1), trail(
 			`<li><a href="/sites">Sites</a></li>`,
 			`<li><a href="/sites/`+siteID(1)+`">example.com</a></li>`,
-			`<li><span aria-current="page">https://example.com/feed.xml</span></li>`)},
+			`<li><span aria-current="page">Feed</span></li>`)},
 		{"feed with markup", markup, "/feeds/" + feedID(1), trail(
 			`<li><a href="/sites">Sites</a></li>`,
 			`<li><a href="/sites/`+siteID(1)+`">&#34;&gt;&lt;i&gt;x&lt;/i&gt;</a></li>`,
@@ -560,7 +558,7 @@ func TestBreadcrumbs(t *testing.T) {
 				t.Fatalf("GET %s = %d, want 200", tt.path, rr.Code)
 			}
 			body := rr.Body.String()
-			if !strings.Contains(body, tt.want) {
+			if !strings.Contains(body, `<nav class="breadcrumbs" aria-label="Breadcrumb">`) || !strings.Contains(body, tt.want) {
 				t.Errorf("GET %s lacks the breadcrumbs\n%s", tt.path, tt.want)
 			}
 			if strings.Contains(body, "<b>Food") || strings.Contains(body, "<i>x") {

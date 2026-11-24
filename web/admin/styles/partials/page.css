@@ -102,7 +102,9 @@
     overflow-wrap: anywhere;
   }
 
+  /* The plain value first, for browsers without alternative text. */
   .breadcrumbs li + li::before {
+    content: "›";
     content: "›" / "";
     margin-inline-end: 0.375rem;
     color: var(--text-3);

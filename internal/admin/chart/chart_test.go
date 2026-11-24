@@ -229,6 +229,8 @@ func TestDescriptions(t *testing.T) {
 		{"a series without values", LineChart{Series: []Series{{Name: "a", Points: points(nan)}}}, "<desc>Latest, a has no data. From Nov 9 12:00 to Nov 9 12:00 UTC.</desc>"},
 		{"no values", Histogram{Bounds: []float64{1}, Counts: []int{0, 0}}, "<desc>No values.</desc>"},
 		{"the most in the open bucket", Histogram{Unit: "ms", Bounds: []float64{1000}, Counts: []int{1, 3}}, "<desc>4 values; median about 1,000 ms, 95th percentile about 1,000 ms; the most, 3, in the bucket above 1,000 ms.</desc>"},
+		// A threshold that isn't a bound isn't drawn, so it isn't said.
+		{"thresholds", Histogram{Unit: "ms", Bounds: []float64{1000, 2500}, Counts: []int{1, 3, 0}, Thresholds: []Threshold{{Value: 2500, Label: "good"}, {Value: 3000, Label: "poor"}}}, "the most, 3, in the bucket up to 2,500 ms. Thresholds: good at 2,500 ms.</desc>"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if svg := string(tt.c.SVG()); !strings.Contains(svg, tt.want) {
@@ -256,6 +258,14 @@ var goldenCharts = map[string]Chart{
 		Unit:   "ms",
 		Bounds: []float64{500, 1000, 2500, 4000},
 		Counts: []int{12, 40, 31, 9, 2},
+	},
+	// Each threshold after its bound's bucket; 3000 isn't a bound.
+	"histogram-thresholds": Histogram{
+		Title:      "Largest Contentful Paint",
+		Unit:       "ms",
+		Bounds:     []float64{500, 1000, 2500, 4000},
+		Counts:     []int{12, 40, 31, 9, 2},
+		Thresholds: []Threshold{{Value: 2500, Label: "good"}, {Value: 4000, Label: "poor"}, {Value: 3000, Label: "never"}},
 	},
 }
 

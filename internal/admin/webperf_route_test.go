@@ -88,7 +88,7 @@ func TestWebPerfRoutePage(t *testing.T) {
 		// A distribution per metric, the server's time last.
 		`<h3>LCP <span class="vital-full">Largest Contentful Paint</span></h3> <span class="unit">Good up to 2.50 s, poor above 4.00 s · 1,900 views</span>`,
 		`<h3>CLS <span class="vital-full">Cumulative Layout Shift</span></h3> <span class="unit">Good up to 0.10, poor above 0.25 · 1,900 views</span>`,
-		`<h3>Server <span class="vital-full">Server time</span></h3> <span class="unit">1,890 views</span>`,
+		`<h3>Server time <span class="vital-full">from Server-Timing</span></h3> <span class="unit">1,890 views</span>`,
 		// Server and network.
 		`<dt>p75 TTFB</dt>`, `<dd>522 ms</dd>`, `<dt>p75 server time</dt>`, `<dd>310 ms</dd>`, `<dd>212 ms</dd>`,
 		`1,890 of 1,912 views reported the server’s time.`,

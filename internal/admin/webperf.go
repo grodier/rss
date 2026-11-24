@@ -71,12 +71,17 @@ var webDevices = []struct{ Key, Label string }{
 // webPercentiles are the percentile filter's values, in RUMStat's order.
 var webPercentiles = []string{"p75", "p90", "p95"}
 
-// The Core Web Vitals, rated at p75 as Google assesses them, then the two
-// loading timings shown less prominently.
-var webMetrics = []struct {
+// webMetric is a metric the web performance pages show: its key in
+// RUMGroup.Metrics, its short and full names, and whether it's shown less
+// prominently.
+type webMetric struct {
 	Key, Name, Full string
 	Minor           bool
-}{
+}
+
+// The Core Web Vitals, rated at p75 as Google assesses them, then the two
+// loading timings shown less prominently.
+var webMetrics = []webMetric{
 	{"lcp", "LCP", "Largest Contentful Paint", false},
 	{"inp", "INP", "Interaction to Next Paint", false},
 	{"cls", "CLS", "Cumulative Layout Shift", false},
@@ -93,10 +98,8 @@ const topRoutes = 20
 
 // webPerfPage is the web performance page's data.
 type webPerfPage struct {
-	Nav         navData
-	Periods     []filterLink
-	Devices     []filterLink
-	Percentiles []filterLink
+	Nav navData
+	webPerfFilters
 	Period      webPeriod
 	Percentile  string // p75, p90 or p95
 	Views       int
@@ -147,8 +150,8 @@ type vitalRow struct {
 	Others     []ratedValue
 	Views      int
 	Bar        []ratingSegment
-	Shares     string // "76% good · 15% needs improvement · 8% poor"
-	Chart      chart.Chart
+	Shares     string           // "76% good · 15% needs improvement · 8% poor"
+	Chart      *chart.LineChart // nil when no view reported it
 }
 
 // ratedValue is a metric's value at a percentile, formatted, with its
@@ -273,15 +276,46 @@ func (p webPerfParams) values() url.Values {
 	return v
 }
 
+// period is p's period: readWebPerfParams has made it one of webPeriods.
+func (p webPerfParams) periodOf() webPeriod {
+	for _, wp := range webPeriods {
+		if wp.Key == p.period {
+			return wp
+		}
+	}
+	panic("no web performance period " + p.period)
+}
+
+// webPerfFilters are the filters' links from params, each keeping the
+// others, to the URLs href makes.
+type webPerfFilters struct {
+	Periods, Devices, Percentiles []filterLink
+}
+
+func filtersFor(params webPerfParams, href func(webPerfParams) string) webPerfFilters {
+	var f webPerfFilters
+	for _, p := range webPeriods {
+		next := params
+		next.period = p.Key
+		f.Periods = append(f.Periods, filterLink{Label: p.Key, Href: href(next), Current: p.Key == params.period})
+	}
+	for _, d := range webDevices {
+		next := params
+		next.device = d.Key
+		f.Devices = append(f.Devices, filterLink{Label: d.Label, Href: href(next), Current: d.Key == params.device})
+	}
+	for _, q := range webPercentiles {
+		next := params
+		next.percentile = q
+		f.Percentiles = append(f.Percentiles, filterLink{Label: q, Href: href(next), Current: q == params.percentile})
+	}
+	return f
+}
+
 // webPerfHandler shows the web performance page.
 func (s *Server) webPerfHandler(w http.ResponseWriter, r *http.Request) {
 	params := readWebPerfParams(r)
-	var period webPeriod
-	for _, p := range webPeriods {
-		if p.Key == params.period {
-			period = p
-		}
-	}
+	period := params.periodOf()
 	q := period.query(s.now(), params.device)
 	wp, err := s.services.WebPerf.WebPerf(r.Context(), q)
 	if err != nil {
@@ -308,21 +342,9 @@ func steps(q rss.WebPerfQuery) []time.Time {
 // webPerfData is the page's data from wp, whose series have a point at
 // each of steps that had views.
 func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod, steps []time.Time) webPerfPage {
-	page := webPerfPage{Period: period, Percentile: params.percentile, Views: wp.Total.Views}
-	for _, p := range webPeriods {
-		next := params
-		next.period = p.Key
-		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: next.href(), Current: p.Key == params.period})
-	}
-	for _, d := range webDevices {
-		next := params
-		next.device = d.Key
-		page.Devices = append(page.Devices, filterLink{Label: d.Label, Href: next.href(), Current: d.Key == params.device})
-	}
-	for _, q := range webPercentiles {
-		next := params
-		next.percentile = q
-		page.Percentiles = append(page.Percentiles, filterLink{Label: q, Href: next.href(), Current: q == params.percentile})
+	page := webPerfPage{
+		webPerfFilters: filtersFor(params, webPerfParams.href),
+		Period:         period, Percentile: params.percentile, Views: wp.Total.Views,
 	}
 	if wp.Total.Views == 0 {
 		return page
@@ -330,7 +352,7 @@ func webPerfData(wp rss.WebPerf, params webPerfParams, period webPeriod, steps [
 
 	page.Assessment = assess(wp.Total.Metrics)
 	for _, m := range webMetrics {
-		page.Vitals = append(page.Vitals, vital(m.Key, m.Name, m.Full, m.Minor, wp, params.percentile, steps))
+		page.Vitals = append(page.Vitals, vital(m, wp.Total, wp.Series, params.percentile, steps))
 	}
 	page.ViewsChart = routeViewsChart(wp, period, steps)
 
@@ -472,10 +494,11 @@ func assess(stats map[string]rss.RUMStat) assessment {
 	return assessment{Rating: "good", Text: "LCP, INP and CLS are good at p75, as Google assesses them"}
 }
 
-// vital is metric's row.
-func vital(metric, name, full string, minor bool, wp rss.WebPerf, q string, steps []time.Time) vitalRow {
-	s, ok := wp.Total.Metrics[metric]
-	row := vitalRow{Name: name, Full: full, Minor: minor, Views: s.Views, Selected: rated(metric, s, ok, q)}
+// vital is m's row, from total and its series.
+func vital(m webMetric, total rss.RUMGroup, series []rss.RUMPoint, q string, steps []time.Time) vitalRow {
+	metric, name := m.Key, m.Name
+	s, ok := total.Metrics[metric]
+	row := vitalRow{Name: name, Full: m.Full, Minor: m.Minor, Views: s.Views, Selected: rated(metric, s, ok, q)}
 	for _, p := range webPercentiles {
 		if p != q {
 			row.Others = append(row.Others, rated(metric, s, ok, p))
@@ -486,33 +509,39 @@ func vital(metric, name, full string, minor bool, wp rss.WebPerf, q string, step
 	}
 	row.Bar, row.Shares = ratingShares(s)
 
-	at := map[time.Time]rss.RUMStat{}
-	for _, p := range wp.Series {
-		if ps, ok := p.Metrics[metric]; ok && ps.Views > 0 {
-			at[p.T.UTC()] = ps
-		}
-	}
-	points := make([]chart.Point, len(steps))
-	for i, t := range steps {
-		v := math.NaN()
-		if ps, ok := at[t]; ok {
-			v = percentile(ps, q)
-		}
-		points[i] = chart.Point{T: t, V: v}
-	}
 	t := metrics.RUMThresholds[metric]
 	unit := "ms"
 	if metric == "cls" {
 		unit = ""
 	}
-	row.Chart = chart.LineChart{
+	row.Chart = &chart.LineChart{
 		Title:      name + ", " + q + " over time",
 		Unit:       unit,
 		Height:     140,
-		Series:     []chart.Series{{Name: q, Points: points}},
+		Series:     []chart.Series{percentileSeries(series, metric, q, q, steps)},
 		Thresholds: []chart.Threshold{{Value: t.Good, Label: "good"}, {Value: t.Poor, Label: "poor"}},
 	}
 	return row
+}
+
+// percentileSeries is metric's value at q in each of steps, from series,
+// named name; a step with no view reporting it is a gap.
+func percentileSeries(series []rss.RUMPoint, metric, q, name string, steps []time.Time) chart.Series {
+	at := map[time.Time]float64{}
+	for _, p := range series {
+		if s, ok := p.Metrics[metric]; ok && s.Views > 0 {
+			at[p.T.UTC()] = percentile(s, q)
+		}
+	}
+	out := chart.Series{Name: name, Points: make([]chart.Point, len(steps))}
+	for i, t := range steps {
+		v, ok := at[t]
+		if !ok {
+			v = math.NaN()
+		}
+		out.Points[i] = chart.Point{T: t, V: v}
+	}
+	return out
 }
 
 // ratingShares are s's views by rating as a bar and in words.

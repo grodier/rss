@@ -315,7 +315,7 @@ func TestWebPerfSteps(t *testing.T) {
 		t.Errorf("query at a fraction of a second = %v to %v, want %v to %v", q.From, q.To, ts[0], testNow)
 	}
 	page := webPerfData(wp, webPerfParams{period: "7d", percentile: "p75", sort: "views"}, period, ts)
-	lc := page.Vitals[0].Chart.(chart.LineChart)
+	lc := page.Vitals[0].Chart
 	points := lc.Series[0].Points
 	if len(points) != 28 || points[0].V != 2460 || points[1].V != 2460 || !math.IsNaN(points[2].V) {
 		t.Errorf("LCP points = %v, want 28, the first two 2460 and then gaps", points)

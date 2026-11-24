@@ -51,15 +51,16 @@
           </figure>
           {{end}}
         </div>
-        <p class="missing">Views per bucket, each bar up to its bound under it, and the last everything above.</p>
+        <p class="missing">Each bar counts the views up to the bound under it, and the last those above it; dashed lines mark the good and poor thresholds.</p>
       </section>
 
       <section class="admin-section" aria-labelledby="server-network">
         <h2 id="server-network">Server and network</h2>
         {{template "stat-row" .Server.Stats}}
-        {{if .Server.ServerViews}}
-        <p class="missing">{{count .Server.ServerViews}} of {{count .Views}} views reported the server’s time. The difference is between the two {{.Percentile}}s, not each view’s.</p>
-        {{chart .Server.Chart}}
+        {{with .Server.Chart}}
+        <h3 class="sub">TTFB and server time, {{$.Percentile}} over time</h3>
+        {{chart .}}
+        <p class="missing">{{count $.Server.ServerViews}} of {{count $.Views}} views reported the server’s time. The difference is between the two {{$.Percentile}}s, not each view’s.</p>
         {{else}}
         <p class="missing">No view reported the server’s time: it comes from the page’s Server-Timing header.</p>
         {{end}}

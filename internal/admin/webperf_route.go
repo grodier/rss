@@ -3,6 +3,7 @@ package admin
 import (
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -26,20 +27,18 @@ func webPerfRouteHref(route string, p webPerfParams) string {
 
 // webPerfRoutePage is a route's web performance page's data.
 type webPerfRoutePage struct {
-	Nav         navData
-	Route       string
-	Back        string // the web performance page, with the same filters
-	Endpoint    string // the route's endpoints page
-	Periods     []filterLink
-	Devices     []filterLink
-	Percentiles []filterLink
-	Period      webPeriod
-	Percentile  string
-	Views       int
-	Few         bool // under fewViews views
-	Assessment  assessment
-	Vitals      []vitalRow
-	Deploys     deployState
+	Nav      navData
+	Route    string
+	Back     string // the web performance page, with the same filters
+	Endpoint string // the route's endpoints page
+	webPerfFilters
+	Period     webPeriod
+	Percentile string
+	Views      int
+	Few        bool // under fewViews views
+	Assessment assessment
+	Vitals     []vitalRow
+	Deploys    deployState
 	// Distributions are each metric's histogram, the server's time last.
 	Distributions []distribution
 	Server        serverNetwork
@@ -61,7 +60,7 @@ type distribution struct {
 // chosen percentile and the difference, and both over time.
 type serverNetwork struct {
 	Stats []statTile
-	Chart chart.Chart
+	Chart *chart.LineChart
 	// ServerViews is how many views reported the server's time, which
 	// only a response with its Server-Timing header gives.
 	ServerViews int
@@ -98,12 +97,7 @@ func (s *Server) webPerfRouteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := readWebPerfParams(r)
-	var period webPeriod
-	for _, p := range webPeriods {
-		if p.Key == params.period {
-			period = p
-		}
-	}
+	period := params.periodOf()
 	now := s.now()
 	q := period.query(now, params.device)
 	wr, err := s.services.WebPerf.WebPerfRoute(r.Context(), q, route)
@@ -121,26 +115,29 @@ func (s *Server) webPerfRouteHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		page.Deploys = state
-		// Each chart's time axis runs to the period's end, so a deploy in
-		// its last step is marked, as on the endpoints pages.
-		mark := func(c chart.Chart) chart.Chart {
-			lc, ok := c.(chart.LineChart)
-			if !ok {
-				return c
-			}
-			lc.Markers = markers
-			for i := range lc.Series {
-				lc.Series[i].Points = append(lc.Series[i].Points, chart.Point{T: q.To, V: math.NaN()})
-			}
-			return lc
+		charts := []*chart.LineChart{page.Server.Chart}
+		for _, v := range page.Vitals {
+			charts = append(charts, v.Chart)
 		}
-		for i := range page.Vitals {
-			page.Vitals[i].Chart = mark(page.Vitals[i].Chart)
+		for _, c := range charts {
+			markToEnd(c, markers, q.To)
 		}
-		page.Server.Chart = mark(page.Server.Chart)
 	}
 	if err := s.renderHTML(w, http.StatusOK, "webperf_route.html", page); err != nil {
 		s.serverErrorHTML(w, r, err)
+	}
+}
+
+// markToEnd marks c, if any, with markers, and ends each of its series
+// with a gap at end, so its time axis runs to the period's end and a deploy
+// in its last step is marked, as on the endpoints pages.
+func markToEnd(c *chart.LineChart, markers []chart.Marker, end time.Time) {
+	if c == nil {
+		return
+	}
+	c.Markers = markers
+	for i := range c.Series {
+		c.Series[i].Points = append(c.Series[i].Points, chart.Point{T: end, V: math.NaN()})
 	}
 }
 
@@ -149,23 +146,9 @@ func (s *Server) webPerfRouteHandler(w http.ResponseWriter, r *http.Request) {
 func webPerfRouteData(wr rss.WebPerfRoute, route string, params webPerfParams, period webPeriod, steps []time.Time) webPerfRoutePage {
 	page := webPerfRoutePage{
 		Route: route, Back: params.href(), Endpoint: endpointHref(route, period),
-		Period: period, Percentile: params.percentile, Views: wr.Total.Views,
+		webPerfFilters: filtersFor(params, func(p webPerfParams) string { return webPerfRouteHref(route, p) }),
+		Period:         period, Percentile: params.percentile, Views: wr.Total.Views,
 		Few: wr.Total.Views > 0 && wr.Total.Views < fewViews,
-	}
-	for _, p := range webPeriods {
-		next := params
-		next.period = p.Key
-		page.Periods = append(page.Periods, filterLink{Label: p.Key, Href: webPerfRouteHref(route, next), Current: p.Key == params.period})
-	}
-	for _, d := range webDevices {
-		next := params
-		next.device = d.Key
-		page.Devices = append(page.Devices, filterLink{Label: d.Label, Href: webPerfRouteHref(route, next), Current: d.Key == params.device})
-	}
-	for _, p := range webPercentiles {
-		next := params
-		next.percentile = p
-		page.Percentiles = append(page.Percentiles, filterLink{Label: p, Href: webPerfRouteHref(route, next), Current: p == params.percentile})
 	}
 	if wr.Total.Views == 0 {
 		return page
@@ -173,13 +156,12 @@ func webPerfRouteData(wr rss.WebPerfRoute, route string, params webPerfParams, p
 
 	// The vitals' rows are the web performance page's, from the route's
 	// views.
-	wp := rss.WebPerf{Total: wr.Total, Series: wr.Series}
 	page.Assessment = assess(wr.Total.Metrics)
 	for _, m := range webMetrics {
-		page.Vitals = append(page.Vitals, vital(m.Key, m.Name, m.Full, m.Minor, wp, params.percentile, steps))
+		page.Vitals = append(page.Vitals, vital(m, wr.Total, wr.Series, params.percentile, steps))
 	}
 	for _, m := range routeMetrics {
-		page.Distributions = append(page.Distributions, distributionOf(m.Key, m.Name, m.Full, wr))
+		page.Distributions = append(page.Distributions, distributionOf(m, wr))
 	}
 	page.Server = serverVsNetwork(wr, params.percentile, steps)
 	page.Breakdowns = []breakdown{
@@ -200,10 +182,7 @@ func webPerfRouteData(wr rss.WebPerfRoute, route string, params webPerfParams, p
 
 // routeMetrics are the metrics a route's page shows the distributions of:
 // the web performance page's, then the server's time.
-var routeMetrics = append(webMetrics[:len(webMetrics):len(webMetrics)], struct {
-	Key, Name, Full string
-	Minor           bool
-}{"server", "Server", "Server time", true})
+var routeMetrics = append(slices.Clip(webMetrics), webMetric{"server", "Server time", "from Server-Timing", true})
 
 // endpointHref is route's endpoints page, as a GET, for the period nearest
 // period among the endpoints pages': they keep 30 days.
@@ -223,24 +202,25 @@ func endpointHref(route string, period webPeriod) string {
 
 // distributionOf is metric's histogram from wr's buckets, with its
 // thresholds; a metric no view reported has none.
-func distributionOf(metric, name, full string, wr rss.WebPerfRoute) distribution {
-	d := distribution{Name: name, Full: full}
+func distributionOf(m webMetric, wr rss.WebPerfRoute) distribution {
+	metric := m.Key
+	d := distribution{Name: m.Name, Full: m.Full}
 	s, ok := wr.Total.Metrics[metric]
 	if !ok || s.Views == 0 {
-		d.Note = "No view reported " + name + "."
+		d.Note = "No view reported " + m.Name + "."
 		return d
 	}
 	unit := "ms"
 	if metric == "cls" {
 		unit = ""
 	}
-	d.Histogram = chart.Histogram{Title: name + " distribution", Unit: unit, Bounds: metrics.RUMBounds[metric], Counts: wr.Buckets[metric], Height: 160}
-	views := count(s.Views) + " views"
+	h := chart.Histogram{Title: m.Name + " distribution", Unit: unit, Bounds: metrics.RUMBounds[metric], Counts: wr.Buckets[metric], Height: 160}
+	d.Note = count(s.Views) + " views"
 	if t, ok := metrics.RUMThresholds[metric]; ok {
-		d.Note = "Good up to " + formatMetric(metric, t.Good) + ", poor above " + formatMetric(metric, t.Poor) + " · " + views
-	} else {
-		d.Note = views
+		h.Thresholds = []chart.Threshold{{Value: t.Good, Label: "good"}, {Value: t.Poor, Label: "poor"}}
+		d.Note = "Good up to " + formatMetric(metric, t.Good) + ", poor above " + formatMetric(metric, t.Poor) + " · " + d.Note
 	}
+	d.Histogram = h
 	return d
 }
 
@@ -270,26 +250,14 @@ func serverVsNetwork(wr rss.WebPerfRoute, q string, steps []time.Time) serverNet
 		{Label: "Difference", Text: diff, Note: "the network, connecting and redirects"},
 	}
 
-	series := func(metric, name string) chart.Series {
-		at := map[time.Time]float64{}
-		for _, p := range wr.Series {
-			if s, ok := p.Metrics[metric]; ok && s.Views > 0 {
-				at[p.T.UTC()] = percentile(s, q)
-			}
+	if sn.ServerViews > 0 {
+		sn.Chart = &chart.LineChart{
+			Title: "TTFB and server time, " + q + " over time", Unit: "ms", Height: 160,
+			Series: []chart.Series{
+				percentileSeries(wr.Series, "ttfb", q, "TTFB", steps),
+				percentileSeries(wr.Series, "server", q, "Server", steps),
+			},
 		}
-		out := chart.Series{Name: name}
-		for _, t := range steps {
-			v, ok := at[t]
-			if !ok {
-				v = math.NaN()
-			}
-			out.Points = append(out.Points, chart.Point{T: t, V: v})
-		}
-		return out
-	}
-	sn.Chart = chart.LineChart{
-		Title: "TTFB and server time, " + q + " over time", Unit: "ms", Height: 160,
-		Series: []chart.Series{series("ttfb", "TTFB"), series("server", "Server")},
 	}
 	return sn
 }

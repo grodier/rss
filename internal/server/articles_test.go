@@ -213,11 +213,16 @@ func TestArticleHandlerLeadImage(t *testing.T) {
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 			}
-			body := rr.Body.String()
-			if tt.want {
-				assertBodyContains(t, body, `<img class="reader-image" src="`+image+`" alt="" fetchpriority="high" referrerpolicy="no-referrer">`)
-			} else if strings.Contains(body, "reader-image") {
-				t.Errorf("body has a lead image: %s", body)
+			img := leadImage(t, rr.Body.String())
+			switch {
+			case tt.want && img == nil:
+				t.Errorf("no lead image: %s", rr.Body.String())
+			case tt.want:
+				if got := attr(img, "src"); got != image {
+					t.Errorf("lead image src = %q, want %q", got, image)
+				}
+			case img != nil:
+				t.Errorf("body has a lead image: %s", rr.Body.String())
 			}
 		})
 	}
@@ -239,14 +244,105 @@ func TestArticleHandlerLeadImageFallback(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rr := serveArticle(t, articleServer(t, tt.article, nil, nil, nil), testArticleID)
-			body := rr.Body.String()
-			if tt.want == "" {
-				assertBodyContains(t, body, `<img class="reader-image" src="`+feedImage+`" alt=""`)
-				return
+			img := leadImage(t, rr.Body.String())
+			if img == nil {
+				t.Fatalf("no lead image: %s", rr.Body.String())
 			}
-			assertBodyContains(t, body, `<img class="reader-image" src="`+feedImage+`" data-fallback-src="`+tt.want+`" alt=""`)
+			if got := attr(img, "src"); got != feedImage {
+				t.Errorf("lead image src = %q, want %q", got, feedImage)
+			}
+			if got := attr(img, "data-fallback-src"); got != tt.want {
+				t.Errorf("data-fallback-src = %q, want %q", got, tt.want)
+			}
 		})
 	}
+}
+
+// TestArticleHandlerLeadImageReportsFailure checks the lead image carries
+// image-fallback.ts's data-image-failed only when it's the feed's image and
+// no failure of it has been reported.
+func TestArticleHandlerLeadImageReportsFailure(t *testing.T) {
+	const image = "https://example.com/lead.jpg"
+	tests := []struct {
+		name    string
+		article rss.Article
+		want    string // data-image-failed, or "" for none
+	}{
+		{name: "feed image", article: rss.Article{Title: "T", ImageURL: image, Content: "<p>Text</p>"}, want: "/articles/" + testArticleID + "/image-failed"},
+		{name: "feed image reported", article: rss.Article{Title: "T", ImageURL: image, ImageFailedAt: time.Now(), Content: "<p>Text</p>"}, want: ""},
+		{name: "page image", article: rss.Article{Title: "T", PageImageURL: image, Content: "<p>Text</p>"}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := serveArticle(t, articleServer(t, tt.article, nil, nil, nil), testArticleID)
+			img := leadImage(t, rr.Body.String())
+			if img == nil {
+				t.Fatalf("no lead image: %s", rr.Body.String())
+			}
+			if got := attr(img, "data-image-failed"); got != tt.want {
+				t.Errorf("data-image-failed = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestArticleRowReportsImageFailure checks a row's card image carries
+// image-fallback.ts's data-image-failed only when it's the feed's image and
+// no failure of it has been reported.
+func TestArticleRowReportsImageFailure(t *testing.T) {
+	s := newTestServer(t)
+	ts, ok := s.templates["timeline.html"]
+	if !ok {
+		t.Fatal("no timeline.html template")
+	}
+	const image = "https://example.com/card.jpg"
+	tests := []struct {
+		name    string
+		article rss.Article
+		want    string // data-image-failed, or "" for none
+	}{
+		{name: "feed image", article: rss.Article{ID: "a1", ImageURL: image}, want: "/articles/a1/image-failed"},
+		{name: "feed image with a fallback", article: rss.Article{ID: "a1", ImageURL: image, PageImageURL: "https://example.com/page.jpg"}, want: "/articles/a1/image-failed"},
+		{name: "feed image reported", article: rss.Article{ID: "a1", ImageURL: image, ImageFailedAt: time.Now()}, want: ""},
+		{name: "page image", article: rss.Article{ID: "a1", PageImageURL: image}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b strings.Builder
+			if err := ts.ExecuteTemplate(&b, "article-row", articleRow{Article: tt.article}); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := html.Parse(strings.NewReader(b.String()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			imgs := findAll(doc, func(n *html.Node) bool { return n.Data == "img" && hasClass(n, "article-image") })
+			if len(imgs) != 1 {
+				t.Fatalf("card images = %d, want 1: %s", len(imgs), b.String())
+			}
+			if got := attr(imgs[0], "data-image-failed"); got != tt.want {
+				t.Errorf("data-image-failed = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// leadImage returns the article page's lead image in body, or nil if it has
+// none.
+func leadImage(t *testing.T, body string) *html.Node {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgs := findAll(doc, func(n *html.Node) bool { return n.Data == "img" && hasClass(n, "reader-image") })
+	if len(imgs) > 1 {
+		t.Fatalf("lead images = %d, want at most 1", len(imgs))
+	}
+	if len(imgs) == 0 {
+		return nil
+	}
+	return imgs[0]
 }
 
 // TestArticleLeadImageHighPriority checks the lead image, the article page's
@@ -1252,4 +1348,73 @@ func TestContents(t *testing.T) {
 			}
 		})
 	}
+}
+
+func postArticleImageFailed(t *testing.T, s *Server, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/articles/x/image-failed", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, authenticatedUserIDContextKey, "user-1")
+	rr := httptest.NewRecorder()
+	s.sessionManager.LoadAndSave(http.HandlerFunc(s.articleImageFailedHandler)).ServeHTTP(rr, req.WithContext(ctx))
+	return rr
+}
+
+func TestArticleImageFailedHandler(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		var got []string
+		s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{reportImageFn: func(ctx context.Context, id string) error {
+			got = append(got, id)
+			return nil
+		}}})
+
+		rr := postArticleImageFailed(t, s, testArticleID)
+
+		if rr.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+		}
+		if rr.Body.Len() != 0 {
+			t.Errorf("body = %q, want empty", rr.Body.String())
+		}
+		if len(got) != 1 || got[0] != testArticleID {
+			t.Errorf("ReportImageFailed calls = %q, want [%s]", got, testArticleID)
+		}
+	})
+
+	t.Run("malformed id", func(t *testing.T) {
+		s := newTestServer(t) // nil stores: any store call would panic
+		assertNotFoundHTML(t, postArticleImageFailed(t, s, "abc"))
+	})
+
+	t.Run("unknown article", func(t *testing.T) {
+		s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{reportImageFn: func(context.Context, string) error {
+			return rss.ErrNoRecord
+		}}})
+		assertNotFoundHTML(t, postArticleImageFailed(t, s, testArticleID))
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{reportImageFn: func(context.Context, string) error {
+			return errors.New("db down")
+		}}})
+		rr := postArticleImageFailed(t, s, testArticleID)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("cross-origin", func(t *testing.T) {
+		s := newTestServer(t)
+		req := httptest.NewRequest(http.MethodPost, "/articles/"+testArticleID+"/image-failed", nil)
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+		rr := httptest.NewRecorder()
+
+		s.router().ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+	})
 }

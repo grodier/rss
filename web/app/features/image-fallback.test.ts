@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isolate } from "../../shared/test/setup";
 
 isolate();
@@ -76,6 +76,66 @@ describe("image-fallback", () => {
     await start();
     fail(document.querySelector("img")!);
     expect(document.querySelector("img")).not.toBeNull();
+  });
+
+  describe("reporting a failed feed image", () => {
+    let beacon: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      beacon = vi.fn(() => true);
+      Object.defineProperty(navigator, "sendBeacon", { value: beacon, configurable: true });
+    });
+
+    it("reports once, then tries the fallback", async () => {
+      document.body.innerHTML = `<img class="article-image" src="https://a/feed.jpg" data-fallback-src="https://a/page.jpg" data-image-failed="/articles/a1/image-failed" alt="">`;
+      const img = document.querySelector<HTMLImageElement>("img")!;
+      loaded(img, true);
+      await start();
+
+      fail(img);
+      expect(beacon).toHaveBeenCalledExactlyOnceWith("/articles/a1/image-failed");
+      expect(img.hasAttribute("data-image-failed")).toBe(false);
+      expect(img.getAttribute("src")).toBe("https://a/page.jpg");
+
+      fail(img); // the fallback failing isn't the feed's image
+      expect(beacon).toHaveBeenCalledOnce();
+      expect(img.isConnected).toBe(false);
+    });
+
+    it("reports a lead image with no fallback, then removes it", async () => {
+      document.body.innerHTML = `<article class="reader"><img class="reader-image" src="https://a/x.jpg" data-image-failed="/articles/a1/image-failed" alt=""></article>`;
+      const img = document.querySelector<HTMLImageElement>("img")!;
+      loaded(img, true);
+      await start();
+      fail(img);
+      expect(beacon).toHaveBeenCalledExactlyOnceWith("/articles/a1/image-failed");
+      expect(img.isConnected).toBe(false);
+    });
+
+    it("reports an image that failed before setup", async () => {
+      document.body.innerHTML = `<img class="article-image" src="https://a/x.jpg" data-image-failed="/articles/a1/image-failed" alt="">`;
+      const img = document.querySelector<HTMLImageElement>("img")!;
+      loaded(img, false);
+      await start();
+      await vi.waitFor(() => expect(img.isConnected).toBe(false));
+      expect(beacon).toHaveBeenCalledExactlyOnceWith("/articles/a1/image-failed");
+    });
+
+    it("sends nothing for an image without the hook", async () => {
+      document.body.innerHTML = `<img class="article-image" src="https://a/x.jpg" data-fallback-src="https://a/page.jpg" alt="">`;
+      const img = document.querySelector<HTMLImageElement>("img")!;
+      loaded(img, true);
+      await start();
+      fail(img);
+      fail(img);
+      expect(beacon).not.toHaveBeenCalled();
+    });
+
+    it("sends nothing for an image that loads", async () => {
+      document.body.innerHTML = `<img class="article-image" src="https://a/x.jpg" data-image-failed="/articles/a1/image-failed" alt="">`;
+      loaded(document.querySelector<HTMLImageElement>("img")!, true);
+      await start();
+      expect(beacon).not.toHaveBeenCalled();
+    });
   });
 
   it("handles an image that failed before setup, not a loaded one", async () => {

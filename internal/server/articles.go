@@ -224,6 +224,30 @@ func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// articleImageFailedHandler records that the article's feed image failed to
+// load in the reader's browser: image-fallback.ts sends a beacon from an
+// image with data-image-failed (rss.Article.ReportsImageFailure). The first
+// report queues the article's web page for enrichment, so its image can
+// stand in on later views. The request body is ignored; CrossOriginProtection
+// rejects cross-site POSTs, as for articleReadHandler.
+func (s *Server) articleImageFailedHandler(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
+		return
+	}
+
+	if err := s.services.ArticleService.ReportImageFailed(r.Context(), id); err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // articleSaveHandler saves an article for the user, and every copy of it
 // with it. Saving is quiet: no flash, and it doesn't mark the article read.
 func (s *Server) articleSaveHandler(w http.ResponseWriter, r *http.Request) {

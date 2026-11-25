@@ -17,7 +17,7 @@ import (
 // articleColumnNames are the columns scanArticle reads, in order.
 var articleColumnNames = []string{
 	"id", "feed_id", "external_id", "url", "canonical_url", "image_url", "media_type", "authors", "title", "summary", "content",
-	"excerpt", "page_image_url", "page_title", "page_description", "published_at", "published_date_only", "timeline_at", "backlog", "created_at", "updated_at",
+	"excerpt", "page_image_url", "page_title", "page_description", "image_failed_at", "published_at", "published_date_only", "timeline_at", "backlog", "created_at", "updated_at",
 }
 
 var (
@@ -51,11 +51,12 @@ func articleListColumns(prefix string) string {
 // scanArticle scans a row selected with articleColumns.
 func scanArticle(row interface{ Scan(...any) error }) (rss.Article, error) {
 	var a rss.Article
-	var publishedAt sql.NullTime
-	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.Backlog, &a.CreatedAt, &a.UpdatedAt)
+	var imageFailedAt, publishedAt sql.NullTime
+	err := row.Scan(&a.ID, &a.FeedID, &a.ExternalID, &a.URL, &a.CanonicalURL, &a.ImageURL, &a.MediaType, pq.Array(&a.Authors), &a.Title, &a.Summary, &a.Content, &a.Excerpt, &a.PageImageURL, &a.PageTitle, &a.PageDescription, &imageFailedAt, &publishedAt, &a.PublishedDateOnly, &a.TimelineAt, &a.Backlog, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return rss.Article{}, err
 	}
+	a.ImageFailedAt = imageFailedAt.Time
 	a.PublishedAt = publishedAt.Time
 	return a, nil
 }
@@ -770,6 +771,41 @@ func needsEnrichment(a rss.Article) bool {
 	return a.URL != "" && (a.ImageURL == "" || a.Title == "" || a.Excerpt == "")
 }
 
+// ReportImageFailed records that a reader's browser couldn't load article
+// id's feed image (image_url), and queues the article's web page for
+// enrichment, at enrichPriorityNew, so the page's image can stand in
+// (rss.Article.CardImageFallbackURL): an article with a feed image is never
+// queued when it's saved (needsEnrichment). Only the first report counts:
+// it sets image_failed_at, which a changed image_url clears
+// (saveArticles). The job is queued only when the article has a URL, has
+// never been enriched (its page_* columns are empty, as for a job given
+// up) and its feed is wanted (enrichWanted); a feed becoming wanted later
+// queues its reported articles with its backlog (queueEnrichBacklog). An
+// article without a feed image, or reported before, is left as it is.
+// rss.ErrNoRecord if there's no article id.
+func (r *ArticleRepository) ReportImageFailed(ctx context.Context, id string) error {
+	stmt := `WITH reported AS (
+			UPDATE articles SET image_failed_at = now()
+			WHERE id = $1 AND image_url <> '' AND image_failed_at IS NULL
+			RETURNING id, feed_id, url, page_image_url, page_title, page_description
+		), queued AS (
+			INSERT INTO enrich_jobs (article_id, priority)
+			SELECT id, $2 FROM reported
+			WHERE url <> '' AND page_image_url = '' AND page_title = '' AND page_description = ''
+				AND ` + enrichWanted("reported.feed_id") + `
+			ON CONFLICT (article_id) DO NOTHING
+		)
+		SELECT EXISTS (SELECT 1 FROM articles WHERE id = $1)`
+	var exists bool
+	if err := r.DB.QueryRowContext(ctx, stmt, id, enrichPriorityNew).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return rss.ErrNoRecord
+	}
+	return nil
+}
+
 // enrichCandidates returns which of articles may get an enrichment job when
 // newly inserted, and at what priority. None may unless the feed is wanted
 // (enrichWanted): jobs exist only for wanted feeds (#708). A wanted feed's
@@ -855,6 +891,8 @@ func saveArticles(ctx context.Context, q querier, feedID string, articles []rss.
 			url = EXCLUDED.url,
 			canonical_url = EXCLUDED.canonical_url,
 			image_url = EXCLUDED.image_url,
+			image_failed_at = CASE WHEN articles.image_url = EXCLUDED.image_url
+				THEN articles.image_failed_at END,
 			media_type = EXCLUDED.media_type,
 			authors = EXCLUDED.authors,
 			title = EXCLUDED.title,

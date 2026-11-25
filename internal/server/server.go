@@ -161,7 +161,8 @@ type FeedRefresher interface {
 	Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error)
 }
 
-// ArticleStore reads saved articles.
+// ArticleStore reads saved articles, and records feed images that fail to
+// load.
 type ArticleStore interface {
 	GetByID(ctx context.Context, id string) (rss.Article, error)
 	// ListByFeed returns a page of a feed's articles. Summary and Content
@@ -177,6 +178,10 @@ type ArticleStore interface {
 	// timeline with filter, with each feed's own title, for its shared feed.
 	// Summary and Content are left empty.
 	ListShared(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
+	// ReportImageFailed records that a reader's browser couldn't load the
+	// article's feed image, and queues its web page for enrichment.
+	// rss.ErrNoRecord if there's no such article.
+	ReportImageFailed(ctx context.Context, id string) error
 }
 
 // SubscriptionStore is the subscription persistence the server depends on.

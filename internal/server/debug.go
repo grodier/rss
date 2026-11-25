@@ -705,6 +705,7 @@ func articleDebugFields(a rss.Article, d rss.ArticleDebug, now time.Time) []debu
 		{Name: "url", Value: a.URL},
 		{Name: "canonical_url", Value: a.CanonicalURL, Note: "matches copies in other feeds"},
 		{Name: "image_url", Value: a.ImageURL},
+		{Name: "image_failed_at", Value: debugTime(a.ImageFailedAt, now), Note: "first reported failing to load in a reader's browser"},
 		{Name: "title", Value: a.Title},
 		{Name: "summary", Value: fmt.Sprintf("%d bytes", len(a.Summary)), Note: "raw HTML below"},
 		{Name: "content", Value: fmt.Sprintf("%d bytes", len(a.Content)), Note: "raw HTML below"},

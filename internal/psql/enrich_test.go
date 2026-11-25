@@ -230,3 +230,202 @@ func TestEnrichRepositoryRecord(t *testing.T) {
 		}
 	})
 }
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestReportImageFailed(t *testing.T) {
+	db := psqltest.NewDB(t)
+	articles := NewArticleRepository(db)
+	feeds := NewFeedRepository(db)
+	wanted := newSubscribedFeed(t, db, newTestUser(t, db))
+	ctx := t.Context()
+
+	// save saves a in feed and returns it as stored.
+	save := func(t *testing.T, feed rss.Feed, a rss.Article) rss.Article {
+		t.Helper()
+		if _, err := feeds.SaveFetch(ctx, feed, []rss.Article{a}, feed.NextFetch); err != nil {
+			t.Fatalf("SaveFetch: %v", err)
+		}
+		var id string
+		if err := db.QueryRow(`SELECT id FROM articles WHERE feed_id = $1 AND external_id = $2`, feed.ID, a.ExternalID).Scan(&id); err != nil {
+			t.Fatalf("select article: %v", err)
+		}
+		got, err := articles.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		return got
+	}
+	// complete is an article with everything from its feed, which saving
+	// never queues.
+	complete := func(externalID string) rss.Article {
+		return rss.Article{ExternalID: externalID, URL: "https://example.com/" + externalID,
+			ImageURL: "https://example.com/" + externalID + ".jpg", Title: "T", Excerpt: "E"}
+	}
+	report := func(t *testing.T, a rss.Article) rss.Article {
+		t.Helper()
+		if err := articles.ReportImageFailed(ctx, a.ID); err != nil {
+			t.Fatalf("ReportImageFailed: %v", err)
+		}
+		got, err := articles.GetByID(ctx, a.ID)
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		return got
+	}
+
+	t.Run("queues a never-enriched article of a wanted feed", func(t *testing.T) {
+		a := save(t, wanted, complete("queued"))
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Fatal("a complete article was queued when saved")
+		}
+		got := report(t, a)
+		if got.ImageFailedAt.IsZero() {
+			t.Error("image_failed_at not set")
+		}
+		j, ok := getEnrichJob(t, db, a.ID)
+		if !ok {
+			t.Fatal("no job after the report")
+		}
+		if j.attempts != 0 || j.next.After(time.Now()) {
+			t.Errorf("job = %+v; want a new job, due now", j)
+		}
+		var priority int
+		if err := db.QueryRow(`SELECT priority FROM enrich_jobs WHERE article_id = $1`, a.ID).Scan(&priority); err != nil {
+			t.Fatalf("select priority: %v", err)
+		}
+		if priority != enrichPriorityNew {
+			t.Errorf("priority = %d; want %d", priority, enrichPriorityNew)
+		}
+	})
+
+	t.Run("only the first report counts", func(t *testing.T) {
+		a := report(t, save(t, wanted, complete("again")))
+		// As if enrichment gave up, which leaves the page columns empty.
+		if err := NewEnrichRepository(db).GiveUp(ctx, a.ID, "status 403"); err != nil {
+			t.Fatalf("GiveUp: %v", err)
+		}
+		got := report(t, a)
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Error("a second report queued a job")
+		}
+		if !got.ImageFailedAt.Equal(a.ImageFailedAt) {
+			t.Errorf("image_failed_at = %v; want the first report's %v", got.ImageFailedAt, a.ImageFailedAt)
+		}
+	})
+
+	t.Run("an enriched article is marked but not queued", func(t *testing.T) {
+		a := save(t, wanted, complete("enriched"))
+		if _, err := db.Exec(`UPDATE articles SET page_title = 'Page' WHERE id = $1`, a.ID); err != nil {
+			t.Fatalf("update article: %v", err)
+		}
+		if got := report(t, a); got.ImageFailedAt.IsZero() {
+			t.Error("image_failed_at not set")
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Error("an enriched article was queued")
+		}
+	})
+
+	t.Run("an article of a feed nobody wants is marked but not queued", func(t *testing.T) {
+		a := save(t, newTestFeed(t, db), complete("unwanted"))
+		if got := report(t, a); got.ImageFailedAt.IsZero() {
+			t.Error("image_failed_at not set")
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Error("an article of an unwanted feed was queued")
+		}
+	})
+
+	t.Run("a report on a feed nobody wants is queued when it becomes wanted", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		a := report(t, save(t, feed, complete("later")))
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Fatal("an article of an unwanted feed was queued")
+		}
+		if err := NewSubscriptionRepository(db).Subscribe(ctx, newTestUser(t, db), feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); !ok {
+			t.Error("no job once the feed was followed")
+		}
+	})
+
+	t.Run("an article in the catalog is queued", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		putInCatalog(t, db, feed.ID)
+		a := save(t, feed, complete("catalog"))
+		report(t, a)
+		if _, ok := getEnrichJob(t, db, a.ID); !ok {
+			t.Error("no job after the report")
+		}
+	})
+
+	t.Run("an article without a URL is marked but not queued", func(t *testing.T) {
+		in := complete("no-url")
+		in.URL = ""
+		a := save(t, wanted, in)
+		if got := report(t, a); got.ImageFailedAt.IsZero() {
+			t.Error("image_failed_at not set")
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Error("an article without a URL was queued")
+		}
+	})
+
+	t.Run("an article without a feed image is left as it is", func(t *testing.T) {
+		in := complete("no-image")
+		in.ImageURL = ""
+		a := save(t, newTestFeed(t, db), in)
+		if got := report(t, a); !got.ImageFailedAt.IsZero() {
+			t.Errorf("image_failed_at = %v; want unset", got.ImageFailedAt)
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Error("an article without a feed image was queued")
+		}
+	})
+
+	t.Run("an existing job is kept", func(t *testing.T) {
+		in := complete("has-job")
+		in.Title = "" // queued when saved
+		a := save(t, wanted, in)
+		next := time.Now().Add(time.Hour).Truncate(time.Microsecond)
+		setEnrichJob(t, db, a.ID, enrichPriorityBacklog, next)
+		report(t, a)
+		j, ok := getEnrichJob(t, db, a.ID)
+		if !ok {
+			t.Fatal("job gone after the report")
+		}
+		if !j.next.Equal(next) {
+			t.Errorf("next_attempt_at = %v; want %v, unchanged", j.next, next)
+		}
+	})
+
+	t.Run("a missing article", func(t *testing.T) {
+		err := articles.ReportImageFailed(ctx, "00000000-0000-0000-0000-000000000000")
+		if !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("ReportImageFailed error = %v; want rss.ErrNoRecord", err)
+		}
+	})
+
+	t.Run("a changed feed image clears the report", func(t *testing.T) {
+		in := complete("changed")
+		report(t, save(t, wanted, in))
+		in.ImageURL = "https://example.com/fixed.jpg"
+		if got := save(t, wanted, in); !got.ImageFailedAt.IsZero() {
+			t.Errorf("image_failed_at = %v after the image changed; want unset", got.ImageFailedAt)
+		}
+	})
+
+	t.Run("an update that keeps the feed image keeps the report", func(t *testing.T) {
+		in := complete("kept")
+		a := report(t, save(t, wanted, in))
+		in.Title = "New title"
+		got := save(t, wanted, in)
+		if got.Title != "New title" {
+			t.Fatalf("title = %q; the article wasn't updated", got.Title)
+		}
+		if !got.ImageFailedAt.Equal(a.ImageFailedAt) {
+			t.Errorf("image_failed_at = %v; want %v, kept", got.ImageFailedAt, a.ImageFailedAt)
+		}
+	})
+}

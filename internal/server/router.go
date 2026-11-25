@@ -99,6 +99,7 @@ func (s *Server) router() http.Handler {
 			r.Get("/saved", s.savedHandler)
 			r.Get("/articles/{id}", s.articleHandler)
 			r.Post("/articles/{id}/read", s.articleReadHandler)
+			r.Post("/articles/{id}/image-failed", s.articleImageFailedHandler) // a beacon from image-fallback.ts
 			r.Post("/articles/{id}/save", s.articleSaveHandler)
 			r.Post("/articles/{id}/unsave", s.articleUnsaveHandler)
 			r.Post("/articles/{id}/star", s.articleStarHandler)

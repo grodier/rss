@@ -346,6 +346,7 @@ type fakeArticleStore struct {
 	listByFeedsFn  func(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
 	listSharedFn   func(ctx context.Context, ownerID string, filter rss.TimelineFilter, limit int) ([]rss.SharedArticle, error)
+	reportImageFn  func(ctx context.Context, id string) error
 }
 
 func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article, error) {
@@ -378,6 +379,10 @@ func (f *fakeArticleStore) ListShared(ctx context.Context, ownerID string, filte
 		return nil, nil
 	}
 	return f.listSharedFn(ctx, ownerID, filter, limit)
+}
+
+func (f *fakeArticleStore) ReportImageFailed(ctx context.Context, id string) error {
+	return f.reportImageFn(ctx, id)
 }
 
 type fakeReadStore struct {

@@ -1,3 +1,5 @@
+import { announce } from "../../shared/lib/announce";
+import { busyDelay } from "../../shared/lib/busy-delay";
 import { localizeTimes } from "../../shared/lib/local-times";
 import { enhanceDivider } from "./divider-draw";
 import { enhancePings } from "./read-pings";
@@ -13,13 +15,23 @@ export function enhanceRows(root: ParentNode): void {
   enhanceShare(root);
 }
 
+// How long a page may take to load before it counts as failed: well past a
+// slow phone connection's few seconds for a page of rows.
+const LOAD_TIMEOUT = 20_000;
+
+// The words of each pager link's states, from its own label.
+const pagerText = new WeakMap<HTMLAnchorElement, { loading: string; failed: string }>();
+
 // Infinite scroll: when the "Older articles" link (.pager a[rel=next])
 // nears the viewport, fetch the page it links to and append its rows to
 // .article-list, and, from the last page, All feeds' end line
-// (.timeline-end) in the link's place. The link stays the source of truth:
-// on any failure it is left in place to be clicked. The URL follows the
-// topmost visible row, so a reload or Back renders that row's page
-// anchored on the row.
+// (.timeline-end) in the link's place. The list is aria-busy while a page
+// loads; a load that fails says so above the link, which becomes Try
+// again, and auto-loading stops until a retry works. The link stays the
+// source of truth: its href never changes, a press with a modifier always
+// follows it, and a retry that gets anything but the page follows it too.
+// The URL follows the topmost visible row, so a reload or Back renders
+// that row's page anchored on the row.
 export function init(): void {
   const list = document.querySelector(".article-list");
   if (!list || !("IntersectionObserver" in window)) return;
@@ -68,45 +80,115 @@ export function init(): void {
     rows.observe(row);
   }
 
+  // A page's load is in one of three states, kept on its pager as
+  // data-state: "loading" (fetching, nothing shown yet), "busy" (still
+  // loading after --delay-busy: the link says so, with a spinner) and
+  // "failed" (the link says Try again, under a line saying what went
+  // wrong). While a page loads a plain press of the link does nothing, as
+  // its rows are on their way; while it has failed a plain press retries
+  // in place. A press with a modifier always follows the link.
   let loading = false;
-  const load = async (link: HTMLAnchorElement) => {
+  const setBusy = (link: HTMLAnchorElement, label: string) => {
+    const spinner = document.createElement("span");
+    spinner.className = "spinner btn-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    link.replaceChildren(spinner, label);
+    link.closest<HTMLElement>(".pager")!.dataset.state = "busy";
+  };
+  // retry is true for a press of Try again: its label changes at once, as
+  // the reader asked for it, and a page that isn't the one asked for
+  // (a redirect, as to Log in when the session has ended, or any other
+  // status) is followed rather than shown as a failure.
+  const load = async (link: HTMLAnchorElement, retry = false) => {
     if (loading) return;
     loading = true;
     loader.unobserve(link);
-    const pageUrl = withoutHash(link.href);
-    try {
-      // No copy in any cache (the server sends a script private, no-cache; see setCacheControl).
-      const res = await fetch(pageUrl, { credentials: "same-origin", cache: "no-store" });
-      // A redirect (e.g. to the login page) isn't the page we asked for.
-      if (res.status !== 200 || res.redirected) throw new Error(`status ${res.status}`);
-      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      if (!doc.querySelector(".article-list")) throw new Error("no article list");
-      // Rows and the "You were here" divider, in order; only rows anchor
-      // the URL.
-      for (const el of doc.querySelectorAll<HTMLElement>(
-        ".article-list > .article-row, .article-list > .timeline-divider",
-      )) {
-        list.append(el);
-        if (!el.matches(".article-row")) {
-          enhanceDivider(el);
-          continue;
-        }
-        el.dataset.pageUrl = pageUrl;
-        enhanceRows(el);
-        rows.observe(el);
-      }
-      const pager = link.closest(".pager")!;
-      // The last page has no pager, and, on All feeds, the end line.
-      const next = doc.querySelector(".pager") ?? doc.querySelector(".timeline-end");
-      if (next) pager.replaceWith(next);
-      else pager.remove();
-      loading = false;
-      const nextLink = next && next.querySelector("a[rel=next]");
-      if (nextLink) loader.observe(nextLink);
-    } catch {
-      // Keep the link for the reader to click; stop auto-loading.
+    const pager = link.closest<HTMLElement>(".pager")!;
+    const text = pagerText.get(link)!;
+    pager.querySelector(".pager-error")?.remove();
+    pager.dataset.state = "loading";
+    list.setAttribute("aria-busy", "true");
+    if (retry) link.textContent = text.loading;
+    const busyTimer = setTimeout(() => setBusy(link, text.loading), busyDelay());
+    // failed keeps the link for the reader to press, as Try again, and
+    // stops auto-loading until Try again works.
+    const failed = (say: boolean) => {
+      clearTimeout(busyTimer);
+      list.removeAttribute("aria-busy");
       loader.disconnect();
+      pager.querySelector(".pager-error")?.remove();
+      const error = document.createElement("p");
+      error.className = "pager-error";
+      error.textContent = text.failed;
+      pager.prepend(error);
+      pager.dataset.state = "failed";
+      link.textContent = "Try again";
+      if (say) announce(text.failed);
+      loading = false;
+    };
+    const pageUrl = withoutHash(link.href);
+    let doc: Document;
+    try {
+      // No copy in any cache (the server sends a script private, no-cache;
+      // see setCacheControl). A request that hangs ends as a failure, as
+      // a plain press can't leave a load; a browser without
+      // AbortSignal.timeout just waits.
+      const res = await fetch(pageUrl, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: AbortSignal.timeout?.(LOAD_TIMEOUT),
+      });
+      doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      // A redirect (e.g. to the login page) isn't the page we asked for.
+      if (res.status !== 200 || res.redirected || !doc.querySelector(".article-list")) {
+        if (!retry) throw new Error(`status ${res.status}`);
+        // Try again asked for this page, so go there, as the link would,
+        // still showing it's loading. Back to this page from the
+        // back/forward cache then finds the failure again, not a load
+        // that's no longer running.
+        addEventListener(
+          "pageshow",
+          (e) => {
+            if (e.persisted) failed(false);
+          },
+          { once: true },
+        );
+        location.assign(link.href);
+        return;
+      }
+    } catch {
+      failed(true);
+      return;
     }
+    clearTimeout(busyTimer);
+    // Rows and the "You were here" divider, in order; only rows anchor
+    // the URL.
+    let first: HTMLElement | null = null;
+    for (const el of doc.querySelectorAll<HTMLElement>(
+      ".article-list > .article-row, .article-list > .timeline-divider",
+    )) {
+      list.append(el);
+      if (!el.matches(".article-row")) {
+        enhanceDivider(el);
+        continue;
+      }
+      first ??= el;
+      el.dataset.pageUrl = pageUrl;
+      enhanceRows(el);
+      rows.observe(el);
+    }
+    list.removeAttribute("aria-busy");
+    // Try again pressed from the keyboard would lose focus with its pager,
+    // so it goes to the first new row's title, where reading goes on.
+    const hadFocus = document.activeElement === link;
+    // The last page has no pager, and, on All feeds, the end line.
+    const next = doc.querySelector(".pager") ?? doc.querySelector(".timeline-end");
+    if (next) pager.replaceWith(next);
+    else pager.remove();
+    if (hadFocus) first?.querySelector<HTMLElement>(".article-title a")?.focus();
+    loading = false;
+    const nextLink = next && next.querySelector<HTMLAnchorElement>("a[rel=next]");
+    if (nextLink) watch(nextLink);
   };
   const loader = new IntersectionObserver(
     (entries) => {
@@ -120,6 +202,23 @@ export function init(): void {
     { rootMargin: "800px 0px" },
   );
 
-  const link = document.querySelector(".pager a[rel=next]");
-  if (link) loader.observe(link);
+  // watch sets up a pager's link: its labels, from its own words ("Older
+  // posts" gives "Loading older posts…"), its presses, and auto-loading.
+  const watch = (link: HTMLAnchorElement) => {
+    const words = link.textContent.trim();
+    const lower = words.charAt(0).toLowerCase() + words.slice(1);
+    pagerText.set(link, { loading: `Loading ${lower}…`, failed: `Couldn't load ${lower}.` });
+    link.addEventListener("click", (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const state = link.closest<HTMLElement>(".pager")?.dataset.state;
+      if (state === "loading" || state === "busy") e.preventDefault();
+      else if (state === "failed") {
+        e.preventDefault();
+        load(link, true);
+      }
+    });
+    loader.observe(link);
+  };
+  const link = document.querySelector<HTMLAnchorElement>(".pager a[rel=next]");
+  if (link) watch(link);
 }

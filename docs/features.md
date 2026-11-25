@@ -523,6 +523,10 @@ The last page of Home, for every account, ends with a line counting the sites th
 
 **Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager, or, from Home's last page, its end line.
 It keeps the address bar on the topmost visible row (`history.replaceState`), so reload, and Back where the page isn't restored, land nearby.
+While a page loads the list is `aria-busy`, and if it's still loading after `--delay-busy` the link says so, in its own words, with a spinner, and a plain press does nothing while the rows are on their way.
+A load that fails (no answer within 20 s, a status other than 200, or a redirect, as when the session has ended) says so in a line above the link, which becomes Try again, and announces it; automatic loading stops until Try again works.
+A retry that gets anything but the page follows the link, so the reader lands where the link would have taken them (Log in, with its flash), and Back to a page restored from the back/forward cache finds the failure again.
+The link's `href` never changes, and a press with a modifier always follows it.
 
 **Back.** In Chrome, Back to a timeline (or a feed, a site or Saved) restores the page from the back/forward cache as the reader left it: the rows infinite scroll added, the scroll position and the images, with no request.
 Navigations stay `no-store`; what keeps the page restorable is that nothing it sends after loading changes a cookie or gets a `no-store` answer: the pages infinite scroll and Home's polls fetch, Save, Star and Follow, and the beacons are answered `private, no-cache` (`privateCache`, in `middleware.go`), and only a navigation sets the `tab` cookie.

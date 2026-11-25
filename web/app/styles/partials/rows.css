@@ -1,6 +1,7 @@
-/* Article rows, the "You were here" line, the end of All feeds, and the
-   rows' actions: Save, Star and Share (its copied label is in copied.css).
-   Rows have two layouts, Headlines and Cards. */
+/* Article rows, the "You were here" line, the end of All feeds, the
+   pager's loading and failed states, and the rows' actions: Save, Star and
+   Share (its copied label is in copied.css). Rows have two layouts,
+   Headlines and Cards. */
 @layer components {
   /* Article rows: a divided section per article. One markup
      (partials/article_row.html), two layouts, chosen in Settings > Reading:
@@ -442,6 +443,27 @@
     color: var(--text-3);
     font-size: 0.875rem;
     text-align: center;
+  }
+
+  /* The pager while infinite scroll loads the next page (infinite-scroll.ts):
+     its link keeps its look but hover no longer changes it, and once the
+     load has taken --delay-busy it shows the busy forms' spinner
+     (.btn-spinner, in the shared base.css) before its label. A failed load
+     says so in a quiet line above Try again. */
+  .pager[data-state="loading"] a,
+  .pager[data-state="busy"] a {
+    cursor: progress;
+  }
+
+  .pager[data-state="loading"] a:hover,
+  .pager[data-state="busy"] a:hover {
+    background: var(--bg);
+  }
+
+  .pager-error {
+    margin-block-end: 0.75rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   /* Read rows are quieter: still a timeline, not an inbox. Both layouts dim

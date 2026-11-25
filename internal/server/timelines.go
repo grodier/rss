@@ -958,9 +958,8 @@ type timelineSharing struct {
 // is false it has already written the response: 404 if the id isn't a UUID,
 // or the user has no such timeline.
 func (s *Server) timelineFromURL(w http.ResponseWriter, r *http.Request) (t rss.Timeline, ok bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.Timeline{}, false
 	}
 

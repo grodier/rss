@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -306,9 +305,8 @@ type discoverForm struct {
 // feedFromURL returns the feed the URL's {id} names; when there's none, it
 // responds with 404 and returns false.
 func (s *Server) feedFromURL(w http.ResponseWriter, r *http.Request) (rss.AdminFeed, bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.AdminFeed{}, false
 	}
 	feed, err := s.services.Feeds.Feed(r.Context(), id)
@@ -587,9 +585,8 @@ type sitePage struct {
 // siteFromURL returns the site the URL's {id} names; when there's none, it
 // responds with 404 and returns false.
 func (s *Server) siteFromURL(w http.ResponseWriter, r *http.Request) (rss.AdminSite, bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.AdminSite{}, false
 	}
 	site, err := s.services.Feeds.Site(r.Context(), id)

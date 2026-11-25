@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -224,9 +223,8 @@ func (s *Server) sitesHandler(w http.ResponseWriter, r *http.Request) {
 // behind its login), and the image is sandboxed in case it's opened
 // directly.
 func (s *Server) siteIconImageHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 	icon, err := s.services.Feeds.SiteIcon(r.Context(), id)

@@ -11,15 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
-	"github.com/grodier/rss/internal/validator"
 )
 
 func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -373,9 +370,8 @@ func canRecheck(l rss.Lookup, now time.Time) bool {
 // commonHeaders). Icon URLs carry the icon's hash as ?v=, so a request for
 // the current hash can be cached for good.
 func (s *Server) siteIconHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 

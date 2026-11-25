@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/form/v4"
+	"github.com/grodier/rss/internal/validator"
 )
 
 // maxFormBytes caps a posted form's body, like the reader's.
@@ -51,4 +53,15 @@ func (s *Server) decodePostFormLimit(w http.ResponseWriter, r *http.Request, dst
 		return err
 	}
 	return nil
+}
+
+// uuidParam returns the URL parameter name if it's a UUID. If ok is
+// false it has already answered 404.
+func (s *Server) uuidParam(w http.ResponseWriter, r *http.Request, name string) (id string, ok bool) {
+	id = chi.URLParam(r, name)
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return "", false
+	}
+	return id, true
 }

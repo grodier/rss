@@ -48,8 +48,7 @@ func (r *SubscriptionRepository) Subscribe(ctx context.Context, userID, feedID s
 
 	res, err := tx.ExecContext(ctx, stmt, userID, feedID)
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		if isForeignKeyViolation(err) {
 			return rss.ErrNoRecord
 		}
 		return err
@@ -302,19 +301,7 @@ func (r *SubscriptionRepository) Get(ctx context.Context, userID, feedID string)
 // rss.ErrNoRecord if userID doesn't subscribe to feedID.
 func (r *SubscriptionRepository) Rename(ctx context.Context, userID, feedID, title string) error {
 	stmt := `UPDATE subscriptions SET title = $3 WHERE user_id = $1 AND feed_id = $2`
-
-	res, err := r.DB.ExecContext(ctx, stmt, userID, feedID, title)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return rss.ErrNoRecord
-	}
-	return nil
+	return execOne(ctx, r.DB, stmt, userID, feedID, title)
 }
 
 // ListByUser returns userID's subscriptions ordered by site (title, else host),

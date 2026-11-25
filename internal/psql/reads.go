@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/rss"
-	"github.com/lib/pq"
 )
 
 type ReadRepository struct {
@@ -26,8 +25,7 @@ func (r *ReadRepository) MarkRead(ctx context.Context, userID, articleID string)
 		ON CONFLICT DO NOTHING`
 
 	if _, err := r.DB.ExecContext(ctx, stmt, userID, articleID); err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		if isForeignKeyViolation(err) {
 			return rss.ErrNoRecord
 		}
 		return err

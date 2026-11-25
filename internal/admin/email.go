@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -183,22 +181,11 @@ func (s *Server) emailActionDone(w http.ResponseWriter, r *http.Request, err err
 	}
 }
 
-// emailIDFromURL returns the URL's {id}; when it isn't an email's ID, it
-// responds with 404 and returns false.
-func (s *Server) emailIDFromURL(w http.ResponseWriter, r *http.Request) (string, bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
-		return "", false
-	}
-	return id, true
-}
-
 // emailRetryHandler makes the pending email {id} due now with its attempts
 // reset, recorded as email.retry. A failed email's bodies are cleared, so
 // it can't be retried: the page says to send a new one instead.
 func (s *Server) emailRetryHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.emailIDFromURL(w, r)
+	id, ok := s.uuidParam(w, r, "id")
 	if !ok {
 		return
 	}
@@ -209,7 +196,7 @@ func (s *Server) emailRetryHandler(w http.ResponseWriter, r *http.Request) {
 // emailCancelHandler gives up on the pending email {id}, clearing its
 // bodies, recorded as email.cancel.
 func (s *Server) emailCancelHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.emailIDFromURL(w, r)
+	id, ok := s.uuidParam(w, r, "id")
 	if !ok {
 		return
 	}

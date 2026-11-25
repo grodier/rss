@@ -322,14 +322,11 @@ func (r *TagRepository) AddToSubscription(ctx context.Context, userID, feedID st
 // tagError maps a unique violation to rss.ErrDuplicateTag and a foreign key
 // violation to rss.ErrNoRecord.
 func tagError(err error) error {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
-		switch pqErr.Code {
-		case "23505":
-			return rss.ErrDuplicateTag
-		case "23503":
-			return rss.ErrNoRecord
-		}
+	if isUniqueViolation(err) {
+		return rss.ErrDuplicateTag
+	}
+	if isForeignKeyViolation(err) {
+		return rss.ErrNoRecord
 	}
 	return err
 }

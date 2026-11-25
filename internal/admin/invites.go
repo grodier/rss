@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
 	"github.com/grodier/rss/internal/validator"
@@ -79,9 +78,8 @@ func (s *Server) invitesHandler(w http.ResponseWriter, r *http.Request) {
 // inviteFromURL returns the invite the URL's {id} names; when there's none,
 // it responds with 404 and returns false.
 func (s *Server) inviteFromURL(w http.ResponseWriter, r *http.Request) (rss.Invite, bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.Invite{}, false
 	}
 	inv, err := s.services.Invites.Get(r.Context(), id)

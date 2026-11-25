@@ -153,16 +153,8 @@ func (r *FeedRepository) SaveFetch(ctx context.Context, f rss.Feed, articles []r
 			refresh_requested_at = NULL
 		WHERE id = $1`
 
-	result, err := tx.ExecContext(ctx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.ETag, f.LastModified, categories(f.Categories))
-	if err != nil {
+	if err := execOne(ctx, tx, stmt, f.ID, f.Title, f.Description, f.SiteUrl, f.ETag, f.LastModified, categories(f.Categories)); err != nil {
 		return rss.FetchResult{}, err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return rss.FetchResult{}, err
-	}
-	if n == 0 {
-		return rss.FetchResult{}, rss.ErrNoRecord
 	}
 
 	res, err := saveArticles(ctx, tx, f.ID, articles)

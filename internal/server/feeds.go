@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -212,9 +211,8 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
-	feedID := chi.URLParam(r, "id")
-	if !validator.Matches(feedID, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	feedID, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -485,9 +483,8 @@ func (s *Server) toggledFeed(w http.ResponseWriter, r *http.Request, form return
 // the feed named in the URL, and the posted form, decoded into dst. If ok is
 // false it has already written the response.
 func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request, dst any) (feed rss.Feed, ok bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.Feed{}, false
 	}
 
@@ -657,9 +654,8 @@ func splitTagNames(s string) []string {
 // URL. If ok is false it has already written the response: 404 if the id isn't
 // a UUID or the user doesn't subscribe to the feed.
 func (s *Server) subscriptionFromURL(w http.ResponseWriter, r *http.Request) (sub rss.Subscription, ok bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.Subscription{}, false
 	}
 
@@ -736,9 +732,8 @@ func postingRate(perWeek float64) string {
 }
 
 func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 

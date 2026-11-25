@@ -3,7 +3,6 @@ package psql
 import (
 	"context"
 	"database/sql"
-	"errors"
 
 	"github.com/grodier/rss/internal/rss"
 	"github.com/lib/pq"
@@ -94,8 +93,7 @@ func markArticle(ctx context.Context, db *sql.DB, table markTable, userID, artic
 
 	var exists bool
 	if err := db.QueryRowContext(ctx, stmt, userID, articleID).Scan(&exists); err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		if isForeignKeyViolation(err) {
 			return rss.ErrNoRecord
 		}
 		return err

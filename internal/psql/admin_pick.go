@@ -255,14 +255,8 @@ func (r *AdminFeedRepository) Unskip(ctx context.Context, id string, by rss.Audi
 // unskip deletes feed id's skip in tx and records feed.discover_unskip by
 // by; rss.ErrNoRecord when it isn't skipped.
 func unskip(ctx context.Context, tx *sql.Tx, id string, by rss.AuditActor) error {
-	res, err := tx.ExecContext(ctx, `DELETE FROM discover_skips WHERE feed_id = $1`, id)
-	if err != nil {
+	if err := execOne(ctx, tx, `DELETE FROM discover_skips WHERE feed_id = $1`, id); err != nil {
 		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n == 0 {
-		return rss.ErrNoRecord
 	}
 	return recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "feed.discover_unskip", TargetType: "feed", TargetID: id})
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -186,9 +185,8 @@ func userCounts(c rss.AdminUserCounts) []statTile {
 // userFromURL returns the reader the URL's {id} names; when there's none,
 // it responds with 404 and returns false.
 func (s *Server) userFromURL(w http.ResponseWriter, r *http.Request) (rss.AdminUser, bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.AdminUser{}, false
 	}
 	user, err := s.services.Users.User(r.Context(), id)

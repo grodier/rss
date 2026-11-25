@@ -429,7 +429,7 @@ It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has 
 
 **Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at the same link; sharing needs a confirmed email.
 Its share page (`/timelines/{id}/share`, `timelineSharePageHandler`, from Share in the edit page's head) shares it (`TimelineRepository.Share`, a `token.Random` token), shows the feed and page links (`sharedURLs`, built from the base URL), and offers New link (`NewShareLink`) and Stop sharing (`Unshare`); each of those posts comes back to it (`redirectToSharing`).
-Each link is a read-only input with a Copy button beside it (`button[data-copy]`, naming the input), rendered `hidden` and shown by `copy-field.ts` where the Clipboard API works; it shows and announces the outcome with `copied.ts`, like Share (see "Sharing articles"), and when the copy fails it focuses the input with its link selected, so the reader can copy it themselves.
+Each link is a read-only input with a Copy button beside it (`button[data-copy]`, naming the input), rendered `hidden` and shown by `copy-field.ts` where the Clipboard API works; it shows and announces the outcome with `copied.ts`, like Share (see "Share" under "Saved articles"), and when the copy fails it focuses the input with its link selected, so the reader can copy it themselves.
 Focusing either input selects its link, with or without the buttons.
 
 The public routes are outside the session group.
@@ -560,7 +560,7 @@ Stars are private, with no counts; starred-only timelines list them (see "Timeli
 **Share.** Between Star and Save, an icon-only Share button (the `share-button` partial) carries the article's `CanonicalURL` and `DisplayTitle`; an article without a canonical URL has none.
 It's rendered `hidden` and `share.ts` shows it, so it never appears without JavaScript.
 A click opens the system share sheet (`navigator.share`) where there is one, else copies the link and announces "Link copied" in a polite live region.
-When it copies, `showCopied` in `copied.ts` (shared with code blocks' Copy buttons) also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
+When it copies, `showCopied` in `copied.ts` (shared with code blocks' Copy buttons and a shared timeline's, see "Timelines") also shows the outcome in a label above the button: a success for 2 seconds (longer while a mouse is over it or it has keyboard focus), with a check that draws itself in place of the share icon, and a failure until the reader's next press or key.
 Only the latest copy's label shows, and a copy repeated while it shows replays its entrance (`data-copy-round` restarts the CSS animations).
 The label is `aria-hidden`, so it isn't read on top of the announcement.
 A browser that can neither share nor copy never shows the button.

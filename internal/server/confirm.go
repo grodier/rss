@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
 )
@@ -170,5 +171,5 @@ func (s *Server) confirmResendHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", flash)
-	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/settings"), http.StatusSeeOther)
+	http.Redirect(w, r, httpserve.SafeReturnPath(form.ReturnTo, "/settings"), http.StatusSeeOther)
 }

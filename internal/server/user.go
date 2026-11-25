@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
@@ -361,7 +362,7 @@ func (s *Server) loginFormHandler(w http.ResponseWriter, r *http.Request) {
 // popReturnTo returns the page requireAuthentication sent the user away
 // from, if it's a local path, else "/", and forgets it.
 func (s *Server) popReturnTo(r *http.Request) string {
-	return safeReturnPath(s.sessionManager.PopString(r.Context(), "returnTo"), "/")
+	return httpserve.SafeReturnPath(s.sessionManager.PopString(r.Context(), "returnTo"), "/")
 }
 
 // startSession logs userID in on this device: it renews the session token

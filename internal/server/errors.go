@@ -7,12 +7,10 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/rss"
 )
-
-// allowCandidates are the methods probed, in order, to build the Allow header.
-var allowCandidates = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
 
 func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status int, errorCode string, message string) {
 	data := map[string]any{
@@ -41,7 +39,7 @@ func (s *Server) errorHTML(w http.ResponseWriter, r *http.Request, status int, t
 }
 
 // formErrorResponse responds to a decodePostForm error: 413 if the body was
-// over maxFormBytes, 400 otherwise.
+// over httpserve.MaxFormBytes, 400 otherwise.
 func (s *Server) formErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
 	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		s.errorHTML(w, r, http.StatusRequestEntityTooLarge, "Request too large", "That form submission was too large.")
@@ -59,22 +57,8 @@ func (s *Server) forbiddenResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) methodNotAllowedResponse(w http.ResponseWriter, r *http.Request) {
-	// chi doesn't set Allow when a custom handler is installed, so ask the router.
-	if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.Routes != nil {
-		var allowed []string
-		for _, m := range allowCandidates {
-			probe := m
-			if m == http.MethodHead {
-				probe = http.MethodGet // GetHead serves HEAD with the GET handler
-			}
-			// A fresh context: Match would modify the request's own.
-			if rctx.Routes.Match(chi.NewRouteContext(), probe, r.URL.Path) {
-				allowed = append(allowed, m)
-			}
-		}
-		if len(allowed) > 0 {
-			w.Header().Set("Allow", strings.Join(allowed, ", "))
-		}
+	if allowed := httpserve.AllowedMethods(r); len(allowed) > 0 {
+		w.Header().Set("Allow", strings.Join(allowed, ", "))
 	}
 	s.errorHTML(w, r, http.StatusMethodNotAllowed, "Method not allowed", "That action isn't supported for this page.")
 }

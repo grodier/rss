@@ -77,11 +77,11 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | --- | --- | --- |
 | `cmd/www` | Flags, wiring, signal handling, the `migrate` and `rekey` commands | everything below |
 | `cmd/admin` | The admin's flags, wiring and signal handling, its `serve`, `enroll`, `create-user` and `send-test-email` commands, and the QR code `enroll` draws | `admin`, `cli`, `fetch`, `ingest`, `mail`, `psql`, `rss`, `ui`, `validator` |
-| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the users list and a reader's page (account facts and counts only) with its actions (resending the confirmation, marking it confirmed, a reset link, logging out everywhere and deleting), the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, adding sites to the seed list in bulk, pasted or from waitlist entries' answers, and picking Discover's feeds a page of sites at a time, the queues page (failures grouped by error, retried or deleted one at a time or a group at a time), the email page (the outbox, retrying or canceling a pending email, and queuing a test email), the web performance pages (the whole site and a route), the service and endpoints pages, and the pinger that checks `www`'s availability | `accounts`, `assets`, `chart`, `clientip`, `discovery`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
+| `internal/admin` | The admin site: router, middleware, handlers, templates, its login (TOTP, sealed secrets, recovery codes) and enrolling, the waitlist's waves of invites, the users list and a reader's page (account facts and counts only) with its actions (resending the confirmation, marking it confirmed, a reset link, logging out everywhere and deleting), the feeds and sites lists and pages, the seed list's and Discover's catalog's pages, adding sites to the seed list in bulk, pasted or from waitlist entries' answers, and picking Discover's feeds a page of sites at a time, the queues page (failures grouped by error, retried or deleted one at a time or a group at a time), the email page (the outbox, retrying or canceling a pending email, and queuing a test email), the web performance pages (the whole site and a route), the service and endpoints pages, and the pinger that checks `www`'s availability | `accounts`, `assets`, `chart`, `clientip`, `discovery`, `httpserve`, `ingest`, `mail`, `metrics`, `ratelimit`, `render`, `rss`, `password`, `seed`, `token`, `validator`, `ui`, `web` |
 | `internal/admin/chart` | The admin's charts, line charts and histograms, drawn as SVG on the server (the `chart` template function) | `metrics` |
 | `internal/admin/render` | Reads `www`'s CPU, memory, instance count and deploys from Render's API for the service page and the deploy markers of the endpoints pages and a route's web performance page, cached for a minute | (none) |
 | `internal/cli` | What the commands share: flags from `RSS_` environment variables, the logger, the mail flags and their sender | `mail` |
-| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `accounts`, `assets`, `clientip`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
+| `internal/server` | Router, middleware, handlers, templates, rate limits | `rss`, `ui`, `web`, `accounts`, `assets`, `clientip`, `httpserve`, `validator`, `sanitize`, `mail`, `metrics`, `token`, `opml`, `discovery`, `ingest`; `feedparse`, `fetch`, `enrich` and `textcut` for the debug inspectors; `psql` for interface checks only |
 | `internal/psql` | Repositories: plain SQL, driver errors mapped to `rss` errors; `Migrate` | `rss`, `mail`, `metrics` and `seed` (types), `password`, `textcut` |
 | `internal/lookup` | Lookup queue workers | `discovery`, `ingest`, `rss` |
 | `internal/seed` | Parses the lists of sites the admin pastes into the seed list, one address per line with an optional section hint, saying what each line will do | `discovery`, `rss` |
@@ -105,6 +105,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/ui` | Embedded page templates (the reader's and the admin's), email templates and the web app manifest | — |
 | `internal/assets` | Read a frontend build's Vite manifest: page groups' tags, files' URLs, serving `/static` | — |
 | `internal/clientip` | The client's address behind `-proxy-hops` reverse proxies, and its rate-limit key | — |
+| `internal/httpserve` | The HTTP plumbing both servers share behind their thin methods (serving, rendering, forms, the request log), plus the open-redirect check (`SafeReturnPath`), the 405's `Allow` (`AllowedMethods`) and the healthcheck's body (`Health`); headers, error pages and panics stay in each server | `clientip` |
 | `internal/ratelimit` | Both servers' in-memory fixed-window rate limiters, and the response to a denied request | — |
 | `internal/validator` | Form validation helpers and the rules for new passwords | — |
 | `migrations` | The goose SQL migrations, embedded (`FS`) | — |
@@ -148,6 +149,7 @@ Its one dependency, pinned to an exact version, is the only npm code that reache
 7. `commonHeaders`: the CSP (see "Security measures"), `nosniff`, `X-Frame-Options: deny`, `Referrer-Policy`, and HSTS in production.
 8. `middleware.GetHead`: HEAD is served by the GET handler, upkeep side effects included.
 
+Both servers' `logRequest` is `httpserve.LogRequests`, and both answer a 405 with an `Allow` header from `httpserve.AllowedMethods`, as chi sets none when a custom 405 handler is installed.
 The admin's middleware (`internal/admin/router.go`) is the same chain without `recordRequest`, `serverTiming` and `redirectToCanonicalHost`, and with its own `commonHeaders` (see "Security measures"); `/static/*` and `/healthcheck` need no session; every other route loads it (scs's `LoadAndSave`, then `authenticate`), and all but the login's (`/login`, `/login/code`, `/logout`) need a logged-in admin (`requireAuthentication`), as do destructive actions' recent code (`requireRecentCode`).
 
 Then the reader's routes are split into groups.
@@ -212,8 +214,8 @@ Routes under `/debug/` are a group inside it with `requireDebug`, which answers 
 | `POST /confirm-email/resend` | yes | Email a new confirmation link |
 | `POST /debug/feeds/{id}/inspect`, `/debug/articles/{id}/inspect-page`, `/debug/sites/{id}/discover` | yes | Debug inspectors; save nothing |
 
-**Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is parsed together with all of `templates/partials/*.html` into one template per page.
-`renderHTML` executes into a buffer first, so a template error becomes a clean 500 instead of half a page.
+**Rendering** (`internal/server/html.go`): at startup every `templates/*.html` page is parsed together with all of `templates/partials/*.html` into one template per page (`httpserve.ParseTemplates`, as the admin does with its own).
+`renderHTML` executes into a buffer first (`httpserve.RenderHTML`), so a template error becomes a clean 500 instead of half a page.
 Template functions: `asset` (a static file's URL with a content hash), `avatar`, `avatarTone`, `monogram` and `debugPanel`.
 Logged-in pages pass a `navData` (from `s.nav`) as their `Nav` field for the `app-nav` partial.
 Errors are HTML pages via `errorHTML` (`errors.go`); JSON is only for `/healthcheck`.
@@ -439,7 +441,7 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   Their absolute URLs are built from `-base-url`, never the `Host` header.
   Sharing and New link need a confirmed email.
   Discovery refuses addresses on `-base-url`'s site (`Discoverer.AppSiteKey`), and search and lookups don't offer them, so a shared link looked up or imported never becomes a feed every account can find.
-- **Form bodies:** `decodePostForm` caps them at 64 KiB (`maxFormBytes`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
+- **Form bodies:** `decodePostForm` caps them at 64 KiB (`httpserve.MaxFormBytes`, in both servers; the admin's seed list paste and picking page have larger caps of their own, through `decodePostFormLimit`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form.
   A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.
 - **Rate limits** (`internal/ratelimit`, with `clientip.RateLimitKey` for IPs): in-memory fixed windows, per process.
@@ -468,9 +470,9 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   The admin's waves of invites are checked against the email provider's limits, less a reserve for account emails (`MailLimits.Available`), inside the transaction that sends them, which takes an advisory lock so two waves can't both fit in the same room (`InviteRepository.SendWave`).
   It counts, then inserts, so simultaneous requests can slightly exceed 20.
 
-- **Client IP:** `clientip.FromRequest` (`internal/clientip`), which both servers' `clientIP` call, is the only code that reads `RemoteAddr`.
+- **Client IP:** `clientip.FromRequest` (`internal/clientip`), which both servers' `clientIP` call through `httpserve.ClientIP`, is the only code that reads `RemoteAddr`.
   With `-proxy-hops` N above 0 it reads `X-Forwarded-For` instead, taking the entry N places from the right, and falls back to `RemoteAddr` when the header is missing, has fewer than N entries, or that entry doesn't parse.
-  If that entry isn't a public address, each server logs a warning once per process.
+  If that entry isn't a public address, each server logs a warning once per process (`httpserve.ClientIP`).
 - **Internal errors** (the internal columns, Go errors) go to the logs, never to pages, except debug panels.
   `serverErrorHTML` and `serverErrorJSON` also store the errors behind 500s and panics in `server_errors`, by route pattern, never the URL, so no IDs or tokens are kept; only the admin shows them.
 - **Real-user beacons** carry no identifiers (see "Observability" in decisions.md): `POST /rum` loads no session and sets no cookie, `rumHandler` keeps the route pattern its path resolves to (the router's `Find`, through the request's route context), dropping the path and any beacon whose path is no page, and of the User-Agent only the browser's family and major version.

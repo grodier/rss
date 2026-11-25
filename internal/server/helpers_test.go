@@ -8,34 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grodier/rss/internal/httpserve"
 )
-
-func TestSafeReturnPath(t *testing.T) {
-	const fallback = "/feeds/abc"
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"local path", "/sites/abc", "/sites/abc"},
-		{"query string", "/discover?q=x", "/discover?q=x"},
-		{"fragment", "/sites/abc#feed-x", "/sites/abc#feed-x"},
-		{"empty", "", fallback},
-		{"relative path", "feeds/x", fallback},
-		{"protocol-relative", "//evil.example", fallback},
-		{"backslash host", `/\evil.example`, fallback},
-		{"absolute URL", "https://evil.example/", fallback},
-		{"javascript scheme", "javascript:alert(1)", fallback},
-		{"control character", "/sites/abc\n", fallback},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := safeReturnPath(tt.in, fallback); got != tt.want {
-				t.Errorf("safeReturnPath(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestDecodePostFormErrors(t *testing.T) {
 	s := newSignupTestServer(t, Services{})
@@ -56,7 +30,7 @@ func TestDecodePostFormErrors(t *testing.T) {
 		wantTitle  string
 	}{
 		{"malformed", "q=%zz", http.StatusBadRequest, "Bad request"},
-		{"oversized", "email=" + strings.Repeat("a", maxFormBytes), http.StatusRequestEntityTooLarge, "Request too large"},
+		{"oversized", "email=" + strings.Repeat("a", httpserve.MaxFormBytes), http.StatusRequestEntityTooLarge, "Request too large"},
 	}
 	for _, hh := range handlers {
 		for _, b := range bodies {

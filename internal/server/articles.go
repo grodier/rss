@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/sanitize"
 )
@@ -280,7 +281,7 @@ func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ct
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.Redirect(w, r, withFragment(safeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
+	http.Redirect(w, r, withFragment(httpserve.SafeReturnPath(form.ReturnTo, "/"), "article-"+id), http.StatusSeeOther)
 }
 
 // withFragment returns path with its fragment, if any, replaced by fragment.

@@ -145,7 +145,7 @@ func TestAdminUserRepositorySendLink(t *testing.T) {
 	t.Run("over the per-address cap", func(t *testing.T) {
 		id, email := actionTestUser(t, db, nil)
 		for range maxEmailsPerAddressPerHour {
-			if err := enqueue(t.Context(), db, mail.Message{To: email, Subject: "earlier"}); err != nil {
+			if _, err := enqueue(t.Context(), db, mail.Message{To: email, Subject: "earlier"}); err != nil {
 				t.Fatal(err)
 			}
 		}

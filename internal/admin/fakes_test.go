@@ -531,14 +531,29 @@ func (f *fakeInvites) Resend(_ context.Context, id string, inv rss.WaveInvite, _
 	return nil
 }
 
-// fakeEmails is an EmailStore whose usage is fixed. Enqueue keeps the
-// emails, or returns err when it's set.
+// fakeEmails is an EmailStore whose usage is fixed. Enqueue and QueueTest
+// keep the emails, or return err when it's set; QueueTest's is
+// testEmailID. List filters and pages outbox, newest first, as the
+// repository does; Retry and Cancel record their calls and return
+// actionErr.
 type fakeEmails struct {
-	usage  rss.EmailUsage
-	err    error
-	mu     sync.Mutex
-	queued []mail.Message
+	usage     rss.EmailUsage
+	err       error
+	actionErr error
+	outbox    []rss.AdminEmail
+	mu        sync.Mutex
+	queued    []mail.Message
+	calls     []emailCall
 }
+
+// emailCall is one Retry, Cancel or QueueTest the store was asked to make.
+type emailCall struct {
+	method, id string
+	by         rss.AuditActor
+}
+
+// testEmailID is the ID of the email fakeEmails.QueueTest queues.
+const testEmailID = "50000000-0000-4000-8000-000000000001"
 
 func (f *fakeEmails) Usage(context.Context, time.Time) (rss.EmailUsage, error) { return f.usage, nil }
 
@@ -550,4 +565,53 @@ func (f *fakeEmails) Enqueue(_ context.Context, m mail.Message) error {
 	}
 	f.queued = append(f.queued, m)
 	return nil
+}
+
+func (f *fakeEmails) List(_ context.Context, q rss.AdminEmailQuery) ([]rss.AdminEmail, error) {
+	var out []rss.AdminEmail
+	started := q.After == ""
+	for _, e := range f.outbox {
+		if !started {
+			started = e.ID == q.After
+			continue
+		}
+		if q.Status == "" || e.Status == q.Status {
+			out = append(out, e)
+		}
+	}
+	return out[:min(len(out), q.Limit)], nil
+}
+
+func (f *fakeEmails) CountByStatus(context.Context) (map[string]int, error) {
+	counts := map[string]int{"": len(f.outbox)}
+	for _, e := range f.outbox {
+		counts[e.Status]++
+	}
+	return counts, nil
+}
+
+func (f *fakeEmails) Retry(_ context.Context, id string, by rss.AuditActor) error {
+	return f.call("Retry", id, by)
+}
+
+func (f *fakeEmails) Cancel(_ context.Context, id string, by rss.AuditActor) error {
+	return f.call("Cancel", id, by)
+}
+
+func (f *fakeEmails) call(method, id string, by rss.AuditActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, emailCall{method: method, id: id, by: by})
+	return f.actionErr
+}
+
+func (f *fakeEmails) QueueTest(_ context.Context, m mail.Message, by rss.AuditActor) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, emailCall{method: "QueueTest", id: m.To, by: by})
+	if f.err != nil {
+		return "", f.err
+	}
+	f.queued = append(f.queued, m)
+	return testEmailID, nil
 }

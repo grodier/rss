@@ -1,9 +1,11 @@
 package psql
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -412,6 +414,209 @@ func TestEmailCounts(t *testing.T) {
 		}
 		if got.ThisMonth != 5 {
 			t.Errorf("ThisMonth = %d, want 5: March's days up to the 15th", got.ThisMonth)
+		}
+	})
+}
+
+// queueOwn enqueues an email to addr and returns its ID.
+func queueOwn(t *testing.T, repo *EmailRepository, addr string) string {
+	t.Helper()
+	id, err := enqueue(t.Context(), repo.DB, mail.Message{To: addr, Subject: "Subject", Text: "text body", HTML: "<p>html body</p>"})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	return id
+}
+
+// emailEntry returns by's one audit entry, failing unless there's exactly
+// one, with action on email id.
+func emailEntry(t *testing.T, db *sql.DB, by rss.AuditActor, action, id string) rss.AuditEvent {
+	t.Helper()
+	got := auditBy(t, db, by)
+	if len(got) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(got))
+	}
+	if e := got[0]; e.Action != action || e.TargetType != "email" || e.TargetID != id {
+		t.Fatalf("audit entry = %s on %s %s, want %s on email %s", e.Action, e.TargetType, e.TargetID, action, id)
+	}
+	return got[0]
+}
+
+// Requires a migrated database; see psqltest.NewDB. It lists the whole
+// outbox, so it doesn't run in parallel.
+func TestEmailRepositoryAdmin(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewEmailRepository(db)
+	ctx := t.Context()
+
+	// pendingSentFailed queues three emails to a new address, one left
+	// pending after an attempt, one sent and one given up on, and returns
+	// the address and their IDs.
+	pendingSentFailed := func(t *testing.T) (addr, pending, sent, failed string) {
+		t.Helper()
+		addr = newEmailAddress(t, repo)
+		pending, sent, failed = queueOwn(t, repo, addr), queueOwn(t, repo, addr), queueOwn(t, repo, addr)
+		execEmailSQL(t, repo, `UPDATE emails SET attempts = 3, next_attempt_at = now() + interval '1 hour', last_error = 'refused' WHERE id = $1`, pending)
+		if err := repo.MarkSent(ctx, sent); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.GiveUp(ctx, failed, "550"); err != nil {
+			t.Fatal(err)
+		}
+		return addr, pending, sent, failed
+	}
+
+	t.Run("List pages and filters the outbox, newest first, with the address's account", func(t *testing.T) {
+		addr, pending, sent, failed := pendingSentFailed(t)
+		userID := adminTestUser(t, db, "Outbox Reader", strings.ToUpper(addr), time.Now(), nil)
+		// Newest first by created_at, so in the future they're listed
+		// ahead of every other test's: failed, sent, pending.
+		future := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+		for i, id := range []string{pending, sent, failed} {
+			execEmailSQL(t, repo, `UPDATE emails SET created_at = $2 WHERE id = $1`, id, future.Add(time.Duration(i)*time.Second))
+		}
+
+		got, err := repo.List(ctx, rss.AdminEmailQuery{Limit: 2})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(got) != 2 || got[0].ID != failed || got[1].ID != sent {
+			t.Fatalf("List = %+v, want the failed then the sent email", got)
+		}
+		f := got[0]
+		if f.To != addr || f.Subject != "Subject" || f.Status != rss.EmailFailed || f.LastError != "550" || f.UserID != userID {
+			t.Errorf("failed email = %+v, want to %s, failed with 550, of user %s", f, addr, userID)
+		}
+		if got[1].SentAt.IsZero() {
+			t.Errorf("sent email has no sent_at: %+v", got[1])
+		}
+
+		next, err := repo.List(ctx, rss.AdminEmailQuery{After: sent, Limit: 1})
+		if err != nil {
+			t.Fatalf("List after: %v", err)
+		}
+		if len(next) != 1 || next[0].ID != pending || next[0].Attempts != 3 || next[0].LastError != "refused" {
+			t.Errorf("List after the sent email = %+v, want the pending one, tried 3 times", next)
+		}
+
+		onlyPending, err := repo.List(ctx, rss.AdminEmailQuery{Status: rss.EmailPending, Limit: 1})
+		if err != nil {
+			t.Fatalf("List pending: %v", err)
+		}
+		if len(onlyPending) != 1 || onlyPending[0].ID != pending {
+			t.Errorf("List pending = %+v, want the pending email", onlyPending)
+		}
+
+		gone, err := repo.List(ctx, rss.AdminEmailQuery{After: "00000000-0000-4000-8000-000000000000", Limit: 10})
+		if err != nil || len(gone) != 0 {
+			t.Errorf("List after an unknown email = %d emails, %v; want none", len(gone), err)
+		}
+	})
+
+	t.Run("CountByStatus counts each status and all", func(t *testing.T) {
+		before, err := repo.CountByStatus(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pendingSentFailed(t)
+		after, err := repo.CountByStatus(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for key, want := range map[string]int{"": 3, rss.EmailPending: 1, rss.EmailSent: 1, rss.EmailFailed: 1} {
+			if got := after[key] - before[key]; got != want {
+				t.Errorf("count %q went up by %d, want %d", key, got, want)
+			}
+		}
+	})
+
+	t.Run("Retry makes a pending email due now with no attempts, recorded", func(t *testing.T) {
+		addr, pending, _, _ := pendingSentFailed(t)
+		by := testActor(t, db)
+		if err := repo.Retry(ctx, pending, by); err != nil {
+			t.Fatalf("Retry: %v", err)
+		}
+		e := getEmail(t, repo, pending)
+		if e.status != "pending" || e.attempts != 0 || e.nextAttemptAt.After(time.Now().Add(time.Second)) || e.textBody != "text body" {
+			t.Errorf("row = %+v, want pending, due now, no attempts, its bodies kept", e)
+		}
+		entry := emailEntry(t, db, by, "email.retry", pending)
+		if entry.Before["attempts"] != float64(3) || entry.After["attempts"] != float64(0) || entry.After["email_to"] != addr {
+			t.Errorf("entry = before %v, after %v; want attempts 3 to 0, to %s", entry.Before, entry.After, addr)
+		}
+	})
+
+	t.Run("Cancel gives up on a pending email and clears its bodies, recorded", func(t *testing.T) {
+		addr, pending, _, _ := pendingSentFailed(t)
+		by := testActor(t, db)
+		if err := repo.Cancel(ctx, pending, by); err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+		e := getEmail(t, repo, pending)
+		if e.status != "failed" || e.lastError != EmailCanceled || e.textBody != "" || e.htmlBody != "" {
+			t.Errorf("row = %+v, want failed, %q, its bodies cleared", e, EmailCanceled)
+		}
+		entry := emailEntry(t, db, by, "email.cancel", pending)
+		if entry.Before["status"] != "pending" || entry.After["status"] != "failed" || entry.After["email_to"] != addr {
+			t.Errorf("entry = before %v, after %v; want pending to failed, to %s", entry.Before, entry.After, addr)
+		}
+	})
+
+	t.Run("Retry and Cancel refuse a sent, failed or unknown email, changing and recording nothing", func(t *testing.T) {
+		_, _, sent, failed := pendingSentFailed(t)
+		by := testActor(t, db)
+		for name, action := range map[string]func(context.Context, string, rss.AuditActor) error{"Retry": repo.Retry, "Cancel": repo.Cancel} {
+			for id, want := range map[string]error{sent: rss.ErrEmailNotPending, failed: rss.ErrEmailNotPending, "00000000-0000-4000-8000-000000000000": rss.ErrNoRecord} {
+				var row emailRow
+				if want != rss.ErrNoRecord {
+					row = getEmail(t, repo, id)
+				}
+				if err := action(ctx, id, by); !errors.Is(err, want) {
+					t.Errorf("%s(%s) = %v, want %v", name, id, err, want)
+				}
+				if want != rss.ErrNoRecord {
+					if after := getEmail(t, repo, id); !reflect.DeepEqual(after, row) {
+						t.Errorf("%s(%s) changed the row from %+v to %+v", name, id, row, after)
+					}
+				}
+			}
+		}
+		if got := auditBy(t, db, by); len(got) != 0 {
+			t.Errorf("recorded %d entries, want none", len(got))
+		}
+	})
+
+	t.Run("QueueTest queues the email and returns its ID, recorded", func(t *testing.T) {
+		addr := newEmailAddress(t, repo)
+		by := testActor(t, db)
+		m := mail.Message{To: addr, Subject: "Test email from Paper Round", Text: "text", HTML: "<p>html</p>"}
+		id, err := repo.QueueTest(ctx, m, by)
+		if err != nil {
+			t.Fatalf("QueueTest: %v", err)
+		}
+		e := getEmail(t, repo, id)
+		if e.status != "pending" || e.textBody != "text" || e.htmlBody != "<p>html</p>" {
+			t.Errorf("row = %+v, want the pending test email", e)
+		}
+		if entry := emailEntry(t, db, by, "email.send_test", id); entry.After["email_to"] != addr {
+			t.Errorf("entry after = %v, want to %s", entry.After, addr)
+		}
+	})
+
+	t.Run("QueueTest over the per-address cap queues and records nothing", func(t *testing.T) {
+		addr := newEmailAddress(t, repo)
+		for range maxEmailsPerAddressPerHour {
+			queueOwn(t, repo, addr)
+		}
+		by := testActor(t, db)
+		if _, err := repo.QueueTest(ctx, mail.Message{To: addr, Subject: "Test"}, by); !errors.Is(err, rss.ErrTooManyEmails) {
+			t.Errorf("QueueTest = %v, want ErrTooManyEmails", err)
+		}
+		if n := countRows(t, db, `SELECT count(*) FROM emails WHERE to_address = $1`, addr); n != maxEmailsPerAddressPerHour {
+			t.Errorf("%d emails to the address, want %d", n, maxEmailsPerAddressPerHour)
+		}
+		if got := auditBy(t, db, by); len(got) != 0 {
+			t.Errorf("recorded %d entries, want none", len(got))
 		}
 	})
 }

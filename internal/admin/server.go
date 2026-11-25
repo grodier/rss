@@ -100,10 +100,16 @@ type InviteStore interface {
 	Resend(ctx context.Context, id string, inv rss.WaveInvite, expiresAt time.Time, available func(rss.EmailUsage) int, by rss.AuditActor) error
 }
 
-// EmailStore is the outbox's repository; *psql.EmailRepository is one.
+// EmailStore is the outbox's repository, for the emails the admin queues
+// and the email page; *psql.EmailRepository is one.
 type EmailStore interface {
 	Usage(ctx context.Context, now time.Time) (rss.EmailUsage, error)
 	Enqueue(ctx context.Context, m mail.Message) error
+	List(ctx context.Context, q rss.AdminEmailQuery) ([]rss.AdminEmail, error)
+	CountByStatus(ctx context.Context) (map[string]int, error)
+	Retry(ctx context.Context, id string, by rss.AuditActor) error
+	Cancel(ctx context.Context, id string, by rss.AuditActor) error
+	QueueTest(ctx context.Context, m mail.Message, by rss.AuditActor) (string, error)
 }
 
 // OverviewStore reads the Overview's counts; *psql.AdminOverviewRepository

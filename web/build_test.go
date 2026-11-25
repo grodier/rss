@@ -150,12 +150,13 @@ type manifestEntry struct {
 // part of save-star's chunk, and is now a chunk of its own, which costs
 // the reading pages about 190 bytes of chunk overhead and no new code.
 // #514's loading and failure states for infinite scroll raised both again
-// only enough to fit: about 485 bytes of JavaScript for the states and
-// Try again, plus about 115 of chunk overhead, as busy-delay.ts, which
-// busy-forms.ts and now infinite-scroll.ts import, became a chunk of its
-// own; and about 45 bytes of CSS for the pager's states.
+// only enough to fit: about 550 bytes of JavaScript for the states, Try
+// again and the load's timeout, plus about 115 of chunk overhead, as
+// busy-delay.ts, which busy-forms.ts and now infinite-scroll.ts import,
+// became a chunk of its own; and about 45 bytes of CSS for the pager's
+// states.
 const (
-	readingJSBudget  = 14020 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14014 with #514
+	readingJSBudget  = 14080 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14076 with #514
 	readingCSSBudget = 11600 // 10378 measured; 11505 with #723, 11592 with #514
 )
 

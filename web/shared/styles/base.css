@@ -573,24 +573,4 @@
     padding: 1.25rem 1rem;
     text-align: center;
   }
-
-  /* Infinite scroll's states (infinite-scroll.ts): while a page loads the
-     link keeps its look but hover no longer changes it, and once it has
-     taken --delay-busy it shows the busy forms' spinner before its label
-     (above). A failed load says so in a quiet line above Try again. */
-  .pager[data-state="loading"] a,
-  .pager[data-state="busy"] a {
-    cursor: progress;
-  }
-
-  .pager[data-state="loading"] a:hover,
-  .pager[data-state="busy"] a:hover {
-    background: var(--bg);
-  }
-
-  .pager-error {
-    margin-block-end: 0.75rem;
-    color: var(--text-2);
-    font-size: 0.875rem;
-  }
 }

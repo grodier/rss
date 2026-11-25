@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isolate, liveRegion } from "../../shared/test/setup";
+import { isolate, liveRegion, pageTransition } from "../../shared/test/setup";
 
 isolate();
 
@@ -67,6 +67,7 @@ describe("infinite-scroll", () => {
     expect(fetchMock).toHaveBeenCalledWith(new URL("/timelines/all?before=c1", location.href).href, {
       credentials: "same-origin",
       cache: "no-store",
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -202,6 +203,21 @@ describe("infinite-scroll when a load fails", () => {
     });
   }
 
+  it("gives up on a load that takes 20 s", async () => {
+    // happy-dom's AbortSignal.timeout doesn't use the fake timers.
+    const ctrl = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(ctrl.signal);
+    fetchMock.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => init.signal!.addEventListener("abort", () => reject(init.signal!.reason))),
+    );
+    reach();
+    expect(timeout).toHaveBeenCalledWith(20_000);
+    ctrl.abort(new DOMException("The operation timed out.", "TimeoutError"));
+    await vi.waitFor(() => expect(pager().dataset.state).toBe("failed"));
+    expect(link().textContent).toBe("Try again");
+  });
+
   it("appends the rows when Try again works, and loads by itself again", async () => {
     await fail(() => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch")));
     fetchMock.mockResolvedValueOnce(new Response(NEXT_PAGE, { status: 200 }));
@@ -251,6 +267,25 @@ describe("infinite-scroll when a load fails", () => {
       expect(link().getAttribute("href")).toBe(HREF);
     });
   }
+
+  it("shows the failure again on Back to a page restored after Try again followed the link", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubGlobal("location", { ...location, href: location.href, assign: vi.fn() });
+    await fail(() => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch")));
+    fetchMock.mockResolvedValueOnce(redirected("<main><form></form></main>"));
+    press();
+    await vi.waitFor(() => expect(location.assign).toHaveBeenCalled());
+    await vi.advanceTimersByTimeAsync(300);
+    expect(link().textContent).toBe("Loading older articles…"); // while the next page loads
+    pageTransition("pageshow", true);
+    expect(pager().dataset.state).toBe("failed");
+    expect(link().textContent).toBe("Try again");
+    expect(pager().querySelectorAll(".pager-error")).toHaveLength(1);
+    expect(list().hasAttribute("aria-busy")).toBe(false);
+    fetchMock.mockResolvedValueOnce(new Response(NEXT_PAGE, { status: 200 }));
+    press();
+    await vi.waitFor(() => expect(document.querySelectorAll(".article-row")).toHaveLength(2));
+  });
 
   it("follows the link on a press with a modifier", async () => {
     await fail(() => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch")));

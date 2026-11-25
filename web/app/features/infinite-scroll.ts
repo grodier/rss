@@ -15,6 +15,10 @@ export function enhanceRows(root: ParentNode): void {
   enhanceShare(root);
 }
 
+// How long a page may take to load before it counts as failed: well past a
+// slow phone connection's few seconds for a page of rows.
+const LOAD_TIMEOUT = 20_000;
+
 // The words of each pager link's states, from its own label.
 const pagerText = new WeakMap<HTMLAnchorElement, { loading: string; failed: string }>();
 
@@ -25,10 +29,9 @@ const pagerText = new WeakMap<HTMLAnchorElement, { loading: string; failed: stri
 // loads; a load that fails says so above the link, which becomes Try
 // again, and auto-loading stops until a retry works. The link stays the
 // source of truth: its href never changes, a press with a modifier always
-// follows it, and a retry that gets anything but the page follows it
-// too. The URL follows the
-// topmost visible row, so a reload or Back renders that row's page
-// anchored on the row.
+// follows it, and a retry that gets anything but the page follows it too.
+// The URL follows the topmost visible row, so a reload or Back renders
+// that row's page anchored on the row.
 export function init(): void {
   const list = document.querySelector(".article-list");
   if (!list || !("IntersectionObserver" in window)) return;
@@ -107,34 +110,54 @@ export function init(): void {
     list.setAttribute("aria-busy", "true");
     if (retry) link.textContent = text.loading;
     const busyTimer = setTimeout(() => setBusy(link, text.loading), busyDelay());
-    const pageUrl = withoutHash(link.href);
-    let doc: Document;
-    try {
-      // No copy in any cache (the server sends a script private, no-cache; see setCacheControl).
-      const res = await fetch(pageUrl, { credentials: "same-origin", cache: "no-store" });
-      doc = new DOMParser().parseFromString(await res.text(), "text/html");
-      // A redirect (e.g. to the login page) isn't the page we asked for.
-      if (res.status !== 200 || res.redirected || !doc.querySelector(".article-list")) {
-        if (retry) {
-          location.assign(link.href);
-          return;
-        }
-        throw new Error(`status ${res.status}`);
-      }
-    } catch {
+    // failed keeps the link for the reader to press, as Try again, and
+    // stops auto-loading until Try again works.
+    const failed = (say: boolean) => {
       clearTimeout(busyTimer);
       list.removeAttribute("aria-busy");
-      // Keep the link for the reader to press; stop auto-loading until
-      // Try again works.
       loader.disconnect();
+      pager.querySelector(".pager-error")?.remove();
       const error = document.createElement("p");
       error.className = "pager-error";
       error.textContent = text.failed;
       pager.prepend(error);
       pager.dataset.state = "failed";
       link.textContent = "Try again";
-      announce(text.failed);
+      if (say) announce(text.failed);
       loading = false;
+    };
+    const pageUrl = withoutHash(link.href);
+    let doc: Document;
+    try {
+      // No copy in any cache (the server sends a script private, no-cache;
+      // see setCacheControl). A request that hangs ends as a failure, as
+      // a plain press can't leave a load; a browser without
+      // AbortSignal.timeout just waits.
+      const res = await fetch(pageUrl, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: AbortSignal.timeout?.(LOAD_TIMEOUT),
+      });
+      doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      // A redirect (e.g. to the login page) isn't the page we asked for.
+      if (res.status !== 200 || res.redirected || !doc.querySelector(".article-list")) {
+        if (!retry) throw new Error(`status ${res.status}`);
+        // Try again asked for this page, so go there, as the link would,
+        // still showing it's loading. Back to this page from the
+        // back/forward cache then finds the failure again, not a load
+        // that's no longer running.
+        addEventListener(
+          "pageshow",
+          (e) => {
+            if (e.persisted) failed(false);
+          },
+          { once: true },
+        );
+        location.assign(link.href);
+        return;
+      }
+    } catch {
+      failed(true);
       return;
     }
     clearTimeout(busyTimer);

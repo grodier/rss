@@ -537,11 +537,11 @@ Without JavaScript the link just works.
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`) and `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`), with `rss.TimelineMark`.
+3. `internal/server/articles.go` (`articleHandler`, `articleRow`, `fillMark`), `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`) and `marks.go` (`markedArticleIDs`, the copy rule reads share with saves and stars), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`), `code.go` (`labelCode`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `read-pings.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`, `contents.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `read-pings.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`, `contents.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `marks_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 
@@ -556,6 +556,7 @@ Saving is quiet: no flash, and it doesn't mark the article read.
 A press that turns Save or Star on drops the bookmark into place or pops the star with a burst of dots, without waiting for the server (only under `prefers-reduced-motion: no-preference`; the burst is off in forced colors); going back after a failure doesn't animate.
 
 **Copies.** Saving covers every copy of an article (same non-empty `canonical_url`), like read state: `Save` inserts nothing when a copy is already saved, `Unsave` removes every copy's save, and `SavedArticleIDs` matches copies.
+Saves and stars share that rule's code (`markArticle`, `unmarkArticle` and `markedArticleIDs` in `internal/psql/marks.go`, over a `markTable`), and reads share `markedArticleIDs`, so a change to how copies match is made once.
 
 **Stars.** A star means "this is good" (Saved stays "keep").
 The Star button sits next to Save and works the same way (`toggleAction`); `StarRepository` mirrors `SaveRepository`.
@@ -578,10 +579,10 @@ There's no count anywhere.
 **Start at:**
 
 1. `internal/server/articles.go` (`toggleAction` and the save and star handlers) and `saved.go`.
-2. `internal/psql/saves.go` and `stars.go`.
+2. `internal/psql/saves.go`, `stars.go` and `marks.go`.
 3. `partials/save_button.html`, and `save-star.ts`, `share.ts` and `copied.ts` in `web/app/features`.
 
-**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `save-star.test.ts`, `share.test.ts` and `copied.test.ts` in `web/app/features`; `internal/psql/saves_test.go`, `stars_test.go`.
+**Tests:** `internal/server/articles_test.go`, `saved_test.go`, `home_test.go`, `feeds_test.go`, `scroll_test.go`, `templates_test.go`; `save-star.test.ts`, `share.test.ts` and `copied.test.ts` in `web/app/features`; `internal/psql/saves_test.go`, `stars_test.go`, `marks_test.go`.
 
 **Why:** "Reading" (its "Saved articles") and "Stars and tags" under "Filtering and timelines" in decisions.md.
 

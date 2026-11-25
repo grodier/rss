@@ -361,48 +361,33 @@ func (s *Server) fillIcons(r *http.Request, rows []articleRow) {
 
 // fillRead sets Read on each row userID has read.
 func (s *Server) fillRead(ctx context.Context, userID string, rows []articleRow) error {
-	ids := make([]string, len(rows))
-	for i, row := range rows {
-		ids[i] = row.Article.ID
-	}
-	read, err := s.services.ReadService.ReadArticleIDs(ctx, userID, ids)
-	if err != nil {
-		return err
-	}
-	for i := range rows {
-		rows[i].Read = read[rows[i].Article.ID]
-	}
-	return nil
+	return fillMark(ctx, userID, rows, s.services.ReadService.ReadArticleIDs, func(row *articleRow, on bool) { row.Read = on })
 }
 
 // fillSaved sets Saved on each row userID has saved.
 func (s *Server) fillSaved(ctx context.Context, userID string, rows []articleRow) error {
-	ids := make([]string, len(rows))
-	for i, row := range rows {
-		ids[i] = row.Article.ID
-	}
-	saved, err := s.services.SaveService.SavedArticleIDs(ctx, userID, ids)
-	if err != nil {
-		return err
-	}
-	for i := range rows {
-		rows[i].Saved = saved[rows[i].Article.ID]
-	}
-	return nil
+	return fillMark(ctx, userID, rows, s.services.SaveService.SavedArticleIDs, func(row *articleRow, on bool) { row.Saved = on })
 }
 
 // fillStarred sets Starred on each row userID has starred.
 func (s *Server) fillStarred(ctx context.Context, userID string, rows []articleRow) error {
+	return fillMark(ctx, userID, rows, s.services.StarService.StarredArticleIDs, func(row *articleRow, on bool) { row.Starred = on })
+}
+
+// fillMark sets a mark on each row whose article marked reports, with set.
+func fillMark(ctx context.Context, userID string, rows []articleRow,
+	marked func(ctx context.Context, userID string, articleIDs []string) (map[string]bool, error),
+	set func(row *articleRow, on bool)) error {
 	ids := make([]string, len(rows))
 	for i, row := range rows {
 		ids[i] = row.Article.ID
 	}
-	starred, err := s.services.StarService.StarredArticleIDs(ctx, userID, ids)
+	on, err := marked(ctx, userID, ids)
 	if err != nil {
 		return err
 	}
 	for i := range rows {
-		rows[i].Starred = starred[rows[i].Article.ID]
+		set(&rows[i], on[rows[i].Article.ID])
 	}
 	return nil
 }

@@ -58,10 +58,13 @@ type Article struct {
 	Excerpt      string // plain text, at most ingest.ExcerptLen runes plus "…"
 	// Set by enrichment (internal/enrich) from the article's web page, when
 	// the feed left out its image, title or excerpt; never the feed's values.
-	PageImageURL    string    // og:image of the article's web page; "" if none or not fetched
-	PageTitle       string    // og:title, else <title>, of the article's web page
-	PageDescription string    // the page's description, shortened like Excerpt
-	PublishedAt     time.Time // zero if unknown
+	PageImageURL    string // og:image of the article's web page; "" if none or not fetched
+	PageTitle       string // og:title, else <title>, of the article's web page
+	PageDescription string // the page's description, shortened like Excerpt
+	// ImageFailedAt is when a reader's browser first reported that ImageURL
+	// failed to load (see ReportsImageFailure); zero if none has.
+	ImageFailedAt time.Time
+	PublishedAt   time.Time // zero if unknown
 	// PublishedDateOnly reports that the feed's date had no time of day:
 	// PublishedAt is midnight UTC and only its date is meaningful.
 	PublishedDateOnly bool
@@ -173,6 +176,15 @@ func (a Article) CardImageFallbackURL() string {
 		return fb
 	}
 	return ""
+}
+
+// ReportsImageFailure reports whether the browser should tell the server
+// when the card image fails to load: the image shown is the feed's, and no
+// failure of it has been reported yet. The server then has the article's
+// web page fetched for an image to stand in (psql's ReportImageFailed),
+// since an article with a feed image is otherwise never enriched.
+func (a Article) ReportsImageFailure() bool {
+	return a.ImageURL != "" && a.ImageFailedAt.IsZero()
 }
 
 // httpsImage returns img with https for an http scheme, else unchanged.

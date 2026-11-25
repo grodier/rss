@@ -468,6 +468,7 @@ Times are rendered in UTC for `local-times.ts` to localize (the `local-time` and
 `Byline` joins the article's authors ("A, B and C") for the article page's dateline; rows use `ShortByline` ("A and 4 others" past two, the full list in its `title`) in the kicker after the time, through `articleRow.Byline`, which leaves them out when the only author is the feed's name the kicker shows.
 The page's values come from enrichment and only fill gaps.
 An image that fails to load in the browser (a 404, or a host without working https) doesn't show as a broken box: `image-fallback.ts` tries its `data-fallback-src` (`CardImageFallbackURL`, the page's image when the feed's is the one shown; the article page's lead image gets it only if the content doesn't show it), then removes the image, and in an article's body what only held it (its link, paragraph or figure).
+A failing card or lead image that's the feed's also reports itself once, so the page's image can stand in next time (see "Article enrichment").
 Without JavaScript the broken box stays.
 Images show as they download, over their `--surface` placeholder, without a fade.
 Card images are lazy except one: on a list's first page (timeline, Saved, a feed), `markFirstImageEager` makes the first row with an image load at once with `fetchpriority="high"`, since it's usually a phone's largest first-screen element; the article page's lead image is eager and high priority too.
@@ -639,6 +640,8 @@ There is no service worker, install button or banner, and no pull-to-refresh: ta
    Jobs exist only for *wanted* feeds, ones someone follows or in Discover's catalog (`enrichWanted` in `internal/psql/enrich.go`).
    A new article that `needsEnrichment` (it has a URL and lacks an image, a title or an excerpt) gets an `enrich_jobs` row if `enrichCandidates` allows it: none for a feed that isn't wanted; for a wanted feed, on a save placed as a first save only the 20 with the latest `timeline_at`, at priority 1, and on later saves every one, at priority 0.
    Updated articles aren't queued again, and older articles never.
+   The one exception is a feed image that fails to load in a reader's browser: `image-fallback.ts` sends a beacon from an image with `data-image-failed` (`Article.ReportsImageFailure`: the feed's image, not yet reported) to `POST /articles/{id}/image-failed`, and `ArticleRepository.ReportImageFailed` sets `image_failed_at` and, the first time only, queues the article at priority 0 if it has a URL, has no `page_*` values and its feed is wanted, so the page's image becomes the card's fallback on later views.
+   A changed `image_url` clears `image_failed_at` (`saveArticles`).
 2. **Becoming wanted or not.** The places that change follows and the catalog keep the rule, each in its own transaction: `SubscriptionRepository.Subscribe`, for a feed's first follower while it isn't in the catalog, and `AdminFeedRepository.SetDiscoverSection`, for a feed entering the catalog while nobody follows it, queue its backlog (`queueEnrichBacklog`: its 20 newest that need it and have no `page_*` values yet, at priority 1); `Unsubscribe`, `UserRepository.Delete` (the feeds the account followed) and `SetDiscoverSection` taking a feed out drop the pending jobs of those no longer wanted (`dropUnwantedEnrichJobs`).
    So a looked-up or seeded site nobody follows costs no page fetches, and no job is left that nobody would claim.
 3. **Claiming.** The enrich runner (`enrich.Runner`, `-enrich-workers`) claims a due job whose article's feed is wanted, priority 0 first, with a 2-minute lease, and counts the attempt.
@@ -653,11 +656,11 @@ Pages read them only through the card-value accessors (see "Card values" under "
 
 **Start at:**
 
-1. `saveArticles`, `needsEnrichment` and `enrichCandidates` in `internal/psql/articles.go`.
+1. `saveArticles`, `needsEnrichment`, `enrichCandidates` and `ReportImageFailed` in `internal/psql/articles.go`, and `articleImageFailedHandler` in `internal/server/articles.go`.
 2. `internal/psql/enrich.go` (`enrichWanted`, `queueEnrichBacklog`, `dropUnwantedEnrichJobs`, `ClaimNext`), and their callers in `subscriptions.go`, `users.go` and `admin_feeds.go`.
 3. `internal/enrich/enrich.go` (`Runner`, `attempt`, `PageOf`).
 
-**Tests:** `internal/psql/articles_test.go`, `enrich_test.go`, `enrich_wanted_test.go`; `internal/enrich` (an `httptest` server); `cmd/www/config_test.go`.
+**Tests:** `internal/psql/articles_test.go`, `enrich_test.go`, `enrich_wanted_test.go`; `internal/enrich` (an `httptest` server); `internal/server/articles_test.go` (`TestArticleImageFailedHandler`); `web/app/features/image-fallback.test.ts`; `cmd/www/config_test.go`.
 
 **Why:** "Enrichment" in decisions.md.
 

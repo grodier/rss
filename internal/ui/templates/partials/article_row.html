@@ -14,7 +14,7 @@
       </span>{{end}}
     </p>
     <div class="article-card">
-      {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}"{{with $.Article.CardImageFallbackURL}} data-fallback-src="{{.}}"{{end}} alt="" {{if $.Eager}}fetchpriority="high"{{else}}loading="lazy"{{end}} referrerpolicy="no-referrer">{{end}}
+      {{with .Article.CardImageURL}}<img class="article-image" src="{{.}}"{{with $.Article.CardImageFallbackURL}} data-fallback-src="{{.}}"{{end}}{{if $.Article.ReportsImageFailure}} data-image-failed="/articles/{{$.Article.ID}}/image-failed"{{end}} alt="" {{if $.Eager}}fetchpriority="high"{{else}}loading="lazy"{{end}} referrerpolicy="no-referrer">{{end}}
       <div class="article-text">
         {{- /* A read row's hidden " (read)" is also added by read-pings.ts
              (initReadMarks) when the reader opens the article; keep the two

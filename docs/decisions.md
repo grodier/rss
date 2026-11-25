@@ -1029,10 +1029,16 @@ The batch's schema, with #342's subscription names, lands in one change (#348).
 Planned in #309 (issues #298, #306, #307).
 
 - **Articles missing an image, title or excerpt get their web page fetched once**, in the background, for its `og:image` (else `twitter:image`), `og:title` (else `<title>`) and description.
-  Articles complete from their feed cost nothing.
+  Articles complete from their feed cost nothing, unless a reader's browser reports their feed image broken (below).
   No full text (an on-demand "Load full article" is a backlog item, never automatic: storage, failed extractions, and the copyright question of storing publishers' text) and no AI.
 - **Enriched values have their own `page_*` columns** and only fill gaps: the feed's own image, title and excerpt always win.
   `saveArticles` overwrites the feed's fields on every changed fetch, so enrichment never writes them.
+- **A feed image that fails to load in a reader's browser gets the article's page fetched once** (changing "complete from their feed cost nothing"; asked for by the owner after a feed whose every declared image was a 404).
+  A feed can declare an image that never loads, and only a browser loading it finds out, so `image-fallback.ts` reports the first failure and the server queues the page, whose image becomes the card's fallback on later views.
+  Only the first report counts (`image_failed_at`), so a page enrichment gave up on isn't fetched again on every view; a changed `image_url` clears it, since the report was about the old one.
+  The reported image still renders, with the page's as its fallback: one reader's failure (offline, an ad blocker) mustn't hide a working image from everyone.
+  Any logged-in reader can report any article, which costs at most one page fetch per article, so it has no rate limit.
+  Rejected: enriching every article (a page fetch for every article of every feed), and checking each declared image from the server when it's saved (a request per article, and the server's view of a host isn't the browser's).
 - **Jobs exist only for wanted feeds: one someone follows, or one in Discover's catalog** (#708, changing #715's first-follower version of it, which left Discover's rows without pictures and unfollowed feeds' jobs behind).
   The worker claims only their jobs, and every change that makes a feed wanted or unwanted keeps the rule, so no job is left that nobody would claim: a feed becoming wanted (its first follower, or entering the catalog) gets its backlog queued, and one becoming unwanted (its last follower leaving, by unfollowing or deleting the account, or leaving the catalog) has its pending jobs dropped.
   A lookup's or import's save queues nothing by itself; an import's follow does.

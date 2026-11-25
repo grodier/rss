@@ -5,6 +5,11 @@
 // instead of showing the browser's broken-image box. Without JavaScript the
 // box stays, as before. Rows added later need nothing: error is listened
 // for on document, in the capture phase, since it doesn't bubble.
+//
+// A card or lead image that's the feed's own, not yet reported broken, has
+// data-image-failed: its first failure sends a beacon there, so the server
+// fetches the article's page for an image to stand in on later views
+// (rss.Article.ReportsImageFailure).
 
 // The images covered: publishers' pictures, not avatars or site icons,
 // which we serve.
@@ -30,6 +35,11 @@ export function init(): void {
 
 function failed(img: HTMLImageElement): void {
   if (!img.isConnected) return;
+  const report = img.dataset.imageFailed;
+  if (report) {
+    delete img.dataset.imageFailed;
+    navigator.sendBeacon(report);
+  }
   const fallback = img.dataset.fallbackSrc;
   if (fallback) {
     delete img.dataset.fallbackSrc;

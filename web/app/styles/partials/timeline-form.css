@@ -221,4 +221,96 @@
     padding: 0;
     accent-color: var(--accent);
   }
+
+  /* Opening and closing (#520; see "Motion and feedback" in
+     docs/decisions.md). What opens grows from nothing as it fades in, over
+     --duration-base on --ease-out, and what closes shrinks away over
+     --duration-quick on --ease-in, so the fields below glide rather than
+     leap. Height can only be animated to auto with interpolate-size;
+     without it everything opens and closes at once, as it did. Each part is
+     clipped while it grows, leaving room for focus rings. */
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (interpolate-size: allow-keywords) {
+      .timeline-summary-feeds,
+      .timeline-form {
+        interpolate-size: allow-keywords;
+      }
+
+      /* The summary's feed list, "Or choose feeds" and "Leave out". */
+      :is(.timeline-summary-feeds, .timeline-disclosure)::details-content {
+        block-size: 0;
+        overflow: clip;
+        overflow-clip-margin: 0.25rem;
+        opacity: 0;
+        transition:
+          block-size var(--duration-quick) var(--ease-in),
+          opacity var(--duration-quick) var(--ease-in),
+          content-visibility var(--duration-quick) allow-discrete;
+      }
+
+      :is(.timeline-summary-feeds, .timeline-disclosure)[open]::details-content {
+        block-size: auto;
+        opacity: 1;
+        transition-duration: var(--duration-base);
+        transition-timing-function: var(--ease-out);
+      }
+
+      /* "Only some"'s tags and feeds, and each condition's setting: shown
+         by :has() above, so they grow from @starting-style and shrink to
+         their hidden style before display: none applies. Only while the
+         form has focus, as it does once the reader ticks a box (or presses
+         a radio), so those the page loads with, or a script ticks, are
+         simply there. */
+      .timeline-show-some,
+      .timeline-condition-detail {
+        overflow: clip;
+        overflow-clip-margin: 0.25rem;
+        transition:
+          block-size var(--duration-base) var(--ease-out),
+          opacity var(--duration-base) var(--ease-out),
+          translate var(--duration-base) var(--ease-out),
+          display var(--duration-base) allow-discrete;
+      }
+
+      @starting-style {
+        .timeline-form:focus-within :is(.timeline-show-some, .timeline-condition-detail) {
+          block-size: 0;
+          opacity: 0;
+          translate: 0 -4px;
+        }
+      }
+
+      .timeline-feeds:has(input[name="show"][value="all"]:checked) .timeline-show-some,
+      .timeline-condition:not(:has(> .choice input:checked)) .timeline-condition-detail {
+        block-size: 0;
+        opacity: 0;
+        transition-duration: var(--duration-quick);
+        transition-timing-function: var(--ease-in);
+      }
+    }
+  }
+
+  /* Under reduced motion nothing grows: what opens fades in at its full
+     height over --duration-quick, and what closes goes at once. */
+  @media (prefers-reduced-motion: reduce) {
+    :is(.timeline-summary-feeds, .timeline-disclosure)::details-content {
+      opacity: 0;
+    }
+
+    :is(.timeline-summary-feeds, .timeline-disclosure)[open]::details-content {
+      opacity: 1;
+      transition: opacity var(--duration-quick) var(--ease-out);
+    }
+
+    .timeline-show-some,
+    .timeline-condition-detail {
+      transition: opacity var(--duration-quick) var(--ease-out);
+    }
+
+    @starting-style {
+      .timeline-form:focus-within :is(.timeline-show-some, .timeline-condition-detail) {
+        opacity: 0;
+      }
+    }
+  }
 }

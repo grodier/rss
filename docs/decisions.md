@@ -477,6 +477,9 @@ Look-and-feel choices are each issue's design checkpoint; what's below is settle
   This reverses #566's rejection of "What do you mostly read?", which was too vague to act on; with sections the answer orders Discover.
 - **The sites people name on the waitlist are followed at signup** (#640), confident matches only (an address, or a name matching exactly one known site) and only when the feed is unambiguous (the site's only feed, or its one feed in Discover), with a one-time flash naming what was followed, what needs a choice and what wasn't found.
   They chose these sites, and an unwanted one is one tap to undo, as with import; best guesses would follow the wrong site.
+  A site with no feed that isn't gone has nothing to follow, so it counts as not found, and the flash sends the reader to search for it, which looks the site up again; #640 had left that case open.
+  A site named twice is followed and named once.
+  The flash is plain text, like every flash, so "choose one in Discover" names Discover rather than linking to it.
 - **Picks is a timeline tab of articles from catalog feeds you don't follow yet** (#644), every account's second tab, removable and re-addable like any timeline, never shared.
   A tab rather than a feed mixed into All feeds: All feeds stays "what you follow", and a timeline is per reader, so it can become personal later.
   What it shows, and how it and Discover's order may become personal or algorithmic, is #644's to plan.
@@ -1560,9 +1563,10 @@ Planned in #583.
 
 - **A waitlist before signup opens**, so people can join early and be let in in waves, by invite, from the admin (#566, #569, #574).
 - **Joining asks for an email, a name and one optional question, "A few sites you'd like to follow"** (#566, approved at its design checkpoint; #583 had planned up to two questions).
-  Its answers are used: the sites go on the seed list, so their lookups have run before the person arrives, and checking that discovery finds their feeds before their wave is invited catches failures before a new reader's first search.
+  Its answers are used: the sites go on the seed list, so their lookups have run before the person arrives, and checking that discovery finds their feeds before their wave is invited catches failures before a new reader's first search; then signup follows them (#640, planned in #450; see "First run and discovery").
+  The answer is read from the entry as the account is made, since the entry is deleted then, and isn't kept with the account: the follows are what remains of it.
   The admin sends the selected entries' addresses to the seed list's upload form (#714), which it fills in for the owner to preview and add rather than adding them, since joins are public input; the parts that aren't addresses are listed to look up by hand, as turning names into addresses is left for later.
-  Answers are split by commas, semicolons and new lines, in one function (`rss.SplitSitesAnswer`), which following them at signup (#640) is to use too, so both read an answer alike.
+  Answers are split by commas, semicolons and new lines, in one function (`rss.SplitSitesAnswer`), which following them at signup (#640) uses too, so both read an answer alike.
   Rejected: "Which feed reader do you use now?", whose answer wouldn't change anything we do; "What do you mostly read?", too vague to act on; and "How many feeds do you follow now?", useful only for planning waves by load, which one more field on the form doesn't justify yet.
   Double opt-in: a confirmation email, so nobody can add someone else's address and invites only go to addresses that work.
   Every waitlist email has a link to leave the list.

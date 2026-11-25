@@ -293,7 +293,7 @@ func TestSendWave(t *testing.T) {
 // deleted when the test ends, and returns its ID.
 func signUpWith(t *testing.T, db *sql.DB, hash []byte, email string) string {
 	t.Helper()
-	id, err := NewUserRepository(db).CreateFromInvite(t.Context(), hash, "Signed Up", email, "a long enough password 123")
+	id, _, err := NewUserRepository(db).CreateFromInvite(t.Context(), hash, "Signed Up", email, "a long enough password 123")
 	if err != nil {
 		t.Fatalf("CreateFromInvite: %v", err)
 	}

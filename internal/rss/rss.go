@@ -412,6 +412,14 @@ type SiteWithFeeds struct {
 	Feeds []Feed
 }
 
+// SignupMatch is what one of the sites a person named on the waitlist
+// matched when they signed up (#640).
+type SignupMatch struct {
+	Candidate string // as typed
+	Site      *Site  // nil when not found
+	Feed      *Feed  // the unambiguous feed to follow; nil when the site has several
+}
+
 // SiteGroup is the sites on one shared host that matched a search only
 // through their key, handle, platform or feeds, counted rather than listed
 // (#739).

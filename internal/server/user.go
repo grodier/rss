@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -149,7 +150,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.services.UserService.CreateFromInvite(r.Context(), token.Hash(form.Invite), form.Name, form.Email, form.Password)
+	id, waitlistSites, err := s.services.UserService.CreateFromInvite(r.Context(), token.Hash(form.Invite), form.Name, form.Email, form.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, rss.ErrDuplicateEmail):
@@ -170,6 +171,11 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The account works whatever happens here: a failure is only logged.
+	if flash := s.followWaitlistSites(r, id, waitlistSites); flash != "" {
+		s.sessionManager.Put(r.Context(), "flash", flash)
+	}
+
 	// A bound invite's account starts confirmed: its address was confirmed
 	// joining the waitlist. Otherwise the account works without a confirmed
 	// address, and the notice offers Resend, so a failure here doesn't fail
@@ -181,6 +187,83 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, s.popReturnTo(r), http.StatusSeeOther)
+}
+
+// maxWaitlistSites is how many of the sites a waitlist answer names
+// signup follows.
+const maxWaitlistSites = 10
+
+// followWaitlistSites follows, for the new account userID, the sites its
+// waitlist entry named (answer, split by rss.SplitSitesAnswer, the first
+// maxWaitlistSites parts), so their first Home has those sites' articles
+// (#640). Only a confident match's unambiguous feed is followed (see
+// SiteStore.MatchForSignup); subscribing makes a feed fetched long ago due
+// at once. It returns the flash that says what was followed, what needs a
+// choice and what wasn't found; "" for no answer, or when matching fails,
+// which is logged, as is a feed that couldn't be followed.
+func (s *Server) followWaitlistSites(r *http.Request, userID, answer string) string {
+	candidates := rss.SplitSitesAnswer(answer)
+	if len(candidates) == 0 {
+		return ""
+	}
+	candidates = candidates[:min(len(candidates), maxWaitlistSites)]
+	matches, err := s.services.SiteService.MatchForSignup(r.Context(), candidates)
+	if err != nil {
+		s.logError(r, fmt.Errorf("match waitlist sites: %w", err))
+		return ""
+	}
+
+	// A site named twice is followed and named once; so is a name not found.
+	var followed, choose, notFound []string
+	seenSite, seenText := map[string]bool{}, map[string]bool{}
+	for _, m := range matches {
+		if m.Site == nil {
+			if k := strings.ToLower(m.Candidate); !seenText[k] {
+				seenText[k] = true
+				notFound = append(notFound, m.Candidate)
+			}
+			continue
+		}
+		if seenSite[m.Site.ID] {
+			continue
+		}
+		seenSite[m.Site.ID] = true
+		if m.Feed == nil {
+			choose = append(choose, siteName(*m.Site))
+			continue
+		}
+		if err := s.services.SubscriptionService.Subscribe(r.Context(), userID, m.Feed.ID); err != nil {
+			s.logError(r, fmt.Errorf("follow waitlist site %s: %w", m.Site.ID, err))
+			continue
+		}
+		followed = append(followed, siteName(*m.Site))
+	}
+	return waitlistSitesFlash(followed, choose, notFound)
+}
+
+// waitlistSitesFlash is the flash after signup that says which of the sites
+// named on the waitlist were followed, which have several feeds to choose
+// from and which weren't found.
+func waitlistSitesFlash(followed, choose, notFound []string) string {
+	var parts []string
+	if len(followed) > 0 {
+		parts = append(parts, "You're following "+joinAnd(followed)+", from when you joined.")
+	}
+	switch len(choose) {
+	case 0:
+	case 1:
+		parts = append(parts, choose[0]+" has several feeds: choose one in Discover.")
+	default:
+		parts = append(parts, joinAnd(choose)+" have several feeds: choose in Discover.")
+	}
+	switch len(notFound) {
+	case 0:
+	case 1:
+		parts = append(parts, "We couldn't find "+quoted(notFound)[0]+". Search for it in Discover.")
+	default:
+		parts = append(parts, "We couldn't find "+joinOr(quoted(notFound))+". Search for them in Discover.")
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {

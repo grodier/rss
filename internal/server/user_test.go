@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -71,9 +73,9 @@ func TestSignupNoInvite(t *testing.T) {
 
 	t.Run("POST", func(t *testing.T) {
 		s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
 				t.Error("CreateFromInvite must not be called")
-				return "", nil
+				return "", "", nil
 			},
 		}})
 		form := url.Values{"name": {"Test User"}, "email": {"user@example.com"}, "password": {"correct-horse-battery"}}
@@ -110,9 +112,9 @@ func TestSignupInviteStates(t *testing.T) {
 				invites.invites[string(token.Hash(testInviteToken))] = *tt.invite
 			}
 			s := newSignupTestServer(t, Services{InviteService: invites, UserService: &fakeUserStore{
-				createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+				createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
 					t.Error("CreateFromInvite must not be called")
-					return "", nil
+					return "", "", nil
 				},
 			}})
 
@@ -141,9 +143,9 @@ func TestSignupOpenInvite(t *testing.T) {
 	var gotEmail string
 	queue := &fakeEmailQueue{}
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(_ context.Context, tokenHash []byte, _, email, _ string) (string, error) {
+		createFromInviteFn: func(_ context.Context, tokenHash []byte, _, email, _ string) (string, string, error) {
 			gotHash, gotEmail = tokenHash, email
-			return "user-1", nil
+			return "user-1", "", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
@@ -183,9 +185,9 @@ func TestSignupBoundInvite(t *testing.T) {
 	var gotEmail string
 	queue := &fakeEmailQueue{}
 	s := newSignupTestServer(t, Services{InviteService: invites, UserService: &fakeUserStore{
-		createFromInviteFn: func(_ context.Context, _ []byte, _, email, _ string) (string, error) {
+		createFromInviteFn: func(_ context.Context, _ []byte, _, email, _ string) (string, string, error) {
 			gotEmail = email
-			return "user-1", nil
+			return "user-1", "", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
@@ -224,11 +226,175 @@ func TestSignupBoundInvite(t *testing.T) {
 	})
 }
 
+func TestSignupFollowsWaitlistSites(t *testing.T) {
+	// sites are what the fake store matches each candidate to: a site with
+	// a feed is followed, one without needs a choice, and a name it doesn't
+	// have isn't found.
+	site := func(id, title string, feed bool) rss.SignupMatch {
+		m := rss.SignupMatch{Site: &rss.Site{ID: id, Host: id + ".example", Title: title}}
+		if feed {
+			m.Feed = &rss.Feed{ID: "feed-" + id, SiteID: id}
+		}
+		return m
+	}
+	sites := map[string]rss.SignupMatch{
+		"quarkside.net":     site("quarkside", "Quarkside", true),
+		"www.quarkside.net": site("quarkside", "Quarkside", true),
+		"gopher days":       site("gopher", "Gopher Days", true),
+		"paper.example":     site("paper", "Paper Tiger", true),
+		"the long field":    site("field", "The Long Field", false),
+		"wide sky":          site("sky", "Wide Sky", false),
+		"broken.example":    site("broken", "Broken", true),
+	}
+
+	type result struct {
+		rr         *httptest.ResponseRecorder
+		flash      string
+		subscribed []string
+		candidates []string // what MatchForSignup got; nil if not called
+		logs       string
+	}
+	signUp := func(t *testing.T, answer string, matchErr error) result {
+		t.Helper()
+		var res result
+		var logs bytes.Buffer
+		s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+				return "user-1", answer, nil
+			},
+		}, SessionService: &fakeSessionStore{
+			createFn: func(context.Context, string, time.Time) (string, error) { return testSessionID, nil },
+		}, SiteService: &fakeSiteStore{
+			matchFn: func(_ context.Context, candidates []string) ([]rss.SignupMatch, error) {
+				res.candidates = candidates
+				if matchErr != nil {
+					return nil, matchErr
+				}
+				out := make([]rss.SignupMatch, len(candidates))
+				for i, c := range candidates {
+					out[i] = sites[strings.ToLower(c)]
+					out[i].Candidate = c
+				}
+				return out, nil
+			},
+		}, SubscriptionService: &fakeSubscriptionStore{
+			subscribeFn: func(_ context.Context, userID, feedID string) error {
+				if userID != "user-1" {
+					t.Errorf("Subscribe got user %q, want user-1", userID)
+				}
+				if feedID == "feed-broken" {
+					return errors.New("subscribe failed")
+				}
+				res.subscribed = append(res.subscribed, feedID)
+				return nil
+			},
+		}})
+		s.logger = slog.New(slog.NewTextHandler(&logs, nil))
+		form := url.Values{"invite": {testInviteToken}, "name": {"Ada"}, "email": {"ada@example.com"}, "password": {"correct-horse-battery"}}
+		res.rr, res.flash = serveConfirm(t, s, s.signupFormHandler, postFormRequest("/signup", form), nil)
+		assertRedirect(t, res.rr, "/")
+		res.logs = logs.String()
+		return res
+	}
+
+	tests := []struct {
+		name       string
+		answer     string
+		flash      string
+		subscribed []string
+	}{
+		{"followed", "quarkside.net, Gopher Days",
+			"You're following Quarkside and Gopher Days, from when you joined.",
+			[]string{"feed-quarkside", "feed-gopher"}},
+		{"three followed", "quarkside.net; Gopher Days\npaper.example",
+			"You're following Quarkside, Gopher Days and Paper Tiger, from when you joined.",
+			[]string{"feed-quarkside", "feed-gopher", "feed-paper"}},
+		{"a site named twice is followed once", "quarkside.net, www.quarkside.net",
+			"You're following Quarkside, from when you joined.",
+			[]string{"feed-quarkside"}},
+		{"needs a choice", "quarkside.net, The Long Field",
+			"You're following Quarkside, from when you joined. The Long Field has several feeds: choose one in Discover.",
+			[]string{"feed-quarkside"}},
+		{"several need a choice", "quarkside.net, The Long Field, Wide Sky",
+			"You're following Quarkside, from when you joined. The Long Field and Wide Sky have several feeds: choose in Discover.",
+			[]string{"feed-quarkside"}},
+		{"not found", "quarkside.net, the long feild",
+			"You're following Quarkside, from when you joined. We couldn't find “the long feild”. Search for it in Discover.",
+			[]string{"feed-quarkside"}},
+		{"several not found", "quarkside.net, x, y, X",
+			"You're following Quarkside, from when you joined. We couldn't find “x” or “y”. Search for them in Discover.",
+			[]string{"feed-quarkside"}},
+		{"all three", "quarkside.net, The Long Field, nonsense",
+			"You're following Quarkside, from when you joined. The Long Field has several feeds: choose one in Discover. We couldn't find “nonsense”. Search for it in Discover.",
+			[]string{"feed-quarkside"}},
+		{"nothing followed", "The Long Field, nonsense",
+			"The Long Field has several feeds: choose one in Discover. We couldn't find “nonsense”. Search for it in Discover.",
+			nil},
+		{"nothing found", "nonsense",
+			"We couldn't find “nonsense”. Search for it in Discover.",
+			nil},
+		{"a feed that can't be followed isn't named", "broken.example, quarkside.net",
+			"You're following Quarkside, from when you joined.",
+			[]string{"feed-quarkside"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := signUp(t, tt.answer, nil)
+			if res.flash != tt.flash {
+				t.Errorf("flash = %q, want %q", res.flash, tt.flash)
+			}
+			if !slices.Equal(res.subscribed, tt.subscribed) {
+				t.Errorf("subscribed %q, want %q", res.subscribed, tt.subscribed)
+			}
+		})
+	}
+
+	t.Run("a feed that can't be followed is logged", func(t *testing.T) {
+		res := signUp(t, "broken.example", nil)
+		if res.flash != "" {
+			t.Errorf("flash = %q, want none", res.flash)
+		}
+		if !strings.Contains(res.logs, "subscribe failed") {
+			t.Errorf("logs = %q, want the error", res.logs)
+		}
+	})
+
+	t.Run("at most 10 sites", func(t *testing.T) {
+		res := signUp(t, "a, b, c, d, e, f, g, h, i, j, k, l", nil)
+		if want := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}; !slices.Equal(res.candidates, want) {
+			t.Errorf("MatchForSignup got %q, want %q", res.candidates, want)
+		}
+	})
+
+	t.Run("a matching error still signs up, with no flash", func(t *testing.T) {
+		res := signUp(t, "quarkside.net", errors.New("match failed"))
+		if res.flash != "" {
+			t.Errorf("flash = %q, want none", res.flash)
+		}
+		if res.subscribed != nil {
+			t.Errorf("subscribed %q, want none", res.subscribed)
+		}
+		if !strings.Contains(res.logs, "match failed") {
+			t.Errorf("logs = %q, want the error", res.logs)
+		}
+	})
+
+	t.Run("no answer does nothing", func(t *testing.T) {
+		// An open invite has no waitlist entry, so no answer either.
+		for _, answer := range []string{"", " , ;\n"} {
+			res := signUp(t, answer, nil)
+			if res.candidates != nil || res.flash != "" {
+				t.Errorf("answer %q: matched %q with flash %q, want neither", answer, res.candidates, res.flash)
+			}
+		}
+	})
+}
+
 func TestSignupInviteRace(t *testing.T) {
 	var creates int
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
-			return "", rss.ErrInviteUnusable
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+			return "", "", rss.ErrInviteUnusable
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) {
@@ -251,9 +417,9 @@ func TestSignupInviteRace(t *testing.T) {
 func TestSignupFormHandlerTrimsName(t *testing.T) {
 	var gotName string
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
+		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, string, error) {
 			gotName = name
-			return "user-1", nil
+			return "user-1", "", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) {
@@ -328,9 +494,9 @@ const testSessionID = "8f14e45f-ceea-4e7a-9b1d-3c2f0a1b2c3d"
 func TestSignupFormHandlerLogsIn(t *testing.T) {
 	var calls []string
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
 			calls = append(calls, "user Create")
-			return "user-1", nil
+			return "user-1", "", nil
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(ctx context.Context, userID string, idleBefore time.Time) (string, error) {
@@ -643,9 +809,9 @@ func TestLoginFormHandlerFailureLimitConcurrent(t *testing.T) {
 
 func TestSignupFormHandlerRateLimited(t *testing.T) {
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
+		createFromInviteFn: func(ctx context.Context, tokenHash []byte, name, email, password string) (string, string, error) {
 			t.Error("CreateFromInvite must not be called")
-			return "", nil
+			return "", "", nil
 		},
 	}})
 	h := s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP
@@ -673,8 +839,8 @@ func TestSignupFormHandlerRateLimited(t *testing.T) {
 func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 	var creates int
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
-			return "", rss.ErrDuplicateEmail
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+			return "", "", rss.ErrDuplicateEmail
 		},
 	}, SessionService: &fakeSessionStore{
 		createFn: func(context.Context, string, time.Time) (string, error) {
@@ -709,8 +875,8 @@ func TestSignupFormHandlerDuplicateEmail(t *testing.T) {
 
 func TestSignupFormHandlerCreateError(t *testing.T) {
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
-			return "", io.ErrUnexpectedEOF
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+			return "", "", io.ErrUnexpectedEOF
 		},
 	}})
 
@@ -817,8 +983,8 @@ func TestLogoutDeletesSession(t *testing.T) {
 func TestReturnTo(t *testing.T) {
 	const feedPath = "/feeds/" + testFeedID
 	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
-		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
-			return "user-1", nil
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+			return "user-1", "", nil
 		},
 		authenticateFn: func(context.Context, string, string) (string, error) {
 			return "user-1", nil

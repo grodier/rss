@@ -63,13 +63,17 @@ type SiteStore interface {
 	GetIcon(ctx context.Context, siteID string) (rss.SiteIcon, error)
 	// IconHashes returns the icon hash of each of siteIDs that has an icon.
 	IconHashes(ctx context.Context, siteIDs []string) (map[string]string, error)
+	// MatchForSignup matches the sites named on the waitlist, one result
+	// per candidate in order; see psql.SiteRepository.MatchForSignup.
+	MatchForSignup(ctx context.Context, candidates []string) ([]rss.SignupMatch, error)
 }
 
 // UserStore is the user persistence the server depends on.
 type UserStore interface {
 	// CreateFromInvite makes an account with the invite whose token hashes
-	// to tokenHash, and redeems it; see psql.UserRepository.CreateFromInvite.
-	CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (string, error)
+	// to tokenHash, and redeems it, returning its ID and its waitlist
+	// entry's sites answer; see psql.UserRepository.CreateFromInvite.
+	CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (id, waitlistSites string, err error)
 	Authenticate(ctx context.Context, email, password string) (string, error)
 	GetByEmail(ctx context.Context, email string) (rss.User, error)
 	UpdateName(ctx context.Context, id, name string) error

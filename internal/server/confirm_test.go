@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,8 +57,8 @@ func postFormRequest(target string, form url.Values) *http.Request {
 func TestSignupSendsConfirmation(t *testing.T) {
 	newServer := func(tokens *fakeTokenStore, queue *fakeEmailQueue) *Server {
 		return newSignupTestServer(t, Services{UserService: &fakeUserStore{
-			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, error) {
-				return "user-1", nil
+			createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+				return "user-1", "", nil
 			},
 		}, SessionService: &fakeSessionStore{
 			createFn: func(context.Context, string, time.Time) (string, error) {
@@ -397,6 +398,48 @@ func TestConfirmNotice(t *testing.T) {
 				t.Errorf("confirmed user sees the notice: %s", body)
 			}
 		})
+	}
+}
+
+// TestConfirmNoticeWaitsForFlash checks that Home doesn't show the confirm
+// notice beside a flash (signup's about the sites it followed), and shows it
+// on the next load.
+func TestConfirmNoticeWaitsForFlash(t *testing.T) {
+	const notice = "Confirm your email address"
+	const flash = "You're following Quarkside, from when you joined."
+	s := newTestServerWith(t, Services{ArticleService: &fakeArticleStore{}, ReadService: &fakeReadStore{}, SaveService: &fakeSaveStore{}})
+
+	var cookies []*http.Cookie
+	get := func(h http.HandlerFunc) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		rr, _ := serveConfirm(t, s, h, req, &unconfirmedSession)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if c := rr.Result().Cookies(); len(c) > 0 {
+			cookies = c
+		}
+		return rr.Body.String()
+	}
+
+	// Signup leaves the flash in the session.
+	get(func(w http.ResponseWriter, r *http.Request) {
+		s.sessionManager.Put(r.Context(), "flash", flash)
+	})
+	body := get(s.homeHandler)
+	assertBodyContains(t, body, `<div class="flash">`+html.EscapeString(flash)+`</div>`)
+	if strings.Contains(body, notice) {
+		t.Error("the notice shows beside the flash")
+	}
+
+	body = get(s.homeHandler)
+	assertBodyContains(t, body, notice)
+	if strings.Contains(body, `class="flash"`) {
+		t.Error("the flash shows again")
 	}
 }
 

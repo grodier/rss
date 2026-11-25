@@ -461,9 +461,12 @@ func TestCreateFromInvite(t *testing.T) {
 		inv, hash := newInvite(t, db, rss.Invite{Note: "for Grace"})
 		email := newUserEmail(t)
 
-		id, err := users.CreateFromInvite(t.Context(), hash, "Grace", email, password)
+		id, sites, err := users.CreateFromInvite(t.Context(), hash, "Grace", email, password)
 		if err != nil {
 			t.Fatalf("CreateFromInvite: %v", err)
+		}
+		if sites != "" {
+			t.Errorf("sites = %q, want none: an open invite has no entry", sites)
 		}
 		if confirmedAt(t, id).Valid {
 			t.Error("an open invite's account starts confirmed")
@@ -478,7 +481,7 @@ func TestCreateFromInvite(t *testing.T) {
 		if got.Status(time.Now()) != rss.InviteRedeemed || got.UserID != id {
 			t.Errorf("invite = %+v, want redeemed by %s", got, id)
 		}
-		if _, err := users.CreateFromInvite(t.Context(), hash, "Grace", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
+		if _, _, err := users.CreateFromInvite(t.Context(), hash, "Grace", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("second CreateFromInvite error = %v, want ErrInviteUnusable", err)
 		}
 		if err := NewInviteRepository(db).Revoke(t.Context(), inv.ID, testActor(t, db)); !errors.Is(err, rss.ErrInviteUnusable) {
@@ -486,23 +489,27 @@ func TestCreateFromInvite(t *testing.T) {
 		}
 	})
 
-	t.Run("bound invite confirms, copies the sections and deletes the waitlist entry", func(t *testing.T) {
+	t.Run("bound invite confirms, copies the sections, returns the sites and deletes the waitlist entry", func(t *testing.T) {
 		email := newWaitlistEmail(t, db)
 		t.Cleanup(func() { db.Exec(`DELETE FROM users WHERE email = $1`, email) })
 		chosen := []string{sections[0].ID, sections[1].ID}
-		entry, err := NewWaitlistRepository(db).Join(t.Context(), rss.WaitlistEntry{Email: email, Name: "Ada", Sections: chosen}, newWaitlistHash(t))
+		const answer = "quarkside.net, Gopher Days"
+		entry, err := NewWaitlistRepository(db).Join(t.Context(), rss.WaitlistEntry{Email: email, Name: "Ada", Sections: chosen, Sites: answer}, newWaitlistHash(t))
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, hash := newInvite(t, db, rss.Invite{Email: email, WaitlistID: entry.ID})
 
-		if _, err := users.CreateFromInvite(t.Context(), hash, "Ada", "other-"+email, password); !errors.Is(err, rss.ErrInviteUnusable) {
+		if _, _, err := users.CreateFromInvite(t.Context(), hash, "Ada", "other-"+email, password); !errors.Is(err, rss.ErrInviteUnusable) {
 			t.Errorf("CreateFromInvite(another email) error = %v, want ErrInviteUnusable", err)
 		}
 
-		id, err := users.CreateFromInvite(t.Context(), hash, "Ada", strings.ToUpper(email), password)
+		id, sites, err := users.CreateFromInvite(t.Context(), hash, "Ada", strings.ToUpper(email), password)
 		if err != nil {
 			t.Fatalf("CreateFromInvite: %v", err)
+		}
+		if sites != answer {
+			t.Errorf("sites = %q, want the entry's %q", sites, answer)
 		}
 		if !confirmedAt(t, id).Valid {
 			t.Error("a bound invite's account isn't confirmed")
@@ -526,7 +533,7 @@ func TestCreateFromInvite(t *testing.T) {
 		}
 		_, hash := newInvite(t, db, rss.Invite{})
 
-		if _, err := users.CreateFromInvite(t.Context(), hash, "Again", email, password); !errors.Is(err, rss.ErrDuplicateEmail) {
+		if _, _, err := users.CreateFromInvite(t.Context(), hash, "Again", email, password); !errors.Is(err, rss.ErrDuplicateEmail) {
 			t.Fatalf("CreateFromInvite error = %v, want ErrDuplicateEmail", err)
 		}
 		got, err := NewInviteRepository(db).GetByToken(t.Context(), hash)
@@ -545,7 +552,7 @@ func TestCreateFromInvite(t *testing.T) {
 			t.Fatal(err)
 		}
 		for name, hash := range map[string][]byte{"expired": expired, "revoked": revoked, "unknown": newWaitlistHash(t)} {
-			if _, err := users.CreateFromInvite(t.Context(), hash, "Nobody", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
+			if _, _, err := users.CreateFromInvite(t.Context(), hash, "Nobody", newUserEmail(t), password); !errors.Is(err, rss.ErrInviteUnusable) {
 				t.Errorf("%s: error = %v, want ErrInviteUnusable", name, err)
 			}
 		}

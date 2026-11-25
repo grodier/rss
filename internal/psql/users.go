@@ -62,21 +62,23 @@ func (r *UserRepository) Create(ctx context.Context, name, email, pw string, by 
 // hashes to tokenHash, and redeems it, in one transaction. A bound invite's
 // account starts confirmed, since its address was confirmed joining the
 // waitlist, and email must be the invite's. The account gets the sections
-// of the invite's waitlist entry (waitlist_id); then its waitlist entry, by
-// that ID or the account's address, is deleted.
+// of the invite's waitlist entry (waitlist_id), and CreateFromInvite
+// returns the entry's sites answer, for signup to follow them (#640; "" if
+// it has none); then its waitlist entry, by that ID or the account's
+// address, is deleted.
 // rss.ErrInviteUnusable if the invite is unknown, expired, revoked or used,
 // or email isn't a bound invite's; rss.ErrDuplicateEmail if the email is
 // taken. On either, nothing changes, and the invite stays usable.
-func (r *UserRepository) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, pw string) (id string, err error) {
+func (r *UserRepository) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, pw string) (id, waitlistSites string, err error) {
 	// Hashed before the transaction starts, since Argon2 is slow.
 	hashedPassword, err := password.Hash(pw)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// The error after a successful Commit is expected and ignored.
 	defer tx.Rollback()
@@ -90,40 +92,43 @@ func (r *UserRepository) CreateFromInvite(ctx context.Context, tokenHash []byte,
 		RETURNING id, email, waitlist_id`
 	err = tx.QueryRowContext(ctx, stmt, tokenHash).Scan(&inviteID, &inviteEmail, &waitlistID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", rss.ErrInviteUnusable
+		return "", "", rss.ErrInviteUnusable
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	bound := inviteEmail.Valid
 	if bound && !strings.EqualFold(inviteEmail.String, email) {
-		return "", rss.ErrInviteUnusable
+		return "", "", rss.ErrInviteUnusable
 	}
 
 	id, _, err = insertUser(ctx, tx, name, email, hashedPassword, bound)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE invites SET user_id = $2 WHERE id = $1`, inviteID, id); err != nil {
-		return "", err
+		return "", "", err
 	}
 	// The invite's waitlist entry answered "What do you like to read?":
 	// Discover reads the answer from the account, once the entry is gone.
-	// An open invite has no entry, so its account chose none.
+	// It also named sites to follow, which signup follows. An open invite
+	// has no entry, so its account chose none.
 	if waitlistID.Valid {
-		stmt := `UPDATE users SET sections = w.sections FROM waitlist w WHERE users.id = $1 AND w.id = $2`
-		if _, err := tx.ExecContext(ctx, stmt, id, waitlistID); err != nil {
-			return "", err
+		stmt := `UPDATE users SET sections = w.sections FROM waitlist w WHERE users.id = $1 AND w.id = $2
+			RETURNING w.sites`
+		err := tx.QueryRowContext(ctx, stmt, id, waitlistID).Scan(&waitlistSites)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", err
 		}
 	}
 	// Whoever has an account no longer waits, as the privacy policy says.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM waitlist WHERE id = $1 OR email = $2`, waitlistID, email); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err := tx.Commit(); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return id, nil
+	return id, waitlistSites, nil
 }
 
 // insertUser inserts an account with rss.DefaultTimelines in tx, confirmed

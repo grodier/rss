@@ -91,6 +91,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | S4 Save or Star after the session ended (JavaScript) | Open Home, run S2's `DELETE`, click Save on a row | 303 to Login (`save-star.ts` gets the login page instead of a 204, so it puts the button back and submits the form normally) | None | Yes: nothing is saved, and the button, which turned on as it was pressed, goes back off before Login loads; after login they land on Home (as S2) and can Save again | changed in #775 (was "ok (saying they were logged out is S2's)"), not reviewed |
 | S5 Older articles after the session ended (JavaScript) | Code read: infinite scroll gets a redirect | The timeline stops loading more; "Older articles" stays | None | Yes: clicking it goes to Login | ok |
 | S6 Log out | Settings → Log out | Login, flash | "You've been logged out successfully!" | n/a | ok (flash not announced; see N1) |
+| S6a Signed up, sites named on the waitlist | Join the waitlist naming an address, a known site's title, a site with several feeds and nonsense; invite the entry; sign up | Home, flash (the confirm notice waits for the next load) | "You're following {A} and {B}, from when you joined."; then "{C} has several feeds: choose one in Discover." ("{C} and {D} have several feeds: choose in Discover."); then "We couldn't find “{x}”. Search for it in Discover." ("…find “{x}” or “{y}”. Search for them in Discover."); with nothing followed, only the later sentences | Yes: Discover's search, and Discover or the site's page for a site with several feeds | new (#640), not reviewed |
 | S7 Logged in, opens Login or Signup | `/login` or `/signup?invite=<token>` | 303 to Home | None | n/a | ok |
 
 ## Account emails and settings
@@ -101,7 +102,7 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E2 Confirmation link used again, logged out | Open a used confirmation link in a private window | As E1 | As E1, with "Log in to get a new link" | Yes | ok |
 | E3 Confirmation link expired, logged in and unconfirmed | `UPDATE user_tokens SET expires_at = now() - interval '1 minute' WHERE purpose = 'confirm_email'`, open the link | As E1 | As E1, with a "Send a new link" button | Yes | ok |
 | E4 Confirmation link used again, already confirmed | Open the link again after confirming | As E1 | As E1, plus "Your email address is already confirmed." and "Go to Settings" | n/a | ok |
-| E5 Unconfirmed address notice | A new account's Home, Settings and Account | Notice with a Resend button | (the notice) | Yes | ok |
+| E5 Unconfirmed address notice | A new account's Home, Settings and Account | Notice with a Resend button; on Home, not beside a flash (#640), so it shows on the next load | (the notice) | Yes | ok |
 | E6 Resend confirmation | Resend from the notice | Flash on the same page | "We sent a new link to {email}." | n/a | ok |
 | E6a Confirmation link opened on another device, logged out (or as another account) | Open a confirmation link in a private window and confirm | "Email address confirmed" page, 200 | "Thanks! You can keep reading wherever you're logged in to Paper Round." with "Log in on this device" (logged in: "Go to Home") | Yes | ok |
 | E7 Resend rate limited | A 4th resend in an hour | Flash | "We've already sent you several links. Check your spam folder, or try again in an hour." | Yes | ok |

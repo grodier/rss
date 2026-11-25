@@ -49,6 +49,7 @@ type fakeSiteStore struct {
 	getByIDFn    func(ctx context.Context, id string) (rss.Site, error)
 	getIconFn    func(ctx context.Context, siteID string) (rss.SiteIcon, error)
 	iconHashesFn func(ctx context.Context, siteIDs []string) (map[string]string, error)
+	matchFn      func(ctx context.Context, candidates []string) ([]rss.SignupMatch, error)
 }
 
 func (f *fakeSiteStore) GetByID(ctx context.Context, id string) (rss.Site, error) {
@@ -67,8 +68,12 @@ func (f *fakeSiteStore) IconHashes(ctx context.Context, siteIDs []string) (map[s
 	return f.iconHashesFn(ctx, siteIDs)
 }
 
+func (f *fakeSiteStore) MatchForSignup(ctx context.Context, candidates []string) ([]rss.SignupMatch, error) {
+	return f.matchFn(ctx, candidates)
+}
+
 type fakeUserStore struct {
-	createFromInviteFn func(ctx context.Context, tokenHash []byte, name, email, password string) (string, error)
+	createFromInviteFn func(ctx context.Context, tokenHash []byte, name, email, password string) (string, string, error)
 	authenticateFn     func(ctx context.Context, email, password string) (string, error)
 	getByEmailFn       func(ctx context.Context, email string) (rss.User, error)
 	updateNameFn       func(ctx context.Context, id, name string) error
@@ -81,7 +86,7 @@ type fakeUserStore struct {
 	changeEmailFn      func(ctx context.Context, hash []byte) (rss.User, string, error)
 }
 
-func (f *fakeUserStore) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (string, error) {
+func (f *fakeUserStore) CreateFromInvite(ctx context.Context, tokenHash []byte, name, email, password string) (string, string, error) {
 	return f.createFromInviteFn(ctx, tokenHash, name, email, password)
 }
 

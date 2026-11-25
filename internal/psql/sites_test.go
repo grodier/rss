@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -483,6 +484,137 @@ func TestSiteRepositoryIcons(t *testing.T) {
 		}
 		if n := iconCount(t, db, id); n != 0 {
 			t.Errorf("deleted site has %d icons; want 0", n)
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
+func TestSiteRepositoryMatchForSignup(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewSiteRepository(db)
+
+	// site inserts a site with host and title, deleted on cleanup with its
+	// feeds.
+	site := func(t *testing.T, host, title string) string {
+		t.Helper()
+		id, err := upsertSite(t.Context(), db, rss.Site{Host: host, URL: "https://" + host + "/", Title: title}, true)
+		if err != nil {
+			t.Fatalf("upsertSite: %v", err)
+		}
+		t.Cleanup(func() {
+			if _, err := db.Exec(`DELETE FROM sites WHERE id = $1`, id); err != nil {
+				t.Errorf("cleanup site: %v", err)
+			}
+		})
+		return id
+	}
+	gone := func(t *testing.T, feedID string) {
+		t.Helper()
+		if _, err := db.Exec(`UPDATE feeds SET gone_at = now() WHERE id = $1`, feedID); err != nil {
+			t.Fatalf("mark gone: %v", err)
+		}
+	}
+	n := psqltest.Unique()
+	host := func(name string) string { return fmt.Sprintf("signup-%s-%d.example.com", name, n) }
+	title := func(name string) string { return fmt.Sprintf("Signup %s %d", name, n) }
+
+	// One live feed.
+	oneID := site(t, host("one"), title("One"))
+	one := newTestFeedOn(t, db, oneID)
+	// On a shared host, keyed with its path.
+	aliceKey := fmt.Sprintf("medium.com/@signup-alice-%d", n)
+	aliceID := site(t, aliceKey, title("Alice"))
+	alice := newTestFeedOn(t, db, aliceID)
+	// Several feeds, one in the catalog.
+	catalogID := site(t, host("catalog"), title("Catalog"))
+	newTestFeedOn(t, db, catalogID)
+	picked := newTestFeedOn(t, db, catalogID)
+	putInCatalog(t, db, picked.ID)
+	// Several feeds, none in the catalog.
+	severalID := site(t, host("several"), title("Several"))
+	newTestFeedOn(t, db, severalID)
+	newTestFeedOn(t, db, severalID)
+	// Several feeds, two in the catalog.
+	twoID := site(t, host("two"), title("Two"))
+	putInCatalog(t, db, newTestFeedOn(t, db, twoID).ID)
+	putInCatalog(t, db, newTestFeedOn(t, db, twoID).ID)
+	// Two feeds, one gone.
+	halfID := site(t, host("half"), title("Half"))
+	gone(t, newTestFeedOn(t, db, halfID).ID)
+	live := newTestFeedOn(t, db, halfID)
+	// Two feeds, the one in the catalog gone.
+	goneCatalogID := site(t, host("gone-catalog"), title("Gone catalog"))
+	newTestFeedOn(t, db, goneCatalogID)
+	newTestFeedOn(t, db, goneCatalogID)
+	goneOne := newTestFeedOn(t, db, goneCatalogID)
+	putInCatalog(t, db, goneOne.ID)
+	gone(t, goneOne.ID)
+	// Only a gone feed: nothing to follow.
+	deadID := site(t, host("dead"), title("Dead"))
+	gone(t, newTestFeedOn(t, db, deadID).ID)
+	// Two sites with one title, each with a feed to follow.
+	newTestFeedOn(t, db, site(t, host("twin-a"), title("Twin")))
+	newTestFeedOn(t, db, site(t, host("twin-b"), title("Twin")))
+	// A site titled like another's address, which matches by key only.
+	newTestFeedOn(t, db, site(t, host("named"), host("one")))
+
+	type want struct {
+		site, feed string // "" for nil
+	}
+	tests := []struct {
+		candidate string
+		want      want
+	}{
+		{host("one"), want{oneID, one.ID}},
+		{"www." + host("one"), want{oneID, one.ID}},
+		{"https://" + strings.ToUpper(host("one")) + "/a-post", want{oneID, one.ID}},
+		{"https://medium.com/@signup-alice-" + fmt.Sprint(n) + "/a-post", want{aliceID, alice.ID}},
+		{"  " + strings.ToUpper(title("One")) + " ", want{oneID, one.ID}},
+		{title("Catalog"), want{catalogID, picked.ID}},
+		{title("Several"), want{severalID, ""}},
+		{title("Two"), want{twoID, ""}},
+		{title("Half"), want{halfID, live.ID}},
+		{title("Gone catalog"), want{goneCatalogID, ""}},
+		{title("Dead"), want{}},
+		{title("Twin"), want{}},
+		{"signup-nowhere-" + fmt.Sprint(n) + ".example.com", want{}},
+		{"nonsense " + fmt.Sprint(n), want{}},
+	}
+	candidates := make([]string, len(tests))
+	for i, tt := range tests {
+		candidates[i] = tt.candidate
+	}
+	got, err := repo.MatchForSignup(t.Context(), candidates)
+	if err != nil {
+		t.Fatalf("MatchForSignup: %v", err)
+	}
+	if len(got) != len(tests) {
+		t.Fatalf("got %d matches, want %d", len(got), len(tests))
+	}
+	for i, tt := range tests {
+		m := got[i]
+		var g want
+		if m.Site != nil {
+			g.site = m.Site.ID
+		}
+		if m.Feed != nil {
+			g.feed = m.Feed.ID
+		}
+		if m.Candidate != tt.candidate || g != tt.want {
+			t.Errorf("%q: got candidate %q, site %q, feed %q; want site %q, feed %q", tt.candidate, m.Candidate, g.site, g.feed, tt.want.site, tt.want.feed)
+		}
+	}
+	if m := got[0]; m.Site != nil && (m.Site.Host != host("one") || m.Site.Title != title("One")) {
+		t.Errorf("site = %+v, want its host and title", m.Site)
+	}
+	if m := got[0]; m.Feed != nil && (m.Feed.SiteID != oneID || m.Feed.Url != one.Url) {
+		t.Errorf("feed = %+v, want its site and URL", m.Feed)
+	}
+
+	t.Run("no candidates", func(t *testing.T) {
+		got, err := repo.MatchForSignup(t.Context(), nil)
+		if err != nil || len(got) != 0 {
+			t.Errorf("MatchForSignup(nil) = %v, %v; want none", got, err)
 		}
 	})
 }

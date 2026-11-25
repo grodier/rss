@@ -1,8 +1,6 @@
 import { announce } from "../../shared/lib/announce";
 import { busyDelay } from "../../shared/lib/busy-delay";
 import { localizeTimes } from "../../shared/lib/local-times";
-import { enhancePings } from "./read-pings";
-import { enhanceShare } from "./share";
 
 // Live search: as the reader types in form[data-live-search]'s q, fetch
 // the form's page for the query about 250 ms after the last keystroke
@@ -65,8 +63,6 @@ export function init(): void {
     input.removeAttribute("aria-describedby");
     results.replaceChildren(...container.childNodes);
     localizeTimes(results);
-    enhancePings(results);
-    enhanceShare(results);
     history.replaceState(null, "", pageURL(q));
   };
   const search = async (q: string) => {

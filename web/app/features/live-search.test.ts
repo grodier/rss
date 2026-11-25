@@ -101,6 +101,20 @@ describe("live-search", () => {
     expect(liveRegion()).toBe(said);
   });
 
+  it("localizes the times in the results it swaps in", async () => {
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(
+          `<main><div data-search-results><time data-local="date" datetime="2026-10-09T02:30:00Z">9 Oct 2026</time></div></main>`,
+          { status: 200 },
+        ),
+    );
+    type("load");
+    await vi.advanceTimersByTimeAsync(300);
+    const want = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date("2026-10-09T02:30:00Z"));
+    expect(results().querySelector("time")!.textContent).toBe(want);
+  });
+
   it("announces nothing when the results have no data-announce", async () => {
     fetchMock.mockImplementation(
       async () => new Response(`<main><div data-search-results><p>Results</p></div></main>`, { status: 200 }),

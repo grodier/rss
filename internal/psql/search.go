@@ -19,24 +19,6 @@ func NewSearchRepository(db *sql.DB) *SearchRepository {
 	return &SearchRepository{DB: db}
 }
 
-var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-
-// likePattern escapes LIKE wildcards in q and wraps it for a substring match.
-func likePattern(q string) string {
-	return "%" + likeEscaper.Replace(q) + "%"
-}
-
-// prefixPattern escapes LIKE wildcards in q for a match at the start.
-func prefixPattern(q string) string {
-	return likeEscaper.Replace(q) + "%"
-}
-
-// wordPattern escapes LIKE wildcards in q for a match at the start of a
-// word: after a space, in a text with a space put in front of it.
-func wordPattern(q string) string {
-	return "% " + likeEscaper.Replace(q) + "%"
-}
-
 // matchOrder is an ORDER BY's terms ranking name by how well it matches a
 // query: all of it ($n), its start ($n+1, a prefixPattern), the start of a
 // word in it ($n+2, a wordPattern), then the rest. It is the order of

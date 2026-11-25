@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/enrich"
 	"github.com/grodier/rss/internal/feedparse"
@@ -21,7 +20,6 @@ import (
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/textcut"
-	"github.com/grodier/rss/internal/validator"
 )
 
 // debugAllowed reports whether the logged-in user's email is in
@@ -348,9 +346,8 @@ type feedInspectView struct {
 // of the document and what a refresh would do with each item. It saves
 // nothing: no articles, no fetch outcome, no validators.
 func (s *Server) feedInspectHandler(w http.ResponseWriter, r *http.Request) {
-	feedID := chi.URLParam(r, "id")
-	if !validator.Matches(feedID, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	feedID, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -880,9 +877,8 @@ type pageInspectView struct {
 // its metadata tags, its JSON-LD and what enrichment would store from it. It
 // saves nothing.
 func (s *Server) articlePageInspectHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -972,9 +968,8 @@ type siteDiscoverView struct {
 // siteDiscoverHandler fetches a site's home page and runs discovery on it
 // live, and shows what discovery saw and decided. It saves nothing.
 func (s *Server) siteDiscoverHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 

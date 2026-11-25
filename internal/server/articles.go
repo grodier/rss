@@ -10,20 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/sanitize"
-	"github.com/grodier/rss/internal/validator"
 )
 
 // articleHandler shows an article's content, else its summary, with a link to
 // the original. Any logged-in user can open any article.
 func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -209,9 +205,8 @@ func readOnLabel(article rss.Article, site rss.Site, name string) string {
 // sent by read-pings.ts). The request body is ignored. CrossOriginProtection rejects
 // cross-site POSTs; pings and beacons from our own pages are same-origin.
 func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -258,9 +253,8 @@ func (s *Server) articleUnstarHandler(w http.ResponseWriter, r *http.Request) {
 // #article-{id}). save-star.ts posts the same form with fetch and gets a 204
 // instead, so it can tell success from a redirect to the login page.
 func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ctx context.Context, userID, articleID string) error) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 

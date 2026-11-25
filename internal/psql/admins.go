@@ -9,7 +9,6 @@ import (
 
 	"github.com/grodier/rss/internal/password"
 	"github.com/grodier/rss/internal/rss"
-	"github.com/lib/pq"
 )
 
 // AdminRepository stores admin accounts (admins rows) and their recovery
@@ -51,8 +50,7 @@ func (r *AdminRepository) Create(ctx context.Context, email string, c rss.AdminC
 	var id string
 	err = tx.QueryRowContext(ctx, stmt, email, c.HashedPassword, c.SealedTOTPSecret, c.TOTPLastStep).Scan(&id)
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if isUniqueViolation(err) {
 			return "", rss.ErrDuplicateEmail
 		}
 		return "", err

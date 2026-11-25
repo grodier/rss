@@ -142,8 +142,7 @@ func insertUser(ctx context.Context, tx *sql.Tx, name, email, hashedPassword str
 	var createdAt time.Time
 	err := tx.QueryRowContext(ctx, stmt, name, email, []byte(hashedPassword), confirmed).Scan(&id, &createdAt)
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if isUniqueViolation(err) {
 			return "", time.Time{}, rss.ErrDuplicateEmail
 		}
 		return "", time.Time{}, err
@@ -188,19 +187,7 @@ func (r *UserRepository) Authenticate(ctx context.Context, email, pw string) (st
 // there is no such user.
 func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error {
 	stmt := `UPDATE users SET name = $2 WHERE id = $1`
-
-	res, err := r.DB.ExecContext(ctx, stmt, id, name)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return rss.ErrNoRecord
-	}
-	return nil
+	return execOne(ctx, r.DB, stmt, id, name)
 }
 
 // UpdateReading sets the reading settings of the user with id: theme is one
@@ -209,19 +196,7 @@ func (r *UserRepository) UpdateName(ctx context.Context, id, name string) error 
 // It returns rss.ErrNoRecord if there is no such user.
 func (r *UserRepository) UpdateReading(ctx context.Context, id, theme, layout string) error {
 	stmt := `UPDATE users SET theme = $2, layout = $3 WHERE id = $1`
-
-	res, err := r.DB.ExecContext(ctx, stmt, id, theme, layout)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return rss.ErrNoRecord
-	}
-	return nil
+	return execOne(ctx, r.DB, stmt, id, theme, layout)
 }
 
 // ChangePassword replaces the password of the user with userID, if current
@@ -499,8 +474,7 @@ func (r *UserRepository) ChangeEmail(ctx context.Context, hash []byte) (old rss.
 
 	stmt = `UPDATE users SET email = $2, email_confirmed_at = now() WHERE id = $1`
 	if _, err := tx.ExecContext(ctx, stmt, userID, newEmail); err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if isUniqueViolation(err) {
 			return old, newEmail, rss.ErrDuplicateEmail
 		}
 		return rss.User{}, "", err

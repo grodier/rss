@@ -519,8 +519,7 @@ func wordsPattern(words []string) string {
 // timelineError maps a foreign key violation (a tag or feed that isn't the
 // user's) to rss.ErrNoRecord.
 func timelineError(err error) error {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+	if isForeignKeyViolation(err) {
 		return rss.ErrNoRecord
 	}
 	return err

@@ -103,30 +103,13 @@ func (r *WaitlistRepository) GetByEmail(ctx context.Context, email string) (rss.
 // no such entry.
 func (r *WaitlistRepository) Confirm(ctx context.Context, tokenHash []byte) error {
 	stmt := `UPDATE waitlist SET confirmed_at = coalesce(confirmed_at, now()) WHERE token_hash = $1`
-	return execWaitlistToken(ctx, r.DB, stmt, tokenHash)
+	return execOne(ctx, r.DB, stmt, tokenHash)
 }
 
 // Leave deletes the entry whose link token hashes to tokenHash.
 // rss.ErrNoRecord if there's no such entry.
 func (r *WaitlistRepository) Leave(ctx context.Context, tokenHash []byte) error {
-	return execWaitlistToken(ctx, r.DB, `DELETE FROM waitlist WHERE token_hash = $1`, tokenHash)
-}
-
-// execWaitlistToken runs stmt, which affects the entry with link token
-// tokenHash; rss.ErrNoRecord if it affected none.
-func execWaitlistToken(ctx context.Context, db *sql.DB, stmt string, tokenHash []byte) error {
-	res, err := db.ExecContext(ctx, stmt, tokenHash)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return rss.ErrNoRecord
-	}
-	return nil
+	return execOne(ctx, r.DB, `DELETE FROM waitlist WHERE token_hash = $1`, tokenHash)
 }
 
 // pendingInvite is true for a waitlist row w with an invite that can still

@@ -135,14 +135,17 @@ The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://gi
   Routes live in `internal/server/router.go`; routes that need login go in the `requireAuthentication` group.
 - HTML pages: `s.renderHTML(w, status, "page.html", data)`; on error, `s.serverErrorHTML(w, r, err)`.
   Error pages (403/404/405/500) are HTML via `s.errorHTML`; use `s.notFoundResponse(w, r)` for missing records, never `http.NotFound`.
+  A record's UUID in the URL is read with `s.uuidParam(w, r, "id")`, which answers 404 for anything else.
   JSON (`writeJSON`) is only for `/healthcheck` (and its `serverErrorJSON` error path); future JSON endpoints go under their own subrouter with JSON error handlers.
 - GET handlers don't write, except idempotent upkeep documented at the call site: queuing a refresh of a stale feed (`feedHandler`), recording that the user opened an article (`articleHandler`), and updating a session's `last_seen_at` in `authenticate` (at most once a day).
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm(w, r, &form)` (on error, `s.formErrorResponse(w, r, err)`: 400, or 413 over 64 KiB), validated with `CheckField`, re-rendered with **422** when invalid.
   Fields follow the pattern in `login.html`: the error after the input as `<p class="error" id="<field>-error">`, `aria-invalid` and `aria-describedby` on the input when it has an error (plus its `<field>-hint`), `autofocus` on `.Form.FirstError` of the fields in order, and `role="alert"` on non-field errors; `password-toggle.ts` adds a show/hide toggle to every password input.
 - Flash messages: `s.sessionManager.Put(ctx, "flash", msg)` before a redirect; the next page reads it with `PopString`.
 - Database: repositories in `internal/psql` use plain SQL with `$n` placeholders.
-  Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; pq code `23505` → `ErrDuplicateEmail` or another `ErrDuplicate…`).
+  Map driver errors to the sentinel errors in `internal/rss/errors.go` (`sql.ErrNoRows` → `ErrNoRecord`; a unique violation, `isUniqueViolation`, → `ErrDuplicateEmail` or another `ErrDuplicate…`).
   Handlers check them with `errors.Is`.
+  A statement that must change one row runs with `execOne`, which returns `ErrNoRecord` when it changed none.
+  Helpers repositories share live in `psql.go`.
 - Schema changes: every change is a **new** goose migration (`make db/migrations/new name=<name>`), applied locally with `go run ./cmd/www migrate`.
   Migrations already on `main` are never edited, renamed or deleted (CI fails a PR that does); fix a mistake with another migration.
   Each must work with the version still running during a deploy (see "Prototype stage"), and migrates the existing rows it affects.

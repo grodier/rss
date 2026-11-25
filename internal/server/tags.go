@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -200,9 +199,8 @@ func (s *Server) tagDeleteHandler(w http.ResponseWriter, r *http.Request) {
 // already written the response: 404 if the id isn't a UUID or the user has no
 // such tag.
 func (s *Server) tagFromURL(w http.ResponseWriter, r *http.Request) (tag rss.Tag, ok bool) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return rss.Tag{}, false
 	}
 

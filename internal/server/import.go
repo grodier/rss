@@ -8,7 +8,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/opml"
 	"github.com/grodier/rss/internal/ratelimit"
@@ -206,9 +205,8 @@ var importReasons = map[rss.ImportFailure]string{
 // the new rows in place; without JavaScript a meta refresh reloads it.
 // It makes no writes, so polling it is harmless.
 func (s *Server) importHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if !validator.Matches(id, validator.UUIDRX) {
-		s.notFoundResponse(w, r)
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
 		return
 	}
 

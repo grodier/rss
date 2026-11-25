@@ -12,12 +12,6 @@ import (
 	"github.com/grodier/rss/internal/textcut"
 )
 
-// maxErrorLen caps the error messages stored by LookupRepository.Fail,
-// FeedRepository.RecordFailure, EnrichRepository.Retry,
-// ImportRepository.Finish and EmailRepository's MarkFailed and GiveUp, in
-// bytes.
-const maxErrorLen = 1000
-
 const lookupColumns = `id, site_key, url, home_page, status, site_id, error, attempts, requested_at, started_at, finished_at`
 
 type LookupRepository struct {
@@ -144,22 +138,6 @@ func (r *LookupRepository) ResetStale(ctx context.Context, olderThan time.Durati
 func isHomePage(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	return err == nil && discovery.IsHomePage(u)
-}
-
-// execOne runs stmt and returns rss.ErrNoRecord if it changed no rows.
-func execOne(ctx context.Context, q querier, stmt string, args ...any) error {
-	res, err := q.ExecContext(ctx, stmt, args...)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return rss.ErrNoRecord
-	}
-	return nil
 }
 
 func scanLookup(row *sql.Row) (rss.Lookup, error) {

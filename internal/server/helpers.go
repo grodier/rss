@@ -7,8 +7,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/rss"
+	"github.com/grodier/rss/internal/validator"
 )
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data any) error {
@@ -117,4 +119,15 @@ func safeReturnPath(p, fallback string) string {
 		return fallback
 	}
 	return p
+}
+
+// uuidParam returns the URL parameter name if it's a UUID. If ok is
+// false it has already answered 404.
+func (s *Server) uuidParam(w http.ResponseWriter, r *http.Request, name string) (id string, ok bool) {
+	id = chi.URLParam(r, name)
+	if !validator.Matches(id, validator.UUIDRX) {
+		s.notFoundResponse(w, r)
+		return "", false
+	}
+	return id, true
 }

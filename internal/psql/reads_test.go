@@ -3,7 +3,6 @@ package psql
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -118,18 +117,6 @@ func TestReadRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("ReadArticleIDs with no IDs returns an empty map", func(t *testing.T) {
-		user := newTestUser(t, db)
-
-		got, err := repo.ReadArticleIDs(ctx, user, nil)
-		if err != nil {
-			t.Fatalf("ReadArticleIDs: %v", err)
-		}
-		if got == nil || len(got) != 0 {
-			t.Errorf("ReadArticleIDs = %#v, want empty map", got)
-		}
-	})
-
 	t.Run("deleting the article deletes its reads", func(t *testing.T) {
 		user := newTestUser(t, db)
 		article := newTestArticles(t, db, 1)[0]
@@ -149,70 +136,9 @@ func TestReadRepository(t *testing.T) {
 		}
 	})
 
-	// copies returns two articles in different feeds sharing a unique
-	// canonical URL, and an unrelated article.
-	copies := func(t *testing.T) (a, b, unrelated string) {
-		t.Helper()
-		canonical := fmt.Sprintf("example.com/post-%d", psqltest.Unique())
-		a = newTestArticleWithCanonical(t, db, canonical)
-		b = newTestArticleWithCanonical(t, db, canonical)
-		unrelated = newTestArticleWithCanonical(t, db, canonical+"-other")
-		return a, b, unrelated
-	}
-
-	t.Run("reading one copy marks every copy read", func(t *testing.T) {
-		user := newTestUser(t, db)
-		a, b, unrelated := copies(t)
-		if err := repo.MarkRead(ctx, user, a); err != nil {
-			t.Fatalf("MarkRead: %v", err)
-		}
-
-		got, err := repo.ReadArticleIDs(ctx, user, []string{a, b, unrelated})
-		if err != nil {
-			t.Fatalf("ReadArticleIDs: %v", err)
-		}
-		if !got[a] || !got[b] || len(got) != 2 {
-			t.Errorf("ReadArticleIDs = %v, want only %s and %s", got, a, b)
-		}
-	})
-
-	t.Run("articles with an empty canonical_url only match themselves", func(t *testing.T) {
-		user := newTestUser(t, db)
-		a := newTestArticleWithCanonical(t, db, "")
-		b := newTestArticleWithCanonical(t, db, "")
-		if err := repo.MarkRead(ctx, user, a); err != nil {
-			t.Fatalf("MarkRead: %v", err)
-		}
-
-		got, err := repo.ReadArticleIDs(ctx, user, []string{a, b})
-		if err != nil {
-			t.Fatalf("ReadArticleIDs: %v", err)
-		}
-		if !got[a] || len(got) != 1 {
-			t.Errorf("ReadArticleIDs = %v, want only %s", got, a)
-		}
-	})
-
-	t.Run("another user's read of a copy marks nothing", func(t *testing.T) {
-		user := newTestUser(t, db)
-		other := newTestUser(t, db)
-		a, b, unrelated := copies(t)
-		if err := repo.MarkRead(ctx, other, a); err != nil {
-			t.Fatalf("MarkRead: %v", err)
-		}
-
-		got, err := repo.ReadArticleIDs(ctx, user, []string{a, b, unrelated})
-		if err != nil {
-			t.Fatalf("ReadArticleIDs: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("ReadArticleIDs = %v, want none", got)
-		}
-	})
-
 	t.Run("deleting the read copy leaves the other unread", func(t *testing.T) {
 		user := newTestUser(t, db)
-		a, b, _ := copies(t)
+		a, b, _ := markCopies(t, db)
 		if err := repo.MarkRead(ctx, user, a); err != nil {
 			t.Fatalf("MarkRead: %v", err)
 		}

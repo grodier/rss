@@ -16,7 +16,10 @@ var (
 	ErrAddressChanged = errors.New("the account's email address changed")
 	// ErrOverLimit is emails that no longer fit under the email provider's
 	// sending limits (the admin's waves of invites).
-	ErrOverLimit        = errors.New("over the email sending limits")
+	ErrOverLimit = errors.New("over the email sending limits")
+	// ErrEmailNotPending is an outbox email already sent or given up on,
+	// which the admin's Retry now and Cancel refuse.
+	ErrEmailNotPending  = errors.New("email not pending")
 	ErrDuplicateTag     = errors.New("duplicate tag")
 	ErrTooManyTags      = errors.New("too many tags")
 	ErrTooManyTimelines = errors.New("too many timelines")

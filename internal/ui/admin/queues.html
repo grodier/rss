@@ -34,6 +34,9 @@
         {{if eq .Name "icon"}}
         <p class="missing">Icon checks store no error, so there are no failures to list.</p>
         {{end}}
+        {{if eq .Name "mail"}}
+        <p class="missing">Each email, and retrying or canceling one, is on the <a href="/email">Email</a> page.</p>
+        {{end}}
         {{if .Failures}}
         <h3 class="sub">Failures by error</h3>
         {{if .Groups}}

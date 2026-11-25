@@ -728,6 +728,42 @@ type EmailUsage struct {
 	ThisMonth int
 }
 
+// The outbox's email statuses (emails.status).
+const (
+	EmailPending = "pending"
+	EmailSent    = "sent"
+	EmailFailed  = "failed"
+)
+
+// AdminEmail is an email in the outbox as the admin's email page shows it:
+// never its body, which can carry a one-time link.
+type AdminEmail struct {
+	ID       string
+	To       string
+	Subject  string
+	Status   string // EmailPending, EmailSent or EmailFailed
+	Attempts int
+	// NextAttemptAt is when the mail runner may next claim a pending email
+	// (also the lease of one it's sending).
+	NextAttemptAt time.Time
+	// LastError is the last failed attempt's error, internal detail shown
+	// only in the admin.
+	LastError string
+	CreatedAt time.Time
+	SentAt    time.Time // zero until sent
+	// UserID is the account whose address is To, "" when none is.
+	UserID string
+}
+
+// AdminEmailQuery is a page of the admin's email page: the emails with
+// Status ("" for all), newest first, after the email After ("" for the
+// first page), Limit of them.
+type AdminEmailQuery struct {
+	Status string
+	After  string
+	Limit  int
+}
+
 // Session is one logged-in device (a user_sessions row) with its user.
 type Session struct {
 	ID         string

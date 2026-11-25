@@ -701,9 +701,9 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 2. **Server.** `internal/admin` has the reader's middleware order without the metrics (`logRequest`, `recoverPanic`, `http.CrossOriginProtection`, `commonHeaders`, `GetHead`) and its own headers, stricter than the reader's (see "Security measures" in architecture.md); it serves `/healthcheck` like `www`'s, its own `/static/`, and the pages.
 3. **Pages.** Templates are `internal/ui/admin` (`ui.AdminTemplates`): standalone pages, each with `admin-head`, its page group (`{{template "assets" "admin"}}`) and `admin-nav`, which takes the page's section.
    The nav lists only the sections whose routes exist, in the order in `partials/nav.html`; it's a sidebar on wide screens, and on phones a top bar whose Menu (a `<details>`, no script) opens the same links.
-   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, Queues, Web performance, Service health and Endpoints are below; the Waitlist is under "Waitlist" and the Audit log below.
+   The Overview, Feeds and sites, Users and support, the Seed list and Discover's catalog, Queues, Email, Web performance, Service health and Endpoints are below; the Waitlist is under "Waitlist" and the Audit log below.
 4. **Frontend.** `web/admin` is built apart from the reader's (`web/vite.admin.config.ts`, into `web/dist/admin`, `web.Admin`), and both servers read their build with `internal/assets`.
-   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `endpoints`, `feeds`, `queues`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
+   `admin/styles/base.css` is every admin page's sheet: the shared partials, then the admin's (`shell`, `page`, `table`, `chart`, `waitlist`, `webperf`, `service`, `endpoints`, `feeds`, `queues`, `email`); `admin/entries/admin.ts` sets up busy forms and row selection (`admin/features/select.ts`).
 5. **Charts.** A page draws a `chart.LineChart` or `chart.Histogram` (`internal/admin/chart`) with the `chart` template function, as an SVG made on the server, with no script.
    The drawing stretches to its container at a fixed height, with positions across in percentages and down in pixels, so its text keeps its size (11px) at every width; a line chart's latest values and threshold labels sit in a gutter at its right.
    Each chart is a CSS container: the server gives each time-axis or bucket label a class saying from which width it fits (`thin`), and `chart.css` hides those that don't, so narrow charts draw fewer.
@@ -857,7 +857,7 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
    `JobsPerHour` sums `job_metrics`' minute rows of the last 24 hours into hours that end at now less a whole number of hours, so the last isn't cut short, and `jobsChart` draws each queue's as a line, 0 for an hour with none.
 2. **Failures.** For lookups, imports and enrichment, `AdminQueuesRepository.Failures` reads every failed job, newest first, and `groupFailures` groups them by `normalizeError` of their error (an import feed's failure kind first): exact text split one cause into a group per site, since errors carry addresses, so it replaces addresses with `<url>`, unknown hosts (and the resolver asked) with `<host>`, IPv6 addresses with `<ip>` and numbers standing alone with `<n>`.
    The page lists the 20 largest groups (ties: the most recent failure first), each with its error escaped and cut to 200 characters (whole on hover), its count, its oldest and newest failure (enrichment jobs: when queued), and its 5 newest jobs: a lookup's address with its site's page, an import feed's address with its import's date and its feed's page, an article's ID and address with its feed's page.
-   An enrichment job on its first attempt has no error yet and isn't a failure; emails' failures are for the email page, so Email shows its figures only.
+   An enrichment job on its first attempt has no error yet and isn't a failure; emails' failures are for the email page (below), so Email shows its figures only, with a link there.
 3. **Actions.** `POST /queues/{queue}/retry` and `/delete` (`queueAction`) take one job (`id`) or a group's (`ids`, space-separated, with the group's error): a group's are the IDs its form listed when the page was rendered, the newest 1,000 at most, never what matches when the post arrives, and its count must be typed to confirm (commas allowed), else the page is shown again with the error on that group's field (422); more than 1,000, or IDs that aren't the queue's, are refused (400).
    `AdminQueuesRepository.Retry` and `Delete` change only the jobs still failed and record `queue.retry` or `queue.delete` with the count, on the job (`lookup`, `import_feed` as `{import_id}.{position}`, or `enrich_job`) for one, or with the group's error for a group, in the same transaction; with nothing changed, nothing's recorded.
    Retry makes a lookup or import feed pending again with its attempts and error cleared (a lookup also re-requested now), and an enrichment job due now; Delete deletes a lookup, which is also its site key's cache, so the next lookup runs afresh, or an enrichment job, whose article keeps what it has.
@@ -871,6 +871,30 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
 3. `internal/ui/admin/queues.html` and `web/admin/styles/partials/queues.css`.
 
 **Tests:** `internal/admin/queues_test.go` (with `TestNormalizeError`); `internal/psql/admin_queues_test.go`.
+
+### Email
+
+`GET /email` (`emailHandler`) shows the outbox, so when an email doesn't arrive the owner sees whether it was sent, failed or is still waiting, and acts on it; it never shows an email's bodies, which can carry one-time links.
+
+1. **Usage.** A stat row (`usageTiles`) of `EmailRepository.Usage` against the provider's limits (`-mail-daily-limit`, `-mail-monthly-limit`): the last 24 hours' emails (and older ones still pending), this UTC month's, the reserve kept for account emails (`-mail-reserve`), and how many more invites can send (`MailLimits.Available`).
+2. **The outbox.** Filter links (`emailFilters`: All, the default, Pending, Sent and Failed) with their counts (`EmailRepository.CountByStatus`, one pass), then `EmailRepository.List`: 100 emails a page, newest first, the cursor (`?after=`) the last row's email, compared on its `created_at` and ID read from the row itself (a cursor that isn't an email any more, or a page past the end, is 404).
+   Each row is the subject over the address, the status as a label (as a reader's page says it, `emailStatuses`), when it was queued, its attempts, its next attempt while it's pending, when it was sent, and its last error, escaped, while it's failed or retrying.
+   `List` joins `users` on the address (`citext`, so any case) for the account it belongs to, if any.
+   It reads the whole outbox, which holds about a week: the mail runner deletes finished emails after 7 days (`mail.Runner.KeepFor`), which the page says under the table.
+3. **Actions.** Each posts back to the page with its outcome in a flash, recorded in the audit log by its `EmailRepository` method in its own transaction, which first locks the email's row (`lockPendingEmail`) and refuses one that's no longer pending (`rss.ErrEmailNotPending`):
+   - **Retry now** (`Retry`, `email.retry`), offered on a pending email that's been tried, sets its attempts to 0 and makes it due now, so `www`'s mail runner sends it within a minute and tries it its full number of times again; an email the runner is sending at that moment can be sent twice.
+   - **Cancel** (`Cancel`, `email.cancel`), on any pending email, gives up on it as the runner does after its last attempt, with `psql.EmailCanceled` as its error and its bodies cleared.
+   - A failed email can't be retried, since giving up cleared its bodies: its row says so and, when its address has an account, links to the reader's page, whose actions send a new one (see "Users and support").
+   - **Send a test email** (`POST /email/test`, `emailTestHandler`) renders the `test` email, as `admin send-test-email` does, with links to `-app-url`, and queues it (`QueueTest`, `email.send_test`, through `enqueue`, so the per-address cap applies), so it goes through `www`'s mail runner like any other; the flash names the address and links to its row (`#email-{id}`, from the session's `flashEmail`).
+     An empty or malformed address shows the page again at 422 with the error under the field.
+
+**Start at:**
+
+1. `internal/admin/email.go` (`renderEmail`, `emailTestHandler`).
+2. `internal/psql/emails.go` (`List`, `Retry`, `Cancel`, `QueueTest`).
+3. `internal/ui/admin/email.html` and `web/admin/styles/partials/email.css`.
+
+**Tests:** `internal/admin/email_test.go`; `internal/psql/emails_test.go` (`TestEmailRepositoryAdmin`).
 
 ### Web performance
 

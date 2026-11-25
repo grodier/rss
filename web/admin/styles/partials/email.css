@@ -1,0 +1,22 @@
+/* The email page's outbox: each email's subject over its address, and a
+   failed email's note in place of its actions, wrapping in a narrow
+   column so the table fits beside the sidebar. */
+@layer components {
+  .outbox .wrap {
+    min-inline-size: 10rem;
+  }
+
+  .outbox .outbox-email small {
+    display: block;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .outbox .outbox-note {
+    min-inline-size: 11rem;
+    max-inline-size: 14rem;
+    color: var(--text-2);
+    font-size: 0.75rem;
+    white-space: normal;
+  }
+}

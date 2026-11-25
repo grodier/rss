@@ -73,7 +73,7 @@ func (r *AdminUserRepository) SendLink(ctx context.Context, t rss.Token, m mail.
 	if _, err := tx.ExecContext(ctx, stmt, t.Hash, t.UserID, t.Purpose, t.Email, t.ExpiresAt); err != nil {
 		return err
 	}
-	if err := enqueue(ctx, tx, m); err != nil {
+	if _, err := enqueue(ctx, tx, m); err != nil {
 		return err
 	}
 	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: action, TargetType: "user", TargetID: t.UserID,

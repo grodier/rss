@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Email - Paper Round admin</title>
+  {{template "assets" "admin"}}
+  {{template "admin-head"}}
+</head>
+
+<body>
+  <div class="admin">
+    {{template "admin-nav" .Nav}}
+    <main class="admin-main admin-page">
+      <header class="page-head">
+        <h1>Email</h1>
+        <p>The outbox: every email www’s mail runner has sent, is sending or gave up on, newest first, never their contents. Hover a time for its UTC date.</p>
+      </header>
+      {{with .Flash}}
+      <div class="flash" role="status">{{.}}{{with $.FlashEmail}} <a href="#email-{{.}}">See it below</a>.{{end}}</div>
+      {{end}}
+
+      <section class="admin-section" aria-labelledby="usage-heading">
+        <h2 id="usage-heading">Usage</h2>
+        {{template "stat-row" .Usage}}
+      </section>
+
+      <div class="segments">
+        {{template "segmented" (segmented "Show" .Filters)}}
+      </div>
+
+      <section class="admin-section" aria-labelledby="outbox-heading">
+        <h2 id="outbox-heading" class="visually-hidden">Outbox</h2>
+        {{if .Emails}}
+        {{$now := .Now}}
+        <div class="table-wrap">
+          <table class="data outbox">
+            <thead>
+              <tr>
+                <th scope="col">Email</th>
+                <th scope="col">Status</th>
+                <th scope="col">Queued</th>
+                <th scope="col" class="num">Attempts</th>
+                <th scope="col">Next attempt</th>
+                <th scope="col">Sent</th>
+                <th scope="col">Last error</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Emails}}
+              <tr id="email-{{.ID}}">
+                <td class="wrap outbox-email">{{.Subject}}<small>To {{.To}}</small></td>
+                <td><span class="status status-{{.Tone}}">{{.Label}}</span></td>
+                <td><time datetime="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .CreatedAt}} UTC">{{ago $now .CreatedAt}}</time></td>
+                <td class="num">{{.Attempts}}</td>
+                <td>{{if eq .Status "pending"}}{{if .NextAttemptAt.After $now}}<time datetime="{{.NextAttemptAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .NextAttemptAt}} UTC">{{ago $now .NextAttemptAt}}</time>{{else}}Due now{{end}}{{else}}—{{end}}</td>
+                <td>{{if .SentAt.IsZero}}—{{else}}<time datetime="{{.SentAt.UTC.Format "2006-01-02T15:04:05Z"}}" title="{{stamp .SentAt}} UTC">{{ago $now .SentAt}}</time>{{end}}</td>
+                <td class="wrap">{{if and .LastError (ne .Status "sent")}}<code>{{.LastError}}</code>{{else}}—{{end}}</td>
+                {{if eq .Status "failed"}}
+                <td class="outbox-note">This email can’t be resent: its contents were cleared.{{with .UserID}} Send the person a new one from <a href="/users/{{.}}">their page</a>.{{end}}</td>
+                {{else if eq .Status "pending"}}
+                <td>
+                  <div class="row-actions">
+                    {{if .Retryable}}
+                    <form action="/email/{{.ID}}/retry" method="post"><button class="btn btn-sm" type="submit">Retry now</button></form>
+                    {{end}}
+                    <form action="/email/{{.ID}}/cancel" method="post"><button class="btn btn-sm btn-danger-quiet" type="submit">Cancel</button></form>
+                  </div>
+                </td>
+                {{else}}
+                <td></td>
+                {{end}}
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{/* mail.Runner.KeepFor's default, which www doesn't change. */}}
+        <p class="missing">The outbox deletes sent and failed emails after a week.</p>
+        {{with .Next}}
+        <div class="form-actions">
+          <a class="btn btn-sm" href="{{.}}">Older</a>
+        </div>
+        {{end}}
+        {{else if .Status}}
+        <p class="empty">No {{.Status}} emails.</p>
+        {{else}}
+        <p class="empty">No emails in the outbox. It deletes sent and failed emails after a week.</p>
+        {{end}}
+      </section>
+
+      <section class="admin-section" aria-labelledby="test-heading">
+        <h2 id="test-heading">Send a test email</h2>
+        <form class="admin-form" action="/email/test" method="post" data-busy>
+          <div class="field">
+            <label for="to">To</label>
+            <input type="email" id="to" name="to" value="{{.Form.To}}" autocapitalize="none" spellcheck="false" autocomplete="email"
+              aria-describedby="to-hint{{with .Form.FieldErrors.to}} to-error{{end}}"
+              {{with .Form.FieldErrors.to}}aria-invalid="true" autofocus{{end}} />
+            <p class="hint" id="to-hint">Queued in the outbox, so www’s mail runner sends it like any other email, and it counts against the limits.</p>
+            {{with .Form.FieldErrors.to}}<p class="error" id="to-error">{{.}}</p>{{end}}
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit" data-busy-label="Queuing…"><span data-busy-text>Queue test email</span></button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

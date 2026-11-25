@@ -291,7 +291,7 @@ func sendBound(ctx context.Context, tx *sql.Tx, invites []rss.WaveInvite, wave, 
 			return nil, err
 		}
 		m := mail.Message{To: inv.Email, Subject: inv.Subject, Text: inv.Text, HTML: inv.HTML}
-		if err := enqueue(ctx, tx, m); err != nil {
+		if _, err := enqueue(ctx, tx, m); err != nil {
 			return nil, fmt.Errorf("queue the invite to %s: %w", inv.Email, err)
 		}
 	}
@@ -357,7 +357,7 @@ func (r *InviteRepository) Resend(ctx context.Context, id string, inv rss.WaveIn
 		}
 	}
 	m := mail.Message{To: email.String, Subject: inv.Subject, Text: inv.Text, HTML: inv.HTML}
-	if err := enqueue(ctx, tx, m); err != nil {
+	if _, err := enqueue(ctx, tx, m); err != nil {
 		return fmt.Errorf("queue the invite to %s: %w", email.String, err)
 	}
 	err = recordAudit(ctx, tx, rss.AuditEntry{AuditActor: by, Action: "invite.resend", TargetType: "invite", TargetID: id,

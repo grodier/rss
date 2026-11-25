@@ -41,6 +41,11 @@
     background: var(--surface);
   }
 
+  /* The row a flash links to (the email page's test email). */
+  .data tbody tr:target {
+    background: var(--selection);
+  }
+
   /* Numbers line up on the right. */
   .data .num {
     text-align: end;

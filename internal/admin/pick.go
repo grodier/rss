@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -229,7 +228,7 @@ func (s *Server) renderPick(w http.ResponseWriter, r *http.Request, status int, 
 // its row. Only the posted feeds are skipped, never others of their sites.
 func (s *Server) pickFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form pickForm
-	if err := httpserve.DecodePostForm(w, r, s.formDecoder, &form, maxPickBytes); err != nil {
+	if err := s.decodePostFormLimit(w, r, &form, maxPickBytes); err != nil {
 		s.formErrorResponse(w, r, err)
 		return
 	}

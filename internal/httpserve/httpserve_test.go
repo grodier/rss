@@ -237,6 +237,17 @@ func TestClientIP(t *testing.T) {
 		}
 	})
 
+	t.Run("a nil Logger logs to the default logger", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+		of(&ClientIP{ProxyHops: 1}, "10.0.0.5")
+		if !strings.Contains(buf.String(), warning) {
+			t.Errorf("no warning on the default logger; log:\n%s", buf.String())
+		}
+	})
+
 	t.Run("a public address isn't logged", func(t *testing.T) {
 		c, buf := newClientIP()
 		if got := of(c, "198.51.100.7"); got != "198.51.100.7" {

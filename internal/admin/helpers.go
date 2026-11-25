@@ -20,10 +20,15 @@ func (s *Server) logError(r *http.Request, err error) {
 
 // decodePostForm parses the posted form, at most httpserve.MaxFormBytes,
 // into dst, a struct with form tags. On error, the handler calls
-// formErrorResponse. A route whose forms may be larger calls
-// httpserve.DecodePostForm with its own limit.
+// formErrorResponse.
 func (s *Server) decodePostForm(w http.ResponseWriter, r *http.Request, dst any) error {
-	return httpserve.DecodePostForm(w, r, s.formDecoder, dst, httpserve.MaxFormBytes)
+	return s.decodePostFormLimit(w, r, dst, httpserve.MaxFormBytes)
+}
+
+// decodePostFormLimit is decodePostForm for a route whose forms may be
+// larger, at most limit bytes.
+func (s *Server) decodePostFormLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) error {
+	return httpserve.DecodePostForm(w, r, s.formDecoder, dst, limit)
 }
 
 // uuidParam returns the URL parameter name if it's a UUID. If ok is

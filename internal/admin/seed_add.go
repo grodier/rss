@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/grodier/rss/internal/discovery"
-	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/internal/validator"
@@ -142,7 +141,7 @@ func (s *Server) renderSeedAdd(w http.ResponseWriter, r *http.Request, status in
 // lookups, and goes back to the seed list.
 func (s *Server) seedAddFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form seedAddForm
-	if err := httpserve.DecodePostForm(w, r, s.formDecoder, &form, maxSeedUploadBytes); err != nil {
+	if err := s.decodePostFormLimit(w, r, &form, maxSeedUploadBytes); err != nil {
 		s.formErrorResponse(w, r, err)
 		return
 	}

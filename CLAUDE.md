@@ -72,7 +72,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, and its rate-limit key, for both servers
-- `internal/httpserve`: the HTTP plumbing both servers share behind their thin `s.` methods: serving and graceful shutdown, parsing and rendering templates, JSON, posted forms (`MaxFormBytes`), the client's address and the request log, the open-redirect check (`SafeReturnPath`), the 405's `Allow` methods and the healthcheck's body
+- `internal/httpserve`: the HTTP plumbing both servers share behind their thin `s.` methods (serving, rendering, forms, the request log), plus the open-redirect check, the 405's `Allow` methods and the healthcheck's body
 - `internal/ratelimit`: in-memory fixed-window rate limiters, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/accounts`: makes the account emails `www` and the admin both send (a confirmation link, a reset link, the account-deleted notice), each link with its token

@@ -262,7 +262,8 @@ type Server struct {
 	codeFailureLimiter *ratelimit.Limiter
 
 	// clientIPs finds requests' client addresses behind Config.ProxyHops
-	// proxies (clientIP).
+	// proxies (clientIP). Its Logger is the one New was given: a test that
+	// replaces s.logger afterwards doesn't see its warning.
 	clientIPs *httpserve.ClientIP
 }
 

@@ -135,7 +135,7 @@ func DecodePostForm(w http.ResponseWriter, r *http.Request, dec *form.Decoder, d
 // ClientIP finds a request's client address behind ProxyHops proxies
 // (clientip.FromRequest), logging once if X-Forwarded-For gives an address
 // that isn't public: that is what an extra proxy hop inside the host's
-// network looks like.
+// network looks like. A nil Logger logs to slog.Default().
 type ClientIP struct {
 	ProxyHops int
 	Logger    *slog.Logger
@@ -148,7 +148,11 @@ func (c *ClientIP) Of(r *http.Request) string {
 	if notPublic {
 		c.warned.Do(func() {
 			entries := strings.Count(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",") + 1
-			c.Logger.Warn("client IP from X-Forwarded-For is not a public address; check -proxy-hops", "ip", ip, "entries", entries, "proxy_hops", c.ProxyHops)
+			logger := c.Logger
+			if logger == nil {
+				logger = slog.Default()
+			}
+			logger.Warn("client IP from X-Forwarded-For is not a public address; check -proxy-hops", "ip", ip, "entries", entries, "proxy_hops", c.ProxyHops)
 		})
 	}
 	return ip
@@ -187,9 +191,9 @@ func SafeReturnPath(p, fallback string) string {
 	return p
 }
 
-// allowCandidates are the methods AllowedMethods probes, in the order an
-// Allow header lists them.
-var allowCandidates = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
+// allowOrder is the methods AllowedMethods probes, in the order an Allow
+// header lists them.
+var allowOrder = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
 
 // AllowedMethods returns the methods r's router serves r's path with, in
 // the order an Allow header lists them, HEAD wherever GET is
@@ -202,7 +206,7 @@ func AllowedMethods(r *http.Request) []string {
 		return nil
 	}
 	var allowed []string
-	for _, m := range allowCandidates {
+	for _, m := range allowOrder {
 		probe := m
 		if m == http.MethodHead {
 			probe = http.MethodGet // GetHead serves HEAD with the GET handler

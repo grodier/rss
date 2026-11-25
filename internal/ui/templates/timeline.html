@@ -31,7 +31,8 @@
       </div>
       {{end}}
 
-      {{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}
+      {{/* One message at a time: the notice waits for the next load. */}}
+      {{if not .Flash}}{{with .ConfirmNotice}}{{template "confirm-notice" .}}{{end}}{{end}}
 
       {{with .Flash}}
       <div class="flash">{{.}}</div>

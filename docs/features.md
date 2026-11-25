@@ -13,8 +13,11 @@ User-facing strings, CSS classes and every helper's name live in the code and te
 Without a token the page says the app is invite-only and links to the waitlist; an expired, used, revoked or unknown invite gets a page that says which, with no form (410; `renderInviteUnusable`).
 The page with a token, and the POST, send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, like the email links.
 `signupFormHandler` checks the per-IP limit, then the invite again, takes a bound invite's email whatever was submitted, checks the name, email and password with `validator.CheckNewAccount`, and calls `UserRepository.CreateFromInvite`.
-That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, copies the sections of the invite's waitlist entry to the account (`users.sections`, for Discover's order, #643), and deletes the account's waitlist entry.
+That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, copies the sections of the invite's waitlist entry to the account (`users.sections`, for Discover's order, #643), and deletes the account's waitlist entry, returning its sites answer.
 A taken email rolls it all back, so the invite stays usable, and gets an error on the email field with links to log in or reset the password.
+Once the session starts, `followWaitlistSites` follows the sites that answer named (#640): it splits it with `rss.SplitSitesAnswer`, keeps the first 10 parts, and `SiteRepository.MatchForSignup` matches each to a site (an address by its site key, anything else by a title exactly one site has, ignoring case) and to the feed to follow, the site's only feed that isn't gone or else its one such feed in Discover's catalog.
+It subscribes to each of those feeds and puts a flash naming what it followed, the sites with several feeds to choose from in Discover and what it didn't find; matching or subscribing errors are only logged, so signup never fails on them.
+Home doesn't show the confirm-email notice beside a flash, so it waits for the next load.
 A bound invite's account starts confirmed, so only an open invite's signup sends the confirmation email.
 Login checks the per-IP limit, then counts the attempt against the submitted email *before* checking the password (refunded unless the password was wrong), so parallel guesses can't slip past the limit.
 `Authenticate` tells an unknown email (`rss.ErrNoAccount`) from a wrong password (`rss.ErrWrongPassword`), and each gets its own field error; the login page links to password reset, with the typed address.
@@ -96,15 +99,15 @@ Links sent to the old address stop working by themselves, since tokens are only 
 **Start at:**
 
 1. `internal/server/router.go`: the session group and the `requireAuthentication` group.
-2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`), `internal/validator/account.go` (`CheckNewAccount`), and for invites `internal/psql/invites.go`, `UserRepository.CreateFromInvite` and `internal/admin/invites.go`.
+2. `internal/server/user.go` (signup, login, `startSession`, `popReturnTo`), `internal/validator/account.go` (`CheckNewAccount`), and for invites `internal/psql/invites.go`, `UserRepository.CreateFromInvite` and `internal/admin/invites.go`; following the waitlist's sites, `followWaitlistSites` and `SiteRepository.MatchForSignup`.
 3. `internal/server/middleware.go` (`authenticate`, `requireAuthentication`) and `internal/psql/user_sessions.go`.
 4. `internal/server/settings.go`, then `confirm.go`, `password_reset.go` and `email_change.go`, with `internal/psql/users.go` and `tokens.go`.
 5. Email: `internal/server/email.go` (`sendEmail`), then `internal/mail` (`Queue`, `Runner`, `ParseTemplates`).
 6. `internal/password/password.go`, `internal/token/token.go`, and `cmd/www/create_user.go`.
 
-**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `invites_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`; `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go`; `cmd/admin/create_user_test.go` and `invite_test.go`.
+**Tests:** in `internal/server`, `user_test.go`, `settings_test.go`, `confirm_test.go`, `password_reset_test.go`, `email_change_test.go`, `email_test.go`, `policy_test.go`, `middleware_test.go`, `ratelimit_test.go`, `clientip_test.go`, `router_test.go` and `templates_test.go` (the field pattern and the nav); `web/shared/lib/busy-forms.test.ts`; `internal/psql/users_test.go`, `invites_test.go`, `user_sessions_test.go`, `tokens_test.go`, `emails_test.go`, `sites_test.go` (`TestSiteRepositoryMatchForSignup`); `internal/validator`, `internal/password`, `internal/token` and `internal/mail`; `cmd/www/config_test.go`; `cmd/admin/create_user_test.go` and `invite_test.go`.
 
-**Why:** "Security" and "Accounts" in decisions.md.
+**Why:** "Security" and "Accounts" in decisions.md, and for following the waitlist's sites "First run and discovery" and "Waitlist and invites".
 
 ## Waitlist
 

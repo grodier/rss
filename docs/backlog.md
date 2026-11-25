@@ -785,6 +785,11 @@ Pages and queries:
   Since #739, the same statement groups the sites on shared hosts: it adds a `regexp_replace` of each matching path-scoped site's title and a count over the matches, but no query, and the limit no longer bounds how many matches are read before it applies (it never did for the scan).
   *Signal:* search latency growing with the number of sites and feeds, or `/discover?q=` requests while typing taking over 100 ms.
   *Fix:* `pg_trgm` or full-text search, with an index, planned in #451.
+- [ ] **Signup matches the waitlist's site names by scanning every site's title** (#640).
+  `SiteRepository.MatchForSignup` compares `lower(btrim(title))` with up to 10 names, which no index has, so each signup with a waitlist answer reads every site once (addresses use `sites_host_key`).
+  *Measured 2026-11-25* (#640, 100,000 sites on a dev container): about 55 ms per signup.
+  *Signal:* sites pass about 500,000, or signups take over half a second.
+  *Fix:* an index on `lower(btrim(title))`.
 - [ ] **Infinite scroll keeps every page in the DOM** (#155, #159).
   A long read appends a page of rows at a time and never removes any, so style, layout and memory grow with every page, and phones feel it first; the motion batch (#507) adds animations to those pages.
   *Signal:* scrolling, pressing or opening an article gets janky after many pages on a mid-range phone (long style and layout tasks in DevTools' Performance panel), or testers report it.

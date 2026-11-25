@@ -115,6 +115,125 @@ func (r *SiteRepository) IconHashes(ctx context.Context, siteIDs []string) (map[
 	return hashes, nil
 }
 
+// MatchForSignup matches the sites a person named on the waitlist, at
+// signup (#640): one result per candidate, in order. A candidate
+// discovery.ParseInput accepts matches the site whose host is its
+// discovery.SiteKey; any other matches the site whose title equals it,
+// ignoring case and surrounding space, if exactly one does. Only a
+// confident match counts, since a wrong one would follow the wrong site.
+//
+// A matched site's Feed is the one to follow: its only feed that isn't
+// gone, or else its one such feed in Discover's catalog; nil when neither
+// settles it, since guessing among a site's feeds risks a comments feed. A
+// site with no feed that isn't gone has nothing to follow, so it isn't a
+// match.
+//
+// Two statements whatever the number of candidates: the sites, by key
+// (the sites_host_key index) and by title (one scan of sites for every
+// title candidate, as no index has the lowered titles), then their feeds
+// that aren't gone (feeds_site_id_idx).
+func (r *SiteRepository) MatchForSignup(ctx context.Context, candidates []string) ([]rss.SignupMatch, error) {
+	out := make([]rss.SignupMatch, len(candidates))
+	keys := make([]string, len(candidates))
+	names := make([]string, len(candidates))
+	for i, c := range candidates {
+		out[i].Candidate = c
+		if u, err := discovery.ParseInput(c); err == nil {
+			keys[i] = discovery.SiteKey(u)
+		} else {
+			names[i] = strings.TrimSpace(c)
+		}
+	}
+	if len(candidates) == 0 {
+		return out, nil
+	}
+
+	stmt := `WITH c AS (
+			SELECT * FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS c(key, name, n)
+		)
+		SELECT c.n, s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at
+		FROM c JOIN sites s ON s.host = c.key
+		UNION ALL
+		SELECT n, id, host, url, title, description, created_at, updated_at FROM (
+			SELECT c.n, s.*, count(*) OVER (PARTITION BY c.n) AS same
+			FROM c JOIN sites s ON lower(btrim(s.title)) = lower(c.name)
+			WHERE c.name <> ''
+		) t WHERE same = 1`
+
+	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(keys), pq.Array(names))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sites := map[int]*rss.Site{} // by candidate index
+	var siteIDs []string
+	for rows.Next() {
+		var n int
+		var s rss.Site
+		if err := rows.Scan(&n, &s.ID, &s.Host, &s.URL, &s.Title, &s.Description, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sites[n-1] = &s
+		siteIDs = append(siteIDs, s.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(siteIDs) == 0 {
+		return out, nil
+	}
+
+	stmt = `SELECT ` + qualifiedFeedColumns + `, EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = f.id)
+		FROM feeds f
+		WHERE f.site_id = ANY($1) AND f.gone_at IS NULL`
+
+	frows, err := r.DB.QueryContext(ctx, stmt, pq.Array(siteIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer frows.Close()
+
+	type siteFeeds struct {
+		live, catalog []rss.Feed
+	}
+	feeds := map[string]*siteFeeds{}
+	for frows.Next() {
+		var inCatalog bool
+		f, err := scanFeed(scanTail{row: frows, tail: []any{&inCatalog}})
+		if err != nil {
+			return nil, err
+		}
+		sf := feeds[f.SiteID]
+		if sf == nil {
+			sf = &siteFeeds{}
+			feeds[f.SiteID] = sf
+		}
+		sf.live = append(sf.live, f)
+		if inCatalog {
+			sf.catalog = append(sf.catalog, f)
+		}
+	}
+	if err := frows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i, s := range sites {
+		sf := feeds[s.ID]
+		if sf == nil {
+			continue
+		}
+		out[i].Site = s
+		switch {
+		case len(sf.live) == 1:
+			out[i].Feed = &sf.live[0]
+		case len(sf.catalog) == 1:
+			out[i].Feed = &sf.catalog[0]
+		}
+	}
+	return out, nil
+}
+
 // siteIconDue is true for a site ClaimIconCheck may claim: its check is
 // due, and it's never been checked or has a subscribed feed. The admin's
 // Overview counts the icon queue with it (AdminOverviewRepository.Queues).

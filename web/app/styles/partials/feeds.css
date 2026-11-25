@@ -343,4 +343,34 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
+
+  /* A read-only link and its Copy button (copy-field.ts) on one row: the
+     link takes the room left, and the button, as tall as the field, keeps
+     its width, so both fit at 320 px. */
+  .copy-field {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .copy-field > input {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .copy-button {
+    position: relative;
+    flex: none;
+  }
+
+  .copy-button[hidden] {
+    display: none;
+  }
+
+  /* The button is at the column's end, so its copied label (copied.css)
+     lines up with the button's end rather than its middle, staying on
+     screen. */
+  .copy-button .copied-label {
+    inset-inline: auto 0;
+    transform: none;
+  }
 }

@@ -1,7 +1,7 @@
-// A copy's outcome on its button, shared by Share (share.ts) and the code
-// blocks' Copy buttons (code-copy.ts), so copying looks the same
-// everywhere. Call init (it sets up once, however often it's called)
-// before the first showCopied.
+// A copy's outcome on its button, shared by Share (share.ts), the code
+// blocks' Copy buttons (code-copy.ts) and a shared timeline's
+// (copy-field.ts), so copying looks the same everywhere. Call init (it sets
+// up once, however often it's called) before the first showCopied.
 //
 // showCopied shows the outcome on the button's .copied-label (aria-hidden,
 // since the caller announces it): text, like "Link copied", or "Couldn't

@@ -11,7 +11,7 @@ import { pollSelf } from "../../shared/lib/poll-self";
 // finishes, the status section, h1 and title change to the finished ones
 // and only the finish is announced. Focus never moves. Inserted rows hold
 // nothing the enhancements change; if that changes, run them through
-// localizeTimes, enhancePings and enhanceShare, as live search does.
+// enhanceRows (infinite-scroll.ts), as infinite scroll and Home's fetching do.
 export function init(): void {
   const status = document.querySelector("[data-import-poll]");
   const main = status && status.closest("main");

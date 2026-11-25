@@ -8,9 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
-	"time"
 )
 
 // healthcheckFixture holds /healthcheck's answers, available and degraded,
@@ -93,63 +91,5 @@ func TestHealthcheck(t *testing.T) {
 	}
 	if body.SystemInfo.Version != "abc123" {
 		t.Errorf("system_info.version = %q; want %q", body.SystemInfo.Version, "abc123")
-	}
-}
-
-func TestHealthcheckDatabaseDown(t *testing.T) {
-	db := &fakeDatabase{pingFn: func(context.Context) error { return errors.New("connection refused") }}
-	s := newTestServerConfig(t, Config{Port: 4000, Env: "development", Version: "abc123"}, Services{Database: db})
-
-	rr := httptest.NewRecorder()
-	s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthcheck", nil))
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d; want %d", rr.Code, http.StatusOK)
-	}
-	raw := rr.Body.String()
-	if strings.Contains(raw, "available") {
-		t.Errorf("body contains the monitor's keyword %q: %s", "available", raw)
-	}
-	var body struct {
-		Status     string `json:"status"`
-		Database   string `json:"database"`
-		SystemInfo struct {
-			Version string `json:"version"`
-		} `json:"system_info"`
-	}
-	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body.Status != "degraded" || body.Database != "unreachable" {
-		t.Errorf("status, database = %q, %q; want degraded, unreachable", body.Status, body.Database)
-	}
-	if body.SystemInfo.Version != "abc123" {
-		t.Errorf("system_info.version = %q; want %q", body.SystemInfo.Version, "abc123")
-	}
-}
-
-func TestHealthcheckDatabaseTimeout(t *testing.T) {
-	// The ping gets healthcheckTimeout's deadline, so a hung database can't
-	// hang the healthcheck. The fake reports the timeout at once rather than
-	// waiting for it; TestHealthcheckDatabaseDown covers how a failed ping
-	// is reported.
-	var deadline time.Time
-	db := &fakeDatabase{pingFn: func(ctx context.Context) error {
-		deadline, _ = ctx.Deadline()
-		return context.DeadlineExceeded
-	}}
-	s := newTestServerWith(t, Services{Database: db})
-
-	rr := httptest.NewRecorder()
-	s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthcheck", nil))
-
-	if deadline.IsZero() {
-		t.Fatal("ping context has no deadline")
-	}
-	if latest := time.Now().Add(healthcheckTimeout); deadline.After(latest) {
-		t.Errorf("ping deadline %v is more than %v away", deadline, healthcheckTimeout)
-	}
-	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"status":"degraded"`) {
-		t.Errorf("status = %d, body = %s; want 200 and degraded", rr.Code, rr.Body)
 	}
 }

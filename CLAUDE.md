@@ -72,6 +72,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/feedparse`: recognizes RSS, Atom and JSON Feed documents and reads their metadata
 - `internal/fetch`: the only way to make outbound HTTP requests to user-influenced URLs
 - `internal/clientip`: the client's address behind `-proxy-hops` reverse proxies, and its rate-limit key, for both servers
+- `internal/httpserve`: the HTTP plumbing both servers share behind their thin `s.` methods (serving, rendering, forms, the request log), plus the open-redirect check, the 405's `Allow` methods and the healthcheck's body
 - `internal/ratelimit`: in-memory fixed-window rate limiters, for both servers
 - `internal/assets`: reads a frontend build's Vite manifest, for both servers: page groups' tags, files' URLs, and serving `/static`
 - `internal/accounts`: makes the account emails `www` and the admin both send (a confirmation link, a reset link, the account-deleted notice), each link with its token
@@ -158,7 +159,7 @@ The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://gi
   Search boxes are the `search-box` partial (`partials/search_box.html`), filled from a `searchBox` by the handler; never write a box's markup by hand.
   A page whose main content is empty is the `empty-state` partial (`partials/empty_state.html`), filled by `emptyState` in the template; an empty list that's secondary to its page (a feed's posts, search results, end lines) is a quiet `<p class="empty">` (see "Design" in `docs/decisions.md`).
 - The admin (`internal/admin`, `internal/ui/admin`, `web/admin`) follows these conventions with its own files: routes in `internal/admin/router.go`, pages in its layout with `{{template "admin-nav" .Nav}}` and `Nav: s.nav(r, "<section>")`, partials in `internal/ui/admin/partials`, and its stylesheet partials' order in `web/admin/styles/base.css`.
-  Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`), shared styles in `web/shared`.
+  Reuse a reader pattern where it fits, but not the reader's own code or styles: shared code goes in a package both use (`internal/assets`, `internal/clientip`, `internal/httpserve`), shared styles in `web/shared`.
 - Styling: lists are sections separated by dividers; cards are only for previews of something elsewhere (see "Design" in `docs/decisions.md`).
   Use the color custom properties on `:root` in `web/shared/styles/tokens.css`, never literal colors, so both themes (Light and Dark) get them: a new color token needs a dark value.
   Corners use the radius tokens there, never literal radii or pills: `--radius` for frames and pictures, `--radius-sm` for small things, `--radius-control` for buttons, fields and other controls.

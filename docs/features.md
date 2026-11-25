@@ -23,7 +23,7 @@ Login checks the per-IP limit, then counts the attempt against the submitted ema
 `Authenticate` tells an unknown email (`rss.ErrNoAccount`) from a wrong password (`rss.ErrWrongPassword`), and each gets its own field error; the login page links to password reset, with the typed address.
 
 On a successful login or signup, `startSession` renews the session token, creates a `user_sessions` row for this device (deleting the user's rows idle for 90 days) and stores its ID in the session.
-The handler then redirects to `popReturnTo`: `requireAuthentication` remembers an anonymous GET or HEAD's URI as `returnTo` before sending it to `/login`, and `safeReturnPath` keeps it local.
+The handler then redirects to `popReturnTo`: `requireAuthentication` remembers an anonymous GET or HEAD's URI as `returnTo` before sending it to `/login`, and `httpserve.SafeReturnPath` keeps it local.
 Other methods aren't remembered, since replaying one as a GET would give a 405.
 A logged-in user who opens `/login` or `/signup` is sent to the timeline.
 

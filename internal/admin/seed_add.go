@@ -19,8 +19,8 @@ import (
 // will do, then adds them. Nothing is written until Add, which parses and
 // checks the text again rather than trusting the preview.
 
-// maxSeedUploadBytes caps /seed/add's posted body, over maxFormBytes, so a
-// paste of thousands of lines fits.
+// maxSeedUploadBytes caps /seed/add's posted body, over
+// httpserve.MaxFormBytes, so a paste of thousands of lines fits.
 const maxSeedUploadBytes = 1 << 20
 
 // maxSeedUploadLines is how many lines one post may have, not counting

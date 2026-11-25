@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 )
 
@@ -48,35 +46,15 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// logRequest logs every request (see httpserve.LogRequests).
 func (s *Server) logRequest(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-		next.ServeHTTP(ww, r)
-
-		status := ww.Status()
-		if status == 0 {
-			status = http.StatusOK // nothing was written: net/http sends 200
-		}
-		s.logger.Info("request",
-			"ip", s.clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
-			"status", status, "size", ww.BytesWritten(), "duration", time.Since(start))
-	})
+	return httpserve.LogRequests(s.logger, s.clientIP)(next)
 }
 
 // clientIP returns the address of the client that sent r (see
-// clientip.FromRequest, with Config.ProxyHops). If the address taken from
-// X-Forwarded-For isn't public, it logs a warning once per Server: that is
-// what an extra proxy hop inside the host's network looks like.
+// httpserve.ClientIP, with Config.ProxyHops).
 func (s *Server) clientIP(r *http.Request) string {
-	ip, notPublic := clientip.FromRequest(r, s.config.ProxyHops)
-	if notPublic {
-		s.proxyHopsWarning.Do(func() {
-			entries := strings.Count(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",") + 1
-			s.logger.Warn("client IP from X-Forwarded-For is not a public address; check -proxy-hops", "ip", ip, "entries", entries, "proxy_hops", s.config.ProxyHops)
-		})
-	}
-	return ip
+	return s.clientIPs.Of(r)
 }
 
 type contextKey string

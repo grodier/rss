@@ -2,14 +2,12 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -17,6 +15,7 @@ import (
 	"github.com/grodier/rss/internal/accounts"
 	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/fetch"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/metrics"
@@ -514,9 +513,10 @@ type Server struct {
 	// key, ""), which rumLimiter can't: a client can rotate addresses.
 	rumTotalLimiter *ratelimit.Limiter
 
-	// proxyHopsWarning logs, once, that clientIP took a non-public address
-	// from X-Forwarded-For.
-	proxyHopsWarning sync.Once
+	// clientIPs finds requests' client addresses behind Config.ProxyHops
+	// proxies (clientIP). Its Logger is the one New was given: a test that
+	// replaces s.logger afterwards doesn't see its warning.
+	clientIPs *httpserve.ClientIP
 }
 
 func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManager *scs.SessionManager) (*Server, error) {
@@ -563,6 +563,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		emailChangeLimiter:    ratelimit.New(5, time.Hour),
 		rumLimiter:            ratelimit.New(120, 10*time.Minute),
 		rumTotalLimiter:       ratelimit.New(600, time.Minute),
+		clientIPs:             &httpserve.ClientIP{ProxyHops: cfg.ProxyHops, Logger: logger},
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
@@ -576,33 +577,7 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 }
 
 // Serve runs the HTTP server until ctx is canceled, then shuts it down
-// gracefully (waiting up to 30s for in-flight requests). It returns early
-// with the error if the server fails to start, e.g. the port is in use.
+// gracefully (see httpserve.Serve).
 func (s *Server) Serve(ctx context.Context) error {
-	s.logger.Info("starting server", "port", s.config.Port, "env", s.config.Env)
-
-	errc := make(chan error, 1)
-	go func() { errc <- s.server.ListenAndServe() }()
-
-	select {
-	case err := <-errc:
-		// Only Serve calls Shutdown, so this is a startup/listen failure.
-		return err
-	case <-ctx.Done():
-	}
-
-	s.logger.Info("shutting down server")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := s.server.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	// ListenAndServe returns ErrServerClosed as soon as Shutdown starts.
-	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-
-	s.logger.Info("server stopped gracefully")
-	return nil
+	return httpserve.Serve(ctx, s.server, s.logger, "server", "port", s.config.Port, "env", s.config.Env)
 }

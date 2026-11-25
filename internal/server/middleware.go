@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -68,20 +69,9 @@ func (s *Server) commonHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// logRequest logs every request (see httpserve.LogRequests).
 func (s *Server) logRequest(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-		next.ServeHTTP(ww, r)
-
-		status := ww.Status()
-		if status == 0 {
-			status = http.StatusOK // nothing was written: net/http sends 200
-		}
-		s.logger.Info("request",
-			"ip", s.clientIP(r), "proto", r.Proto, "method", r.Method, "uri", r.RequestURI,
-			"status", status, "size", ww.BytesWritten(), "duration", time.Since(start))
-	})
+	return httpserve.LogRequests(s.logger, s.clientIP)(next)
 }
 
 // recordRequest counts every request in the request metrics, by its chi

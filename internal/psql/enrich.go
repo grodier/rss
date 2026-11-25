@@ -57,14 +57,17 @@ const (
 // queueEnrichBacklog queues jobs for the enrichFirstWanted latest articles
 // of feedID that need enrichment and haven't had it, at
 // enrichPriorityBacklog, for a feed that has just become wanted. Its first
-// three conditions are needsEnrichment's, in SQL: keep the two in step. The
-// page_* ones skip articles enriched while the feed was wanted before. An
-// article that already has a job keeps it.
+// conditions are needsEnrichment's, in SQL: keep the two in step; an
+// article whose feed image a reader reported broken (image_failed_at, see
+// ArticleRepository.ReportImageFailed) needs it too, since a report while
+// the feed wasn't wanted queued nothing. The page_* ones skip articles
+// enriched while the feed was wanted before. An article that already has a
+// job keeps it.
 func queueEnrichBacklog(ctx context.Context, q querier, feedID string) error {
 	_, err := q.ExecContext(ctx, `INSERT INTO enrich_jobs (article_id, priority)
 		SELECT id, $2 FROM articles
 		WHERE feed_id = $1
-		  AND url <> '' AND (image_url = '' OR title = '' OR excerpt = '')
+		  AND url <> '' AND (image_url = '' OR title = '' OR excerpt = '' OR image_failed_at IS NOT NULL)
 		  AND page_image_url = '' AND page_title = '' AND page_description = ''
 		ORDER BY timeline_at DESC, id DESC
 		LIMIT $3

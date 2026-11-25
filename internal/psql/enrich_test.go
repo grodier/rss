@@ -336,6 +336,20 @@ func TestReportImageFailed(t *testing.T) {
 		}
 	})
 
+	t.Run("a report on a feed nobody wants is queued when it becomes wanted", func(t *testing.T) {
+		feed := newTestFeed(t, db)
+		a := report(t, save(t, feed, complete("later")))
+		if _, ok := getEnrichJob(t, db, a.ID); ok {
+			t.Fatal("an article of an unwanted feed was queued")
+		}
+		if err := NewSubscriptionRepository(db).Subscribe(ctx, newTestUser(t, db), feed.ID); err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		if _, ok := getEnrichJob(t, db, a.ID); !ok {
+			t.Error("no job once the feed was followed")
+		}
+	})
+
 	t.Run("an article in the catalog is queued", func(t *testing.T) {
 		feed := newTestFeed(t, db)
 		putInCatalog(t, db, feed.ID)

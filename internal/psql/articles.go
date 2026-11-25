@@ -779,9 +779,10 @@ func needsEnrichment(a rss.Article) bool {
 // it sets image_failed_at, which a changed image_url clears
 // (saveArticles). The job is queued only when the article has a URL, has
 // never been enriched (its page_* columns are empty, as for a job given
-// up) and its feed is wanted (enrichWanted). An article without a feed
-// image, or reported before, is left as it is. rss.ErrNoRecord if there's
-// no article id.
+// up) and its feed is wanted (enrichWanted); a feed becoming wanted later
+// queues its reported articles with its backlog (queueEnrichBacklog). An
+// article without a feed image, or reported before, is left as it is.
+// rss.ErrNoRecord if there's no article id.
 func (r *ArticleRepository) ReportImageFailed(ctx context.Context, id string) error {
 	stmt := `WITH reported AS (
 			UPDATE articles SET image_failed_at = now()

@@ -763,10 +763,10 @@ Locally it runs with `make run/admin` (http://localhost:4001).
 **Start at:**
 
 1. `internal/admin/feeds.go` (`feedsHandler`, `feedRefreshHandler`, `feedDiscoverHandler`) and `sites.go` (`sitesHandler`).
-2. `internal/psql/admin_feeds.go` (`ListFeeds`, `ListSites`, `updateRow`, `CheckForFeeds`, `SetDiscoverSection`).
+2. `internal/psql/admin_feeds.go` (`ListFeeds`, `updateRow`, `SetDiscoverSection`) and `admin_sites.go` (`ListSites`, `CheckForFeeds`).
 3. `internal/ui/admin/feeds.html`, `sites.html`, `feed.html`, `site.html` and `partials/feeds.html`.
 
-**Tests:** `internal/admin/feeds_test.go`, `sites_test.go`; `internal/psql/admin_feeds_test.go`.
+**Tests:** `internal/admin/feeds_test.go`, `sites_test.go`; `internal/psql/admin_feeds_test.go`, `admin_sites_test.go`.
 
 ### Users and support
 
@@ -834,10 +834,10 @@ Aggregates only: a reader's page shows account facts and counts, never their rea
 **Start at:**
 
 1. `internal/admin/seed.go` (`seedHandler`, `seedLookupHandler`, `seedRetryHandler`), `seed_add.go` (`seedAddFormHandler`), `catalog.go` and `pick.go` (`renderPick`, `pickFormHandler`).
-2. `internal/seed/seed.go` (`Parse`) and `internal/psql/admin_feeds.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `SeedOnList`, `AddSeedSites`, `Catalog`, `PickSites`, `SavePicks`, `setDiscoverSection`).
+2. `internal/seed/seed.go` (`Parse`) and, in `internal/psql`, `admin_seed.go` (`SeedList`, `CountSeed`, `QueueSeedLookup`, `RetrySeedLookups`, `SeedOnList`, `AddSeedSites`), `admin_catalog.go` (`Catalog`), `admin_pick.go` (`PickSites`, `SavePicks`) and `admin_feeds.go` (`setDiscoverSection`).
 3. `internal/ui/admin/seed.html`, `seed_add.html`, `discover.html` and `pick.html`.
 
-**Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`, `pick_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`, `admin_pick_test.go`.
+**Tests:** `internal/admin/seed_test.go`, `seed_add_test.go`, `pick_test.go`; `internal/seed`; `internal/psql/admin_seed_test.go`, `admin_catalog_test.go`, `admin_pick_test.go`.
 
 ### Queues
 

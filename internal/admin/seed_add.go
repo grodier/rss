@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grodier/rss/internal/discovery"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/seed"
 	"github.com/grodier/rss/internal/validator"
@@ -19,8 +20,8 @@ import (
 // will do, then adds them. Nothing is written until Add, which parses and
 // checks the text again rather than trusting the preview.
 
-// maxSeedUploadBytes caps /seed/add's posted body, over maxFormBytes, so a
-// paste of thousands of lines fits.
+// maxSeedUploadBytes caps /seed/add's posted body, over
+// httpserve.MaxFormBytes, so a paste of thousands of lines fits.
 const maxSeedUploadBytes = 1 << 20
 
 // maxSeedUploadLines is how many lines one post may have, not counting
@@ -141,7 +142,7 @@ func (s *Server) renderSeedAdd(w http.ResponseWriter, r *http.Request, status in
 // lookups, and goes back to the seed list.
 func (s *Server) seedAddFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form seedAddForm
-	if err := s.decodePostFormLimit(w, r, &form, maxSeedUploadBytes); err != nil {
+	if err := httpserve.DecodePostForm(w, r, s.formDecoder, &form, maxSeedUploadBytes); err != nil {
 		s.formErrorResponse(w, r, err)
 		return
 	}

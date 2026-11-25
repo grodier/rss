@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
 )
@@ -19,8 +20,9 @@ import (
 // pickPageSize is how many sites the picking page lists at once.
 const pickPageSize = 25
 
-// maxPickBytes caps the picking page's posted body, over maxFormBytes,
-// since a page holds up to 25 sites of 20 feeds, each posting four fields.
+// maxPickBytes caps the picking page's posted body, over
+// httpserve.MaxFormBytes, since a page holds up to 25 sites of 20 feeds,
+// each posting four fields.
 const maxPickBytes = 256 << 10
 
 // pickSilentAfter is how long a feed goes without a post before the page
@@ -227,7 +229,7 @@ func (s *Server) renderPick(w http.ResponseWriter, r *http.Request, status int, 
 // its row. Only the posted feeds are skipped, never others of their sites.
 func (s *Server) pickFormHandler(w http.ResponseWriter, r *http.Request) {
 	var form pickForm
-	if err := s.decodePostFormLimit(w, r, &form, maxPickBytes); err != nil {
+	if err := httpserve.DecodePostForm(w, r, s.formDecoder, &form, maxPickBytes); err != nil {
 		s.formErrorResponse(w, r, err)
 		return
 	}

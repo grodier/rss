@@ -3,11 +3,11 @@ package admin
 import (
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/grodier/rss/internal/clientip"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/ratelimit"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/token"
@@ -132,7 +132,7 @@ func (s *Server) loginCodeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	form := codeForm{Next: safeReturnPath(r.URL.Query().Get("next"), "")}
+	form := codeForm{Next: httpserve.SafeReturnPath(r.URL.Query().Get("next"), "")}
 	s.renderCode(w, r, http.StatusOK, codePage{Form: form, Confirming: confirming})
 }
 
@@ -152,7 +152,7 @@ func (s *Server) loginCodeFormHandler(w http.ResponseWriter, r *http.Request) {
 		s.formErrorResponse(w, r, err)
 		return
 	}
-	form.Next = safeReturnPath(form.Next, "")
+	form.Next = httpserve.SafeReturnPath(form.Next, "")
 
 	adminID, confirming, ok := s.codeSubject(r)
 	if !ok {
@@ -214,7 +214,7 @@ func (s *Server) loginCodeFormHandler(w http.ResponseWriter, r *http.Request) {
 		s.sessionManager.Remove(ctx, sessionPendingID)
 		s.sessionManager.Remove(ctx, sessionPendingAt)
 		s.sessionManager.Put(ctx, sessionAdminID, adminID)
-		returnTo := safeReturnPath(s.sessionManager.PopString(ctx, sessionReturnTo), "")
+		returnTo := httpserve.SafeReturnPath(s.sessionManager.PopString(ctx, sessionReturnTo), "")
 		if next == "" {
 			next = returnTo
 		}
@@ -280,17 +280,4 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessionManager.Put(ctx, sessionFlash, "You've logged out.")
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-// safeReturnPath returns p if it's a local path, which can't send the
-// browser to another site, else fallback.
-func safeReturnPath(p, fallback string) string {
-	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
-		return fallback
-	}
-	u, err := url.Parse(p)
-	if err != nil || u.Scheme != "" || u.Host != "" {
-		return fallback
-	}
-	return p
 }

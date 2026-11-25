@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/seed"
 )
@@ -214,7 +215,7 @@ func TestSeedAddInvalid(t *testing.T) {
 // limit, and refuses one over its own.
 func TestSeedAddLimit(t *testing.T) {
 	b := seedServer(t, &fakeFeeds{})
-	big := strings.Repeat("# "+strings.Repeat("x", 98)+"\n", (maxFormBytes/100)+10) + "a.example"
+	big := strings.Repeat("# "+strings.Repeat("x", 98)+"\n", (httpserve.MaxFormBytes/100)+10) + "a.example"
 	if rr := b.post(t, "/seed/add", url.Values{"sites": {big}, "step": {"preview"}}); rr.Code != http.StatusOK {
 		t.Errorf("Preview of %d bytes = %d, want 200", len(big), rr.Code)
 	}

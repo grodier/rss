@@ -7,18 +7,17 @@ package admin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
 	"github.com/grodier/rss/internal/accounts"
 	"github.com/grodier/rss/internal/admin/render"
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/mail"
 	"github.com/grodier/rss/internal/metrics"
 	"github.com/grodier/rss/internal/ratelimit"
@@ -262,9 +261,9 @@ type Server struct {
 	loginLimiter       *ratelimit.Limiter
 	codeFailureLimiter *ratelimit.Limiter
 
-	// proxyHopsWarning logs, once, that clientIP took a non-public address
-	// from X-Forwarded-For.
-	proxyHopsWarning sync.Once
+	// clientIPs finds requests' client addresses behind Config.ProxyHops
+	// proxies (clientIP).
+	clientIPs *httpserve.ClientIP
 }
 
 // New returns the admin's server. sessionManager is NewSessionManager's.
@@ -290,6 +289,7 @@ func New(logger *slog.Logger, cfg Config, services Services, sessionManager *scs
 		now:                time.Now,
 		loginLimiter:       ratelimit.New(10, 15*time.Minute),
 		codeFailureLimiter: ratelimit.New(5, 15*time.Minute),
+		clientIPs:          &httpserve.ClientIP{ProxyHops: cfg.ProxyHops, Logger: logger},
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),
 			ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
@@ -303,33 +303,7 @@ func New(logger *slog.Logger, cfg Config, services Services, sessionManager *scs
 }
 
 // Serve runs the HTTP server until ctx is canceled, then shuts it down
-// gracefully (waiting up to 30s for in-flight requests). It returns early
-// with the error if the server fails to start, e.g. the port is in use.
+// gracefully (see httpserve.Serve).
 func (s *Server) Serve(ctx context.Context) error {
-	s.logger.Info("starting admin server", "port", s.config.Port, "env", s.config.Env, "url", s.config.BaseURL)
-
-	errc := make(chan error, 1)
-	go func() { errc <- s.server.ListenAndServe() }()
-
-	select {
-	case err := <-errc:
-		// Only Serve calls Shutdown, so this is a startup/listen failure.
-		return err
-	case <-ctx.Done():
-	}
-
-	s.logger.Info("shutting down admin server")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := s.server.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	// ListenAndServe returns ErrServerClosed as soon as Shutdown starts.
-	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-
-	s.logger.Info("admin server stopped gracefully")
-	return nil
+	return httpserve.Serve(ctx, s.server, s.logger, "admin server", "port", s.config.Port, "env", s.config.Env, "url", s.config.BaseURL)
 }

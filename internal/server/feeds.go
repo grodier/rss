@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
 	"github.com/grodier/rss/internal/validator"
@@ -395,7 +396,7 @@ func (s *Server) feedUnsubscribeHandler(w http.ResponseWriter, r *http.Request) 
 		sub, err := s.services.SubscriptionService.Get(r.Context(), userID, feed.ID)
 		switch {
 		case err == nil && losesOnUnfollow(sub):
-			u := "/feeds/" + feed.ID + "/unfollow?" + url.Values{"return_to": {safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID)}}.Encode()
+			u := "/feeds/" + feed.ID + "/unfollow?" + url.Values{"return_to": {httpserve.SafeReturnPath(form.ReturnTo, "/feeds/"+feed.ID)}}.Encode()
 			http.Redirect(w, r, u, http.StatusSeeOther)
 			return
 		case err != nil && !errors.Is(err, rss.ErrNoRecord):
@@ -461,7 +462,7 @@ func (s *Server) feedUnfollowHandler(w http.ResponseWriter, r *http.Request) {
 		Name:     cmp.Or(sub.Title, feedLabel(sub.Feed)),
 		Loses:    unfollowLoses(sub),
 		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
-		ReturnTo: safeReturnPath(r.URL.Query().Get("return_to"), "/feeds/"+sub.Feed.ID),
+		ReturnTo: httpserve.SafeReturnPath(r.URL.Query().Get("return_to"), "/feeds/"+sub.Feed.ID),
 	}
 	if err := s.renderHTML(w, http.StatusOK, "unfollow.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
@@ -509,7 +510,7 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request, dst 
 // posted from, or to the feed page if that isn't a local path.
 func (s *Server) redirectWithFlash(w http.ResponseWriter, r *http.Request, form returnForm, feed rss.Feed, msg string) {
 	s.sessionManager.Put(r.Context(), "flash", msg)
-	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds/"+feed.ID), http.StatusSeeOther)
+	http.Redirect(w, r, httpserve.SafeReturnPath(form.ReturnTo, "/feeds/"+feed.ID), http.StatusSeeOther)
 }
 
 type subscriptionForm struct {
@@ -612,7 +613,7 @@ func (s *Server) subscriptionEditPostHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	s.sessionManager.Put(r.Context(), "flash", "Subscription updated.")
-	http.Redirect(w, r, safeReturnPath(form.ReturnTo, "/feeds"), http.StatusSeeOther)
+	http.Redirect(w, r, httpserve.SafeReturnPath(form.ReturnTo, "/feeds"), http.StatusSeeOther)
 }
 
 // ownTagIDs returns the IDs in ids that are of tags, in order and without
@@ -698,7 +699,7 @@ func (s *Server) renderSubscriptionEdit(w http.ResponseWriter, r *http.Request, 
 		Icons:    s.pageIcons(r, []string{sub.Site.ID}),
 		Tags:     options,
 		Form:     form,
-		ReturnTo: safeReturnPath(form.ReturnTo, "/feeds"),
+		ReturnTo: httpserve.SafeReturnPath(form.ReturnTo, "/feeds"),
 	}
 	if err := s.renderHTML(w, status, "subscription_edit.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)

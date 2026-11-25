@@ -77,6 +77,19 @@
     font-weight: 550;
   }
 
+  /* Feeds is a flex column rather than a grid like the other sections,
+     and so is each condition below, so that a negative margin can take
+     back the gap before what they reveal as it opens (a grid track can't
+     be shorter than nothing). */
+  .timeline-feeds {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .timeline-feeds > .segmented {
+    align-self: flex-start;
+  }
+
   .timeline-show-some {
     display: grid;
     gap: 0.75rem;
@@ -129,7 +142,8 @@
   }
 
   .timeline-condition {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem 0.875rem;
     border-block-end: 1px solid var(--border);
@@ -220,5 +234,122 @@
     margin: 0;
     padding: 0;
     accent-color: var(--accent);
+  }
+
+  /* Opening and closing (#520; see "Motion and feedback" in
+     docs/decisions.md): the summary's feed list, "Or choose feeds" and
+     "Leave out" (<details>), and "Only some"'s tags and feeds and each
+     condition's setting (shown by :has() above).
+
+     Everywhere, reduced motion included: what opens fades in over
+     --duration-quick, and what closes goes at once. A setting fades in only
+     while the form has focus, as it does once the reader ticks a box or
+     presses a radio, so those the page loads with, or a script ticks, are
+     simply there. */
+  :is(.timeline-summary-feeds, .timeline-disclosure)::details-content {
+    opacity: 0;
+  }
+
+  :is(.timeline-summary-feeds, .timeline-disclosure)[open]::details-content {
+    opacity: 1;
+    transition: opacity var(--duration-quick) var(--ease-out);
+  }
+
+  .timeline-show-some,
+  .timeline-condition-detail {
+    transition: opacity var(--duration-quick) var(--ease-out);
+  }
+
+  @starting-style {
+    .timeline-form:focus-within :is(.timeline-show-some, .timeline-condition-detail) {
+      opacity: 0;
+    }
+  }
+
+  /* With motion, where height can be animated to auto (interpolate-size):
+     what opens also grows from nothing and settles 4 px down, over
+     --duration-base on --ease-out, and what closes shrinks away over
+     --duration-quick on --ease-in, so the fields below glide rather than
+     leap. Each part clips its content, leaving room for focus rings, and a
+     <details>' content is a formatting context of its own, so its
+     children's margins grow with it rather than appearing at once. */
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (interpolate-size: allow-keywords) {
+      .timeline-summary-feeds,
+      .timeline-form {
+        interpolate-size: allow-keywords;
+      }
+
+      :is(.timeline-summary-feeds, .timeline-disclosure)::details-content {
+        display: flow-root;
+        block-size: 0;
+        overflow: clip;
+        overflow-clip-margin: 0.25rem;
+        transition:
+          block-size var(--duration-quick) var(--ease-in),
+          opacity var(--duration-quick) var(--ease-in),
+          content-visibility var(--duration-quick) allow-discrete;
+      }
+
+      :is(.timeline-summary-feeds, .timeline-disclosure)[open]::details-content {
+        block-size: auto;
+        transition:
+          block-size var(--duration-base) var(--ease-out),
+          opacity var(--duration-base) var(--ease-out),
+          content-visibility var(--duration-base) allow-discrete;
+      }
+
+      /* The rule under a disclosure's summary stays until its content has
+         shrunk away. */
+      .timeline-disclosure > summary {
+        transition: border-block-end 0s var(--duration-quick) allow-discrete;
+      }
+
+      .timeline-disclosure[open] > summary {
+        transition-delay: 0s;
+      }
+
+      /* A setting grows from, and shrinks to, its hidden style before
+         display: none applies, with a margin that takes back the gap before
+         it, so the gap comes and goes with it. As a flex item it needs
+         min-block-size: 0 to be shorter than its content. */
+      .timeline-show-some,
+      .timeline-condition-detail {
+        min-block-size: 0;
+        overflow: clip;
+        overflow-clip-margin: 0.25rem;
+        transition:
+          block-size var(--duration-base) var(--ease-out),
+          margin-block-start var(--duration-base) var(--ease-out),
+          opacity var(--duration-base) var(--ease-out),
+          translate var(--duration-base) var(--ease-out),
+          display var(--duration-base) allow-discrete;
+      }
+
+      .timeline-show-some {
+        --reveal-gap: 0.75rem; /* .timeline-feeds' gap */
+      }
+
+      .timeline-condition-detail {
+        --reveal-gap: 0.5rem; /* .timeline-condition's gap */
+      }
+
+      @starting-style {
+        .timeline-form:focus-within :is(.timeline-show-some, .timeline-condition-detail) {
+          block-size: 0;
+          margin-block-start: calc(-1 * var(--reveal-gap));
+          translate: 0 -4px;
+        }
+      }
+
+      .timeline-feeds:has(input[name="show"][value="all"]:checked) .timeline-show-some,
+      .timeline-condition:not(:has(> .choice input:checked)) .timeline-condition-detail {
+        block-size: 0;
+        margin-block-start: calc(-1 * var(--reveal-gap));
+        opacity: 0;
+        transition-duration: var(--duration-quick);
+        transition-timing-function: var(--ease-in);
+      }
+    }
   }
 }

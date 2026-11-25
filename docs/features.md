@@ -428,6 +428,8 @@ It LEFT JOINs `subscriptions`, so with Show all a star from a feed the user has 
 
 **Sharing.** A custom timeline can be shared as an Atom feed, with a landing page at the same link; sharing needs a confirmed email.
 Its share page (`/timelines/{id}/share`, `timelineSharePageHandler`, from Share in the edit page's head) shares it (`TimelineRepository.Share`, a `token.Random` token), shows the feed and page links (`sharedURLs`, built from the base URL), and offers New link (`NewShareLink`) and Stop sharing (`Unshare`); each of those posts comes back to it (`redirectToSharing`).
+Each link is a read-only input with a Copy button beside it (`button[data-copy]`, naming the input), rendered `hidden` and shown by `copy-field.ts` where the Clipboard API works; it shows and announces the outcome with `copied.ts`, like Share (see "Sharing articles"), and when the copy fails it focuses the input with its link selected, so the reader can copy it themselves.
+Focusing either input selects its link, with or without the buttons.
 
 The public routes are outside the session group.
 `sharedTimelineFromURL` 404s a malformed token or one `GetShared` doesn't know.
@@ -441,9 +443,9 @@ It's sent with an `ETag` and `Last-Modified` (a matching `If-None-Match` is a 30
 1. `internal/server/home.go` (`homeHandler`, `renderTimeline`, `timelineRows`).
 2. `internal/server/timelines.go` (the handlers and `timelineForm`).
 3. `internal/psql/timelines.go`, then `timelineWhere`, `ListTimeline` and `ListShared` in `articles.go`, and `ListStarred` in `stars.go`.
-4. `internal/server/shared.go`.
+4. `internal/server/shared.go`, and `copy-field.ts` in `web/app/features`.
 
-**Tests:** `internal/server/timelines_test.go` (including `TestTimelineSummaryFixture`), `shared_test.go`, `home_test.go`, `policy_test.go`; `timeline-form.test.ts`, `timeline-tabs.test.ts` and `reorder.test.ts` in `web/app/features`; `internal/psql/timelines_test.go`, `articles_test.go`, `stars_test.go`; `internal/token`.
+**Tests:** `internal/server/timelines_test.go` (including `TestTimelineSummaryFixture`), `shared_test.go`, `home_test.go`, `policy_test.go`; `timeline-form.test.ts`, `timeline-tabs.test.ts`, `reorder.test.ts` and `copy-field.test.ts` in `web/app/features`; `internal/psql/timelines_test.go`, `articles_test.go`, `stars_test.go`; `internal/token`.
 
 **Why:** "Timelines" and "Sharing" under "Filtering and timelines" in decisions.md.
 

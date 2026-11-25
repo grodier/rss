@@ -145,9 +145,12 @@ type manifestEntry struct {
 // contents rail (about 240 bytes) only enough to fit it, rather than to its
 // measurement plus 10%, so the next addition is weighed again, and the
 // JavaScript budget the same way by #774's read marks on opening an article
-// (initReadMarks, about 165 bytes).
+// (initReadMarks, about 165 bytes), and by #517, whose Copy buttons on a
+// shared timeline's page share copied.ts with the reading pages: it was
+// part of save-star's chunk, and is now a chunk of its own, which costs
+// the reading pages about 190 bytes of chunk overhead and no new code.
 const (
-	readingJSBudget  = 13240 // 11875 measured; 13058 before #774, 13223 with it
+	readingJSBudget  = 13420 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517
 	readingCSSBudget = 11560 // 10378 measured; 11505 with #723
 )
 

@@ -312,6 +312,7 @@ Every error page is the same `.solo` panel with a heading, a sentence and "Go to
 | X1 Share with an unconfirmed address | B's timeline → Edit → Share: the share page offers Resend instead; or `curl` a post to `/timelines/{id}/share` | Share page, flash | "Confirm your email address to share timelines." | Yes | ok |
 | X2 Unknown or malformed link | `/shared/AAAA…` (43 characters), `/shared/x` | 404 (H2) | As H2 | Home only (the logged-out landing page) | ok |
 | X3 Link after Stop sharing or New link | Open the old link and its `feed.atom` | 404 (H2); the feed's 404 is HTML | As H2 | n/a | ok (decided: "Sharing" in decisions.md) — discuss: the page is cached for 5 minutes and the feed for 15, so "The links no longer work" isn't true at once for whoever loaded them |
+| X5 A shared link's Copy can't copy | On a shared timeline's share page, deny clipboard permission (in Playwright, don't grant `clipboard-write`) and press Copy beside a link | Share page, above the button until the next press or key; the link is focused and selected | "Couldn't copy" (visible, hidden from assistive technology); "Couldn't copy the link. It's selected, so you can copy it." announced | Yes: the link is selected, ready to copy | new (#517) |
 | X4 Sharing turned on, off, new link | Edit → Sharing | Edit page, flash | "Sharing turned on."; "Sharing turned off. The links no longer work."; "New link made. The old one no longer works." | n/a | ok |
 
 ## Across pages

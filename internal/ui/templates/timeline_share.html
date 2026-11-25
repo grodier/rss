@@ -34,15 +34,24 @@
         </form>
       </div>
       {{else if .FeedURL}}
+      {{/* Each link's Copy is hidden until copy-field.ts shows it, since it
+           needs JavaScript; the read-only inputs can always be selected by
+           hand. */}}
       <div class="timeline-sharing-body">
         <p>Anyone with the link can follow this timeline's newest articles in a feed reader: their titles, excerpts and links, and the names of the feeds they come from. Your name and email aren't shown, and the link isn't listed anywhere.</p>
         <div class="field">
           <label for="share-feed-url">Feed link</label>
-          <input type="text" id="share-feed-url" value="{{.FeedURL}}" readonly />
+          <div class="copy-field">
+            <input type="text" id="share-feed-url" value="{{.FeedURL}}" readonly />
+            <button class="btn-sm copy-button" type="button" data-copy="share-feed-url" hidden>{{template "icon-copy"}}{{template "icon-check"}}Copy<span class="visually-hidden"> feed link</span><span class="copied-label" aria-hidden="true"></span></button>
+          </div>
         </div>
         <div class="field">
           <label for="share-page-url">Page link</label>
-          <input type="text" id="share-page-url" value="{{.PageURL}}" readonly aria-describedby="share-page-url-hint" />
+          <div class="copy-field">
+            <input type="text" id="share-page-url" value="{{.PageURL}}" readonly aria-describedby="share-page-url-hint" />
+            <button class="btn-sm copy-button" type="button" data-copy="share-page-url" hidden>{{template "icon-copy"}}{{template "icon-check"}}Copy<span class="visually-hidden"> page link</span><span class="copied-label" aria-hidden="true"></span></button>
+          </div>
           <p class="hint" id="share-page-url-hint">A page to send to people: it says how to follow it.</p>
         </div>
         <div class="timeline-sharing-actions">

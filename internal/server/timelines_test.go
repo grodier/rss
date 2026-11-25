@@ -1273,6 +1273,9 @@ func TestTimelineSharePage(t *testing.T) {
 		if strings.Contains(body, "Share this timeline") {
 			t.Errorf("offers sharing without a confirmed email: %s", body)
 		}
+		if strings.Contains(body, "data-copy=") {
+			t.Errorf("has a Copy button without a confirmed email: %s", body)
+		}
 	})
 
 	t.Run("not shared", func(t *testing.T) {
@@ -1286,6 +1289,9 @@ func TestTimelineSharePage(t *testing.T) {
 		if strings.Contains(body, "/shared/") {
 			t.Errorf("shows a link while not shared: %s", body)
 		}
+		if strings.Contains(body, "data-copy=") {
+			t.Errorf("has a Copy button while not shared: %s", body)
+		}
 	})
 
 	t.Run("shared", func(t *testing.T) {
@@ -1298,12 +1304,21 @@ func TestTimelineSharePage(t *testing.T) {
 			`<label for="share-page-url">Page link</label>`,
 			`<input type="text" id="share-page-url" value="https://rss.example/shared/`+testShareToken+`" readonly`,
 			"A page to send to people: it says how to follow it.",
+			// Each link's Copy button, hidden until copy-field.ts shows it,
+			// named for its link.
+			`<button class="btn-sm copy-button" type="button" data-copy="share-feed-url" hidden>`,
+			`Copy<span class="visually-hidden"> feed link</span>`,
+			`<button class="btn-sm copy-button" type="button" data-copy="share-page-url" hidden>`,
+			`Copy<span class="visually-hidden"> page link</span>`,
 			`<form action="/timelines/`+testTimelineID+`/unshare" method="post">`,
 			`<button class="btn-sm" type="submit">Stop sharing</button>`,
 			`<form action="/timelines/`+testTimelineID+`/share/new-link" method="post">`,
 			`<button class="btn-sm" type="submit" aria-describedby="share-new-link-hint">New link</button>`,
 			"The current links will stop working.",
 		)
+		if n := strings.Count(body, "data-copy="); n != 2 {
+			t.Errorf("%d Copy buttons, want 2: %s", n, body)
+		}
 	})
 
 	t.Run("shows the flash", func(t *testing.T) {

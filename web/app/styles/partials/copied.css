@@ -1,15 +1,16 @@
-/* A copy's outcome on its button (copied.ts's showCopied), for Share and
-   the code blocks' Copy: a label centered 6 px above the button, so nothing
-   around it moves, and on success a check in the button's icon's place.
-   The button is positioned in its own partial. */
+/* A copy's outcome on its button (copied.ts's showCopied), for Share, the
+   code blocks' Copy and a shared timeline's Copy buttons: a label centered
+   6 px above the button, so nothing around it moves, and on success a check
+   in the button's icon's place. The button is positioned in its own
+   partial. */
 @layer components {
   .share-button[data-copied] .icon-share,
-  .code-copy[data-copied] .icon-copy,
-  :is(.share-button, .code-copy):not([data-copied]) .icon-check {
+  :is(.code-copy, .copy-button)[data-copied] .icon-copy,
+  :is(.share-button, .code-copy, .copy-button):not([data-copied]) .icon-check {
     display: none;
   }
 
-  :is(.share-button, .code-copy)[data-copied] {
+  :is(.share-button, .code-copy, .copy-button)[data-copied] {
     color: var(--accent);
   }
 

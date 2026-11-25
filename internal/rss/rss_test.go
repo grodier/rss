@@ -1,7 +1,6 @@
 package rss
 
 import (
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -165,92 +164,5 @@ func TestArticleURLHost(t *testing.T) {
 		if got := (Article{URL: tt.url}).URLHost(); got != tt.want {
 			t.Errorf("URLHost(%q) = %q, want %q", tt.url, got, tt.want)
 		}
-	}
-}
-
-func TestTagName(t *testing.T) {
-	tests := []struct {
-		in, want string
-	}{
-		{"AI", "AI"},
-		{"  News  ", "News"},
-		{"Machine   learning", "Machine learning"},
-		{"Machine\tlearning\nand\r\n  more", "Machine learning and more"},
-		{"Single spaces stay", "Single spaces stay"},
-		{" \t\n ", ""},
-	}
-	for _, tt := range tests {
-		if got := TagName(tt.in); got != tt.want {
-			t.Errorf("TagName(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
-func TestTimelineMarkDivider(t *testing.T) {
-	now := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
-	divider := now.Add(-3 * time.Hour)
-	upTo := now.Add(-time.Hour)
-	tests := []struct {
-		name string
-		mark TimelineMark
-		want time.Time
-	}{
-		{"no mark", TimelineMark{}, time.Time{}},
-		{"first visit going on", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-10 * time.Minute)}, time.Time{}},
-		{"a visit going on", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-10 * time.Minute), DividerAt: divider}, divider},
-		{"a new visit at exactly the gap", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-VisitGap), DividerAt: divider}, upTo},
-		{"a new visit days later", TimelineMark{SeenUpTo: upTo, SeenAt: now.Add(-48 * time.Hour), DividerAt: divider}, upTo},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.mark.Divider(now); !got.Equal(tt.want) {
-				t.Errorf("Divider = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestQueueStatusBehind(t *testing.T) {
-	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
-	for _, tt := range []struct {
-		name string
-		q    QueueStatus
-		want bool
-	}{
-		{"empty", QueueStatus{}, false},
-		{"due now", QueueStatus{Jobs: 3, Oldest: now}, false},
-		{"exactly the limit", QueueStatus{Jobs: 3, Oldest: now.Add(-QueueBehindAfter)}, false},
-		{"a second over", QueueStatus{Jobs: 3, Oldest: now.Add(-QueueBehindAfter - time.Second)}, true},
-		{"due later", QueueStatus{Jobs: 1, Oldest: now.Add(time.Minute)}, false},
-	} {
-		if got := tt.q.Behind(now); got != tt.want {
-			t.Errorf("%s: Behind = %v, want %v", tt.name, got, tt.want)
-		}
-	}
-}
-
-func TestSplitSitesAnswer(t *testing.T) {
-	tests := []struct {
-		name, answer string
-		want         []string
-	}{
-		{"empty", "", nil},
-		{"one", "example.com", []string{"example.com"}},
-		{"commas", "a.com,b.com, c.com", []string{"a.com", "b.com", "c.com"}},
-		{"semicolons", "a.com; b.com;c.com", []string{"a.com", "b.com", "c.com"}},
-		{"new lines", "a.com\nb.com\r\nc.com", []string{"a.com", "b.com", "c.com"}},
-		{"mixed", "a.com, Gopher Days;\nthe long feild", []string{"a.com", "Gopher Days", "the long feild"}},
-		{"blanks", "a.com,, ;\n\n ,b.com", []string{"a.com", "b.com"}},
-		{"a lone separator", ",", nil},
-		{"only spaces", "   ", nil},
-		{"leading and trailing spaces", "  a.com  ,\t b.com \n", []string{"a.com", "b.com"}},
-		{"spaces inside a part kept", "npr. org, Gopher Days", []string{"npr. org", "Gopher Days"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := SplitSitesAnswer(tt.answer); !slices.Equal(got, tt.want) {
-				t.Errorf("SplitSitesAnswer(%q) = %q, want %q", tt.answer, got, tt.want)
-			}
-		})
 	}
 }

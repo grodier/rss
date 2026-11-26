@@ -491,8 +491,10 @@ The decisions are under "Filtering and timelines" in decisions.md.
     The owner finds the Tags pill and its page wrong too (while revising newsletters' places, #862): a tag could become a choice on My feeds, as kinds are (#862), with creating, renaming and deleting tags moved elsewhere.
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
-- [ ] **A Discover section's tabs share the timeline tabs' motion** (#634).
-  They reuse `.tab-indicator`, so going from a section page to Home or a timeline slides the underline from the section's tab to the timeline's, across unrelated rows, instead of fading with the page; and `timeline-tabs.ts` hands the section row's scroll (0) to the next page, so a timeline's row restores to its start before it scrolls its current tab into view.
+- [ ] **My feeds' sort at its search's end on wide screens** (from #862's checkpoint).
+  The sort has its own row under the search; where both fit (the column leaves the search 18rem), it could sit at the search's end, as GitLab's lists put it, and wrap under it on phones, saving about 50 px on desktop. #862 built and compared it; the owner kept the sort under the search for now.
+- [ ] **A Discover section's tabs share the timeline tabs' motion** (#634; My feeds' kinds too, #862).
+  They reuse `.tab-indicator`, so going from a section page (or My feeds with its kinds' tabs) to Home or a timeline slides the underline from the section's tab to the timeline's, across unrelated rows, instead of fading with the page; and `timeline-tabs.ts` hands the section row's scroll (0) to the next page, so a timeline's row restores to its start before it scrolls its current tab into view.
   Fix: give the section row its own view-transition name and saved-scroll key, or save and restore only between rows of the same kind.
 - [ ] **Flash messages push the page down (needs planning).**
   A flash is in the column above the page's content, so a page that gains one after a redirect lays its content out about 40 px lower than the page before it; the page crossfade (#513) blends the two, so everything below shows twice, offset, for its 150 ms (unsubscribing on a feed page shows it best).

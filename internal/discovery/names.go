@@ -60,13 +60,21 @@ func OwnName(key, title string, fromFeed bool) string {
 	return name
 }
 
-// platforms names the hosts whose site keys have their own rules (rootPath).
-var platforms = map[string]string{
-	"medium.com":  "Medium",
-	"youtube.com": "YouTube",
-	"reddit.com":  "Reddit",
-	"github.com":  "GitHub",
-	"bsky.app":    "Bluesky",
+// platform is a host whose site keys have their own rules (rootPath): its
+// name, shown next to a site's name (Platform), and the kind of site its
+// keys name (KindOf).
+type platform struct {
+	name string
+	kind Kind
+}
+
+// platforms are the hosts whose site keys have their own rules (rootPath).
+var platforms = map[string]platform{
+	"medium.com":  {"Medium", KindWebsites},
+	"youtube.com": {"YouTube", KindVideos},
+	"reddit.com":  {"Reddit", KindWebsites},
+	"github.com":  {"GitHub", KindWebsites},
+	"bsky.app":    {"Bluesky", KindSocial},
 }
 
 // Platform names the platform a site key's site is on, shown next to its
@@ -78,8 +86,36 @@ func Platform(key string) string {
 		return ""
 	}
 	host := KeyHost(key)
-	if name, ok := platforms[host]; ok {
-		return name
+	if p, ok := platforms[host]; ok {
+		return p.name
 	}
 	return host
+}
+
+// Kind is what sort of site a site key names, for My feeds' filter (#862).
+// Kinds are named by medium, not platform, so a new platform joins a kind.
+type Kind string
+
+const (
+	KindWebsites Kind = "websites"
+	KindVideos   Kind = "videos"
+	KindSocial   Kind = "social"
+)
+
+// KindOf is the kind of the site with this key: videos for YouTube, social
+// for Bluesky and Mastodon accounts, websites for everything else. A
+// Mastodon account is a key whose path starts with "@" on a host without
+// its own rules ("mastodon.social/@bob"; "medium.com/@alice" is Medium's).
+func KindOf(key string) Kind {
+	if !hasPath(key) {
+		return KindWebsites
+	}
+	host, path, _ := strings.Cut(key, "/")
+	if p, ok := platforms[host]; ok {
+		return p.kind
+	}
+	if isAtName(path) {
+		return KindSocial
+	}
+	return KindWebsites
 }

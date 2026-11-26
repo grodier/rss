@@ -19,16 +19,32 @@
         <a class="btn btn-sm" href="/tags">Tags</a>
       </header>
 
+      {{/* One kind of feed at a time, when the reader follows two or more
+           kinds (feedsHandler). Each tab is its own URL, so this is
+           navigation, as a Discover section's tabs are; timeline-tabs.css
+           draws it and timeline-tabs.ts slides the underline. feeds-filter.ts
+           keeps the search in the links (data-kind-link). */}}
+      {{with .Kinds}}
+      <nav class="timeline-tabs section-tabs" aria-label="Kind of feed">
+        <ul role="list">
+          {{range .}}<li><a href="{{.URL}}"{{if .Current}} aria-current="page"{{end}} data-kind-link>{{.Label}}{{if .Current}}<span class="tab-indicator" aria-hidden="true"></span>{{end}}</a></li>{{end}}
+        </ul>
+      </nav>
+      {{end}}
+
       {{with .Flash}}
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{if .Sites}}
+      {{if .Total}}
+      {{if .Count}}
       <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
         {{template "search-box" .Box}}
+        {{with .Kind}}<input type="hidden" name="kind" value="{{.}}" />{{end}}
         {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
       </form>
-      {{if gt .Total 1}}
+      {{end}}
+      {{if gt .Count 1}}
       <nav class="feeds-sort" aria-labelledby="feeds-sort-label">
         <span id="feeds-sort-label">Sort by</span>
         <ul class="segmented" role="list">
@@ -83,7 +99,11 @@
         </ul>
       </section>
       {{else}}
+      {{with .None}}
+      <p class="empty">{{.}}</p>
+      {{else}}
       {{template "empty-state" (emptyState "feeds" "You're not following any feeds yet." "" "Find sites in Discover" "/discover")}}
+      {{end}}
       {{end}}
       {{if .Sites}}
       <div class="empty" data-feeds-none{{if .Matches}} hidden{{end}}>

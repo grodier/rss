@@ -92,6 +92,28 @@ describe("feeds-filter", () => {
     expect(sortLinks()).toEqual(["/feeds", "/feeds?sort=updated"]);
   });
 
+  it("keeps the kind in the URL, the sort links and the kind links as it types", () => {
+    history.replaceState(null, "", "/feeds?kind=videos&sort=updated");
+    const kinds = document.createElement("nav");
+    kinds.innerHTML = `
+      <a href="/feeds?sort=updated" data-kind-link>All</a>
+      <a href="/feeds?kind=videos&sort=updated" aria-current="page" data-kind-link>Videos</a>`;
+    document.body.prepend(kinds);
+    for (const [i, a] of document.querySelectorAll<HTMLAnchorElement>("a[data-sort-link]").entries()) {
+      a.href = ["/feeds?kind=videos", "/feeds?kind=videos&sort=updated"][i];
+    }
+    const kindLinks = () =>
+      [...document.querySelectorAll<HTMLAnchorElement>("a[data-kind-link]")].map((a) => a.getAttribute("href"));
+
+    type("a b");
+    expect(location.pathname + location.search).toBe("/feeds?kind=videos&sort=updated&q=a+b");
+    expect(sortLinks()).toEqual(["/feeds?kind=videos&q=a+b", "/feeds?kind=videos&sort=updated&q=a+b"]);
+    expect(kindLinks()).toEqual(["/feeds?sort=updated&q=a+b", "/feeds?kind=videos&sort=updated&q=a+b"]);
+    type("");
+    expect(location.pathname + location.search).toBe("/feeds?kind=videos&sort=updated");
+    expect(kindLinks()).toEqual(["/feeds?sort=updated", "/feeds?kind=videos&sort=updated"]);
+  });
+
   it("announces how many feeds match once typing pauses", async () => {
     type("a");
     type("alpha");

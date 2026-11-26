@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grodier/rss/internal/discovery"
 	"github.com/grodier/rss/internal/httpserve"
 	"github.com/grodier/rss/internal/ingest"
 	"github.com/grodier/rss/internal/rss"
@@ -71,10 +72,13 @@ const feedsSortUpdated = "updated"
 // rejected.
 const feedsSearchMaxRunes = 200
 
-// feedsURL returns My feeds' URL for the sort and the query q, leaving out
-// whichever is empty.
-func feedsURL(sort, q string) string {
+// feedsURL returns My feeds' URL for the kind, the sort and the query q,
+// leaving out whichever is empty.
+func feedsURL(kind discovery.Kind, sort, q string) string {
 	v := url.Values{}
+	if kind != "" {
+		v.Set("kind", string(kind))
+	}
 	if sort != "" {
 		v.Set("sort", sort)
 	}
@@ -87,6 +91,38 @@ func feedsURL(sort, q string) string {
 	return "/feeds?" + v.Encode()
 }
 
+// feedKind is one of My feeds' kinds (#862), in the order its filter lists
+// them.
+type feedKind struct {
+	Kind  discovery.Kind
+	Label string
+	// None is the line shown when the reader follows none of this kind.
+	None string
+}
+
+var feedKinds = []feedKind{
+	{discovery.KindWebsites, "Websites", "You don't follow any websites."},
+	{discovery.KindVideos, "Videos", "You don't follow any video channels."},
+	{discovery.KindSocial, "Social", "You don't follow any social accounts."},
+}
+
+// feedKindOf returns the kind named k in a URL, and false for an unknown
+// one.
+func feedKindOf(k string) (feedKind, bool) {
+	for _, fk := range feedKinds {
+		if string(fk.Kind) == k {
+			return fk, true
+		}
+	}
+	return feedKind{}, false
+}
+
+// kindLink is a choice in My feeds' filter.
+type kindLink struct {
+	Label, URL string
+	Current    bool
+}
+
 // myFeedFilter is the text My feeds' search matches for sub (myFeed.Filter).
 func myFeedFilter(sub rss.Subscription) string {
 	name := cmp.Or(sub.Title, sub.Feed.Title, sub.Feed.Url)
@@ -96,9 +132,11 @@ func myFeedFilter(sub rss.Subscription) string {
 // feedsHandler shows My feeds: the user's subscriptions grouped by site, or,
 // with sort=updated, the feeds whose latest article is newest first. A
 // search q hides the rows that don't match their name, feed title, site
-// title or host.
+// title or host. A kind leaves out the other kinds' feeds; the filter that
+// chooses it shows when the user's feeds span two or more kinds.
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
+	kind, _ := feedKindOf(r.URL.Query().Get("kind"))
 	sort := r.URL.Query().Get("sort")
 	if sort != feedsSortUpdated {
 		sort = ""
@@ -112,6 +150,36 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
+	}
+	total := len(subs)
+
+	// The kinds the user follows, over all their feeds, then only the
+	// chosen kind's feeds.
+	has := map[discovery.Kind]bool{}
+	for _, sub := range subs {
+		has[discovery.KindOf(sub.Site.Host)] = true
+	}
+	if kind.Kind != "" {
+		subs = slices.DeleteFunc(subs, func(sub rss.Subscription) bool {
+			return discovery.KindOf(sub.Site.Host) != kind.Kind
+		})
+	}
+	// A user with no feeds at all gets the page's empty state, not a
+	// filter, whatever the URL's kind.
+	var kinds []kindLink
+	if total > 0 && (len(has) > 1 || kind.Kind != "") {
+		kinds = append(kinds, kindLink{Label: "All", URL: feedsURL("", sort, q), Current: kind.Kind == ""})
+		for _, fk := range feedKinds {
+			// The current kind is listed even when the user has none of
+			// it, so the filter says where they are.
+			if has[fk.Kind] || fk.Kind == kind.Kind {
+				kinds = append(kinds, kindLink{Label: fk.Label, URL: feedsURL(fk.Kind, sort, q), Current: fk.Kind == kind.Kind})
+			}
+		}
+	}
+	var none string
+	if total > 0 && len(subs) == 0 {
+		none = kind.None
 	}
 
 	var sites []siteSubscriptions
@@ -172,15 +240,23 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		Icons            map[string]string
 		Flash            string
 		FailingThreshold int
+		Kind             discovery.Kind
 		Sort             string
 		Q                string
-		// Total is how many feeds the user follows.
+		// Total is how many feeds the user follows, of every kind.
 		Total int
+		// Count is how many of them the page lists: those of Kind.
+		Count int
 		// Matches is how many rows match Q (all of them without one).
 		Matches int
-		// ByName and ByUpdated are the sort links, keeping Q.
+		// Kinds is the filter's choices, All first; nil when the user's
+		// feeds are all of one kind and none is chosen.
+		Kinds []kindLink
+		// None is the line shown when the user follows none of Kind.
+		None string
+		// ByName and ByUpdated are the sort links, keeping Kind and Q.
 		ByName, ByUpdated string
-		// ReturnTo brings Edit subscription back to this sort.
+		// ReturnTo brings Edit subscription back to this kind and sort.
 		ReturnTo string
 		Box      searchBox
 	}{
@@ -189,19 +265,23 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		Icons:            s.pageIcons(r, siteIDs),
 		Flash:            s.sessionManager.PopString(r.Context(), "flash"),
 		FailingThreshold: failingThreshold,
+		Kind:             kind.Kind,
 		Sort:             sort,
 		Q:                q,
-		Total:            len(subs),
+		Total:            total,
+		Count:            len(subs),
 		Matches:          matches,
-		ByName:           feedsURL("", q),
-		ByUpdated:        feedsURL(feedsSortUpdated, q),
-		ReturnTo:         feedsURL(sort, ""),
+		Kinds:            kinds,
+		None:             none,
+		ByName:           feedsURL(kind.Kind, "", q),
+		ByUpdated:        feedsURL(kind.Kind, feedsSortUpdated, q),
+		ReturnTo:         feedsURL(kind.Kind, sort, ""),
 		Box: searchBox{
 			ID:          "feeds-q",
 			Label:       "Search my feeds",
 			Placeholder: "Search my feeds",
 			Value:       q,
-			ClearURL:    feedsURL(sort, ""),
+			ClearURL:    feedsURL(kind.Kind, sort, ""),
 			InPlace:     true,
 		},
 	}

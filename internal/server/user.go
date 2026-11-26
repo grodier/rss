@@ -143,6 +143,7 @@ func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	form.Name = strings.TrimSpace(form.Name)
 	form.CheckNewAccount(form.Name, form.Email, form.Password)
+	form.CheckNotNewsletterAddress("email", form.Email, s.config.NewsletterDomain)
 
 	if !form.Valid() {
 		s.renderSignup(w, r, http.StatusUnprocessableEntity, signupPage{Form: form, BoundEmail: bound})

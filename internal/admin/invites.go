@@ -205,6 +205,7 @@ func (s *Server) newInviteFormHandler(w http.ResponseWriter, r *http.Request) {
 	form.Note = strings.TrimSpace(form.Note)
 	if form.Email != "" {
 		form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Enter an email address, or leave it empty.")
+		form.CheckNotNewsletterAddress("email", form.Email, s.config.NewsletterDomain)
 	}
 	form.CheckField(validator.MaxChars(form.Note, maxInviteNote), "note", fmt.Sprintf("Keep it to %d characters.", maxInviteNote))
 	days, err := strconv.Atoi(strings.TrimSpace(form.Days))

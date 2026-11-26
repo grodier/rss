@@ -359,6 +359,18 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 
+## Newsletters
+
+**Flow so far.** Newsletters are on only while `-newsletter-domain` is set, on both `www` and the admin.
+The app never mails an address at that domain: signup, changing the account's email, the waitlist and the admin's invites refuse one, or one at a subdomain (`validator.CheckNotNewsletterAddress`), since the domain refuses the app's own mail and the bounce would count against our sending domain.
+Readers' addresses come with #827, and receiving mail with #828 and #829.
+
+**Start at:** `internal/validator/newsletter.go`, and its callers in `internal/server/user.go`, `email_change.go`, `waitlist.go` and `internal/admin/invites.go`.
+
+**Tests:** `internal/validator/newsletter_test.go`; `internal/server/user_test.go`, `email_change_test.go`, `waitlist_test.go`; `internal/admin/invites_test.go`; `cmd/www` and `cmd/admin`'s config tests.
+
+**Why:** "Newsletters" in decisions.md.
+
 ## Tags
 
 **Flow.** `/tags` (linked from My feeds) has a New tag form and the user's tags with their feed counts.

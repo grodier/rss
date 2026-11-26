@@ -43,6 +43,9 @@ type Config struct {
 	// DebugEmails are the accounts that may turn on debug mode, lowercased.
 	// Empty turns debug mode off.
 	DebugEmails []string
+	// NewsletterDomain is the domain of readers' newsletter addresses, like
+	// in.paperround.app. Empty turns newsletters off for everyone.
+	NewsletterDomain string
 }
 
 // FeedStore is the feed persistence the server depends on.

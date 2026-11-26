@@ -197,6 +197,8 @@ func (app *Application) Run() error {
 		BaseURL:      app.config.mail.BaseURL,
 		SupportEmail: app.config.mail.SupportEmail,
 		DebugEmails:  app.config.server.debugEmails,
+
+		NewsletterDomain: app.config.server.newsletterDomain,
 	}
 
 	sessionManager := newSessionManager(db, app.config.env)

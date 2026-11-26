@@ -35,7 +35,6 @@ func (s *Server) signupHandler(w http.ResponseWriter, r *http.Request) {
 		s.renderInviteUnusable(w, r, http.StatusOK, inviteMissing)
 		return
 	}
-	noReferrerNoStore(w)
 	inv, ok := s.signupInvite(w, r, plain, http.StatusGone)
 	if !ok {
 		return
@@ -114,7 +113,6 @@ func (s *Server) signupInvite(w http.ResponseWriter, r *http.Request, plain stri
 }
 
 func (s *Server) signupFormHandler(w http.ResponseWriter, r *http.Request) {
-	noReferrerNoStore(w)
 	var form signupForm
 	err := s.decodePostForm(w, r, &form)
 	if err != nil {

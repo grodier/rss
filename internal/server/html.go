@@ -79,6 +79,23 @@ func newEmptyState(icon, lead, line string, actions ...string) (emptyState, erro
 	return e, nil
 }
 
+// linkExpiredPage is link_expired.html's data, so each kind of email link
+// can say what it is and offer its own way on.
+type linkExpiredPage struct {
+	Title string
+	Text  string
+	// Note, when set, is said before the action.
+	Note string
+	// Form, when set, is a POST button; Link, when set, a link.
+	Form *linkExpiredAction
+	Link *linkExpiredAction
+}
+
+type linkExpiredAction struct {
+	URL   string
+	Label string
+}
+
 // siteName is how a site is named wherever it's listed: its title, else its
 // key, followed for a site on a shared host by its platform ("Alice ·
 // Medium"), so a reader always sees where it is (#728). An untitled site's

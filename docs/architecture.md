@@ -157,6 +157,7 @@ Then the reader's routes are split into groups.
 All other routes load the session (`sessionManager.LoadAndSave`) and `authenticate` (see "Accounts and sessions" in features.md).
 Routes in the `requireAuthentication` group redirect anonymous users to `/login`, and `privateCache` keeps their responses, and `/`'s, out of every cache: `Cache-Control: no-store` on navigations, and `private, no-cache` on a script's requests (`Sec-Fetch-Mode` present and not `navigate`: fetches and beacons), since Chrome drops a page from its back/forward cache when a script it ran got a `no-store` response.
 Routes under `/debug/` are a group inside it with `requireDebug`, which answers 404 unless debug mode is on (see "Debug mode" in features.md).
+The routes email links open (`/signup`, `/confirm-email`, `/email-change`, `/waitlist/confirm`, `/waitlist/leave` and `/password/reset`, GET and POST) are a group with `emailLink`, which sends `Referrer-Policy: no-referrer` (instead of `commonHeaders`') and `Cache-Control: no-store` on every response, so the token in their URL or page stays out of Referer headers and caches.
 
 **Routes** (the handler is the route's name in `router.go`; features.md has the flows):
 
@@ -433,8 +434,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **Email links:** tokens are 32 random bytes (`internal/token`); `user_tokens` stores only their SHA-256, so a database leak gives no working links.
   A token works once, until it expires, and (except `change_email`) only while the account's email is still the address it was sent to.
   Opening a link shows a page with a button and only the POST uses the token, so mail scanners that open links can't use it.
-  The link's page is served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, since the token is in its URL.
-  Signup invites (`invites.token_hash`) are stored the same way, work once and expire, and their page (`/signup?invite=`) sends the same headers; the form posts the token back in a hidden field.
+  Every response of a link's route, GET and POST, is served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store` (`emailLink`), since the token is in its URL or page.
+  Signup invites (`invites.token_hash`) are stored the same way, work once and expire, and `/signup` is one of those routes; the form posts the token back in a hidden field.
   Waitlist links follow the same pattern with one difference: the entry's token (`waitlist.token_hash`) doesn't expire and isn't used up, since the leave link must work in every later email; joining again while unconfirmed replaces it, and so does sending the entry an invite, whose email carries the new leave link (the entry is confirmed, so its old link only left the list).
 - **Waitlist bots:** the form has a honeypot field, hidden from people and the keyboard; a request that fills it gets the "check your email" page and nothing is stored or sent, and the rest are capped per IP (`waitlistLimiter`) and by the outbox's per-address cap.
 - **Shared timelines:** their routes are public (no session, no login) and reachable only by the share token: 32 random bytes from `token.Random`, stored as is, so the owner's settings can show the link again.

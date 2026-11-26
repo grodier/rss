@@ -201,12 +201,6 @@ func TestEmailChangeHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
-		if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
-			t.Errorf("Referrer-Policy = %q, want no-referrer", got)
-		}
-		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("Cache-Control = %q, want no-store", got)
-		}
 		assertBodyContains(t, rr.Body.String(),
 			"<h1>Change your email address</h1>",
 			"Make new@example.com the email for your Paper Round account?",
@@ -221,9 +215,6 @@ func TestEmailChangeHandler(t *testing.T) {
 
 		if rr.Code != http.StatusGone {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusGone)
-		}
-		if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
-			t.Errorf("Referrer-Policy = %q, want no-referrer", got)
 		}
 		assertBodyContains(t, rr.Body.String(),
 			"<h1>This link has expired</h1>",

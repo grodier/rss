@@ -142,33 +142,46 @@ func (s *Server) router() http.Handler {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Get("/signup", s.signupHandler)
-			r.Post("/signup", s.signupFormHandler)
 			r.Get("/login", s.loginHandler)
 			r.Post("/login", s.loginFormHandler)
 			r.Post("/logout", s.logoutHandler)
 
-			// Email links work in any browser, logged in or not.
-			r.Get("/confirm-email", s.confirmEmailHandler)
-			r.Post("/confirm-email", s.confirmEmailFormHandler)
 			r.Get("/confirm-email/done", s.confirmEmailDoneHandler)
-			r.Get("/email-change", s.emailChangeHandler)
-			r.Post("/email-change", s.emailChangeFormHandler)
 
-			// The waitlist, for people without an account. Its email links
-			// work in any browser, like the others.
+			// The waitlist, for people without an account.
 			r.Post("/waitlist", s.waitlistJoinHandler)
 			r.Get("/waitlist/joined", s.waitlistJoinedHandler)
-			r.Get("/waitlist/confirm", s.waitlistConfirmHandler)
-			r.Post("/waitlist/confirm", s.waitlistConfirmFormHandler)
-			r.Get("/waitlist/leave", s.waitlistLeaveHandler)
-			r.Post("/waitlist/leave", s.waitlistLeaveFormHandler)
 
 			r.Get("/password/forgot", s.forgotPasswordHandler)
 			r.Post("/password/forgot", s.forgotPasswordFormHandler)
 			r.Get("/password/forgot/sent", s.forgotPasswordSentHandler)
-			r.Get("/password/reset", s.resetPasswordHandler)
-			r.Post("/password/reset", s.resetPasswordFormHandler)
+
+			// The routes email links open, whose URL or page carries a
+			// token: every response, GET and POST, keeps it out of Referer
+			// headers and caches.
+			r.Group(func(r chi.Router) {
+				r.Use(s.emailLink)
+
+				// Signup, which an invite's link opens.
+				r.Get("/signup", s.signupHandler)
+				r.Post("/signup", s.signupFormHandler)
+
+				// Email links work in any browser, logged in or not.
+				r.Get("/confirm-email", s.confirmEmailHandler)
+				r.Post("/confirm-email", s.confirmEmailFormHandler)
+				r.Get("/email-change", s.emailChangeHandler)
+				r.Post("/email-change", s.emailChangeFormHandler)
+
+				// The waitlist's email links work in any browser, like the
+				// others.
+				r.Get("/waitlist/confirm", s.waitlistConfirmHandler)
+				r.Post("/waitlist/confirm", s.waitlistConfirmFormHandler)
+				r.Get("/waitlist/leave", s.waitlistLeaveHandler)
+				r.Post("/waitlist/leave", s.waitlistLeaveFormHandler)
+
+				r.Get("/password/reset", s.resetPasswordHandler)
+				r.Post("/password/reset", s.resetPasswordFormHandler)
+			})
 
 			// Lets password managers send people to the change-password page
 			// (https://w3c.github.io/webappsec-change-password-url/).

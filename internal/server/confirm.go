@@ -37,23 +37,6 @@ func (s *Server) confirmNotice(r *http.Request) *confirmNotice {
 	return &confirmNotice{Email: sess.User.Email, ReturnTo: r.URL.RequestURI()}
 }
 
-// linkExpiredPage is link_expired.html's data, so each kind of email link
-// can say what it is and offer its own way on.
-type linkExpiredPage struct {
-	Title string
-	Text  string
-	// Note, when set, is said before the action.
-	Note string
-	// Form, when set, is a POST button; Link, when set, a link.
-	Form *linkExpiredAction
-	Link *linkExpiredAction
-}
-
-type linkExpiredAction struct {
-	URL   string
-	Label string
-}
-
 // confirmLinkExpired renders the expired-link page for a confirmation link,
 // with the way on that fits who's asking.
 func (s *Server) confirmLinkExpired(w http.ResponseWriter, r *http.Request) {
@@ -77,10 +60,6 @@ func (s *Server) confirmLinkExpired(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) confirmEmailHandler(w http.ResponseWriter, r *http.Request) {
-	// The token is in the URL: keep it out of Referer headers and caches.
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-
 	plain := r.URL.Query().Get("token")
 	t, err := s.services.TokenService.Get(r.Context(), token.Hash(plain), rss.TokenConfirmEmail)
 	if err != nil {

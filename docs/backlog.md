@@ -218,9 +218,24 @@ Each with when it pays off:
 
 ## Subscriptions
 
-- [ ] **Newsletters by email (needs planning).**
-  Each user gets an address that turns the newsletters sent to it into a feed they subscribe to, as Feedbin and Inoreader do.
-  Needs receiving email (an inbound webhook from the email provider, or Email Routing to a worker), a way to create feeds that discovery didn't find, spam and size limits, and sanitizing email HTML, which is messier than feed HTML.
+- [ ] **One-tap newsletter sign-up** (deferred while planning newsletters, #827–#838).
+  On a site page whose newsletter was found (#836), a Sign up button that submits the reader's address to the platform's form for them (Substack, Buttondown, Ghost and Mailchimp take a plain POST), instead of copying the address and signing up on the publisher's page.
+  Buttondown already skips double opt-in for known reader domains, so it would be instant there.
+  Fragile: CAPTCHAs, platforms' terms and forms that change; plan it once copy-and-link has been used.
+- [ ] **Learn which newsletters exist from received mail.**
+  Many readers receiving one `List-Id` shows a newsletter exists even when its site has no sign-up form #836 recognizes.
+  It's cross-user use ("Cross-user use (later)" under "Filtering and timelines" in decisions.md): aggregates above a minimum count only, never a private list (a school, an employer, a bank), and after a privacy policy update.
+- [ ] **Merge two newsletter senders into one feed.**
+  A newsletter that moves platform, or sends from two addresses, becomes a second feed (#829 groups by `List-Id`, else From); "Merge into…" on its feed page would move its articles and send its sender to the other feed.
+- [ ] **More than one newsletter address per reader.**
+  Extra named addresses or plus-addressing (`george.k7x2m9+news@…`), so a leak stays with one newsletter, as Feedbin offers; #827 gives one address that can be replaced.
+  Many sign-up forms refuse `+`, so named addresses would come first.
+- [ ] **Ask newsletter platforms to recognize our address domain** (once newsletters are past testing).
+  Buttondown skips double opt-in for readers' domains (`feedb.in`, `feedly.email`, Readwise's, Matter's…) and asks to be told about missing ones; others may follow.
+- [ ] **Re-look up Discover's catalog sites for their newsletters.**
+  #836 records a site's newsletter when the site is next looked up, which only happens when someone asks; queueing a re-lookup of the catalog's sites at the seed list's priority would fill them in.
+- [ ] **Newsletters in Discover's catalog.**
+  Sites with a newsletter #836 found could be listed in Discover's sections as newsletters, with the same copy-and-sign-up row.
 - [ ] **Unfollowing also takes the feed out of the reader's custom timelines, without saying so** (found in #752).
   `timeline_feeds` cascades from the subscription, so a timeline that names the feed loses it; the confirmation before unfollowing (#752) asks only about a name or tags, and a feed in a timeline but with neither unfollows at once.
   Decide whether being in a timeline counts as something lost (one more condition in `losesOnUnfollow`, and a line on the confirmation), and whether following again should put it back.
@@ -249,6 +264,15 @@ Each with when it pays off:
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.
   Needs a failure story ("Couldn't load the article; read it on {site}").
   Extracted text would need more clean-up than feed HTML: Defuddle, which obsidian-clipper uses, also standardizes footnotes, code blocks and math from many sites' markup and removes newsletter prompts (#718); #719–#721's steps in `sanitize` apply to it as to feeds.
+- [ ] **Show a newsletter's original design.**
+  #831 reads newsletters in Paper's typography only; a "Show original" view would put the email's own HTML in a sandboxed frame with its own CSP, for the few newsletters flattening breaks.
+  It ignores the reader's theme, so only if testers ask for it.
+- [ ] **Unwrap newsletters' tracked links.**
+  Newsletter platforms (Mailchimp, Substack, beehiiv…) wrap every link in a click-tracking redirect; rewriting the known ones to their destination would stop senders seeing each click.
+  The list of redirectors needs upkeep, and a wrong rewrite breaks a link.
+- [ ] **Images embedded in newsletter emails.**
+  #829 drops attachments, so an image referenced as `cid:` disappears; storing them needs somewhere for files (R2) and serving them from our domain.
+  Only if newsletters with missing images turn up.
 - [ ] **Footnotes in place.**
   Tapping a footnote number shows the note beside it, with the article's footnotes section still there to jump to, as obsidian-clipper's reader does (`initializeFootnotes`, #718); without JavaScript the in-page links #719 makes keep working.
   Needs the common formats recognized (Kramdown and Goldmark's `fn:N`, WordPress, Substack; Defuddle's `elements/footnotes.ts` covers about a dozen), and a quieter footnotes section, smaller under a rule, whose class the sanitizer drops today.
@@ -334,6 +358,7 @@ Each with when it pays off:
   Needs articles without a feed, or a feed per user for saved links: decide in planning.
 - [ ] **Image proxy (needs planning).**
   Serve article and card images from our domain so publishers and trackers don't see readers' IPs, browsers and read times.
+  Newsletters' images (#831) would go through it too, so senders couldn't tell when a reader opened an email.
   Its own project because the proxy fetches stranger-chosen URLs (through `internal/fetch`), must only fetch URLs we signed (HMAC) so it isn't an open proxy, must never serve SVG or HTML from our origin, would decode untrusted images if it resized them (decompression bombs), and costs bandwidth, caching and possibly copyright questions.
   Site icons (#304, #305) are already served from our domain: they're small, one per site, and checked once a month.
   It would also know when a publisher's image fails, so it could fall back or drop it on the server, without the broken-image box readers without JavaScript still see; `image-fallback.ts` and `data-fallback-src` (#525) could then go.
@@ -755,6 +780,38 @@ Other background work (#302, #304, #306):
   To decide between the import card, its progress and the end line, the no-query page reads the newest import with its feeds counted by status (`ImportRepository.ListByUser` with a limit of 1, up to 1,000 `import_feeds` rows, long after it has finished) and, for readers who have never imported, counts all their subscriptions.
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page with these queries in `pg_stat_statements`.
   *Fix:* check only whether the latest import has a pending feed (`EXISTS`), counting its feeds only then, and cap the subscription count at 10.
+
+Newsletters (planned in #839):
+
+- [ ] **Raw emails stored in Postgres** (#828).
+  Each received email is an `inbound_emails` row with the raw message (up to 5 MiB) until the runner processes it, and a failed one stays 7 days; newsletters with inline images are often several hundred KB.
+  *Signal:* the table passes 1 GB, or the nightly backup grows noticeably from it, or its writes show up in `pg_stat_statements`.
+  *Fix:* the Worker writes raw messages to R2 and the row keeps only the key.
+- [ ] **Every reader's copy of a newsletter is its own article** (#829).
+  A newsletter sent to a thousand readers is a thousand `articles` rows with its full HTML, since each copy carries the reader's own links; email HTML is several times a feed article's.
+  *Signal:* newsletter feeds' articles become a large share of the `articles` table's size, or the database's disk.
+  *Fix:* keep newsletter articles for less time than others (with "how long to keep articles" under "Feed ingestion"), or store the body once per content hash with the personal links kept apart.
+- [ ] **Queries that list feeds across readers leave newsletter feeds out** (#846).
+  Search, Discover, site pages, enrichment and the admin's lists gain `owner_id IS NULL`; while newsletter feeds are few it costs nothing.
+  *Signal:* those queries' plans filter out many owned rows, or newsletter feeds outnumber web feeds.
+  Most leave out the internal `newsletters` site by host, which costs nothing; the feed-level conditions are the ones to watch.
+  *Fix:* partial indexes `WHERE owner_id IS NULL` on the indexes those queries use.
+- [ ] **One runner processes all received mail** (#829).
+  One worker by default parses each email and saves it in a transaction; a burst (a big newsletter going to many readers at once) queues behind it.
+  *Signal:* the oldest unprocessed `inbound_emails` row is more than 5 minutes old, or the runner's job metrics show a growing backlog.
+  *Fix:* more workers (`-newsletter-workers`), which `SKIP LOCKED` already allows.
+- [ ] **The confirmation notice adds a query to Home and My feeds** (#847).
+  For readers with newsletters, each view looks for their newest waiting confirmation in `held_emails` (indexed by reader).
+  *Signal:* the query shows up in `pg_stat_statements` by total time, or Home's p95 rises after #833.
+  *Fix:* keep a "confirmation waiting" flag on the reader's address row, set and cleared by the runner and the page's actions.
+- [ ] **Held mail is kept per reader for 30 days** (#833).
+  Other mail and confirmations sit in `held_emails` with their HTML; a leaked address can collect a lot of spam before the reader blocks it.
+  *Signal:* `held_emails` passes a million rows, or one reader holds thousands.
+  *Fix:* cap held mail per reader (keep the newest 200), and refuse an address's mail while its held mail is over the cap.
+- [ ] **Matching newsletter articles to feeds' articles** (#837).
+  After each newsletter article is saved, the runner looks up web feeds' articles with the same `canonical_url` (through `articles_canonical_url_idx`, as copies are found) and counts the latest three's matches.
+  *Signal:* the lookup shows up in `pg_stat_statements` by total time, or saving a newsletter takes over 100 ms.
+  *Fix:* stop checking a newsletter once it has matched or its first ten articles didn't.
 
 Pages and queries:
 

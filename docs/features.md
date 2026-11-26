@@ -322,6 +322,9 @@ Each row opens the feed page, through its title link stretched over the row (`.m
 Sort by Recently updated (`?sort=updated`) lists the feeds whose latest article is newest first, without site headers, so every row whose name differs from its site's says "From <site>"; feeds without articles come last, and Edit subscription returns to the sort.
 The search (`?q=`) matches the row's name, the feed's title, and the site's title and host, ignoring case: `feedsHandler` renders every row with that text lowercased in `data-filter` and hides the rows (and the sections left empty) that don't contain the query, so the page works without JavaScript, and `feeds-filter.ts` toggles the same rows as the reader types, with nothing fetched.
 A group keeps its header while any of its feeds match, and the double rule that ends it goes on the next shown section (`data-after-group`, set by both).
+When the reader's feeds span two or more kinds, tabs under the page head show one kind at a time (`?kind=websites`, `videos` or `social`): `discovery.KindOf` reads each subscription's kind from its site key (YouTube is videos; Bluesky and `@name` accounts on other hosts are social; everything else is websites), and `feedsHandler` leaves out the other kinds' rows before grouping, so a kind keeps the sort's grouping.
+The kinds listed are those of all the reader's feeds, not the current view's, plus the current one; a kind with no feeds keeps the tabs and says so in a quiet line, without the search or the sort.
+The kind, the sort and the search keep each other in every link (`feedsURL`): the tabs, the sort links, the search's clear link and Edit subscription's `return_to`; `feeds-filter.ts` adds the query to the tabs as the reader types (`data-kind-link`).
 Site, feed and search pages mark subscribed feeds with one extra query (`SubscribedFeedIDs`).
 Subscriptions also decide which feeds are refreshed in the background and what's in the timeline.
 
@@ -350,12 +353,12 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Start at:**
 
-1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its sort and search), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
+1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its kinds, sort and search, with `discovery.KindOf` in `internal/discovery/names.go`), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
 2. `internal/psql/subscriptions.go`.
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
 
-**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `discover_search_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/save-star.test.ts`, `feeds-filter.test.ts`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
+**Tests:** `internal/server/feeds_test.go`, `articles_test.go`, `sites_test.go`, `discover_test.go`, `discover_search_test.go`, `settings_test.go`, `import_test.go`; `web/app/features/save-star.test.ts`, `feeds-filter.test.ts`; `internal/discovery/names_test.go`; `internal/psql/subscriptions_test.go`, `articles_test.go`, `saves_test.go`, `imports_test.go`, `tags_test.go`; `internal/opml`; `internal/importer`.
 
 **Why:** "Subscriptions" and "Accounts" in decisions.md.
 

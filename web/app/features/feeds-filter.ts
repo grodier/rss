@@ -7,9 +7,10 @@ import { announce } from "../../shared/lib/announce";
 // and hides the same ones for a ?q= (feedsHandler, which writes each row's
 // lowercased data-filter), so this only toggles hidden and nothing is
 // fetched. It moves the double rule that ends a site's group
-// (data-after-group) to the next shown section. The URL, the sort links and
-// the no-match message's Discover link follow the query, so a reload, Back or
-// a change of sort keeps it. How many feeds match is announced once typing
+// (data-after-group) to the next shown section. The URL, the sort and kind
+// links and the no-match message's Discover link follow the query, keeping
+// the rest of their own (the kind, the sort), so a reload, Back or a change
+// of sort or kind keeps it. How many feeds match is announced once typing
 // pauses; focus never moves. Enter filters as typing does, without a reload,
 // and closes a phone's keyboard.
 export function init(): void {
@@ -52,7 +53,7 @@ export function init(): void {
       const discover = none.querySelector<HTMLAnchorElement>("a[data-feeds-discover]");
       if (discover) discover.href = withQ(discover.href, q);
     }
-    for (const link of document.querySelectorAll<HTMLAnchorElement>("a[data-sort-link]")) {
+    for (const link of document.querySelectorAll<HTMLAnchorElement>("a[data-sort-link], a[data-kind-link]")) {
       link.href = withQ(link.href, q);
     }
     history.replaceState(null, "", withQ(location.href, q));

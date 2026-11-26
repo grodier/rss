@@ -63,3 +63,26 @@ func TestPlatform(t *testing.T) {
 		}
 	}
 }
+
+func TestKindOf(t *testing.T) {
+	tests := []struct {
+		key  string
+		want Kind
+	}{
+		{"youtube.com/channel/UCx", KindVideos},
+		{"youtube.com/@handle", KindVideos},
+		{"bsky.app/profile/a.bsky.social", KindSocial},
+		{"mastodon.social/@bob", KindSocial},
+		{"medium.com/@alice", KindWebsites},
+		{"reddit.com/r/golang", KindWebsites},
+		{"github.com/owner/repo", KindWebsites},
+		{"medium.com", KindWebsites},
+		{"youtube.com", KindWebsites},
+		{"example.com", KindWebsites},
+	}
+	for _, tt := range tests {
+		if got := KindOf(tt.key); got != tt.want {
+			t.Errorf("KindOf(%q) = %q, want %q", tt.key, got, tt.want)
+		}
+	}
+}

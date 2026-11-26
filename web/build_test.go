@@ -154,9 +154,11 @@ type manifestEntry struct {
 // again and the load's timeout, plus about 115 of chunk overhead, as
 // busy-delay.ts, which busy-forms.ts and now infinite-scroll.ts import,
 // became a chunk of its own; and about 45 bytes of CSS for the pager's
-// states.
+// states. #862's kinds tabs on My feeds share timeline-tabs.ts with the
+// reading pages, which split image-fallback.ts out of its chunk: about 75
+// bytes of chunk overhead and no new code, raised only enough to fit.
 const (
-	readingJSBudget  = 14080 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14076 with #514
+	readingJSBudget  = 14100 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14076 with #514, 14099 with #862
 	readingCSSBudget = 11600 // 10378 measured; 11505 with #723, 11592 with #514
 )
 

@@ -2566,3 +2566,206 @@ func TestSubscriptionEditPost(t *testing.T) {
 		}
 	})
 }
+
+func TestFeedsHandlerKinds(t *testing.T) {
+	const (
+		idBlog  = "11111111-1111-4111-8111-111111111111"
+		idVideo = "22222222-2222-4222-8222-222222222222"
+		idClips = "33333333-3333-4333-8333-333333333333"
+		idToot  = "44444444-4444-4444-8444-444444444444"
+		siteA   = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		siteV   = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		siteW   = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		siteM   = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		titleOf = `<a class="feed-row-title" href="/feeds/`
+	)
+	blog := rss.Site{ID: siteA, Host: "blog.example.com", Title: "Blog"}
+	channel := rss.Site{ID: siteV, Host: "youtube.com/channel/UCx", Title: "Channel"}
+	other := rss.Site{ID: siteW, Host: "youtube.com/@other", Title: "Other"}
+	bob := rss.Site{ID: siteM, Host: "mastodon.social/@bob", Title: "Bob"}
+	day := func(d int) time.Time { return time.Date(2026, 3, d, 10, 0, 0, 0, time.UTC) }
+	// In ListByUser's order: by site, then name.
+	blogSub := rss.Subscription{Site: blog, Feed: rss.Feed{ID: idBlog, Title: "Blog"}, LatestArticleAt: day(9)}
+	videoSub := rss.Subscription{Site: channel, Feed: rss.Feed{ID: idVideo, Title: "Channel"}, LatestArticleAt: day(1)}
+	clipsSub := rss.Subscription{Site: other, Feed: rss.Feed{ID: idClips, Title: "Clips"}, LatestArticleAt: day(5)}
+	tootSub := rss.Subscription{Site: bob, Feed: rss.Feed{ID: idToot, Title: "Bob"}}
+	all := func() *fakeSubscriptionStore { return listing(blogSub, videoSub, clipsSub, tootSub) }
+
+	assertContains := func(t *testing.T, body string, wants ...string) {
+		t.Helper()
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("body does not contain %q: %s", want, body)
+			}
+		}
+	}
+	// rows returns the feed IDs of the rows listed, in order.
+	rows := func(body string) []string {
+		var ids []string
+		for rest := body; ; {
+			i := strings.Index(rest, titleOf)
+			if i < 0 {
+				return ids
+			}
+			rest = rest[i+len(titleOf):]
+			ids = append(ids, rest[:36])
+		}
+	}
+	// tabs returns the filter's labels, in order, with the current one
+	// starred.
+	tabs := func(body string) []string {
+		var labels []string
+		for rest := body; ; {
+			i := strings.Index(rest, "data-kind-link>")
+			if i < 0 {
+				return labels
+			}
+			tag := rest[strings.LastIndex(rest[:i], "<a "):i]
+			rest = rest[i+len("data-kind-link>"):]
+			label := rest[:strings.IndexAny(rest, "<")]
+			if strings.Contains(tag, `aria-current="page"`) {
+				label += "*"
+			}
+			labels = append(labels, label)
+		}
+	}
+
+	t.Run("one kind: no filter", func(t *testing.T) {
+		_, body := getFeeds(t, listing(blogSub, rss.Subscription{Site: rss.Site{ID: siteM, Host: "medium.com/@alice"}, Feed: rss.Feed{ID: idToot, Title: "Alice"}}))
+		if strings.Contains(body, "data-kind-link") || strings.Contains(body, `aria-label="Kind of feed"`) {
+			t.Errorf("a reader with one kind needs no filter: %s", body)
+		}
+	})
+
+	t.Run("two kinds: All, then just those kinds", func(t *testing.T) {
+		_, body := getFeeds(t, listing(blogSub, videoSub))
+		if got, want := tabs(body), []string{"All*", "Websites", "Videos"}; !slices.Equal(got, want) {
+			t.Errorf("tabs = %v, want %v", got, want)
+		}
+		assertContains(t, body,
+			`<a href="/feeds" aria-current="page" data-kind-link>All<span class="tab-indicator" aria-hidden="true"></span></a>`,
+			`<a href="/feeds?kind=websites" data-kind-link>Websites</a>`,
+			`<a href="/feeds?kind=videos" data-kind-link>Videos</a>`,
+		)
+		if got, want := rows(body), []string{idBlog, idVideo}; !slices.Equal(got, want) {
+			t.Errorf("rows = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("every kind, in order", func(t *testing.T) {
+		_, body := getFeeds(t, listing(tootSub, videoSub, blogSub))
+		if got, want := tabs(body), []string{"All*", "Websites", "Videos", "Social"}; !slices.Equal(got, want) {
+			t.Errorf("tabs = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a kind lists only its feeds, grouped by site", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=videos")
+		if got, want := tabs(body), []string{"All", "Websites", "Videos*", "Social"}; !slices.Equal(got, want) {
+			t.Errorf("tabs = %v, want %v", got, want)
+		}
+		if got, want := rows(body), []string{idVideo, idClips}; !slices.Equal(got, want) {
+			t.Errorf("rows = %v, want %v", got, want)
+		}
+		assertContains(t, body, `<input type="hidden" name="kind" value="videos" />`)
+	})
+
+	t.Run("a kind sorted by recently updated", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=videos&sort=updated")
+		if got, want := rows(body), []string{idClips, idVideo}; !slices.Equal(got, want) {
+			t.Errorf("rows = %v, want %v", got, want)
+		}
+		if strings.Contains(body, "<h2>") {
+			t.Errorf("no site headers when sorted by recency: %s", body)
+		}
+	})
+
+	t.Run("an unknown kind is All", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=podcasts")
+		if got, want := tabs(body), []string{"All*", "Websites", "Videos", "Social"}; !slices.Equal(got, want) {
+			t.Errorf("tabs = %v, want %v", got, want)
+		}
+		if got, want := rows(body), []string{idBlog, idVideo, idClips, idToot}; !slices.Equal(got, want) {
+			t.Errorf("rows = %v, want %v", got, want)
+		}
+		if strings.Contains(body, `name="kind"`) {
+			t.Errorf("All needs no hidden field: %s", body)
+		}
+	})
+
+	t.Run("the links keep the kind, the sort and the search", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=videos&sort=updated&q=c")
+		assertContains(t, body,
+			// The sort links keep the kind and the search.
+			`<a href="/feeds?kind=videos&amp;q=c" data-sort-link>Name</a>`,
+			`<a href="/feeds?kind=videos&amp;q=c&amp;sort=updated" aria-current="page" data-sort-link>Recently updated</a>`,
+			// The kinds keep the sort and the search.
+			`<a href="/feeds?q=c&amp;sort=updated" data-kind-link>All</a>`,
+			`<a href="/feeds?kind=social&amp;q=c&amp;sort=updated" data-kind-link>Social</a>`,
+			// Clearing the search keeps the kind and the sort.
+			`<a class="search-clear" href="/feeds?kind=videos&amp;sort=updated"`,
+			// Edit comes back to the kind and the sort.
+			`/edit?return_to=%2ffeeds%3fkind%3dvideos%26sort%3dupdated"`,
+		)
+	})
+
+	t.Run("a search within a kind", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=videos&q=clips")
+		if got, want := rows(body), []string{idVideo, idClips}; !slices.Equal(got, want) {
+			t.Errorf("rows = %v, want %v (the kind's rows, hidden or not)", got, want)
+		}
+		i := strings.Index(body, titleOf+idVideo)
+		if li := body[strings.LastIndex(body[:i], "<li "):i]; !strings.Contains(li[:strings.Index(li, ">")], " hidden") {
+			t.Errorf("Channel doesn't match and should be hidden: %s", li)
+		}
+		if !strings.Contains(body, `<div class="empty" data-feeds-none hidden>`) {
+			t.Errorf("Clips matches, so the no-match message should be hidden: %s", body)
+		}
+	})
+
+	t.Run("a kind with no feeds keeps the filter and says so", func(t *testing.T) {
+		rr, body := getFeedsURL(t, listing(blogSub, videoSub), "/feeds?kind=social&q=x")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		// The current kind is listed though the reader has none of it.
+		if got, want := tabs(body), []string{"All", "Websites", "Videos", "Social*"}; !slices.Equal(got, want) {
+			t.Errorf("tabs = %v, want %v", got, want)
+		}
+		assertContains(t, body, `<p class="empty">You don&#39;t follow any social accounts.</p>`)
+		for _, not := range []string{titleOf, `id="feeds-q"`, "data-sort-link", "data-feeds-none", "You're not following any feeds yet."} {
+			if strings.Contains(body, not) {
+				t.Errorf("body contains %q: %s", not, body)
+			}
+		}
+	})
+
+	t.Run("each kind's empty line", func(t *testing.T) {
+		tests := []struct{ kind, sub, want string }{
+			{"websites", "video", "You don&#39;t follow any websites."},
+			{"videos", "blog", "You don&#39;t follow any video channels."},
+			{"social", "blog", "You don&#39;t follow any social accounts."},
+		}
+		for _, tt := range tests {
+			sub := blogSub
+			if tt.sub == "video" {
+				sub = videoSub
+			}
+			_, body := getFeedsURL(t, listing(sub), "/feeds?kind="+tt.kind)
+			if !strings.Contains(body, tt.want) {
+				t.Errorf("kind=%s: body does not contain %q: %s", tt.kind, tt.want, body)
+			}
+			// An old link to a kind keeps the filter, so there's a way back.
+			if !strings.Contains(body, `<a href="/feeds" data-kind-link>All</a>`) {
+				t.Errorf("kind=%s: want the filter with All: %s", tt.kind, body)
+			}
+		}
+	})
+
+	t.Run("one feed in a kind has a search but no sort", func(t *testing.T) {
+		_, body := getFeedsURL(t, all(), "/feeds?kind=social")
+		if !strings.Contains(body, `id="feeds-q"`) || strings.Contains(body, "data-sort-link") {
+			t.Errorf("want a search and no sort: %s", body)
+		}
+	})
+}

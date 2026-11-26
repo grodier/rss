@@ -61,6 +61,7 @@ func (s *Server) router() http.Handler {
 			r.Post("/users/{id}/mark-confirmed", s.userMarkConfirmedHandler)
 			r.Post("/users/{id}/send-password-reset", s.userSendPasswordResetHandler)
 			r.Post("/users/{id}/log-out-everywhere", s.userLogOutEverywhereHandler)
+			r.Post("/users/{id}/newsletters", s.userNewslettersHandler)
 			r.With(s.requireRecentCode).Get("/users/{id}/delete", s.userDeleteHandler)
 			r.With(s.requireRecentCode).Post("/users/{id}/delete", s.userDeleteFormHandler)
 			r.Get("/invites", s.invitesHandler)

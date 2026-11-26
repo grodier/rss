@@ -141,6 +141,48 @@ func (s *Server) userLogOutEverywhereHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// newslettersForm turns a reader's newsletters on or off: On is "true" or
+// "false".
+type newslettersForm struct {
+	On string `form:"on"`
+}
+
+// userNewslettersHandler grants the reader {id} rss.FeatureNewsletters
+// (on=true) or revokes it (on=false), recorded as user.feature_grant or
+// user.feature_revoke ("Newsletters" in docs/decisions.md). Revoking keeps
+// what they've received; doing either again changes nothing.
+func (s *Server) userNewslettersHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.userFromURL(w, r)
+	if !ok {
+		return
+	}
+	var form newslettersForm
+	if err := s.decodePostForm(w, r, &form); err != nil {
+		s.formErrorResponse(w, r, err)
+		return
+	}
+	var on bool
+	var msg string
+	switch form.On {
+	case "true":
+		on, msg = true, "Newsletters turned on."
+	case "false":
+		msg = "Newsletters turned off. What they've received stays readable."
+	default:
+		s.errorHTML(w, r, http.StatusBadRequest, "Bad request", "That form didn’t say whether to turn newsletters on or off.")
+		return
+	}
+	err := s.services.Users.SetFeature(r.Context(), user.ID, rss.FeatureNewsletters, on, s.actor(r))
+	switch {
+	case errors.Is(err, rss.ErrNoRecord):
+		s.notFoundResponse(w, r)
+	case err != nil:
+		s.serverErrorHTML(w, r, err)
+	default:
+		s.userBack(w, r, user, msg)
+	}
+}
+
 // userDeletePage is the page that deletes a reader's account.
 type userDeletePage struct {
 	Nav  navData

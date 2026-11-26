@@ -130,9 +130,13 @@
     color: var(--text-2);
   }
 
+  /* Inter's contextual alternates draw an x between digits as a
+     multiplication sign, which would misspell addresses like
+     sam.k7x2m9@…; addresses are read letter by letter, so they go without. */
   .settings-email {
     min-inline-size: 0;
     overflow-wrap: anywhere;
+    font-variant-ligatures: no-contextual;
   }
 
   /* The Settings home's first row: the account, shown as its owner. */
@@ -341,5 +345,58 @@
     block-size: 1.25rem;
     margin: 0;
     color: inherit;
+  }
+
+  /* Settings > Newsletters (#827). */
+  .settings-intro {
+    padding: 1rem 1rem 1.25rem;
+    color: var(--text-2);
+  }
+
+  /* The address as a row's value: its label as tight above it as a hint,
+     the address in the text's color, and Copy right after it. */
+  .newsletter-address-row label {
+    margin: 0;
+    font-size: inherit;
+  }
+
+  .newsletter-address-row .copy-field {
+    align-items: center;
+    gap: 0.25rem;
+    margin-block-start: 0.125rem;
+  }
+
+  /* The address as text that selects whole on focus (copy-field.ts), not a
+     field to type in. It's as wide as the address (size, and field-sizing
+     where it's supported), so Copy follows it. */
+  .copy-field > .address-text {
+    flex: 0 1 auto;
+    inline-size: auto;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    font: inherit;
+    /* After font, which resets it; see .settings-email. */
+    font-variant-ligatures: no-contextual;
+    text-overflow: ellipsis;
+    field-sizing: content;
+  }
+
+  .address-text:focus {
+    box-shadow: none;
+  }
+
+  .address-text:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .newsletter-address-row .copy-button {
+    flex: none;
+    margin-block: -0.5rem;
   }
 }

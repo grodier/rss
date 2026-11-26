@@ -79,6 +79,20 @@ func TestUserSessionRepository(t *testing.T) {
 		if !u.EmailConfirmedAt.IsZero() {
 			t.Errorf("EmailConfirmedAt = %v, want zero", u.EmailConfirmedAt)
 		}
+		if u.Features != 0 {
+			t.Errorf("Features = %b, want none", u.Features)
+		}
+
+		if _, err := db.Exec(`INSERT INTO user_features (user_id, feature, source) VALUES ($1, 'newsletters', 'admin')`, userID); err != nil {
+			t.Fatalf("grant newsletters: %v", err)
+		}
+		got, err = repo.Get(t.Context(), id)
+		if err != nil {
+			t.Fatalf("Get after granting: %v", err)
+		}
+		if got.User.Features != rss.NewFeatures(rss.FeatureNewsletters) {
+			t.Errorf("Features = %b, want newsletters", got.User.Features)
+		}
 		if u.Theme != rss.ThemeSystem {
 			t.Errorf("Theme = %q, want %q", u.Theme, rss.ThemeSystem)
 		}

@@ -356,7 +356,7 @@ func TestAdminUserRepositorySetFeature(t *testing.T) {
 			t.Fatalf("SetFeature: %v", err)
 		}
 		var source string
-		if err := db.QueryRow(`SELECT source FROM user_features WHERE user_id = $1 AND feature = $2`, id, rss.FeatureNewsletters).Scan(&source); err != nil || source != "admin" {
+		if err := db.QueryRow(`SELECT source FROM user_features WHERE user_id = $1 AND feature = $2`, id, string(rss.FeatureNewsletters)).Scan(&source); err != nil || source != "admin" {
 			t.Errorf("the row's source = %q, %v; want admin", source, err)
 		}
 		if !has(t, id) {
@@ -366,7 +366,7 @@ func TestAdminUserRepositorySetFeature(t *testing.T) {
 			t.Error("the other user got the feature")
 		}
 		e := onlyEntry(t, db, by, "user.feature_grant", id)
-		if e.Before != nil || e.After["feature"] != rss.FeatureNewsletters || e.After["source"] != "admin" {
+		if e.Before != nil || e.After["feature"] != string(rss.FeatureNewsletters) || e.After["source"] != "admin" {
 			t.Errorf("audit before %v, after %v", e.Before, e.After)
 		}
 
@@ -397,7 +397,7 @@ func TestAdminUserRepositorySetFeature(t *testing.T) {
 			t.Error("User shows newsletters on")
 		}
 		e := onlyEntry(t, db, by, "user.feature_revoke", id)
-		if e.After != nil || e.Before["feature"] != rss.FeatureNewsletters || e.Before["source"] != "admin" {
+		if e.After != nil || e.Before["feature"] != string(rss.FeatureNewsletters) || e.Before["source"] != "admin" {
 			t.Errorf("audit before %v, after %v", e.Before, e.After)
 		}
 

@@ -42,7 +42,7 @@ type userCall struct {
 	address    string
 	token      rss.Token
 	email      mail.Message
-	feature    string
+	feature    rss.Feature
 	on         bool
 }
 
@@ -65,7 +65,7 @@ func (f *fakeUsers) LogOutEverywhere(_ context.Context, id string, by rss.AuditA
 	return f.devices, f.call(userCall{method: "LogOutEverywhere", id: id, by: by})
 }
 
-func (f *fakeUsers) SetFeature(_ context.Context, id, feature string, on bool, by rss.AuditActor) error {
+func (f *fakeUsers) SetFeature(_ context.Context, id string, feature rss.Feature, on bool, by rss.AuditActor) error {
 	return f.call(userCall{method: "SetFeature", id: id, by: by, feature: feature, on: on})
 }
 

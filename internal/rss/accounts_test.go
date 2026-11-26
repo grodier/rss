@@ -30,3 +30,24 @@ func TestSplitSitesAnswer(t *testing.T) {
 		})
 	}
 }
+
+func TestFeatures(t *testing.T) {
+	var none Features
+	if none.Has(FeatureNewsletters) {
+		t.Error("the zero set has newsletters")
+	}
+	if got := NewFeatures(FeatureNewsletters); !got.Has(FeatureNewsletters) {
+		t.Errorf("NewFeatures(newsletters) = %b, lacks newsletters", got)
+	}
+	if NewFeatures(FeatureNewsletters, FeatureNewsletters) != NewFeatures(FeatureNewsletters) {
+		t.Error("a repeated feature changes the set")
+	}
+
+	unknown := Feature("not-a-feature")
+	if got := NewFeatures(unknown); got != none {
+		t.Errorf("NewFeatures(unknown) = %b, want the empty set", got)
+	}
+	if all := ^Features(0); all.Has(unknown) {
+		t.Error("a set with every bit has an unknown feature")
+	}
+}

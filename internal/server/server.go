@@ -369,6 +369,18 @@ type ErrorRecorder interface {
 	Record(e rss.ServerError)
 }
 
+// NewsletterStore stores readers' newsletter addresses; satisfied by
+// *psql.NewsletterRepository.
+type NewsletterStore interface {
+	// CurrentAddress returns the user's current address, or
+	// rss.ErrNoRecord.
+	CurrentAddress(ctx context.Context, userID string) (rss.NewsletterAddress, error)
+	// NewAddress makes localPart the user's current address, retiring the
+	// one they had. rss.ErrAddressTooRecent within a day of the current
+	// one; rss.ErrDuplicateAddress if another address has localPart.
+	NewAddress(ctx context.Context, userID, localPart string) (rss.NewsletterAddress, error)
+}
+
 // RUMStore stores the real-user beacons; satisfied by *psql.RUMRepository.
 type RUMStore interface {
 	Record(ctx context.Context, v rss.RUMView) error
@@ -400,6 +412,7 @@ var (
 	_ RequestRecorder   = (*metrics.Requests)(nil)
 	_ ErrorRecorder     = (*metrics.ErrorLog)(nil)
 	_ RUMStore          = (*psql.RUMRepository)(nil)
+	_ NewsletterStore   = (*psql.NewsletterRepository)(nil)
 )
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -435,6 +448,7 @@ type Services struct {
 	Metrics             RequestRecorder
 	ErrorLog            ErrorRecorder
 	RUMService          RUMStore
+	NewsletterService   NewsletterStore
 }
 
 type Server struct {

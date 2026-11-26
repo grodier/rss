@@ -361,13 +361,23 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 ## Newsletters
 
-**Flow so far.** Newsletters are on only while `-newsletter-domain` is set, on both `www` and the admin.
+**Flow so far.** Newsletters are for readers with the `newsletters` row in `user_features`, granted in the admin (see "Users and support" under "Admin"), and only while `-newsletter-domain` is set, on both `www` and the admin.
 The app never mails an address at that domain: signup, changing the account's email, the waitlist and the admin's invites refuse one, or one at a subdomain (`validator.CheckNotNewsletterAddress`), since the domain refuses the app's own mail and the bounce would count against our sending domain.
-Readers' addresses come with #827, and receiving mail with #828 and #829.
+`UserSessionRepository.Get` loads the reader's features with the session, so `requireFeature` and the Settings row need no extra query for that; the newsletter routes answer 404 to anyone else, as debug routes do.
+Settings has a Newsletters row for them, whose hint is their address, or "Get your address".
+Settings › Newsletters (`/settings/newsletters`) shows the address with Copy (`copy-field.ts`), or, before they have one, Get your address.
+Both buttons post to `/settings/newsletters/address`: Get your address makes the first address, and asked again (a double submit) just goes back to the page; Get a new address (`new=true`) retires the current one, which keeps receiving for 30 days, at most once a day ("You can get a new address once a day.", 429).
+An address is the reader's name as ASCII letters, a dot and 6 random characters (`newsletterLocalPart`), retried with new random characters if another address has it.
+The POST goes back to a safe `return_to`, so My feeds' Newsletters view can use it (#832).
+Receiving mail comes with #828 and #829.
 
-**Start at:** `internal/validator/newsletter.go`, and its callers in `internal/server/user.go`, `email_change.go`, `waitlist.go` and `internal/admin/invites.go`.
+**Start at:**
 
-**Tests:** `internal/validator/newsletter_test.go`; `internal/server/user_test.go`, `email_change_test.go`, `waitlist_test.go`; `internal/admin/invites_test.go`; `cmd/www` and `cmd/admin`'s config tests.
+1. `internal/server/newsletters.go` (`requireFeature`, `newsletterLocalPart`, the two handlers) and `settings_newsletters.html`.
+2. `internal/psql/newsletters.go` (`NewAddress`).
+3. `internal/validator/newsletter.go`, and its callers in `internal/server/user.go`, `email_change.go`, `waitlist.go` and `internal/admin/invites.go`.
+
+**Tests:** `internal/server/newsletters_test.go`, `user_test.go`, `email_change_test.go`, `waitlist_test.go`; `internal/psql/newsletters_test.go`, `user_sessions_test.go`; `internal/validator/newsletter_test.go`; `internal/admin/invites_test.go`; `cmd/www` and `cmd/admin`'s config tests.
 
 **Why:** "Newsletters" in decisions.md.
 

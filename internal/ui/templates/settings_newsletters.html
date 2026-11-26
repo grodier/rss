@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"{{template "html-theme" .Nav}}>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Paper Round - newsletters</title>
+  {{template "assets" "settings"}}
+  {{template "app-head" .Nav}}
+</head>
+
+<body>
+  <div class="shell">
+    {{template "app-nav" .Nav}}
+
+    <main class="column">
+      <header class="page-head">
+        <h1>Newsletters</h1>
+      </header>
+
+      {{with .Flash}}
+      <div class="flash">{{.}}</div>
+      {{end}}
+      {{with .Error}}
+      <div class="error" role="alert">{{.}}</div>
+      {{end}}
+
+      {{/* Settings rows (#827): the address is a row like the account's
+           email, its Copy right after it; replacing it is a row with its
+           button. Copy is hidden until copy-field.ts shows it. */}}
+      {{if .Address}}
+      <p class="settings-intro">Sign up to newsletters with your address, or forward them to it. Each newsletter becomes a feed you follow.</p>
+      <ul class="settings-list" role="list">
+        <li class="settings-row newsletter-address-row">
+          <span class="settings-stack">
+            <label class="settings-label" for="newsletter-address">Your address</label>
+            <span class="copy-field">
+              <input class="address-text" type="text" id="newsletter-address" value="{{.Address}}" size="{{len .Address}}" readonly spellcheck="false" />
+              <button class="row-icon-btn copy-button" type="button" data-copy="newsletter-address" data-copy-what="your address" title="Copy" hidden>{{template "icon-copy"}}{{template "icon-check"}}<span class="visually-hidden">Copy your address</span><span class="copied-label" aria-hidden="true"></span></button>
+            </span>
+          </span>
+        </li>
+        <li class="settings-action">
+          <span class="settings-stack">
+            <span class="settings-label">Replace your address</span>
+            <span class="hint">If spam starts reaching it. The old one keeps working for 30 days, so you can move your newsletters over.</span>
+          </span>
+          <form action="/settings/newsletters/address" method="post">
+            <input type="hidden" name="new" value="true" />
+            <button class="btn-sm" type="submit">Get a new address</button>
+          </form>
+        </li>
+      </ul>
+      {{else}}
+      <p class="settings-intro">Get an address to sign up to newsletters with, or to forward them to. Each newsletter becomes a feed you follow, and your own email address stays private.</p>
+      <ul class="settings-list" role="list">
+        <li class="settings-action">
+          <span class="settings-stack">
+            <span class="settings-label">Your address</span>
+            <span class="hint">None yet</span>
+          </span>
+          <form action="/settings/newsletters/address" method="post">
+            <button class="btn-primary" type="submit">Get your address</button>
+          </form>
+        </li>
+      </ul>
+      {{end}}
+    </main>
+  </div>
+</body>
+
+</html>

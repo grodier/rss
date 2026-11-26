@@ -187,6 +187,7 @@ func (app *Application) Run() error {
 		Metrics:             requestMetrics,
 		ErrorLog:            errorLog,
 		RUMService:          rum,
+		NewsletterService:   psql.NewNewsletterRepository(db),
 	}
 
 	srvConfig := server.Config{

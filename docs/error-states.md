@@ -124,6 +124,8 @@ Every form below re-renders with 422 on invalid input, keeps what was typed exce
 | E25b Article layout: no choice or an unknown one | As E25, with a layout radio's value changed to `grid` | Reading, 422, under the layout's choices; Headlines is focused unless the theme is wrong too | "Choose Headlines or Cards." | Yes | ok (2026-11-16, #680, tests) |
 | E22 Delete account: wrong or empty password | Settings → Account → Delete account | 422, under Password | "That password isn't right."; "Enter your password." | Yes | ok |
 | E23 Account deleted | Delete with the right password | Logged-out landing page, flash | "Your account was deleted. Thanks for trying rss." | n/a | needs work: says "rss", not "Paper Round" (#419) |
+| E26 Newsletters: no address yet | A reader with newsletters opens Settings › Newsletters before getting an address | 200, the page | "Get an address to sign up to newsletters with, or to forward them to." / "Your address: None yet" with **Get your address** | Yes | new in #827, not reviewed |
+| E27 Newsletters: a second new address in a day | Get a new address twice within a day | Settings › Newsletters, 429, alert | "You can get a new address once a day." | After a day; the current address keeps working | new in #827, not reviewed |
 | E28 An account email at the newsletter domain | Sign up, change the account's email or join the waitlist with an address at `-newsletter-domain` (`x@in.localhost` locally) | Each form, 422, under Email | "Use your own email address; this one is for newsletters." | Yes | new in #865, not reviewed |
 | E24 Log out other devices, none | Settings → Account → Other devices → "Log them out" with one session | Account, flash | "There were no other devices to log out." | n/a | ok |
 

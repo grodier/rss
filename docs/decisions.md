@@ -650,6 +650,12 @@ Where newsletters live was revised before building, with #862 (see "Newsletters 
 - **The address is readable plus random**, like `george.k7x2m9@in.paperround.app` (#827): recognizable in a sign-up form, and unguessable.
   Rejected: fully random (hard to recognize), and chosen by the reader (guessable, so spammed; Readwise warns about this).
   "Get a new address" keeps the old one receiving for 30 days, so a leaked address can be replaced without losing newsletters.
+- **Settings › Newsletters is Settings' rows** (#827, the owner's pick, option (a) of three at its design checkpoint).
+  The address is a row's value under "Your address", in the text's color with an icon-only Copy right after it, and "Replace your address" is a row with its hint and Get a new address; before there's an address, one row says "None yet" beside Get your address.
+  It looks like the rest of Settings, is compact on phones (the planning prototype's filled box was heavy and tall there), and #833's sections can follow as more rows.
+  Rejected: the address as the page's subject, in the display face under the head (it reads as a profile, and would compete with #833's sections), and the share page's copy field with Home's centered empty state (the prototype's heavy box and stacked center).
+  #832's address line on My feeds' Newsletters view and #836's site pages reuse the treatment: the address as text, then the icon-only Copy (`copy-field.ts`, with `data-copy-what`).
+  Addresses turn off Inter's contextual alternates (`font-variant-ligatures: no-contextual`), which drew the x in `sam.k7x2m9` as a multiplication sign.
 - **Newsletters from new senders are followed automatically; everything else waits** (#829, #833).
   The reader signed up on purpose, so a newsletter's first issue goes straight to the timeline.
   Only mail with `List-Unsubscribe` or `List-Id` counts as a newsletter: bulk senders must send them (Gmail's and Yahoo's 2024 rules), and spam, receipts and personal mail usually don't.

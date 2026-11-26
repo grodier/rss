@@ -26,12 +26,28 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		Flash         string
 		ConfirmNotice *confirmNotice
 		DebugAllowed  bool
+		// Newsletters shows the Newsletters row, whose hint is
+		// NewsletterAddress, or Get your address while that's "".
+		Newsletters       bool
+		NewsletterAddress string
 	}{
 		Nav:           nav,
 		User:          nav.User,
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
 		ConfirmNotice: s.confirmNotice(r),
 		DebugAllowed:  s.debugAllowed(r),
+		Newsletters:   s.hasFeature(r, rss.FeatureNewsletters),
+	}
+	if data.Newsletters {
+		a, err := s.services.NewsletterService.CurrentAddress(r.Context(), nav.User.ID)
+		switch {
+		case errors.Is(err, rss.ErrNoRecord):
+		case err != nil:
+			s.serverErrorHTML(w, r, err)
+			return
+		default:
+			data.NewsletterAddress = a.Email(s.config.NewsletterDomain)
+		}
 	}
 
 	if err := s.renderHTML(w, http.StatusOK, "settings.html", data); err != nil {

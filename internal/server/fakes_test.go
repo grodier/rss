@@ -906,3 +906,24 @@ func (f *fakeRUMStore) recorded() []rss.RUMView {
 	defer f.mu.Unlock()
 	return append([]rss.RUMView(nil), f.views...)
 }
+
+type fakeNewsletterStore struct {
+	currentFn func(ctx context.Context, userID string) (rss.NewsletterAddress, error)
+	newFn     func(ctx context.Context, userID, localPart string) (rss.NewsletterAddress, error)
+	made      []string // local parts NewAddress was asked for
+}
+
+func (f *fakeNewsletterStore) CurrentAddress(ctx context.Context, userID string) (rss.NewsletterAddress, error) {
+	if f.currentFn == nil {
+		return rss.NewsletterAddress{}, rss.ErrNoRecord
+	}
+	return f.currentFn(ctx, userID)
+}
+
+func (f *fakeNewsletterStore) NewAddress(ctx context.Context, userID, localPart string) (rss.NewsletterAddress, error) {
+	f.made = append(f.made, localPart)
+	if f.newFn == nil {
+		return rss.NewsletterAddress{UserID: userID, LocalPart: localPart}, nil
+	}
+	return f.newFn(ctx, userID, localPart)
+}
